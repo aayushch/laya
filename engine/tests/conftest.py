@@ -292,3 +292,86 @@ def mock_llm_comms():
     with patch("litellm.acompletion", new_callable=AsyncMock, return_value=mock_resp) as mock:
         with patch("laya.llm.client.load_settings", return_value={"models": {"router": "claude-haiku-4-5-20251001"}}):
             yield mock
+
+
+# --- M5 Stager / Emit fixtures ---
+
+MOCK_STAGER_RESPONSE = {
+    "header": "Fix NPE in PaymentService.processPayment()",
+    "summary": "A NullPointerException was found in PaymentService.java when processing payments with null customer IDs. The ENGINEER worker has identified the root cause and prepared a fix.",
+    "intelligence_report": [
+        "NPE occurs at line 42 of PaymentService.java in processPayment() method",
+        "Root cause: customer ID not validated before calling getCustomerProfile()",
+        "Similar bug was fixed in OrderService.java 2 weeks ago (BUG-1198)",
+        "3 tests in PaymentServiceTest.java need updating for null-safety",
+        "No other callers pass null customer IDs in production code",
+    ],
+    "staged_output": {
+        "type": "code_fix",
+        "content": "Add null check for customerId in PaymentService.processPayment() before line 42.",
+    },
+    "suggested_actions": [
+        {
+            "action_id": "act_comment_jira",
+            "label": "Post Jira Comment",
+            "action_type": "comment",
+            "target_platform": "jira",
+            "payload": "{\"body\": \"Investigation complete. NPE caused by null customer ID.\"}",
+        },
+        {
+            "action_id": "act_transition_jira",
+            "label": "Move to In Progress",
+            "action_type": "transition",
+            "target_platform": "jira",
+            "payload": "{\"transition_id\": \"21\"}",
+        },
+    ],
+    "privacy_tier": 2,
+}
+
+
+@pytest.fixture
+def mock_llm_stager():
+    """Patch litellm.acompletion to return a stager response."""
+    mock_resp = _make_mock_llm_response(MOCK_STAGER_RESPONSE)
+    with patch("litellm.acompletion", new_callable=AsyncMock, return_value=mock_resp) as mock:
+        with patch("laya.llm.client.load_settings", return_value={"models": {"stager": "claude-sonnet-4-5-20250929"}}):
+            yield mock
+
+
+@pytest.fixture
+def sample_worker_result():
+    """A sample ENGINEER WorkerResult with findings and session_id."""
+    from laya.workers.base import WorkerResult
+
+    return WorkerResult(
+        persona="ENGINEER",
+        findings={
+            "root_cause": "Null customer ID in processPayment()",
+            "affected_file": "PaymentService.java",
+            "line_number": 42,
+        },
+        drafted_output={
+            "task_prompt": "Fix the NPE by adding null check",
+            "target_files": ["PaymentService.java"],
+        },
+        session_id="sess_test_eng",
+    )
+
+
+@pytest.fixture
+def sample_worker_result_no_session():
+    """A sample COMMS WorkerResult without a coding session."""
+    from laya.workers.base import WorkerResult
+
+    return WorkerResult(
+        persona="COMMS",
+        findings={
+            "context": "Slack discussion about design review",
+            "key_points": ["Need review by Friday", "Focus on API changes"],
+        },
+        drafted_output={
+            "draft_reply": "I'll review the API changes by Friday.",
+        },
+        session_id=None,
+    )

@@ -24,6 +24,7 @@
 			<h1 class="text-xl font-bold tracking-wide">Laya</h1>
 			<nav class="flex items-center gap-4">
 				<a href="/" class="text-sm text-surface-400 transition-colors hover:text-surface-100">Status</a>
+				<a href="/feed" class="text-sm text-surface-400 transition-colors hover:text-surface-100">Feed</a>
 				<a href="/settings" class="text-sm text-surface-400 transition-colors hover:text-surface-100">Settings</a>
 			</nav>
 		</div>
