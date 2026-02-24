@@ -140,6 +140,54 @@ export interface Settings {
 	};
 }
 
+/** Staged output attached to an action card */
+export interface StagedOutput {
+	type: 'draft_reply' | 'code_fix' | 'briefing' | 'summary';
+	content: string;
+}
+
+/** A suggested action the user can approve */
+export interface SuggestedAction {
+	action_id: string;
+	label: string;
+	action_type: string;
+	target_platform: string;
+	payload: Record<string, unknown>;
+}
+
+/** Full action card from the engine */
+export interface ActionCard {
+	card_id: string;
+	event_id: string;
+	created_at?: string;
+	priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+	persona: 'ENGINEER' | 'COMMS' | 'OPS';
+	category: string;
+	header: string;
+	summary: string;
+	intelligence?: string[];
+	staged_output?: StagedOutput;
+	suggested_actions?: SuggestedAction[];
+	status: 'pending' | 'approved' | 'dismissed';
+	privacy_tier: number;
+	has_workspace: boolean;
+	resolved_at?: string;
+	user_feedback?: string;
+	feedback_type?: string;
+	confidence?: number;
+	router_model?: string;
+	stager_model?: string;
+	updated_at?: string;
+}
+
+/** Paginated cards list from GET /cards */
+export interface CardsListResponse {
+	cards: ActionCard[];
+	total: number;
+	limit: number;
+	offset: number;
+}
+
 /** Inbound Laya Event (n8n -> Engine) */
 export interface LayaEvent {
 	event_id: string;

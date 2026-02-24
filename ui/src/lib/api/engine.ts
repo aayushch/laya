@@ -1,4 +1,11 @@
-import type { TeamConfig, RulesConfig, Settings, ReposConfig } from './types';
+import type {
+	TeamConfig,
+	RulesConfig,
+	Settings,
+	ReposConfig,
+	ActionCard,
+	CardsListResponse
+} from './types';
 
 const ENGINE_URL = 'http://127.0.0.1:8420';
 
@@ -55,5 +62,34 @@ export const engineApi = {
 	deleteApiKey: (provider: string) =>
 		request<{ status: string; provider: string }>(`/settings/api-key/${provider}`, {
 			method: 'DELETE'
+		}),
+
+	// Cards
+	getCards: (params?: {
+		status?: string;
+		priority?: string;
+		limit?: number;
+		offset?: number;
+		sort?: string;
+	}) => {
+		const searchParams = new URLSearchParams();
+		if (params?.status) searchParams.set('status', params.status);
+		if (params?.priority) searchParams.set('priority', params.priority);
+		if (params?.limit) searchParams.set('limit', String(params.limit));
+		if (params?.offset) searchParams.set('offset', String(params.offset));
+		if (params?.sort) searchParams.set('sort', params.sort);
+		const qs = searchParams.toString();
+		return request<CardsListResponse>(`/cards${qs ? '?' + qs : ''}`);
+	},
+	getCard: (cardId: string) => request<ActionCard>(`/cards/${cardId}`),
+	approveCard: (cardId: string, modifications?: Record<string, unknown>) =>
+		request<{ status: string; card_id: string }>(`/cards/${cardId}/approve`, {
+			method: 'POST',
+			body: JSON.stringify({ modifications: modifications ?? null })
+		}),
+	dismissCard: (cardId: string, reason?: string, feedbackType?: string) =>
+		request<{ status: string; card_id: string }>(`/cards/${cardId}/dismiss`, {
+			method: 'POST',
+			body: JSON.stringify({ reason: reason ?? null, feedback_type: feedbackType ?? null })
 		})
 };

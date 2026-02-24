@@ -10,9 +10,11 @@ from laya.api.websocket import manager
 from laya.db.sqlite import get_db
 from laya.models.classification import RouterOutput
 from laya.models.event import EventResponse, LayaEvent
+from laya.pipeline.emit import run_emit
 from laya.pipeline.ingest import run_ingest
 from laya.pipeline.router import run_router
 from laya.pipeline.rules import run_rules
+from laya.pipeline.stager import run_stager
 from laya.pipeline.workers import run_workers
 
 log = structlog.get_logger()
@@ -102,18 +104,23 @@ async def receive_event(event: LayaEvent) -> EventResponse:
             }
         )
 
-        # Kick off workers as background task if research is required
+        # Dispatch background pipeline based on research needs
         if router_output and router_output.requires_research:
             asyncio.create_task(
                 _run_workers_background(event, router_output),
                 name=f"workers_{event.event_id}",
+            )
+        elif router_output:
+            asyncio.create_task(
+                _run_simple_card_background(event, router_output),
+                name=f"simple_card_{event.event_id}",
             )
 
     return EventResponse(event_id=event.event_id)
 
 
 async def _run_workers_background(event: LayaEvent, router_output: RouterOutput) -> None:
-    """Run workers in the background after router classification."""
+    """Run workers → stager → emit in the background."""
     try:
         results = await run_workers(event, router_output)
         log.info(
@@ -122,5 +129,23 @@ async def _run_workers_background(event: LayaEvent, router_output: RouterOutput)
             worker_count=len(results),
             errors=[r.error for r in results if r.error],
         )
+
+        # Stager: synthesize findings into card
+        stager_output = await run_stager(event, router_output, results)
+
+        # Emit: persist card, embed, broadcast
+        card_id = await run_emit(event, router_output, stager_output, results)
+        log.info("card_emitted", event_id=event.event_id, card_id=card_id)
+
     except Exception as e:
-        log.error("background_workers_failed", event_id=event.event_id, error=str(e))
+        log.error("background_pipeline_failed", event_id=event.event_id, error=str(e))
+
+
+async def _run_simple_card_background(event: LayaEvent, router_output: RouterOutput) -> None:
+    """Run stager → emit for simple events (no workers needed)."""
+    try:
+        stager_output = await run_stager(event, router_output, worker_results=None)
+        card_id = await run_emit(event, router_output, stager_output)
+        log.info("simple_card_emitted", event_id=event.event_id, card_id=card_id)
+    except Exception as e:
+        log.error("simple_card_failed", event_id=event.event_id, error=str(e))

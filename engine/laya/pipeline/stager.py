@@ -1,0 +1,133 @@
+"""STAGER pipeline step — synthesize worker findings into action card data."""
+
+import json
+
+import structlog
+
+from laya.db.chromadb_store import memory_search
+from laya.llm.client import llm_call
+from laya.llm.prompts.stager import build_stager_messages, get_stager_json_schema
+from laya.models.card import ActionCardData, StagedOutput, SuggestedAction
+from laya.models.classification import RouterOutput
+from laya.models.event import LayaEvent
+from laya.workers.base import WorkerResult
+
+log = structlog.get_logger()
+
+
+async def run_stager(
+    event: LayaEvent,
+    router_output: RouterOutput,
+    worker_results: list[WorkerResult] | None = None,
+) -> ActionCardData:
+    """Run the STAGER step: synthesize findings into a polished action card.
+
+    Args:
+        event: The original event.
+        router_output: Router classification and entities.
+        worker_results: Optional findings from workers (None for simple events).
+
+    Returns:
+        ActionCardData ready for the EMIT step.
+    """
+    # 1. Query ChromaDB for related context
+    related_context = await _query_related_context(event)
+
+    # 2. Build messages and call LLM
+    messages = build_stager_messages(event, router_output, worker_results, related_context)
+    schema = get_stager_json_schema()
+
+    try:
+        response = await llm_call(
+            role="stager",
+            messages=messages,
+            response_schema=schema,
+            event_id=event.event_id,
+            step="stage",
+            temperature=0.2,
+            max_tokens=2000,
+        )
+    except Exception as e:
+        log.error("stager_llm_failed", event_id=event.event_id, error=str(e))
+        return _build_fallback_card(event, router_output)
+
+    # 3. Parse response into ActionCardData
+    if response.parsed:
+        return _parse_stager_response(response.parsed, event)
+
+    # Fallback: try raw content
+    try:
+        parsed = json.loads(response.content)
+        return _parse_stager_response(parsed, event)
+    except (json.JSONDecodeError, Exception) as e:
+        log.error("stager_parse_failed", event_id=event.event_id, error=str(e))
+        return _build_fallback_card(event, router_output)
+
+
+async def _query_related_context(event: LayaEvent) -> list[dict]:
+    """Search ChromaDB for related content to enrich stager context."""
+    query_parts = [event.subject.title, event.content.body[:300]]
+    query = " ".join(query_parts)
+
+    try:
+        results = await memory_search(query, n_results=3)
+        log.debug("stager_context_found", count=len(results), event_id=event.event_id)
+        return results
+    except Exception as e:
+        log.warning("stager_memory_search_skipped", error=str(e), event_id=event.event_id)
+        return []
+
+
+def _parse_stager_response(data: dict, event: LayaEvent) -> ActionCardData:
+    """Parse the LLM response dict into ActionCardData."""
+    # Parse suggested_actions — payload may be a JSON string from strict schema
+    actions = []
+    for act in data.get("suggested_actions", []):
+        payload = act.get("payload", {})
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except json.JSONDecodeError:
+                payload = {"raw": payload}
+
+        actions.append(
+            SuggestedAction(
+                action_id=act["action_id"],
+                label=act["label"],
+                action_type=act["action_type"],
+                target_platform=act["target_platform"],
+                payload=payload,
+            )
+        )
+
+    staged = data.get("staged_output", {})
+    return ActionCardData(
+        header=data.get("header", event.subject.title)[:80],
+        summary=data.get("summary", ""),
+        intelligence_report=data.get("intelligence_report", []),
+        staged_output=StagedOutput(
+            type=staged.get("type", "summary"),
+            content=staged.get("content", ""),
+        ),
+        suggested_actions=actions,
+        privacy_tier=data.get("privacy_tier", 2),
+    )
+
+
+def _build_fallback_card(event: LayaEvent, router_output: RouterOutput) -> ActionCardData:
+    """Build a minimal card when the stager LLM fails."""
+    return ActionCardData(
+        header=f"Review: {event.subject.title}"[:80],
+        summary=(
+            f"New {router_output.category.value.lower()} event from "
+            f"{event.source.platform}: {event.subject.title}"
+        ),
+        intelligence_report=[
+            f"Source: {event.source.platform} ({event.source.raw_event_type})",
+            f"Actor: {event.actor.name}",
+            f"Priority: {router_output.priority.value}",
+        ],
+        staged_output=StagedOutput(type="summary", content=event.content.body[:500]),
+        suggested_actions=[],
+        privacy_tier=2,
+    )

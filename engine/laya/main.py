@@ -7,6 +7,7 @@ import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 from laya.agents import session_manager
+from laya.api.cards_api import router as cards_router
 from laya.api.events import router as events_router
 from laya.api.health import router as health_router
 from laya.api.rules_api import router as rules_router
@@ -61,6 +62,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Laya Engine", version="0.1.0", lifespan=lifespan)
 
 # Register REST routers
+app.include_router(cards_router)
 app.include_router(events_router)
 app.include_router(health_router)
 app.include_router(team_router)
