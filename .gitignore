@@ -1,0 +1,92 @@
+# =========================
+# Python (engine/)
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+*.whl
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# =========================
+# Node / SvelteKit (ui/)
+# =========================
+node_modules/
+.output/
+.vercel/
+.netlify/
+.wrangler/
+.svelte-kit/
+build/
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# =========================
+# Rust / Tauri (ui/src-tauri/)
+# =========================
+target/
+Cargo.lock
+
+# =========================
+# IDE / Editors
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# =========================
+# OS
+# =========================
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+# =========================
+# Environment / Secrets
+# =========================
+.env
+.env.*
+!.env.example
+!.env.test
+
+# =========================
+# Docker
+# =========================
+docker-compose.override.yml
+
+# =========================
+# ML / Torch models (large files)
+# =========================
+*.pt
+*.pth
+*.bin
+*.onnx
+*.safetensors
+sentence-transformers/
+
+# =========================
+# Laya runtime data
+# =========================
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+chroma_data/

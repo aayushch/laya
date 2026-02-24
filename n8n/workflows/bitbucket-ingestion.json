@@ -1,0 +1,73 @@
+{
+  "name": "Laya - Bitbucket Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "events": ["repo:push", "pullrequest:created", "pullrequest:updated", "pullrequest:comment_created"]
+      },
+      "name": "Bitbucket Trigger",
+      "type": "n8n-nodes-base.bitbucketTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            { "name": "event_id", "value": "={{ 'evt_bb_' + ($json.pullrequest?.id || $json.push?.changes?.[0]?.new?.target?.hash?.substring(0,8) || Date.now()) }}", "type": "string" },
+            { "name": "timestamp", "value": "={{ $json.pullrequest?.updated_on || $json.pullrequest?.created_on || new Date().toISOString() }}", "type": "string" },
+            { "name": "source.platform", "value": "bitbucket", "type": "string" },
+            { "name": "source.connection_id", "value": "bb_main", "type": "string" },
+            { "name": "source.raw_event_type", "value": "={{ $json.pullrequest ? ($json.comment ? 'pr_commented' : ($json.pullrequest.state === 'MERGED' ? 'pr_merged' : ($json.pullrequest.reviewers?.length ? 'pr_review_requested' : 'pr_created'))) : 'build_failed' }}", "type": "string" },
+            { "name": "actor.name", "value": "={{ $json.actor?.display_name || 'Unknown' }}", "type": "string" },
+            { "name": "actor.email", "value": "={{ $json.actor?.email || '' }}", "type": "string" },
+            { "name": "actor.platform_handle", "value": "={{ $json.actor?.username || $json.actor?.nickname || '' }}", "type": "string" },
+            { "name": "subject.type", "value": "={{ $json.pullrequest ? 'pull_request' : 'build' }}", "type": "string" },
+            { "name": "subject.id", "value": "={{ $json.pullrequest ? 'PR-' + $json.pullrequest.id : $json.push?.changes?.[0]?.new?.target?.hash?.substring(0,8) || '' }}", "type": "string" },
+            { "name": "subject.title", "value": "={{ $json.pullrequest?.title || $json.push?.changes?.[0]?.new?.target?.message?.split('\\n')[0] || '' }}", "type": "string" },
+            { "name": "subject.url", "value": "={{ $json.pullrequest?.links?.html?.href || null }}", "type": "string" },
+            { "name": "content.body", "value": "={{ $json.comment?.content?.raw || $json.pullrequest?.description || '' }}", "type": "string" },
+            { "name": "content.metadata", "value": "={{ JSON.stringify({ bb_repository: $json.repository?.full_name, bb_branch: $json.pullrequest?.source?.branch?.name, bb_target_branch: $json.pullrequest?.destination?.branch?.name, bb_reviewers: ($json.pullrequest?.reviewers || []).map(r => r.email || r.display_name) }) }}", "type": "string" }
+          ]
+        }
+      },
+      "name": "Normalize to Laya Event",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8420/events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ event_id: $json.event_id, timestamp: $json.timestamp, source: { platform: $json['source.platform'], connection_id: $json['source.connection_id'], raw_event_type: $json['source.raw_event_type'] }, actor: { name: $json['actor.name'], email: $json['actor.email'], platform_handle: $json['actor.platform_handle'] }, subject: { type: $json['subject.type'], id: $json['subject.id'], title: $json['subject.title'], url: $json['subject.url'] }, content: { body: $json['content.body'], attachments: [], metadata: JSON.parse($json['content.metadata'] || '{}') } }) }}",
+        "options": {}
+      },
+      "name": "POST to Laya Engine",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [750, 300]
+    }
+  ],
+  "connections": {
+    "Bitbucket Trigger": {
+      "main": [[{ "node": "Normalize to Laya Event", "type": "main", "index": 0 }]]
+    },
+    "Normalize to Laya Event": {
+      "main": [[{ "node": "POST to Laya Engine", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}
