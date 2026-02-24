@@ -1,0 +1,76 @@
+{
+  "name": "Laya - Gmail Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [{ "mode": "everyMinute" }]
+        },
+        "simple": false
+      },
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            { "name": "event_id", "value": "={{ 'evt_gmail_' + ($json.id || Date.now()) }}", "type": "string" },
+            { "name": "timestamp", "value": "={{ $json.internalDate ? new Date(parseInt($json.internalDate)).toISOString() : new Date().toISOString() }}", "type": "string" },
+            { "name": "source.platform", "value": "gmail", "type": "string" },
+            { "name": "source.connection_id", "value": "gmail_main", "type": "string" },
+            { "name": "source.raw_event_type", "value": "={{ $json.threadId && $json.payload?.headers?.find(h => h.name === 'In-Reply-To') ? 'reply_received' : 'new_email' }}", "type": "string" },
+            { "name": "actor.name", "value": "={{ ($json.payload?.headers?.find(h => h.name === 'From')?.value || '').replace(/<.*>/, '').trim() }}", "type": "string" },
+            { "name": "actor.email", "value": "={{ ($json.payload?.headers?.find(h => h.name === 'From')?.value || '').match(/<(.+)>/)?.[1] || $json.payload?.headers?.find(h => h.name === 'From')?.value || '' }}", "type": "string" },
+            { "name": "actor.platform_handle", "value": "", "type": "string" },
+            { "name": "subject.type", "value": "email_thread", "type": "string" },
+            { "name": "subject.id", "value": "={{ $json.threadId || $json.id }}", "type": "string" },
+            { "name": "subject.title", "value": "={{ $json.payload?.headers?.find(h => h.name === 'Subject')?.value || 'No Subject' }}", "type": "string" },
+            { "name": "subject.url", "value": "={{ 'https://mail.google.com/mail/u/0/#inbox/' + ($json.id || '') }}", "type": "string" },
+            { "name": "content.body", "value": "={{ $json.snippet || '' }}", "type": "string" },
+            { "name": "content.metadata", "value": "={{ JSON.stringify({ gmail_thread_id: $json.threadId, gmail_labels: $json.labelIds, gmail_from: ($json.payload?.headers?.find(h => h.name === 'From')?.value || '').match(/<(.+)>/)?.[1] || '', gmail_to: [($json.payload?.headers?.find(h => h.name === 'To')?.value || '')], gmail_cc: [], gmail_is_reply: !!$json.payload?.headers?.find(h => h.name === 'In-Reply-To') }) }}", "type": "string" }
+          ]
+        }
+      },
+      "name": "Normalize to Laya Event",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8420/events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ event_id: $json.event_id, timestamp: $json.timestamp, source: { platform: $json['source.platform'], connection_id: $json['source.connection_id'], raw_event_type: $json['source.raw_event_type'] }, actor: { name: $json['actor.name'], email: $json['actor.email'], platform_handle: $json['actor.platform_handle'] }, subject: { type: $json['subject.type'], id: $json['subject.id'], title: $json['subject.title'], url: $json['subject.url'] }, content: { body: $json['content.body'], attachments: [], metadata: JSON.parse($json['content.metadata'] || '{}') } }) }}",
+        "options": {}
+      },
+      "name": "POST to Laya Engine",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [750, 300]
+    }
+  ],
+  "connections": {
+    "Gmail Trigger": {
+      "main": [[{ "node": "Normalize to Laya Event", "type": "main", "index": 0 }]]
+    },
+    "Normalize to Laya Event": {
+      "main": [[{ "node": "POST to Laya Engine", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

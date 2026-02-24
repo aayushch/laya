@@ -1,0 +1,74 @@
+{
+  "name": "Laya - Jira Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "events": ["jira:issue_created", "jira:issue_updated"]
+      },
+      "name": "Jira Trigger",
+      "type": "n8n-nodes-base.jiraTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            { "name": "event_id", "value": "={{ 'evt_jira_' + $json.issue.id + '_' + Date.now() }}", "type": "string" },
+            { "name": "timestamp", "value": "={{ $json.timestamp || new Date().toISOString() }}", "type": "string" },
+            { "name": "source.platform", "value": "jira", "type": "string" },
+            { "name": "source.connection_id", "value": "jira_main", "type": "string" },
+            { "name": "source.raw_event_type", "value": "={{ $json.webhookEvent ? $json.webhookEvent.replace('jira:', '') : $json.issue_event_type_name || 'issue_updated' }}", "type": "string" },
+            { "name": "actor.name", "value": "={{ $json.user?.displayName || 'Unknown' }}", "type": "string" },
+            { "name": "actor.email", "value": "={{ $json.user?.emailAddress || '' }}", "type": "string" },
+            { "name": "actor.platform_handle", "value": "={{ $json.user?.name || '' }}", "type": "string" },
+            { "name": "subject.type", "value": "ticket", "type": "string" },
+            { "name": "subject.id", "value": "={{ $json.issue?.key || '' }}", "type": "string" },
+            { "name": "subject.title", "value": "={{ $json.issue?.fields?.summary || '' }}", "type": "string" },
+            { "name": "subject.url", "value": "={{ $json.issue?.self ? $json.issue.self.split('/rest/')[0] + '/browse/' + $json.issue.key : null }}", "type": "string" },
+            { "name": "content.body", "value": "={{ $json.comment?.body || $json.issue?.fields?.description || '' }}", "type": "string" },
+            { "name": "content.attachments", "value": "={{ [] }}", "type": "array" },
+            { "name": "content.metadata", "value": "={{ JSON.stringify({ jira_project: $json.issue?.fields?.project?.key, jira_labels: $json.issue?.fields?.labels, jira_priority: $json.issue?.fields?.priority?.name, jira_status: $json.issue?.fields?.status?.name, jira_assignee: $json.issue?.fields?.assignee?.emailAddress, jira_reporter: $json.issue?.fields?.reporter?.emailAddress }) }}", "type": "string" }
+          ]
+        }
+      },
+      "name": "Normalize to Laya Event",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8420/events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ event_id: $json.event_id, timestamp: $json.timestamp, source: { platform: $json['source.platform'], connection_id: $json['source.connection_id'], raw_event_type: $json['source.raw_event_type'] }, actor: { name: $json['actor.name'], email: $json['actor.email'], platform_handle: $json['actor.platform_handle'] }, subject: { type: $json['subject.type'], id: $json['subject.id'], title: $json['subject.title'], url: $json['subject.url'] }, content: { body: $json['content.body'], attachments: [], metadata: JSON.parse($json['content.metadata'] || '{}') } }) }}",
+        "options": {}
+      },
+      "name": "POST to Laya Engine",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [750, 300]
+    }
+  ],
+  "connections": {
+    "Jira Trigger": {
+      "main": [[{ "node": "Normalize to Laya Event", "type": "main", "index": 0 }]]
+    },
+    "Normalize to Laya Event": {
+      "main": [[{ "node": "POST to Laya Engine", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

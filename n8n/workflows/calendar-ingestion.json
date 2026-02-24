@@ -1,0 +1,76 @@
+{
+  "name": "Laya - Calendar Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [{ "mode": "everyMinute" }]
+        },
+        "calendarId": "primary"
+      },
+      "name": "Google Calendar Trigger",
+      "type": "n8n-nodes-base.googleCalendarTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            { "name": "event_id", "value": "={{ 'evt_cal_' + ($json.id || Date.now()) }}", "type": "string" },
+            { "name": "timestamp", "value": "={{ new Date().toISOString() }}", "type": "string" },
+            { "name": "source.platform", "value": "calendar", "type": "string" },
+            { "name": "source.connection_id", "value": "calendar_main", "type": "string" },
+            { "name": "source.raw_event_type", "value": "={{ $json.status === 'cancelled' ? 'event_cancelled' : ($json.updated === $json.created ? 'event_created' : 'event_updated') }}", "type": "string" },
+            { "name": "actor.name", "value": "={{ $json.organizer?.displayName || $json.organizer?.email || 'Unknown' }}", "type": "string" },
+            { "name": "actor.email", "value": "={{ $json.organizer?.email || '' }}", "type": "string" },
+            { "name": "actor.platform_handle", "value": "", "type": "string" },
+            { "name": "subject.type", "value": "meeting", "type": "string" },
+            { "name": "subject.id", "value": "={{ $json.id || '' }}", "type": "string" },
+            { "name": "subject.title", "value": "={{ $json.summary || 'Untitled Event' }}", "type": "string" },
+            { "name": "subject.url", "value": "={{ $json.htmlLink || null }}", "type": "string" },
+            { "name": "content.body", "value": "={{ $json.description || '' }}", "type": "string" },
+            { "name": "content.metadata", "value": "={{ JSON.stringify({ cal_start_time: $json.start?.dateTime || $json.start?.date, cal_end_time: $json.end?.dateTime || $json.end?.date, cal_attendees: ($json.attendees || []).map(a => a.email), cal_location: $json.location || '', cal_recurring: !!$json.recurringEventId }) }}", "type": "string" }
+          ]
+        }
+      },
+      "name": "Normalize to Laya Event",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8420/events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ event_id: $json.event_id, timestamp: $json.timestamp, source: { platform: $json['source.platform'], connection_id: $json['source.connection_id'], raw_event_type: $json['source.raw_event_type'] }, actor: { name: $json['actor.name'], email: $json['actor.email'], platform_handle: $json['actor.platform_handle'] }, subject: { type: $json['subject.type'], id: $json['subject.id'], title: $json['subject.title'], url: $json['subject.url'] }, content: { body: $json['content.body'], attachments: [], metadata: JSON.parse($json['content.metadata'] || '{}') } }) }}",
+        "options": {}
+      },
+      "name": "POST to Laya Engine",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [750, 300]
+    }
+  ],
+  "connections": {
+    "Google Calendar Trigger": {
+      "main": [[{ "node": "Normalize to Laya Event", "type": "main", "index": 0 }]]
+    },
+    "Normalize to Laya Event": {
+      "main": [[{ "node": "POST to Laya Engine", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}
