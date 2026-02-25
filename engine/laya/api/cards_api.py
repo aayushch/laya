@@ -166,8 +166,12 @@ async def approve_card(card_id: str, body: ApproveRequest | None = None) -> dict
     )
     if not rows:
         raise HTTPException(status_code=404, detail="Card not found")
-    if rows[0]["status"] != "pending":
-        raise HTTPException(status_code=409, detail="Card is not pending")
+
+    approvable = {"pending", "agent_running", "awaiting_input", "staged"}
+    if rows[0]["status"] not in approvable:
+        raise HTTPException(
+            status_code=409, detail=f"Card status '{rows[0]['status']}' cannot be approved"
+        )
 
     now = datetime.now(timezone.utc).isoformat()
     modifications_json = None
@@ -206,8 +210,12 @@ async def dismiss_card(card_id: str, body: DismissRequest | None = None) -> dict
     )
     if not rows:
         raise HTTPException(status_code=404, detail="Card not found")
-    if rows[0]["status"] != "pending":
-        raise HTTPException(status_code=409, detail="Card is not pending")
+
+    terminal = {"completed", "failed", "dismissed"}
+    if rows[0]["status"] in terminal:
+        raise HTTPException(
+            status_code=409, detail=f"Card status '{rows[0]['status']}' is terminal"
+        )
 
     now = datetime.now(timezone.utc).isoformat()
     reason = body.reason if body else None

@@ -58,6 +58,7 @@ def build_router_messages(
     event: LayaEvent,
     actor_relationship: str,
     related_context: list[dict[str, Any]] | None = None,
+    feedback_context: str | None = None,
 ) -> list[dict[str, str]]:
     """Build the messages array for the Router LLM call.
 
@@ -65,6 +66,7 @@ def build_router_messages(
         event: The incoming event to classify.
         actor_relationship: Resolved from team.json (manager, teammate, external, bot).
         related_context: Optional list of related past events from ChromaDB.
+        feedback_context: Optional user feedback patterns for learning loop.
     """
     event_text = f"""\
 [EVENT CONTENT - UNTRUSTED INPUT]
@@ -94,10 +96,14 @@ Body:
                 f"{ctx.get('document', '')[:200]}...\n"
             )
 
+    feedback_section = ""
+    if feedback_context:
+        feedback_section = f"\n\n{feedback_context}"
+
     user_message = f"""\
 Classify this event and plan investigation steps.
 
-{event_text}{context_section}
+{event_text}{context_section}{feedback_section}
 
 Respond with valid JSON matching the required schema."""
 

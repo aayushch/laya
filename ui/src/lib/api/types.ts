@@ -168,7 +168,16 @@ export interface ActionCard {
 	intelligence?: string[];
 	staged_output?: StagedOutput;
 	suggested_actions?: SuggestedAction[];
-	status: 'pending' | 'approved' | 'dismissed';
+	status:
+		| 'pending'
+		| 'approved'
+		| 'executing'
+		| 'completed'
+		| 'failed'
+		| 'dismissed'
+		| 'agent_running'
+		| 'awaiting_input'
+		| 'staged';
 	privacy_tier: number;
 	has_workspace: boolean;
 	resolved_at?: string;
@@ -183,6 +192,117 @@ export interface ActionCard {
 /** Paginated cards list from GET /cards */
 export interface CardsListResponse {
 	cards: ActionCard[];
+	total: number;
+	limit: number;
+	offset: number;
+}
+
+/** Request body for POST /actions/execute */
+export interface ExecuteActionRequest {
+	card_id: string;
+	action_id: string;
+	modifications?: Record<string, unknown>;
+}
+
+/** Response body from POST /actions/execute */
+export interface ExecuteActionResponse {
+	card_id: string;
+	action_id: string;
+	status: string;
+	result_url?: string;
+	error?: string;
+}
+
+/** Dashboard stat counts */
+export interface DashboardStats {
+	events_processed: number;
+	events_filtered: number;
+	cards_generated: number;
+	cards_pending: number;
+	cards_approved: number;
+	cards_dismissed: number;
+	cards_edited: number;
+	actions_executed: number;
+	actions_completed: number;
+	actions_failed: number;
+}
+
+export interface TimeSavedEstimate {
+	total_minutes: number;
+	by_action_type: Record<string, number>;
+}
+
+export interface LLMCostEstimate {
+	total_cost_usd: number;
+	by_model: Record<string, number>;
+	total_input_tokens: number;
+	total_output_tokens: number;
+}
+
+export interface SourceBreakdown {
+	source: string;
+	count: number;
+}
+
+export interface PersonaApprovalRate {
+	persona: string;
+	total: number;
+	approved: number;
+	dismissed: number;
+	rate: number;
+}
+
+export interface ResponseTimeStats {
+	avg_ms: number;
+	p50_ms: number;
+	p95_ms: number;
+}
+
+export interface DashboardResponse {
+	stats: DashboardStats;
+	time_saved: TimeSavedEstimate;
+	llm_costs: LLMCostEstimate;
+	events_by_source: SourceBreakdown[];
+	approval_by_persona: PersonaApprovalRate[];
+	response_time: ResponseTimeStats;
+	period_days: number;
+}
+
+/** Chat message */
+export interface ChatMessage {
+	message_id: string;
+	timestamp: string;
+	role: 'user' | 'assistant';
+	content: string;
+	referenced_cards: string[];
+	referenced_events: string[];
+}
+
+/** Chat response from POST /chat */
+export interface ChatResponse {
+	message: ChatMessage;
+	referenced_cards: string[];
+	referenced_events: string[];
+}
+
+/** Audit log entry */
+export interface AuditLogEntry {
+	log_id: string;
+	timestamp: string;
+	event_id?: string;
+	card_id?: string;
+	step: string;
+	model_used?: string;
+	input_tokens: number;
+	output_tokens: number;
+	latency_ms: number;
+	success: boolean;
+	error?: string;
+}
+
+/** Paginated audit log response */
+export interface AuditLogResponse {
+	entries: AuditLogEntry[];
 	total: number;
 	limit: number;
 	offset: number;

@@ -7,7 +7,11 @@ import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 from laya.agents import session_manager
+from laya.api.actions_api import router as actions_router
+from laya.api.audit_api import router as audit_router
 from laya.api.cards_api import router as cards_router
+from laya.api.chat_api import router as chat_router
+from laya.api.dashboard_api import router as dashboard_router
 from laya.api.events import router as events_router
 from laya.api.health import router as health_router
 from laya.api.rules_api import router as rules_router
@@ -21,6 +25,7 @@ from laya.db.chromadb_store import connect_chromadb, disconnect_chromadb
 from laya.db.migrate import run_migrations
 from laya.db.sqlite import connect, disconnect
 from laya.logging_setup import setup_logging
+from laya.scheduler import start_scheduler, stop_scheduler
 from laya.security.keychain import load_all_keys_to_env
 
 log = structlog.get_logger()
@@ -49,11 +54,15 @@ async def lifespan(app: FastAPI):
     # Connect ChromaDB vector store
     connect_chromadb()
 
+    # Start briefing scheduler
+    start_scheduler()
+
     log.info("engine_ready")
     yield
 
     # Shutdown
     log.info("engine_stopping")
+    stop_scheduler()
     await session_manager.cleanup_on_shutdown()
     disconnect_chromadb()
     await disconnect()
@@ -62,7 +71,11 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Laya Engine", version="0.1.0", lifespan=lifespan)
 
 # Register REST routers
+app.include_router(actions_router)
+app.include_router(audit_router)
 app.include_router(cards_router)
+app.include_router(chat_router)
+app.include_router(dashboard_router)
 app.include_router(events_router)
 app.include_router(health_router)
 app.include_router(team_router)

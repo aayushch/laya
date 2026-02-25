@@ -106,8 +106,16 @@ async def run_router(event: LayaEvent, actor_relationship: str) -> RouterOutput:
     # 1. Query ChromaDB for related past events
     related_context = await _query_related_context(event)
 
+    # 1b. Query user feedback patterns for learning loop
+    from laya.pipeline.feedback import format_feedback_section, query_feedback_patterns
+
+    feedback_patterns = await query_feedback_patterns(event)
+    feedback_section = format_feedback_section(feedback_patterns)
+
     # 2. Build prompt and call LLM
-    messages = build_router_messages(event, actor_relationship, related_context)
+    messages = build_router_messages(
+        event, actor_relationship, related_context, feedback_context=feedback_section
+    )
     schema = get_router_json_schema()
 
     response = await llm_call(

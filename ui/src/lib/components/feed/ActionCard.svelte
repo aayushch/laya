@@ -23,7 +23,25 @@
 	const statusDot: Record<string, string> = {
 		pending: 'bg-yellow-400',
 		approved: 'bg-green-400',
-		dismissed: 'bg-surface-500'
+		executing: 'bg-blue-400 animate-pulse',
+		completed: 'bg-green-500',
+		failed: 'bg-red-500',
+		dismissed: 'bg-surface-500',
+		agent_running: 'bg-violet-400 animate-pulse',
+		awaiting_input: 'bg-yellow-400 animate-pulse',
+		staged: 'bg-emerald-400'
+	};
+
+	const statusLabel: Record<string, string> = {
+		pending: 'Pending',
+		approved: 'Approved',
+		executing: 'Executing',
+		completed: 'Completed',
+		failed: 'Failed',
+		dismissed: 'Dismissed',
+		agent_running: 'Agent Running',
+		awaiting_input: 'Input Needed',
+		staged: 'Staged'
 	};
 
 	function timeAgo(dateStr?: string): string {
@@ -73,6 +91,16 @@
 			{card.persona}
 		</span>
 		<span class="h-2 w-2 rounded-full {statusDot[card.status] ?? statusDot.pending}"></span>
+		<span class="text-[10px] text-surface-400">{statusLabel[card.status] ?? card.status}</span>
+		{#if card.has_workspace}
+			<a
+				href="/workspace/{card.card_id}"
+				class="rounded bg-violet-900/40 px-1.5 py-0.5 text-[10px] font-medium text-violet-300 transition-colors hover:bg-violet-900/60"
+				onclick={(e) => e.stopPropagation()}
+			>
+				Workspace
+			</a>
+		{/if}
 		<span class="ml-auto text-xs text-surface-500">{timeAgo(card.created_at)}</span>
 	</div>
 
