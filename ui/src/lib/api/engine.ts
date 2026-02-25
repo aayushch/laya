@@ -4,7 +4,13 @@ import type {
 	Settings,
 	ReposConfig,
 	ActionCard,
-	CardsListResponse
+	CardsListResponse,
+	ExecuteActionResponse,
+	WorkspaceResponse,
+	DashboardResponse,
+	ChatMessage,
+	ChatResponse,
+	AuditLogResponse
 } from './types';
 
 const ENGINE_URL = 'http://127.0.0.1:8420';
@@ -91,5 +97,52 @@ export const engineApi = {
 		request<{ status: string; card_id: string }>(`/cards/${cardId}/dismiss`, {
 			method: 'POST',
 			body: JSON.stringify({ reason: reason ?? null, feedback_type: feedbackType ?? null })
-		})
+		}),
+
+	// Actions
+	executeAction: (cardId: string, actionId: string, modifications?: Record<string, unknown>) =>
+		request<ExecuteActionResponse>('/actions/execute', {
+			method: 'POST',
+			body: JSON.stringify({
+				card_id: cardId,
+				action_id: actionId,
+				modifications: modifications ?? null
+			})
+		}),
+
+	// Workspace
+	getWorkspace: (cardId: string) => request<WorkspaceResponse>(`/cards/${cardId}/workspace`),
+
+	// Dashboard
+	getDashboard: (days?: number) => {
+		const qs = days ? `?days=${days}` : '';
+		return request<DashboardResponse>(`/dashboard${qs}`);
+	},
+
+	// Chat
+	getChatHistory: (limit?: number) => {
+		const qs = limit ? `?limit=${limit}` : '';
+		return request<ChatMessage[]>(`/chat/history${qs}`);
+	},
+	sendChat: (message: string) =>
+		request<ChatResponse>('/chat', {
+			method: 'POST',
+			body: JSON.stringify({ message })
+		}),
+
+	// Audit Log
+	getAuditLog: (params?: {
+		step?: string;
+		success?: boolean;
+		limit?: number;
+		offset?: number;
+	}) => {
+		const searchParams = new URLSearchParams();
+		if (params?.step) searchParams.set('step', params.step);
+		if (params?.success !== undefined) searchParams.set('success', String(params.success));
+		if (params?.limit) searchParams.set('limit', String(params.limit));
+		if (params?.offset) searchParams.set('offset', String(params.offset));
+		const qs = searchParams.toString();
+		return request<AuditLogResponse>(`/audit-log${qs ? '?' + qs : ''}`);
+	}
 };

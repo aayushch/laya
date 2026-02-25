@@ -4,8 +4,9 @@
 	import ModelConfig from '$lib/components/settings/ModelConfig.svelte';
 	import RepoConfig from '$lib/components/settings/RepoConfig.svelte';
 	import AgentConfig from '$lib/components/settings/AgentConfig.svelte';
+	import AuditLogViewer from '$lib/components/settings/AuditLogViewer.svelte';
 
-	let activeTab = $state<'team' | 'rules' | 'models' | 'repos' | 'agent'>('team');
+	let activeTab = $state<'team' | 'rules' | 'models' | 'repos' | 'agent' | 'audit'>('team');
 </script>
 
 <div class="mx-auto max-w-4xl space-y-6">
@@ -51,6 +52,13 @@
 		>
 			Agent
 		</button>
+		<button
+			class="rounded-md px-4 py-2 text-sm font-medium transition-colors
+				{activeTab === 'audit' ? 'bg-surface-600 text-surface-50' : 'text-surface-400 hover:text-surface-200'}"
+			onclick={() => (activeTab = 'audit')}
+		>
+			Audit
+		</button>
 	</div>
 
 	{#if activeTab === 'team'}
@@ -61,7 +69,9 @@
 		<ModelConfig />
 	{:else if activeTab === 'repos'}
 		<RepoConfig />
-	{:else}
+	{:else if activeTab === 'agent'}
 		<AgentConfig />
+	{:else}
+		<AuditLogViewer />
 	{/if}
 </div>

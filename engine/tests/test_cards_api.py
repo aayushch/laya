@@ -172,9 +172,47 @@ class TestCardsAPI:
         assert rows[0]["user_feedback"] == "Not relevant"
         assert rows[0]["feedback_type"] == "irrelevant"
 
-    async def test_dismiss_card_409_on_non_pending(self, db_m4):
-        """POST /cards/:card_id/dismiss returns 409 if card is not pending."""
+    async def test_dismiss_card_409_on_terminal(self, db_m4):
+        """POST /cards/:card_id/dismiss returns 409 if card is in terminal state."""
         await _insert_test_card(db_m4, status="dismissed")
+
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post("/cards/card_test/dismiss", json={})
+
+        assert resp.status_code == 409
+
+    async def test_approve_from_staged_status(self, db_m4):
+        """POST /cards/:card_id/approve works for cards in 'staged' status."""
+        await _insert_test_card(db_m4, status="staged")
+
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post("/cards/card_test/approve", json={})
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "approved"
+
+    async def test_dismiss_from_executing_status(self, db_m4):
+        """POST /cards/:card_id/dismiss works for cards in 'executing' status."""
+        await _insert_test_card(db_m4, status="executing")
+
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/cards/card_test/dismiss",
+                json={"reason": "Cancelled by user"},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "dismissed"
+
+    async def test_dismiss_completed_returns_409(self, db_m4):
+        """POST /cards/:card_id/dismiss returns 409 for completed cards."""
+        await _insert_test_card(db_m4, status="completed")
 
         from laya.main import app
         transport = ASGITransport(app=app)

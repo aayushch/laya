@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 
 class EventSource(BaseModel):
-    platform: str = Field(..., pattern=r"^(jira|bitbucket|slack|gmail|calendar)$")
+    platform: str = Field(..., pattern=r"^(jira|bitbucket|slack|gmail|calendar|github|laya)$")
     connection_id: str | None = None
     raw_event_type: str
 
@@ -19,7 +19,7 @@ class EventActor(BaseModel):
 
 
 class EventSubject(BaseModel):
-    type: str = Field(..., pattern=r"^(ticket|pull_request|build|thread|email_thread|meeting)$")
+    type: str = Field(..., pattern=r"^(ticket|pull_request|build|thread|email_thread|meeting|briefing)$")
     id: str
     title: str
     url: str | None = None

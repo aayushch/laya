@@ -11,6 +11,8 @@
 	let dismissing = $state(false);
 	let dismissReason = $state('');
 	let showDismissInput = $state(false);
+	let executingActionId = $state<string | null>(null);
+	let executeError = $state<string | null>(null);
 
 	const priorityColors: Record<string, string> = {
 		CRITICAL: 'bg-red-600 text-red-50',
@@ -31,6 +33,36 @@
 		briefing: 'Briefing',
 		summary: 'Summary'
 	};
+
+	const terminalStatuses = new Set(['completed', 'failed', 'dismissed']);
+	const actionableStatuses = new Set(['pending', 'approved', 'staged', 'agent_running', 'awaiting_input']);
+	let isActionable = $derived(actionableStatuses.has(card.status));
+	let isTerminal = $derived(terminalStatuses.has(card.status));
+
+	const statusColors: Record<string, string> = {
+		pending: 'text-yellow-400',
+		approved: 'text-green-400',
+		executing: 'text-blue-400',
+		completed: 'text-green-500',
+		failed: 'text-red-500',
+		dismissed: 'text-surface-500',
+		agent_running: 'text-violet-400',
+		awaiting_input: 'text-yellow-400',
+		staged: 'text-emerald-400'
+	};
+
+	async function executeAction(actionId: string) {
+		executingActionId = actionId;
+		executeError = null;
+		try {
+			const result = await engineApi.executeAction(card.card_id, actionId);
+			card.status = result.status as ActionCard['status'];
+		} catch (err) {
+			executeError = err instanceof Error ? err.message : 'Execution failed';
+		} finally {
+			executingActionId = null;
+		}
+	}
 
 	async function approve() {
 		approving = true;
@@ -119,13 +151,22 @@
 				<div class="flex flex-wrap gap-2">
 					{#each card.suggested_actions as action}
 						<button
-							class="rounded-lg border border-surface-600 bg-surface-700/50 px-3 py-1.5 text-xs font-medium text-surface-200 transition-colors hover:bg-surface-600"
+							class="rounded-lg border border-surface-600 bg-surface-700/50 px-3 py-1.5 text-xs font-medium text-surface-200 transition-colors hover:bg-surface-600 disabled:opacity-50 disabled:cursor-not-allowed"
+							onclick={() => executeAction(action.action_id)}
+							disabled={!!executingActionId || isTerminal || card.status === 'executing'}
 						>
-							{action.label}
-							<span class="ml-1 text-surface-500">({action.target_platform})</span>
+							{#if executingActionId === action.action_id}
+								Executing...
+							{:else}
+								{action.label}
+								<span class="ml-1 text-surface-500">({action.target_platform})</span>
+							{/if}
 						</button>
 					{/each}
 				</div>
+				{#if executeError}
+					<p class="mt-2 text-xs text-red-400">{executeError}</p>
+				{/if}
 			</div>
 		{/if}
 
@@ -136,9 +177,9 @@
 					<span>Confidence: {Math.round(card.confidence * 100)}%</span>
 				{/if}
 				<span>Category: {card.category}</span>
-				<span>Status: {card.status}</span>
+				<span class={statusColors[card.status] ?? 'text-surface-400'}>Status: {card.status}</span>
 				{#if card.has_workspace}
-					<span class="text-violet-400">Has workspace</span>
+					<a href="/workspace/{card.card_id}" class="text-violet-400 hover:text-violet-300 underline">Open Workspace</a>
 				{/if}
 				{#if card.created_at}
 					<span>Created: {new Date(card.created_at).toLocaleString()}</span>
@@ -147,8 +188,8 @@
 		</div>
 	</div>
 
-	<!-- Action buttons for pending cards -->
-	{#if card.status === 'pending'}
+	<!-- Action buttons for actionable cards -->
+	{#if isActionable}
 		<div class="border-t border-surface-700 px-5 py-3">
 			{#if showDismissInput}
 				<div class="flex gap-2">
