@@ -12,7 +12,7 @@ SERVICE_NAME = "laya-engine"
 KEY_ENV_MAP = {
     "anthropic": "ANTHROPIC_API_KEY",
     "openai": "OPENAI_API_KEY",
-    "google": "GOOGLE_API_KEY",
+    "google": "GEMINI_API_KEY",
 }
 
 

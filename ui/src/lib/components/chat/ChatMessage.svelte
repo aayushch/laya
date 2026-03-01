@@ -13,7 +13,7 @@
 		return text
 			.replace(
 				/\[card:([^\]]+)\]/g,
-				'<a href="/feed/$1" class="text-blue-400 underline hover:text-blue-300">card:$1</a>'
+				'<a href="/feed/$1" class="text-laya-orange underline hover:text-laya-peach">card:$1</a>'
 			)
 			.replace(
 				/\[event:([^\]]+)\]/g,
@@ -25,13 +25,13 @@
 <div class="flex {isUser ? 'justify-end' : 'justify-start'}">
 	<div
 		class="max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm {isUser
-			? 'bg-blue-600 text-white'
+			? 'bg-laya-orange/20 text-surface-100 ring-1 ring-laya-orange/30'
 			: 'bg-surface-700 text-surface-200'}"
 	>
 		<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 		<div class="whitespace-pre-wrap break-words">{@html renderContent(message.content)}</div>
 		<div
-			class="mt-1 text-[10px] {isUser ? 'text-blue-200' : 'text-surface-500'}"
+			class="mt-1 text-[10px] {isUser ? 'text-laya-orange/60' : 'text-surface-500'}"
 		>
 			{time}
 		</div>

@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class EventSource(BaseModel):
@@ -17,6 +17,12 @@ class EventActor(BaseModel):
     email: str
     platform_handle: str | None = None
 
+    @field_validator("name", "email", mode="before")
+    @classmethod
+    def coerce_null_to_empty(cls, v: Any) -> str:
+        """n8n Set node converts empty-string expressions to null — coerce back."""
+        return v if isinstance(v, str) else ""
+
 
 class EventSubject(BaseModel):
     type: str = Field(..., pattern=r"^(ticket|pull_request|build|thread|email_thread|meeting|briefing)$")
@@ -24,11 +30,21 @@ class EventSubject(BaseModel):
     title: str
     url: str | None = None
 
+    @field_validator("title", "id", mode="before")
+    @classmethod
+    def coerce_null_to_empty(cls, v: Any) -> str:
+        return v if isinstance(v, str) else ""
+
 
 class EventContent(BaseModel):
     body: str
     attachments: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("body", mode="before")
+    @classmethod
+    def coerce_null_to_empty(cls, v: Any) -> str:
+        return v if isinstance(v, str) else ""
 
 
 class LayaEvent(BaseModel):

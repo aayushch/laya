@@ -22,16 +22,16 @@
             { "name": "timestamp", "value": "={{ $json.internalDate ? new Date(parseInt($json.internalDate)).toISOString() : new Date().toISOString() }}", "type": "string" },
             { "name": "source.platform", "value": "gmail", "type": "string" },
             { "name": "source.connection_id", "value": "gmail_main", "type": "string" },
-            { "name": "source.raw_event_type", "value": "={{ $json.threadId && $json.payload?.headers?.find(h => h.name === 'In-Reply-To') ? 'reply_received' : 'new_email' }}", "type": "string" },
-            { "name": "actor.name", "value": "={{ ($json.payload?.headers?.find(h => h.name === 'From')?.value || '').replace(/<.*>/, '').trim() }}", "type": "string" },
-            { "name": "actor.email", "value": "={{ ($json.payload?.headers?.find(h => h.name === 'From')?.value || '').match(/<(.+)>/)?.[1] || $json.payload?.headers?.find(h => h.name === 'From')?.value || '' }}", "type": "string" },
+            { "name": "source.raw_event_type", "value": "={{ $json['in-reply-to'] || $json['references'] ? 'reply_received' : 'new_email' }}", "type": "string" },
+            { "name": "actor.name", "value": "={{ ($json.from || '').replace(/^From:\\s*/i, '').replace(/<[^>]+>/g, '').trim() }}", "type": "string" },
+            { "name": "actor.email", "value": "={{ ($json.from || '').match(/<([^>]+)>/)?.[1] || ($json.from || '').replace(/^From:\\s*/i, '').trim() }}", "type": "string" },
             { "name": "actor.platform_handle", "value": "", "type": "string" },
             { "name": "subject.type", "value": "email_thread", "type": "string" },
             { "name": "subject.id", "value": "={{ $json.threadId || $json.id }}", "type": "string" },
-            { "name": "subject.title", "value": "={{ $json.payload?.headers?.find(h => h.name === 'Subject')?.value || 'No Subject' }}", "type": "string" },
+            { "name": "subject.title", "value": "={{ ($json.subject || '').replace(/^Subject:\\s*/i, '') || 'No Subject' }}", "type": "string" },
             { "name": "subject.url", "value": "={{ 'https://mail.google.com/mail/u/0/#inbox/' + ($json.id || '') }}", "type": "string" },
-            { "name": "content.body", "value": "={{ $json.snippet || '' }}", "type": "string" },
-            { "name": "content.metadata", "value": "={{ JSON.stringify({ gmail_thread_id: $json.threadId, gmail_labels: $json.labelIds, gmail_from: ($json.payload?.headers?.find(h => h.name === 'From')?.value || '').match(/<(.+)>/)?.[1] || '', gmail_to: [($json.payload?.headers?.find(h => h.name === 'To')?.value || '')], gmail_cc: [], gmail_is_reply: !!$json.payload?.headers?.find(h => h.name === 'In-Reply-To') }) }}", "type": "string" }
+            { "name": "content.body", "value": "={{ $json.snippet || $json.text || $json.html || '' }}", "type": "string" },
+            { "name": "content.metadata", "value": "={{ JSON.stringify({ gmail_thread_id: $json.threadId, gmail_labels: $json.labelIds, gmail_from: ($json.from || '').match(/<([^>]+)>/)?.[1] || ($json.from || '').replace(/^From:\\s*/i, '').trim(), gmail_to: [($json.to || '').replace(/^To:\\s*/i, '')], gmail_cc: [], gmail_is_reply: !!($json['in-reply-to'] || $json['references']) }) }}", "type": "string" }
           ]
         }
       },
@@ -52,7 +52,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ event_id: $json.event_id, timestamp: $json.timestamp, source: { platform: $json['source.platform'], connection_id: $json['source.connection_id'], raw_event_type: $json['source.raw_event_type'] }, actor: { name: $json['actor.name'], email: $json['actor.email'], platform_handle: $json['actor.platform_handle'] }, subject: { type: $json['subject.type'], id: $json['subject.id'], title: $json['subject.title'], url: $json['subject.url'] }, content: { body: $json['content.body'], attachments: [], metadata: JSON.parse($json['content.metadata'] || '{}') } }) }}",
+        "jsonBody": "={{ JSON.stringify({ event_id: $json.event_id, timestamp: $json.timestamp, source: $json.source, actor: $json.actor, subject: $json.subject, content: { body: $json.content.body, attachments: [], metadata: JSON.parse($json.content.metadata || '{}') } }) }}",
         "options": {}
       },
       "name": "POST to Laya Engine",

@@ -60,6 +60,7 @@ class CardResponse(BaseModel):
     router_model: str | None = None
     stager_model: str | None = None
     updated_at: str | None = None
+    entity_id: str | None = None
 
 
 class CardsListResponse(BaseModel):
@@ -69,3 +70,24 @@ class CardsListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class CardGroup(BaseModel):
+    """A group of cards that refer to the same entity (e.g. a Jira ticket)."""
+
+    entity_id: str
+    entity_title: str
+    entity_url: str | None = None
+    platform: str
+    card_count: int
+    top_priority: str
+    latest_at: str
+    has_pending: bool
+    cards: list[CardResponse]
+
+
+class GroupedCardsResponse(BaseModel):
+    """Cards grouped by entity."""
+
+    groups: list[CardGroup]
+    total_groups: int

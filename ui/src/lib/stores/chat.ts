@@ -3,3 +3,4 @@ import type { ChatMessage } from '$lib/api/types';
 
 export const chatOpen = writable(false);
 export const chatMessages = writable<ChatMessage[]>([]);
+export const chatInputPreset = writable('');

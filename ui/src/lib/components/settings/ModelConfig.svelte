@@ -6,14 +6,15 @@
 	const routerModels = [
 		{ value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
 		{ value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-		{ value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+		{ value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview' },
 		{ value: 'ollama/llama3', label: 'Ollama Llama 3 (local)' }
 	];
 
 	const stagerModels = [
 		{ value: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5' },
 		{ value: 'gpt-4o', label: 'GPT-4o' },
-		{ value: 'gemini-2.0-pro', label: 'Gemini 2.0 Pro' },
+		{ value: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro Preview' },
+		{ value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview' },
 		{ value: 'ollama/llama3', label: 'Ollama Llama 3 (local)' }
 	];
 

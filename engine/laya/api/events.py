@@ -26,10 +26,10 @@ async def receive_event(event: LayaEvent) -> EventResponse:
     """Receive a normalized event from n8n, store it, and process through pipeline."""
     db = await get_db()
 
-    # Store in SQLite
-    await db.execute(
+    # Store in SQLite — ignore duplicates (n8n may re-deliver on retry)
+    cursor = await db.execute(
         """
-        INSERT INTO events (
+        INSERT OR IGNORE INTO events (
             event_id, timestamp, source_platform, source_connection_id,
             source_raw_event_type, actor_name, actor_email, actor_handle,
             subject_type, subject_id, subject_title, subject_url,
@@ -55,6 +55,18 @@ async def receive_event(event: LayaEvent) -> EventResponse:
         ),
     )
     await db.commit()
+
+    if cursor.rowcount == 0:
+        # Event already exists — check if it completed the pipeline
+        db2 = await get_db()
+        async with db2.execute(
+            "SELECT processed FROM events WHERE event_id = ?", (event.event_id,)
+        ) as cur:
+            row = await cur.fetchone()
+        if row and row["processed"]:
+            log.info("event_duplicate_skipped", event_id=event.event_id)
+            return EventResponse(event_id=event.event_id)
+        log.info("event_reprocessing_stuck", event_id=event.event_id)
 
     log.info(
         "event_stored",

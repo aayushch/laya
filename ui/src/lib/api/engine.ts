@@ -5,12 +5,20 @@ import type {
 	ReposConfig,
 	ActionCard,
 	CardsListResponse,
+	GroupedCardsResponse,
 	ExecuteActionResponse,
 	WorkspaceResponse,
 	DashboardResponse,
 	ChatMessage,
 	ChatResponse,
-	AuditLogResponse
+	AuditLogResponse,
+	N8nTestResult,
+	PlatformsResponse,
+	ConnectionsResponse,
+	CreateConnectionRequest,
+	CreateConnectionResponse,
+	ConnectionTestResult,
+	N8nBootstrapResponse
 } from './types';
 
 const ENGINE_URL = 'http://127.0.0.1:8420';
@@ -88,6 +96,25 @@ export const engineApi = {
 		return request<CardsListResponse>(`/cards${qs ? '?' + qs : ''}`);
 	},
 	getCard: (cardId: string) => request<ActionCard>(`/cards/${cardId}`),
+	getGroupedCards: (params?: {
+		status?: string;
+		priority?: string;
+		sort?: string;
+		show_archived?: boolean;
+	}) => {
+		const searchParams = new URLSearchParams();
+		if (params?.status) searchParams.set('status', params.status);
+		if (params?.priority) searchParams.set('priority', params.priority);
+		if (params?.sort) searchParams.set('sort', params.sort);
+		if (params?.show_archived) searchParams.set('show_archived', 'true');
+		const qs = searchParams.toString();
+		return request<GroupedCardsResponse>(`/cards/grouped${qs ? '?' + qs : ''}`);
+	},
+	dismissGroup: (entityId: string) =>
+		request<{ dismissed: number; entity_id: string }>(
+			`/cards/group/${encodeURIComponent(entityId)}/dismiss-all`,
+			{ method: 'POST' }
+		),
 	approveCard: (cardId: string, modifications?: Record<string, unknown>) =>
 		request<{ status: string; card_id: string }>(`/cards/${cardId}/approve`, {
 			method: 'POST',
@@ -97,6 +124,14 @@ export const engineApi = {
 		request<{ status: string; card_id: string }>(`/cards/${cardId}/dismiss`, {
 			method: 'POST',
 			body: JSON.stringify({ reason: reason ?? null, feedback_type: feedbackType ?? null })
+		}),
+	archiveCard: (cardId: string) =>
+		request<{ status: string; card_id: string }>(`/cards/${cardId}/archive`, {
+			method: 'POST'
+		}),
+	reopenCard: (cardId: string) =>
+		request<{ status: string; card_id: string }>(`/cards/${cardId}/reopen`, {
+			method: 'POST'
 		}),
 
 	// Actions
@@ -128,6 +163,42 @@ export const engineApi = {
 		request<ChatResponse>('/chat', {
 			method: 'POST',
 			body: JSON.stringify({ message })
+		}),
+
+	// n8n
+	testN8nConnection: (baseUrl?: string, webhookPath?: string) =>
+		request<N8nTestResult>('/settings/n8n/test', {
+			method: 'POST',
+			body: JSON.stringify({
+				...(baseUrl ? { base_url: baseUrl } : {}),
+				...(webhookPath ? { webhook_path: webhookPath } : {})
+			})
+		}),
+
+	// Connections (n8n credentials)
+	getPlatforms: () => request<PlatformsResponse>('/connections/platforms'),
+
+	getConnections: () => request<ConnectionsResponse>('/connections'),
+
+	createConnection: (req: CreateConnectionRequest) =>
+		request<CreateConnectionResponse>('/connections', {
+			method: 'POST',
+			body: JSON.stringify(req)
+		}),
+
+	deleteConnection: (id: string) =>
+		request<{ status: string; id: string }>(`/connections/${id}`, {
+			method: 'DELETE'
+		}),
+
+	testN8nApi: () =>
+		request<ConnectionTestResult>('/connections/test', {
+			method: 'POST'
+		}),
+
+	bootstrapN8n: () =>
+		request<N8nBootstrapResponse>('/settings/n8n/bootstrap', {
+			method: 'POST'
 		}),
 
 	// Audit Log
