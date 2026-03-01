@@ -1,3 +1,107 @@
 @import 'tailwindcss';
 @import '@skeletonlabs/skeleton';
 @import '@skeletonlabs/skeleton/themes/cerberus';
+
+/* ─────────────────────────────────────────────────────────────
+   LAYA BRAND PALETTE
+   Core: #f6ac69 (orange) · #f6bc66 (gold) · #ffdab9 (peach) · #ff9770 (coral)
+   ───────────────────────────────────────────────────────────── */
+@theme {
+	/* Brand swatches - available as bg-laya-* text-laya-* etc. */
+	--color-laya-orange:     oklch(0.775 0.130 63);   /* #f6ac69 */
+	--color-laya-gold:       oklch(0.810 0.120 80);   /* #f6bc66 */
+	--color-laya-peach:      oklch(0.905 0.065 72);   /* #ffdab9 */
+	--color-laya-coral:      oklch(0.740 0.155 50);   /* #ff9770 */
+	--color-laya-amber:      oklch(0.700 0.180 58);   /* deep warm amber */
+	--color-laya-sand:       oklch(0.885 0.045 78);   /* warm sand */
+	--color-laya-blush:      oklch(0.940 0.035 70);   /* soft blush */
+	--color-laya-terracotta: oklch(0.620 0.135 45);   /* muted terracotta */
+}
+
+/* ─────────────────────────────────────────────────────────────
+   DARK THEME  (default)
+   Warm-tinted grays — gives the UI a cozy, branded feel
+   ───────────────────────────────────────────────────────────── */
+:root,
+[data-theme='dark'] {
+	color-scheme: dark;
+
+	--color-surface-50:  oklch(0.970 0.008 65);
+	--color-surface-100: oklch(0.920 0.010 64);
+	--color-surface-200: oklch(0.840 0.011 62);
+	--color-surface-300: oklch(0.740 0.013 60);
+	--color-surface-400: oklch(0.630 0.013 58);
+	--color-surface-500: oklch(0.520 0.012 56);
+	--color-surface-600: oklch(0.420 0.011 54);
+	--color-surface-700: oklch(0.340 0.009 52);
+	--color-surface-800: oklch(0.265 0.008 50);
+	--color-surface-900: oklch(0.185 0.007 48);
+	--color-surface-950: oklch(0.120 0.005 46);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   LIGHT THEME
+   Inverted warm surface scale — 900 becomes warm cream background,
+   50 becomes rich warm brown for text.  No component changes needed.
+   ───────────────────────────────────────────────────────────── */
+[data-theme='light'] {
+	color-scheme: light;
+
+	--color-surface-50:  oklch(0.220 0.018 44);   /* rich warm brown  → text */
+	--color-surface-100: oklch(0.310 0.017 48);
+	--color-surface-200: oklch(0.410 0.016 53);
+	--color-surface-300: oklch(0.510 0.014 58);
+	--color-surface-400: oklch(0.615 0.012 62);   /* muted text */
+	--color-surface-500: oklch(0.720 0.009 65);   /* very muted */
+	--color-surface-600: oklch(0.810 0.007 68);   /* subtle dividers */
+	--color-surface-700: oklch(0.880 0.006 70);   /* light borders */
+	--color-surface-800: oklch(0.935 0.006 72);   /* card bg */
+	--color-surface-900: oklch(0.970 0.005 74);   /* page bg — warm cream */
+	--color-surface-950: oklch(0.990 0.003 78);   /* pure warm white */
+}
+
+/* ─────────────────────────────────────────────────────────────
+   LIGHT THEME — semantic color overrides
+   Swap light-on-dark status text to dark-on-light equivalents
+   so buttons/badges remain readable on the cream background.
+   ───────────────────────────────────────────────────────────── */
+[data-theme='light'] .text-green-300    { color: oklch(0.38 0.15 145); }
+[data-theme='light'] .text-green-400    { color: oklch(0.40 0.16 145); }
+[data-theme='light'] .text-orange-300   { color: oklch(0.46 0.16 55);  }
+[data-theme='light'] .text-orange-50    { color: oklch(0.98 0.01 65);  }
+[data-theme='light'] .text-red-50       { color: oklch(0.98 0.01 25);  }
+[data-theme='light'] .text-red-300      { color: oklch(0.44 0.18 25);  }
+[data-theme='light'] .text-red-400      { color: oklch(0.42 0.18 25);  }
+[data-theme='light'] .text-yellow-300   { color: oklch(0.48 0.14 90);  }
+[data-theme='light'] .text-yellow-400   { color: oklch(0.46 0.15 90);  }
+[data-theme='light'] .text-blue-400     { color: oklch(0.40 0.18 240); }
+[data-theme='light'] .text-violet-300   { color: oklch(0.40 0.20 285); }
+[data-theme='light'] .text-violet-400   { color: oklch(0.38 0.20 285); }
+[data-theme='light'] .text-emerald-400  { color: oklch(0.38 0.18 160); }
+[data-theme='light'] .text-amber-400    { color: oklch(0.44 0.18 70);  }
+
+/* Priority badge text - ensure contrast in light mode */
+[data-theme='light'] .bg-red-600      { background-color: oklch(0.50 0.22 27);  }
+[data-theme='light'] .bg-orange-500   { background-color: oklch(0.62 0.18 47);  }
+[data-theme='light'] .bg-blue-600     { background-color: oklch(0.46 0.20 240); }
+
+/* Subtle action button bg adjustments */
+[data-theme='light'] .bg-green-700\/30,
+[data-theme='light'] .bg-green-700\/40,
+[data-theme='light'] .bg-green-700\/60 {
+	background-color: oklch(0.88 0.08 145 / 60%);
+}
+[data-theme='light'] .bg-orange-700\/30,
+[data-theme='light'] .bg-orange-700\/50 {
+	background-color: oklch(0.90 0.08 55 / 60%);
+}
+[data-theme='light'] .bg-yellow-700\/30,
+[data-theme='light'] .bg-yellow-700\/50 {
+	background-color: oklch(0.90 0.10 90 / 60%);
+}
+[data-theme='light'] .bg-red-900\/30   { background-color: oklch(0.92 0.06 25 / 60%); }
+[data-theme='light'] .bg-red-900\/50   { background-color: oklch(0.88 0.08 25 / 60%); }
+[data-theme='light'] .bg-violet-900\/40,
+[data-theme='light'] .bg-violet-900\/60 {
+	background-color: oklch(0.88 0.08 285 / 60%);
+}

@@ -5,21 +5,13 @@ from datetime import datetime, timezone
 
 import httpx
 import structlog
+import tenacity
 
 from laya.api.websocket import manager
-from laya.config import N8N_URL
+from laya.config import get_n8n_config
 from laya.db.sqlite import get_db
 
 log = structlog.get_logger()
-
-# n8n webhook URL mapping: platform -> webhook path
-N8N_EXECUTOR_WEBHOOKS: dict[str, str] = {
-    "jira": "jira-executor",
-    "bitbucket": "bitbucket-executor",
-    "slack": "slack-executor",
-    "gmail": "gmail-executor",
-    "calendar": "calendar-executor",
-}
 
 
 async def execute_action(
@@ -56,10 +48,10 @@ async def execute_action(
     current_status = card_row["status"]
 
     # 2. Validate status
-    if current_status not in ("pending", "approved"):
+    if current_status not in ("pending", "approved", "failed"):
         raise ValueError(
             f"Card {card_id} status is '{current_status}', "
-            "must be 'pending' or 'approved' to execute"
+            "must be 'pending', 'approved', or 'failed' to execute"
         )
 
     # 3. Find the specific action from suggested_actions JSON
@@ -97,8 +89,19 @@ async def execute_action(
 
     # 5. Build n8n payload and POST
     target_platform = action["target_platform"]
-    webhook_path = N8N_EXECUTOR_WEBHOOKS.get(target_platform, f"{target_platform}-executor")
-    webhook_url = f"{N8N_URL}/webhook/{webhook_path}"
+    n8n_config = get_n8n_config()
+    base_url = n8n_config["base_url"].rstrip("/")
+    webhooks = n8n_config.get("webhooks", {})
+    webhook_path = webhooks.get(target_platform, f"{target_platform}-executor")
+    webhook_url = f"{base_url}/webhook/{webhook_path}"
+
+    # Fetch original event context so executor workflows have enough info to act
+    event_rows = await db.execute_fetchall(
+        """SELECT actor_email, actor_name, subject_title, source_platform
+           FROM events WHERE event_id = ?""",
+        (card_row["event_id"],),
+    )
+    event_ctx = dict(event_rows[0]) if event_rows else {}
 
     n8n_payload = {
         "action_id": action_id,
@@ -106,17 +109,32 @@ async def execute_action(
         "target": {"platform": target_platform, "connection_id": None},
         "action_type": action["action_type"],
         "payload": payload,
+        "event_actor_email": event_ctx.get("actor_email", ""),
+        "event_actor_name": event_ctx.get("actor_name", ""),
+        "event_subject": event_ctx.get("subject_title", ""),
+        "event_platform": event_ctx.get("source_platform", target_platform),
     }
 
     result_status = "completed"
     result_data: dict = {}
     error_message: str | None = None
     result_url: str | None = None
+    retryable = False
+
+    # Auto-retry transient n8n failures (2 attempts, 3s backoff)
+    @tenacity.retry(
+        wait=tenacity.wait_exponential(multiplier=1, min=1, max=3),
+        stop=tenacity.stop_after_attempt(2),
+        retry=tenacity.retry_if_exception_type((httpx.ConnectError, httpx.TimeoutException)),
+        reraise=True,
+    )
+    async def _post_to_n8n():
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            return await client.post(webhook_url, json=n8n_payload)
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(webhook_url, json=n8n_payload)
-            resp_data = resp.json()
+        resp = await _post_to_n8n()
+        resp_data = resp.json()
 
         if resp_data.get("success"):
             result_status = "completed"
@@ -132,38 +150,47 @@ async def execute_action(
     except httpx.TimeoutException:
         result_status = "failed"
         error_message = "n8n request timed out"
+        retryable = True
+    except httpx.ConnectError:
+        result_status = "failed"
+        error_message = "n8n unreachable (connection refused)"
+        retryable = True
     except Exception as e:
         result_status = "failed"
         error_message = str(e)
 
-    # 6. Store in action_log
+    # 6. Store in action_log and update card — always runs even on unexpected errors
     now = datetime.now(timezone.utc).isoformat()
-    await db.execute(
-        """INSERT INTO action_log
-           (action_id, card_id, action_type, target_platform, target_connection_id,
-            payload, executed_at, result_status, result_data, error_message, modifications)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            action_id,
-            card_id,
-            action["action_type"],
-            target_platform,
-            None,
-            json.dumps(payload),
-            now,
-            result_status,
-            json.dumps(result_data) if result_data else None,
-            error_message,
-            json.dumps(modifications) if modifications else None,
-        ),
-    )
+    try:
+        await db.execute(
+            """INSERT INTO action_log
+               (action_id, card_id, action_type, target_platform, target_connection_id,
+                payload, executed_at, result_status, result_data, error_message, modifications, retryable)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                action_id,
+                card_id,
+                action["action_type"],
+                target_platform,
+                None,
+                json.dumps(payload),
+                now,
+                result_status,
+                json.dumps(result_data) if result_data else None,
+                error_message,
+                json.dumps(modifications) if modifications else None,
+                retryable,
+            ),
+        )
 
-    # 7. Update card final status
-    await db.execute(
-        "UPDATE action_cards SET status = ?, updated_at = ? WHERE card_id = ?",
-        (result_status, now, card_id),
-    )
-    await db.commit()
+        # 7. Update card final status
+        await db.execute(
+            "UPDATE action_cards SET status = ?, updated_at = ? WHERE card_id = ?",
+            (result_status, now, card_id),
+        )
+        await db.commit()
+    except Exception as db_err:
+        log.error("action_log_write_failed", card_id=card_id, error=str(db_err))
 
     # 8. Broadcast final status
     broadcast_payload: dict = {"status": result_status}
@@ -182,6 +209,8 @@ async def execute_action(
         action_id=action_id,
         result_status=result_status,
         result_url=result_url,
+        error=error_message,
+        webhook_url=webhook_url,
     )
 
     return {

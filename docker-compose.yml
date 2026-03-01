@@ -12,6 +12,10 @@ services:
       - N8N_PORT=5678
       - WEBHOOK_URL=http://localhost:5678/
       - N8N_SECURE_COOKIE=false
+      - N8N_PUBLIC_API_DISABLED=false
+      # Default owner credentials — used by Laya's bootstrap to auto-provision
+      - LAYA_N8N_OWNER_EMAIL=laya@local.host
+      - LAYA_N8N_OWNER_PASSWORD=LayaAutoAdmin2026!
 
 volumes:
   n8n_data:

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { ActionCard } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
+	import { chatOpen, chatInputPreset } from '$lib/stores/chat';
 
 	let {
 		card,
@@ -9,6 +10,9 @@
 
 	let approving = $state(false);
 	let dismissing = $state(false);
+	let archiving = $state(false);
+	let reopening = $state(false);
+	let copied = $state(false);
 	let dismissReason = $state('');
 	let showDismissInput = $state(false);
 	let executingActionId = $state<string | null>(null);
@@ -34,7 +38,7 @@
 		summary: 'Summary'
 	};
 
-	const terminalStatuses = new Set(['completed', 'failed', 'dismissed']);
+	const terminalStatuses = new Set(['completed', 'failed', 'dismissed', 'archived']);
 	const actionableStatuses = new Set(['pending', 'approved', 'staged', 'agent_running', 'awaiting_input']);
 	let isActionable = $derived(actionableStatuses.has(card.status));
 	let isTerminal = $derived(terminalStatuses.has(card.status));
@@ -46,6 +50,7 @@
 		completed: 'text-green-500',
 		failed: 'text-red-500',
 		dismissed: 'text-surface-500',
+		archived: 'text-surface-600',
 		agent_running: 'text-violet-400',
 		awaiting_input: 'text-yellow-400',
 		staged: 'text-emerald-400'
@@ -84,6 +89,51 @@
 			dismissing = false;
 		}
 	}
+
+	async function archive() {
+		archiving = true;
+		try {
+			await engineApi.archiveCard(card.card_id);
+			card.status = 'archived';
+		} finally {
+			archiving = false;
+		}
+	}
+
+	async function reopen() {
+		reopening = true;
+		try {
+			await engineApi.reopenCard(card.card_id);
+			card.status = 'pending';
+		} finally {
+			reopening = false;
+		}
+	}
+
+	async function copyId() {
+		await navigator.clipboard.writeText(card.card_id);
+		copied = true;
+		setTimeout(() => (copied = false), 1500);
+	}
+
+	function chatAbout() {
+		const lines = [
+			`I'd like to discuss this action card (ID: ${card.card_id}):`,
+			``,
+			`**Title:** ${card.header}`,
+			`**Summary:** ${card.summary}`,
+			`**Priority:** ${card.priority} · **Status:** ${card.status} · **Persona:** ${card.persona} · **Category:** ${card.category}`,
+		];
+		if (card.intelligence && card.intelligence.length > 0) {
+			lines.push(``, `**Intelligence:**`);
+			card.intelligence.forEach((p) => lines.push(`- ${p}`));
+		}
+		if (card.staged_output) {
+			lines.push(``, `**Staged Output (${card.staged_output.type}):**`, card.staged_output.content);
+		}
+		chatInputPreset.set(lines.join('\n'));
+		chatOpen.set(true);
+	}
 </script>
 
 <div class="flex h-full flex-col overflow-hidden rounded-xl border border-surface-700 bg-surface-800">
@@ -102,9 +152,39 @@
 				</span>
 			{/if}
 		</div>
-		<button class="text-surface-400 hover:text-surface-100" onclick={onclose}>
-			&#x2715;
-		</button>
+		<div class="flex items-center gap-1">
+			<!-- Copy card ID -->
+			<button
+				onclick={copyId}
+				title="Copy card ID"
+				class="rounded p-1.5 transition-colors {copied ? 'text-green-400' : 'text-surface-500 hover:text-surface-200'}"
+			>
+				{#if copied}
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+					</svg>
+				{:else}
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+					</svg>
+				{/if}
+			</button>
+			<!-- Chat about this card -->
+			<button
+				onclick={chatAbout}
+				title="Chat about this card"
+				class="rounded p-1.5 text-surface-500 transition-colors hover:text-laya-orange"
+			>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+				</svg>
+			</button>
+			<button aria-label="Close" class="rounded p-1.5 text-surface-400 transition-colors hover:text-surface-100" onclick={onclose}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+				</svg>
+			</button>
+		</div>
 	</div>
 
 	<!-- Scrollable content -->
@@ -188,9 +268,9 @@
 		</div>
 	</div>
 
-	<!-- Action buttons for actionable cards -->
-	{#if isActionable}
-		<div class="border-t border-surface-700 px-5 py-3">
+	<!-- Action buttons -->
+	<div class="border-t border-surface-700 px-5 py-3">
+		{#if isActionable}
 			{#if showDismissInput}
 				<div class="flex gap-2">
 					<input
@@ -227,8 +307,54 @@
 					>
 						Dismiss
 					</button>
+					<button
+						class="rounded-lg bg-surface-700/30 px-3 py-2 text-sm font-medium text-surface-500 transition-colors hover:bg-surface-700"
+						onclick={archive}
+						disabled={archiving}
+						title="Archive this card"
+					>
+						{archiving ? '…' : 'Archive'}
+					</button>
 				</div>
 			{/if}
-		</div>
-	{/if}
+		{:else if card.status === 'dismissed' || card.status === 'archived'}
+			<div class="flex gap-2">
+				<button
+					class="flex-1 rounded-lg bg-laya-orange/15 py-2 text-sm font-medium text-laya-orange transition-colors hover:bg-laya-orange/25 disabled:opacity-50"
+					onclick={reopen}
+					disabled={reopening}
+				>
+					{reopening ? 'Reopening...' : card.status === 'archived' ? 'Unarchive' : 'Reopen'}
+				</button>
+				{#if card.status === 'dismissed'}
+					<button
+						class="rounded-lg bg-surface-700/30 px-3 py-2 text-sm font-medium text-surface-500 transition-colors hover:bg-surface-700 disabled:opacity-50"
+						onclick={archive}
+						disabled={archiving}
+					>
+						{archiving ? '…' : 'Archive'}
+					</button>
+				{/if}
+			</div>
+		{:else if card.status === 'completed' || card.status === 'failed'}
+			<div class="flex gap-2">
+				{#if card.status === 'failed'}
+					<button
+						class="flex-1 rounded-lg bg-orange-700/30 py-2 text-sm font-medium text-orange-300 transition-colors hover:bg-orange-700/50 disabled:opacity-50"
+						onclick={approve}
+						disabled={approving}
+					>
+						{approving ? 'Retrying...' : 'Retry'}
+					</button>
+				{/if}
+				<button
+					class="rounded-lg bg-surface-700/30 px-3 py-2 text-sm font-medium text-surface-500 transition-colors hover:bg-surface-700 disabled:opacity-50"
+					onclick={archive}
+					disabled={archiving}
+				>
+					{archiving ? '…' : 'Archive'}
+				</button>
+			</div>
+		{/if}
+	</div>
 </div>

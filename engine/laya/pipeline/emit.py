@@ -36,6 +36,7 @@ async def run_emit(
         card_id of the created card.
     """
     card_id = f"card_{uuid.uuid4().hex[:12]}"
+    entity_id = f"{event.source.platform}:{event.subject.type}:{event.subject.id}"
 
     # 1. Detect has_workspace
     has_workspace = False
@@ -55,8 +56,9 @@ async def run_emit(
         """INSERT INTO action_cards
            (card_id, event_id, priority, persona, category, header, summary,
             intelligence, staged_output, suggested_actions, status,
-            privacy_tier, has_workspace, confidence, router_model, stager_model)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            privacy_tier, has_workspace, confidence, router_model, stager_model,
+            entity_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             card_id,
             event.event_id,
@@ -74,6 +76,7 @@ async def run_emit(
             router_output.confidence,
             None,  # router_model filled by audit
             None,  # stager_model filled by audit
+            entity_id,
         ),
     )
     await db.commit()

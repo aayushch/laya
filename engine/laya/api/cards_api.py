@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from laya.api.websocket import manager
 from laya.db.sqlite import get_db
-from laya.models.card import CardResponse, CardsListResponse, StagedOutput, SuggestedAction
+from laya.models.card import CardGroup, CardResponse, CardsListResponse, GroupedCardsResponse, StagedOutput, SuggestedAction
 
 log = structlog.get_logger()
 router = APIRouter()
@@ -64,6 +64,7 @@ def _row_to_card(row) -> CardResponse:
         router_model=row["router_model"],
         stager_model=row["stager_model"],
         updated_at=row["updated_at"],
+        entity_id=row["entity_id"] if "entity_id" in row.keys() else None,
     )
 
 
@@ -117,7 +118,8 @@ async def list_cards(
         f"""SELECT card_id, event_id, created_at, priority, persona, category,
                    header, summary, intelligence, staged_output, suggested_actions,
                    status, privacy_tier, has_workspace, resolved_at, user_feedback,
-                   feedback_type, confidence, router_model, stager_model, updated_at
+                   feedback_type, confidence, router_model, stager_model, updated_at,
+                   entity_id
             FROM action_cards
             {where_clause}
             ORDER BY {order_by}
@@ -130,6 +132,194 @@ async def list_cards(
     return CardsListResponse(cards=cards, total=total, limit=limit, offset=offset)
 
 
+_PRIORITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+_TERMINAL = {"completed", "dismissed", "failed"}
+
+
+@router.get("/cards/grouped")
+async def get_grouped_cards(
+    status: str | None = None,
+    priority: str | None = None,
+    sort: str = "newest",
+    show_archived: bool = False,
+) -> GroupedCardsResponse:
+    """Return cards grouped by entity_id."""
+    db = await get_db()
+
+    conditions: list[str] = []
+    params: list[Any] = []
+    if status:
+        conditions.append("status = ?")
+        params.append(status)
+    if priority:
+        conditions.append("priority = ?")
+        params.append(priority)
+    if not show_archived:
+        conditions.append("status != 'archived'")
+    where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    rows = await db.execute_fetchall(
+        f"""SELECT card_id, event_id, created_at, priority, persona, category,
+                   header, summary, intelligence, staged_output, suggested_actions,
+                   status, privacy_tier, has_workspace, resolved_at, user_feedback,
+                   feedback_type, confidence, router_model, stager_model, updated_at,
+                   entity_id
+            FROM action_cards
+            {where_clause}
+            ORDER BY created_at DESC""",
+        params,
+    )
+
+    groups: dict[str, list] = {}
+    for row in rows:
+        eid = row["entity_id"] or f"singleton:{row['card_id']}"
+        if eid not in groups:
+            groups[eid] = []
+        groups[eid].append(row)
+
+    event_ids = [rows_list[0]["event_id"] for rows_list in groups.values()]
+    event_meta: dict[str, dict] = {}
+    if event_ids:
+        placeholders = ",".join("?" * len(event_ids))
+        ev_rows = await db.execute_fetchall(
+            f"SELECT event_id, subject_title, subject_url, source_platform FROM events WHERE event_id IN ({placeholders})",
+            event_ids,
+        )
+        for ev in ev_rows:
+            event_meta[ev["event_id"]] = dict(ev)
+
+    result: list[CardGroup] = []
+    for entity_id, entity_rows in groups.items():
+        cards = [_row_to_card(r) for r in entity_rows]
+        meta = event_meta.get(entity_rows[0]["event_id"], {})
+        top_priority = min(
+            (c.priority for c in cards),
+            key=lambda p: _PRIORITY_ORDER.get(p, 99),
+        )
+        latest_at = max((c.created_at or "") for c in cards)
+        has_pending = any(c.status == "pending" for c in cards)
+        result.append(
+            CardGroup(
+                entity_id=entity_id,
+                entity_title=meta.get("subject_title") or entity_id,
+                entity_url=meta.get("subject_url"),
+                platform=meta.get("source_platform", ""),
+                card_count=len(cards),
+                top_priority=top_priority,
+                latest_at=latest_at,
+                has_pending=has_pending,
+                cards=cards,
+            )
+        )
+
+    if sort == "oldest":
+        result.sort(key=lambda g: g.latest_at)
+    elif sort == "priority":
+        result.sort(key=lambda g: _PRIORITY_ORDER.get(g.top_priority, 99))
+    elif sort == "platform":
+        result.sort(key=lambda g: g.platform.lower())
+    elif sort == "category":
+        result.sort(key=lambda g: g.cards[0].persona if g.cards else "")
+    else:  # newest (default)
+        result.sort(key=lambda g: g.latest_at, reverse=True)
+
+    return GroupedCardsResponse(groups=result, total_groups=len(result))
+
+
+@router.post("/cards/group/{entity_id:path}/dismiss-all")
+async def dismiss_group(entity_id: str) -> dict:
+    """Dismiss all non-terminal cards in a group."""
+    db = await get_db()
+
+    rows = await db.execute_fetchall(
+        "SELECT card_id FROM action_cards WHERE entity_id = ? AND status NOT IN ('completed', 'dismissed', 'failed')",
+        (entity_id,),
+    )
+
+    now = datetime.now(timezone.utc).isoformat()
+    dismissed = 0
+    for row in rows:
+        await db.execute(
+            "UPDATE action_cards SET status = 'dismissed', resolved_at = ?, updated_at = ? WHERE card_id = ?",
+            (now, now, row["card_id"]),
+        )
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": row["card_id"], "payload": {"status": "dismissed"}}
+        )
+        dismissed += 1
+
+    await db.commit()
+    log.info("group_dismissed", entity_id=entity_id, count=dismissed)
+    return {"dismissed": dismissed, "entity_id": entity_id}
+
+
+@router.post("/cards/{card_id}/archive")
+async def archive_card(card_id: str) -> dict:
+    """Archive an action card."""
+    db = await get_db()
+
+    rows = await db.execute_fetchall(
+        "SELECT status FROM action_cards WHERE card_id = ?", (card_id,)
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    current = rows[0]["status"]
+    if current == "archived":
+        return {"status": "archived", "card_id": card_id}
+    if current in {"completed", "failed"}:
+        raise HTTPException(
+            status_code=409, detail=f"Card status '{current}' cannot be archived"
+        )
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.execute(
+        "UPDATE action_cards SET status = 'archived', updated_at = ? WHERE card_id = ?",
+        (now, card_id),
+    )
+    await db.commit()
+
+    await manager.broadcast(
+        {"type": "card_updated", "card_id": card_id, "payload": {"status": "archived"}}
+    )
+
+    log.info("card_archived", card_id=card_id)
+    return {"status": "archived", "card_id": card_id}
+
+
+@router.post("/cards/{card_id}/reopen")
+async def reopen_card(card_id: str) -> dict:
+    """Reopen a card, setting its status back to pending."""
+    db = await get_db()
+
+    rows = await db.execute_fetchall(
+        "SELECT status FROM action_cards WHERE card_id = ?", (card_id,)
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    current = rows[0]["status"]
+    reopenable = {"dismissed", "completed", "failed", "archived"}
+    if current not in reopenable:
+        raise HTTPException(
+            status_code=409, detail=f"Card status '{current}' cannot be reopened"
+        )
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.execute(
+        "UPDATE action_cards SET status = 'pending', resolved_at = NULL, updated_at = ? WHERE card_id = ?",
+        (now, card_id),
+    )
+    await db.commit()
+
+    await manager.broadcast(
+        {"type": "card_updated", "card_id": card_id, "payload": {"status": "pending"}}
+    )
+
+    log.info("card_reopened", card_id=card_id)
+    return {"status": "pending", "card_id": card_id}
+
+
 @router.get("/cards/{card_id}")
 async def get_card(card_id: str) -> CardResponse:
     """Get full action card detail."""
@@ -139,7 +329,8 @@ async def get_card(card_id: str) -> CardResponse:
         """SELECT card_id, event_id, created_at, priority, persona, category,
                   header, summary, intelligence, staged_output, suggested_actions,
                   status, privacy_tier, has_workspace, resolved_at, user_feedback,
-                  feedback_type, confidence, router_model, stager_model, updated_at
+                  feedback_type, confidence, router_model, stager_model, updated_at,
+                  entity_id
            FROM action_cards
            WHERE card_id = ?""",
         (card_id,),
@@ -167,7 +358,7 @@ async def approve_card(card_id: str, body: ApproveRequest | None = None) -> dict
     if not rows:
         raise HTTPException(status_code=404, detail="Card not found")
 
-    approvable = {"pending", "agent_running", "awaiting_input", "staged"}
+    approvable = {"pending", "agent_running", "awaiting_input", "staged", "failed"}
     if rows[0]["status"] not in approvable:
         raise HTTPException(
             status_code=409, detail=f"Card status '{rows[0]['status']}' cannot be approved"

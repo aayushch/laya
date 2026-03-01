@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { chatOpen, chatMessages } from '$lib/stores/chat';
+	import { chatOpen, chatMessages, chatInputPreset } from '$lib/stores/chat';
 	import { wsStatus, lastMessage, sendMessage } from '$lib/stores/websocket';
 	import { engineApi } from '$lib/api/engine';
 	import type { ChatMessage as ChatMessageType } from '$lib/api/types';
@@ -9,6 +9,7 @@
 	let input = $state('');
 	let sending = $state(false);
 	let messagesEl: HTMLDivElement | undefined = $state();
+	let textareaEl: HTMLTextAreaElement | undefined = $state();
 	let loaded = $state(false);
 
 	async function loadHistory() {
@@ -33,6 +34,23 @@
 		if ($chatOpen) {
 			loadHistory();
 		}
+	});
+
+	// Apply preset message when triggered from a card
+	$effect(() => {
+		const preset = $chatInputPreset;
+		if (preset) {
+			input = preset;
+			chatInputPreset.set('');
+		}
+	});
+
+	// Auto-resize textarea to fit content, capped at 160px
+	$effect(() => {
+		if (!textareaEl) return;
+		input; // track changes
+		textareaEl.style.height = 'auto';
+		textareaEl.style.height = Math.min(textareaEl.scrollHeight, 160) + 'px';
 	});
 
 	// Scroll to bottom when messages change
@@ -149,18 +167,21 @@
 
 		<!-- Input -->
 		<div class="border-t border-surface-700 p-4">
-			<div class="flex gap-2">
+			<div class="relative">
 				<textarea
+					bind:this={textareaEl}
 					bind:value={input}
 					onkeydown={handleKeydown}
 					placeholder="Ask something..."
 					rows={1}
-					class="flex-1 resize-none rounded-lg border border-surface-600 bg-surface-800 px-3 py-2 text-sm text-surface-200 placeholder-surface-500 focus:border-blue-500 focus:outline-none"
+					style="min-height: 2.5rem; overflow-y: auto;"
+					class="w-full resize-none rounded-lg border border-surface-600 bg-surface-800 py-2 pl-3 pr-10 text-sm text-surface-200 placeholder-surface-500 focus:border-laya-orange/50 focus:outline-none"
 				></textarea>
 				<button
 					onclick={send}
 					disabled={!input.trim() || sending}
-					class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
+					class="absolute bottom-2 right-2 rounded-md p-1 transition-colors disabled:opacity-30
+						{input.trim() ? 'text-laya-orange hover:text-laya-peach' : 'text-surface-600'}"
 				>
 					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7" />

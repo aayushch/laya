@@ -6,6 +6,7 @@ import uuid
 from typing import Any
 
 import structlog
+import tenacity
 from pydantic import BaseModel
 
 from laya.config import load_settings
@@ -44,7 +45,7 @@ def _get_model_for_role(role: str) -> str:
     elif model_name.startswith(("gpt", "o1", "o3", "o4")):
         return f"openai/{model_name}"
     elif model_name.startswith("gemini"):
-        return f"google/{model_name}"
+        return f"gemini/{model_name}"
 
     return model_name
 
@@ -119,12 +120,18 @@ async def llm_call(
 
     model = _get_model_for_role(role)
 
+    # Gemini 3+ models degrade with temperature < 1.0 — force it to 1.0
+    effective_temperature = temperature
+    model_name = model.split("/")[-1]  # strip provider prefix
+    if model_name.startswith("gemini-3"):
+        effective_temperature = 1.0
+
     kwargs: dict[str, Any] = {
         "model": model,
         "messages": messages,
-        "temperature": temperature,
+        "temperature": effective_temperature,
         "max_tokens": max_tokens,
-        "num_retries": num_retries,
+        "timeout": 60.0,
     }
 
     if response_schema:
@@ -133,10 +140,26 @@ async def llm_call(
             "json_schema": response_schema,
         }
 
+    # Tenacity retry with exponential backoff
+    @tenacity.retry(
+        wait=tenacity.wait_exponential(multiplier=1, min=1, max=30),
+        stop=tenacity.stop_after_attempt(num_retries),
+        retry=tenacity.retry_if_exception_type(Exception),
+        reraise=True,
+        before_sleep=lambda retry_state: log.warning(
+            "llm_call_retrying",
+            attempt=retry_state.attempt_number,
+            model=model,
+            error=str(retry_state.outcome.exception()) if retry_state.outcome else "unknown",
+        ),
+    )
+    async def _call_with_retry():
+        return await acompletion(**kwargs)
+
     start = time.monotonic()
 
     try:
-        response = await acompletion(**kwargs)
+        response = await _call_with_retry()
         elapsed_ms = int((time.monotonic() - start) * 1000)
 
         content = response.choices[0].message.content or ""

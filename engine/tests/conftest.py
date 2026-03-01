@@ -263,6 +263,29 @@ async def db_m7(tmp_path):
     await conn.close()
 
 
+@pytest_asyncio.fixture
+async def db_m8(tmp_path):
+    """In-memory SQLite with ALL M8 migrations applied (001-006)."""
+    conn = await aiosqlite.connect(":memory:")
+    conn.row_factory = aiosqlite.Row
+    await conn.execute("PRAGMA foreign_keys=ON")
+
+    for migration_name in [
+        "001_initial.sql", "002_entities.sql", "003_audit.sql",
+        "004_workspace.sql", "005_chat.sql", "006_polish.sql",
+    ]:
+        migration = MIGRATIONS_DIR / migration_name
+        if migration.exists():
+            sql = migration.read_text()
+            await conn.executescript(sql)
+
+    with patch("laya.db.sqlite._db", conn):
+        with patch("laya.db.sqlite.get_db", return_value=conn):
+            yield conn
+
+    await conn.close()
+
+
 @pytest.fixture
 def sample_router_output_engineer() -> RouterOutput:
     """RouterOutput for ENGINEER persona with requires_research=True."""

@@ -11,9 +11,9 @@ from tests.test_cards_api import _insert_test_card
 
 @pytest.mark.asyncio
 class TestActionsAPI:
-    async def test_execute_action_returns_result(self, db_m4):
+    async def test_execute_action_returns_result(self, db_m8):
         """POST /actions/execute returns execution result."""
-        await _insert_test_card(db_m4, "card_api", "evt_api", status="pending")
+        await _insert_test_card(db_m8, "card_api", "evt_api", status="pending")
 
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -46,7 +46,7 @@ class TestActionsAPI:
         assert data["status"] == "completed"
         assert data["card_id"] == "card_api"
 
-    async def test_execute_action_400_on_bad_card(self, db_m4):
+    async def test_execute_action_400_on_bad_card(self, db_m8):
         """POST /actions/execute returns 400 for non-existent card."""
         with patch("laya.pipeline.executor.manager.broadcast", new_callable=AsyncMock):
             from laya.main import app

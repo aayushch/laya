@@ -6,7 +6,7 @@ import httpx
 import structlog
 from fastapi import APIRouter
 
-from laya.config import N8N_URL
+from laya.config import get_n8n_config
 from laya.db.chromadb_store import is_chromadb_healthy
 from laya.db.sqlite import is_healthy as sqlite_healthy
 
@@ -25,8 +25,9 @@ async def health_check() -> dict:
     # n8n
     n8n_status = "unhealthy"
     try:
+        n8n_base = get_n8n_config()["base_url"].rstrip("/")
         async with httpx.AsyncClient(timeout=2.0) as client:
-            resp = await client.get(f"{N8N_URL}/healthz")
+            resp = await client.get(f"{n8n_base}/healthz")
             if resp.status_code == 200:
                 n8n_status = "healthy"
     except Exception:

@@ -118,6 +118,25 @@ export interface ApiKeyStatus {
 	anthropic: boolean;
 	openai: boolean;
 	google: boolean;
+	n8n: boolean;
+}
+
+/** n8n integration settings */
+export interface N8nSettings {
+	base_url: string;
+	webhooks: Record<string, string>;
+}
+
+/** n8n connection test result */
+export interface N8nTestResult {
+	base_url: string;
+	health: string;
+	webhook: {
+		path: string;
+		status_code?: number;
+		reachable: boolean;
+		error?: string;
+	} | null;
 }
 
 /** Full settings response from GET /settings */
@@ -138,6 +157,7 @@ export interface Settings {
 		enabled: boolean;
 		min_priority: string;
 	};
+	n8n?: N8nSettings;
 }
 
 /** Staged output attached to an action card */
@@ -175,6 +195,7 @@ export interface ActionCard {
 		| 'completed'
 		| 'failed'
 		| 'dismissed'
+		| 'archived'
 		| 'agent_running'
 		| 'awaiting_input'
 		| 'staged';
@@ -187,6 +208,26 @@ export interface ActionCard {
 	router_model?: string;
 	stager_model?: string;
 	updated_at?: string;
+	entity_id?: string;
+}
+
+/** A group of cards sharing the same entity (e.g. one Jira ticket) */
+export interface CardGroup {
+	entity_id: string;
+	entity_title: string;
+	entity_url?: string;
+	platform: string;
+	card_count: number;
+	top_priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+	latest_at: string;
+	has_pending: boolean;
+	cards: ActionCard[];
+}
+
+/** Response from GET /cards/grouped */
+export interface GroupedCardsResponse {
+	groups: CardGroup[];
+	total_groups: number;
 }
 
 /** Paginated cards list from GET /cards */
@@ -333,4 +374,73 @@ export interface LayaEvent {
 		attachments: string[];
 		metadata: Record<string, unknown>;
 	};
+}
+
+/** Field definition for a platform credential form */
+export interface FieldDef {
+	key: string;
+	label: string;
+	type: 'text' | 'password';
+	placeholder?: string;
+	help?: string;
+}
+
+/** Platform configuration from GET /connections/platforms */
+export interface PlatformConfig {
+	label: string;
+	category: string;
+	icon: string;
+	n8n_type: string;
+	n8n_node: string;
+	oauth: boolean;
+	fields: FieldDef[];
+}
+
+/** Response from POST /settings/n8n/bootstrap */
+export interface N8nBootstrapResponse {
+	status: string;
+	message: string;
+	has_api_key: boolean;
+}
+
+/** Platforms registry response */
+export interface PlatformsResponse {
+	platforms: Record<string, PlatformConfig>;
+}
+
+/** An n8n credential as returned by GET /connections */
+export interface N8nConnection {
+	id: string;
+	name: string;
+	type: string;
+	platform: string | null;
+	platform_label: string;
+	created_at: string;
+	updated_at: string;
+}
+
+/** Response from GET /connections */
+export interface ConnectionsResponse {
+	connections: N8nConnection[];
+}
+
+/** Request body for POST /connections */
+export interface CreateConnectionRequest {
+	platform: string;
+	name: string;
+	credentials: Record<string, string>;
+}
+
+/** Response from POST /connections */
+export interface CreateConnectionResponse {
+	status: string;
+	id: string;
+	name: string;
+	platform: string;
+}
+
+/** Response from POST /connections/test */
+export interface ConnectionTestResult {
+	status: 'connected' | 'unauthorized' | 'unreachable' | 'timeout' | 'no_api_key' | 'error';
+	message: string;
 }

@@ -1,6 +1,7 @@
 """Laya Engine configuration and directory management."""
 
 import json
+import os
 from pathlib import Path
 
 # Laya data directory
@@ -40,6 +41,17 @@ DEFAULT_SETTINGS = {
     "notifications": {
         "enabled": True,
         "min_priority": "HIGH",
+    },
+    "setup_complete": False,
+    "n8n": {
+        "base_url": "http://localhost:5678",
+        "webhooks": {
+            "jira": "jira-executor",
+            "bitbucket": "bitbucket-executor",
+            "slack": "slack-executor",
+            "gmail": "gmail-executor",
+            "calendar": "calendar-executor",
+        },
     },
 }
 
@@ -88,6 +100,16 @@ def save_settings(settings: dict) -> None:
     ensure_directories()
     with open(LAYA_CONFIG_FILE, "w") as f:
         json.dump(settings, f, indent=2)
+
+
+def get_n8n_config() -> dict:
+    """Return the n8n config block from settings, with env var override."""
+    settings = load_settings()
+    n8n = settings.get("n8n", DEFAULT_SETTINGS["n8n"])
+    env_url = os.getenv("N8N_URL")
+    if env_url:
+        n8n = {**n8n, "base_url": env_url}
+    return n8n
 
 
 def load_team() -> dict:
