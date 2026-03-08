@@ -83,7 +83,6 @@
 			}
 			hasN8nKey = settings.api_keys?.n8n ?? false;
 
-			// Check n8n health
 			checkHealth();
 
 			if (hasN8nKey) {
@@ -483,23 +482,23 @@
 									>
 										<!-- Card header -->
 										<div class="flex items-center justify-between p-4">
-											<div class="flex items-center gap-3">
+											<div class="flex min-w-0 items-center gap-3">
 												<div
 													class="flex h-9 w-9 items-center justify-center rounded-lg
 														{isConnected ? 'bg-green-900/30 text-green-400' : 'bg-surface-700 text-surface-300'}"
 												>
 													<PlatformIcon platform={platform.icon || key} size={20} />
 												</div>
-												<div>
-													<div class="text-sm font-medium">{platform.label}</div>
+												<div class="min-w-0">
+													<div class="truncate text-sm font-medium">{platform.label}</div>
 													{#if isConnected && conn}
-														<div class="text-xs text-green-400">{conn.name}</div>
+														<div class="truncate text-xs text-green-400">{conn.name}</div>
 													{:else if platform.oauth}
 														<div class="text-xs text-surface-500">OAuth</div>
 													{/if}
 												</div>
 											</div>
-											<div>
+											<div class="shrink-0">
 												{#if platform.oauth}
 													<a
 														href="{baseUrl}/credentials/new"

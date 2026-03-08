@@ -1,6 +1,6 @@
 """Cross-platform async subprocess management for coding agent sessions.
 
-Uses asyncio.create_subprocess_exec with PIPE for stdin/stdout/stderr.
+Uses asyncio.create_subprocess_exec with PIPE for stdout.
 Works on macOS, Linux, and Windows.
 """
 
@@ -53,7 +53,7 @@ class AgentProcess:
 
         self._process = await asyncio.create_subprocess_exec(
             *args,
-            stdin=asyncio.subprocess.PIPE,
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,  # Merge stderr into stdout
             cwd=cwd,
@@ -62,19 +62,51 @@ class AgentProcess:
         self._running = True
         log.info("agent_process_spawned", pid=self._process.pid, command=args[0])
 
-    async def read_lines(self) -> AsyncIterator[str]:
-        """Async generator yielding lines from stdout."""
+    async def read_lines(self, idle_timeout: float = 300.0) -> AsyncIterator[str]:
+        """Async generator yielding lines from stdout.
+
+        Args:
+            idle_timeout: Max seconds with no output before killing the process.
+                          Defends against hung API calls in the child. Default 5 min.
+        """
         if self._process is None or self._process.stdout is None:
             return
 
+        line_count = 0
+        last_output = asyncio.get_event_loop().time()
+
         while True:
             try:
-                line = await self._process.stdout.readline()
+                try:
+                    line = await asyncio.wait_for(
+                        self._process.stdout.readline(), timeout=15.0
+                    )
+                except asyncio.TimeoutError:
+                    now = asyncio.get_event_loop().time()
+                    alive = self._process.returncode is None
+                    idle_secs = round(now - last_output)
+                    if not alive:
+                        self._running = False
+                        break
+                    if idle_secs >= idle_timeout:
+                        log.warning(
+                            "agent_idle_timeout",
+                            pid=self._process.pid,
+                            idle_secs=idle_secs,
+                            lines_read=line_count,
+                        )
+                        self._process.kill()
+                        self._running = False
+                        break
+                    continue
+
                 if not line:
                     # EOF — process has exited
                     self._running = False
                     break
                 decoded = line.decode("utf-8", errors="replace").rstrip("\n\r")
+                line_count += 1
+                last_output = asyncio.get_event_loop().time()
                 yield decoded
             except Exception:
                 self._running = False
@@ -95,11 +127,8 @@ class AgentProcess:
             try:
                 os.kill(self._process.pid, signal.SIGSTOP)
                 self._paused = True
-                log.info("agent_process_paused", pid=self._process.pid)
             except ProcessLookupError:
                 pass
-        else:
-            log.warning("pause_not_supported_windows", pid=self._process.pid)
 
     async def resume(self) -> None:
         """Resume the subprocess (SIGCONT on Unix, no-op on Windows)."""
@@ -110,11 +139,8 @@ class AgentProcess:
             try:
                 os.kill(self._process.pid, signal.SIGCONT)
                 self._paused = False
-                log.info("agent_process_resumed", pid=self._process.pid)
             except ProcessLookupError:
                 pass
-        else:
-            log.warning("resume_not_supported_windows", pid=self._process.pid)
 
     async def terminate(self) -> None:
         """Terminate the subprocess. SIGTERM then SIGKILL after 5s."""
@@ -122,16 +148,21 @@ class AgentProcess:
             return
 
         self._running = False
+        pid = self._process.pid
         try:
+            if self._process.stdout:
+                self._process.stdout.feed_eof()
             self._process.terminate()
             try:
                 await asyncio.wait_for(self._process.wait(), timeout=5.0)
             except asyncio.TimeoutError:
                 self._process.kill()
-                await self._process.wait()
+                await asyncio.wait_for(self._process.wait(), timeout=3.0)
         except ProcessLookupError:
             pass
-        log.info("agent_process_terminated", pid=self._process.pid)
+        except asyncio.TimeoutError:
+            pass
+        log.info("agent_process_terminated", pid=pid)
 
     async def wait(self) -> int:
         """Wait for process completion and return exit code."""

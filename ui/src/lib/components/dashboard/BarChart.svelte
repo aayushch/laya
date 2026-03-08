@@ -1,17 +1,17 @@
 <script lang="ts">
 	let { data, title }: { data: { label: string; value: number }[]; title?: string } = $props();
 
-	const maxValue = $derived(Math.max(...data.map((d) => d.value), 1));
+	const maxValue = $derived(Math.max(...data.map((d) => d.value)) || 1);
 	const total = $derived(data.reduce((s, d) => s + d.value, 0));
 
 	const barColors = [
-		'fill-blue-500',
-		'fill-emerald-500',
-		'fill-violet-500',
-		'fill-amber-500',
-		'fill-red-500',
-		'fill-cyan-500',
-		'fill-pink-500'
+		'bg-blue-500',
+		'bg-emerald-500',
+		'bg-violet-500',
+		'bg-amber-500',
+		'bg-red-500',
+		'bg-cyan-500',
+		'bg-pink-500'
 	];
 </script>
 
@@ -23,25 +23,20 @@
 	{#if data.length === 0}
 		<p class="text-sm text-surface-500">No data</p>
 	{:else}
-		<div class="space-y-2.5">
+		<div class="space-y-2">
 			{#each data as item, i}
 				{@const pct = (item.value / maxValue) * 100}
-				<div>
-					<div class="mb-1 flex items-center justify-between text-xs">
-						<span class="text-surface-300">{item.label}</span>
-						<span class="text-surface-400">{item.value}</span>
+				<div class="flex items-center gap-3">
+					<span class="w-[45%] min-w-0 truncate text-xs text-surface-300" title={item.label}>{item.label}</span>
+					<div class="flex-1">
+						<div class="h-2 overflow-hidden rounded-full bg-surface-700">
+							<div
+								class="h-full rounded-full {barColors[i % barColors.length]}"
+								style="width: {pct}%"
+							></div>
+						</div>
 					</div>
-					<svg viewBox="0 0 200 12" class="w-full">
-						<rect x="0" y="0" width="200" height="12" rx="4" class="fill-surface-700" />
-						<rect
-							x="0"
-							y="0"
-							width={pct * 2}
-							height="12"
-							rx="4"
-							class={barColors[i % barColors.length]}
-						/>
-					</svg>
+					<span class="w-12 text-right text-xs tabular-nums text-surface-400">{item.value}</span>
 				</div>
 			{/each}
 		</div>

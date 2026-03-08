@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import uuid
 
 import structlog
 from fastapi import APIRouter
@@ -133,8 +134,55 @@ async def receive_event(event: LayaEvent) -> EventResponse:
 
 async def _run_workers_background(event: LayaEvent, router_output: RouterOutput) -> None:
     """Run workers → stager → emit in the background."""
+    # Pre-generate card_id so it exists in action_cards before workers run.
+    # The engineer worker creates workspace_sessions with a FK to action_cards,
+    # so the card row must exist first.
+    card_id: str | None = None
     try:
-        results = await run_workers(event, router_output)
+        card_id = f"card_{uuid.uuid4().hex[:12]}"
+        entity_id = f"{event.source.platform}:{event.subject.type}:{event.subject.id}"
+        db = await get_db()
+        await db.execute(
+            """INSERT INTO action_cards
+               (card_id, event_id, priority, persona, category, header, summary,
+                status, privacy_tier, has_workspace, entity_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                card_id,
+                event.event_id,
+                router_output.priority.value,
+                router_output.persona.value,
+                router_output.category.value,
+                event.subject.title,
+                "Researching…",
+                "agent_running",
+                2,
+                True,
+                entity_id,
+            ),
+        )
+        await db.commit()
+
+        # Broadcast the provisional card so the UI shows agent_running immediately.
+        # Without this the card is invisible until the full pipeline finishes.
+        await manager.broadcast(
+            {
+                "type": "card_created",
+                "card_id": card_id,
+                "payload": {
+                    "header": event.subject.title,
+                    "summary": "Researching…",
+                    "priority": router_output.priority.value,
+                    "persona": router_output.persona.value,
+                    "category": router_output.category.value,
+                    "status": "agent_running",
+                    "has_workspace": True,
+                    "privacy_tier": 2,
+                },
+            }
+        )
+
+        results = await run_workers(event, router_output, card_id=card_id)
         log.info(
             "background_workers_complete",
             event_id=event.event_id,
@@ -145,12 +193,23 @@ async def _run_workers_background(event: LayaEvent, router_output: RouterOutput)
         # Stager: synthesize findings into card
         stager_output = await run_stager(event, router_output, results)
 
-        # Emit: persist card, embed, broadcast
-        card_id = await run_emit(event, router_output, stager_output, results)
+        # Emit: update the pre-created card with final stager data
+        card_id = await run_emit(event, router_output, stager_output, results, card_id=card_id)
         log.info("card_emitted", event_id=event.event_id, card_id=card_id)
 
     except Exception as e:
         log.error("background_pipeline_failed", event_id=event.event_id, error=str(e))
+        # Mark the provisional card as failed so it doesn't stay stuck as agent_running
+        if card_id:
+            try:
+                db = await get_db()
+                await db.execute(
+                    "UPDATE action_cards SET status='failed', updated_at=CURRENT_TIMESTAMP WHERE card_id=?",
+                    (card_id,),
+                )
+                await db.commit()
+            except Exception:
+                pass
 
 
 async def _run_simple_card_background(event: LayaEvent, router_output: RouterOutput) -> None:

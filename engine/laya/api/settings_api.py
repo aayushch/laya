@@ -2,7 +2,7 @@
 
 import httpx
 import structlog
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from laya.config import get_n8n_config, load_repos, load_settings, save_repos, save_settings
@@ -116,9 +116,13 @@ async def bootstrap_n8n() -> dict:
 
 
 @router.get("/repos")
-async def get_repos() -> dict:
-    """Return configured repositories."""
-    return load_repos()
+async def get_repos(platform: str | None = Query(default=None)) -> dict:
+    """Return configured repositories, optionally filtered by platform."""
+    data = load_repos()
+    if platform:
+        data = dict(data)
+        data["repos"] = [r for r in data.get("repos", []) if r.get("platform") == platform]
+    return data
 
 
 @router.put("/repos")

@@ -1,5 +1,6 @@
 """WebSocket connection manager and broadcast."""
 
+import asyncio
 import json
 from typing import Any
 
@@ -25,16 +26,19 @@ class ConnectionManager:
         log.info("ws_client_disconnected", total=len(self.active_connections))
 
     async def broadcast(self, message: dict[str, Any]) -> None:
-        """Send a JSON message to all connected clients."""
+        """Send a JSON message to all connected clients concurrently."""
+        if not self.active_connections:
+            return
         data = json.dumps(message)
-        disconnected = []
-        for connection in self.active_connections:
-            try:
-                await connection.send_text(data)
-            except Exception:
-                disconnected.append(connection)
-        for conn in disconnected:
-            self.active_connections.remove(conn)
+        results = await asyncio.gather(
+            *[c.send_text(data) for c in list(self.active_connections)],
+            return_exceptions=True,
+        )
+        # Remove any connections that errored
+        self.active_connections = [
+            c for c, r in zip(self.active_connections, results)
+            if not isinstance(r, Exception)
+        ]
 
 
 # Singleton instance

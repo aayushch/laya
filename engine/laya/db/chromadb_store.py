@@ -101,6 +101,13 @@ async def embed_document(
     log.debug("document_embedded", doc_id=doc_id, content_type=metadata.get("content_type"))
 
 
+async def delete_document(doc_id: str) -> None:
+    """Remove a document from the laya_memory collection by ID."""
+    collection = get_collection()
+    collection.delete(ids=[doc_id])
+    log.debug("document_deleted", doc_id=doc_id)
+
+
 async def memory_search(
     query: str,
     n_results: int = 3,

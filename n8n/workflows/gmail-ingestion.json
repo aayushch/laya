@@ -6,7 +6,11 @@
         "pollTimes": {
           "item": [{ "mode": "everyMinute" }]
         },
-        "simple": false
+        "simple": false,
+        "filters": {
+          "includeSpamTrash": false,
+          "labelIds": ["INBOX"]
+        }
       },
       "name": "Gmail Trigger",
       "type": "n8n-nodes-base.gmailTrigger",
@@ -15,30 +19,89 @@
     },
     {
       "parameters": {
+        "operation": "get",
+        "messageId": "={{ $json.id }}",
+        "simple": true
+      },
+      "name": "Get Thread ID",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [450, 150],
+      "notes": "Lightweight fetch with simple:true to get reliable threadId from Gmail API (format=metadata). The trigger's simple:false uses format=raw + mailparser which can clobber threadId."
+    },
+    {
+      "parameters": {
         "mode": "manual",
         "assignments": {
           "assignments": [
-            { "name": "event_id", "value": "={{ 'evt_gmail_' + ($json.id || Date.now()) }}", "type": "string" },
-            { "name": "timestamp", "value": "={{ $json.internalDate ? new Date(parseInt($json.internalDate)).toISOString() : new Date().toISOString() }}", "type": "string" },
+            {
+              "name": "raw_from_email",
+              "value": "={{ (typeof $('Gmail Trigger').item.json.from === 'object' && $('Gmail Trigger').item.json.from.value && $('Gmail Trigger').item.json.from.value[0]) ? $('Gmail Trigger').item.json.from.value[0].address : (typeof $('Gmail Trigger').item.json.from === 'string' ? ($('Gmail Trigger').item.json.from.match(/<([^>]+)>/)?.[1] || $('Gmail Trigger').item.json.from.trim()) : '') }}",
+              "type": "string"
+            },
+            {
+              "name": "raw_from_name",
+              "value": "={{ (typeof $('Gmail Trigger').item.json.from === 'object' && $('Gmail Trigger').item.json.from.value && $('Gmail Trigger').item.json.from.value[0]) ? ($('Gmail Trigger').item.json.from.value[0].name || '') : (typeof $('Gmail Trigger').item.json.from === 'string' ? $('Gmail Trigger').item.json.from.replace(/<[^>]+>/g, '').trim() : '') }}",
+              "type": "string"
+            },
+            {
+              "name": "raw_to_email",
+              "value": "={{ (typeof $('Gmail Trigger').item.json.to === 'object' && $('Gmail Trigger').item.json.to.value && $('Gmail Trigger').item.json.to.value[0]) ? $('Gmail Trigger').item.json.to.value[0].address : (typeof $('Gmail Trigger').item.json.to === 'string' ? ($('Gmail Trigger').item.json.to.match(/<([^>]+)>/)?.[1] || $('Gmail Trigger').item.json.to.trim()) : '') }}",
+              "type": "string"
+            },
+            {
+              "name": "raw_subject",
+              "value": "={{ (typeof $('Gmail Trigger').item.json.subject === 'object') ? ($('Gmail Trigger').item.json.subject.value || JSON.stringify($('Gmail Trigger').item.json.subject)) : ($('Gmail Trigger').item.json.subject || '') }}",
+              "type": "string"
+            },
+            {
+              "name": "is_reply",
+              "value": "={{ !!($('Gmail Trigger').item.json['in-reply-to'] || $('Gmail Trigger').item.json['references'] || $('Gmail Trigger').item.json.inReplyTo || ($('Gmail Trigger').item.json.headers && ($('Gmail Trigger').item.json.headers['in-reply-to'] || $('Gmail Trigger').item.json.headers['references']))) }}",
+              "type": "boolean"
+            },
+            { "name": "gmail_id", "value": "={{ $('Gmail Trigger').item.json.id }}", "type": "string" },
+            { "name": "gmail_threadId", "value": "={{ $json.threadId || $('Gmail Trigger').item.json.threadId || $('Gmail Trigger').item.json.id }}", "type": "string" },
+            { "name": "gmail_internalDate", "value": "={{ $('Gmail Trigger').item.json.internalDate || $('Gmail Trigger').item.json.date }}", "type": "string" },
+            { "name": "gmail_labelIds", "value": "={{ JSON.stringify($('Gmail Trigger').item.json.labelIds || $('Gmail Trigger').item.json.labels || []) }}", "type": "string" },
+            {
+              "name": "gmail_body",
+              "value": "={{ $('Gmail Trigger').item.json.text || $('Gmail Trigger').item.json.snippet || $('Gmail Trigger').item.json.html || '' }}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "name": "Extract Headers",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            { "name": "event_id", "value": "={{ 'evt_gmail_' + ($json.gmail_id || Date.now()) }}", "type": "string" },
+            { "name": "timestamp", "value": "={{ $json.gmail_internalDate ? new Date(parseInt($json.gmail_internalDate) > 9999999999 ? parseInt($json.gmail_internalDate) : parseInt($json.gmail_internalDate) * 1000).toISOString() : new Date().toISOString() }}", "type": "string" },
             { "name": "source.platform", "value": "gmail", "type": "string" },
             { "name": "source.connection_id", "value": "gmail_main", "type": "string" },
-            { "name": "source.raw_event_type", "value": "={{ $json['in-reply-to'] || $json['references'] ? 'reply_received' : 'new_email' }}", "type": "string" },
-            { "name": "actor.name", "value": "={{ ($json.from || '').replace(/^From:\\s*/i, '').replace(/<[^>]+>/g, '').trim() }}", "type": "string" },
-            { "name": "actor.email", "value": "={{ ($json.from || '').match(/<([^>]+)>/)?.[1] || ($json.from || '').replace(/^From:\\s*/i, '').trim() }}", "type": "string" },
+            { "name": "source.raw_event_type", "value": "={{ $json.is_reply ? 'reply_received' : 'new_email' }}", "type": "string" },
+            { "name": "actor.name", "value": "={{ $json.raw_from_name }}", "type": "string" },
+            { "name": "actor.email", "value": "={{ $json.raw_from_email }}", "type": "string" },
             { "name": "actor.platform_handle", "value": "", "type": "string" },
             { "name": "subject.type", "value": "email_thread", "type": "string" },
-            { "name": "subject.id", "value": "={{ $json.threadId || $json.id }}", "type": "string" },
-            { "name": "subject.title", "value": "={{ ($json.subject || '').replace(/^Subject:\\s*/i, '') || 'No Subject' }}", "type": "string" },
-            { "name": "subject.url", "value": "={{ 'https://mail.google.com/mail/u/0/#inbox/' + ($json.id || '') }}", "type": "string" },
-            { "name": "content.body", "value": "={{ $json.snippet || $json.text || $json.html || '' }}", "type": "string" },
-            { "name": "content.metadata", "value": "={{ JSON.stringify({ gmail_thread_id: $json.threadId, gmail_labels: $json.labelIds, gmail_from: ($json.from || '').match(/<([^>]+)>/)?.[1] || ($json.from || '').replace(/^From:\\s*/i, '').trim(), gmail_to: [($json.to || '').replace(/^To:\\s*/i, '')], gmail_cc: [], gmail_is_reply: !!($json['in-reply-to'] || $json['references']) }) }}", "type": "string" }
+            { "name": "subject.id", "value": "={{ $json.gmail_threadId }}", "type": "string" },
+            { "name": "subject.title", "value": "={{ $json.raw_subject || 'No Subject' }}", "type": "string" },
+            { "name": "subject.url", "value": "={{ 'https://mail.google.com/mail/u/0/#inbox/' + ($json.gmail_id || '') }}", "type": "string" },
+            { "name": "content.body", "value": "={{ $json.gmail_body }}", "type": "string" },
+            { "name": "content.metadata", "value": "={{ JSON.stringify({ gmail_thread_id: $json.gmail_threadId, gmail_labels: JSON.parse($json.gmail_labelIds || '[]'), gmail_from: $json.raw_from_email, gmail_to: [$json.raw_to_email], gmail_cc: [], gmail_is_reply: $json.is_reply }) }}", "type": "string" }
           ]
         }
       },
       "name": "Normalize to Laya Event",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [500, 300]
+      "position": [900, 300]
     },
     {
       "parameters": {
@@ -58,11 +121,17 @@
       "name": "POST to Laya Engine",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [750, 300]
+      "position": [1150, 300]
     }
   ],
   "connections": {
     "Gmail Trigger": {
+      "main": [[{ "node": "Get Thread ID", "type": "main", "index": 0 }]]
+    },
+    "Get Thread ID": {
+      "main": [[{ "node": "Extract Headers", "type": "main", "index": 0 }]]
+    },
+    "Extract Headers": {
       "main": [[{ "node": "Normalize to Laya Event", "type": "main", "index": 0 }]]
     },
     "Normalize to Laya Event": {

@@ -69,3 +69,4 @@ class WorkspaceEvent(BaseModel):
     actor: WorkspaceEventActor
     content: dict[str, Any] = Field(default_factory=dict)
     requires_input: bool = False
+    agent_message_id: str | None = None

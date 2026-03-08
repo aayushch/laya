@@ -23,9 +23,9 @@ MIGRATIONS_DIR = Path(__file__).parent / "db" / "migrations"
 # Default settings
 DEFAULT_SETTINGS = {
     "models": {
-        "router": "claude-haiku-4-5-20251001",
-        "stager": "claude-sonnet-4-5-20250929",
-        "chat": "claude-sonnet-4-5-20250929",
+        "router": "claude-haiku-4-5",
+        "stager": "claude-sonnet-4-6",
+        "chat": "claude-sonnet-4-6",
         "local": "ollama/llama3",
     },
     "coding_agent": "claude_code",
@@ -41,6 +41,15 @@ DEFAULT_SETTINGS = {
     "notifications": {
         "enabled": True,
         "min_priority": "HIGH",
+    },
+    "retention": {
+        "card_retention_days": 90,
+    },
+    "feed_preferences": {
+        "statusFilters": [],
+        "priorityFilters": [],
+        "sortBy": "newest",
+        "showArchived": False,
     },
     "setup_complete": False,
     "n8n": {

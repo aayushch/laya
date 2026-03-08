@@ -67,6 +67,138 @@ The original concept documents that informed this architecture:
 - [Laya Master Orchestrator.md](./Laya%20Master%20Orchestrator.md) -- Multi-persona system prompt design
 - [Laya - The Professional AI Operating System.pdf](./Laya%20-%20The%20Professional%20AI%20Operating%20System.pdf) -- Concept slide deck
 
+## Development
+
+### Prerequisites
+
+- Python 3.11+
+- Node.js 18+
+- Rust toolchain (via `rustup`)
+- Docker (for n8n)
+- Xcode Command Line Tools (macOS): `xcode-select --install`
+
+### Setup
+
+```bash
+scripts/setup-dev.sh   # One-time: creates venv, installs deps, pulls n8n image
+```
+
+### Running Locally
+
+```bash
+scripts/dev.sh
+# Starts n8n (Docker), Python engine, and Tauri dev window
+# Engine: http://127.0.0.1:8420  |  UI: http://localhost:5173
+```
+
+## Building the Installable App
+
+Laya is a Tauri desktop app. The build produces platform-native installers.
+
+### Quick Build (Development Machine)
+
+This builds the app using your local Python venv -- the resulting app expects Python and dependencies to be installed on the target machine.
+
+```bash
+cd ui
+npm run build          # Build SvelteKit frontend -> ui/build/
+npx tauri build        # Compile Rust + bundle into platform installer
+```
+
+Output locations:
+
+| Platform | Format | Path |
+|----------|--------|------|
+| macOS | `.app` | `ui/src-tauri/target/release/bundle/macos/Laya.app` |
+| macOS | `.dmg` | `ui/src-tauri/target/release/bundle/dmg/Laya_0.1.0_<arch>.dmg` |
+| Windows | `.msi` | `ui/src-tauri/target/release/bundle/msi/` |
+| Windows | `.exe` | `ui/src-tauri/target/release/bundle/nsis/` |
+| Linux | `.deb` | `ui/src-tauri/target/release/bundle/deb/` |
+| Linux | AppImage | `ui/src-tauri/target/release/bundle/appimage/` |
+
+> **Note:** macOS builds will be unsigned unless you configure an Apple Developer certificate. Unsigned apps trigger Gatekeeper -- users must right-click > Open to bypass.
+
+### Self-Contained Build (Bundled Python Engine)
+
+For a fully distributable app that doesn't require Python on the user's machine, the Python engine must be compiled into a standalone binary using **PyInstaller** and included as a Tauri sidecar.
+
+#### Why PyInstaller
+
+| Tool | Status |
+|------|--------|
+| **PyInstaller** | Recommended -- most mature, proven with FastAPI/uvicorn/chromadb, existing Tauri v2 sidecar examples |
+| Nuitka | Known issues with FastAPI/uvicorn multi-worker mode |
+| PyOxidizer | Abandoned since 2023 |
+| cx_Freeze | Viable but less community coverage for this dependency stack |
+
+#### Step 1: Reduce dependency footprint
+
+The engine currently uses `sentence-transformers` + `torch` (~600MB+) for ChromaDB embeddings. ChromaDB ships a built-in ONNX embedding function using the same `all-MiniLM-L6-v2` model via `onnxruntime` (~15MB). Switching to the built-in function and removing `torch` / `sentence-transformers` / `transformers` / `scipy` / `scikit-learn` from `requirements.txt` cuts the bundle from ~2GB to ~200MB.
+
+#### Step 2: Build the engine binary
+
+```bash
+cd engine
+source .venv/bin/activate
+pip install pyinstaller
+
+# Build standalone binary (output: ui/src-tauri/binaries/)
+pyinstaller laya-engine.spec --distpath ../ui/src-tauri/binaries --clean -y
+
+# Rename with target triple (required by Tauri)
+TARGET=$(rustc --print host-tuple)
+mv ../ui/src-tauri/binaries/laya-engine/laya-engine \
+   ../ui/src-tauri/binaries/laya-engine-$TARGET
+```
+
+The PyInstaller spec file (`engine/laya-engine.spec`) must include hidden imports for chromadb, uvicorn, litellm, and data files for SQLite migrations.
+
+#### Step 3: Configure Tauri sidecar
+
+In `ui/src-tauri/tauri.conf.json`, add `externalBin`:
+
+```json
+{
+  "bundle": {
+    "externalBin": ["binaries/laya-engine"]
+  }
+}
+```
+
+Tauri resolves the platform-specific binary by appending the target triple. Place binaries as:
+
+```
+ui/src-tauri/binaries/
+  laya-engine-aarch64-apple-darwin        # macOS Apple Silicon
+  laya-engine-x86_64-apple-darwin         # macOS Intel
+  laya-engine-x86_64-unknown-linux-gnu    # Linux x64
+  laya-engine-x86_64-pc-windows-msvc.exe  # Windows x64
+```
+
+#### Step 4: Build the full app
+
+```bash
+cd ui
+npx tauri build    # Bundles SvelteKit + Rust + sidecar binary into installer
+```
+
+#### Estimated bundle sizes
+
+| Configuration | Binary Size |
+|---------------|-------------|
+| With torch (current) | ~1.5--2.5 GB |
+| Without torch, ONNX embeddings (recommended) | ~150--300 MB |
+
+#### CI/CD
+
+For cross-platform releases, use GitHub Actions with a matrix build:
+
+1. Run PyInstaller on each target OS (macOS arm64, macOS x64, Linux x64, Windows x64)
+2. Feed the resulting binaries into the Tauri build step
+3. Tauri produces the platform-specific installer
+
+> **Development workflow** is unaffected -- `scripts/dev.sh` and `npx tauri dev` continue to use the Python venv directly. The bundled binary is only used for production builds.
+
 ## Project Status
 
 **Phase:** Pre-development (architecture and design complete)

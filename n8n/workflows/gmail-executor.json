@@ -13,17 +13,36 @@
       }
     },
     {
+      "name": "Validate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [400, 300],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.body.payload.to || $json.body.event_actor_email || '' }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
       "name": "Send Email",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2,
-      "position": [500, 300],
+      "position": [600, 200],
       "parameters": {
         "operation": "send",
         "sendTo": "={{ $json.body.payload.to || $json.body.event_actor_email }}",
         "subject": "={{ $json.body.payload.subject || (($json.body.event_subject || '').toLowerCase().startsWith('re:') ? $json.body.event_subject : 'Re: ' + ($json.body.event_subject || '')) }}",
         "message": "={{ $json.body.payload.body }}",
         "options": {
-          "threadId": "={{ $json.body.payload.thread_id }}"
+          "threadId": "={{ $json.body.payload.thread_id || '' }}"
         }
       },
       "onError": "continueErrorOutput"
@@ -32,7 +51,7 @@
       "name": "Respond Success",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [750, 200],
+      "position": [850, 100],
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ JSON.stringify({ success: true, result: { message_id: $json.id || '' } }) }}"
@@ -42,16 +61,32 @@
       "name": "Respond Error",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [750, 400],
+      "position": [850, 300],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error && $json.error.message) ? $json.error.message : 'Gmail send failed' }) }}"
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'Gmail send failed — check credentials and workflow execution log') }) }}"
+      }
+    },
+    {
+      "name": "Respond Missing Recipient",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [600, 400],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: 'No recipient email — payload.to is missing and event_actor_email is empty. Check Gmail ingestion workflow is capturing actor.email.' }) }}"
       }
     }
   ],
   "connections": {
     "Webhook": {
-      "main": [[{ "node": "Send Email", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Validate", "type": "main", "index": 0 }]]
+    },
+    "Validate": {
+      "main": [
+        [{ "node": "Send Email", "type": "main", "index": 0 }],
+        [{ "node": "Respond Missing Recipient", "type": "main", "index": 0 }]
+      ]
     },
     "Send Email": {
       "main": [

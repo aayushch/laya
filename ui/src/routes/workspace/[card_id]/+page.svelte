@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { onMount, onDestroy } from 'svelte';
 	import { lastMessage } from '$lib/stores/websocket';
 	import { engineApi } from '$lib/api/engine';
 	import type { ActionCard, WorkspaceSession, WorkspaceEvent } from '$lib/api/types';
@@ -17,9 +18,50 @@
 
 	const cardId = $derived($page.params.card_id);
 
+	const POLL_INTERVAL_MS = 5000;
+	let pollTimer: ReturnType<typeof setInterval> | null = null;
+	let isPolling = $state(false);
+
 	onMount(async () => {
 		await loadWorkspace();
+		startPoller();
 	});
+
+	onDestroy(() => {
+		stopPoller();
+	});
+
+	function startPoller() {
+		stopPoller();
+		pollTimer = setInterval(() => pollWorkspace(), POLL_INTERVAL_MS);
+	}
+
+	function stopPoller() {
+		if (pollTimer != null) {
+			clearInterval(pollTimer);
+			pollTimer = null;
+		}
+	}
+
+	async function pollWorkspace() {
+		if (isPolling) return;
+		isPolling = true;
+		try {
+			const workspaceData = await engineApi.getWorkspace(cardId);
+			session = workspaceData.session;
+			events = workspaceData.events;
+			context = workspaceData.context;
+			// Also refresh card status
+			if (card) {
+				const cardData = await engineApi.getCard(cardId);
+				card = cardData;
+			}
+		} catch {
+			// Silently ignore poll errors — next poll will retry
+		} finally {
+			isPolling = false;
+		}
+	}
 
 	async function loadWorkspace() {
 		loading = true;
@@ -40,64 +82,61 @@
 		}
 	}
 
-	// React to real-time WS messages for this card
+	// Track last processed message to avoid re-processing the same one
+	// when loadWorkspace() updates card/session and re-triggers the $effect.
+	let lastProcessedMsg: unknown = null;
+
+	// React to real-time WS messages for this card.
+	// Only approval_request, agent_error, and agent_completed are broadcast;
+	// all other events are fetched from the DB via loadWorkspace().
 	$effect(() => {
 		const msg = $lastMessage;
-		if (!msg || !card) return;
+		if (!msg) return;
+		// Dedupe: skip if we already processed this exact message object
+		if (msg === lastProcessedMsg) return;
 
 		const msgCardId = msg.card_id ?? (msg.payload?.card_id as string);
 		const msgSessionId = msg.session_id ?? (msg.payload?.session_id as string);
 
 		// Only process messages for this card/session
-		if (msgCardId !== cardId && (!session || msgSessionId !== session.session_id)) return;
+		if (msgCardId !== cardId && (!session || msgSessionId !== session?.session_id)) return;
+
+		lastProcessedMsg = msg;
 
 		switch (msg.type) {
 			case 'card_updated': {
 				const payload = msg.payload;
 				if (payload.status) {
-					card.status = payload.status as ActionCard['status'];
+					if (card) card.status = payload.status as ActionCard['status'];
+					// Agent just started — reload to get session info
+					if (payload.status === 'agent_running') loadWorkspace();
 				}
-				break;
-			}
-
-			case 'agent_progress':
-			case 'workspace_event': {
-				const newEvent: WorkspaceEvent = {
-					event_id: msg.event_id ?? `ws_${Date.now()}`,
-					timestamp: new Date().toISOString(),
-					event_type: (msg.payload.event_type as string) ?? msg.type,
-					actor: (msg.payload.actor as string) ?? 'agent',
-					content: msg.payload.content as Record<string, unknown> ?? msg.payload,
-					requires_input: (msg.payload.requires_input as boolean) ?? false
-				};
-				events = [...events, newEvent];
 				break;
 			}
 
 			case 'approval_request': {
-				const newEvent: WorkspaceEvent = {
-					event_id: msg.event_id ?? `ws_${Date.now()}`,
-					timestamp: new Date().toISOString(),
-					event_type: 'approval_request',
-					actor: 'agent',
-					content: msg.payload as Record<string, unknown>,
-					requires_input: true
-				};
-				events = [...events, newEvent];
+				loadWorkspace();
 				break;
 			}
 
-			case 'session_status': {
-				if (session && msg.payload.status) {
-					session = { ...session, status: msg.payload.status as string };
-				}
+			case 'agent_error': {
+				loadWorkspace();
+				break;
+			}
+
+			case 'agent_completed': {
+				loadWorkspace();
+				break;
+			}
+
+			case 'card_deleted': {
+				goto('/feed');
 				break;
 			}
 		}
 	});
 
 	function handleTimelineSelect(event: WorkspaceEvent) {
-		// Could scroll-to in agent panel; for now, just a visual indicator
 		const el = document.getElementById(`event-${event.event_id}`);
 		el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 	}
@@ -119,6 +158,6 @@
 	<div class="flex h-[calc(100vh-64px)] -m-6">
 		<TimelinePanel {events} onselect={handleTimelineSelect} />
 		<AgentPanel {card} {session} {events} />
-		<ContextPanel {card} {context} />
+		<ContextPanel {card} {session} {events} {context} />
 	</div>
 {/if}

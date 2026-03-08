@@ -1,5 +1,6 @@
 """Laya Engine — FastAPI entry point."""
 
+import asyncio
 from contextlib import asynccontextmanager
 
 import structlog
@@ -26,7 +27,7 @@ from laya.api.websocket import manager
 from laya.api.workspace_api import router as workspace_router
 from laya.api.ws_router import handle_ws_message
 from laya.config import ENGINE_HOST, ENGINE_PORT, ensure_directories, load_repos, load_rules, load_team
-from laya.integrations.n8n_bootstrap import ensure_n8n_ready
+from laya.integrations.n8n_bootstrap import ensure_n8n_ready, sync_workflows_background
 from laya.db.chromadb_store import connect_chromadb, disconnect_chromadb
 from laya.db.migrate import run_migrations
 from laya.db.sqlite import connect, disconnect
@@ -63,6 +64,10 @@ async def lifespan(app: FastAPI):
         log.info("n8n_bootstrap", **n8n_result)
     except Exception as e:
         log.warning("n8n_bootstrap_failed", error=str(e))
+
+    # Import any new bundled workflows in the background — retries for up to
+    # 10 min so a slow-starting n8n (Docker cold-start) is handled gracefully.
+    _workflow_sync_task = asyncio.create_task(sync_workflows_background())  # noqa: F841
 
     # Connect ChromaDB vector store
     connect_chromadb()
