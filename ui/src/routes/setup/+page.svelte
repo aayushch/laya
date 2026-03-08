@@ -1,6 +1,14 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { invoke } from '@tauri-apps/api/core';
 	import { engineApi } from '$lib/api/engine';
+
+	interface RepoDetection {
+		path: string;
+		name: string;
+		platform: string;
+		remote_id: string;
+	}
 
 	$effect(() => {
 		if (step === 2 && n8nStatus === 'checking') {
@@ -20,6 +28,10 @@
 	let codingAgent = $state('claude_code');
 	let repoName = $state('');
 	let repoPath = $state('');
+	let repoPlatform = $state('');
+	let repoRemoteId = $state('');
+	let repoBrowseStatus = $state<{ ok: boolean; msg: string } | null>(null);
+	let browsing = $state(false);
 
 	// Step 4: Team
 	let members = $state<Array<{ name: string; email: string; role: string }>>([
@@ -79,6 +91,26 @@
 		}
 	}
 
+	async function browseRepo() {
+		browsing = true;
+		repoBrowseStatus = null;
+		try {
+			const result = await invoke<RepoDetection>('pick_repo_folder');
+			repoPath = result.path;
+			repoName = result.name;
+			repoPlatform = result.platform;
+			repoRemoteId = result.remote_id;
+			repoBrowseStatus = { ok: true, msg: `${result.platform} · ${result.remote_id}` };
+		} catch (err: unknown) {
+			const msg = String(err);
+			if (!msg.includes('cancelled')) {
+				repoBrowseStatus = { ok: false, msg: msg.replace(/^Error: /, '') };
+			}
+		} finally {
+			browsing = false;
+		}
+	}
+
 	function addMember() {
 		members = [...members, { name: '', email: '', role: 'teammate' }];
 	}
@@ -92,7 +124,7 @@
 		await engineApi.updateSettings({ coding_agent: codingAgent });
 		if (repoName.trim() && repoPath.trim()) {
 			await engineApi.updateRepos({
-				repos: [{ name: repoName.trim(), path: repoPath.trim(), platform: 'github', remote_id: '' }]
+				repos: [{ name: repoName.trim(), path: repoPath.trim(), platform: repoPlatform || 'github', remote_id: repoRemoteId }]
 			});
 		}
 
@@ -308,6 +340,20 @@
 
 			<div class="space-y-3 pt-2">
 				<p class="text-sm font-medium">Repository (optional)</p>
+				<div class="flex items-center gap-3">
+					<button
+						class="rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm font-medium transition-colors hover:bg-surface-600 disabled:opacity-50"
+						onclick={browseRepo}
+						disabled={browsing}
+					>
+						{browsing ? 'Opening…' : 'Browse…'}
+					</button>
+					{#if repoBrowseStatus}
+						<span class="text-sm {repoBrowseStatus.ok ? 'text-green-400' : 'text-red-400'}">
+							{repoBrowseStatus.ok ? '✓' : '✗'} {repoBrowseStatus.msg}
+						</span>
+					{/if}
+				</div>
 				<input
 					type="text"
 					class="block w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm"

@@ -7,8 +7,9 @@
 	import IntegrationsConfig from '$lib/components/settings/IntegrationsConfig.svelte';
 	import AuditLogViewer from '$lib/components/settings/AuditLogViewer.svelte';
 	import AppearanceConfig from '$lib/components/settings/AppearanceConfig.svelte';
+	import DataConfig from '$lib/components/settings/DataConfig.svelte';
 
-	let activeTab = $state<'team' | 'rules' | 'models' | 'repos' | 'agent' | 'integrations' | 'audit' | 'appearance'>('team');
+	let activeTab = $state<'team' | 'rules' | 'models' | 'repos' | 'agent' | 'integrations' | 'audit' | 'appearance' | 'data'>('team');
 	let exporting = $state(false);
 
 	async function exportDiagnostics() {
@@ -47,7 +48,8 @@
 			{ id: 'agent',        label: 'Agent' },
 			{ id: 'integrations', label: 'Integrations' },
 			{ id: 'audit',        label: 'Audit' },
-			{ id: 'appearance',   label: 'Appearance' }
+			{ id: 'appearance',   label: 'Appearance' },
+			{ id: 'data',         label: 'Data' }
 		] as tab}
 			<button
 				class="rounded-md px-4 py-2 text-sm font-medium transition-colors
@@ -75,6 +77,8 @@
 		<IntegrationsConfig />
 	{:else if activeTab === 'appearance'}
 		<AppearanceConfig />
+	{:else if activeTab === 'data'}
+		<DataConfig />
 	{:else}
 		<AuditLogViewer />
 	{/if}

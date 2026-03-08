@@ -61,6 +61,11 @@ class CardResponse(BaseModel):
     stager_model: str | None = None
     updated_at: str | None = None
     entity_id: str | None = None
+    source_ref: str | None = None
+    source_url: str | None = None
+    selected_action_id: str | None = None
+    actor_name: str | None = None
+    actor_email: str | None = None
 
 
 class CardsListResponse(BaseModel):
@@ -84,6 +89,7 @@ class CardGroup(BaseModel):
     latest_at: str
     has_pending: bool
     cards: list[CardResponse]
+    sort_key: str | None = None
 
 
 class GroupedCardsResponse(BaseModel):
@@ -91,3 +97,6 @@ class GroupedCardsResponse(BaseModel):
 
     groups: list[CardGroup]
     total_groups: int
+    date: str | None = None
+    prev_date: str | None = None
+    next_date: str | None = None

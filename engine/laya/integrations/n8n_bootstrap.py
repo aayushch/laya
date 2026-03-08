@@ -33,14 +33,21 @@ def _generate_password() -> str:
 
 
 async def _wait_for_n8n(base_url: str, timeout: float = 30.0) -> bool:
-    """Poll n8n healthcheck until it responds or timeout is reached."""
+    """Poll n8n until both /healthz AND /rest/settings respond with 200.
+
+    n8n registers /healthz before the full REST API is loaded, so checking
+    only /healthz can return True while /api/v1/ still returns 404.
+    /rest/settings becomes available when the full Express app is ready.
+    """
     deadline = asyncio.get_event_loop().time() + timeout
     while asyncio.get_event_loop().time() < deadline:
         try:
             async with httpx.AsyncClient(timeout=3.0) as client:
-                resp = await client.get(f"{base_url}/healthz")
-                if resp.status_code == 200:
-                    return True
+                health = await client.get(f"{base_url}/healthz")
+                if health.status_code == 200:
+                    settings = await client.get(f"{base_url}/rest/settings")
+                    if settings.status_code == 200:
+                        return True
         except (httpx.ConnectError, httpx.TimeoutException):
             pass
         await asyncio.sleep(1.0)
@@ -167,8 +174,12 @@ async def _test_existing_api_key(base_url: str) -> bool:
         return False
 
 
-async def _get_existing_workflow_names(base_url: str, api_key: str) -> set[str]:
-    """Return the set of workflow names already in n8n."""
+async def _get_existing_workflow_names(base_url: str, api_key: str) -> set[str] | None:
+    """Return the set of workflow names already in n8n.
+
+    Returns None (not empty set) when the API call fails, so callers can
+    distinguish between "API unreachable / not ready" and "genuinely empty".
+    """
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
@@ -180,9 +191,11 @@ async def _get_existing_workflow_names(base_url: str, api_key: str) -> set[str]:
             data = resp.json()
             items = data.get("data", data) if isinstance(data, dict) else data
             return {w["name"] for w in items if isinstance(w, dict) and "name" in w}
+        log.warning("n8n_list_workflows_failed", status=resp.status_code)
+        return None
     except Exception as e:
         log.warning("n8n_list_workflows_error", error=str(e))
-    return set()
+        return None
 
 
 async def import_workflows(base_url: str) -> int:
@@ -201,6 +214,9 @@ async def import_workflows(base_url: str) -> int:
         return 0
 
     existing_names = await _get_existing_workflow_names(base_url, api_key)
+    if existing_names is None:
+        # API not ready or key invalid — raise so sync_workflows_background retries
+        raise RuntimeError("n8n workflow list unavailable; will retry")
     imported = 0
     headers = {"X-N8N-API-KEY": api_key, "Content-Type": "application/json"}
 
@@ -235,6 +251,33 @@ async def import_workflows(base_url: str) -> int:
     return imported
 
 
+async def sync_workflows_background() -> None:
+    """Background task: wait for n8n then import any missing workflows.
+
+    Retries every 15 s for up to 10 minutes, so a slow-starting n8n
+    (e.g. Docker cold-start) never causes workflows to be skipped.
+    Idempotent — already-imported workflows are skipped by name.
+    """
+    n8n_config = get_n8n_config()
+    base_url = n8n_config["base_url"].rstrip("/")
+    deadline = asyncio.get_event_loop().time() + 600  # 10 min
+
+    while asyncio.get_event_loop().time() < deadline:
+        try:
+            if await _wait_for_n8n(base_url, timeout=5.0) and get_api_key("n8n"):
+                imported = await import_workflows(base_url)
+                if imported:
+                    log.info("n8n_background_workflows_imported", count=imported)
+                else:
+                    log.debug("n8n_background_workflows_nothing_new")
+                return
+        except Exception as e:
+            log.debug("n8n_background_sync_retry", error=str(e))
+        await asyncio.sleep(15.0)
+
+    log.warning("n8n_background_workflow_sync_timeout")
+
+
 async def ensure_n8n_ready() -> dict:
     """Ensure n8n is fully provisioned with owner account + API key.
 
@@ -257,12 +300,11 @@ async def ensure_n8n_ready() -> dict:
             "has_api_key": has_api_key("n8n"),
         }
 
-    # Step 2: Check if we already have a valid API key
+    # Step 2: Check if we already have a valid API key.
+    # Workflow imports for already-running instances are handled by
+    # sync_workflows_background() to avoid double-import on startup.
     if await _test_existing_api_key(base_url):
         log.info("n8n_already_configured")
-        imported = await import_workflows(base_url)
-        if imported:
-            log.info("n8n_workflows_imported_on_startup", count=imported)
         return {
             "status": "already_configured",
             "message": "n8n is already configured with a valid API key",
@@ -306,8 +348,12 @@ async def ensure_n8n_ready() -> dict:
     # Step 5: Store API key in keychain
     store_api_key("n8n", raw_key)
 
-    # Step 6: Import bundled workflows
-    imported = await import_workflows(base_url)
+    # Step 6: Import bundled workflows (best-effort; background task will retry)
+    try:
+        imported = await import_workflows(base_url)
+    except RuntimeError as e:
+        log.warning("n8n_workflow_import_deferred", reason=str(e))
+        imported = 0
     log.info("n8n_bootstrap_complete", workflows_imported=imported)
 
     return {

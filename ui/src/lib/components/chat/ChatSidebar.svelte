@@ -50,7 +50,7 @@
 		if (!textareaEl) return;
 		input; // track changes
 		textareaEl.style.height = 'auto';
-		textareaEl.style.height = Math.min(textareaEl.scrollHeight, 160) + 'px';
+		textareaEl.style.height = Math.min(textareaEl.scrollHeight, 240) + 'px';
 	});
 
 	// Scroll to bottom when messages change
@@ -126,7 +126,8 @@
 
 {#if $chatOpen}
 	<aside
-		class="fixed right-0 top-0 z-40 flex h-screen w-[400px] flex-col border-l border-surface-700 bg-surface-900"
+		class="fixed bottom-0 right-0 z-50 flex w-[460px] flex-col border-l border-surface-700 bg-surface-900"
+		style="top: var(--header-h);"
 	>
 		<!-- Header -->
 		<div class="flex items-center justify-between border-b border-surface-700 px-4 py-3">
@@ -173,8 +174,8 @@
 					bind:value={input}
 					onkeydown={handleKeydown}
 					placeholder="Ask something..."
-					rows={1}
-					style="min-height: 2.5rem; overflow-y: auto;"
+					rows={3}
+					style="min-height: 4.5rem; overflow-y: auto;"
 					class="w-full resize-none rounded-lg border border-surface-600 bg-surface-800 py-2 pl-3 pr-10 text-sm text-surface-200 placeholder-surface-500 focus:border-laya-orange/50 focus:outline-none"
 				></textarea>
 				<button

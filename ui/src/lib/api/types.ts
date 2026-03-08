@@ -95,6 +95,7 @@ export interface WorkspaceEvent {
 	actor: string;
 	content: Record<string, unknown>;
 	requires_input: boolean;
+	agent_message_id?: string | null;
 }
 
 /** Workspace response from GET /cards/:card_id/workspace */
@@ -139,6 +140,14 @@ export interface N8nTestResult {
 	} | null;
 }
 
+/** Feed filter/sort preferences persisted to settings */
+export interface FeedPreferences {
+	statusFilters: string[];
+	priorityFilters: string[];
+	sortBy: string;
+	showArchived: boolean;
+}
+
 /** Full settings response from GET /settings */
 export interface Settings {
 	models: ModelSettings;
@@ -158,11 +167,12 @@ export interface Settings {
 		min_priority: string;
 	};
 	n8n?: N8nSettings;
+	feed_preferences?: FeedPreferences;
 }
 
 /** Staged output attached to an action card */
 export interface StagedOutput {
-	type: 'draft_reply' | 'code_fix' | 'briefing' | 'summary';
+	type: 'draft_reply' | 'code_fix' | 'briefing' | 'summary' | 'agent_result' | 'agent_plan';
 	content: string;
 }
 
@@ -209,6 +219,11 @@ export interface ActionCard {
 	stager_model?: string;
 	updated_at?: string;
 	entity_id?: string;
+	source_ref?: string;
+	source_url?: string;
+	selected_action_id?: string;
+	actor_name?: string;
+	actor_email?: string;
 }
 
 /** A group of cards sharing the same entity (e.g. one Jira ticket) */
@@ -222,12 +237,16 @@ export interface CardGroup {
 	latest_at: string;
 	has_pending: boolean;
 	cards: ActionCard[];
+	sort_key?: string;
 }
 
 /** Response from GET /cards/grouped */
 export interface GroupedCardsResponse {
 	groups: CardGroup[];
 	total_groups: number;
+	date?: string;
+	prev_date?: string;
+	next_date?: string;
 }
 
 /** Paginated cards list from GET /cards */

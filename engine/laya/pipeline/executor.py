@@ -75,20 +75,25 @@ async def execute_action(
     if modifications:
         payload.update(modifications)
 
-    # 4. Update card to 'executing'
+    # 4. Update card to 'executing' and record selected action
     now = datetime.now(timezone.utc).isoformat()
     await db.execute(
-        "UPDATE action_cards SET status = 'executing', updated_at = ? WHERE card_id = ?",
-        (now, card_id),
+        "UPDATE action_cards SET status = 'executing', selected_action_id = ?, updated_at = ? WHERE card_id = ?",
+        (action_id, now, card_id),
     )
     await db.commit()
 
     await manager.broadcast(
-        {"type": "card_updated", "card_id": card_id, "payload": {"status": "executing"}}
+        {"type": "card_updated", "card_id": card_id, "payload": {"status": "executing", "selected_action_id": action_id}}
     )
 
     # 5. Build n8n payload and POST
     target_platform = action["target_platform"]
+
+    # Detect calendar actions that the stager tagged as "gmail" and reroute
+    if target_platform == "gmail" and payload.get("action") == "create_calendar_event":
+        target_platform = "google_calendar"
+
     n8n_config = get_n8n_config()
     base_url = n8n_config["base_url"].rstrip("/")
     webhooks = n8n_config.get("webhooks", {})
@@ -97,11 +102,21 @@ async def execute_action(
 
     # Fetch original event context so executor workflows have enough info to act
     event_rows = await db.execute_fetchall(
-        """SELECT actor_email, actor_name, subject_title, source_platform
+        """SELECT actor_email, actor_name, subject_title, source_platform,
+                  content_metadata
            FROM events WHERE event_id = ?""",
         (card_row["event_id"],),
     )
     event_ctx = dict(event_rows[0]) if event_rows else {}
+
+    # Resolve actor email — fall back to content_metadata (e.g. gmail_from)
+    actor_email = event_ctx.get("actor_email") or ""
+    if not actor_email:
+        try:
+            meta = json.loads(event_ctx.get("content_metadata") or "{}")
+            actor_email = meta.get("gmail_from") or meta.get("from") or ""
+        except (json.JSONDecodeError, AttributeError):
+            pass
 
     n8n_payload = {
         "action_id": action_id,
@@ -109,7 +124,7 @@ async def execute_action(
         "target": {"platform": target_platform, "connection_id": None},
         "action_type": action["action_type"],
         "payload": payload,
-        "event_actor_email": event_ctx.get("actor_email", ""),
+        "event_actor_email": actor_email,
         "event_actor_name": event_ctx.get("actor_name", ""),
         "event_subject": event_ctx.get("subject_title", ""),
         "event_platform": event_ctx.get("source_platform", target_platform),
@@ -134,19 +149,25 @@ async def execute_action(
 
     try:
         resp = await _post_to_n8n()
-        resp_data = resp.json()
-
-        if resp_data.get("success"):
-            result_status = "completed"
-            result_data = resp_data.get("result", {})
-            result_url = (
-                result_data.get("pr_url")
-                or result_data.get("url")
-                or result_data.get("message_url")
-            )
-        else:
+        try:
+            resp_data = resp.json()
+        except Exception:
             result_status = "failed"
-            error_message = resp_data.get("error", f"n8n returned status {resp.status_code}")
+            error_message = f"n8n returned non-JSON response (HTTP {resp.status_code}): {resp.text[:200]}"
+            resp_data = None
+
+        if resp_data is not None:
+            if resp_data.get("success"):
+                result_status = "completed"
+                result_data = resp_data.get("result", {})
+                result_url = (
+                    result_data.get("pr_url")
+                    or result_data.get("url")
+                    or result_data.get("message_url")
+                )
+            else:
+                result_status = "failed"
+                error_message = resp_data.get("error", f"n8n returned status {resp.status_code}")
     except httpx.TimeoutException:
         result_status = "failed"
         error_message = "n8n request timed out"
@@ -162,11 +183,18 @@ async def execute_action(
     # 6. Store in action_log and update card — always runs even on unexpected errors
     now = datetime.now(timezone.utc).isoformat()
     try:
+        # Upsert action_log so retries don't fail on UNIQUE constraint
         await db.execute(
             """INSERT INTO action_log
                (action_id, card_id, action_type, target_platform, target_connection_id,
                 payload, executed_at, result_status, result_data, error_message, modifications, retryable)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(action_id) DO UPDATE SET
+                executed_at = excluded.executed_at,
+                result_status = excluded.result_status,
+                result_data = excluded.result_data,
+                error_message = excluded.error_message,
+                retryable = excluded.retryable""",
             (
                 action_id,
                 card_id,
@@ -182,15 +210,18 @@ async def execute_action(
                 retryable,
             ),
         )
+    except Exception as db_err:
+        log.error("action_log_write_failed", card_id=card_id, error=str(db_err))
 
-        # 7. Update card final status
+    # 7. Update card final status — separate try so it always runs even if action_log write fails
+    try:
         await db.execute(
             "UPDATE action_cards SET status = ?, updated_at = ? WHERE card_id = ?",
             (result_status, now, card_id),
         )
         await db.commit()
     except Exception as db_err:
-        log.error("action_log_write_failed", card_id=card_id, error=str(db_err))
+        log.error("card_status_update_failed", card_id=card_id, error=str(db_err))
 
     # 8. Broadcast final status
     broadcast_payload: dict = {"status": result_status}

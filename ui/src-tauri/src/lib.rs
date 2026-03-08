@@ -1,6 +1,88 @@
 mod docker;
 mod sidecar;
 
+#[derive(serde::Serialize, Clone)]
+pub struct RepoDetection {
+    pub path: String,
+    pub name: String,
+    pub platform: String,
+    pub remote_id: String,
+}
+
+fn parse_remote_url(url: &str) -> Option<(String, String)> {
+    // SSH: git@github.com:org/repo.git
+    if let Some(rest) = url.strip_prefix("git@") {
+        let (host, path) = rest.split_once(':')?;
+        let remote_id = path.trim_end_matches(".git").to_string();
+        let platform = if host.contains("github.com") {
+            "github"
+        } else if host.contains("bitbucket.org") {
+            "bitbucket"
+        } else {
+            return None;
+        };
+        return Some((platform.to_string(), remote_id));
+    }
+    // HTTPS: https://github.com/org/repo.git
+    if url.starts_with("https://") || url.starts_with("http://") {
+        let without_scheme = url.splitn(3, '/').nth(2)?;
+        let (host, path) = without_scheme.split_once('/')?;
+        let remote_id = path.trim_end_matches(".git").to_string();
+        let platform = if host.contains("github.com") {
+            "github"
+        } else if host.contains("bitbucket.org") {
+            "bitbucket"
+        } else {
+            return None;
+        };
+        return Some((platform.to_string(), remote_id));
+    }
+    None
+}
+
+#[tauri::command]
+fn pick_repo_folder() -> Result<RepoDetection, String> {
+    // Open native macOS folder picker via osascript
+    let output = std::process::Command::new("osascript")
+        .args(["-e", "POSIX path of (choose folder with prompt \"Select a git repository\")"])
+        .output()
+        .map_err(|e| format!("osascript error: {e}"))?;
+
+    if !output.status.success() {
+        return Err("cancelled".to_string());
+    }
+
+    let path = String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .trim_end_matches('/')
+        .to_string();
+    if path.is_empty() {
+        return Err("cancelled".to_string());
+    }
+
+    // Get git remote URL
+    let git_out = std::process::Command::new("git")
+        .args(["-C", &path, "remote", "get-url", "origin"])
+        .output()
+        .map_err(|e| format!("git error: {e}"))?;
+
+    if !git_out.status.success() {
+        return Err("Not a git repository or no remote named 'origin'".to_string());
+    }
+
+    let remote_url = String::from_utf8_lossy(&git_out.stdout).trim().to_string();
+    let (platform, remote_id) = parse_remote_url(&remote_url)
+        .ok_or_else(|| format!("Unrecognized remote URL: {remote_url}"))?;
+
+    let name = std::path::Path::new(&path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("repo")
+        .to_string();
+
+    Ok(RepoDetection { path, name, platform, remote_id })
+}
+
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{
@@ -125,6 +207,7 @@ pub fn run() {
             docker::n8n_status,
             docker::start_n8n,
             docker::stop_n8n,
+            pick_repo_folder,
         ])
         .on_window_event(|window, event| {
             // Kill engine when the app exits

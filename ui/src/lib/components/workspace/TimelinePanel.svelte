@@ -3,16 +3,26 @@
 
 	let { events, onselect }: { events: WorkspaceEvent[]; onselect?: (event: WorkspaceEvent) => void } = $props();
 
+	const VISIBLE_LIMIT = 150;
+	let showAll = $state(false);
+
+	const visibleEvents = $derived(
+		showAll || events.length <= VISIBLE_LIMIT
+			? events
+			: events.slice(-VISIBLE_LIMIT)
+	);
+	const hiddenCount = $derived(events.length - visibleEvents.length);
+
 	const typeColors: Record<string, string> = {
-		agent_message: 'border-blue-500',
-		user_response: 'border-green-500',
-		tool_call: 'border-amber-500',
-		file_read: 'border-surface-400',
-		file_write: 'border-violet-500',
-		approval_request: 'border-yellow-500',
-		approval_response: 'border-emerald-500',
-		status_change: 'border-cyan-500',
-		error: 'border-red-500'
+		agent_message: 'border-laya-orange/50',
+		user_response: 'border-laya-peach/40',
+		tool_call: 'border-laya-gold/40',
+		file_read: 'border-laya-sand/35',
+		file_write: 'border-laya-coral/45',
+		approval_request: 'border-laya-amber/50',
+		approval_response: 'border-laya-peach/40',
+		status_change: 'border-laya-gold/35',
+		error: 'border-laya-terracotta/50'
 	};
 
 	const typeIcons: Record<string, string> = {
@@ -32,11 +42,11 @@
 		switch (event.event_type) {
 			case 'file_read':
 			case 'file_write':
-				return (c.file_path as string) ?? (c.path as string) ?? event.event_type;
+				return (c.file as string) ?? (c.file_path as string) ?? event.event_type;
 			case 'agent_message':
-				return ((c.message as string) ?? '').slice(0, 60) || 'Agent message';
+				return ((c.text as string) ?? (c.message as string) ?? '').slice(0, 60) || 'Agent message';
 			case 'user_response':
-				return ((c.message as string) ?? '').slice(0, 60) || 'User message';
+				return ((c.text as string) ?? (c.message as string) ?? '').slice(0, 60) || 'User message';
 			case 'tool_call':
 				return (c.tool as string) ?? 'Tool call';
 			case 'approval_request':
@@ -58,13 +68,22 @@
 </script>
 
 <div class="flex h-full w-72 flex-col border-r border-surface-700 bg-surface-850">
-	<div class="border-b border-surface-700 px-4 py-3">
+	<div class="flex h-11 items-center gap-2 border-b border-surface-700 px-4">
 		<h2 class="text-xs font-semibold uppercase tracking-wider text-surface-400">Timeline</h2>
 		<span class="text-[10px] text-surface-500">{events.length} events</span>
 	</div>
 
 	<div class="flex-1 overflow-y-auto">
-		{#each events as event}
+		{#if hiddenCount > 0}
+			<button
+				class="flex w-full items-center justify-center gap-1 border-b border-surface-700 px-3 py-2 text-[11px] text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-200"
+				onclick={() => (showAll = true)}
+			>
+				Show {hiddenCount} older events
+			</button>
+		{/if}
+
+		{#each visibleEvents as event (event.event_id)}
 			<button
 				class="group flex w-full items-start gap-2 border-l-2 px-3 py-2 text-left transition-colors hover:bg-surface-800 {typeColors[event.event_type] ?? 'border-surface-600'}"
 				onclick={() => onselect?.(event)}

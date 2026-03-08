@@ -33,7 +33,7 @@ def _get_model_for_role(role: str) -> str:
     """
     settings = load_settings()
     models = settings.get("models", {})
-    model_name = models.get(role, "claude-haiku-4-5-20251001")
+    model_name = models.get(role, "claude-haiku-4-5")
 
     # If the model string already has a provider prefix, use as-is
     if "/" in model_name:

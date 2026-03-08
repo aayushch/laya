@@ -101,12 +101,14 @@ export const engineApi = {
 		priority?: string;
 		sort?: string;
 		show_archived?: boolean;
+		date?: string;
 	}) => {
 		const searchParams = new URLSearchParams();
 		if (params?.status) searchParams.set('status', params.status);
 		if (params?.priority) searchParams.set('priority', params.priority);
 		if (params?.sort) searchParams.set('sort', params.sort);
 		if (params?.show_archived) searchParams.set('show_archived', 'true');
+		if (params?.date) searchParams.set('date', params.date);
 		const qs = searchParams.toString();
 		return request<GroupedCardsResponse>(`/cards/grouped${qs ? '?' + qs : ''}`);
 	},
@@ -133,6 +135,10 @@ export const engineApi = {
 		request<{ status: string; card_id: string }>(`/cards/${cardId}/reopen`, {
 			method: 'POST'
 		}),
+	deleteCard: (cardId: string) =>
+		request<{ status: string; card_id: string }>(`/cards/${cardId}`, {
+			method: 'DELETE'
+		}),
 
 	// Actions
 	executeAction: (cardId: string, actionId: string, modifications?: Record<string, unknown>) =>
@@ -147,6 +153,18 @@ export const engineApi = {
 
 	// Workspace
 	getWorkspace: (cardId: string) => request<WorkspaceResponse>(`/cards/${cardId}/workspace`),
+
+	answerAgentQuestion: (sessionId: string, answers: Array<{ header?: string; selected: string }>, addDirs?: string[]) =>
+		request<{ status: string; session_id: string }>(`/workspace/${sessionId}/answer`, {
+			method: 'POST',
+			body: JSON.stringify({ answers, add_dirs: addDirs?.length ? addDirs : undefined })
+		}),
+
+	resumeSession: (sessionId: string, prompt: string, addDirs?: string[]) =>
+		request<{ status: string; session_id: string }>(`/workspace/${sessionId}/resume`, {
+			method: 'POST',
+			body: JSON.stringify({ prompt, add_dirs: addDirs?.length ? addDirs : undefined })
+		}),
 
 	// Dashboard
 	getDashboard: (days?: number) => {

@@ -2,6 +2,7 @@
 	import type { ActionCard } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
 	import { chatOpen, chatInputPreset } from '$lib/stores/chat';
+	import { marked } from 'marked';
 
 	let {
 		card,
@@ -17,6 +18,8 @@
 	let showDismissInput = $state(false);
 	let executingActionId = $state<string | null>(null);
 	let executeError = $state<string | null>(null);
+	let showDeleteConfirm = $state(false);
+	let deleting = $state(false);
 
 	const priorityColors: Record<string, string> = {
 		CRITICAL: 'bg-red-600 text-red-50',
@@ -35,7 +38,9 @@
 		draft_reply: 'Draft Reply',
 		code_fix: 'Code Fix',
 		briefing: 'Briefing',
-		summary: 'Summary'
+		summary: 'Summary',
+		agent_result: 'Agent Result',
+		agent_plan: 'Implementation Plan'
 	};
 
 	const terminalStatuses = new Set(['completed', 'failed', 'dismissed', 'archived']);
@@ -58,6 +63,7 @@
 
 	async function executeAction(actionId: string) {
 		executingActionId = actionId;
+		card.selected_action_id = actionId;
 		executeError = null;
 		try {
 			const result = await engineApi.executeAction(card.card_id, actionId);
@@ -108,6 +114,15 @@
 		} finally {
 			reopening = false;
 		}
+	}
+
+	function deleteCard() {
+		// Optimistic: close immediately, fire API in background
+		showDeleteConfirm = false;
+		onclose();
+		engineApi.deleteCard(card.card_id).catch(() => {
+			// If delete fails, next WS reload will restore the card
+		});
 	}
 
 	async function copyId() {
@@ -189,6 +204,24 @@
 
 	<!-- Scrollable content -->
 	<div class="flex-1 overflow-y-auto px-5 py-4">
+		<!-- Actor info -->
+		{#if card.actor_name || card.actor_email}
+			<div class="mb-3 flex flex-col gap-0.5">
+				{#if card.actor_name}
+					<div class="flex items-center gap-1.5">
+						<span class="text-[10px] font-semibold uppercase tracking-wider text-surface-500">Actor</span>
+						<span class="text-xs text-surface-300">{card.actor_name}</span>
+					</div>
+				{/if}
+				{#if card.actor_email}
+					<div class="flex items-center gap-1.5">
+						<span class="text-[10px] font-semibold uppercase tracking-wider text-surface-500">Email</span>
+						<span class="text-xs text-surface-400">{card.actor_email}</span>
+					</div>
+				{/if}
+			</div>
+		{/if}
+
 		<!-- Header + summary -->
 		<h2 class="mb-2 text-lg font-semibold text-surface-50">{card.header}</h2>
 		<p class="mb-5 text-sm text-surface-300">{card.summary}</p>
@@ -216,9 +249,13 @@
 				</h3>
 				{#if card.staged_output.type === 'code_fix'}
 					<pre class="overflow-x-auto rounded-lg bg-surface-900 p-3 text-xs text-surface-200">{card.staged_output.content}</pre>
+				{:else if card.staged_output.type === 'agent_plan'}
+					<div class="prose-plan max-h-96 overflow-y-auto rounded-lg border border-surface-700 bg-surface-900/50 p-4 text-sm text-surface-200">
+						{@html marked(card.staged_output.content)}
+					</div>
 				{:else}
-					<div class="rounded-lg border border-surface-700 bg-surface-900/50 p-3 text-sm text-surface-200 whitespace-pre-wrap">
-						{card.staged_output.content}
+					<div class="prose-plan max-h-96 overflow-y-auto overflow-x-auto rounded-lg border border-surface-700 bg-surface-900/50 p-4 text-sm text-surface-200">
+						{@html marked(card.staged_output.content)}
 					</div>
 				{/if}
 			</div>
@@ -230,16 +267,26 @@
 				<h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-surface-400">Suggested Actions</h3>
 				<div class="flex flex-wrap gap-2">
 					{#each card.suggested_actions as action}
+						{@const isSelected = card.selected_action_id === action.action_id}
 						<button
-							class="rounded-lg border border-surface-600 bg-surface-700/50 px-3 py-1.5 text-xs font-medium text-surface-200 transition-colors hover:bg-surface-600 disabled:opacity-50 disabled:cursor-not-allowed"
+							class="rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed
+								{isSelected
+									? 'border-laya-orange/50 bg-laya-orange/15 text-laya-orange'
+									: card.selected_action_id && !isSelected
+										? 'border-surface-700 bg-surface-800/50 text-surface-500'
+										: 'border-surface-600 bg-surface-700/50 text-surface-200 hover:bg-surface-600'}
+								{!isSelected && card.selected_action_id ? 'opacity-50' : ''}"
 							onclick={() => executeAction(action.action_id)}
 							disabled={!!executingActionId || isTerminal || card.status === 'executing'}
 						>
 							{#if executingActionId === action.action_id}
 								Executing...
 							{:else}
+								{#if isSelected}
+									<span class="mr-1">&#10003;</span>
+								{/if}
 								{action.label}
-								<span class="ml-1 text-surface-500">({action.target_platform})</span>
+								<span class="ml-1 {isSelected ? 'text-laya-orange/60' : 'text-surface-500'}">({action.target_platform})</span>
 							{/if}
 						</button>
 					{/each}
@@ -247,6 +294,30 @@
 				{#if executeError}
 					<p class="mt-2 text-xs text-red-400">{executeError}</p>
 				{/if}
+			</div>
+		{/if}
+
+		<!-- Source reference -->
+		{#if card.source_ref}
+			<div class="mt-4 border-t border-surface-700 pt-3">
+				<h3 class="mb-1.5 text-xs font-semibold uppercase tracking-wider text-surface-400">Source</h3>
+				<div class="flex items-center gap-2">
+					{#if card.source_url}
+						<a
+							href={card.source_url}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="inline-flex items-center gap-1 text-sm font-medium text-laya-orange hover:text-laya-peach transition-colors"
+						>
+							{card.source_ref}
+							<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+							</svg>
+						</a>
+					{:else}
+						<span class="text-sm font-medium text-surface-200">{card.source_ref}</span>
+					{/if}
+				</div>
 			</div>
 		{/if}
 
@@ -335,16 +406,28 @@
 						{archiving ? '…' : 'Archive'}
 					</button>
 				{/if}
+				{#if card.status === 'archived'}
+					<button
+						class="rounded-lg bg-red-950/60 px-3 py-2 text-sm text-red-400 transition-colors hover:bg-red-900/60 disabled:opacity-50"
+						onclick={() => (showDeleteConfirm = true)}
+						title="Delete permanently"
+						disabled={deleting}
+					>
+						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+						</svg>
+					</button>
+				{/if}
 			</div>
-		{:else if card.status === 'completed' || card.status === 'failed'}
+		{:else}
 			<div class="flex gap-2">
 				{#if card.status === 'failed'}
 					<button
 						class="flex-1 rounded-lg bg-orange-700/30 py-2 text-sm font-medium text-orange-300 transition-colors hover:bg-orange-700/50 disabled:opacity-50"
-						onclick={approve}
-						disabled={approving}
+						onclick={reopen}
+						disabled={reopening}
 					>
-						{approving ? 'Retrying...' : 'Retry'}
+						{reopening ? 'Retrying...' : 'Retry'}
 					</button>
 				{/if}
 				<button
@@ -358,3 +441,44 @@
 		{/if}
 	</div>
 </div>
+
+{#if showDeleteConfirm}
+	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+	<div
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+		onclick={(e) => { if (e.target === e.currentTarget) showDeleteConfirm = false; }}
+	>
+		<div class="mx-4 w-full max-w-sm rounded-xl border border-red-800/40 bg-surface-800 p-5 shadow-2xl">
+			<div class="mb-3 flex items-start gap-3">
+				<div class="mt-0.5 rounded-full bg-red-950/60 p-1.5">
+					<svg class="h-4 w-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+					</svg>
+				</div>
+				<div>
+					<h4 class="text-sm font-semibold text-surface-50">Delete card permanently?</h4>
+					<p class="mt-1 text-xs leading-relaxed text-surface-400">
+						All details, intelligence, workspace sessions, and related events for this card will be
+						<span class="font-medium text-red-400">permanently removed</span>. This cannot be undone.
+					</p>
+				</div>
+			</div>
+			<div class="flex justify-end gap-2">
+				<button
+					class="rounded-md px-3 py-1.5 text-xs text-surface-400 transition-colors hover:text-surface-200 disabled:opacity-50"
+					onclick={() => (showDeleteConfirm = false)}
+					disabled={deleting}
+				>
+					Cancel
+				</button>
+				<button
+					class="rounded-md bg-red-700 px-3 py-1.5 text-xs font-medium text-red-50 transition-colors hover:bg-red-600 disabled:opacity-50"
+					onclick={deleteCard}
+					disabled={deleting}
+				>
+					{deleting ? 'Deleting…' : 'Delete permanently'}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}

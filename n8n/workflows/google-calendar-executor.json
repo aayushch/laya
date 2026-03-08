@@ -1,0 +1,69 @@
+{
+  "name": "Laya - Google Calendar Executor",
+  "nodes": [
+    {
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "parameters": {
+        "path": "google_calendar-executor",
+        "httpMethod": "POST",
+        "responseMode": "responseNode"
+      }
+    },
+    {
+      "name": "Create Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "position": [500, 200],
+      "parameters": {
+        "operation": "create",
+        "calendar": "primary",
+        "start": "={{ $json.body.payload.start_time }}",
+        "end": "={{ $json.body.payload.end_time || (new Date(new Date($json.body.payload.start_time).getTime() + ($json.body.payload.duration_minutes || 60) * 60000)).toISOString() }}",
+        "additionalFields": {
+          "summary": "={{ $json.body.payload.title || $json.body.event_subject || 'Laya Event' }}",
+          "description": "={{ $json.body.payload.description || ('Created by Laya from: ' + ($json.body.event_subject || '')) }}",
+          "attendees": "={{ ($json.body.payload.attendees || []).join(',') }}"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [750, 100],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, result: { event_id: $json.id || '', url: $json.htmlLink || '' } }) }}"
+      }
+    },
+    {
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [750, 400],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'Google Calendar create failed — check credentials and workflow execution log') }) }}"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Create Event", "type": "main", "index": 0 }]]
+    },
+    "Create Event": {
+      "main": [
+        [{ "node": "Respond Success", "type": "main", "index": 0 }],
+        [{ "node": "Respond Error", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

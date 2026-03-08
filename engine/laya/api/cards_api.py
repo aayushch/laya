@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime, timezone
 from typing import Any
@@ -10,6 +11,7 @@ import structlog
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from laya.agents.session_manager import cancel_sessions_for_card
 from laya.api.websocket import manager
 from laya.db.sqlite import get_db
 from laya.models.card import CardGroup, CardResponse, CardsListResponse, GroupedCardsResponse, StagedOutput, SuggestedAction
@@ -65,6 +67,11 @@ def _row_to_card(row) -> CardResponse:
         stager_model=row["stager_model"],
         updated_at=row["updated_at"],
         entity_id=row["entity_id"] if "entity_id" in row.keys() else None,
+        source_ref=row["source_ref"] if "source_ref" in row.keys() else None,
+        source_url=row["source_url"] if "source_url" in row.keys() else None,
+        selected_action_id=row["selected_action_id"] if "selected_action_id" in row.keys() else None,
+        actor_name=row["actor_name"] if "actor_name" in row.keys() else None,
+        actor_email=row["actor_email"] if "actor_email" in row.keys() else None,
     )
 
 
@@ -84,10 +91,10 @@ async def list_cards(
     params: list[Any] = []
 
     if status:
-        conditions.append("status = ?")
+        conditions.append("c.status = ?")
         params.append(status)
     if priority:
-        conditions.append("priority = ?")
+        conditions.append("c.priority = ?")
         params.append(priority)
 
     where_clause = ""
@@ -96,9 +103,9 @@ async def list_cards(
 
     # Sort
     sort_map = {
-        "created_at_desc": "created_at DESC",
-        "created_at_asc": "created_at ASC",
-        "priority_desc": """CASE priority
+        "created_at_desc": "c.created_at DESC",
+        "created_at_asc": "c.created_at ASC",
+        "priority_desc": """CASE c.priority
             WHEN 'CRITICAL' THEN 0
             WHEN 'HIGH' THEN 1
             WHEN 'MEDIUM' THEN 2
@@ -109,18 +116,20 @@ async def list_cards(
 
     # Count total
     count_rows = await db.execute_fetchall(
-        f"SELECT COUNT(*) FROM action_cards {where_clause}", params
+        f"SELECT COUNT(*) FROM action_cards c {where_clause}", params
     )
     total = count_rows[0][0]
 
     # Fetch page
     rows = await db.execute_fetchall(
-        f"""SELECT card_id, event_id, created_at, priority, persona, category,
-                   header, summary, intelligence, staged_output, suggested_actions,
-                   status, privacy_tier, has_workspace, resolved_at, user_feedback,
-                   feedback_type, confidence, router_model, stager_model, updated_at,
-                   entity_id
-            FROM action_cards
+        f"""SELECT c.card_id, c.event_id, c.created_at, c.priority, c.persona, c.category,
+                   c.header, c.summary, c.intelligence, c.staged_output, c.suggested_actions,
+                   c.status, c.privacy_tier, c.has_workspace, c.resolved_at, c.user_feedback,
+                   c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at,
+                   c.entity_id, c.source_ref, c.source_url, c.selected_action_id,
+                   e.actor_name, e.actor_email
+            FROM action_cards c
+            LEFT JOIN events e ON c.event_id = e.event_id
             {where_clause}
             ORDER BY {order_by}
             LIMIT ? OFFSET ?""",
@@ -142,31 +151,51 @@ async def get_grouped_cards(
     priority: str | None = None,
     sort: str = "newest",
     show_archived: bool = False,
+    date: str | None = None,
 ) -> GroupedCardsResponse:
-    """Return cards grouped by entity_id."""
+    """Return cards grouped by entity_id, filtered by date."""
     db = await get_db()
 
     conditions: list[str] = []
     params: list[Any] = []
+    if date:
+        conditions.append("DATE(c.created_at) = ?")
+        params.append(date)
     if status:
-        conditions.append("status = ?")
-        params.append(status)
+        # Support comma-separated multi-select, e.g. "pending,approved"
+        statuses = [s.strip() for s in status.split(",") if s.strip()]
+        if len(statuses) == 1:
+            conditions.append("c.status = ?")
+            params.append(statuses[0])
+        elif statuses:
+            placeholders = ",".join("?" for _ in statuses)
+            conditions.append(f"c.status IN ({placeholders})")
+            params.extend(statuses)
     if priority:
-        conditions.append("priority = ?")
-        params.append(priority)
+        # Support comma-separated multi-select, e.g. "CRITICAL,HIGH"
+        priorities = [p.strip() for p in priority.split(",") if p.strip()]
+        if len(priorities) == 1:
+            conditions.append("c.priority = ?")
+            params.append(priorities[0])
+        elif priorities:
+            placeholders = ",".join("?" for _ in priorities)
+            conditions.append(f"c.priority IN ({placeholders})")
+            params.extend(priorities)
     if not show_archived:
-        conditions.append("status != 'archived'")
+        conditions.append("c.status != 'archived'")
     where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
     rows = await db.execute_fetchall(
-        f"""SELECT card_id, event_id, created_at, priority, persona, category,
-                   header, summary, intelligence, staged_output, suggested_actions,
-                   status, privacy_tier, has_workspace, resolved_at, user_feedback,
-                   feedback_type, confidence, router_model, stager_model, updated_at,
-                   entity_id
-            FROM action_cards
+        f"""SELECT c.card_id, c.event_id, c.created_at, c.priority, c.persona, c.category,
+                   c.header, c.summary, c.intelligence, c.staged_output, c.suggested_actions,
+                   c.status, c.privacy_tier, c.has_workspace, c.resolved_at, c.user_feedback,
+                   c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at,
+                   c.entity_id, c.source_ref, c.source_url, c.selected_action_id,
+                   e.actor_name, e.actor_email
+            FROM action_cards c
+            LEFT JOIN events e ON c.event_id = e.event_id
             {where_clause}
-            ORDER BY created_at DESC""",
+            ORDER BY c.created_at DESC""",
         params,
     )
 
@@ -216,14 +245,43 @@ async def get_grouped_cards(
         result.sort(key=lambda g: g.latest_at)
     elif sort == "priority":
         result.sort(key=lambda g: _PRIORITY_ORDER.get(g.top_priority, 99))
+        for g in result:
+            g.sort_key = g.top_priority
     elif sort == "platform":
         result.sort(key=lambda g: g.platform.lower())
+        for g in result:
+            g.sort_key = g.platform or "Unknown"
     elif sort == "category":
         result.sort(key=lambda g: g.cards[0].persona if g.cards else "")
+        for g in result:
+            g.sort_key = g.cards[0].persona if g.cards else "Unknown"
     else:  # newest (default)
         result.sort(key=lambda g: g.latest_at, reverse=True)
 
-    return GroupedCardsResponse(groups=result, total_groups=len(result))
+    # Resolve prev/next dates for pagination
+    prev_date_val: str | None = None
+    next_date_val: str | None = None
+    if date:
+        prev_rows = await db.execute_fetchall(
+            "SELECT DATE(created_at) AS d FROM action_cards WHERE DATE(created_at) < ? GROUP BY d ORDER BY d DESC LIMIT 1",
+            (date,),
+        )
+        if prev_rows:
+            prev_date_val = prev_rows[0]["d"]
+        next_rows = await db.execute_fetchall(
+            "SELECT DATE(created_at) AS d FROM action_cards WHERE DATE(created_at) > ? GROUP BY d ORDER BY d ASC LIMIT 1",
+            (date,),
+        )
+        if next_rows:
+            next_date_val = next_rows[0]["d"]
+
+    return GroupedCardsResponse(
+        groups=result,
+        total_groups=len(result),
+        date=date,
+        prev_date=prev_date_val,
+        next_date=next_date_val,
+    )
 
 
 @router.post("/cards/group/{entity_id:path}/dismiss-all")
@@ -267,10 +325,12 @@ async def archive_card(card_id: str) -> dict:
     current = rows[0]["status"]
     if current == "archived":
         return {"status": "archived", "card_id": card_id}
-    if current in {"completed", "failed"}:
-        raise HTTPException(
-            status_code=409, detail=f"Card status '{current}' cannot be archived"
-        )
+
+    # Cancel any running agent session before archiving (don't block the HTTP response)
+    try:
+        await asyncio.wait_for(cancel_sessions_for_card(card_id), timeout=2.0)
+    except asyncio.TimeoutError:
+        log.warning("session_cancel_timeout", card_id=card_id)
 
     now = datetime.now(timezone.utc).isoformat()
     await db.execute(
@@ -299,7 +359,7 @@ async def reopen_card(card_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Card not found")
 
     current = rows[0]["status"]
-    reopenable = {"dismissed", "completed", "failed", "archived"}
+    reopenable = {"dismissed", "completed", "failed", "archived", "executing", "agent_running"}
     if current not in reopenable:
         raise HTTPException(
             status_code=409, detail=f"Card status '{current}' cannot be reopened"
@@ -326,13 +386,15 @@ async def get_card(card_id: str) -> CardResponse:
     db = await get_db()
 
     rows = await db.execute_fetchall(
-        """SELECT card_id, event_id, created_at, priority, persona, category,
-                  header, summary, intelligence, staged_output, suggested_actions,
-                  status, privacy_tier, has_workspace, resolved_at, user_feedback,
-                  feedback_type, confidence, router_model, stager_model, updated_at,
-                  entity_id
-           FROM action_cards
-           WHERE card_id = ?""",
+        """SELECT c.card_id, c.event_id, c.created_at, c.priority, c.persona, c.category,
+                  c.header, c.summary, c.intelligence, c.staged_output, c.suggested_actions,
+                  c.status, c.privacy_tier, c.has_workspace, c.resolved_at, c.user_feedback,
+                  c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at,
+                  c.entity_id, c.source_ref, c.source_url, c.selected_action_id,
+                  e.actor_name, e.actor_email
+           FROM action_cards c
+           LEFT JOIN events e ON c.event_id = e.event_id
+           WHERE c.card_id = ?""",
         (card_id,),
     )
 
@@ -384,6 +446,65 @@ async def approve_card(card_id: str, body: ApproveRequest | None = None) -> dict
 
     log.info("card_approved", card_id=card_id)
     return {"status": "approved", "card_id": card_id}
+
+
+async def _delete_card_cascade(db, card_id: str, event_id: str | None) -> None:
+    """Hard-delete a card and all its related rows in correct FK order."""
+    # workspace_events → workspace_sessions → action_log → audit_log → action_cards → events
+    await db.execute(
+        "DELETE FROM workspace_events WHERE session_id IN "
+        "(SELECT session_id FROM workspace_sessions WHERE card_id = ?)",
+        (card_id,),
+    )
+    await db.execute("DELETE FROM workspace_sessions WHERE card_id = ?", (card_id,))
+    await db.execute("DELETE FROM action_log WHERE card_id = ?", (card_id,))
+    await db.execute("DELETE FROM audit_log WHERE card_id = ?", (card_id,))
+    await db.execute("DELETE FROM action_cards WHERE card_id = ?", (card_id,))
+    # Remove the source event only if no other cards still reference it
+    if event_id:
+        await db.execute(
+            "DELETE FROM events WHERE event_id = ? "
+            "AND NOT EXISTS (SELECT 1 FROM action_cards WHERE event_id = ?)",
+            (event_id, event_id),
+        )
+
+
+@router.delete("/cards/{card_id}")
+async def delete_card(card_id: str) -> dict:
+    """Permanently delete an archived card and all related data."""
+    db = await get_db()
+
+    rows = await db.execute_fetchall(
+        "SELECT status, event_id FROM action_cards WHERE card_id = ?", (card_id,)
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    if rows[0]["status"] != "archived":
+        raise HTTPException(
+            status_code=409, detail="Only archived cards can be deleted"
+        )
+
+    # Cancel any lingering agent session (don't block the HTTP response)
+    try:
+        await asyncio.wait_for(cancel_sessions_for_card(card_id), timeout=2.0)
+    except asyncio.TimeoutError:
+        log.warning("session_cancel_timeout_on_delete", card_id=card_id)
+
+    event_id = rows[0]["event_id"]
+    await _delete_card_cascade(db, card_id, event_id)
+    await db.commit()
+
+    # Remove card embedding from ChromaDB (best-effort, with timeout)
+    try:
+        from laya.db.chromadb_store import delete_document
+        await asyncio.wait_for(delete_document(f"card_{card_id}"), timeout=3.0)
+    except Exception as e:
+        log.warning("card_embed_delete_failed", card_id=card_id, error=str(e))
+
+    await manager.broadcast({"type": "card_deleted", "card_id": card_id})
+    log.info("card_deleted", card_id=card_id)
+    return {"status": "deleted", "card_id": card_id}
 
 
 class DismissRequest(BaseModel):

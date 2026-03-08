@@ -2,20 +2,28 @@
 	import { onMount } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
 
-	// Model options for each role
-	const routerModels = [
-		{ value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
-		{ value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-		{ value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview' },
-		{ value: 'ollama/llama3', label: 'Ollama Llama 3 (local)' }
+	// All available models — any model can be used for any role
+	const allModels = [
+		{ value: 'claude-opus-4-6', label: 'Claude Opus 4.6', tier: 'strong' },
+		{ value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', tier: 'strong' },
+		{ value: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5', tier: 'strong' },
+		{ value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', tier: 'light' },
+		{ value: 'gpt-4o', label: 'GPT-4o', tier: 'strong' },
+		{ value: 'gpt-4o-mini', label: 'GPT-4o Mini', tier: 'light' },
+		{ value: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro Preview', tier: 'strong' },
+		{ value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview', tier: 'light' },
+		{ value: 'ollama/llama3', label: 'Ollama Llama 3 (local)', tier: 'light' }
 	];
 
-	const stagerModels = [
-		{ value: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5' },
-		{ value: 'gpt-4o', label: 'GPT-4o' },
-		{ value: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro Preview' },
-		{ value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview' },
-		{ value: 'ollama/llama3', label: 'Ollama Llama 3 (local)' }
+	const tierLabel: Record<string, string> = {
+		strong: 'Strong',
+		light: 'Light'
+	};
+
+	const roles = [
+		{ id: 'router', label: 'Router', hint: 'Classifies incoming events' },
+		{ id: 'stager', label: 'Stager', hint: 'Synthesises action cards' },
+		{ id: 'chat', label: 'Chat', hint: 'Conversational responses' }
 	];
 
 	const providers = [
@@ -25,9 +33,9 @@
 	];
 
 	let models = $state({
-		router: 'claude-haiku-4-5-20251001',
-		stager: 'claude-sonnet-4-5-20250929',
-		chat: 'claude-sonnet-4-5-20250929',
+		router: 'claude-haiku-4-5',
+		stager: 'claude-sonnet-4-6',
+		chat: 'claude-sonnet-4-6',
 		local: 'ollama/llama3'
 	});
 
@@ -101,52 +109,37 @@
 	<div class="space-y-8">
 		<!-- Model Selection -->
 		<div class="rounded-lg border border-surface-700 bg-surface-800 p-5">
-			<h3 class="mb-4 text-lg font-medium">Model Selection</h3>
+			<h3 class="mb-1 text-lg font-medium">Model Selection</h3>
+			<p class="mb-4 text-xs text-surface-500">Choose any model for each pipeline stage based on your cost and quality preference.</p>
 			<div class="space-y-4">
-				<div class="grid grid-cols-[140px_1fr] items-center gap-3">
-					<label for="router-model" class="text-sm text-surface-400">Router (fast)</label>
-					<select
-						id="router-model"
-						bind:value={models.router}
-						onchange={saveModels}
-						class="rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100"
-					>
-						{#each routerModels as model}
-							<option value={model.value}>{model.label}</option>
-						{/each}
-					</select>
-				</div>
+				{#each roles as role}
+					<div class="grid grid-cols-[140px_1fr] items-center gap-3">
+						<div>
+							<label for="{role.id}-model" class="text-sm text-surface-400">{role.label}</label>
+							<p class="text-[10px] text-surface-500">{role.hint}</p>
+						</div>
+						<select
+							id="{role.id}-model"
+							bind:value={models[role.id as keyof typeof models]}
+							onchange={saveModels}
+							class="rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100"
+						>
+							{#each ['strong', 'light'] as tier}
+								<optgroup label={tierLabel[tier]}>
+									{#each allModels.filter((m) => m.tier === tier) as model}
+										<option value={model.value}>{model.label}</option>
+									{/each}
+								</optgroup>
+							{/each}
+						</select>
+					</div>
+				{/each}
 
 				<div class="grid grid-cols-[140px_1fr] items-center gap-3">
-					<label for="stager-model" class="text-sm text-surface-400">Stager (strong)</label>
-					<select
-						id="stager-model"
-						bind:value={models.stager}
-						onchange={saveModels}
-						class="rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100"
-					>
-						{#each stagerModels as model}
-							<option value={model.value}>{model.label}</option>
-						{/each}
-					</select>
-				</div>
-
-				<div class="grid grid-cols-[140px_1fr] items-center gap-3">
-					<label for="chat-model" class="text-sm text-surface-400">Chat</label>
-					<select
-						id="chat-model"
-						bind:value={models.chat}
-						onchange={saveModels}
-						class="rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100"
-					>
-						{#each stagerModels as model}
-							<option value={model.value}>{model.label}</option>
-						{/each}
-					</select>
-				</div>
-
-				<div class="grid grid-cols-[140px_1fr] items-center gap-3">
-					<label for="local-model" class="text-sm text-surface-400">Local (privacy)</label>
+					<div>
+						<label for="local-model" class="text-sm text-surface-400">Local</label>
+						<p class="text-[10px] text-surface-500">Privacy-focused local model</p>
+					</div>
 					<input
 						id="local-model"
 						type="text"

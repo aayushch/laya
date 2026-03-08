@@ -105,3 +105,88 @@
 [data-theme='light'] .bg-violet-900\/60 {
 	background-color: oklch(0.88 0.08 285 / 60%);
 }
+
+/* ─────────────────────────────────────────────────────────────
+   LIGHT THEME — status card tints
+   In dark mode, bg-*-950/NN creates subtle dark tinted overlays.
+   In light mode, swap these to soft pastel tints on warm cream.
+   ───────────────────────────────────────────────────────────── */
+
+/* Pending / Awaiting Input — warm peach */
+[data-theme='light'] .bg-amber-950\/55   { background-color: oklch(0.94 0.045 75); }
+[data-theme='light'] .border-amber-800\/30 { border-color: oklch(0.80 0.07 70 / 55%); }
+[data-theme='light'] .hover\:border-amber-700\/45:hover { border-color: oklch(0.72 0.10 65 / 65%); }
+
+/* Approved — soft mint */
+[data-theme='light'] .bg-green-950\/55   { background-color: oklch(0.94 0.04 148); }
+[data-theme='light'] .border-green-800\/25 { border-color: oklch(0.74 0.07 148 / 45%); }
+[data-theme='light'] .hover\:border-green-700\/40:hover { border-color: oklch(0.64 0.10 148 / 60%); }
+
+/* Executing — pale sky */
+[data-theme='light'] .bg-sky-950\/55     { background-color: oklch(0.94 0.04 230); }
+[data-theme='light'] .border-sky-800\/25 { border-color: oklch(0.74 0.07 230 / 45%); }
+[data-theme='light'] .hover\:border-sky-700\/40:hover { border-color: oklch(0.64 0.10 230 / 60%); }
+
+/* Completed — light emerald */
+[data-theme='light'] .bg-emerald-950\/50 { background-color: oklch(0.94 0.04 162); }
+[data-theme='light'] .border-emerald-800\/20 { border-color: oklch(0.74 0.07 162 / 40%); }
+[data-theme='light'] .hover\:border-emerald-700\/35:hover { border-color: oklch(0.64 0.10 162 / 55%); }
+
+/* Failed — soft blush */
+[data-theme='light'] .bg-red-950\/60     { background-color: oklch(0.94 0.045 25); }
+[data-theme='light'] .border-red-800\/35 { border-color: oklch(0.74 0.08 25 / 55%); }
+[data-theme='light'] .hover\:border-red-700\/50:hover { border-color: oklch(0.64 0.12 25 / 65%); }
+[data-theme='light'] .border-red-800\/40 { border-color: oklch(0.74 0.08 25 / 55%); }
+
+/* Dismissed — warm gray */
+[data-theme='light'] .bg-zinc-950\/60    { background-color: oklch(0.94 0.008 65); }
+[data-theme='light'] .border-zinc-700\/30 { border-color: oklch(0.78 0.008 60 / 45%); }
+[data-theme='light'] .hover\:border-zinc-600\/45:hover { border-color: oklch(0.68 0.010 55 / 60%); }
+
+/* Agent Running — lavender */
+[data-theme='light'] .bg-violet-950\/55  { background-color: oklch(0.94 0.04 285); }
+[data-theme='light'] .border-violet-800\/25 { border-color: oklch(0.74 0.07 285 / 45%); }
+[data-theme='light'] .hover\:border-violet-700\/40:hover { border-color: oklch(0.64 0.10 285 / 60%); }
+
+/* Staged — soft teal */
+[data-theme='light'] .bg-teal-950\/50    { background-color: oklch(0.94 0.04 185); }
+[data-theme='light'] .border-teal-800\/20 { border-color: oklch(0.74 0.07 185 / 40%); }
+[data-theme='light'] .hover\:border-teal-700\/35:hover { border-color: oklch(0.64 0.10 185 / 55%); }
+
+/* ─────────────────────────────────────────────────────────────
+   LIGHT THEME — card action text and workspace badges
+   Darken light-on-dark utility text for cream backgrounds.
+   ───────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────
+   PROSE-PLAN — Markdown rendering for agent plans
+   Minimal typographic styles for rendered markdown inside
+   workspace AgentPanel and CardDetail staged output.
+   ───────────────────────────────────────────────────────────── */
+.prose-plan h1 { font-size: 1.25rem; font-weight: 700; margin: 1rem 0 0.5rem; color: var(--color-surface-100); }
+.prose-plan h2 { font-size: 1.1rem;  font-weight: 600; margin: 0.875rem 0 0.375rem; color: var(--color-surface-100); }
+.prose-plan h3 { font-size: 0.95rem; font-weight: 600; margin: 0.75rem 0 0.25rem; color: var(--color-surface-200); }
+.prose-plan p  { margin: 0.375rem 0; line-height: 1.6; }
+.prose-plan ul, .prose-plan ol { margin: 0.375rem 0; padding-left: 1.25rem; }
+.prose-plan ul { list-style-type: disc; }
+.prose-plan ol { list-style-type: decimal; }
+.prose-plan li { margin: 0.2rem 0; line-height: 1.5; }
+.prose-plan code { font-size: 0.8em; padding: 0.15em 0.35em; border-radius: 0.25rem; background: var(--color-surface-800); color: var(--color-laya-peach); }
+.prose-plan pre { margin: 0.5rem 0; padding: 0.75rem; border-radius: 0.5rem; background: var(--color-surface-900); overflow-x: auto; }
+.prose-plan pre code { padding: 0; background: transparent; color: var(--color-surface-300); font-size: 0.8em; }
+.prose-plan table { min-width: 100%; margin: 0.5rem 0; border-collapse: collapse; font-size: 0.85em; }
+.prose-plan th { text-align: left; padding: 0.375rem 0.75rem; border-bottom: 1px solid var(--color-surface-600); color: var(--color-surface-200); font-weight: 600; white-space: nowrap; }
+.prose-plan td { padding: 0.375rem 0.75rem; border-bottom: 1px solid var(--color-surface-700); }
+.prose-plan hr { border: none; border-top: 1px solid var(--color-surface-700); margin: 0.75rem 0; }
+.prose-plan strong { color: var(--color-surface-100); }
+.prose-plan a { color: var(--color-laya-orange); text-decoration: underline; }
+.prose-plan blockquote { border-left: 3px solid var(--color-laya-orange); padding-left: 0.75rem; margin: 0.5rem 0; color: var(--color-surface-400); }
+
+[data-theme='light'] .prose-plan code { background: oklch(0.92 0.01 65); color: oklch(0.35 0.12 45); }
+[data-theme='light'] .prose-plan pre { background: oklch(0.95 0.008 65); }
+[data-theme='light'] .prose-plan pre code { color: oklch(0.30 0.02 60); background: transparent; }
+
+[data-theme='light'] .text-green-200     { color: oklch(0.36 0.14 145); }
+[data-theme='light'] .text-orange-200    { color: oklch(0.44 0.14 55);  }
+[data-theme='light'] .text-orange-400    { color: oklch(0.46 0.18 55);  }
+[data-theme='light'] .text-violet-300    { color: oklch(0.42 0.18 285); }
+[data-theme='light'] .text-sky-300       { color: oklch(0.42 0.14 230); }

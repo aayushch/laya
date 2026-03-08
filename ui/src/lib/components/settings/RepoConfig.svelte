@@ -1,7 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { invoke } from '@tauri-apps/api/core';
 	import { engineApi } from '$lib/api/engine';
 	import type { Repo } from '$lib/api/types';
+
+	interface RepoDetection {
+		path: string;
+		name: string;
+		platform: string;
+		remote_id: string;
+	}
 
 	let repos = $state<Repo[]>([]);
 	let loading = $state(true);
@@ -15,6 +23,8 @@
 	let formPath = $state('');
 	let formPlatform = $state('');
 	let formRemoteId = $state('');
+	let detectionStatus = $state<{ ok: boolean; msg: string } | null>(null);
+	let browsing = $state(false);
 
 	onMount(async () => {
 		try {
@@ -46,6 +56,27 @@
 		formRemoteId = '';
 		showAddForm = false;
 		editingIndex = null;
+		detectionStatus = null;
+	}
+
+	async function browseRepo() {
+		browsing = true;
+		detectionStatus = null;
+		try {
+			const result = await invoke<RepoDetection>('pick_repo_folder');
+			formPath = result.path;
+			formName = result.name;
+			formPlatform = result.platform;
+			formRemoteId = result.remote_id;
+			detectionStatus = { ok: true, msg: `${result.platform} · ${result.remote_id}` };
+		} catch (err: unknown) {
+			const msg = String(err);
+			if (!msg.includes('cancelled')) {
+				detectionStatus = { ok: false, msg: msg.replace(/^Error: /, '') };
+			}
+		} finally {
+			browsing = false;
+		}
 	}
 
 	async function addRepo() {
@@ -127,6 +158,20 @@
 	{#if showAddForm || editingIndex !== null}
 		<div class="rounded-xl border border-surface-700 bg-surface-800 p-4">
 			<h3 class="mb-3 text-sm font-medium">{editingIndex !== null ? 'Edit Repository' : 'Add Repository'}</h3>
+			<div class="mb-3 flex items-center gap-3">
+				<button
+					class="rounded-lg border border-surface-600 bg-surface-700 px-3 py-2 text-sm font-medium transition-colors hover:bg-surface-600 disabled:opacity-50"
+					onclick={browseRepo}
+					disabled={browsing}
+				>
+					{browsing ? 'Opening…' : 'Browse…'}
+				</button>
+				{#if detectionStatus}
+					<span class="text-sm {detectionStatus.ok ? 'text-green-400' : 'text-red-400'}">
+						{detectionStatus.ok ? '✓' : '✗'} {detectionStatus.msg}
+					</span>
+				{/if}
+			</div>
 			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 				<input bind:value={formName} placeholder="Name (e.g. payments-service)" class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500" />
 				<input bind:value={formPath} placeholder="Local path (e.g. /home/user/repos/payments)" class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500" />
