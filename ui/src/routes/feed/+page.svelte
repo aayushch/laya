@@ -3,16 +3,35 @@
 	import { engineApi } from '$lib/api/engine';
 	import { lastMessage } from '$lib/stores/websocket';
 	import { feedFilters, feedDate, feedPrevDate, feedNextDate } from '$lib/stores/feedFilters';
-	import type { ActionCard, CardGroup } from '$lib/api/types';
+	import type { ActionCard, CardGroup, DaySummary } from '$lib/api/types';
 	import CardGroupComponent from '$lib/components/feed/CardGroup.svelte';
 	import ActionCardComponent from '$lib/components/feed/ActionCard.svelte';
 	import CardDetail from '$lib/components/feed/CardDetail.svelte';
+	import DaySummaryComponent from '$lib/components/feed/DaySummary.svelte';
 
 	let groups = $state<CardGroup[]>([]);
 	let totalGroups = $state(0);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let selectedCard = $state<ActionCard | null>(null);
+
+	// Summary View state — persisted to localStorage
+	const SUMMARY_VIEW_KEY = 'laya_feed_summary_view';
+	let showSummary = $state(
+		typeof window !== 'undefined' && localStorage.getItem(SUMMARY_VIEW_KEY) === 'true'
+	);
+	let daySummary = $state<DaySummary | null>(null);
+	let summaryUpdatedAt = $state<string | null>(null);
+	let summaryLoading = $state(false);
+
+	function toggleSummaryView() {
+		showSummary = !showSummary;
+		localStorage.setItem(SUMMARY_VIEW_KEY, String(showSummary));
+		if (showSummary && !daySummary) loadSummary();
+	}
+
+	// Persist selected card ID across webview navigations (e.g. external link → back)
+	const SELECTED_CARD_KEY = 'laya_feed_selected_card';
 
 	function formatDateLabel(dateStr: string): string {
 		const today = new Date().toISOString().slice(0, 10);
@@ -49,6 +68,22 @@
 			totalGroups = data.total_groups;
 			$feedPrevDate = data.prev_date ?? null;
 			$feedNextDate = data.next_date ?? null;
+
+			// Restore selected card after navigating back from an external page
+			if (!selectedCard) {
+				const savedId = sessionStorage.getItem(SELECTED_CARD_KEY);
+				if (savedId) {
+					for (const g of data.groups) {
+						const found = g.cards.find((c) => c.card_id === savedId);
+						if (found) { selectedCard = found; break; }
+					}
+				}
+			}
+
+			// Scroll to card if gotoCard was triggered (e.g. after date navigation)
+			if (_scrollToCardId) {
+				scrollToCard(_scrollToCardId);
+			}
 		} catch {
 			if (id !== _fetchId) return;
 			error = 'Failed to load cards';
@@ -65,10 +100,30 @@
 		}, 300);
 	}
 
+	async function loadSummary() {
+		summaryLoading = true;
+		try {
+			const data = await engineApi.getDaySummary($feedDate);
+			daySummary = data.summary;
+			summaryUpdatedAt = data.updated_at;
+		} catch {
+			daySummary = null;
+			summaryUpdatedAt = null;
+		} finally {
+			summaryLoading = false;
+		}
+	}
+
 	$effect(() => {
 		$feedDate;
 		$feedFilters;
 		loadGroups();
+	});
+
+	// Load summary when date changes or summary view is toggled on
+	$effect(() => {
+		$feedDate;
+		if (showSummary) loadSummary();
 	});
 
 	// Track last processed WS message to prevent infinite re-triggering.
@@ -82,6 +137,18 @@
 		const msg = $lastMessage;
 		if (!msg) return;
 		if (msg === _lastProcessedMsg) return;
+
+		// Handle summary updates
+		if (msg.type === 'summary_updated' && msg.payload) {
+			_lastProcessedMsg = msg;
+			const payload = msg.payload as { date?: string; summary?: DaySummary; updated_at?: string };
+			if (payload.date === $feedDate && payload.summary) {
+				daySummary = payload.summary;
+				summaryUpdatedAt = payload.updated_at ?? null;
+			}
+			return;
+		}
+
 		if (!['card_created', 'card_deleted', 'card_updated'].includes(msg.type)) return;
 		_lastProcessedMsg = msg;
 
@@ -89,7 +156,10 @@
 			// Only auto-reload if viewing today (new cards land on today)
 			if (isToday) scheduleReload();
 		} else if (msg.type === 'card_deleted' && msg.card_id) {
-			if (selectedCard?.card_id === msg.card_id) selectedCard = null;
+			if (selectedCard?.card_id === msg.card_id) {
+				selectedCard = null;
+				sessionStorage.removeItem(SELECTED_CARD_KEY);
+			}
 			groups = groups
 				.map((g) => ({ ...g, cards: g.cards.filter((c) => c.card_id !== msg.card_id) }))
 				.filter((g) => g.cards.length > 0);
@@ -132,20 +202,74 @@
 		}
 	});
 
+	// ID of card to scroll into view after next render (set by gotoCard)
+	let _scrollToCardId: string | null = null;
+
+	function gotoCard(card: ActionCard) {
+		const cardDate = card.created_at ? card.created_at.slice(0, 10) : null;
+		_scrollToCardId = card.card_id;
+
+		if (cardDate && cardDate !== $feedDate) {
+			// Navigate to the card's date — loadGroups will fire via the $effect on feedDate
+			$feedDate = cardDate;
+		} else {
+			// Already on the right date, scroll now
+			scrollToCard(card.card_id);
+		}
+	}
+
+	function scrollToCard(cardId: string) {
+		// Use tick + rAF to wait for DOM to settle after re-render
+		requestAnimationFrame(() => {
+			const el = document.querySelector(`[data-card-id="${cardId}"]`);
+			if (el) {
+				el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+				// Brief highlight flash
+				el.classList.add('ring-2', 'ring-laya-orange/60');
+				setTimeout(() => el.classList.remove('ring-2', 'ring-laya-orange/60'), 1500);
+			}
+			_scrollToCardId = null;
+		});
+	}
+
 	function selectCard(card: ActionCard) {
 		selectedCard = card;
+		sessionStorage.setItem(SELECTED_CARD_KEY, card.card_id);
 	}
 
 	function closeDetail() {
 		selectedCard = null;
+		sessionStorage.removeItem(SELECTED_CARD_KEY);
 	}
 
 	function handleDelete(cardId: string) {
-		if (selectedCard?.card_id === cardId) selectedCard = null;
+		if (selectedCard?.card_id === cardId) {
+			selectedCard = null;
+			sessionStorage.removeItem(SELECTED_CARD_KEY);
+		}
 		groups = groups
 			.map((g) => ({ ...g, cards: g.cards.filter((c) => c.card_id !== cardId) }))
 			.filter((g) => g.cards.length > 0);
 		totalGroups = groups.length;
+	}
+
+	function handleSummaryGotoCard(cardId: string) {
+		// Switch to card view and select + scroll to the card
+		showSummary = false;
+		// Find the card in groups
+		for (const g of groups) {
+			const found = g.cards.find((c) => c.card_id === cardId);
+			if (found) {
+				selectCard(found);
+				scrollToCard(cardId);
+				return;
+			}
+		}
+		// Card might not be loaded — try fetching it to find its date
+		engineApi.getCard(cardId).then((card) => {
+			gotoCard(card as ActionCard);
+			selectCard(card as ActionCard);
+		}).catch(() => {});
 	}
 
 	const totalCards = $derived(groups.reduce((sum, g) => sum + g.card_count, 0));
@@ -206,16 +330,47 @@
 
 <div class="flex h-full gap-4">
 	<!-- Cards section -->
-	<div bind:this={containerEl} class="flex min-w-0 flex-1 flex-col overflow-y-auto">
+	<div bind:this={containerEl} class="flex min-w-0 flex-1 flex-col overflow-y-auto pl-0.5">
 		<!-- Summary bar -->
 		<div class="mb-3 flex items-center gap-2 pr-3">
 			<span class="text-xs text-surface-500">
 				{totalGroups} {totalGroups === 1 ? 'group' : 'groups'} · {totalCards} cards
 			</span>
+			<div class="flex-1"></div>
+			<button
+				class="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors {showSummary ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:bg-surface-800 hover:text-surface-200'}"
+				onclick={toggleSummaryView}
+				title={showSummary ? 'Card View' : 'Summary View'}
+			>
+				{#if showSummary}
+					<!-- Grid icon for "Card View" -->
+					<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+					</svg>
+					<span>Card View</span>
+				{:else}
+					<!-- List/summary icon for "Summary View" -->
+					<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+					</svg>
+					<span>Summary</span>
+				{/if}
+			</button>
 		</div>
 
+		<!-- Summary View -->
+		{#if showSummary}
+			<div class="flex-1 overflow-y-auto rounded-xl border border-surface-700/50 bg-surface-900/30 p-6">
+				{#if summaryLoading}
+					<div class="flex h-full items-center justify-center text-surface-400">
+						<span class="text-sm">Loading summary...</span>
+					</div>
+				{:else}
+					<DaySummaryComponent summary={daySummary} updatedAt={summaryUpdatedAt} ongotocard={handleSummaryGotoCard} />
+				{/if}
+			</div>
 		<!-- Card grid -->
-		{#if loading && groups.length === 0}
+		{:else if loading && groups.length === 0}
 			<div class="py-12 text-center text-surface-400">Loading cards...</div>
 		{:else if error}
 			<div class="rounded-lg border border-red-800 bg-red-900/30 px-4 py-3 text-sm text-red-300">
@@ -238,10 +393,12 @@
 			<!-- Sorted view with section separators -->
 			{#each sections as [sectionTitle, sectionGroups], si}
 				{@const isCollapsed = collapsedSections.has(sectionTitle)}
-				<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 				<div
 					class="flex cursor-pointer items-center gap-3 pr-3 {si > 0 ? 'mt-5' : ''} mb-3 select-none"
+					role="button"
+					tabindex="0"
 					onclick={() => toggleSection(sectionTitle)}
+					onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSection(sectionTitle); } }}
 				>
 					<svg class="h-3.5 w-3.5 shrink-0 text-surface-500 transition-transform {isCollapsed ? '-rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -284,17 +441,19 @@
 		{/if}
 	</div>
 
-	<!-- Detail panel -->
-	<div class="w-[420px] flex-shrink-0 overflow-y-auto">
-		{#if selectedCard}
-			<CardDetail card={selectedCard} onclose={closeDetail} />
-		{:else}
-			<div class="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-surface-700 text-surface-600">
-				<svg class="mb-2 h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-				</svg>
-				<p class="text-xs">Select a card to view details</p>
-			</div>
-		{/if}
-	</div>
+	<!-- Detail panel (hidden in summary view) -->
+	{#if !showSummary}
+		<div class="w-[420px] flex-shrink-0 overflow-y-auto">
+			{#if selectedCard}
+				<CardDetail card={selectedCard} onclose={closeDetail} ongotocard={gotoCard} />
+			{:else}
+				<div class="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-surface-700 text-surface-600">
+					<svg class="mb-2 h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+					</svg>
+					<p class="text-xs">Select a card to view details</p>
+				</div>
+			{/if}
+		</div>
+	{/if}
 </div>

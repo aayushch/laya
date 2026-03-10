@@ -187,6 +187,7 @@
 <div
 	role="button"
 	tabindex="0"
+	data-card-id={card.card_id}
 	class="group/card flex h-[200px] w-full cursor-pointer flex-col rounded-xl border px-4 pb-2 pt-3 text-left transition-colors {cardStyle}"
 	onclick={() => onselect(card)}
 	onkeydown={(e) => e.key === 'Enter' && onselect(card)}
@@ -199,6 +200,7 @@
 				<!-- Approve -->
 				<div class="group/act relative">
 					<button
+						aria-label="Approve"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-green-400/60 transition-all hover:bg-green-500/15 hover:text-green-400 disabled:opacity-40"
 						onclick={approve}
 						disabled={approving}
@@ -212,6 +214,7 @@
 				<!-- Dismiss -->
 				<div class="group/act relative">
 					<button
+						aria-label="Dismiss"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-surface-500 transition-all hover:bg-surface-500/15 hover:text-surface-300 disabled:opacity-40"
 						onclick={dismiss}
 						disabled={dismissing}
@@ -225,6 +228,7 @@
 				<!-- Archive -->
 				<div class="group/act relative">
 					<button
+						aria-label="Archive"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-red-400/60 transition-all hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40"
 						onclick={archive}
 						disabled={archiving}
@@ -239,6 +243,7 @@
 				<!-- Reopen -->
 				<div class="group/act relative">
 					<button
+						aria-label="Reopen"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-laya-orange/60 transition-all hover:bg-laya-orange/15 hover:text-laya-orange disabled:opacity-40"
 						onclick={reopen}
 						disabled={reopening}
@@ -252,6 +257,7 @@
 				<!-- Archive -->
 				<div class="group/act relative">
 					<button
+						aria-label="Archive"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-red-400/60 transition-all hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40"
 						onclick={archive}
 						disabled={archiving}
@@ -266,6 +272,7 @@
 				<!-- Unarchive -->
 				<div class="group/act relative">
 					<button
+						aria-label="Unarchive"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-laya-orange/60 transition-all hover:bg-laya-orange/15 hover:text-laya-orange disabled:opacity-40"
 						onclick={reopen}
 						disabled={reopening}
@@ -279,6 +286,7 @@
 				<!-- Delete -->
 				<div class="group/act relative">
 					<button
+						aria-label="Delete"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-red-400/60 transition-all hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40"
 						onclick={(e) => { e.stopPropagation(); showDeleteConfirm = true; }}
 						disabled={deleting}
@@ -293,6 +301,7 @@
 				<!-- Retry -->
 				<div class="group/act relative">
 					<button
+						aria-label="Retry"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-orange-400/60 transition-all hover:bg-orange-500/15 hover:text-orange-400 disabled:opacity-40"
 						onclick={reopen}
 						disabled={reopening}
@@ -307,6 +316,7 @@
 				<!-- Archive -->
 				<div class="group/act relative">
 					<button
+						aria-label="Archive"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-red-400/60 transition-all hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40"
 						onclick={archive}
 						disabled={archiving}
@@ -318,22 +328,10 @@
 					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
 				</div>
 			{:else if card.status === 'awaiting_input'}
-				<!-- Open workspace -->
-				<div class="group/act relative">
-					<a
-						href="/workspace/{card.card_id}"
-						class="flex h-6 w-6 items-center justify-center rounded-md text-violet-400 animate-pulse transition-all hover:bg-violet-500/15"
-						onclick={(e) => e.stopPropagation()}
-					>
-						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-						</svg>
-					</a>
-					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-violet-500/30 bg-surface-800 px-2 py-1 text-[10px] font-medium text-violet-400 opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Open Workspace</span>
-				</div>
 				<!-- Archive -->
 				<div class="group/act relative">
 					<button
+						aria-label="Archive"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-red-400/60 transition-all hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40"
 						onclick={archive}
 						disabled={archiving}
@@ -348,6 +346,7 @@
 				<!-- Archive only -->
 				<div class="group/act relative">
 					<button
+						aria-label="Archive"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-red-400/60 transition-all hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40"
 						onclick={archive}
 						disabled={archiving}
@@ -357,6 +356,22 @@
 						</svg>
 					</button>
 					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
+				</div>
+			{/if}
+			{#if card.has_workspace}
+				<!-- Open Workspace -->
+				<div class="group/act relative">
+					<a
+						href="/workspace/{card.card_id}"
+						aria-label="Open Workspace"
+						class="flex h-6 w-6 items-center justify-center rounded-md text-violet-400/60 transition-all hover:bg-violet-500/15 hover:text-violet-400"
+						onclick={(e) => e.stopPropagation()}
+					>
+						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+						</svg>
+					</a>
+					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-violet-500/30 bg-surface-800 px-2 py-1 text-[10px] font-medium text-violet-400 opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Open Workspace</span>
 				</div>
 			{/if}
 		</div>
@@ -442,32 +457,25 @@
 	<div class="flex-1 min-h-1 max-h-3"></div>
 
 	<!-- Row 5: Footer — actor name (left) · persona · category · workspace · time (right) -->
-	<div class="flex items-center gap-1.5">
+	<div class="flex items-center gap-1.5 min-w-0">
 		{#if card.actor_name}
 			<span class="truncate text-[10px] text-surface-500" title={card.actor_name}>{card.actor_name}</span>
 		{/if}
-		<span class="ml-auto text-[10px] font-medium {personaColors[card.persona] ?? personaColors.ENGINEER}">{card.persona}</span>
-		<span class="rounded-full bg-surface-700/60 px-2 py-0.5 text-[10px] font-medium text-surface-300">{card.category}</span>
-		{#if card.has_workspace}
-			<span class="text-[10px] text-surface-600">·</span>
-			<a
-				href="/workspace/{card.card_id}"
-				class="rounded bg-violet-900/40 px-1.5 py-0.5 text-[10px] font-medium text-violet-300 transition-colors hover:bg-violet-900/60"
-				onclick={(e) => e.stopPropagation()}
-			>
-				Workspace
-			</a>
-		{/if}
-		<span class="text-[10px] text-surface-600">·</span>
-		<span class="text-[10px] text-surface-500">{timeAgo(card.created_at)}</span>
+		<span class="ml-auto shrink-0 text-[10px] font-medium {personaColors[card.persona] ?? personaColors.ENGINEER}">{card.persona}</span>
+		<span class="shrink-0 whitespace-nowrap rounded-full bg-surface-700/60 px-2 py-0.5 text-[10px] font-medium text-surface-300">{card.category}</span>
+		<span class="shrink-0 text-[10px] text-surface-600">·</span>
+		<span class="shrink-0 whitespace-nowrap text-[10px] text-surface-500">{timeAgo(card.created_at)}</span>
 	</div>
 </div>
 
 {#if showDeleteConfirm}
-	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 	<div
 		class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+		role="dialog"
+		aria-label="Confirm delete"
+		tabindex="-1"
 		onclick={(e) => { if (e.target === e.currentTarget) showDeleteConfirm = false; }}
+		onkeydown={(e) => { if (e.key === 'Escape') showDeleteConfirm = false; }}
 	>
 		<div class="mx-4 w-full max-w-sm rounded-xl border border-red-800/40 bg-surface-800 p-5 shadow-2xl">
 			<div class="mb-3 flex items-start gap-3">

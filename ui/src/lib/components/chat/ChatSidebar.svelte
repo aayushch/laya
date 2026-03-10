@@ -134,6 +134,7 @@
 			<h3 class="text-sm font-semibold">Chat with Laya</h3>
 			<button
 				onclick={() => chatOpen.set(false)}
+			aria-label="Close chat"
 				class="text-surface-400 transition-colors hover:text-surface-200"
 			>
 				<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -181,6 +182,7 @@
 				<button
 					onclick={send}
 					disabled={!input.trim() || sending}
+					aria-label="Send message"
 					class="absolute bottom-2 right-2 rounded-md p-1 transition-colors disabled:opacity-30
 						{input.trim() ? 'text-laya-orange hover:text-laya-peach' : 'text-surface-600'}"
 				>

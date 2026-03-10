@@ -185,6 +185,18 @@
 [data-theme='light'] .prose-plan pre { background: oklch(0.95 0.008 65); }
 [data-theme='light'] .prose-plan pre code { color: oklch(0.30 0.02 60); background: transparent; }
 
+/* ─────────────────────────────────────────────────────────────
+   LIGHT THEME — Laya brand color overrides for Summary View
+   Darken the warm palette so it stays readable on cream.
+   ───────────────────────────────────────────────────────────── */
+[data-theme='light'] .text-laya-orange     { color: oklch(0.55 0.16 58);  }
+[data-theme='light'] .text-laya-gold       { color: oklch(0.52 0.14 75);  }
+[data-theme='light'] .text-laya-peach      { color: oklch(0.55 0.10 65);  }
+[data-theme='light'] .text-laya-coral      { color: oklch(0.50 0.18 42);  }
+[data-theme='light'] .text-laya-amber      { color: oklch(0.48 0.18 55);  }
+[data-theme='light'] .text-laya-sand       { color: oklch(0.52 0.08 72);  }
+[data-theme='light'] .text-laya-terracotta { color: oklch(0.42 0.14 40);  }
+
 [data-theme='light'] .text-green-200     { color: oklch(0.36 0.14 145); }
 [data-theme='light'] .text-orange-200    { color: oklch(0.44 0.14 55);  }
 [data-theme='light'] .text-orange-400    { color: oklch(0.46 0.18 55);  }

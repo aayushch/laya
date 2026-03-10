@@ -15,6 +15,7 @@ from laya.agents.session_manager import cancel_sessions_for_card
 from laya.api.websocket import manager
 from laya.db.sqlite import get_db
 from laya.models.card import CardGroup, CardResponse, CardsListResponse, GroupedCardsResponse, StagedOutput, SuggestedAction
+from laya.pipeline.summarize import trigger_summary_status_update
 
 log = structlog.get_logger()
 router = APIRouter()
@@ -344,6 +345,17 @@ async def archive_card(card_id: str) -> dict:
     )
 
     log.info("card_archived", card_id=card_id)
+
+    # Update daily summary with status change
+    header_rows = await db.execute_fetchall(
+        "SELECT header FROM action_cards WHERE card_id = ?", (card_id,)
+    )
+    if header_rows:
+        asyncio.create_task(
+            trigger_summary_status_update(card_id, header_rows[0]["header"], "archived"),
+            name=f"summary_status_{card_id}",
+        )
+
     return {"status": "archived", "card_id": card_id}
 
 
@@ -377,6 +389,17 @@ async def reopen_card(card_id: str) -> dict:
     )
 
     log.info("card_reopened", card_id=card_id)
+
+    # Update daily summary with status change
+    header_rows = await db.execute_fetchall(
+        "SELECT header FROM action_cards WHERE card_id = ?", (card_id,)
+    )
+    if header_rows:
+        asyncio.create_task(
+            trigger_summary_status_update(card_id, header_rows[0]["header"], "pending"),
+            name=f"summary_status_{card_id}",
+        )
+
     return {"status": "pending", "card_id": card_id}
 
 
@@ -445,6 +468,17 @@ async def approve_card(card_id: str, body: ApproveRequest | None = None) -> dict
     )
 
     log.info("card_approved", card_id=card_id)
+
+    # Update daily summary with status change
+    header_rows = await db.execute_fetchall(
+        "SELECT header FROM action_cards WHERE card_id = ?", (card_id,)
+    )
+    if header_rows:
+        asyncio.create_task(
+            trigger_summary_status_update(card_id, header_rows[0]["header"], "approved"),
+            name=f"summary_status_{card_id}",
+        )
+
     return {"status": "approved", "card_id": card_id}
 
 
@@ -547,4 +581,50 @@ async def dismiss_card(card_id: str, body: DismissRequest | None = None) -> dict
     )
 
     log.info("card_dismissed", card_id=card_id, feedback_type=feedback_type)
+
+    # Update daily summary with status change
+    header_rows = await db.execute_fetchall(
+        "SELECT header FROM action_cards WHERE card_id = ?", (card_id,)
+    )
+    if header_rows:
+        asyncio.create_task(
+            trigger_summary_status_update(card_id, header_rows[0]["header"], "dismissed"),
+            name=f"summary_status_{card_id}",
+        )
+
     return {"status": "dismissed", "card_id": card_id}
+
+
+@router.get("/summary")
+async def get_daily_summary(date: str | None = None) -> dict:
+    """Get the daily summary for a given date (defaults to today)."""
+    if not date:
+        date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT summary_json, card_ids, updated_at FROM daily_summaries WHERE date = ?",
+        (date,),
+    )
+
+    if not rows:
+        return {
+            "date": date,
+            "summary": None,
+            "card_ids": [],
+            "updated_at": None,
+        }
+
+    try:
+        summary = json.loads(rows[0]["summary_json"])
+        card_ids = json.loads(rows[0]["card_ids"])
+    except json.JSONDecodeError:
+        summary = None
+        card_ids = []
+
+    return {
+        "date": date,
+        "summary": summary,
+        "card_ids": card_ids,
+        "updated_at": rows[0]["updated_at"],
+    }

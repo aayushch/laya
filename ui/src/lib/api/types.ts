@@ -257,6 +257,29 @@ export interface CardsListResponse {
 	offset: number;
 }
 
+/** A single item in a daily summary section */
+export interface SummaryItem {
+	text: string;
+	card_id: string;
+	priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+	status: 'pending' | 'done' | 'dismissed' | 'archived';
+}
+
+/** Structured daily summary */
+export interface DaySummary {
+	events_and_meetings: SummaryItem[];
+	action_items: SummaryItem[];
+	key_updates: SummaryItem[];
+}
+
+/** Response from GET /summary */
+export interface DaySummaryResponse {
+	date: string;
+	summary: DaySummary | null;
+	card_ids: string[];
+	updated_at: string | null;
+}
+
 /** Request body for POST /actions/execute */
 export interface ExecuteActionRequest {
 	card_id: string;

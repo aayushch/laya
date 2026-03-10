@@ -1,5 +1,6 @@
 """EMIT pipeline step — persist action card to SQLite, ChromaDB, and broadcast."""
 
+import asyncio
 import json
 import uuid
 
@@ -13,6 +14,7 @@ from laya.models.card import ActionCardData
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 from laya.pipeline.entity_resolution import resolve_semantic_entities
+from laya.pipeline.summarize import trigger_summary_update
 from laya.workers.base import WorkerResult
 
 log = structlog.get_logger()
@@ -238,6 +240,22 @@ async def run_emit(
                 "privacy_tier": stager_output.privacy_tier,
             },
         }
+    )
+
+    # 8. Trigger daily summary update (async, non-blocking)
+    asyncio.create_task(
+        trigger_summary_update(
+            card_id=card_id,
+            card_header=stager_output.header,
+            card_summary=stager_output.summary,
+            card_priority=router_output.priority.value,
+            card_category=router_output.category.value,
+            card_persona=router_output.persona.value,
+            card_intelligence=stager_output.intelligence_report,
+            actor_name=event.actor.name,
+            source_platform=event.source.platform,
+        ),
+        name=f"summary_{card_id}",
     )
 
     return card_id
