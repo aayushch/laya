@@ -178,9 +178,17 @@
 						</span>
 					{/each}
 				</div>
-				<span class="ml-auto shrink-0 text-[10px] text-surface-600">
-					{group.card_count} cards
-				</span>
+				<div class="ml-auto flex items-center gap-2 shrink-0">
+					{#if topCard.space_name}
+						<span class="flex items-center gap-1 text-[10px] text-surface-500" title="Space: {topCard.space_name}">
+							<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {topCard.space_color ?? '#F97316'}"></span>
+							{topCard.space_name}
+						</span>
+					{/if}
+					<span class="text-[10px] text-surface-600">
+						{group.card_count} cards
+					</span>
+				</div>
 			</div>
 		</button>
 	</div>
