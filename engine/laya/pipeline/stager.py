@@ -19,6 +19,7 @@ async def run_stager(
     event: LayaEvent,
     router_output: RouterOutput,
     worker_results: list[WorkerResult] | None = None,
+    space_id: str | None = None,
 ) -> ActionCardData:
     """Run the STAGER step: synthesize findings into a polished action card.
 
@@ -26,6 +27,7 @@ async def run_stager(
         event: The original event.
         router_output: Router classification and entities.
         worker_results: Optional findings from workers (None for simple events).
+        space_id: Optional space for model/key overrides.
 
     Returns:
         ActionCardData ready for the EMIT step.
@@ -46,6 +48,7 @@ async def run_stager(
             step="stage",
             temperature=0.2,
             max_tokens=2000,
+            space_id=space_id,
         )
     except Exception as e:
         log.error("stager_llm_failed", event_id=event.event_id, error=str(e))

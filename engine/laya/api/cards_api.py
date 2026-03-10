@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from typing import Any
 
 import structlog
@@ -73,6 +74,9 @@ def _row_to_card(row) -> CardResponse:
         selected_action_id=row["selected_action_id"] if "selected_action_id" in row.keys() else None,
         actor_name=row["actor_name"] if "actor_name" in row.keys() else None,
         actor_email=row["actor_email"] if "actor_email" in row.keys() else None,
+        space_id=row["space_id"] if "space_id" in row.keys() else None,
+        space_name=row["space_name"] if "space_name" in row.keys() else None,
+        space_color=row["space_color"] if "space_color" in row.keys() else None,
     )
 
 
@@ -128,9 +132,12 @@ async def list_cards(
                    c.status, c.privacy_tier, c.has_workspace, c.resolved_at, c.user_feedback,
                    c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at,
                    c.entity_id, c.source_ref, c.source_url, c.selected_action_id,
-                   e.actor_name, e.actor_email
+                   c.space_id,
+                   e.actor_name, e.actor_email,
+                   s.name AS space_name, s.color AS space_color
             FROM action_cards c
             LEFT JOIN events e ON c.event_id = e.event_id
+            LEFT JOIN spaces s ON c.space_id = s.space_id
             {where_clause}
             ORDER BY {order_by}
             LIMIT ? OFFSET ?""",
@@ -153,15 +160,35 @@ async def get_grouped_cards(
     sort: str = "newest",
     show_archived: bool = False,
     date: str | None = None,
+    space_id: str | None = None,
+    tz: str | None = None,
 ) -> GroupedCardsResponse:
-    """Return cards grouped by entity_id, filtered by date."""
+    """Return cards grouped by entity_id, filtered by date and space."""
     db = await get_db()
 
     conditions: list[str] = []
     params: list[Any] = []
+    if space_id:
+        conditions.append("c.space_id = ?")
+        params.append(space_id)
     if date:
-        conditions.append("DATE(c.created_at) = ?")
-        params.append(date)
+        if tz:
+            try:
+                local_tz = ZoneInfo(tz)
+                # Build midnight..next-midnight in the client's timezone, then convert to UTC
+                local_start = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=local_tz)
+                local_end = local_start + timedelta(days=1)
+                utc_start = local_start.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                utc_end = local_end.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                conditions.append("c.created_at >= ? AND c.created_at < ?")
+                params.extend([utc_start, utc_end])
+            except (KeyError, ValueError):
+                # Bad timezone — fall back to plain DATE match
+                conditions.append("DATE(c.created_at) = ?")
+                params.append(date)
+        else:
+            conditions.append("DATE(c.created_at) = ?")
+            params.append(date)
     if status:
         # Support comma-separated multi-select, e.g. "pending,approved"
         statuses = [s.strip() for s in status.split(",") if s.strip()]
@@ -192,9 +219,12 @@ async def get_grouped_cards(
                    c.status, c.privacy_tier, c.has_workspace, c.resolved_at, c.user_feedback,
                    c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at,
                    c.entity_id, c.source_ref, c.source_url, c.selected_action_id,
-                   e.actor_name, e.actor_email
+                   c.space_id,
+                   e.actor_name, e.actor_email,
+                   s.name AS space_name, s.color AS space_color
             FROM action_cards c
             LEFT JOIN events e ON c.event_id = e.event_id
+            LEFT JOIN spaces s ON c.space_id = s.space_id
             {where_clause}
             ORDER BY c.created_at DESC""",
         params,
@@ -263,14 +293,24 @@ async def get_grouped_cards(
     prev_date_val: str | None = None
     next_date_val: str | None = None
     if date:
+        # Build a SQLite date expression that converts UTC created_at to local date
+        date_expr = "DATE(created_at)"
+        if tz:
+            try:
+                local_tz = ZoneInfo(tz)
+                utc_offset_sec = int(datetime.now(local_tz).utcoffset().total_seconds())  # type: ignore[union-attr]
+                date_expr = f"DATE(created_at, '+{utc_offset_sec} seconds')" if utc_offset_sec >= 0 else f"DATE(created_at, '{utc_offset_sec} seconds')"
+            except (KeyError, ValueError, AttributeError):
+                pass  # Use plain DATE(created_at)
+
         prev_rows = await db.execute_fetchall(
-            "SELECT DATE(created_at) AS d FROM action_cards WHERE DATE(created_at) < ? GROUP BY d ORDER BY d DESC LIMIT 1",
+            f"SELECT {date_expr} AS d FROM action_cards WHERE {date_expr} < ? GROUP BY d ORDER BY d DESC LIMIT 1",
             (date,),
         )
         if prev_rows:
             prev_date_val = prev_rows[0]["d"]
         next_rows = await db.execute_fetchall(
-            "SELECT DATE(created_at) AS d FROM action_cards WHERE DATE(created_at) > ? GROUP BY d ORDER BY d ASC LIMIT 1",
+            f"SELECT {date_expr} AS d FROM action_cards WHERE {date_expr} > ? GROUP BY d ORDER BY d ASC LIMIT 1",
             (date,),
         )
         if next_rows:
@@ -282,6 +322,7 @@ async def get_grouped_cards(
         date=date,
         prev_date=prev_date_val,
         next_date=next_date_val,
+        space_id=space_id,
     )
 
 
@@ -414,9 +455,12 @@ async def get_card(card_id: str) -> CardResponse:
                   c.status, c.privacy_tier, c.has_workspace, c.resolved_at, c.user_feedback,
                   c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at,
                   c.entity_id, c.source_ref, c.source_url, c.selected_action_id,
-                  e.actor_name, e.actor_email
+                  c.space_id,
+                  e.actor_name, e.actor_email,
+                  s.name AS space_name, s.color AS space_color
            FROM action_cards c
            LEFT JOIN events e ON c.event_id = e.event_id
+           LEFT JOIN spaces s ON c.space_id = s.space_id
            WHERE c.card_id = ?""",
         (card_id,),
     )

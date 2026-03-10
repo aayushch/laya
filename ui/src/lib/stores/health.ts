@@ -24,7 +24,8 @@ async function fetchHealth() {
 	}
 }
 
-export function startHealthPolling(intervalMs = 10000) {
+export function startHealthPolling(intervalMs = 30000) {
+	stopHealthPolling(); // prevent stacking intervals on remount / HMR
 	fetchHealth(); // immediate first check
 	pollInterval = setInterval(fetchHealth, intervalMs);
 }

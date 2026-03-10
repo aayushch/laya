@@ -18,7 +18,7 @@
             { "name": "event_id", "value": "={{ 'evt_bb_' + ($json.pullrequest?.id || $json.push?.changes?.[0]?.new?.target?.hash?.substring(0,8) || Date.now()) }}", "type": "string" },
             { "name": "timestamp", "value": "={{ $json.pullrequest?.updated_on || $json.pullrequest?.created_on || new Date().toISOString() }}", "type": "string" },
             { "name": "source.platform", "value": "bitbucket", "type": "string" },
-            { "name": "source.connection_id", "value": "bb_main", "type": "string" },
+            { "name": "source.connection_id", "value": "={{ $workflow.id }}", "type": "string" },
             { "name": "source.raw_event_type", "value": "={{ $json.pullrequest ? ($json.comment ? 'pr_commented' : ($json.pullrequest.state === 'MERGED' ? 'pr_merged' : ($json.pullrequest.reviewers?.length ? 'pr_review_requested' : 'pr_created'))) : 'build_failed' }}", "type": "string" },
             { "name": "actor.name", "value": "={{ $json.actor?.display_name || 'Unknown' }}", "type": "string" },
             { "name": "actor.email", "value": "={{ $json.actor?.email || '' }}", "type": "string" },

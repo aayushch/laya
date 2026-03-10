@@ -96,8 +96,12 @@ async def execute_action(
 
     n8n_config = get_n8n_config()
     base_url = n8n_config["base_url"].rstrip("/")
-    webhooks = n8n_config.get("webhooks", {})
-    webhook_path = webhooks.get(target_platform, f"{target_platform}-executor")
+
+    # Resolve executor webhook: prefer space-specific executor, fall back to global config
+    webhook_path = await _resolve_executor_webhook(db, card_id, target_platform)
+    if not webhook_path:
+        webhooks = n8n_config.get("webhooks", {})
+        webhook_path = webhooks.get(target_platform, f"{target_platform}-executor")
     webhook_url = f"{base_url}/webhook/{webhook_path}"
 
     # Fetch original event context so executor workflows have enough info to act
@@ -117,6 +121,25 @@ async def execute_action(
             actor_email = meta.get("gmail_from") or meta.get("from") or ""
         except (json.JSONDecodeError, AttributeError):
             pass
+
+    # Normalise payload: coerce None → "" for string fields to prevent n8n
+    # JS nodes crashing on undefined.trim(), and map common LLM field-name
+    # variants to the canonical keys expected by executor workflows.
+    for key in ("body", "subject", "to", "message", "comment", "content", "title", "description"):
+        if key in payload and payload[key] is None:
+            payload[key] = ""
+
+    # Gmail actions: ensure "body" exists — LLMs sometimes use alternative key names
+    if target_platform == "gmail" and "body" not in payload:
+        payload["body"] = (
+            payload.pop("message", None)
+            or payload.pop("content", None)
+            or payload.pop("text", None)
+            or payload.pop("reply_body", None)
+            or payload.pop("email_body", None)
+            or payload.pop("reply", None)
+            or ""
+        )
 
     n8n_payload = {
         "action_id": action_id,
@@ -251,3 +274,55 @@ async def execute_action(
         "result_url": result_url,
         "error": error_message,
     }
+
+
+async def _resolve_executor_webhook(
+    db, card_id: str, target_platform: str
+) -> str | None:
+    """Resolve the best executor webhook_path for a card based on its space.
+
+    Priority:
+    1. Executor source in the same space as the card → use it (pick any if multiple)
+    2. No executor in the same space → pick any executor for this platform
+    3. No executor sources registered at all → return None (fall back to global config)
+    """
+    # Get the card's space_id
+    rows = await db.execute_fetchall(
+        "SELECT space_id FROM action_cards WHERE card_id = ?", (card_id,)
+    )
+    card_space_id = rows[0]["space_id"] if rows and rows[0]["space_id"] else None
+
+    # Find all executor sources for this platform
+    executor_rows = await db.execute_fetchall(
+        """SELECT webhook_path, space_id FROM sources
+           WHERE source_type = 'executor' AND platform = ? AND webhook_path IS NOT NULL""",
+        (target_platform,),
+    )
+
+    if not executor_rows:
+        return None
+
+    # Try to find one in the same space
+    if card_space_id:
+        same_space = [r for r in executor_rows if r["space_id"] == card_space_id]
+        if same_space:
+            chosen = same_space[0]["webhook_path"]
+            log.info(
+                "executor_resolved",
+                card_id=card_id,
+                space_id=card_space_id,
+                webhook_path=chosen,
+                match="same_space",
+            )
+            return chosen
+
+    # Fall back to any executor for this platform
+    chosen = executor_rows[0]["webhook_path"]
+    log.info(
+        "executor_resolved",
+        card_id=card_id,
+        space_id=card_space_id,
+        webhook_path=chosen,
+        match="any_space",
+    )
+    return chosen

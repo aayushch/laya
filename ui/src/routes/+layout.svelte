@@ -8,12 +8,15 @@
 	import { startHealthPolling, stopHealthPolling } from '$lib/stores/health';
 	import { chatOpen } from '$lib/stores/chat';
 	import { theme } from '$lib/stores/theme';
-	import { feedFilters, loadFeedFilters, saveFeedFilters, feedDate, feedPrevDate, feedNextDate } from '$lib/stores/feedFilters';
+	import { feedFilters, loadFeedFilters, saveFeedFilters, feedDate, feedPrevDate, feedNextDate, localToday } from '$lib/stores/feedFilters';
+	import { spaces, loadSpaces } from '$lib/stores/spaces';
 	import { onMount } from 'svelte';
 
 	function formatDateLabel(dateStr: string): string {
-		const today = new Date().toISOString().slice(0, 10);
-		const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+		const today = localToday();
+		const d = new Date();
+		d.setDate(d.getDate() - 1);
+		const yesterday = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 		if (dateStr === today) return 'Today';
 		if (dateStr === yesterday) return 'Yesterday';
 		return new Date(dateStr + 'T00:00:00').toLocaleDateString(undefined, {
@@ -23,7 +26,7 @@
 		});
 	}
 
-	const isToday = $derived($feedDate === new Date().toISOString().slice(0, 10));
+	const isToday = $derived($feedDate === localToday());
 
 	let { children } = $props();
 	let isSetupRoute = $derived(page.url.pathname.startsWith('/setup'));
@@ -56,22 +59,27 @@
 		saveFeedFilters();
 	});
 
-	// Status/priority filter dropdowns
+	// Status/priority/space filter dropdowns
 	let statusDropdownOpen = $state(false);
 	let priorityDropdownOpen = $state(false);
+	let spaceDropdownOpen = $state(false);
 
 	function closeDropdowns(e: MouseEvent) {
 		const target = e.target as HTMLElement;
 		if (!target.closest('.filter-dropdown')) {
 			statusDropdownOpen = false;
 			priorityDropdownOpen = false;
+			spaceDropdownOpen = false;
 		}
 	}
+
+	const activeSpace = $derived($spaces.find((s) => s.space_id === $feedFilters.spaceFilter));
 
 	onMount(async () => {
 		startHealthPolling();
 		initWebSocket();
 		loadFeedFilters();
+		loadSpaces();
 
 		document.addEventListener('click', closeDropdowns);
 
@@ -98,7 +106,7 @@
 
 	const activeStatusCount = $derived($feedFilters.statusFilters.length);
 	const activePriorityCount = $derived($feedFilters.priorityFilters.length);
-	const hasActiveFilters = $derived(activeStatusCount > 0 || activePriorityCount > 0 || $feedFilters.showArchived);
+	const hasActiveFilters = $derived(activeStatusCount > 0 || activePriorityCount > 0 || $feedFilters.showArchived || !!$feedFilters.spaceFilter);
 </script>
 
 {#if isSetupRoute}
@@ -143,13 +151,62 @@
 						{#if !isToday}
 							<button
 								class="ml-0.5 rounded-full bg-laya-orange/15 px-2 py-0.5 text-[10px] font-medium text-laya-orange transition-colors hover:bg-laya-orange/25"
-								onclick={() => ($feedDate = new Date().toISOString().slice(0, 10))}
+								onclick={() => ($feedDate = localToday())}
 							>Today</button>
 						{/if}
 					</div>
 
 					<!-- Divider -->
 					<div class="h-5 w-px bg-surface-700"></div>
+
+					<!-- Space filter dropdown -->
+					{#if $spaces.length > 1}
+						<div class="filter-dropdown relative">
+							<button
+								class="flex w-[8.5rem] items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors
+									{activeSpace
+										? 'border-laya-orange/40 bg-laya-orange/10 text-laya-orange'
+										: 'border-surface-700 bg-surface-800/60 text-surface-400 hover:text-surface-200 hover:border-surface-600'}"
+								onclick={() => { spaceDropdownOpen = !spaceDropdownOpen; statusDropdownOpen = false; priorityDropdownOpen = false; }}
+							>
+								{#if activeSpace}
+									<span class="h-2 w-2 rounded-full shrink-0" style="background-color: {activeSpace.color}"></span>
+									<span class="truncate">{activeSpace.name}</span>
+								{:else}
+									<svg class="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+									</svg>
+									All Spaces
+								{/if}
+							</button>
+							{#if spaceDropdownOpen}
+								<div class="absolute left-0 top-full z-50 mt-1.5 w-48 rounded-lg border border-surface-600 bg-surface-800 p-1.5 shadow-xl shadow-black/30">
+									<button
+										class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors hover:bg-surface-700
+											{!$feedFilters.spaceFilter ? 'text-laya-orange' : 'text-surface-300'}"
+										onclick={() => { $feedFilters.spaceFilter = null; spaceDropdownOpen = false; }}
+									>
+										<span class="h-2 w-2 rounded-full bg-surface-500 shrink-0"></span>
+										All Spaces
+									</button>
+									{#each $spaces as space}
+										<button
+											class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors hover:bg-surface-700
+												{$feedFilters.spaceFilter === space.space_id ? 'text-laya-orange' : 'text-surface-300'}"
+											onclick={() => { $feedFilters.spaceFilter = space.space_id; spaceDropdownOpen = false; }}
+										>
+											<span class="h-2 w-2 rounded-full shrink-0" style="background-color: {space.color}"></span>
+											{space.name}
+											<span class="ml-auto text-[10px] text-surface-500">{space.source_count}</span>
+										</button>
+									{/each}
+								</div>
+							{/if}
+						</div>
+
+						<!-- Divider -->
+						<div class="h-5 w-px bg-surface-700"></div>
+					{/if}
 
 					<!-- Sort -->
 					<div class="flex items-center gap-1.5 rounded-lg border border-surface-700 bg-surface-800/60 px-2 py-1">
@@ -271,6 +328,7 @@
 								$feedFilters.statusFilters = [];
 								$feedFilters.priorityFilters = [];
 								$feedFilters.showArchived = false;
+								$feedFilters.spaceFilter = null;
 							}}
 						>
 							Clear all

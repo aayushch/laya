@@ -18,7 +18,7 @@
             { "name": "event_id", "value": "={{ 'evt_slack_' + ($json.event?.ts || Date.now()) }}", "type": "string" },
             { "name": "timestamp", "value": "={{ $json.event?.ts ? new Date(parseFloat($json.event.ts) * 1000).toISOString() : new Date().toISOString() }}", "type": "string" },
             { "name": "source.platform", "value": "slack", "type": "string" },
-            { "name": "source.connection_id", "value": "slack_main", "type": "string" },
+            { "name": "source.connection_id", "value": "={{ $workflow.id }}", "type": "string" },
             { "name": "source.raw_event_type", "value": "={{ $json.event?.thread_ts ? 'thread_reply' : ($json.event?.text?.includes('<@') ? 'mention' : 'message_received') }}", "type": "string" },
             { "name": "actor.name", "value": "={{ $json.event?.user_profile?.real_name || $json.event?.user || 'Unknown' }}", "type": "string" },
             { "name": "actor.email", "value": "={{ $json.event?.user_profile?.email || '' }}", "type": "string" },

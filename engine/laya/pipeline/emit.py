@@ -26,6 +26,7 @@ async def run_emit(
     stager_output: ActionCardData,
     worker_results: list[WorkerResult] | None = None,
     card_id: str | None = None,
+    space_id: str | None = None,
 ) -> str:
     """Run the EMIT step: persist card → embed → resolve entities → audit → broadcast.
 
@@ -37,6 +38,7 @@ async def run_emit(
         card_id: Pre-generated card_id from the worker background flow. When
             provided the provisional card row is updated in-place; when None a
             fresh row is inserted.
+        space_id: The resolved space for this event.
 
     Returns:
         card_id of the created/updated card.
@@ -119,7 +121,7 @@ async def run_emit(
                intelligence=?, staged_output=?, suggested_actions=?,
                status='pending', privacy_tier=?, has_workspace=?,
                confidence=?, entity_id=?, source_ref=?, source_url=?,
-               updated_at=CURRENT_TIMESTAMP
+               space_id=?, updated_at=CURRENT_TIMESTAMP
                WHERE card_id=?""",
             (
                 router_output.priority.value,
@@ -136,6 +138,7 @@ async def run_emit(
                 entity_id,
                 source_ref,
                 source_url,
+                space_id,
                 card_id,
             ),
         )
@@ -145,8 +148,8 @@ async def run_emit(
                (card_id, event_id, priority, persona, category, header, summary,
                 intelligence, staged_output, suggested_actions, status,
                 privacy_tier, has_workspace, confidence, router_model, stager_model,
-                entity_id, source_ref, source_url)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                entity_id, source_ref, source_url, space_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 card_id,
                 event.event_id,
@@ -167,6 +170,7 @@ async def run_emit(
                 entity_id,
                 source_ref,
                 source_url,
+                space_id,
             ),
         )
     await db.commit()

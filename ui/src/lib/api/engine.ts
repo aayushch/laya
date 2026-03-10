@@ -19,7 +19,13 @@ import type {
 	CreateConnectionResponse,
 	ConnectionTestResult,
 	N8nBootstrapResponse,
-	DaySummaryResponse
+	DaySummaryResponse,
+	SpacesResponse,
+	SourcesResponse,
+	AvailableWorkflowsResponse,
+	Space,
+	Source,
+	SpaceApiKeysResponse
 } from './types';
 
 const ENGINE_URL = 'http://127.0.0.1:8420';
@@ -103,6 +109,7 @@ export const engineApi = {
 		sort?: string;
 		show_archived?: boolean;
 		date?: string;
+		space_id?: string;
 	}) => {
 		const searchParams = new URLSearchParams();
 		if (params?.status) searchParams.set('status', params.status);
@@ -110,6 +117,8 @@ export const engineApi = {
 		if (params?.sort) searchParams.set('sort', params.sort);
 		if (params?.show_archived) searchParams.set('show_archived', 'true');
 		if (params?.date) searchParams.set('date', params.date);
+		if (params?.space_id) searchParams.set('space_id', params.space_id);
+		searchParams.set('tz', Intl.DateTimeFormat().resolvedOptions().timeZone);
 		const qs = searchParams.toString();
 		return request<GroupedCardsResponse>(`/cards/grouped${qs ? '?' + qs : ''}`);
 	},
@@ -224,6 +233,69 @@ export const engineApi = {
 	bootstrapN8n: () =>
 		request<N8nBootstrapResponse>('/settings/n8n/bootstrap', {
 			method: 'POST'
+		}),
+
+	// Spaces
+	getSpaces: () => request<SpacesResponse>('/spaces'),
+
+	createSpace: (space: { name: string; description?: string; icon?: string; color?: string; router_model?: string; stager_model?: string; chat_model?: string }) =>
+		request<Space>('/spaces', {
+			method: 'POST',
+			body: JSON.stringify(space)
+		}),
+
+	updateSpace: (spaceId: string, updates: Partial<{ name: string; description: string; icon: string; color: string; router_model: string; stager_model: string; chat_model: string }>) =>
+		request<{ status: string; space_id: string }>(`/spaces/${spaceId}`, {
+			method: 'PUT',
+			body: JSON.stringify(updates)
+		}),
+
+	deleteSpace: (spaceId: string) =>
+		request<{ status: string; space_id: string }>(`/spaces/${spaceId}`, {
+			method: 'DELETE'
+		}),
+
+	// Space API Keys
+	getSpaceApiKeys: (spaceId: string) =>
+		request<SpaceApiKeysResponse>(`/spaces/${spaceId}/api-keys`),
+
+	setSpaceApiKey: (spaceId: string, provider: string, apiKey: string) =>
+		request<{ status: string; provider: string }>(`/spaces/${spaceId}/api-key`, {
+			method: 'PUT',
+			body: JSON.stringify({ provider, api_key: apiKey })
+		}),
+
+	deleteSpaceApiKey: (spaceId: string, provider: string) =>
+		request<{ status: string; provider: string }>(`/spaces/${spaceId}/api-key/${provider}`, {
+			method: 'DELETE'
+		}),
+
+	// Sources
+	getSources: () => request<SourcesResponse>('/sources'),
+
+	getAvailableWorkflows: () => request<AvailableWorkflowsResponse>('/sources/available-workflows'),
+
+	createSource: (source: { name: string; platform: string; workflow_id: string; space_id?: string }) =>
+		request<Source>('/sources', {
+			method: 'POST',
+			body: JSON.stringify(source)
+		}),
+
+	reassignSource: (sourceId: string, spaceId: string) =>
+		request<{ status: string; source_id: string; space_id: string }>(`/sources/${sourceId}/space`, {
+			method: 'PUT',
+			body: JSON.stringify({ space_id: spaceId })
+		}),
+
+	deleteSource: (sourceId: string) =>
+		request<{ status: string; source_id: string }>(`/sources/${sourceId}`, {
+			method: 'DELETE'
+		}),
+
+	bulkAssignSources: (spaceId: string, sourceIds: string[]) =>
+		request<{ status: string; updated: number }>(`/spaces/${spaceId}/sources`, {
+			method: 'PUT',
+			body: JSON.stringify({ source_ids: sourceIds })
 		}),
 
 	// Audit Log

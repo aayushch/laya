@@ -94,6 +94,21 @@ async def delete_credential(credential_id: str) -> bool:
     return True
 
 
+async def list_workflows() -> list[dict]:
+    """GET /api/v1/workflows — list all workflows from n8n."""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(
+            f"{_base_url()}/api/v1/workflows",
+            headers=_get_headers(),
+            params={"limit": 250},
+        )
+    if resp.status_code != 200:
+        raise N8nApiError(resp.status_code, resp.text)
+    data = resp.json()
+    items = data.get("data", data) if isinstance(data, dict) else data
+    return items
+
+
 async def test_api_access() -> dict:
     """Test whether the n8n API is accessible with the current key."""
     try:
