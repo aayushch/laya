@@ -78,3 +78,47 @@ def load_all_keys_to_env() -> dict[str, bool]:
 def has_api_key(provider: str) -> bool:
     """Check if an API key exists without retrieving its value."""
     return get_api_key(provider) is not None
+
+
+# ---------------------------------------------------------------------------
+# Space-scoped API keys
+# ---------------------------------------------------------------------------
+
+
+def store_space_api_key(key_ref: str, api_key: str) -> bool:
+    """Store a space-specific API key in the OS keychain.
+
+    key_ref is a unique label like 'laya_anthropic_space_abc123'.
+    """
+    try:
+        import keyring
+
+        keyring.set_password(SERVICE_NAME, key_ref, api_key)
+        log.info("space_api_key_stored", key_ref=key_ref)
+        return True
+    except Exception as e:
+        log.error("space_api_key_store_failed", key_ref=key_ref, error=str(e))
+        return False
+
+
+def get_space_api_key(key_ref: str) -> str | None:
+    """Retrieve a space-specific API key from the OS keychain."""
+    try:
+        import keyring
+
+        return keyring.get_password(SERVICE_NAME, key_ref)
+    except Exception as e:
+        log.warning("space_api_key_read_failed", key_ref=key_ref, error=str(e))
+        return None
+
+
+def delete_space_api_key(key_ref: str) -> bool:
+    """Remove a space-specific API key from the OS keychain."""
+    try:
+        import keyring
+
+        keyring.delete_password(SERVICE_NAME, key_ref)
+        log.info("space_api_key_deleted", key_ref=key_ref)
+        return True
+    except Exception:
+        return False

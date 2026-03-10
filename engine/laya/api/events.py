@@ -15,6 +15,7 @@ from laya.pipeline.emit import run_emit
 from laya.pipeline.ingest import run_ingest
 from laya.pipeline.router import run_router
 from laya.pipeline.rules import run_rules
+from laya.pipeline.space_resolution import resolve_space
 from laya.pipeline.stager import run_stager
 from laya.pipeline.workers import run_workers
 
@@ -79,6 +80,11 @@ async def receive_event(event: LayaEvent) -> EventResponse:
     # INGEST: resolve actor relationship from team.json
     actor_relationship = await run_ingest(event)
 
+    # SPACE RESOLUTION: map source workflow to space
+    space_id = await resolve_space(
+        event.event_id, event.source.connection_id, event.source.platform
+    )
+
     # RULES ENGINE: check filter rules
     filtered, filter_rule = await run_rules(event)
 
@@ -87,7 +93,7 @@ async def receive_event(event: LayaEvent) -> EventResponse:
         # ROUTER: classify event via LLM
         router_output = None
         try:
-            router_output = await run_router(event, actor_relationship)
+            router_output = await run_router(event, actor_relationship, space_id=space_id)
         except Exception as e:
             log.error("router_failed", event_id=event.event_id, error=str(e))
 
@@ -120,19 +126,21 @@ async def receive_event(event: LayaEvent) -> EventResponse:
         # Dispatch background pipeline based on research needs
         if router_output and router_output.requires_research:
             asyncio.create_task(
-                _run_workers_background(event, router_output),
+                _run_workers_background(event, router_output, space_id=space_id),
                 name=f"workers_{event.event_id}",
             )
         elif router_output:
             asyncio.create_task(
-                _run_simple_card_background(event, router_output),
+                _run_simple_card_background(event, router_output, space_id=space_id),
                 name=f"simple_card_{event.event_id}",
             )
 
     return EventResponse(event_id=event.event_id)
 
 
-async def _run_workers_background(event: LayaEvent, router_output: RouterOutput) -> None:
+async def _run_workers_background(
+    event: LayaEvent, router_output: RouterOutput, space_id: str | None = None
+) -> None:
     """Run workers → stager → emit in the background."""
     # Pre-generate card_id so it exists in action_cards before workers run.
     # The engineer worker creates workspace_sessions with a FK to action_cards,
@@ -145,8 +153,8 @@ async def _run_workers_background(event: LayaEvent, router_output: RouterOutput)
         await db.execute(
             """INSERT INTO action_cards
                (card_id, event_id, priority, persona, category, header, summary,
-                status, privacy_tier, has_workspace, entity_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                status, privacy_tier, has_workspace, entity_id, space_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 card_id,
                 event.event_id,
@@ -159,6 +167,7 @@ async def _run_workers_background(event: LayaEvent, router_output: RouterOutput)
                 2,
                 True,
                 entity_id,
+                space_id,
             ),
         )
         await db.commit()
@@ -191,10 +200,10 @@ async def _run_workers_background(event: LayaEvent, router_output: RouterOutput)
         )
 
         # Stager: synthesize findings into card
-        stager_output = await run_stager(event, router_output, results)
+        stager_output = await run_stager(event, router_output, results, space_id=space_id)
 
         # Emit: update the pre-created card with final stager data
-        card_id = await run_emit(event, router_output, stager_output, results, card_id=card_id)
+        card_id = await run_emit(event, router_output, stager_output, results, card_id=card_id, space_id=space_id)
         log.info("card_emitted", event_id=event.event_id, card_id=card_id)
 
     except Exception as e:
@@ -212,11 +221,13 @@ async def _run_workers_background(event: LayaEvent, router_output: RouterOutput)
                 pass
 
 
-async def _run_simple_card_background(event: LayaEvent, router_output: RouterOutput) -> None:
+async def _run_simple_card_background(
+    event: LayaEvent, router_output: RouterOutput, space_id: str | None = None
+) -> None:
     """Run stager → emit for simple events (no workers needed)."""
     try:
-        stager_output = await run_stager(event, router_output, worker_results=None)
-        card_id = await run_emit(event, router_output, stager_output)
+        stager_output = await run_stager(event, router_output, worker_results=None, space_id=space_id)
+        card_id = await run_emit(event, router_output, stager_output, space_id=space_id)
         log.info("simple_card_emitted", event_id=event.event_id, card_id=card_id)
     except Exception as e:
         log.error("simple_card_failed", event_id=event.event_id, error=str(e))

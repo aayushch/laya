@@ -454,16 +454,23 @@
 	<p class="line-clamp-2 text-xs leading-relaxed text-surface-400" title={card.summary}>{card.summary}</p>
 
 	<!-- Spacer — absorbs leftover height so footer stays pinned to bottom -->
-	<div class="flex-1 min-h-1 max-h-3"></div>
+	<div class="flex-1 min-h-1"></div>
 
-	<!-- Row 5: Footer — actor name (left) · persona · category · workspace · time (right) -->
+	<!-- Row 5: Footer — space · actor name (left) · persona · category · workspace · time (right) -->
 	<div class="flex items-center gap-1.5 min-w-0">
+		{#if card.space_name}
+			<span class="flex items-center gap-1 shrink-0 text-[10px] text-surface-500" title="Space: {card.space_name}">
+				<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {card.space_color ?? '#F97316'}"></span>
+				{card.space_name}
+			</span>
+			{#if card.actor_name}
+				<span class="text-[10px] text-surface-600">·</span>
+			{/if}
+		{/if}
 		{#if card.actor_name}
 			<span class="truncate text-[10px] text-surface-500" title={card.actor_name}>{card.actor_name}</span>
 		{/if}
 		<span class="ml-auto shrink-0 text-[10px] font-medium {personaColors[card.persona] ?? personaColors.ENGINEER}">{card.persona}</span>
-		<span class="shrink-0 whitespace-nowrap rounded-full bg-surface-700/60 px-2 py-0.5 text-[10px] font-medium text-surface-300">{card.category}</span>
-		<span class="shrink-0 text-[10px] text-surface-600">·</span>
 		<span class="shrink-0 whitespace-nowrap text-[10px] text-surface-500">{timeAgo(card.created_at)}</span>
 	</div>
 </div>

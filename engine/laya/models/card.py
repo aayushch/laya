@@ -66,6 +66,9 @@ class CardResponse(BaseModel):
     selected_action_id: str | None = None
     actor_name: str | None = None
     actor_email: str | None = None
+    space_id: str | None = None
+    space_name: str | None = None
+    space_color: str | None = None
 
 
 class CardsListResponse(BaseModel):
@@ -100,3 +103,4 @@ class GroupedCardsResponse(BaseModel):
     date: str | None = None
     prev_date: str | None = None
     next_date: str | None = None
+    space_id: str | None = None

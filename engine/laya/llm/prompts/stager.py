@@ -37,7 +37,14 @@ and concrete findings.
   - label: human-readable button text (e.g., "Post Jira Comment")
   - action_type: "comment", "transition", "merge", "send_email", "approve", "dismiss"
   - target_platform: "jira", "bitbucket", "slack", "gmail"
-  - payload: platform-specific data (comment body, transition ID, etc.)
+  - payload: A JSON string with platform-specific data. Required fields by platform:
+    - **gmail**: {"to": "recipient@email", "subject": "Re: ...", "body": "The full email body text", "thread_id": "optional thread ID"}
+    - **slack**: {"channel": "#channel-name", "message": "The message text"}
+    - **jira**: {"comment": "The comment body"} or {"transition_id": "...", "comment": "optional"}
+    - **bitbucket**: {"comment": "The comment body"}
+    - **calendar**: {"title": "Event title", "description": "Details", "start": "ISO datetime", "end": "ISO datetime"}
+  IMPORTANT: For gmail send_email actions, the "body" field is REQUIRED and must contain \
+the full email text. Never omit it.
 - **privacy_tier**: 1 (public-safe), 2 (internal), 3 (confidential — PII, credentials, \
 financial data detected)
 

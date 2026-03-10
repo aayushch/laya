@@ -146,6 +146,7 @@ export interface FeedPreferences {
 	priorityFilters: string[];
 	sortBy: string;
 	showArchived: boolean;
+	spaceFilter: string | null;
 }
 
 /** Full settings response from GET /settings */
@@ -224,6 +225,9 @@ export interface ActionCard {
 	selected_action_id?: string;
 	actor_name?: string;
 	actor_email?: string;
+	space_id?: string;
+	space_name?: string;
+	space_color?: string;
 }
 
 /** A group of cards sharing the same entity (e.g. one Jira ticket) */
@@ -247,6 +251,7 @@ export interface GroupedCardsResponse {
 	date?: string;
 	prev_date?: string;
 	next_date?: string;
+	space_id?: string;
 }
 
 /** Paginated cards list from GET /cards */
@@ -485,4 +490,61 @@ export interface CreateConnectionResponse {
 export interface ConnectionTestResult {
 	status: 'connected' | 'unauthorized' | 'unreachable' | 'timeout' | 'no_api_key' | 'error';
 	message: string;
+}
+
+/** Space for organizing event sources with model/key configs */
+export interface Space {
+	space_id: string;
+	name: string;
+	description?: string;
+	icon: string;
+	color: string;
+	router_model?: string;
+	stager_model?: string;
+	chat_model?: string;
+	is_default: boolean;
+	position: number;
+	source_count: number;
+	created_at?: string;
+	updated_at?: string;
+}
+
+/** Source: maps an n8n workflow to a space */
+export interface Source {
+	source_id: string;
+	name: string;
+	platform: string;
+	workflow_id: string;
+	space_id: string;
+	space_name?: string;
+	created_at?: string;
+}
+
+/** Available n8n workflow for source assignment */
+export interface AvailableWorkflow {
+	workflow_id: string;
+	name: string;
+	platform: string;
+	active: boolean;
+	registered: boolean;
+}
+
+/** Response from GET /spaces */
+export interface SpacesResponse {
+	spaces: Space[];
+}
+
+/** Response from GET /sources */
+export interface SourcesResponse {
+	sources: Source[];
+}
+
+/** Response from GET /sources/available-workflows */
+export interface AvailableWorkflowsResponse {
+	workflows: AvailableWorkflow[];
+}
+
+/** Response from GET /spaces/:id/api-keys */
+export interface SpaceApiKeysResponse {
+	providers: Record<string, { configured: boolean }>;
 }

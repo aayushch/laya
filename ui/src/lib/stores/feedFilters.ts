@@ -6,10 +6,17 @@ export interface FeedFilters {
 	priorityFilters: string[];
 	sortBy: string;
 	showArchived: boolean;
+	spaceFilter: string | null;
+}
+
+/** Local date in YYYY-MM-DD format (respects the user's timezone, unlike toISOString which is UTC). */
+export function localToday(): string {
+	const d = new Date();
+	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 /** Shared date navigation state (not persisted — resets to today on reload). */
-export const feedDate = writable<string>(new Date().toISOString().slice(0, 10));
+export const feedDate = writable<string>(localToday());
 export const feedPrevDate = writable<string | null>(null);
 export const feedNextDate = writable<string | null>(null);
 
@@ -17,7 +24,8 @@ const defaults: FeedFilters = {
 	statusFilters: [],
 	priorityFilters: [],
 	sortBy: 'newest',
-	showArchived: false
+	showArchived: false,
+	spaceFilter: null
 };
 
 export const feedFilters = writable<FeedFilters>({ ...defaults });
@@ -35,7 +43,8 @@ export async function loadFeedFilters(): Promise<void> {
 				statusFilters: prefs.statusFilters ?? defaults.statusFilters,
 				priorityFilters: prefs.priorityFilters ?? defaults.priorityFilters,
 				sortBy: prefs.sortBy ?? defaults.sortBy,
-				showArchived: prefs.showArchived ?? defaults.showArchived
+				showArchived: prefs.showArchived ?? defaults.showArchived,
+				spaceFilter: prefs.spaceFilter ?? defaults.spaceFilter
 			});
 		}
 		_loaded = true;

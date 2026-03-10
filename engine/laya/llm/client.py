@@ -26,6 +26,41 @@ class LLMResponse(BaseModel):
     latency_ms: int
 
 
+async def _get_space_model(role: str, space_id: str) -> str | None:
+    """Look up a space-specific model override for the given role.
+
+    Returns None if the space has no override for this role.
+    """
+    from laya.db.sqlite import get_db
+
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        f"SELECT {role}_model FROM spaces WHERE space_id = ?",
+        (space_id,),
+    )
+    if rows and rows[0][f"{role}_model"]:
+        return rows[0][f"{role}_model"]
+    return None
+
+
+async def _get_space_api_key(provider: str, space_id: str) -> str | None:
+    """Look up a space-specific API key for the given provider.
+
+    Returns None if the space has no key override for this provider.
+    """
+    from laya.db.sqlite import get_db
+    from laya.security.keychain import get_space_api_key
+
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT key_ref FROM space_api_keys WHERE space_id = ? AND provider = ?",
+        (space_id, provider),
+    )
+    if rows:
+        return get_space_api_key(rows[0]["key_ref"])
+    return None
+
+
 def _get_model_for_role(role: str) -> str:
     """Look up the configured model for a given role (router, stager, chat).
 
@@ -39,14 +74,19 @@ def _get_model_for_role(role: str) -> str:
     if "/" in model_name:
         return model_name
 
-    # Auto-prefix based on model name pattern
+    return _add_provider_prefix(model_name)
+
+
+def _add_provider_prefix(model_name: str) -> str:
+    """Add provider prefix to a model name if not already present."""
+    if "/" in model_name:
+        return model_name
     if model_name.startswith("claude"):
         return f"anthropic/{model_name}"
     elif model_name.startswith(("gpt", "o1", "o3", "o4")):
         return f"openai/{model_name}"
     elif model_name.startswith("gemini"):
         return f"gemini/{model_name}"
-
     return model_name
 
 
@@ -99,6 +139,7 @@ async def llm_call(
     temperature: float = 0.0,
     max_tokens: int = 2000,
     num_retries: int = 3,
+    space_id: str | None = None,
 ) -> LLMResponse:
     """Make an LLM call via LiteLLM with retries and audit logging.
 
@@ -112,13 +153,26 @@ async def llm_call(
         temperature: LLM temperature.
         max_tokens: Max output tokens.
         num_retries: Number of retries on failure.
+        space_id: Optional space for model/key overrides.
 
     Returns:
         LLMResponse with content, parsed JSON (if schema), and usage info.
     """
     from litellm import acompletion
 
+    # Resolve model: space override → global setting
     model = _get_model_for_role(role)
+    if space_id:
+        space_model = await _get_space_model(role, space_id)
+        if space_model:
+            model = _add_provider_prefix(space_model)
+
+    # Resolve API key: space override → global (already in env)
+    space_api_key = None
+    if space_id:
+        provider = model.split("/")[0] if "/" in model else None
+        if provider:
+            space_api_key = await _get_space_api_key(provider, space_id)
 
     # Gemini 3+ models degrade with temperature < 1.0 — force it to 1.0
     effective_temperature = temperature
@@ -133,6 +187,10 @@ async def llm_call(
         "max_tokens": max_tokens,
         "timeout": 60.0,
     }
+
+    # Use space-specific API key if available
+    if space_api_key:
+        kwargs["api_key"] = space_api_key
 
     if response_schema:
         kwargs["response_format"] = {
@@ -169,8 +227,17 @@ async def llm_call(
         # Parse JSON if structured output was requested
         parsed = None
         if response_schema and content:
+            # Strip markdown fences that some models wrap around JSON
+            stripped = content.strip()
+            if stripped.startswith("```"):
+                # Remove opening ```json or ``` and closing ```
+                first_nl = stripped.find("\n")
+                if first_nl != -1:
+                    stripped = stripped[first_nl + 1:]
+                if stripped.endswith("```"):
+                    stripped = stripped[:-3].rstrip()
             try:
-                parsed = json.loads(content)
+                parsed = json.loads(stripped)
             except json.JSONDecodeError:
                 log.warning("llm_json_parse_failed", model=model, content_preview=content[:200])
 

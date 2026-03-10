@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
 	import { lastMessage } from '$lib/stores/websocket';
-	import { feedFilters, feedDate, feedPrevDate, feedNextDate } from '$lib/stores/feedFilters';
+	import { feedFilters, feedDate, feedPrevDate, feedNextDate, localToday } from '$lib/stores/feedFilters';
 	import type { ActionCard, CardGroup, DaySummary } from '$lib/api/types';
 	import CardGroupComponent from '$lib/components/feed/CardGroup.svelte';
 	import ActionCardComponent from '$lib/components/feed/ActionCard.svelte';
@@ -34,8 +34,10 @@
 	const SELECTED_CARD_KEY = 'laya_feed_selected_card';
 
 	function formatDateLabel(dateStr: string): string {
-		const today = new Date().toISOString().slice(0, 10);
-		const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+		const today = localToday();
+		const d = new Date();
+		d.setDate(d.getDate() - 1);
+		const yesterday = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 		if (dateStr === today) return 'Today';
 		if (dateStr === yesterday) return 'Yesterday';
 		return new Date(dateStr + 'T00:00:00').toLocaleDateString(undefined, {
@@ -45,7 +47,7 @@
 		});
 	}
 
-	const isToday = $derived($feedDate === new Date().toISOString().slice(0, 10));
+	const isToday = $derived($feedDate === localToday());
 
 	let _fetchId = 0;
 	let _reloadTimer: ReturnType<typeof setTimeout> | null = null;
@@ -61,7 +63,8 @@
 				priority: f.priorityFilters.length ? f.priorityFilters.join(',') : undefined,
 				sort: f.sortBy,
 				show_archived: f.showArchived || undefined,
-				date: $feedDate
+				date: $feedDate,
+				space_id: f.spaceFilter || undefined
 			});
 			if (id !== _fetchId) return;
 			groups = data.groups;
@@ -185,6 +188,10 @@
 			for (const group of groups) {
 				const card = group.cards.find((c) => c.card_id === msg.card_id);
 				if (card) {
+					// When a card transitions from agent_running to a real status,
+					// the full card data (suggested_actions, intelligence, etc.) has
+					// changed significantly — reload to get fresh data from the API.
+					const wasAgent = card.status === 'agent_running';
 					card.status = payload.status as ActionCard['status'];
 					if (payload.header) card.header = payload.header;
 					if (payload.summary) card.summary = payload.summary;
@@ -194,8 +201,17 @@
 					if (payload.selected_action_id) card.selected_action_id = payload.selected_action_id;
 					if (selectedCard?.card_id === msg.card_id) {
 						Object.assign(selectedCard, { status: card.status, header: card.header, summary: card.summary, selected_action_id: card.selected_action_id });
+						// Re-fetch full card to get suggested_actions and other fields
+						engineApi.getCard(msg.card_id).then((fresh) => {
+							if (selectedCard?.card_id === msg.card_id) {
+								selectedCard = fresh as ActionCard;
+							}
+						}).catch(() => {});
 					}
 					group.has_pending = group.cards.some((c) => c.status === 'pending');
+					if (wasAgent && payload.status !== 'agent_running') {
+						scheduleReload();
+					}
 					break;
 				}
 			}
@@ -235,6 +251,13 @@
 	function selectCard(card: ActionCard) {
 		selectedCard = card;
 		sessionStorage.setItem(SELECTED_CARD_KEY, card.card_id);
+		// Fetch full card from API to ensure suggested_actions and other fields
+		// that may be missing from WS-patched data are present.
+		engineApi.getCard(card.card_id).then((fresh) => {
+			if (selectedCard?.card_id === card.card_id) {
+				selectedCard = fresh as ActionCard;
+			}
+		}).catch(() => {});
 	}
 
 	function closeDetail() {

@@ -152,14 +152,12 @@ async def _run_summary_update(
                 card_id=card["card_id"],
                 step="summarize",
                 temperature=0.2,
-                max_tokens=2000,
+                max_tokens=4000,
             )
 
-            if response.parsed:
-                current_summary = response.parsed
-            else:
-                parsed = json.loads(response.content)
-                current_summary = parsed
+            if not response.parsed:
+                raise ValueError("LLM returned malformed JSON for summary")
+            current_summary = response.parsed
 
             existing_card_ids.append(card["card_id"])
             log.info("summary_card_incorporated", card_id=card["card_id"], date=today)
@@ -192,14 +190,12 @@ async def _run_summary_update(
                 card_id=change["card_id"],
                 step="summarize_status",
                 temperature=0.1,
-                max_tokens=2000,
+                max_tokens=4000,
             )
 
-            if response.parsed:
-                current_summary = response.parsed
-            else:
-                parsed = json.loads(response.content)
-                current_summary = parsed
+            if not response.parsed:
+                raise ValueError("LLM returned malformed JSON for status update summary")
+            current_summary = response.parsed
 
             log.info(
                 "summary_status_updated",

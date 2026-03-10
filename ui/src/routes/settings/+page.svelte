@@ -5,11 +5,12 @@
 	import RepoConfig from '$lib/components/settings/RepoConfig.svelte';
 	import AgentConfig from '$lib/components/settings/AgentConfig.svelte';
 	import IntegrationsConfig from '$lib/components/settings/IntegrationsConfig.svelte';
+	import SpacesConfig from '$lib/components/settings/SpacesConfig.svelte';
 	import AuditLogViewer from '$lib/components/settings/AuditLogViewer.svelte';
 	import AppearanceConfig from '$lib/components/settings/AppearanceConfig.svelte';
 	import DataConfig from '$lib/components/settings/DataConfig.svelte';
 
-	let activeTab = $state<'team' | 'rules' | 'models' | 'repos' | 'agent' | 'integrations' | 'audit' | 'appearance' | 'data'>('team');
+	let activeTab = $state<'team' | 'rules' | 'models' | 'repos' | 'agent' | 'integrations' | 'spaces' | 'audit' | 'appearance' | 'data'>('team');
 	let exporting = $state(false);
 
 	async function exportDiagnostics() {
@@ -47,6 +48,7 @@
 			{ id: 'repos',        label: 'Repos' },
 			{ id: 'agent',        label: 'Agent' },
 			{ id: 'integrations', label: 'Integrations' },
+			{ id: 'spaces',       label: 'Spaces' },
 			{ id: 'audit',        label: 'Audit' },
 			{ id: 'appearance',   label: 'Appearance' },
 			{ id: 'data',         label: 'Data' }
@@ -75,6 +77,8 @@
 		<AgentConfig />
 	{:else if activeTab === 'integrations'}
 		<IntegrationsConfig />
+	{:else if activeTab === 'spaces'}
+		<SpacesConfig />
 	{:else if activeTab === 'appearance'}
 		<AppearanceConfig />
 	{:else if activeTab === 'data'}

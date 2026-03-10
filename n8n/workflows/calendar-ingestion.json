@@ -21,7 +21,7 @@
             { "name": "event_id", "value": "={{ 'evt_cal_' + ($json.id || Date.now()) }}", "type": "string" },
             { "name": "timestamp", "value": "={{ new Date().toISOString() }}", "type": "string" },
             { "name": "source.platform", "value": "calendar", "type": "string" },
-            { "name": "source.connection_id", "value": "calendar_main", "type": "string" },
+            { "name": "source.connection_id", "value": "={{ $workflow.id }}", "type": "string" },
             { "name": "source.raw_event_type", "value": "={{ $json.status === 'cancelled' ? 'event_cancelled' : ($json.updated === $json.created ? 'event_created' : 'event_updated') }}", "type": "string" },
             { "name": "actor.name", "value": "={{ $json.organizer?.displayName || $json.organizer?.email || 'Unknown' }}", "type": "string" },
             { "name": "actor.email", "value": "={{ $json.organizer?.email || '' }}", "type": "string" },

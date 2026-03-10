@@ -36,7 +36,7 @@
             { "name": "event_id", "value": "={{ 'evt_jira_' + $json.id + '_' + new Date($json.fields?.updated || Date.now()).getTime() }}", "type": "string" },
             { "name": "timestamp", "value": "={{ $json.fields?.updated || new Date().toISOString() }}", "type": "string" },
             { "name": "source.platform", "value": "jira", "type": "string" },
-            { "name": "source.connection_id", "value": "jira_main", "type": "string" },
+            { "name": "source.connection_id", "value": "={{ $workflow.id }}", "type": "string" },
             { "name": "source.raw_event_type", "value": "={{ $json.fields?.created === $json.fields?.updated ? 'issue_created' : 'issue_updated' }}", "type": "string" },
             { "name": "actor.name", "value": "={{ $json.fields?.reporter?.displayName || $json.fields?.assignee?.displayName || 'Unknown' }}", "type": "string" },
             { "name": "actor.email", "value": "={{ $json.fields?.reporter?.emailAddress || $json.fields?.assignee?.emailAddress || '' }}", "type": "string" },

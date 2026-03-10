@@ -93,12 +93,15 @@ async def _embed_event(event: LayaEvent, router_output: RouterOutput) -> None:
     log.debug("event_embedded", event_id=event.event_id)
 
 
-async def run_router(event: LayaEvent, actor_relationship: str) -> RouterOutput:
+async def run_router(
+    event: LayaEvent, actor_relationship: str, space_id: str | None = None
+) -> RouterOutput:
     """Run the ROUTER step: classify event, extract entities, embed in memory.
 
     Args:
         event: The event to classify.
         actor_relationship: Resolved from team.json ("manager", "teammate", etc.).
+        space_id: Optional space for model/key overrides.
 
     Returns:
         RouterOutput with classification, entities, research plan.
@@ -126,6 +129,7 @@ async def run_router(event: LayaEvent, actor_relationship: str) -> RouterOutput:
         step="route",
         temperature=0.0,
         max_tokens=1500,
+        space_id=space_id,
     )
 
     # 3. Parse and validate the response

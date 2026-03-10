@@ -40,7 +40,7 @@
         "operation": "send",
         "sendTo": "={{ $json.body.payload.to || $json.body.event_actor_email }}",
         "subject": "={{ $json.body.payload.subject || (($json.body.event_subject || '').toLowerCase().startsWith('re:') ? $json.body.event_subject : 'Re: ' + ($json.body.event_subject || '')) }}",
-        "message": "={{ $json.body.payload.body }}",
+        "message": "={{ $json.body.payload.body || $json.body.payload.message || '' }}",
         "options": {
           "threadId": "={{ $json.body.payload.thread_id || '' }}"
         }
