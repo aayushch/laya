@@ -170,21 +170,21 @@
 
 			<!-- Status summary — fills remaining space -->
 			<div class="mt-2 flex flex-1 items-end">
-				<div class="flex flex-wrap gap-x-3 gap-y-0.5">
+				<div class="flex items-center gap-2 min-w-0">
+					{#if topCard.space_name}
+						<span class="flex items-center gap-1 shrink-0 text-[10px] text-surface-500" title="Space: {topCard.space_name}">
+							<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {topCard.space_color ?? '#F97316'}"></span>
+							{topCard.space_name}
+						</span>
+					{/if}
+				</div>
+				<div class="ml-auto flex flex-wrap justify-end gap-x-3 gap-y-0.5 shrink-0">
 					{#each statusSummary as { status, count }}
 						<span class="flex items-center gap-1">
 							<span class="h-1.5 w-1.5 rounded-full {statusSummaryDot[status] ?? 'bg-surface-500'}"></span>
 							<span class="text-[10px] text-surface-400">{count} {statusSummaryLabel[status] ?? status}</span>
 						</span>
 					{/each}
-				</div>
-				<div class="ml-auto flex items-center gap-2 shrink-0">
-					{#if topCard.space_name}
-						<span class="flex items-center gap-1 text-[10px] text-surface-500" title="Space: {topCard.space_name}">
-							<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {topCard.space_color ?? '#F97316'}"></span>
-							{topCard.space_name}
-						</span>
-					{/if}
 					<span class="text-[10px] text-surface-600">
 						{group.card_count} cards
 					</span>
