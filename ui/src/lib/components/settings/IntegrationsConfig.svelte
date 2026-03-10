@@ -4,10 +4,9 @@
 	import PlatformIcon from './PlatformIcon.svelte';
 	import type {
 		N8nTestResult,
-		N8nConnection,
-		PlatformConfig,
-		ConnectionTestResult,
-		N8nBootstrapResponse
+		N8nBootstrapResponse,
+		AvailableWorkflow,
+		Source
 	} from '$lib/api/types';
 
 	const DEFAULT_WEBHOOKS: Record<string, string> = {
@@ -17,15 +16,6 @@
 		gmail: 'gmail-executor',
 		calendar: 'calendar-executor'
 	};
-
-	const CATEGORY_LABELS: Record<string, string> = {
-		development: 'Development',
-		project_management: 'Project Management',
-		communication: 'Communication',
-		google: 'Google'
-	};
-
-	const CATEGORY_ORDER = ['development', 'project_management', 'communication', 'google'];
 
 	// Loading / error
 	let loading = $state(true);
@@ -46,21 +36,11 @@
 	let savingApiKey = $state(false);
 	let showManualKeyInput = $state(false);
 
-	// Platform connections
-	let platforms = $state<Record<string, PlatformConfig>>({});
-	let connections = $state<N8nConnection[]>([]);
-	let loadingConnections = $state(false);
-	let connectionError = $state<string | null>(null);
-
-	// Connect form
-	let connectingPlatform = $state<string | null>(null);
-	let connectionName = $state('');
-	let credentialFields = $state<Record<string, string>>({});
-	let creatingConnection = $state(false);
-
-	// Manage panel
-	let managingPlatform = $state<string | null>(null);
-	let deletingConnectionId = $state<string | null>(null);
+	// Workflows & sources
+	let workflows = $state<AvailableWorkflow[]>([]);
+	let sources = $state<Source[]>([]);
+	let loadingWorkflows = $state(false);
+	let workflowError = $state<string | null>(null);
 
 	// Webhook mappings
 	let webhooks = $state<Record<string, string>>({ ...DEFAULT_WEBHOOKS });
@@ -86,7 +66,7 @@
 			checkHealth();
 
 			if (hasN8nKey) {
-				await loadConnections();
+				await loadWorkflows();
 			}
 		} catch {
 			error = 'Failed to load settings';
@@ -104,20 +84,20 @@
 		}
 	}
 
-	async function loadConnections() {
-		loadingConnections = true;
-		connectionError = null;
+	async function loadWorkflows() {
+		loadingWorkflows = true;
+		workflowError = null;
 		try {
-			const [platformsResp, connectionsResp] = await Promise.all([
-				engineApi.getPlatforms(),
-				engineApi.getConnections()
+			const [wfResp, srcResp] = await Promise.all([
+				engineApi.getAvailableWorkflows(),
+				engineApi.getSources()
 			]);
-			platforms = platformsResp.platforms;
-			connections = connectionsResp.connections;
+			workflows = wfResp.workflows;
+			sources = srcResp.sources;
 		} catch (e) {
-			connectionError = e instanceof Error ? e.message : 'Failed to load connections';
+			workflowError = e instanceof Error ? e.message : 'Failed to load workflows';
 		} finally {
-			loadingConnections = false;
+			loadingWorkflows = false;
 		}
 	}
 
@@ -129,7 +109,7 @@
 			bootstrapResult = await engineApi.bootstrapN8n();
 			hasN8nKey = bootstrapResult.has_api_key;
 			if (hasN8nKey) {
-				await loadConnections();
+				await loadWorkflows();
 			}
 			await checkHealth();
 		} catch {
@@ -152,7 +132,7 @@
 			hasN8nKey = true;
 			n8nApiKey = '';
 			showManualKeyInput = false;
-			await loadConnections();
+			await loadWorkflows();
 		} catch {
 			error = 'Failed to save n8n API key';
 		} finally {
@@ -164,70 +144,11 @@
 		try {
 			await engineApi.deleteApiKey('n8n');
 			hasN8nKey = false;
-			connections = [];
+			workflows = [];
+			sources = [];
 			bootstrapResult = null;
 		} catch {
 			error = 'Failed to remove n8n API key';
-		}
-	}
-
-	function startConnect(platformKey: string) {
-		connectingPlatform = platformKey;
-		managingPlatform = null;
-		const platform = platforms[platformKey];
-		connectionName = platform?.label || '';
-		credentialFields = {};
-		if (platform) {
-			for (const field of platform.fields) {
-				credentialFields[field.key] = '';
-			}
-		}
-	}
-
-	function cancelConnect() {
-		connectingPlatform = null;
-		connectionName = '';
-		credentialFields = {};
-		connectionError = null;
-	}
-
-	async function createConnection() {
-		if (!connectingPlatform || !connectionName.trim()) return;
-		creatingConnection = true;
-		connectionError = null;
-		try {
-			await engineApi.createConnection({
-				platform: connectingPlatform,
-				name: connectionName.trim(),
-				credentials: { ...credentialFields }
-			});
-			connectingPlatform = null;
-			connectionName = '';
-			credentialFields = {};
-			await loadConnections();
-		} catch (e) {
-			connectionError = e instanceof Error ? e.message : 'Failed to create connection';
-		} finally {
-			creatingConnection = false;
-		}
-	}
-
-	function startManage(platformKey: string) {
-		managingPlatform = managingPlatform === platformKey ? null : platformKey;
-		connectingPlatform = null;
-	}
-
-	async function deleteConnection(id: string) {
-		deletingConnectionId = id;
-		connectionError = null;
-		try {
-			await engineApi.deleteConnection(id);
-			connections = connections.filter((c) => c.id !== id);
-			managingPlatform = null;
-		} catch (e) {
-			connectionError = e instanceof Error ? e.message : 'Failed to delete connection';
-		} finally {
-			deletingConnectionId = null;
 		}
 	}
 
@@ -292,26 +213,33 @@
 		editPath = '';
 	}
 
-	// Derived: group platforms by category
-	let platformsByCategory = $derived(() => {
-		const grouped: Record<string, Array<[string, PlatformConfig]>> = {};
-		for (const cat of CATEGORY_ORDER) {
-			grouped[cat] = [];
-		}
-		for (const [key, platform] of Object.entries(platforms)) {
-			const cat = platform.category || 'other';
-			if (!grouped[cat]) grouped[cat] = [];
-			grouped[cat].push([key, platform]);
-		}
-		return grouped;
+	// Helpers for workflow display
+	function getSourceForWorkflow(workflowId: string): Source | undefined {
+		return sources.find((s) => s.workflow_id === workflowId);
+	}
+
+	const TYPE_LABELS: Record<string, string> = {
+		ingestion: 'Ingestion',
+		executor: 'Executor'
+	};
+
+	// Group workflows: ingestion first, then executor, then unknown
+	const groupedWorkflows = $derived.by(() => {
+		const ingestion = workflows.filter((w) => w.source_type === 'ingestion');
+		const executor = workflows.filter((w) => w.source_type === 'executor');
+		const other = workflows.filter((w) => w.source_type !== 'ingestion' && w.source_type !== 'executor');
+		const groups: { label: string; items: AvailableWorkflow[] }[] = [];
+		if (ingestion.length) groups.push({ label: 'Ingestion Workflows', items: ingestion });
+		if (executor.length) groups.push({ label: 'Executor Workflows', items: executor });
+		if (other.length) groups.push({ label: 'Other Workflows', items: other });
+		return groups;
 	});
 
-	// Derived: find connection for a platform
-	function getConnectionForPlatform(platformKey: string): N8nConnection | undefined {
-		const platform = platforms[platformKey];
-		if (!platform) return undefined;
-		return connections.find((c) => c.platform === platformKey);
-	}
+	const workflowStats = $derived({
+		total: workflows.length,
+		active: workflows.filter((w) => w.active).length,
+		registered: workflows.filter((w) => w.registered).length
+	});
 </script>
 
 {#if loading}
@@ -444,6 +372,8 @@
 					</div>
 					<a
 						href={baseUrl}
+						target="_blank"
+						rel="noopener noreferrer"
 						class="inline-flex items-center gap-1.5 rounded-md border border-surface-600 px-3 py-1.5 text-xs font-medium text-surface-300 transition-colors hover:border-laya-orange/40 hover:text-laya-orange"
 					>
 						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -455,191 +385,110 @@
 			{/if}
 		</div>
 
-		<!-- Section 2: Platform Grid -->
+		<!-- Section 2: n8n Workflows -->
 		{#if hasN8nKey}
-			{#if connectionError}
-				<div
-					class="rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-sm text-red-300"
-				>
-					{connectionError}
+			{#if workflowError}
+				<div class="rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-sm text-red-300">
+					{workflowError}
 				</div>
 			{/if}
 
-			{#if loadingConnections}
-				<div class="py-8 text-center text-sm text-surface-400">Loading platforms...</div>
+			{#if loadingWorkflows}
+				<div class="py-8 text-center text-sm text-surface-400">Loading workflows...</div>
+			{:else if workflows.length === 0}
+				<div class="rounded-lg border border-dashed border-surface-700 px-6 py-8 text-center">
+					<p class="text-sm text-surface-400">No workflows found in n8n</p>
+					<p class="mt-1 text-xs text-surface-500">Create workflows in the n8n dashboard to see them here</p>
+				</div>
 			{:else}
-				{#each CATEGORY_ORDER as category}
-					{@const categoryPlatforms = platformsByCategory()[category] || []}
-					{#if categoryPlatforms.length > 0}
-						<div>
-							<h3 class="mb-3 text-xs font-semibold uppercase tracking-wider text-surface-400">
-								{CATEGORY_LABELS[category] || category}
-							</h3>
-							<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-								{#each categoryPlatforms as [key, platform]}
-									{@const conn = getConnectionForPlatform(key)}
-									{@const isConnected = !!conn}
-									{@const isConnecting = connectingPlatform === key}
-									{@const isManaging = managingPlatform === key}
+				<!-- Stats bar -->
+				<div class="flex items-center gap-4 text-xs text-surface-400">
+					<span>{workflowStats.total} workflows</span>
+					<span class="text-surface-600">|</span>
+					<span class="flex items-center gap-1">
+						<span class="h-1.5 w-1.5 rounded-full bg-green-500"></span>
+						{workflowStats.active} active
+					</span>
+					<span class="text-surface-600">|</span>
+					<span>{workflowStats.registered} registered as sources</span>
+					<button
+						onclick={loadWorkflows}
+						class="ml-auto text-surface-500 transition-colors hover:text-surface-200"
+						title="Refresh"
+					>
+						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5" />
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.49 9A9 9 0 105.64 5.64L4 4m16 16l-1.64-1.64" />
+						</svg>
+					</button>
+				</div>
 
-									<div
-										class="rounded-lg border transition-colors
-											{isConnected
-											? 'border-green-800/50 bg-surface-800'
-											: 'border-surface-700 bg-surface-800'}
-											{isConnecting || isManaging ? 'col-span-full' : ''}"
-									>
-										<!-- Card header -->
-										<div class="flex items-center justify-between p-4">
-											<div class="flex min-w-0 items-center gap-3">
-												<div
-													class="flex h-9 w-9 items-center justify-center rounded-lg
-														{isConnected ? 'bg-green-900/30 text-green-400' : 'bg-surface-700 text-surface-300'}"
-												>
-													<PlatformIcon platform={platform.icon || key} size={20} />
+				{#each groupedWorkflows as group}
+					<div>
+						<h3 class="mb-3 text-xs font-semibold uppercase tracking-wider text-surface-400">
+							{group.label}
+						</h3>
+						<div class="overflow-hidden rounded-xl border border-surface-700">
+							<table class="w-full text-sm">
+								<thead class="bg-surface-900 text-left text-xs uppercase tracking-wider text-surface-500">
+									<tr>
+										<th class="px-4 py-2.5">Workflow</th>
+										<th class="px-4 py-2.5">Platform</th>
+										<th class="px-4 py-2.5">Status</th>
+										<th class="px-4 py-2.5">Source</th>
+									</tr>
+								</thead>
+								<tbody class="divide-y divide-surface-700/50">
+									{#each group.items as wf}
+										{@const source = getSourceForWorkflow(wf.workflow_id)}
+										<tr class="bg-surface-800 transition-colors hover:bg-surface-700/50">
+											<td class="px-4 py-3">
+												<div class="flex items-center gap-2.5">
+													<div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md {wf.active ? 'bg-green-900/30 text-green-400' : 'bg-surface-700 text-surface-500'}">
+														<PlatformIcon platform={wf.platform} size={16} />
+													</div>
+													<div class="min-w-0">
+														<div class="truncate font-medium text-surface-100" title={wf.name}>{wf.name}</div>
+														<div class="truncate text-[10px] text-surface-500 font-mono" title={wf.workflow_id}>{wf.workflow_id}</div>
+													</div>
 												</div>
-												<div class="min-w-0">
-													<div class="truncate text-sm font-medium">{platform.label}</div>
-													{#if isConnected && conn}
-														<div class="truncate text-xs text-green-400">{conn.name}</div>
-													{:else if platform.oauth}
-														<div class="text-xs text-surface-500">OAuth</div>
-													{/if}
-												</div>
-											</div>
-											<div class="shrink-0">
-												{#if platform.oauth}
-													<a
-														href="{baseUrl}/credentials/new"
-														target="_blank"
-														rel="noopener noreferrer"
-														class="rounded-md bg-surface-700 px-3 py-1.5 text-xs font-medium text-surface-300 transition-colors hover:bg-surface-600"
-													>
-														Setup in n8n
-													</a>
-												{:else if isConnected}
-													<button
-														onclick={() => startManage(key)}
-														class="rounded-md bg-surface-700 px-3 py-1.5 text-xs font-medium text-surface-300 transition-colors hover:bg-surface-600"
-													>
-														{isManaging ? 'Close' : 'Manage'}
-													</button>
+											</td>
+											<td class="px-4 py-3">
+												<span class="text-xs font-medium text-surface-300">{wf.platform}</span>
+											</td>
+											<td class="px-4 py-3">
+												{#if wf.active}
+													<span class="inline-flex items-center gap-1.5 rounded-full bg-green-900/30 px-2 py-0.5 text-[10px] font-medium text-green-400">
+														<span class="h-1.5 w-1.5 rounded-full bg-green-400"></span>
+														Active
+													</span>
 												{:else}
-													<button
-														onclick={() => startConnect(key)}
-														class="rounded-md bg-primary-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-primary-500"
-													>
-														Connect
-													</button>
+													<span class="inline-flex items-center gap-1.5 rounded-full bg-surface-700 px-2 py-0.5 text-[10px] font-medium text-surface-400">
+														<span class="h-1.5 w-1.5 rounded-full bg-surface-500"></span>
+														Inactive
+													</span>
 												{/if}
-											</div>
-										</div>
-
-										<!-- Connect form (expanded) -->
-										{#if isConnecting && !platform.oauth}
-											<div
-												class="border-t border-surface-700 bg-surface-900/50 p-4"
-											>
-												<div class="space-y-3">
-													<div>
-														<label
-															for="conn-name-{key}"
-															class="mb-1 block text-xs font-medium text-surface-400"
-															>Connection Name</label
-														>
-														<input
-															id="conn-name-{key}"
-															type="text"
-															bind:value={connectionName}
-															placeholder="e.g. My {platform.label}"
-															class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
-														/>
-													</div>
-
-													{#each platform.fields as field}
-														<div>
-															<label
-																for="field-{key}-{field.key}"
-																class="mb-1 block text-xs font-medium text-surface-400"
-																>{field.label}</label
-															>
-															<input
-																id="field-{key}-{field.key}"
-																type={field.type}
-																bind:value={credentialFields[field.key]}
-																placeholder={field.placeholder ?? ''}
-																class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
-															/>
-															{#if field.help}
-																<p class="mt-1 text-xs text-surface-500">
-																	{field.help}
-																</p>
-															{/if}
-														</div>
-													{/each}
-
-													<div class="flex gap-3 pt-1">
-														<button
-															onclick={createConnection}
-															disabled={creatingConnection || !connectionName.trim()}
-															class="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-500 disabled:opacity-50"
-														>
-															{creatingConnection
-																? 'Connecting...'
-																: 'Save Connection'}
-														</button>
-														<button
-															onclick={cancelConnect}
-															class="text-sm text-surface-400 hover:text-surface-200"
-														>
-															Cancel
-														</button>
-													</div>
-												</div>
-											</div>
-										{/if}
-
-										<!-- Manage panel (expanded) -->
-										{#if isManaging && conn}
-											<div
-												class="border-t border-surface-700 bg-surface-900/50 p-4"
-											>
-												<div class="space-y-3">
-													<div class="flex items-center justify-between text-sm">
-														<span class="text-surface-400">Connection</span>
-														<span class="text-surface-200">{conn.name}</span>
-													</div>
-													<div class="flex items-center justify-between text-sm">
-														<span class="text-surface-400">Created</span>
-														<span class="text-surface-200">
-															{conn.created_at
-																? new Date(
-																		conn.created_at
-																	).toLocaleDateString()
-																: '—'}
+											</td>
+											<td class="px-4 py-3">
+												{#if source}
+													<div class="flex items-center gap-1.5">
+														{#if source.space_name}
+															<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {source.space_name === 'Default' ? '#F97316' : '#6366f1'}"></span>
+														{/if}
+														<span class="text-xs text-surface-300" title="Registered as source: {source.name} in {source.space_name ?? 'Default'}">
+															{source.space_name ?? 'Default'}
 														</span>
 													</div>
-													<p class="text-xs text-surface-500">
-														Credentials are encrypted in n8n. To change them,
-														disconnect and reconnect.
-													</p>
-													<button
-														onclick={() => deleteConnection(conn.id)}
-														disabled={deletingConnectionId === conn.id}
-														class="rounded-md bg-red-900/50 px-4 py-2 text-sm font-medium text-red-300 transition-colors hover:bg-red-900/80 disabled:opacity-50"
-													>
-														{deletingConnectionId === conn.id
-															? 'Disconnecting...'
-															: 'Disconnect'}
-													</button>
-												</div>
-											</div>
-										{/if}
-									</div>
-								{/each}
-							</div>
+												{:else}
+													<span class="text-xs text-surface-500">—</span>
+												{/if}
+											</td>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
 						</div>
-					{/if}
+					</div>
 				{/each}
 			{/if}
 		{/if}
