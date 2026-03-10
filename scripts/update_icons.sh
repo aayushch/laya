@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
-# Convert laya_dark.ico and laya_light.ico into all Tauri icon formats.
+# Convert Laya.icon source into all Tauri icon formats.
 # Usage: ./scripts/update_icons.sh
 #
-# Requires Python 3 and Pillow. A temporary venv is created if needed.
+# Reads the PNG from Laya.icon/Assets/ and generates all sizes for Tauri.
+# Requires Python 3 — Pillow is installed in a temp venv automatically.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ICONS_DIR="$REPO_ROOT/ui/src-tauri/icons"
-DARK_ICO="$REPO_ROOT/laya_dark.ico"
-LIGHT_ICO="$REPO_ROOT/laya_light.ico"
+ICON_SOURCE_DIR="$REPO_ROOT/Laya.icon/Assets"
 VENV_DIR="/tmp/laya_icon_conv"
 ICONSET_DIR="/tmp/laya_icon.iconset"
 
-# Validate source files exist
-for f in "$DARK_ICO" "$LIGHT_ICO"; do
-    if [ ! -f "$f" ]; then
-        echo "ERROR: Missing $f"
-        exit 1
-    fi
-done
+# Find the source PNG
+SRC_PNG=$(find "$ICON_SOURCE_DIR" -name "*.png" -type f | head -1)
+if [ -z "$SRC_PNG" ]; then
+    echo "ERROR: No PNG found in $ICON_SOURCE_DIR"
+    exit 1
+fi
+echo "Source: $SRC_PNG"
 
-# Ensure Pillow is available in a temp venv
+# Ensure Pillow is available
 if [ ! -f "$VENV_DIR/bin/python3" ]; then
     echo "Creating temp venv for Pillow..."
     python3 -m venv "$VENV_DIR"
@@ -32,22 +32,18 @@ fi
 
 PYTHON="$VENV_DIR/bin/python3"
 
-echo "Generating icons from $DARK_ICO..."
+echo "Generating icons..."
 
-# Generate all PNG sizes + copy ico files
 $PYTHON << PYEOF
 from PIL import Image
 import os, shutil
 
+SRC = "$SRC_PNG"
 ICONS_DIR = "$ICONS_DIR"
-DARK_ICO = "$DARK_ICO"
-LIGHT_ICO = "$LIGHT_ICO"
 ICONSET_DIR = "$ICONSET_DIR"
 
-# Load largest frame from dark ico
-ico = Image.open(DARK_ICO)
-ico.size = (128, 128)
-base = ico.copy().convert("RGBA")
+base = Image.open(SRC).convert("RGBA")
+print(f"  Source size: {base.size[0]}x{base.size[1]}")
 
 def resize(img, size):
     return img.resize((size, size), Image.LANCZOS)
@@ -69,20 +65,36 @@ png_sizes = {
     "Square310x310Logo.png": 310,
     "StoreLogo.png": 50,
 }
-
 for name, size in png_sizes.items():
     resize(base, size).save(os.path.join(ICONS_DIR, name), "PNG")
     print(f"  {name} ({size}x{size})")
 
-# Copy ico files
-shutil.copy2(DARK_ICO, os.path.join(ICONS_DIR, "icon.ico"))
-shutil.copy2(DARK_ICO, os.path.join(ICONS_DIR, "icon_dark.ico"))
-shutil.copy2(LIGHT_ICO, os.path.join(ICONS_DIR, "icon_light.ico"))
-print("  icon.ico (dark)")
-print("  icon_dark.ico")
-print("  icon_light.ico")
+# macOS dock icon with rounded corners (dev mode)
+from PIL import ImageDraw
+macos_size = 1024
+radius = int(macos_size * 0.2237)
+macos_img = resize(base, macos_size)
+mask = Image.new("L", (macos_size, macos_size), 0)
+draw = ImageDraw.Draw(mask)
+draw.rounded_rectangle([(0, 0), (macos_size - 1, macos_size - 1)], radius=radius, fill=255)
+result = Image.new("RGBA", (macos_size, macos_size), (0, 0, 0, 0))
+result.paste(macos_img, mask=mask)
+result.save(os.path.join(ICONS_DIR, "icon_macos.png"), "PNG")
+print(f"  icon_macos.png ({macos_size}x{macos_size}, rounded)")
+
+# Generate .ico (multi-size)
+ico_sizes = [16, 32, 48, 64, 128, 256]
+ico_images = [resize(base, s) for s in ico_sizes]
+ico_images[0].save(
+    os.path.join(ICONS_DIR, "icon.ico"),
+    format="ICO",
+    sizes=[(s, s) for s in ico_sizes],
+    append_images=ico_images[1:],
+)
+print(f"  icon.ico ({', '.join(str(s) for s in ico_sizes)})")
 
 # Build macOS iconset
+shutil.rmtree(ICONSET_DIR, ignore_errors=True)
 os.makedirs(ICONSET_DIR, exist_ok=True)
 icns_sizes = {
     "icon_16x16.png": 16,
@@ -109,10 +121,9 @@ else
     echo "  SKIP icon.icns (iconutil not available — not on macOS)"
 fi
 
-# Clean up temp iconset
 rm -rf "$ICONSET_DIR"
 
-# Clear macOS icon caches so changes show immediately
+# Clear macOS icon caches
 if [ "$(uname)" = "Darwin" ]; then
     echo ""
     echo "Clearing macOS icon caches..."

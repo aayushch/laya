@@ -18,7 +18,8 @@ import type {
 	CreateConnectionRequest,
 	CreateConnectionResponse,
 	ConnectionTestResult,
-	N8nBootstrapResponse
+	N8nBootstrapResponse,
+	DaySummaryResponse
 } from './types';
 
 const ENGINE_URL = 'http://127.0.0.1:8420';
@@ -139,6 +140,12 @@ export const engineApi = {
 		request<{ status: string; card_id: string }>(`/cards/${cardId}`, {
 			method: 'DELETE'
 		}),
+
+	// Summary
+	getDaySummary: (date?: string) => {
+		const qs = date ? `?date=${date}` : '';
+		return request<DaySummaryResponse>(`/summary${qs}`);
+	},
 
 	// Actions
 	executeAction: (cardId: string, actionId: string, modifications?: Record<string, unknown>) =>

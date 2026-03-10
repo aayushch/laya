@@ -148,6 +148,26 @@ pub fn run() {
                 )?;
             }
 
+            // Set macOS dock icon (needed in dev mode where there's no .app bundle)
+            #[cfg(target_os = "macos")]
+            #[allow(deprecated)]
+            {
+                use cocoa::appkit::{NSApplication, NSImage};
+                use cocoa::base::nil;
+                use cocoa::foundation::NSData;
+                let icon_bytes = include_bytes!("../icons/icon_macos.png");
+                unsafe {
+                    let ns_app = NSApplication::sharedApplication(nil);
+                    let data = NSData::dataWithBytes_length_(
+                        nil,
+                        icon_bytes.as_ptr() as *const std::ffi::c_void,
+                        icon_bytes.len() as u64,
+                    );
+                    let image = NSImage::initWithData_(NSImage::alloc(nil), data);
+                    ns_app.setApplicationIconImage_(image);
+                }
+            }
+
             // --- System tray ---
             let dashboard =
                 MenuItem::with_id(app, "dashboard", "Dashboard", true, None::<&str>)?;
@@ -157,6 +177,7 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&dashboard, &separator, &show, &quit])?;
 
             let tray = TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
                 .tooltip("Laya")
                 .on_menu_event(|app, event| match event.id.as_ref() {
@@ -209,6 +230,50 @@ pub fn run() {
             docker::stop_n8n,
             pick_repo_folder,
         ])
+        .on_page_load(|webview, payload| {
+            use tauri::webview::PageLoadEvent;
+            if let PageLoadEvent::Finished = payload.event() {
+                let url = payload.url().to_string();
+                // Only our app's own URLs are internal — other localhost
+                // services (e.g. n8n on :5678) should get the back bar.
+                let is_internal = url.starts_with("http://localhost:5173")
+                    || url.starts_with("http://127.0.0.1:5173")
+                    || url.starts_with("http://127.0.0.1:8420")
+                    || url.starts_with("tauri://")
+                    || url.starts_with("about:");
+
+                if !is_internal {
+                    let back_url = if cfg!(debug_assertions) {
+                        "http://localhost:5173/feed"
+                    } else {
+                        "tauri://localhost/feed"
+                    };
+                    let js = format!(
+                        r#"(function(){{
+if(document.getElementById('__laya_nav'))return;
+var bar=document.createElement('div');
+bar.id='__laya_nav';
+bar.style.cssText='position:fixed;top:0;left:0;right:0;z-index:2147483647;display:flex;align-items:center;gap:8px;padding:6px 12px;background:#1a1a1a;border-bottom:1px solid #333;font-family:-apple-system,BlinkMacSystemFont,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,0.3);';
+var btn=document.createElement('button');
+btn.textContent='\u{{2190}} Back to Laya';
+btn.style.cssText='background:none;border:1px solid rgba(232,116,48,0.53);color:#e87430;padding:4px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;';
+btn.onmouseover=function(){{btn.style.background='rgba(232,116,48,0.09)'}};
+btn.onmouseout=function(){{btn.style.background='none'}};
+btn.onclick=function(){{window.location.href='{back}'}};
+bar.appendChild(btn);
+var u=document.createElement('span');
+u.textContent=window.location.hostname;
+u.style.cssText='flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:#888;';
+bar.appendChild(u);
+document.documentElement.appendChild(bar);
+if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
+}})();"#,
+                        back = back_url
+                    );
+                    let _ = webview.eval(&js);
+                }
+            }
+        })
         .on_window_event(|window, event| {
             // Kill engine when the app exits
             if let tauri::WindowEvent::Destroyed = event {
