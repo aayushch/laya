@@ -275,7 +275,7 @@ export const engineApi = {
 
 	getAvailableWorkflows: () => request<AvailableWorkflowsResponse>('/sources/available-workflows'),
 
-	createSource: (source: { name: string; platform: string; workflow_id: string; space_id?: string }) =>
+	createSource: (source: { name: string; platform: string; workflow_id: string; space_id?: string; source_type?: string; webhook_path?: string }) =>
 		request<Source>('/sources', {
 			method: 'POST',
 			body: JSON.stringify(source)

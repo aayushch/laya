@@ -517,6 +517,8 @@ export interface Source {
 	workflow_id: string;
 	space_id: string;
 	space_name?: string;
+	source_type?: string;
+	webhook_path?: string;
 	created_at?: string;
 }
 
@@ -525,6 +527,7 @@ export interface AvailableWorkflow {
 	workflow_id: string;
 	name: string;
 	platform: string;
+	source_type: string;
 	active: boolean;
 	registered: boolean;
 }
