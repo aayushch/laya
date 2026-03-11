@@ -18,6 +18,7 @@ async def run_workers(
     event: LayaEvent,
     router_output: RouterOutput,
     card_id: str | None = None,
+    space_id: str | None = None,
 ) -> list[WorkerResult]:
     """Dispatch workers based on Router output.
 
@@ -32,6 +33,7 @@ async def run_workers(
         event=event,
         router_output=router_output,
         card_id=card_id,
+        space_id=space_id,
     )
     results.append(primary_result)
 
@@ -43,6 +45,7 @@ async def run_workers(
             router_output=router_output,
             card_id=card_id,
             prior_findings=primary_result.findings,
+            space_id=space_id,
         )
         results.append(secondary_result)
 
@@ -61,12 +64,13 @@ async def _dispatch_worker(
     router_output: RouterOutput,
     card_id: str | None = None,
     prior_findings: dict | None = None,
+    space_id: str | None = None,
 ) -> WorkerResult:
     """Dispatch to the appropriate worker based on persona."""
     try:
         match persona:
             case Persona.ENGINEER:
-                return await run_engineer(event, router_output, card_id=card_id)
+                return await run_engineer(event, router_output, card_id=card_id, space_id=space_id)
             case Persona.COMMS:
                 return await run_comms(
                     event, router_output, prior_findings=prior_findings, card_id=card_id

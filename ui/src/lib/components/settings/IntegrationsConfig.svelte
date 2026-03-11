@@ -213,6 +213,40 @@
 		editPath = '';
 	}
 
+	// Workflow activation toggle
+	let togglingWorkflow = $state<string | null>(null);
+	let workflowIssues = $state<{ workflowId: string; name: string; issues: string[] } | null>(null);
+
+	async function toggleWorkflowActive(wf: AvailableWorkflow) {
+		togglingWorkflow = wf.workflow_id;
+		workflowIssues = null;
+		workflowError = null;
+		try {
+			const res = await engineApi.setWorkflowActive(wf.workflow_id, !wf.active);
+			// Update local state
+			const idx = workflows.findIndex((w) => w.workflow_id === wf.workflow_id);
+			if (idx !== -1) {
+				workflows[idx] = { ...workflows[idx], active: res.active };
+				workflows = [...workflows];
+			}
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : 'Failed to toggle workflow';
+			// Try to parse structured issues from the error
+			try {
+				const parsed = JSON.parse(msg);
+				if (parsed.issues && Array.isArray(parsed.issues)) {
+					workflowIssues = { workflowId: wf.workflow_id, name: wf.name, issues: parsed.issues };
+					return;
+				}
+			} catch {
+				// Not JSON — show as plain error
+			}
+			workflowError = msg;
+		} finally {
+			togglingWorkflow = null;
+		}
+	}
+
 	// Helpers for workflow display
 	function getSourceForWorkflow(workflowId: string): Source | undefined {
 		return sources.find((s) => s.workflow_id === workflowId);
@@ -387,9 +421,30 @@
 
 		<!-- Section 2: n8n Workflows -->
 		{#if hasN8nKey}
-			{#if workflowError}
-				<div class="rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-sm text-red-300">
-					{workflowError}
+			<!-- Workflow notification toast — positioned over content, no layout shift -->
+			{#if workflowError || workflowIssues}
+				<div class="pointer-events-none relative h-0">
+					<div class="pointer-events-auto absolute left-0 right-0 top-0 z-10">
+						{#if workflowError}
+							<div class="flex items-center gap-2 rounded-md border border-red-800/50 bg-surface-800 px-3 py-1.5 shadow-lg">
+								<span class="text-[11px] text-red-300 flex-1 truncate">{workflowError}</span>
+								<button onclick={() => (workflowError = null)} class="shrink-0 text-red-500/60 hover:text-red-300 transition-colors">
+									<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+								</button>
+							</div>
+						{:else if workflowIssues}
+							<div class="flex items-center gap-2 rounded-md border border-yellow-700/40 bg-surface-800 px-3 py-1.5 shadow-lg">
+								<span class="text-[11px] text-yellow-300/90 flex-1 truncate">
+									<span class="font-medium">Cannot activate "{workflowIssues.name}"</span>
+									<span class="text-yellow-400/60"> — </span>
+									<span class="text-yellow-300/70">{workflowIssues.issues.join('; ')}</span>
+								</span>
+								<button onclick={() => (workflowIssues = null)} class="shrink-0 text-yellow-500/60 hover:text-yellow-300 transition-colors">
+									<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+								</button>
+							</div>
+						{/if}
+					</div>
 				</div>
 			{/if}
 
@@ -457,17 +512,23 @@
 												<span class="text-xs font-medium text-surface-300">{wf.platform}</span>
 											</td>
 											<td class="px-4 py-3">
-												{#if wf.active}
-													<span class="inline-flex items-center gap-1.5 rounded-full bg-green-900/30 px-2 py-0.5 text-[10px] font-medium text-green-400">
-														<span class="h-1.5 w-1.5 rounded-full bg-green-400"></span>
-														Active
-													</span>
-												{:else}
-													<span class="inline-flex items-center gap-1.5 rounded-full bg-surface-700 px-2 py-0.5 text-[10px] font-medium text-surface-400">
-														<span class="h-1.5 w-1.5 rounded-full bg-surface-500"></span>
-														Inactive
-													</span>
-												{/if}
+												<button
+													onclick={() => toggleWorkflowActive(wf)}
+													disabled={togglingWorkflow === wf.workflow_id}
+													class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors
+														{wf.active
+															? 'bg-green-900/30 text-green-400 hover:bg-green-900/50'
+															: 'bg-surface-700 text-surface-400 hover:bg-surface-600'}
+														{togglingWorkflow === wf.workflow_id ? 'opacity-50' : ''}"
+													title={wf.active ? 'Click to deactivate' : 'Click to activate'}
+												>
+													<span class="h-1.5 w-1.5 rounded-full {wf.active ? 'bg-green-400' : 'bg-surface-500'}"></span>
+													{#if togglingWorkflow === wf.workflow_id}
+														...
+													{:else}
+														{wf.active ? 'Active' : 'Inactive'}
+													{/if}
+												</button>
 											</td>
 											<td class="px-4 py-3">
 												{#if source}

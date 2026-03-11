@@ -155,7 +155,7 @@
 		>Retry</button>
 	</div>
 {:else if card}
-	<div class="flex h-[calc(100vh-64px)] -m-6">
+	<div class="flex h-[calc(100%+3rem)] -m-6">
 		<TimelinePanel {events} onselect={handleTimelineSelect} />
 		<AgentPanel {card} {session} {events} />
 		<ContextPanel {card} {session} {events} {context} />

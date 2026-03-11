@@ -109,6 +109,64 @@ async def list_workflows() -> list[dict]:
     return items
 
 
+async def get_workflow(workflow_id: str) -> dict:
+    """GET /api/v1/workflows/{id} — fetch full workflow details including nodes."""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(
+            f"{_base_url()}/api/v1/workflows/{workflow_id}",
+            headers=_get_headers(),
+        )
+    if resp.status_code != 200:
+        raise N8nApiError(resp.status_code, resp.text)
+    return resp.json()
+
+
+async def check_workflow_readiness(workflow_id: str) -> dict:
+    """Check if a workflow is ready to be activated.
+
+    Fetches full workflow details and inspects each node for missing credentials.
+    Returns {"ready": bool, "issues": [str]}.
+    """
+    wf = await get_workflow(workflow_id)
+    issues: list[str] = []
+
+    nodes = wf.get("nodes", [])
+    if not nodes:
+        issues.append("Workflow has no nodes")
+        return {"ready": False, "issues": issues}
+
+    # Fetch all configured credential IDs for quick lookup
+    creds = await list_credentials()
+    configured_cred_ids = {str(c.get("id", "")) for c in creds}
+
+    for node in nodes:
+        node_name = node.get("name", node.get("type", "Unknown"))
+        node_creds = node.get("credentials", {})
+        # Each credential entry maps a type to {id, name}
+        for cred_type, cred_ref in node_creds.items():
+            cred_id = str(cred_ref.get("id", ""))
+            if not cred_id or cred_id not in configured_cred_ids:
+                issues.append(f'"{node_name}" is missing {cred_type} credentials')
+
+    return {"ready": len(issues) == 0, "issues": issues}
+
+
+async def activate_workflow(workflow_id: str, active: bool) -> dict:
+    """Activate or deactivate an n8n workflow.
+
+    Uses POST /api/v1/workflows/{id}/activate or /deactivate.
+    """
+    action = "activate" if active else "deactivate"
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.post(
+            f"{_base_url()}/api/v1/workflows/{workflow_id}/{action}",
+            headers=_get_headers(),
+        )
+    if resp.status_code not in (200, 201):
+        raise N8nApiError(resp.status_code, resp.text)
+    return resp.json()
+
+
 async def test_api_access() -> dict:
     """Test whether the n8n API is accessible with the current key."""
     try:

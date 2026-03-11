@@ -35,6 +35,9 @@ async def trigger_summary_update(
     card_intelligence: list[str] | None = None,
     actor_name: str | None = None,
     source_platform: str | None = None,
+    space_id: str | None = None,
+    space_name: str | None = None,
+    space_color: str | None = None,
 ) -> None:
     """Queue a new card for summary incorporation (debounced)."""
     global _debounce_task
@@ -49,6 +52,9 @@ async def trigger_summary_update(
         "card_intelligence": card_intelligence,
         "actor_name": actor_name,
         "source_platform": source_platform,
+        "space_id": space_id,
+        "space_name": space_name,
+        "space_color": space_color,
     }
 
     async with _debounce_lock:
@@ -126,6 +132,50 @@ async def _run_summary_update(
 
     schema = get_summarizer_json_schema()
 
+    # Build card_id → space info lookup from new cards + DB for existing ones
+    space_lookup: dict[str, dict[str, str]] = {}
+
+    # Seed from new cards (authoritative — they have fresh space info from emit)
+    for card in new_cards:
+        cid = card["card_id"]
+        space_lookup[cid] = {
+            "space_id": card.get("space_id") or "default",
+            "space_name": card.get("space_name") or "Default",
+            "space_color": card.get("space_color") or "#F97316",
+        }
+
+    # Also look up existing card_ids from the DB so we can fix old items too
+    missing_ids = [cid for cid in existing_card_ids if cid not in space_lookup]
+    if missing_ids:
+        placeholders = ",".join("?" for _ in missing_ids)
+        card_rows = await db.execute_fetchall(
+            f"SELECT ac.card_id, ac.space_id, s.name AS space_name, s.color AS space_color "
+            f"FROM action_cards ac LEFT JOIN spaces s ON ac.space_id = s.space_id "
+            f"WHERE ac.card_id IN ({placeholders})",
+            missing_ids,
+        )
+        for row in card_rows:
+            space_lookup[row["card_id"]] = {
+                "space_id": row["space_id"] or "default",
+                "space_name": row["space_name"] or "Default",
+                "space_color": row["space_color"] or "#F97316",
+            }
+
+    def _fix_space_fields(summary: dict) -> dict:
+        """Overwrite LLM-produced space fields with authoritative values."""
+        for section in ("events_and_meetings", "action_items", "key_updates"):
+            for item in summary.get(section, []):
+                info = space_lookup.get(item.get("card_id", ""))
+                if info:
+                    item["space_id"] = info["space_id"]
+                    item["space_name"] = info["space_name"]
+                    item["space_color"] = info["space_color"]
+        return summary
+
+    # Fix space fields on the existing summary loaded from DB
+    if current_summary:
+        current_summary = _fix_space_fields(current_summary)
+
     # Process new cards one at a time (each builds on previous)
     for card in new_cards:
         if card["card_id"] in existing_card_ids:
@@ -142,6 +192,9 @@ async def _run_summary_update(
             card_persona=card.get("card_persona"),
             actor_name=card.get("actor_name"),
             source_platform=card.get("source_platform"),
+            space_id=card.get("space_id"),
+            space_name=card.get("space_name"),
+            space_color=card.get("space_color"),
         )
 
         try:
@@ -152,12 +205,15 @@ async def _run_summary_update(
                 card_id=card["card_id"],
                 step="summarize",
                 temperature=0.2,
-                max_tokens=4000,
+                max_tokens=8192,
             )
 
             if not response.parsed:
-                raise ValueError("LLM returned malformed JSON for summary")
-            current_summary = response.parsed
+                raise ValueError(
+                    f"LLM returned malformed JSON for summary "
+                    f"(output_tokens={response.output_tokens}, model={response.model})"
+                )
+            current_summary = _fix_space_fields(response.parsed)
 
             existing_card_ids.append(card["card_id"])
             log.info("summary_card_incorporated", card_id=card["card_id"], date=today)
@@ -190,12 +246,15 @@ async def _run_summary_update(
                 card_id=change["card_id"],
                 step="summarize_status",
                 temperature=0.1,
-                max_tokens=4000,
+                max_tokens=8192,
             )
 
             if not response.parsed:
-                raise ValueError("LLM returned malformed JSON for status update summary")
-            current_summary = response.parsed
+                raise ValueError(
+                    f"LLM returned malformed JSON for status update summary "
+                    f"(output_tokens={response.output_tokens}, model={response.model})"
+                )
+            current_summary = _fix_space_fields(response.parsed)
 
             log.info(
                 "summary_status_updated",

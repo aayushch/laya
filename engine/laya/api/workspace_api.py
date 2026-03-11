@@ -48,7 +48,7 @@ async def get_workspace(card_id: str) -> dict[str, Any]:
     session_row = await db.execute_fetchall(
         """SELECT session_id, card_id, agent_type, status,
                   repo_path, initial_prompt, started_at, updated_at,
-                  completed_at, findings_json, error_message
+                  completed_at, findings_json, error_message, add_dirs
            FROM workspace_sessions
            WHERE card_id = ?
            ORDER BY started_at DESC
@@ -70,6 +70,7 @@ async def get_workspace(card_id: str) -> dict[str, Any]:
         "completed_at": _utc_iso(row[8]),
         "findings": json.loads(row[9]) if row[9] else None,
         "error_message": row[10],
+        "add_dirs": json.loads(row[11]) if row[11] else [],
     }
 
     # Get workspace events for this session
@@ -169,8 +170,6 @@ async def answer_agent_question(session_id: str, body: AnswerQuestionRequest) ->
         raise HTTPException(status_code=404, detail="Session not found")
 
     card_id, cc_session_id, status = rows[0]
-    if not cc_session_id:
-        raise HTTPException(status_code=400, detail="No Claude Code session ID — cannot resume")
 
     # Format answers as natural language for the LLM
     answer_lines = []
@@ -339,8 +338,6 @@ async def resume_session_with_prompt(session_id: str, body: ResumePromptRequest)
         raise HTTPException(status_code=404, detail="Session not found")
 
     card_id, cc_session_id, status = rows[0]
-    if not cc_session_id:
-        raise HTTPException(status_code=400, detail="No Claude Code session ID — cannot resume")
 
     prompt = body.prompt.strip()
     if not prompt:

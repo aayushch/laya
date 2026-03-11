@@ -33,6 +33,8 @@ class AgentProcess:
         self._process: asyncio.subprocess.Process | None = None
         self._running: bool = False
         self._paused: bool = False
+        self._stderr_task: asyncio.Task | None = None
+        self._stderr_lines: list[str] = []
 
     async def spawn(
         self,
@@ -55,12 +57,40 @@ class AgentProcess:
             *args,
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,  # Merge stderr into stdout
+            stderr=asyncio.subprocess.PIPE,
             cwd=cwd,
             env=spawn_env,
         )
         self._running = True
+
+        # Drain stderr in the background so the pipe never blocks.
+        # Lines are logged via structlog at debug level.
+        self._stderr_task = asyncio.create_task(
+            self._drain_stderr(command=args[0]),
+            name=f"stderr-drain-{self._process.pid}",
+        )
+
         log.info("agent_process_spawned", pid=self._process.pid, command=args[0])
+
+    async def _drain_stderr(self, command: str) -> None:
+        """Read stderr lines and forward them to the log file.
+
+        Lines are collected so they can be retrieved after the process exits
+        (e.g. to include in error messages).
+        """
+        if self._process is None or self._process.stderr is None:
+            return
+        try:
+            while True:
+                line = await self._process.stderr.readline()
+                if not line:
+                    break
+                text = strip_ansi(line.decode("utf-8", errors="replace").rstrip("\n\r"))
+                if text:
+                    self._stderr_lines.append(text)
+                    log.warning("agent_stderr", command=command, pid=self._process.pid, line=text)
+        except Exception:
+            pass  # Process exited or pipe broken — nothing to do
 
     async def read_lines(self, idle_timeout: float = 300.0) -> AsyncIterator[str]:
         """Async generator yielding lines from stdout.
@@ -152,6 +182,8 @@ class AgentProcess:
         try:
             if self._process.stdout:
                 self._process.stdout.feed_eof()
+            if self._process.stderr:
+                self._process.stderr.feed_eof()
             self._process.terminate()
             try:
                 await asyncio.wait_for(self._process.wait(), timeout=5.0)
@@ -162,6 +194,15 @@ class AgentProcess:
             pass
         except asyncio.TimeoutError:
             pass
+
+        # Clean up the stderr drain task
+        if self._stderr_task and not self._stderr_task.done():
+            self._stderr_task.cancel()
+            try:
+                await self._stderr_task
+            except (asyncio.CancelledError, Exception):
+                pass
+
         log.info("agent_process_terminated", pid=pid)
 
     async def wait(self) -> int:
@@ -183,3 +224,8 @@ class AgentProcess:
     @property
     def pid(self) -> int | None:
         return self._process.pid if self._process else None
+
+    @property
+    def stderr_output(self) -> str:
+        """Return collected stderr lines as a single string (last 50 lines max)."""
+        return "\n".join(self._stderr_lines[-50:])

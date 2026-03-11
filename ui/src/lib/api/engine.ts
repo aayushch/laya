@@ -25,7 +25,8 @@ import type {
 	AvailableWorkflowsResponse,
 	Space,
 	Source,
-	SpaceApiKeysResponse
+	SpaceApiKeysResponse,
+	SpaceReposResponse
 } from './types';
 
 const ENGINE_URL = 'http://127.0.0.1:8420';
@@ -36,7 +37,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 		...options
 	});
 	if (!resp.ok) {
-		throw new Error(`Engine API error: ${resp.status} ${resp.statusText}`);
+		let detail: string | undefined;
+		try {
+			const body = await resp.json();
+			detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail);
+		} catch {
+			// no parseable body
+		}
+		throw new Error(detail || `Engine API error: ${resp.status} ${resp.statusText}`);
 	}
 	return resp.json();
 }
@@ -238,13 +246,13 @@ export const engineApi = {
 	// Spaces
 	getSpaces: () => request<SpacesResponse>('/spaces'),
 
-	createSpace: (space: { name: string; description?: string; icon?: string; color?: string; router_model?: string; stager_model?: string; chat_model?: string }) =>
+	createSpace: (space: { name: string; description?: string; icon?: string; color?: string; router_model?: string; stager_model?: string; chat_model?: string; coding_agent?: string }) =>
 		request<Space>('/spaces', {
 			method: 'POST',
 			body: JSON.stringify(space)
 		}),
 
-	updateSpace: (spaceId: string, updates: Partial<{ name: string; description: string; icon: string; color: string; router_model: string; stager_model: string; chat_model: string }>) =>
+	updateSpace: (spaceId: string, updates: Partial<{ name: string; description: string; icon: string; color: string; router_model: string; stager_model: string; chat_model: string; coding_agent: string }>) =>
 		request<{ status: string; space_id: string }>(`/spaces/${spaceId}`, {
 			method: 'PUT',
 			body: JSON.stringify(updates)
@@ -270,10 +278,26 @@ export const engineApi = {
 			method: 'DELETE'
 		}),
 
+	// Space Repos
+	getSpaceRepos: (spaceId: string) =>
+		request<SpaceReposResponse>(`/spaces/${spaceId}/repos`),
+
+	setSpaceRepos: (spaceId: string, repoNames: string[]) =>
+		request<{ status: string; count: number }>(`/spaces/${spaceId}/repos`, {
+			method: 'PUT',
+			body: JSON.stringify({ repo_names: repoNames })
+		}),
+
 	// Sources
 	getSources: () => request<SourcesResponse>('/sources'),
 
 	getAvailableWorkflows: () => request<AvailableWorkflowsResponse>('/sources/available-workflows'),
+
+	setWorkflowActive: (workflowId: string, active: boolean) =>
+		request<{ status: string; workflow_id: string; active: boolean }>(`/sources/workflows/${workflowId}/active`, {
+			method: 'PUT',
+			body: JSON.stringify({ active })
+		}),
 
 	createSource: (source: { name: string; platform: string; workflow_id: string; space_id?: string; source_type?: string; webhook_path?: string }) =>
 		request<Source>('/sources', {

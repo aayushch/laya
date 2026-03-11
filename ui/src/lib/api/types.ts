@@ -80,6 +80,7 @@ export interface WorkspaceSession {
 	agent_type: string;
 	status: string;
 	repo_path?: string;
+	add_dirs?: string[];
 	started_at?: string;
 	updated_at?: string;
 	completed_at?: string;
@@ -268,6 +269,9 @@ export interface SummaryItem {
 	card_id: string;
 	priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 	status: 'pending' | 'done' | 'dismissed' | 'archived';
+	space_id?: string;
+	space_name?: string;
+	space_color?: string;
 }
 
 /** Structured daily summary */
@@ -502,6 +506,7 @@ export interface Space {
 	router_model?: string;
 	stager_model?: string;
 	chat_model?: string;
+	coding_agent?: string;
 	is_default: boolean;
 	position: number;
 	source_count: number;
@@ -545,6 +550,21 @@ export interface SourcesResponse {
 /** Response from GET /sources/available-workflows */
 export interface AvailableWorkflowsResponse {
 	workflows: AvailableWorkflow[];
+}
+
+/** A repo assigned to a space */
+export interface SpaceRepo {
+	repo_name: string;
+	position: number;
+	path: string | null;
+	platform: string;
+	remote_id: string;
+	exists: boolean;
+}
+
+/** Response from GET /spaces/:id/repos */
+export interface SpaceReposResponse {
+	repos: SpaceRepo[];
 }
 
 /** Response from GET /spaces/:id/api-keys */

@@ -8,11 +8,19 @@
 		onselect,
 		ondelete,
 		selectedCardId = '',
-		hasSelection = false
-	}: { group: CardGroup; onselect: (card: ActionCard) => void; ondelete?: (cardId: string) => void; selectedCardId?: string; hasSelection?: boolean } = $props();
+		hasSelection = false,
+		scrollToCardId = null
+	}: { group: CardGroup; onselect: (card: ActionCard) => void; ondelete?: (cardId: string) => void; selectedCardId?: string; hasSelection?: boolean; scrollToCardId?: string | null } = $props();
 
 	let expanded = $state(false);
 	let dismissingAll = $state(false);
+
+	// Auto-expand when a card in this group is targeted for scroll
+	$effect(() => {
+		if (scrollToCardId && !expanded && group.cards.some(c => c.card_id === scrollToCardId)) {
+			expanded = true;
+		}
+	});
 
 	const topCard = $derived(group.cards.find((c) => c.status === 'pending') ?? group.cards[0]);
 	const extraCount = $derived(group.card_count - 1);
@@ -41,6 +49,68 @@
 		executing: 'Executing', agent_running: 'Running',
 		awaiting_input: 'Needs Input', staged: 'Staged'
 	};
+
+	const statusText = $derived(
+		statusSummary.map(s => `${s.count} ${statusSummaryLabel[s.status] ?? s.status}`).join(' \u00b7 ') + ` \u00b7 ${group.card_count} cards`
+	);
+
+	// Status priority for group color: highest-priority status wins
+	const statusPriority: string[] = [
+		'awaiting_input', 'failed', 'agent_running', 'executing',
+		'pending', 'staged', 'approved', 'completed', 'dismissed', 'archived'
+	];
+
+	const groupStatusStyle: Record<string, string> = {
+		pending:        'bg-amber-950/55  border-amber-800/30  hover:border-amber-700/45',
+		approved:       'bg-green-950/55  border-green-800/25  hover:border-green-700/40',
+		executing:      'bg-sky-950/55    border-sky-800/25    hover:border-sky-700/40',
+		completed:      'bg-emerald-950/50 border-emerald-800/20 hover:border-emerald-700/35',
+		failed:         'bg-red-950/60    border-red-800/35    hover:border-red-700/50',
+		dismissed:      'bg-surface-800/40 border-surface-700/25 hover:border-surface-600/40',
+		archived:       'bg-surface-800/40 border-surface-700/25 hover:border-surface-600/40',
+		agent_running:  'bg-violet-950/55 border-violet-800/25 hover:border-violet-700/40',
+		awaiting_input: 'bg-amber-950/55  border-amber-800/30  hover:border-amber-700/45',
+		staged:         'bg-teal-950/50   border-teal-800/20   hover:border-teal-700/35',
+	};
+
+	const ghostBorderStyle: Record<string, string> = {
+		pending:        'border-amber-800/20',
+		approved:       'border-green-800/15',
+		executing:      'border-sky-800/15',
+		completed:      'border-emerald-800/12',
+		failed:         'border-red-800/25',
+		dismissed:      'border-surface-700/20',
+		archived:       'border-surface-700/20',
+		agent_running:  'border-violet-800/15',
+		awaiting_input: 'border-amber-800/20',
+		staged:         'border-teal-800/12',
+	};
+
+	const ghostBgStyle: Record<string, string> = {
+		pending:        'bg-amber-950/30',
+		approved:       'bg-green-950/30',
+		executing:      'bg-sky-950/30',
+		completed:      'bg-emerald-950/25',
+		failed:         'bg-red-950/35',
+		dismissed:      'bg-surface-900/40',
+		archived:       'bg-surface-900/40',
+		agent_running:  'bg-violet-950/30',
+		awaiting_input: 'bg-amber-950/30',
+		staged:         'bg-teal-950/25',
+	};
+
+	// Determine dominant status across all cards in the group
+	const dominantStatus = $derived.by(() => {
+		const statuses = new Set(group.cards.map(c => c.status));
+		for (const s of statusPriority) {
+			if (statuses.has(s)) return s;
+		}
+		return group.cards[0]?.status ?? 'pending';
+	});
+
+	const groupStyle = $derived(groupStatusStyle[dominantStatus] ?? 'bg-surface-900 border-surface-600 hover:border-laya-orange/30');
+	const ghostBorder = $derived(ghostBorderStyle[dominantStatus] ?? 'border-surface-700');
+	const ghostBg = $derived(ghostBgStyle[dominantStatus] ?? 'bg-surface-950');
 
 	const priorityColors: Record<string, string> = {
 		CRITICAL: 'bg-red-600 text-red-50',
@@ -127,19 +197,19 @@
 
 		<!-- Ghost strip 2 — furthest back, most inset, sits at container bottom -->
 		{#if ghostCount >= 2}
-			<div class="absolute bottom-0 rounded-b-xl border-x border-b border-surface-700 bg-surface-950"
+			<div class="absolute bottom-0 rounded-b-xl border-x border-b {ghostBorder} {ghostBg}"
 				style="left: 16px; right: 16px; height: 8px; z-index: 1;"></div>
 		{/if}
 
 		<!-- Ghost strip 1 — one step back, 5px above container bottom -->
 		{#if ghostCount >= 1}
-			<div class="absolute rounded-b-xl border-x border-b border-surface-600 bg-surface-900"
+			<div class="absolute rounded-b-xl border-x border-b {ghostBorder} {ghostBg}"
 				style="bottom: 5px; left: 8px; right: 8px; height: 8px; z-index: 2;"></div>
 		{/if}
 
 		<!-- Front card — sits above all ghosts, matches ActionCard fixed height -->
 		<button
-			class="relative flex h-[200px] w-full flex-col rounded-xl border border-surface-600 bg-surface-900 px-4 pb-2 pt-3 text-left shadow-lg transition hover:border-laya-orange/30"
+			class="relative flex h-[200px] w-full flex-col rounded-xl border px-4 pb-2 pt-3 text-left shadow-lg transition-colors {groupStyle}"
 			style="z-index: 3;"
 			onclick={toggle}
 		>
@@ -170,7 +240,7 @@
 
 			<!-- Status summary — fills remaining space -->
 			<div class="mt-2 flex flex-1 items-end">
-				<div class="flex items-center gap-2 min-w-0">
+				<div class="flex items-center gap-2 shrink-0">
 					{#if topCard.space_name}
 						<span class="flex items-center gap-1 shrink-0 text-[10px] text-surface-500" title="Space: {topCard.space_name}">
 							<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {topCard.space_color ?? '#F97316'}"></span>
@@ -178,14 +248,14 @@
 						</span>
 					{/if}
 				</div>
-				<div class="ml-auto flex flex-wrap justify-end gap-x-3 gap-y-0.5 shrink-0">
+				<div class="ml-auto flex items-center gap-1.5 min-w-0 overflow-hidden" title={statusText}>
 					{#each statusSummary as { status, count }}
-						<span class="flex items-center gap-1">
+						<span class="flex items-center gap-1 shrink-0">
 							<span class="h-1.5 w-1.5 rounded-full {statusSummaryDot[status] ?? 'bg-surface-500'}"></span>
-							<span class="text-[10px] text-surface-400">{count} {statusSummaryLabel[status] ?? status}</span>
+							<span class="text-[10px] text-surface-400 whitespace-nowrap">{count} {statusSummaryLabel[status] ?? status}</span>
 						</span>
 					{/each}
-					<span class="text-[10px] text-surface-600">
+					<span class="text-[10px] text-surface-600 shrink-0 whitespace-nowrap">
 						{group.card_count} cards
 					</span>
 				</div>
