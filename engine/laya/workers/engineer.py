@@ -322,6 +322,21 @@ async def run_engineer(
     elif final_status == SessionStatus.CANCELLED:
         await session_manager.complete_session(session_id, error="Cancelled by user")
 
+        # Revert card from agent_running back to approved so user can retry
+        db = await get_db()
+        await db.execute(
+            "UPDATE action_cards SET status = 'approved', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            (effective_card_id,),
+        )
+        await db.commit()
+
+        await manager.broadcast(
+            {
+                "type": "card_updated",
+                "card_id": effective_card_id,
+                "payload": {"status": "approved"},
+            }
+        )
         await manager.broadcast(
             {
                 "type": "agent_completed",
@@ -343,4 +358,21 @@ async def run_engineer(
             error_msg += f" — {last_error}"
         log.error("engineer_agent_failed", session_id=session_id, error=error_msg)
         await session_manager.complete_session(session_id, error=error_msg)
+
+        # Mark card as failed so it doesn't stay stuck on agent_running
+        db = await get_db()
+        await db.execute(
+            "UPDATE action_cards SET status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            (effective_card_id,),
+        )
+        await db.commit()
+
+        await manager.broadcast(
+            {
+                "type": "card_updated",
+                "card_id": effective_card_id,
+                "payload": {"status": "failed"},
+            }
+        )
+
         return WorkerResult(persona="ENGINEER", session_id=session_id, error=error_msg)
