@@ -4,11 +4,13 @@
 	let {
 		summary,
 		updatedAt,
-		ongotocard
+		ongotocard,
+		spaceFilter = null
 	}: {
 		summary: DaySummary | null;
 		updatedAt: string | null;
 		ongotocard: (cardId: string) => void;
+		spaceFilter?: string | null;
 	} = $props();
 
 	function priorityColor(priority: string): string {
@@ -46,6 +48,34 @@
 		});
 	}
 
+	function matchesSpace(item: SummaryItem): boolean {
+		if (!spaceFilter) return true;
+		return (item.space_id || 'default') === spaceFilter;
+	}
+
+	/** Collect unique spaces across all summary items for the legend */
+	const uniqueSpaces = $derived.by(() => {
+		if (!summary) return [];
+		const all = [
+			...summary.events_and_meetings,
+			...summary.action_items,
+			...summary.key_updates,
+		];
+		const seen = new Map<string, { name: string; color: string }>();
+		for (const item of all) {
+			const sid = item.space_id || 'default';
+			if (!seen.has(sid)) {
+				seen.set(sid, {
+					name: item.space_name || 'Default',
+					color: item.space_color || '#F97316',
+				});
+			}
+		}
+		return [...seen.entries()].map(([id, info]) => ({ id, ...info }));
+	});
+
+	const hasMultipleSpaces = $derived(uniqueSpaces.length > 1);
+
 	const hasContent = $derived(
 		summary &&
 		(summary.events_and_meetings.length > 0 ||
@@ -53,10 +83,32 @@
 		 summary.key_updates.length > 0)
 	);
 
-	const pendingActions = $derived(
-		summary ? summary.action_items.filter(i => i.status === 'pending').length : 0
+	// Filtered lists
+	const filteredEvents = $derived(
+		summary ? summary.events_and_meetings.filter(matchesSpace) : []
 	);
-	const totalActions = $derived(summary ? summary.action_items.length : 0);
+	const filteredActions = $derived(
+		summary ? summary.action_items.filter(matchesSpace) : []
+	);
+	const filteredUpdates = $derived(
+		summary ? summary.key_updates.filter(matchesSpace) : []
+	);
+
+	// Filtered counts for "(n filtered)" badges
+	const eventsFilteredCount = $derived(
+		summary ? summary.events_and_meetings.length - filteredEvents.length : 0
+	);
+	const actionsFilteredCount = $derived(
+		summary ? summary.action_items.length - filteredActions.length : 0
+	);
+	const updatesFilteredCount = $derived(
+		summary ? summary.key_updates.length - filteredUpdates.length : 0
+	);
+
+	const pendingActions = $derived(
+		filteredActions.filter(i => i.status === 'pending').length
+	);
+	const totalActions = $derived(filteredActions.length);
 </script>
 
 {#if !summary || !hasContent}
@@ -74,6 +126,18 @@
 			<p class="text-[10px] text-surface-500">Last updated {formatTime(updatedAt)}</p>
 		{/if}
 
+		<!-- Space legend (only when multiple spaces) -->
+		{#if hasMultipleSpaces}
+			<div class="flex flex-wrap gap-2">
+				{#each uniqueSpaces as space}
+					<span class="summary-space-legend" style:--space-color={space.color}>
+						<span class="summary-space-legend-dot" style:background={space.color}></span>
+						{space.name}
+					</span>
+				{/each}
+			</div>
+		{/if}
+
 		<!-- Events & Meetings -->
 		{#if summary.events_and_meetings.length > 0}
 			<section class="summary-section summary-section--events">
@@ -84,20 +148,32 @@
 						</svg>
 					</div>
 					<h3 class="summary-section-title">Events & Meetings</h3>
-					<span class="summary-section-badge summary-section-badge--events">{summary.events_and_meetings.length}</span>
+					<span class="summary-section-badge summary-section-badge--events">{filteredEvents.length}</span>
+					{#if eventsFilteredCount > 0}
+						<span class="text-[10px] text-surface-500">({eventsFilteredCount} filtered)</span>
+					{/if}
 				</div>
-				<div class="flex flex-col gap-0.5">
-					{#each summary.events_and_meetings as item}
-						<button
-							class="summary-item group"
-							onclick={() => ongotocard(item.card_id)}
-						>
-							<span class="summary-item-status {statusClass(item.status)}">{statusIcon(item.status)}</span>
-							<span class="flex-1 text-[13px] leading-snug {statusClass(item.status)}">{item.text}</span>
-							<span class="summary-item-priority {priorityColor(item.priority)}">{item.priority}</span>
-						</button>
-					{/each}
-				</div>
+				{#if filteredEvents.length > 0}
+					<div class="flex flex-col gap-0.5">
+						{#each filteredEvents as item}
+							<button
+								class="summary-item group"
+								class:summary-item--spaced={!!item.space_name}
+								style:--space-color={item.space_color || '#F97316'}
+								onclick={() => ongotocard(item.card_id)}
+							>
+								<span class="summary-item-status {statusClass(item.status)}">{statusIcon(item.status)}</span>
+								<span class="flex-1 text-[13px] leading-snug {statusClass(item.status)}">{item.text}</span>
+								{#if item.space_name}
+									<span class="summary-item-space" style:--space-color={item.space_color || '#F97316'}>{item.space_name}</span>
+								{/if}
+								<span class="summary-item-priority {priorityColor(item.priority)}">{item.priority}</span>
+							</button>
+						{/each}
+					</div>
+				{:else}
+					<p class="text-xs text-surface-500 px-1">No items match the selected space</p>
+				{/if}
 			</section>
 		{/if}
 
@@ -114,29 +190,41 @@
 					<span class="summary-section-badge summary-section-badge--actions">
 						{pendingActions}/{totalActions}
 					</span>
+					{#if actionsFilteredCount > 0}
+						<span class="text-[10px] text-surface-500">({actionsFilteredCount} filtered)</span>
+					{/if}
 					{#if pendingActions > 0}
 						<span class="ml-auto text-[10px] text-laya-orange">{pendingActions} pending</span>
 					{/if}
 				</div>
-				<!-- Progress bar -->
-				<div class="summary-progress-track mx-1 mb-2 h-1 overflow-hidden rounded-full">
-					<div
-						class="h-full rounded-full bg-laya-orange/60 transition-all duration-500"
-						style="width: {totalActions > 0 ? ((totalActions - pendingActions) / totalActions) * 100 : 0}%"
-					></div>
-				</div>
-				<div class="flex flex-col gap-0.5">
-					{#each summary.action_items as item}
-						<button
-							class="summary-item group"
-							onclick={() => ongotocard(item.card_id)}
-						>
-							<span class="summary-item-status {statusClass(item.status)}">{statusIcon(item.status)}</span>
-							<span class="flex-1 text-[13px] leading-snug {statusClass(item.status)}">{item.text}</span>
-							<span class="summary-item-priority {priorityColor(item.priority)}">{item.priority}</span>
-						</button>
-					{/each}
-				</div>
+				{#if filteredActions.length > 0}
+					<!-- Progress bar -->
+					<div class="summary-progress-track mx-1 mb-2 h-1 overflow-hidden rounded-full">
+						<div
+							class="h-full rounded-full bg-laya-orange/60 transition-all duration-500"
+							style="width: {totalActions > 0 ? ((totalActions - pendingActions) / totalActions) * 100 : 0}%"
+						></div>
+					</div>
+					<div class="flex flex-col gap-0.5">
+						{#each filteredActions as item}
+							<button
+								class="summary-item group"
+								class:summary-item--spaced={!!item.space_name}
+								style:--space-color={item.space_color || '#F97316'}
+								onclick={() => ongotocard(item.card_id)}
+							>
+								<span class="summary-item-status {statusClass(item.status)}">{statusIcon(item.status)}</span>
+								<span class="flex-1 text-[13px] leading-snug {statusClass(item.status)}">{item.text}</span>
+								{#if item.space_name}
+									<span class="summary-item-space" style:--space-color={item.space_color || '#F97316'}>{item.space_name}</span>
+								{/if}
+								<span class="summary-item-priority {priorityColor(item.priority)}">{item.priority}</span>
+							</button>
+						{/each}
+					</div>
+				{:else}
+					<p class="text-xs text-surface-500 px-1">No items match the selected space</p>
+				{/if}
 			</section>
 		{/if}
 
@@ -150,20 +238,32 @@
 						</svg>
 					</div>
 					<h3 class="summary-section-title">Key Updates</h3>
-					<span class="summary-section-badge summary-section-badge--updates">{summary.key_updates.length}</span>
+					<span class="summary-section-badge summary-section-badge--updates">{filteredUpdates.length}</span>
+					{#if updatesFilteredCount > 0}
+						<span class="text-[10px] text-surface-500">({updatesFilteredCount} filtered)</span>
+					{/if}
 				</div>
-				<div class="flex flex-col gap-0.5">
-					{#each summary.key_updates as item}
-						<button
-							class="summary-item group"
-							onclick={() => ongotocard(item.card_id)}
-						>
-							<span class="summary-item-status {statusClass(item.status)}">{statusIcon(item.status)}</span>
-							<span class="flex-1 text-[13px] leading-snug {statusClass(item.status)}">{item.text}</span>
-							<span class="summary-item-priority {priorityColor(item.priority)}">{item.priority}</span>
-						</button>
-					{/each}
-				</div>
+				{#if filteredUpdates.length > 0}
+					<div class="flex flex-col gap-0.5">
+						{#each filteredUpdates as item}
+							<button
+								class="summary-item group"
+								class:summary-item--spaced={!!item.space_name}
+								style:--space-color={item.space_color || '#F97316'}
+								onclick={() => ongotocard(item.card_id)}
+							>
+								<span class="summary-item-status {statusClass(item.status)}">{statusIcon(item.status)}</span>
+								<span class="flex-1 text-[13px] leading-snug {statusClass(item.status)}">{item.text}</span>
+								{#if item.space_name}
+									<span class="summary-item-space" style:--space-color={item.space_color || '#F97316'}>{item.space_name}</span>
+								{/if}
+								<span class="summary-item-priority {priorityColor(item.priority)}">{item.priority}</span>
+							</button>
+						{/each}
+					</div>
+				{:else}
+					<p class="text-xs text-surface-500 px-1">No items match the selected space</p>
+				{/if}
 			</section>
 		{/if}
 	</div>
@@ -298,10 +398,12 @@
 		align-items: flex-start;
 		gap: 0.625rem;
 		padding: 0.4rem 0.5rem;
+		padding-right: 3.5rem;
 		border-radius: 0.5rem;
 		text-align: left;
 		transition: background-color 150ms;
 		cursor: pointer;
+		position: relative;
 	}
 	.summary-item:hover {
 		background: var(--color-surface-800);
@@ -317,14 +419,58 @@
 		text-align: center;
 	}
 	.summary-item-priority {
-		margin-top: 0.15rem;
+		position: absolute;
+		right: 0.5rem;
+		top: 0.45rem;
 		font-size: 0.6rem;
 		font-weight: 500;
 		opacity: 0;
 		transition: opacity 150ms;
-		flex-shrink: 0;
 	}
 	.summary-item:hover .summary-item-priority {
 		opacity: 1;
+	}
+
+	/* ── Space-aware left border ── */
+	.summary-item--spaced {
+		border-left: 2px solid var(--space-color, #F97316);
+		padding-left: 0.625rem;
+	}
+
+	/* ── Space badge (inline pill) ── */
+	.summary-item-space {
+		font-size: 0.55rem;
+		font-weight: 500;
+		padding: 0.05rem 0.35rem;
+		border-radius: 9999px;
+		background: color-mix(in oklch, var(--space-color, #F97316) 12%, transparent);
+		color: var(--space-color, #F97316);
+		white-space: nowrap;
+		flex-shrink: 0;
+		margin-top: 0.1rem;
+		opacity: 0.7;
+		transition: opacity 150ms;
+	}
+	.summary-item:hover .summary-item-space {
+		opacity: 1;
+	}
+	:global([data-theme='light']) .summary-item-space {
+		background: color-mix(in oklch, var(--space-color, #F97316) 18%, transparent);
+	}
+
+	/* ── Space legend (top bar) ── */
+	.summary-space-legend {
+		display: flex;
+		align-items: center;
+		gap: 0.3rem;
+		font-size: 0.6rem;
+		font-weight: 500;
+		color: var(--color-surface-400);
+	}
+	.summary-space-legend-dot {
+		width: 0.4rem;
+		height: 0.4rem;
+		border-radius: 9999px;
+		flex-shrink: 0;
 	}
 </style>

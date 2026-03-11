@@ -8,13 +8,21 @@ import structlog
 from fastapi import APIRouter, HTTPException
 
 from laya.db.sqlite import get_db
-from laya.integrations.n8n_client import N8nApiError, N8nApiKeyMissing, list_workflows
+from laya.integrations.n8n_client import (
+    N8nApiError,
+    N8nApiKeyMissing,
+    activate_workflow,
+    check_workflow_readiness,
+    list_workflows,
+)
+from laya.config import load_repos
 from laya.models.space import (
     SourceAssignment,
     SourceCreate,
     SourceResponse,
     SpaceApiKeyRequest,
     SpaceCreate,
+    SpaceReposRequest,
     SpaceResponse,
     SpaceUpdate,
 )
@@ -52,6 +60,7 @@ async def list_spaces() -> dict:
             router_model=r["router_model"],
             stager_model=r["stager_model"],
             chat_model=r["chat_model"],
+            coding_agent=r["coding_agent"],
             is_default=bool(r["is_default"]),
             position=r["position"],
             source_count=r["source_count"],
@@ -74,10 +83,10 @@ async def create_space(body: SpaceCreate) -> SpaceResponse:
     try:
         await db.execute(
             """INSERT INTO spaces (space_id, name, description, icon, color,
-                                   router_model, stager_model, chat_model, position)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                   router_model, stager_model, chat_model, coding_agent, position)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (space_id, body.name, body.description, body.icon, body.color,
-             body.router_model, body.stager_model, body.chat_model, position),
+             body.router_model, body.stager_model, body.chat_model, body.coding_agent, position),
         )
         await db.commit()
     except Exception as e:
@@ -95,6 +104,7 @@ async def create_space(body: SpaceCreate) -> SpaceResponse:
         router_model=body.router_model,
         stager_model=body.stager_model,
         chat_model=body.chat_model,
+        coding_agent=body.coding_agent,
         position=position,
         source_count=0,
     )
@@ -113,7 +123,7 @@ async def update_space(space_id: str, body: SpaceUpdate) -> dict:
 
     updates: list[str] = []
     params: list = []
-    for field in ("name", "description", "icon", "color", "router_model", "stager_model", "chat_model"):
+    for field in ("name", "description", "icon", "color", "router_model", "stager_model", "chat_model", "coding_agent"):
         value = getattr(body, field, None)
         if value is not None:
             updates.append(f"{field} = ?")
@@ -165,8 +175,9 @@ async def delete_space(space_id: str) -> dict:
     await db.execute(
         "UPDATE events SET space_id = 'default' WHERE space_id = ?", (space_id,)
     )
-    # Delete space API keys
+    # Delete space API keys and repo assignments
     await db.execute("DELETE FROM space_api_keys WHERE space_id = ?", (space_id,))
+    await db.execute("DELETE FROM space_repos WHERE space_id = ?", (space_id,))
     # Delete the space
     await db.execute("DELETE FROM spaces WHERE space_id = ?", (space_id,))
     await db.commit()
@@ -241,6 +252,60 @@ async def list_space_api_keys(space_id: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Per-space repository assignments
+# ---------------------------------------------------------------------------
+
+
+@router.get("/spaces/{space_id}/repos")
+async def list_space_repos(space_id: str) -> dict:
+    """List repositories assigned to a space."""
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT repo_name, position FROM space_repos WHERE space_id = ? ORDER BY position",
+        (space_id,),
+    )
+    # Enrich with full repo info from repos.json
+    repos_data = load_repos()
+    all_repos = {r["name"]: r for r in repos_data.get("repos", [])}
+    result = []
+    for r in rows:
+        name = r["repo_name"]
+        repo_info = all_repos.get(name)
+        result.append({
+            "repo_name": name,
+            "position": r["position"],
+            "path": repo_info["path"] if repo_info else None,
+            "platform": repo_info.get("platform", "") if repo_info else "",
+            "remote_id": repo_info.get("remote_id", "") if repo_info else "",
+            "exists": repo_info is not None,
+        })
+    return {"repos": result}
+
+
+@router.put("/spaces/{space_id}/repos")
+async def set_space_repos(space_id: str, body: SpaceReposRequest) -> dict:
+    """Set the repositories assigned to a space (replaces existing assignments)."""
+    db = await get_db()
+    rows = await db.execute_fetchall("SELECT 1 FROM spaces WHERE space_id = ?", (space_id,))
+    if not rows:
+        raise HTTPException(status_code=404, detail="Space not found")
+
+    # Clear existing assignments
+    await db.execute("DELETE FROM space_repos WHERE space_id = ?", (space_id,))
+
+    # Insert new assignments
+    for i, repo_name in enumerate(body.repo_names):
+        await db.execute(
+            "INSERT INTO space_repos (space_id, repo_name, position) VALUES (?, ?, ?)",
+            (space_id, repo_name, i),
+        )
+
+    await db.commit()
+    log.info("space_repos_updated", space_id=space_id, count=len(body.repo_names))
+    return {"status": "updated", "count": len(body.repo_names)}
+
+
+# ---------------------------------------------------------------------------
 # Sources
 # ---------------------------------------------------------------------------
 
@@ -308,6 +373,41 @@ async def get_available_workflows() -> dict:
         })
 
     return {"workflows": result}
+
+
+@router.put("/sources/workflows/{workflow_id}/active")
+async def set_workflow_active(workflow_id: str, body: dict) -> dict:
+    """Activate or deactivate an n8n workflow.
+
+    Body: {"active": true/false}
+    When activating, checks workflow readiness first (missing credentials, etc.).
+    """
+    active = body.get("active")
+    if active is None:
+        raise HTTPException(status_code=422, detail="'active' field is required")
+
+    try:
+        # Pre-check readiness before activation
+        if active:
+            readiness = await check_workflow_readiness(workflow_id)
+            if not readiness["ready"]:
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "message": "Workflow is not ready to be activated",
+                        "issues": readiness["issues"],
+                    },
+                )
+
+        result = await activate_workflow(workflow_id, bool(active))
+        log.info("workflow_toggled", workflow_id=workflow_id, active=active)
+        return {"status": "ok", "workflow_id": workflow_id, "active": result.get("active", active)}
+    except N8nApiKeyMissing as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except N8nApiError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+    except HTTPException:
+        raise
 
 
 @router.post("/sources")

@@ -22,20 +22,50 @@ from laya.workers.base import WorkerResult
 log = structlog.get_logger()
 
 
-def _resolve_repo_path(router_output: RouterOutput, event: LayaEvent | None = None) -> str | None:
-    """Resolve the target repo path from entities + repos.json.
+async def _get_space_repos(space_id: str) -> list[str]:
+    """Get repo names assigned to a space from the space_repos table."""
+    try:
+        db = await get_db()
+        rows = await db.execute_fetchall(
+            "SELECT repo_name FROM space_repos WHERE space_id = ? ORDER BY position",
+            (space_id,),
+        )
+        return [r["repo_name"] for r in rows]
+    except Exception:
+        return []
+
+
+async def _resolve_repo_path(
+    router_output: RouterOutput,
+    event: LayaEvent | None = None,
+    space_id: str | None = None,
+) -> str | None:
+    """Resolve the target repo path from space assignment, entities, and repos.json.
 
     Matching strategy (first match wins):
+    0. If space has repos assigned, narrow candidates to those repos.
+       If only one repo is assigned to the space, return it immediately.
     1. Exact name match on entity value vs repo name
     2. Substring match on entity value vs repo name or remote_id
     3. Keyword match: scan event subject/body for repo names
-    4. Fallback: first configured repo
+    4. Fallback: first repo in the (possibly narrowed) candidate list
     """
     repos_data = load_repos()
     repos = repos_data.get("repos", [])
 
     if not repos:
         return None
+
+    # 0. Narrow to space-assigned repos if available
+    if space_id:
+        space_repo_names = await _get_space_repos(space_id)
+        if space_repo_names:
+            space_repos = [r for r in repos if r.get("name") in space_repo_names]
+            if space_repos:
+                if len(space_repos) == 1:
+                    return space_repos[0]["path"]
+                repos = space_repos
+                log.info("repo_narrowed_by_space", space_id=space_id, candidates=len(repos))
 
     if len(repos) == 1:
         return repos[0]["path"]
@@ -77,7 +107,7 @@ def _resolve_repo_path(router_output: RouterOutput, event: LayaEvent | None = No
         if best_repo and best_score > 0:
             return best_repo["path"]
 
-    # 4. Fallback: first configured repo
+    # 4. Fallback: first repo in the (possibly narrowed) candidate list
     return repos[0]["path"]
 
 
@@ -119,6 +149,7 @@ async def run_engineer(
     event: LayaEvent,
     router_output: RouterOutput,
     card_id: str | None = None,
+    space_id: str | None = None,
 ) -> WorkerResult:
     """Run the ENGINEER worker.
 
@@ -140,7 +171,7 @@ async def run_engineer(
     agent_prompt = await _build_agent_prompt(event, router_output, related_context)
 
     # 3. Resolve repo
-    repo_path = _resolve_repo_path(router_output, event)
+    repo_path = await _resolve_repo_path(router_output, event, space_id=space_id)
     if not repo_path:
         log.warning("engineer_no_repo", event_id=event.event_id)
         return WorkerResult(
@@ -155,6 +186,7 @@ async def run_engineer(
             card_id=effective_card_id,
             prompt=agent_prompt,
             repo_path=repo_path,
+            space_id=space_id,
         )
     except Exception as e:
         log.error("engineer_agent_spawn_failed", error=str(e))
@@ -203,6 +235,7 @@ async def run_engineer(
                     }
                 )
             elif ws_event.event_type == WorkspaceEventType.ERROR:
+                findings["last_error"] = ws_event.content.get("error", "")
                 await manager.broadcast(
                     {
                         "type": "agent_error",
@@ -304,6 +337,10 @@ async def run_engineer(
             error="Cancelled by user",
         )
     else:
+        last_error = findings.get("last_error", "")
         error_msg = f"Agent ended with status: {final_status.value}"
+        if last_error:
+            error_msg += f" — {last_error}"
+        log.error("engineer_agent_failed", session_id=session_id, error=error_msg)
         await session_manager.complete_session(session_id, error=error_msg)
         return WorkerResult(persona="ENGINEER", session_id=session_id, error=error_msg)

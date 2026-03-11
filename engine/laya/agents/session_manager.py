@@ -47,19 +47,40 @@ def get_configured_agent_type() -> AgentType:
     return AgentType(agent_str)
 
 
+async def get_space_agent_type(space_id: str) -> AgentType | None:
+    """Look up the coding agent override for a space. Returns None if not set."""
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT coding_agent FROM spaces WHERE space_id = ?", (space_id,)
+    )
+    if rows and rows[0]["coding_agent"]:
+        try:
+            return AgentType(rows[0]["coding_agent"])
+        except ValueError:
+            log.warning("invalid_space_agent_type", space_id=space_id, value=rows[0]["coding_agent"])
+    return None
+
+
 async def start_session(
     card_id: str,
     prompt: str,
     repo_path: str,
     agent_type: AgentType | None = None,
+    space_id: str | None = None,
 ) -> tuple[str, CodingAgent]:
     """Create and start a new agent session.
+
+    Resolves agent type in order: explicit agent_type > space override > global default.
 
     Returns:
         Tuple of (session_id, CodingAgent instance).
     """
     if agent_type is None:
-        agent_type = get_configured_agent_type()
+        # Check space-level override first, then fall back to global config
+        if space_id:
+            agent_type = await get_space_agent_type(space_id)
+        if agent_type is None:
+            agent_type = get_configured_agent_type()
 
     session_id = f"sess_{uuid.uuid4().hex[:12]}"
 
@@ -232,40 +253,81 @@ async def resume_conversation(
 ) -> CodingAgent:
     """Resume an agent conversation with the user's answer.
 
-    Looks up the cc_session_id and repo_path from the DB, creates a new
-    ClaudeCodeAgent, and spawns it with --resume. The caller should
+    Looks up the agent session ID and repo_path from the DB, creates the
+    appropriate agent adapter, and spawns it with --resume. The caller should
     stream_events() and store them in the same workspace session.
 
     Args:
-        add_dirs: Extra directory paths to pass via --add-dir flags.
+        add_dirs: Extra directory paths to pass via --add-dir / --include-directories flags.
 
     Returns:
         The resumed CodingAgent instance.
     """
     db = await get_db()
     rows = await db.execute_fetchall(
-        "SELECT cc_session_id, repo_path, agent_type FROM workspace_sessions WHERE session_id = ?",
+        "SELECT cc_session_id, repo_path, agent_type, add_dirs FROM workspace_sessions WHERE session_id = ?",
         (session_id,),
     )
     if not rows:
         raise ValueError(f"No session found: {session_id}")
 
-    cc_session_id, repo_path, agent_type_str = rows[0]
-    if not cc_session_id:
-        raise ValueError(f"No Claude Code session ID for session: {session_id}")
+    agent_session_id, repo_path, agent_type_str, existing_dirs_json = rows[0]
 
-    agent = ClaudeCodeAgent()
-    agent._session_id = session_id
-    agent._cc_session_id = cc_session_id
-    agent._repo_path = repo_path
+    # Merge new add_dirs with previously stored ones (deduplicated, order-preserving)
+    existing_dirs: list[str] = json.loads(existing_dirs_json) if existing_dirs_json else []
+    if add_dirs:
+        seen = set(existing_dirs)
+        for d in add_dirs:
+            if d not in seen:
+                existing_dirs.append(d)
+                seen.add(d)
+    all_dirs = existing_dirs if existing_dirs else None
 
-    await agent.resume_with_answer(answer_text, add_dirs=add_dirs)
+    # Persist the merged add_dirs
+    if all_dirs:
+        await db.execute(
+            "UPDATE workspace_sessions SET add_dirs = ?, updated_at = CURRENT_TIMESTAMP WHERE session_id = ?",
+            (json.dumps(all_dirs), session_id),
+        )
+        await db.commit()
+
+    agent_type = AgentType(agent_type_str) if agent_type_str else AgentType.CLAUDE_CODE
+
+    if agent_session_id:
+        # We have a stored agent session ID — resume the conversation
+        if agent_type == AgentType.GEMINI_CLI:
+            agent: CodingAgent = GeminiCliAgent()
+            assert isinstance(agent, GeminiCliAgent)
+            agent._session_id = session_id
+            agent._gemini_session_id = agent_session_id
+            agent._repo_path = repo_path
+        elif agent_type == AgentType.CLAUDE_CODE:
+            cc_agent = ClaudeCodeAgent()
+            cc_agent._session_id = session_id
+            cc_agent._cc_session_id = agent_session_id
+            cc_agent._repo_path = repo_path
+            agent = cc_agent
+        else:
+            raise ValueError(f"Agent type {agent_type.value} does not support session resumption")
+
+        await agent.resume_with_answer(answer_text, add_dirs=all_dirs)
+    else:
+        # No agent session ID stored (e.g. session started with old adapter).
+        # Fall back to starting a fresh session with the prompt in the same repo.
+        log.warning(
+            "resume_fallback_fresh_start",
+            session_id=session_id,
+            agent_type=agent_type.value,
+            reason="no agent session ID stored",
+        )
+        agent = _create_agent(agent_type)
+        await agent.start_session(session_id, answer_text, repo_path)
 
     # Update session status back to running
     await _update_session_status(session_id, SessionStatus.RUNNING)
     _active_sessions[session_id] = agent
 
-    log.info("session_resumed", session_id=session_id, cc_session_id=cc_session_id)
+    log.info("session_resumed", session_id=session_id, agent_session_id=agent_session_id)
     return agent
 
 

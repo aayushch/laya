@@ -15,18 +15,14 @@
 	let error = $state<string | null>(null);
 	let selectedCard = $state<ActionCard | null>(null);
 
-	// Summary View state — persisted to localStorage
-	const SUMMARY_VIEW_KEY = 'laya_feed_summary_view';
-	let showSummary = $state(
-		typeof window !== 'undefined' && localStorage.getItem(SUMMARY_VIEW_KEY) === 'true'
-	);
+	// Summary View state — always start on card view
+	let showSummary = $state(false);
 	let daySummary = $state<DaySummary | null>(null);
 	let summaryUpdatedAt = $state<string | null>(null);
 	let summaryLoading = $state(false);
 
 	function toggleSummaryView() {
 		showSummary = !showSummary;
-		localStorage.setItem(SUMMARY_VIEW_KEY, String(showSummary));
 		if (showSummary && !daySummary) loadSummary();
 	}
 
@@ -219,7 +215,7 @@
 	});
 
 	// ID of card to scroll into view after next render (set by gotoCard)
-	let _scrollToCardId: string | null = null;
+	let _scrollToCardId = $state<string | null>(null);
 
 	function gotoCard(card: ActionCard) {
 		const cardDate = card.created_at ? card.created_at.slice(0, 10) : null;
@@ -235,17 +231,26 @@
 	}
 
 	function scrollToCard(cardId: string) {
-		// Use tick + rAF to wait for DOM to settle after re-render
-		requestAnimationFrame(() => {
-			const el = document.querySelector(`[data-card-id="${cardId}"]`);
-			if (el) {
-				el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-				// Brief highlight flash
-				el.classList.add('ring-2', 'ring-laya-orange/60');
-				setTimeout(() => el.classList.remove('ring-2', 'ring-laya-orange/60'), 1500);
-			}
-			_scrollToCardId = null;
-		});
+		_scrollToCardId = cardId;
+		// Wait for DOM to settle (group may need to expand first via $effect)
+		const attempt = (tries: number) => {
+			requestAnimationFrame(() => {
+				const el = document.querySelector(`[data-card-id="${cardId}"]`);
+				if (el) {
+					el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+					// Brief highlight flash
+					el.classList.add('ring-2', 'ring-laya-orange/60');
+					setTimeout(() => el.classList.remove('ring-2', 'ring-laya-orange/60'), 1500);
+					_scrollToCardId = null;
+				} else if (tries > 0) {
+					// Group may still be expanding — retry next frame
+					attempt(tries - 1);
+				} else {
+					_scrollToCardId = null;
+				}
+			});
+		};
+		attempt(5);
 	}
 
 	function selectCard(card: ActionCard) {
@@ -389,7 +394,7 @@
 						<span class="text-sm">Loading summary...</span>
 					</div>
 				{:else}
-					<DaySummaryComponent summary={daySummary} updatedAt={summaryUpdatedAt} ongotocard={handleSummaryGotoCard} />
+					<DaySummaryComponent summary={daySummary} updatedAt={summaryUpdatedAt} ongotocard={handleSummaryGotoCard} spaceFilter={$feedFilters.spaceFilter} />
 				{/if}
 			</div>
 		<!-- Card grid -->
@@ -438,7 +443,7 @@
 									{#if group.card_count === 1}
 										<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} />
 									{:else}
-										<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} />
+										<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} scrollToCardId={_scrollToCardId} />
 									{/if}
 								{/each}
 							</div>
@@ -455,7 +460,7 @@
 							{#if group.card_count === 1}
 								<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} />
 							{:else}
-								<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} />
+								<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} scrollToCardId={_scrollToCardId} />
 							{/if}
 						{/each}
 					</div>

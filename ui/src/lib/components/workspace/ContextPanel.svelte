@@ -117,6 +117,14 @@
 			<div class="rounded-lg border border-surface-700 bg-surface-800 p-3">
 				<h3 class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Working Directory</h3>
 				<p class="break-all font-mono text-[11px] text-surface-200">{session.repo_path}</p>
+				{#if session.add_dirs && session.add_dirs.length > 0}
+					<h3 class="mt-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Additional Directories</h3>
+					<div class="space-y-1">
+						{#each session.add_dirs as dir}
+							<p class="break-all font-mono text-[11px] text-surface-300">{dir}</p>
+						{/each}
+					</div>
+				{/if}
 			</div>
 		{/if}
 

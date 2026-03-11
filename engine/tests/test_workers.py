@@ -193,7 +193,8 @@ class TestWorkerOrchestration:
 
 
 class TestResolveRepoPath:
-    def test_resolve_repo_by_entity(self, mock_repos):
+    @pytest.mark.asyncio
+    async def test_resolve_repo_by_entity(self, mock_repos):
         """_resolve_repo_path matches entity to repo."""
         from laya.workers.engineer import _resolve_repo_path
 
@@ -201,23 +202,25 @@ class TestResolveRepoPath:
         router_output.entities = [
             MagicMock(entity_type="repo", value="payments-service"),
         ]
-        path = _resolve_repo_path(router_output)
+        path = await _resolve_repo_path(router_output)
         assert path == "/tmp/test-repo"
 
-    def test_resolve_repo_fallback_first(self, mock_repos):
+    @pytest.mark.asyncio
+    async def test_resolve_repo_fallback_first(self, mock_repos):
         """_resolve_repo_path falls back to first repo when no entity match."""
         from laya.workers.engineer import _resolve_repo_path
 
         router_output = RouterOutput(**MOCK_ROUTER_RESPONSE)
         router_output.entities = []
-        path = _resolve_repo_path(router_output)
+        path = await _resolve_repo_path(router_output)
         assert path == "/tmp/test-repo"
 
-    def test_resolve_repo_no_repos_returns_none(self):
+    @pytest.mark.asyncio
+    async def test_resolve_repo_no_repos_returns_none(self):
         """_resolve_repo_path returns None when no repos configured."""
         from laya.workers.engineer import _resolve_repo_path
 
         router_output = RouterOutput(**MOCK_ROUTER_RESPONSE)
         with patch("laya.workers.engineer.load_repos", return_value={"repos": []}):
-            path = _resolve_repo_path(router_output)
+            path = await _resolve_repo_path(router_output)
         assert path is None

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
-	import type { Space, Source, AvailableWorkflow } from '$lib/api/types';
+	import type { Space, Source, AvailableWorkflow, Repo } from '$lib/api/types';
 
 	const allModels = [
 		{ value: '', label: 'Use default' },
@@ -19,6 +19,13 @@
 		{ id: 'anthropic', label: 'Anthropic' },
 		{ id: 'openai', label: 'OpenAI' },
 		{ id: 'google', label: 'Google' }
+	];
+
+	const agentOptions = [
+		{ value: '', label: 'Use default' },
+		{ value: 'claude_code', label: 'Claude Code' },
+		{ value: 'gemini_cli', label: 'Gemini CLI' },
+		{ value: 'codex_cli', label: 'Codex CLI' }
 	];
 
 	const platformIcons: Record<string, string> = {
@@ -52,6 +59,7 @@
 	let formRouterModel = $state('');
 	let formStagerModel = $state('');
 	let formChatModel = $state('');
+	let formCodingAgent = $state('');
 	let saving = $state(false);
 
 	// Source assignment state
@@ -64,6 +72,10 @@
 	let spaceKeyInputs = $state<Record<string, string>>({});
 	let savingSpaceKey = $state<string | null>(null);
 
+	// Repo assignment state
+	let allRepos = $state<Repo[]>([]);
+	let spaceRepoNames = $state<Record<string, string[]>>({});
+
 	// Expanded space detail
 	let expandedSpaceId = $state<string | null>(null);
 
@@ -71,13 +83,20 @@
 
 	async function loadData() {
 		try {
-			const [spacesRes, sourcesRes] = await Promise.all([
+			const [spacesRes, sourcesRes, reposRes] = await Promise.all([
 				engineApi.getSpaces(),
-				engineApi.getSources()
+				engineApi.getSources(),
+				engineApi.getRepos()
 			]);
 			spaces = spacesRes.spaces;
 			sources = sourcesRes.sources;
+			allRepos = reposRes.repos;
 			loaded = true;
+
+			// Load repo assignments for all spaces
+			for (const s of spaces) {
+				loadSpaceRepos(s.space_id);
+			}
 		} catch (e) {
 			console.error('Failed to load spaces:', e);
 		}
@@ -103,6 +122,7 @@
 		formRouterModel = '';
 		formStagerModel = '';
 		formChatModel = '';
+		formCodingAgent = '';
 	}
 
 	function startEdit(space: Space) {
@@ -115,6 +135,7 @@
 		formRouterModel = space.router_model || '';
 		formStagerModel = space.stager_model || '';
 		formChatModel = space.chat_model || '';
+		formCodingAgent = space.coding_agent || '';
 	}
 
 	function cancelForm() {
@@ -134,7 +155,8 @@
 					color: formColor,
 					router_model: formRouterModel || undefined,
 					stager_model: formStagerModel || undefined,
-					chat_model: formChatModel || undefined
+					chat_model: formChatModel || undefined,
+					coding_agent: formCodingAgent || undefined
 				});
 			} else {
 				await engineApi.createSpace({
@@ -144,7 +166,8 @@
 					color: formColor,
 					router_model: formRouterModel || undefined,
 					stager_model: formStagerModel || undefined,
-					chat_model: formChatModel || undefined
+					chat_model: formChatModel || undefined,
+					coding_agent: formCodingAgent || undefined
 				});
 			}
 			cancelForm();
@@ -276,13 +299,49 @@
 		}
 	}
 
+	// Space repos
+	async function loadSpaceRepos(spaceId: string) {
+		try {
+			const res = await engineApi.getSpaceRepos(spaceId);
+			spaceRepoNames[spaceId] = res.repos.map((r) => r.repo_name);
+		} catch (e) {
+			console.error('Failed to load space repos:', e);
+			spaceRepoNames[spaceId] = [];
+		}
+	}
+
+	function toggleSpaceRepo(spaceId: string, repoName: string) {
+		const current = spaceRepoNames[spaceId] || [];
+		if (current.includes(repoName)) {
+			spaceRepoNames[spaceId] = current.filter((n) => n !== repoName);
+		} else {
+			spaceRepoNames[spaceId] = [...current, repoName];
+		}
+		spaceRepoNames = { ...spaceRepoNames };
+	}
+
+	async function saveSpaceRepos(spaceId: string) {
+		try {
+			await engineApi.setSpaceRepos(spaceId, spaceRepoNames[spaceId] || []);
+		} catch (e) {
+			console.error('Failed to save space repos:', e);
+		}
+	}
+
 	// Helpers
 	function sourcesForSpace(spaceId: string): Source[] {
 		return sources.filter((s) => s.space_id === spaceId);
 	}
 
 	function toggleExpand(spaceId: string) {
-		expandedSpaceId = expandedSpaceId === spaceId ? null : spaceId;
+		if (expandedSpaceId === spaceId) {
+			expandedSpaceId = null;
+		} else {
+			expandedSpaceId = spaceId;
+			if (!(spaceId in spaceRepoNames)) {
+				loadSpaceRepos(spaceId);
+			}
+		}
 		keySpaceId = null;
 	}
 
@@ -290,6 +349,12 @@
 		if (!value) return 'Default';
 		const m = allModels.find((m) => m.value === value);
 		return m ? m.label : value;
+	}
+
+	function agentLabel(value: string | undefined | null): string {
+		if (!value) return 'Default';
+		const a = agentOptions.find((a) => a.value === value);
+		return a ? a.label : value;
 	}
 </script>
 
@@ -401,6 +466,22 @@
 						</div>
 					</div>
 
+					<!-- Coding Agent Override -->
+					<div>
+						<label for="space-agent" class="mb-2 block text-sm text-surface-400">Coding Agent</label>
+						<select
+							id="space-agent"
+							value={formCodingAgent}
+							onchange={(e) => (formCodingAgent = (e.target as HTMLSelectElement).value)}
+							class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100"
+						>
+							{#each agentOptions as opt}
+								<option value={opt.value}>{opt.label}</option>
+							{/each}
+						</select>
+						<p class="mt-1 text-xs text-surface-500">CLI agent used for ENGINEER tasks in this space</p>
+					</div>
+
 					<!-- Actions -->
 					<div class="flex gap-2 pt-2">
 						<button
@@ -451,6 +532,12 @@
 						<span>{spaceSources.length} source{spaceSources.length !== 1 ? 's' : ''}</span>
 						{#if space.router_model || space.stager_model || space.chat_model}
 							<span class="rounded bg-surface-700 px-1.5 py-0.5">Custom models</span>
+						{/if}
+						{#if space.coding_agent}
+							<span class="rounded bg-surface-700 px-1.5 py-0.5">{agentLabel(space.coding_agent)}</span>
+						{/if}
+						{#if spaceRepoNames[space.space_id]?.length}
+							<span class="rounded bg-surface-700 px-1.5 py-0.5">{spaceRepoNames[space.space_id].length} repo{spaceRepoNames[space.space_id].length !== 1 ? 's' : ''}</span>
 						{/if}
 						<svg
 							class="h-4 w-4 transition-transform {expandedSpaceId === space.space_id ? 'rotate-180' : ''}"
@@ -506,10 +593,44 @@
 							{/if}
 						</div>
 
+						<!-- Repositories -->
+						{#if allRepos.length > 0}
+							<div>
+								<h5 class="text-sm font-medium text-surface-300 mb-2">Repositories</h5>
+								<p class="text-xs text-surface-500 mb-2">
+									Assign repos to this space so engineer tasks pick the right codebase.
+									{#if !spaceRepoNames[space.space_id]?.length}
+										<span class="text-surface-400">No repos assigned — agent will search all repos.</span>
+									{/if}
+								</p>
+								<div class="space-y-1">
+									{#each allRepos as repo (repo.name)}
+										{@const isAssigned = (spaceRepoNames[space.space_id] || []).includes(repo.name)}
+										<button
+											onclick={() => { toggleSpaceRepo(space.space_id, repo.name); saveSpaceRepos(space.space_id); }}
+											class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors
+												{isAssigned
+													? 'bg-laya-orange/15 text-laya-orange'
+													: 'hover:bg-surface-700 text-surface-300'}"
+										>
+											<span class="h-4 w-4 shrink-0 rounded border text-center text-xs leading-4
+												{isAssigned ? 'border-laya-orange bg-laya-orange text-white' : 'border-surface-500'}">
+												{#if isAssigned}&#10003;{/if}
+											</span>
+											<span class="flex-1 truncate">{repo.name}</span>
+											{#if repo.remote_id}
+												<span class="text-xs text-surface-500">{repo.remote_id}</span>
+											{/if}
+										</button>
+									{/each}
+								</div>
+							</div>
+						{/if}
+
 						<!-- Model overrides summary -->
 						<div>
-							<h5 class="text-sm font-medium text-surface-300 mb-2">Model Configuration</h5>
-							<div class="grid grid-cols-3 gap-2 text-xs">
+							<h5 class="text-sm font-medium text-surface-300 mb-2">Model & Agent Configuration</h5>
+							<div class="grid grid-cols-4 gap-2 text-xs">
 								<div class="rounded bg-surface-700/50 p-2">
 									<span class="text-surface-500">Router</span>
 									<p class="text-surface-300">{modelLabel(space.router_model)}</p>
@@ -521,6 +642,10 @@
 								<div class="rounded bg-surface-700/50 p-2">
 									<span class="text-surface-500">Chat</span>
 									<p class="text-surface-300">{modelLabel(space.chat_model)}</p>
+								</div>
+								<div class="rounded bg-surface-700/50 p-2">
+									<span class="text-surface-500">Agent</span>
+									<p class="text-surface-300">{agentLabel(space.coding_agent)}</p>
 								</div>
 							</div>
 						</div>

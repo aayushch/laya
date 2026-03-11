@@ -15,6 +15,7 @@ class SpaceCreate(BaseModel):
     router_model: str | None = None
     stager_model: str | None = None
     chat_model: str | None = None
+    coding_agent: str | None = None
 
 
 class SpaceUpdate(BaseModel):
@@ -27,6 +28,7 @@ class SpaceUpdate(BaseModel):
     router_model: str | None = None
     stager_model: str | None = None
     chat_model: str | None = None
+    coding_agent: str | None = None
 
 
 class SpaceResponse(BaseModel):
@@ -40,6 +42,7 @@ class SpaceResponse(BaseModel):
     router_model: str | None = None
     stager_model: str | None = None
     chat_model: str | None = None
+    coding_agent: str | None = None
     is_default: bool = False
     position: int = 0
     source_count: int = 0
@@ -76,6 +79,12 @@ class SourceAssignment(BaseModel):
     """Request body for reassigning a source to a different space."""
 
     space_id: str
+
+
+class SpaceReposRequest(BaseModel):
+    """Request body for setting repositories assigned to a space."""
+
+    repo_names: list[str] = Field(default_factory=list)
 
 
 class SpaceApiKeyRequest(BaseModel):

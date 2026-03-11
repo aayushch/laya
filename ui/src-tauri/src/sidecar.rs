@@ -1,22 +1,20 @@
 //! Python engine process lifecycle management.
 //!
-//! Locates the engine venv, spawns `python -m laya.main`, and polls
-//! the /health endpoint until the engine is ready.
+//! In development: spawns `python -m laya.main` from the engine venv.
+//! In production: launches the PyInstaller-bundled `laya-engine` sidecar binary.
 
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::time::Duration;
 
 /// Find the engine directory (relative to the Tauri project root).
+/// Only used in dev mode.
 fn engine_dir() -> PathBuf {
-    // In dev: <repo>/ui/src-tauri/../../engine
-    // We resolve relative to the executable's parent in production,
-    // but for dev we use the known repo layout.
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest_dir.join("..").join("..").join("engine")
 }
 
-/// Locate the Python binary inside the engine's venv.
+/// Locate the Python binary inside the engine's venv (dev mode).
 fn python_bin() -> PathBuf {
     let engine = engine_dir();
     if cfg!(target_os = "windows") {
@@ -26,20 +24,82 @@ fn python_bin() -> PathBuf {
     }
 }
 
-/// Spawn the Python engine as a child process.
+/// Locate the bundled sidecar binary (production mode).
+///
+/// Tauri places sidecar binaries next to the main executable in the bundle.
+/// The binary name includes a target-triple suffix that Tauri resolves at
+/// build time, but on disk it's just `laya-engine` (or `.exe` on Windows).
+fn sidecar_bin() -> PathBuf {
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    if cfg!(target_os = "windows") {
+        exe_dir.join("laya-engine.exe")
+    } else if cfg!(target_os = "macos") {
+        // In .app bundle: Laya.app/Contents/MacOS/laya-engine
+        exe_dir.join("laya-engine")
+    } else {
+        exe_dir.join("laya-engine")
+    }
+}
+
+/// Spawn the engine process.
+///
+/// In dev mode: prefers venv Python, falls back to sidecar binary.
+/// In production: prefers sidecar binary, falls back to venv Python.
 pub fn spawn_engine() -> Result<Child, String> {
     let python = python_bin();
-    if !python.exists() {
-        return Err(format!(
-            "Python venv not found at {}. Run scripts/setup-dev.sh first.",
-            python.display()
-        ));
+    let sidecar = sidecar_bin();
+
+    if cfg!(dev) {
+        // Dev mode: prefer venv python (sidecar may be a placeholder)
+        if python.exists() {
+            return spawn_venv(&python);
+        }
+        if sidecar.exists() {
+            return spawn_sidecar(&sidecar);
+        }
+    } else {
+        // Production: prefer bundled sidecar
+        if sidecar.exists() {
+            return spawn_sidecar(&sidecar);
+        }
+        if python.exists() {
+            return spawn_venv(&python);
+        }
     }
 
-    let engine = engine_dir();
-    log::info!("Spawning engine: {} -m laya.main (cwd: {})", python.display(), engine.display());
+    Err(format!(
+        "Engine binary not found.\n\
+         Looked for sidecar at: {}\n\
+         Looked for venv at: {}\n\
+         Run scripts/setup-dev.sh (dev) or scripts/build.sh (production).",
+        sidecar.display(),
+        python.display()
+    ))
+}
 
-    Command::new(&python)
+/// Spawn the PyInstaller-bundled sidecar binary.
+fn spawn_sidecar(bin: &PathBuf) -> Result<Child, String> {
+    log::info!("Spawning engine sidecar: {}", bin.display());
+
+    Command::new(bin)
+        .spawn()
+        .map_err(|e| format!("Failed to spawn engine sidecar: {}", e))
+}
+
+/// Spawn the engine from the dev venv.
+fn spawn_venv(python: &PathBuf) -> Result<Child, String> {
+    let engine = engine_dir();
+    log::info!(
+        "Spawning engine (dev): {} -m laya.main (cwd: {})",
+        python.display(),
+        engine.display()
+    );
+
+    Command::new(python)
         .arg("-m")
         .arg("laya.main")
         .current_dir(&engine)

@@ -31,6 +31,7 @@ to reflect the new status. Mark resolved items with status "done" or "dismissed"
 - Do NOT duplicate items. If a new card relates to an existing summary item, update it.
 - Prioritize clarity and usefulness for a busy professional scanning their day.
 - Each item MUST include the card_id it relates to for navigation.
+- Each item MUST include space_id, space_name, and space_color from the source card (pass through exactly).
 - Order items by priority/importance within each section."""
 
 SUMMARIZER_STATUS_CHANGE_PROMPT = """\
@@ -44,7 +45,7 @@ Rules:
 - If the card was dismissed, set status to "dismissed".
 - If the card was archived, set status to "archived".
 - If the card was reopened, set status back to "pending".
-- Keep all other items unchanged.
+- Keep all other items unchanged, including space_id, space_name, and space_color fields.
 - Return the full updated summary."""
 
 
@@ -59,6 +60,9 @@ def build_summarizer_messages(
     card_persona: str | None = None,
     actor_name: str | None = None,
     source_platform: str | None = None,
+    space_id: str | None = None,
+    space_name: str | None = None,
+    space_color: str | None = None,
 ) -> list[dict[str, str]]:
     """Build messages for incorporating a new card into the daily summary."""
     current_text = ""
@@ -84,7 +88,10 @@ Priority: {card_priority}
 Category: {card_category}
 Persona: {card_persona or 'N/A'}
 Platform: {source_platform or 'N/A'}
-Actor: {actor_name or 'N/A'}{intel_text}
+Actor: {actor_name or 'N/A'}
+Space ID: {space_id or 'default'}
+Space Name: {space_name or 'Default'}
+Space Color: {space_color or '#F97316'}{intel_text}
 [END NEW CARD]
 
 Produce the updated summary JSON matching the required schema."""
@@ -146,8 +153,20 @@ def get_summarizer_json_schema() -> dict[str, Any]:
                 "type": "string",
                 "description": "pending, done, dismissed, or archived",
             },
+            "space_id": {
+                "type": "string",
+                "description": "The space_id the card belongs to (pass through from input)",
+            },
+            "space_name": {
+                "type": "string",
+                "description": "Human-readable space name (pass through from input)",
+            },
+            "space_color": {
+                "type": "string",
+                "description": "Hex color for the space (pass through from input)",
+            },
         },
-        "required": ["text", "card_id", "priority", "status"],
+        "required": ["text", "card_id", "priority", "status", "space_id", "space_name", "space_color"],
         "additionalProperties": False,
     }
 

@@ -25,6 +25,13 @@ class CodingAgent(abc.ABC):
         """Spawn the agent subprocess in the target repo directory."""
         ...
 
+    async def resume_with_answer(self, answer_text: str, add_dirs: list[str] | None = None) -> None:
+        """Resume a previous conversation with new user input.
+
+        Not all agents support this — the default raises NotImplementedError.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not support session resumption")
+
     @abc.abstractmethod
     async def stream_events(self) -> AsyncIterator[WorkspaceEvent]:
         """Yield WorkspaceEvent objects as the agent produces output."""

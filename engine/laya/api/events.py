@@ -191,7 +191,7 @@ async def _run_workers_background(
             }
         )
 
-        results = await run_workers(event, router_output, card_id=card_id)
+        results = await run_workers(event, router_output, card_id=card_id, space_id=space_id)
         log.info(
             "background_workers_complete",
             event_id=event.event_id,

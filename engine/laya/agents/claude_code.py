@@ -163,10 +163,14 @@ class ClaudeCodeAgent(CodingAgent):
             )
         else:
             self._status = SessionStatus.FAILED
+            stderr = self._process.stderr_output
+            error_msg = f"Agent exited with code {exit_code}"
+            if stderr:
+                error_msg += f": {stderr}"
             yield self._make_event(
                 WorkspaceEventType.ERROR,
                 WorkspaceEventActor.SYSTEM,
-                {"error": f"Agent exited with code {exit_code}", "exit_code": exit_code},
+                {"error": error_msg, "exit_code": exit_code},
             )
 
     def _parse_stream_json(self, line: str) -> list[WorkspaceEvent]:
