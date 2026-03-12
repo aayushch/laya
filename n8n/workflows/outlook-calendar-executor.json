@@ -1,0 +1,73 @@
+{
+  "name": "Laya - Outlook Calendar Executor",
+  "nodes": [
+    {
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "parameters": {
+        "path": "outlook-calendar-executor",
+        "httpMethod": "POST",
+        "responseMode": "responseNode"
+      }
+    },
+    {
+      "name": "Create Event",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [500, 200],
+      "parameters": {
+        "resource": "event",
+        "operation": "create",
+        "calendarId": "calendar",
+        "additionalFields": {
+          "subject": "={{ $json.body.payload.title || $json.body.event_subject || 'Laya Event' }}",
+          "bodyContent": "={{ $json.body.payload.description || ('Created by Laya from: ' + ($json.body.event_subject || '')) }}",
+          "bodyContentType": "text",
+          "start": "={{ $json.body.payload.start_time }}",
+          "startTimeZone": "={{ $json.body.payload.timezone || 'UTC' }}",
+          "end": "={{ $json.body.payload.end_time || (new Date(new Date($json.body.payload.start_time).getTime() + ($json.body.payload.duration_minutes || 60) * 60000)).toISOString() }}",
+          "endTimeZone": "={{ $json.body.payload.timezone || 'UTC' }}",
+          "attendees": "={{ ($json.body.payload.attendees || []).map(email => ({ emailAddress: { address: email }, type: 'required' })) }}"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [750, 100],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, result: { event_id: $json.id || '', url: $json.webLink || '' } }) }}"
+      }
+    },
+    {
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [750, 400],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'Outlook Calendar create failed — check credentials and workflow execution log') }) }}"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Create Event", "type": "main", "index": 0 }]]
+    },
+    "Create Event": {
+      "main": [
+        [{ "node": "Respond Success", "type": "main", "index": 0 }],
+        [{ "node": "Respond Error", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

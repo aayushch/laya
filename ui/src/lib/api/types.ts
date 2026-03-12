@@ -120,7 +120,26 @@ export interface ApiKeyStatus {
 	anthropic: boolean;
 	openai: boolean;
 	google: boolean;
+	openrouter: boolean;
 	n8n: boolean;
+}
+
+/** A single model option returned by the available-models endpoint */
+export interface ModelOption {
+	id: string;
+	name: string;
+}
+
+/** A provider group in the available-models response */
+export interface ProviderModels {
+	provider: string;
+	label: string;
+	models: ModelOption[];
+}
+
+/** Response from GET /settings/available-models */
+export interface AvailableModelsResponse {
+	providers: ProviderModels[];
 }
 
 /** n8n integration settings */

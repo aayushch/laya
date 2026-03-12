@@ -1,0 +1,102 @@
+{
+  "name": "Laya - Outlook IMAP Executor",
+  "nodes": [
+    {
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "parameters": {
+        "path": "outlook-imap-executor",
+        "httpMethod": "POST",
+        "responseMode": "responseNode"
+      }
+    },
+    {
+      "name": "Validate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [400, 300],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.body.payload.to || $json.body.event_actor_email || '' }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [600, 200],
+      "parameters": {
+        "fromEmail": "",
+        "toEmail": "={{ $json.body.payload.to || $json.body.event_actor_email }}",
+        "subject": "={{ $json.body.payload.subject || (($json.body.event_subject || '').toLowerCase().startsWith('re:') ? $json.body.event_subject : 'Re: ' + ($json.body.event_subject || '')) }}",
+        "emailType": "text",
+        "message": "={{ $json.body.payload.body || $json.body.payload.message || '' }}",
+        "options": {}
+      },
+      "notes": "Uses SMTP credentials. Configure with smtp-mail.outlook.com:587 (STARTTLS). The 'fromEmail' field can be left empty to use the credential email.",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [850, 100],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, result: { message_id: $json.messageId || '' } }) }}"
+      }
+    },
+    {
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [850, 300],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'Outlook SMTP send failed — check SMTP credentials (smtp-mail.outlook.com:587) and workflow execution log') }) }}"
+      }
+    },
+    {
+      "name": "Respond Missing Recipient",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [600, 400],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: 'No recipient email — payload.to is missing and event_actor_email is empty. Check Outlook IMAP ingestion workflow is capturing actor.email.' }) }}"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Validate", "type": "main", "index": 0 }]]
+    },
+    "Validate": {
+      "main": [
+        [{ "node": "Send Email", "type": "main", "index": 0 }],
+        [{ "node": "Respond Missing Recipient", "type": "main", "index": 0 }]
+      ]
+    },
+    "Send Email": {
+      "main": [
+        [{ "node": "Respond Success", "type": "main", "index": 0 }],
+        [{ "node": "Respond Error", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

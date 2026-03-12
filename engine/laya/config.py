@@ -30,7 +30,7 @@ DEFAULT_SETTINGS = {
     },
     "coding_agent": "claude_code",
     "privacy": {
-        "tier3_sources": ["gmail", "slack_dm"],
+        "tier3_sources": ["gmail", "outlook", "slack_dm"],
         "tier3_processing": "cloud_with_warning",
     },
     "briefing": {
@@ -60,6 +60,8 @@ DEFAULT_SETTINGS = {
             "slack": "slack-executor",
             "gmail": "gmail-executor",
             "calendar": "calendar-executor",
+            "outlook": "outlook-email-executor",
+            "outlook_calendar": "outlook-calendar-executor",
         },
     },
 }

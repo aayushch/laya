@@ -26,7 +26,8 @@ import type {
 	Space,
 	Source,
 	SpaceApiKeysResponse,
-	SpaceReposResponse
+	SpaceReposResponse,
+	AvailableModelsResponse
 } from './types';
 
 const ENGINE_URL = 'http://127.0.0.1:8420';
@@ -92,6 +93,12 @@ export const engineApi = {
 		request<{ status: string; provider: string }>(`/settings/api-key/${provider}`, {
 			method: 'DELETE'
 		}),
+
+	// Available models (dynamic, grouped by provider)
+	getAvailableModels: (refresh?: boolean) =>
+		request<AvailableModelsResponse>(
+			`/settings/available-models${refresh ? '?refresh=true' : ''}`
+		),
 
 	// Cards
 	getCards: (params?: {
