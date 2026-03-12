@@ -220,6 +220,7 @@
 						>
 							<option value="newest">Newest</option>
 							<option value="priority">Priority</option>
+							<option value="persona">Persona</option>
 							<option value="category">Category</option>
 							<option value="platform">Source</option>
 						</select>

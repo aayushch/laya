@@ -431,10 +431,18 @@
 		opacity: 1;
 	}
 
-	/* ── Space-aware left border ── */
+	/* ── Space-aware background tint ── */
 	.summary-item--spaced {
-		border-left: 2px solid var(--space-color, #F97316);
-		padding-left: 0.625rem;
+		background: color-mix(in oklch, var(--space-color, #F97316) 6%, transparent);
+	}
+	.summary-item--spaced:hover {
+		background: color-mix(in oklch, var(--space-color, #F97316) 12%, transparent);
+	}
+	:global([data-theme='light']) .summary-item--spaced {
+		background: color-mix(in oklch, var(--space-color, #F97316) 10%, transparent);
+	}
+	:global([data-theme='light']) .summary-item--spaced:hover {
+		background: color-mix(in oklch, var(--space-color, #F97316) 18%, transparent);
 	}
 
 	/* ── Space badge (inline pill) ── */

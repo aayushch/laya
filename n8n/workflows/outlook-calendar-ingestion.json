@@ -1,0 +1,77 @@
+{
+  "name": "Laya - Outlook Calendar Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [{ "mode": "everyMinute" }]
+        },
+        "calendarId": "calendar"
+      },
+      "name": "Outlook Calendar Trigger",
+      "type": "n8n-nodes-base.microsoftOutlookTrigger",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "notes": "Polls Outlook calendar for new/updated events every minute. Uses the Microsoft Graph API under the hood."
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            { "name": "event_id", "value": "={{ 'evt_outcal_' + ($json.id || Date.now()) }}", "type": "string" },
+            { "name": "timestamp", "value": "={{ new Date().toISOString() }}", "type": "string" },
+            { "name": "source.platform", "value": "outlook_calendar", "type": "string" },
+            { "name": "source.connection_id", "value": "={{ $workflow.id }}", "type": "string" },
+            { "name": "source.raw_event_type", "value": "={{ $json.isCancelled ? 'event_cancelled' : ($json.createdDateTime === $json.lastModifiedDateTime ? 'event_created' : 'event_updated') }}", "type": "string" },
+            { "name": "actor.name", "value": "={{ $json.organizer?.emailAddress?.name || $json.organizer?.emailAddress?.address || 'Unknown' }}", "type": "string" },
+            { "name": "actor.email", "value": "={{ $json.organizer?.emailAddress?.address || '' }}", "type": "string" },
+            { "name": "actor.platform_handle", "value": "", "type": "string" },
+            { "name": "subject.type", "value": "meeting", "type": "string" },
+            { "name": "subject.id", "value": "={{ $json.id || '' }}", "type": "string" },
+            { "name": "subject.title", "value": "={{ $json.subject || 'Untitled Event' }}", "type": "string" },
+            { "name": "subject.url", "value": "={{ $json.webLink || null }}", "type": "string" },
+            { "name": "content.body", "value": "={{ $json.body?.content ? $json.body.content.replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ').trim() : ($json.bodyPreview || '') }}", "type": "string" },
+            { "name": "content.metadata", "value": "={{ JSON.stringify({ cal_start_time: $json.start?.dateTime, cal_end_time: $json.end?.dateTime, cal_timezone: $json.start?.timeZone || $json.originalStartTimeZone, cal_attendees: ($json.attendees || []).map(a => a.emailAddress?.address), cal_location: $json.location?.displayName || '', cal_recurring: !!$json.seriesMasterId, cal_is_online: !!$json.isOnlineMeeting, cal_online_url: $json.onlineMeeting?.joinUrl || '' }) }}", "type": "string" }
+          ]
+        }
+      },
+      "name": "Normalize to Laya Event",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8420/events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ event_id: $json.event_id, timestamp: $json.timestamp, source: $json.source, actor: $json.actor, subject: $json.subject, content: { body: $json.content.body, attachments: [], metadata: JSON.parse($json.content.metadata || '{}') } }) }}",
+        "options": {}
+      },
+      "name": "POST to Laya Engine",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [750, 300]
+    }
+  ],
+  "connections": {
+    "Outlook Calendar Trigger": {
+      "main": [[{ "node": "Normalize to Laya Event", "type": "main", "index": 0 }]]
+    },
+    "Normalize to Laya Event": {
+      "main": [[{ "node": "POST to Laya Engine", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

@@ -1,25 +1,17 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
-	import type { Space, Source, AvailableWorkflow, Repo } from '$lib/api/types';
-
-	const allModels = [
-		{ value: '', label: 'Use default' },
-		{ value: 'claude-opus-4-6', label: 'Claude Opus 4.6', tier: 'strong' },
-		{ value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', tier: 'strong' },
-		{ value: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5', tier: 'strong' },
-		{ value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', tier: 'light' },
-		{ value: 'gpt-4o', label: 'GPT-4o', tier: 'strong' },
-		{ value: 'gpt-4o-mini', label: 'GPT-4o Mini', tier: 'light' },
-		{ value: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro Preview', tier: 'strong' },
-		{ value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview', tier: 'light' }
-	];
+	import type { Space, Source, AvailableWorkflow, Repo, ProviderModels } from '$lib/api/types';
+	import ModelSelect from './ModelSelect.svelte';
 
 	const providers = [
 		{ id: 'anthropic', label: 'Anthropic' },
 		{ id: 'openai', label: 'OpenAI' },
-		{ id: 'google', label: 'Google' }
+		{ id: 'google', label: 'Google' },
+		{ id: 'openrouter', label: 'OpenRouter' }
 	];
+
+	let availableModels = $state<ProviderModels[]>([]);
 
 	const agentOptions = [
 		{ value: '', label: 'Use default' },
@@ -83,14 +75,16 @@
 
 	async function loadData() {
 		try {
-			const [spacesRes, sourcesRes, reposRes] = await Promise.all([
+			const [spacesRes, sourcesRes, reposRes, modelsRes] = await Promise.all([
 				engineApi.getSpaces(),
 				engineApi.getSources(),
-				engineApi.getRepos()
+				engineApi.getRepos(),
+				engineApi.getAvailableModels()
 			]);
 			spaces = spacesRes.spaces;
 			sources = sourcesRes.sources;
 			allRepos = reposRes.repos;
+			availableModels = modelsRes.providers;
 			loaded = true;
 
 			// Load repo assignments for all spaces
@@ -262,7 +256,7 @@
 	// Space API keys
 	async function openSpaceKeys(spaceId: string) {
 		keySpaceId = spaceId;
-		spaceKeyInputs = { anthropic: '', openai: '', google: '' };
+		spaceKeyInputs = { anthropic: '', openai: '', google: '', openrouter: '' };
 		try {
 			const res = await engineApi.getSpaceApiKeys(spaceId);
 			spaceKeyStatus = {};
@@ -347,8 +341,11 @@
 
 	function modelLabel(value: string | undefined | null): string {
 		if (!value) return 'Default';
-		const m = allModels.find((m) => m.value === value);
-		return m ? m.label : value;
+		for (const p of availableModels) {
+			const m = p.models.find((m) => m.id === value);
+			if (m) return m.name;
+		}
+		return value;
 	}
 
 	function agentLabel(value: string | undefined | null): string {
@@ -445,24 +442,36 @@
 						<!-- svelte-ignore a11y_label_has_associated_control -->
 						<label class="mb-2 block text-sm text-surface-400">Model Overrides</label>
 						<div class="grid grid-cols-3 gap-3">
-							{#each [
-								{ id: 'router', label: 'Router', bind: () => formRouterModel, set: (v: string) => (formRouterModel = v) },
-								{ id: 'stager', label: 'Stager', bind: () => formStagerModel, set: (v: string) => (formStagerModel = v) },
-								{ id: 'chat', label: 'Chat', bind: () => formChatModel, set: (v: string) => (formChatModel = v) }
-							] as role}
-								<div>
-									<span class="mb-1 block text-xs text-surface-500">{role.label}</span>
-									<select
-										value={role.bind()}
-										onchange={(e) => role.set((e.target as HTMLSelectElement).value)}
-										class="w-full rounded-md border border-surface-600 bg-surface-700 px-2 py-1.5 text-xs text-surface-100"
-									>
-										{#each allModels as model}
-											<option value={model.value}>{model.label}</option>
-										{/each}
-									</select>
-								</div>
-							{/each}
+							<div>
+								<span class="mb-1 block text-xs text-surface-500">Router</span>
+								<ModelSelect
+									bind:value={formRouterModel}
+									providers={availableModels}
+									onchange={(v) => (formRouterModel = v)}
+									allowEmpty={true}
+									emptyLabel="Use default"
+								/>
+							</div>
+							<div>
+								<span class="mb-1 block text-xs text-surface-500">Stager</span>
+								<ModelSelect
+									bind:value={formStagerModel}
+									providers={availableModels}
+									onchange={(v) => (formStagerModel = v)}
+									allowEmpty={true}
+									emptyLabel="Use default"
+								/>
+							</div>
+							<div>
+								<span class="mb-1 block text-xs text-surface-500">Chat</span>
+								<ModelSelect
+									bind:value={formChatModel}
+									providers={availableModels}
+									onchange={(v) => (formChatModel = v)}
+									allowEmpty={true}
+									emptyLabel="Use default"
+								/>
+							</div>
 						</div>
 					</div>
 

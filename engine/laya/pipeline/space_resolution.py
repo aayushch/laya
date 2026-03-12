@@ -18,6 +18,8 @@ _LEGACY_PLATFORM_MAP = {
     "slack_main": "slack",
     "calendar_main": "calendar",
     "bb_main": "bitbucket",
+    "outlook_main": "outlook",
+    "outlook_calendar_main": "outlook_calendar",
 }
 
 

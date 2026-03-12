@@ -282,10 +282,14 @@ async def get_grouped_cards(
         result.sort(key=lambda g: g.platform.lower())
         for g in result:
             g.sort_key = g.platform or "Unknown"
-    elif sort == "category":
+    elif sort == "persona":
         result.sort(key=lambda g: g.cards[0].persona if g.cards else "")
         for g in result:
             g.sort_key = g.cards[0].persona if g.cards else "Unknown"
+    elif sort == "category":
+        result.sort(key=lambda g: g.cards[0].category if g.cards else "")
+        for g in result:
+            g.sort_key = g.cards[0].category if g.cards else "Unknown"
     else:  # newest (default)
         result.sort(key=lambda g: g.latest_at, reverse=True)
 

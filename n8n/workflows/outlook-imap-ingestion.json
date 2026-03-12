@@ -1,0 +1,128 @@
+{
+  "name": "Laya - Outlook IMAP Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "mailbox": "INBOX",
+        "postProcessAction": "read",
+        "options": {
+          "allowUnauthorizedCerts": false
+        }
+      },
+      "name": "IMAP Trigger",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "notes": "Connects to outlook.office365.com:993 via IMAP. Configure credentials with your Outlook email and app password. For free Outlook accounts that lack Graph API access."
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "name": "raw_from_email",
+              "value": "={{ (typeof $json.from === 'object' && $json.from.value && $json.from.value[0]) ? $json.from.value[0].address : (typeof $json.from === 'string' ? ($json.from.match(/<([^>]+)>/)?.[1] || $json.from.trim()) : '') }}",
+              "type": "string"
+            },
+            {
+              "name": "raw_from_name",
+              "value": "={{ (typeof $json.from === 'object' && $json.from.value && $json.from.value[0]) ? ($json.from.value[0].name || '') : (typeof $json.from === 'string' ? $json.from.replace(/<[^>]+>/g, '').trim() : '') }}",
+              "type": "string"
+            },
+            {
+              "name": "raw_to_email",
+              "value": "={{ (typeof $json.to === 'object' && $json.to.value && $json.to.value[0]) ? $json.to.value[0].address : (typeof $json.to === 'string' ? ($json.to.match(/<([^>]+)>/)?.[1] || $json.to.trim()) : '') }}",
+              "type": "string"
+            },
+            {
+              "name": "raw_subject",
+              "value": "={{ (typeof $json.subject === 'object') ? ($json.subject.value || JSON.stringify($json.subject)) : ($json.subject || '') }}",
+              "type": "string"
+            },
+            {
+              "name": "is_reply",
+              "value": "={{ !!($json['in-reply-to'] || $json.references || $json.inReplyTo || ($json.headers && ($json.headers['in-reply-to'] || $json.headers['references']))) }}",
+              "type": "boolean"
+            },
+            { "name": "outlook_id", "value": "={{ $json.messageId || $json.id || '' }}", "type": "string" },
+            { "name": "outlook_conversationId", "value": "={{ $json.references ? ($json.references.split(/\\s+/)[0] || $json.messageId || $json.id) : ($json.messageId || $json.id || '') }}", "type": "string" },
+            { "name": "outlook_receivedDateTime", "value": "={{ $json.date }}", "type": "string" },
+            { "name": "outlook_flags", "value": "={{ JSON.stringify($json.flags || []) }}", "type": "string" },
+            {
+              "name": "outlook_body",
+              "value": "={{ $json.text || $json.snippet || ($json.html ? $json.html.replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ').trim() : '') }}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "name": "Extract Headers",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            { "name": "event_id", "value": "={{ 'evt_outlook_' + ($json.outlook_id ? $json.outlook_id.replace(/[<>]/g, '').substring(0, 40) : String(Date.now())) }}", "type": "string" },
+            { "name": "timestamp", "value": "={{ $json.outlook_receivedDateTime ? new Date($json.outlook_receivedDateTime).toISOString() : new Date().toISOString() }}", "type": "string" },
+            { "name": "source.platform", "value": "outlook", "type": "string" },
+            { "name": "source.connection_id", "value": "={{ $workflow.id }}", "type": "string" },
+            { "name": "source.raw_event_type", "value": "={{ $json.is_reply ? 'reply_received' : 'new_email' }}", "type": "string" },
+            { "name": "actor.name", "value": "={{ $json.raw_from_name }}", "type": "string" },
+            { "name": "actor.email", "value": "={{ $json.raw_from_email }}", "type": "string" },
+            { "name": "actor.platform_handle", "value": "", "type": "string" },
+            { "name": "subject.type", "value": "email_thread", "type": "string" },
+            { "name": "subject.id", "value": "={{ $json.outlook_conversationId }}", "type": "string" },
+            { "name": "subject.title", "value": "={{ $json.raw_subject || 'No Subject' }}", "type": "string" },
+            { "name": "subject.url", "value": "", "type": "string" },
+            { "name": "content.body", "value": "={{ $json.outlook_body }}", "type": "string" },
+            { "name": "content.metadata", "value": "={{ JSON.stringify({ outlook_message_id: $json.outlook_id, outlook_conversation_id: $json.outlook_conversationId, outlook_flags: JSON.parse($json.outlook_flags || '[]'), outlook_from: $json.raw_from_email, outlook_to: [$json.raw_to_email], outlook_cc: [], outlook_is_reply: $json.is_reply, outlook_transport: 'imap' }) }}", "type": "string" }
+          ]
+        }
+      },
+      "name": "Normalize to Laya Event",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8420/events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ event_id: $json.event_id, timestamp: $json.timestamp, source: $json.source, actor: $json.actor, subject: $json.subject, content: { body: $json.content.body, attachments: [], metadata: JSON.parse($json.content.metadata || '{}') } }) }}",
+        "options": {}
+      },
+      "name": "POST to Laya Engine",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1000, 300]
+    }
+  ],
+  "connections": {
+    "IMAP Trigger": {
+      "main": [[{ "node": "Extract Headers", "type": "main", "index": 0 }]]
+    },
+    "Extract Headers": {
+      "main": [[{ "node": "Normalize to Laya Event", "type": "main", "index": 0 }]]
+    },
+    "Normalize to Laya Event": {
+      "main": [[{ "node": "POST to Laya Engine", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

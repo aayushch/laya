@@ -8,6 +8,7 @@
 	import ActionCardComponent from '$lib/components/feed/ActionCard.svelte';
 	import CardDetail from '$lib/components/feed/CardDetail.svelte';
 	import DaySummaryComponent from '$lib/components/feed/DaySummary.svelte';
+	import { showSummary } from '$lib/stores/feedView';
 
 	let groups = $state<CardGroup[]>([]);
 	let totalGroups = $state(0);
@@ -15,16 +16,10 @@
 	let error = $state<string | null>(null);
 	let selectedCard = $state<ActionCard | null>(null);
 
-	// Summary View state — always start on card view
-	let showSummary = $state(false);
+	// Summary View state
 	let daySummary = $state<DaySummary | null>(null);
 	let summaryUpdatedAt = $state<string | null>(null);
 	let summaryLoading = $state(false);
-
-	function toggleSummaryView() {
-		showSummary = !showSummary;
-		if (showSummary && !daySummary) loadSummary();
-	}
 
 	// Persist selected card ID across webview navigations (e.g. external link → back)
 	const SELECTED_CARD_KEY = 'laya_feed_selected_card';
@@ -122,7 +117,7 @@
 	// Load summary when date changes or summary view is toggled on
 	$effect(() => {
 		$feedDate;
-		if (showSummary) loadSummary();
+		if ($showSummary) loadSummary();
 	});
 
 	// Track last processed WS message to prevent infinite re-triggering.
@@ -283,7 +278,7 @@
 
 	function handleSummaryGotoCard(cardId: string) {
 		// Switch to card view and select + scroll to the card
-		showSummary = false;
+		$showSummary = false;
 		// Find the card in groups
 		for (const g of groups) {
 			const found = g.cards.find((c) => c.card_id === cardId);
@@ -356,132 +351,137 @@
 	}
 </script>
 
-<div class="flex h-full gap-4">
-	<!-- Cards section -->
-	<div bind:this={containerEl} class="flex min-w-0 flex-1 flex-col overflow-y-auto pl-0.5">
-		<!-- Summary bar -->
-		<div class="mb-3 flex items-center gap-2 pr-3">
-			<span class="text-xs text-surface-500">
-				{totalGroups} {totalGroups === 1 ? 'group' : 'groups'} · {totalCards} cards
-			</span>
-			<div class="flex-1"></div>
+<div class="flex h-full flex-col">
+	<!-- Sticky summary bar spanning full width -->
+	<div class="flex items-center gap-2 pb-3">
+		<span class="text-xs text-surface-500">
+			{totalGroups} {totalGroups === 1 ? 'group' : 'groups'} · {totalCards} cards
+		</span>
+		<div class="flex-1"></div>
+		<!-- View toggle -->
+		<div class="flex items-center rounded-lg border border-surface-700 bg-surface-800/60 p-0.5">
 			<button
-				class="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors {showSummary ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:bg-surface-800 hover:text-surface-200'}"
-				onclick={toggleSummaryView}
-				title={showSummary ? 'Card View' : 'Summary View'}
+				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {!$showSummary ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-200'}"
+				onclick={() => ($showSummary = false)}
+				title="Card View"
 			>
-				{#if showSummary}
-					<!-- Grid icon for "Card View" -->
-					<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-					</svg>
-					<span>Card View</span>
-				{:else}
-					<!-- List/summary icon for "Summary View" -->
-					<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-					</svg>
-					<span>Summary</span>
-				{/if}
+				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+				</svg>
+			</button>
+			<button
+				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {$showSummary ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-200'}"
+				onclick={() => ($showSummary = true)}
+				title="Summary View"
+			>
+				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+				</svg>
 			</button>
 		</div>
-
-		<!-- Summary View -->
-		{#if showSummary}
-			<div class="flex-1 overflow-y-auto rounded-xl border border-surface-700/50 bg-surface-900/30 p-6">
-				{#if summaryLoading}
-					<div class="flex h-full items-center justify-center text-surface-400">
-						<span class="text-sm">Loading summary...</span>
-					</div>
-				{:else}
-					<DaySummaryComponent summary={daySummary} updatedAt={summaryUpdatedAt} ongotocard={handleSummaryGotoCard} spaceFilter={$feedFilters.spaceFilter} />
-				{/if}
-			</div>
-		<!-- Card grid -->
-		{:else if loading && groups.length === 0}
-			<div class="py-12 text-center text-surface-400">Loading cards...</div>
-		{:else if error}
-			<div class="rounded-lg border border-red-800 bg-red-900/30 px-4 py-3 text-sm text-red-300">
-				{error}
-			</div>
-		{:else if groups.length === 0}
-			<div class="py-12 text-center text-surface-500">
-				<p class="text-lg">No cards for {formatDateLabel($feedDate)}</p>
-				<p class="mt-1 text-sm">
-					{#if $feedPrevDate}
-						<button class="text-laya-orange hover:underline" onclick={() => { if ($feedPrevDate) $feedDate = $feedPrevDate; }}>
-							View {formatDateLabel($feedPrevDate)}
-						</button>
-					{:else}
-						Cards will appear here as events are processed
-					{/if}
-				</p>
-			</div>
-		{:else if sections}
-			<!-- Sorted view with section separators -->
-			{#each sections as [sectionTitle, sectionGroups], si}
-				{@const isCollapsed = collapsedSections.has(sectionTitle)}
-				<div
-					class="flex cursor-pointer items-center gap-3 pr-3 {si > 0 ? 'mt-5' : ''} mb-3 select-none"
-					role="button"
-					tabindex="0"
-					onclick={() => toggleSection(sectionTitle)}
-					onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSection(sectionTitle); } }}
-				>
-					<svg class="h-3.5 w-3.5 shrink-0 text-surface-500 transition-transform {isCollapsed ? '-rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-					</svg>
-					<span class="text-xs font-semibold uppercase tracking-wider text-surface-400">{sectionTitle}</span>
-					<div class="flex-1 border-t border-surface-700"></div>
-					<span class="text-[10px] text-surface-500">{sectionGroups.reduce((s, g) => s + g.card_count, 0)}</span>
-				</div>
-				{#if !isCollapsed}
-					<div class="flex flex-wrap gap-4">
-						{#each toColumns(sectionGroups) as col}
-							<div class="flex w-[320px] flex-col gap-4">
-								{#each col as group (group.entity_id)}
-									{#if group.card_count === 1}
-										<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} />
-									{:else}
-										<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} scrollToCardId={_scrollToCardId} />
-									{/if}
-								{/each}
-							</div>
-						{/each}
-					</div>
-				{/if}
-			{/each}
-		{:else}
-			<!-- Default column layout (newest / oldest) -->
-			<div class="flex flex-wrap gap-4">
-				{#each columns as col}
-					<div class="flex w-[320px] flex-col gap-4">
-						{#each col as group (group.entity_id)}
-							{#if group.card_count === 1}
-								<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} />
-							{:else}
-								<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} scrollToCardId={_scrollToCardId} />
-							{/if}
-						{/each}
-					</div>
-				{/each}
-			</div>
-		{/if}
 	</div>
 
-	<!-- Detail panel (hidden in summary view) -->
-	{#if !showSummary}
-		<div class="w-[420px] flex-shrink-0 overflow-y-auto">
-			{#if selectedCard}
-				<CardDetail card={selectedCard} onclose={closeDetail} ongotocard={gotoCard} />
+	<!-- Content area: cards + detail panel side by side -->
+	<div class="flex min-h-0 flex-1 gap-4">
+		<!-- Cards / Summary section -->
+		<div bind:this={containerEl} class="flex min-w-0 flex-1 flex-col overflow-y-auto pl-0.5 pt-0.5">
+			<!-- Summary View -->
+			{#if $showSummary}
+				<div class="flex-1 overflow-y-auto rounded-xl border border-surface-700/50 bg-surface-900/30 p-6">
+					{#if summaryLoading}
+						<div class="flex h-full items-center justify-center text-surface-400">
+							<span class="text-sm">Loading summary...</span>
+						</div>
+					{:else}
+						<DaySummaryComponent summary={daySummary} updatedAt={summaryUpdatedAt} ongotocard={handleSummaryGotoCard} spaceFilter={$feedFilters.spaceFilter} />
+					{/if}
+				</div>
+			<!-- Card grid -->
+			{:else if loading && groups.length === 0}
+				<div class="py-12 text-center text-surface-400">Loading cards...</div>
+			{:else if error}
+				<div class="rounded-lg border border-red-800 bg-red-900/30 px-4 py-3 text-sm text-red-300">
+					{error}
+				</div>
+			{:else if groups.length === 0}
+				<div class="py-12 text-center text-surface-500">
+					<p class="text-lg">No cards for {formatDateLabel($feedDate)}</p>
+					<p class="mt-1 text-sm">
+						{#if $feedPrevDate}
+							<button class="text-laya-orange hover:underline" onclick={() => { if ($feedPrevDate) $feedDate = $feedPrevDate; }}>
+								View {formatDateLabel($feedPrevDate)}
+							</button>
+						{:else}
+							Cards will appear here as events are processed
+						{/if}
+					</p>
+				</div>
+			{:else if sections}
+				<!-- Sorted view with section separators -->
+				{#each sections as [sectionTitle, sectionGroups], si}
+					{@const isCollapsed = collapsedSections.has(sectionTitle)}
+					<div
+						class="flex cursor-pointer items-center gap-3 pr-3 {si > 0 ? 'mt-5' : ''} mb-3 select-none"
+						role="button"
+						tabindex="0"
+						onclick={() => toggleSection(sectionTitle)}
+						onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSection(sectionTitle); } }}
+					>
+						<svg class="h-3.5 w-3.5 shrink-0 text-surface-500 transition-transform {isCollapsed ? '-rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+						</svg>
+						<span class="text-xs font-semibold uppercase tracking-wider text-surface-400">{sectionTitle}</span>
+						<div class="flex-1 border-t border-surface-700"></div>
+						<span class="text-[10px] text-surface-500">{sectionGroups.reduce((s, g) => s + g.card_count, 0)}</span>
+					</div>
+					{#if !isCollapsed}
+						<div class="flex flex-wrap gap-4">
+							{#each toColumns(sectionGroups) as col}
+								<div class="flex w-[320px] flex-col gap-4">
+									{#each col as group (group.entity_id)}
+										{#if group.card_count === 1}
+											<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} />
+										{:else}
+											<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} scrollToCardId={_scrollToCardId} />
+										{/if}
+									{/each}
+								</div>
+							{/each}
+						</div>
+					{/if}
+				{/each}
 			{:else}
-				<div class="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-surface-700 text-surface-600">
-					<svg class="mb-2 h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-					</svg>
-					<p class="text-xs">Select a card to view details</p>
+				<!-- Default column layout (newest / oldest) -->
+				<div class="flex flex-wrap gap-4">
+					{#each columns as col}
+						<div class="flex w-[320px] flex-col gap-4">
+							{#each col as group (group.entity_id)}
+								{#if group.card_count === 1}
+									<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} />
+								{:else}
+									<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} scrollToCardId={_scrollToCardId} />
+								{/if}
+							{/each}
+						</div>
+					{/each}
 				</div>
 			{/if}
 		</div>
-	{/if}
+
+		<!-- Detail panel (hidden in summary view) -->
+		{#if !$showSummary}
+			<div class="w-[420px] flex-shrink-0 overflow-y-auto">
+				{#if selectedCard}
+					<CardDetail card={selectedCard} onclose={closeDetail} ongotocard={gotoCard} />
+				{:else}
+					<div class="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-surface-700 text-surface-600">
+						<svg class="mb-2 h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+						</svg>
+						<p class="text-xs">Select a card to view details</p>
+					</div>
+				{/if}
+			</div>
+		{/if}
+	</div>
 </div>
