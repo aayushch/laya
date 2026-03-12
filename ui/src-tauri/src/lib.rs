@@ -140,12 +140,29 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
+            {
+                use tauri_plugin_log::{Target, TargetKind};
+
+                let mut log_builder = tauri_plugin_log::Builder::default();
+
+                if cfg!(debug_assertions) {
+                    // Dev: log to file + stdout for easy debugging
+                    log_builder = log_builder
+                        .level(log::LevelFilter::Debug)
+                        .targets([
+                            Target::new(TargetKind::LogDir { file_name: None }),
+                            Target::new(TargetKind::Stdout),
+                        ]);
+                } else {
+                    // Release: log to file only (stdout causes a Terminal window on macOS)
+                    log_builder = log_builder
                         .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
+                        .targets([
+                            Target::new(TargetKind::LogDir { file_name: None }),
+                        ]);
+                }
+
+                app.handle().plugin(log_builder.build())?;
             }
 
             // Set macOS dock icon (needed in dev mode where there's no .app bundle)
@@ -203,6 +220,33 @@ pub fn run() {
 
             // Start background health polling for tray tooltip
             start_health_polling(tray);
+
+            // --- Start n8n via Docker Compose ---
+            match docker::startup_n8n() {
+                docker::N8nStartResult::Started => {
+                    log::info!("n8n container started successfully");
+                }
+                docker::N8nStartResult::AlreadyRunning => {
+                    log::info!("n8n container was already running");
+                }
+                docker::N8nStartResult::DockerNotAvailable(msg) => {
+                    log::warn!("Docker not available: {}", msg);
+                    // Show a non-blocking notification to the user via JS
+                    if let Some(window) = app.get_webview_window("main") {
+                        let escaped = msg.replace('\\', "\\\\").replace('\'', "\\'");
+                        let _ = window.eval(&format!(
+                            "setTimeout(() => window.__laya_docker_warning = '{}', 1000)",
+                            escaped
+                        ));
+                    }
+                }
+                docker::N8nStartResult::ComposeNotFound(msg) => {
+                    log::error!("docker-compose.yml not found: {}", msg);
+                }
+                docker::N8nStartResult::StartFailed(msg) => {
+                    log::error!("Failed to start n8n: {}", msg);
+                }
+            }
 
             // --- Spawn Python engine ---
             match sidecar::spawn_engine() {
@@ -275,7 +319,7 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
             }
         })
         .on_window_event(|window, event| {
-            // Kill engine when the app exits
+            // Kill engine and stop n8n when the app exits
             if let tauri::WindowEvent::Destroyed = event {
                 if let Some(state) = window.try_state::<EngineProcess>() {
                     if let Ok(mut guard) = state.0.lock() {
@@ -285,6 +329,8 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
                         }
                     }
                 }
+                log::info!("Stopping n8n container");
+                docker::shutdown_n8n();
             }
         })
         .run(tauri::generate_context!())

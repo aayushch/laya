@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# Start all Laya services for development
+# Start all Laya services for development.
+#
+# n8n lifecycle is managed by the Tauri app (auto-start on launch,
+# auto-stop on quit), so this script only starts the Python engine
+# and the Tauri dev server.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -7,20 +11,15 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cleanup() {
     echo ""
     echo "Shutting down..."
-    # Kill background processes
+    # Kill background engine process (if started standalone)
     [ -n "${ENGINE_PID:-}" ] && kill "$ENGINE_PID" 2>/dev/null && echo "  Engine stopped"
-    # Stop n8n
-    docker compose -f "$REPO_ROOT/docker-compose.yml" down --timeout 5 2>/dev/null && echo "  n8n stopped"
     exit 0
 }
 trap cleanup SIGINT SIGTERM
 
 echo "=== Laya Dev ==="
-
-# Start n8n
-echo "Starting n8n..."
-docker compose -f "$REPO_ROOT/docker-compose.yml" up -d
-echo "  n8n running on http://localhost:5678"
+echo "  n8n is managed by the Tauri app (auto-start/stop)"
+echo ""
 
 # Start Python engine
 echo "Starting engine..."

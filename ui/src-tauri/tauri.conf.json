@@ -26,6 +26,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": [
+      "resources/docker-compose.yml"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -35,6 +38,10 @@
     ],
     "externalBin": [
       "binaries/laya-engine"
-    ]
+    ],
+    "macOS": {
+      "signingIdentity": null,
+      "providerShortName": null
+    }
   }
 }
