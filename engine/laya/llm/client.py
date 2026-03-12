@@ -24,6 +24,8 @@ class LLMResponse(BaseModel):
     input_tokens: int
     output_tokens: int
     latency_ms: int
+    finish_reason: str = "stop"
+    truncated: bool = False
 
 
 async def _get_space_model(role: str, space_id: str) -> str | None:
@@ -221,8 +223,41 @@ async def llm_call(
         elapsed_ms = int((time.monotonic() - start) * 1000)
 
         content = response.choices[0].message.content or ""
+        finish_reason = response.choices[0].finish_reason or "stop"
         input_tokens = response.usage.prompt_tokens if response.usage else 0
         output_tokens = response.usage.completion_tokens if response.usage else 0
+        truncated = finish_reason == "length"
+
+        # If the response was truncated and we requested structured output,
+        # retry once with doubled max_tokens to try to get complete JSON.
+        if truncated and response_schema:
+            doubled = max_tokens * 2
+            log.warning(
+                "llm_response_truncated",
+                model=model,
+                output_tokens=output_tokens,
+                max_tokens=max_tokens,
+                retrying_with=doubled,
+            )
+            kwargs["max_tokens"] = doubled
+
+            retry_start = time.monotonic()
+            response = await _call_with_retry()
+            elapsed_ms += int((time.monotonic() - retry_start) * 1000)
+
+            content = response.choices[0].message.content or ""
+            finish_reason = response.choices[0].finish_reason or "stop"
+            input_tokens += response.usage.prompt_tokens if response.usage else 0
+            output_tokens = response.usage.completion_tokens if response.usage else 0
+            truncated = finish_reason == "length"
+
+            if truncated:
+                log.warning(
+                    "llm_response_still_truncated",
+                    model=model,
+                    output_tokens=output_tokens,
+                    max_tokens=doubled,
+                )
 
         # Parse JSON if structured output was requested
         parsed = None
@@ -239,7 +274,12 @@ async def llm_call(
             try:
                 parsed = json.loads(stripped)
             except json.JSONDecodeError:
-                log.warning("llm_json_parse_failed", model=model, content_preview=content[:200])
+                log.warning(
+                    "llm_json_parse_failed",
+                    model=model,
+                    content_preview=content[:200],
+                    truncated=truncated,
+                )
 
         result = LLMResponse(
             content=content,
@@ -248,6 +288,8 @@ async def llm_call(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             latency_ms=elapsed_ms,
+            finish_reason=finish_reason,
+            truncated=truncated,
         )
 
         log.info(
@@ -257,6 +299,7 @@ async def llm_call(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             latency_ms=elapsed_ms,
+            finish_reason=finish_reason,
         )
 
         # Log successful call to audit

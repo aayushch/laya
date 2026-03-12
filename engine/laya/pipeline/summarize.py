@@ -15,6 +15,10 @@ from laya.llm.prompts.summarizer import (
     get_summarizer_json_schema,
 )
 
+# Maximum number of items across all sections before compaction kicks in.
+_COMPACTION_THRESHOLD = 40
+_SUMMARY_MAX_TOKENS = 16384
+
 log = structlog.get_logger()
 
 # Debounce state: accumulate card_ids and only run after a quiet period.
@@ -107,6 +111,43 @@ async def _debounced_run() -> None:
         log.error("summary_update_failed", error=str(e))
 
 
+def _count_items(summary: dict) -> int:
+    """Count total items across all summary sections."""
+    return sum(
+        len(summary.get(section, []))
+        for section in ("events_and_meetings", "action_items", "key_updates")
+    )
+
+
+def _compact_summary(summary: dict) -> dict:
+    """Compact a summary by removing resolved items that are least important.
+
+    Keeps all pending items intact. For done/dismissed/archived items, removes
+    LOW and MEDIUM priority ones first, keeping CRITICAL and HIGH. This reduces
+    the token footprint so the LLM has room for new items.
+    """
+    compacted = {}
+    removed = 0
+
+    for section in ("events_and_meetings", "action_items", "key_updates"):
+        items = summary.get(section, [])
+        kept = []
+        for item in items:
+            status = item.get("status", "pending")
+            priority = item.get("priority", "MEDIUM")
+            # Keep all pending items and high-priority resolved items
+            if status == "pending" or priority in ("CRITICAL", "HIGH"):
+                kept.append(item)
+            else:
+                removed += 1
+        compacted[section] = kept
+
+    if removed > 0:
+        log.info("summary_compacted", removed_items=removed, remaining=_count_items(compacted))
+
+    return compacted
+
+
 async def _run_summary_update(
     new_cards: list[dict],
     status_changes: list[dict],
@@ -176,6 +217,10 @@ async def _run_summary_update(
     if current_summary:
         current_summary = _fix_space_fields(current_summary)
 
+    # Compact the summary if it has grown too large to avoid token truncation
+    if current_summary and _count_items(current_summary) >= _COMPACTION_THRESHOLD:
+        current_summary = _compact_summary(current_summary)
+
     # Process new cards one at a time (each builds on previous)
     for card in new_cards:
         if card["card_id"] in existing_card_ids:
@@ -205,12 +250,13 @@ async def _run_summary_update(
                 card_id=card["card_id"],
                 step="summarize",
                 temperature=0.2,
-                max_tokens=8192,
+                max_tokens=_SUMMARY_MAX_TOKENS,
             )
 
             if not response.parsed:
+                truncation_hint = " (response was truncated)" if response.truncated else ""
                 raise ValueError(
-                    f"LLM returned malformed JSON for summary "
+                    f"LLM returned malformed JSON for summary{truncation_hint} "
                     f"(output_tokens={response.output_tokens}, model={response.model})"
                 )
             current_summary = _fix_space_fields(response.parsed)
@@ -246,12 +292,13 @@ async def _run_summary_update(
                 card_id=change["card_id"],
                 step="summarize_status",
                 temperature=0.1,
-                max_tokens=8192,
+                max_tokens=_SUMMARY_MAX_TOKENS,
             )
 
             if not response.parsed:
+                truncation_hint = " (response was truncated)" if response.truncated else ""
                 raise ValueError(
-                    f"LLM returned malformed JSON for status update summary "
+                    f"LLM returned malformed JSON for status update summary{truncation_hint} "
                     f"(output_tokens={response.output_tokens}, model={response.model})"
                 )
             current_summary = _fix_space_fields(response.parsed)
