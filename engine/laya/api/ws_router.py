@@ -151,30 +151,39 @@ async def _handle_execute_action(msg: dict) -> None:
 
 
 async def _handle_chat_message(msg: dict) -> None:
-    """Handle chat_message: process via chat pipeline and broadcast response."""
+    """Handle chat_message: process via streaming chat pipeline and broadcast chunks."""
     payload = msg.get("payload", {})
     message = payload.get("message", "")
+    space_id = payload.get("space_id")
 
     if not message.strip():
         log.warning("ws_chat_empty_message")
         return
 
     from laya.api.websocket import manager
-    from laya.pipeline.chat import process_chat_message
+    from laya.pipeline.chat import process_chat_message_streaming
 
     try:
-        response = await process_chat_message(message.strip())
-        await manager.broadcast({
-            "type": "chat_response",
-            "payload": {
-                "message": response.message.model_dump(),
-                "referenced_cards": response.referenced_cards,
-                "referenced_events": response.referenced_events,
-            },
-        })
-        log.info("ws_chat_response_sent")
+        async for event in process_chat_message_streaming(
+            message.strip(), space_id=space_id,
+        ):
+            await manager.broadcast(event)
+
+        log.info("ws_chat_stream_complete")
     except Exception as e:
         log.error("ws_chat_failed", error=str(e))
+        # Send error as a complete response so UI can recover
+        await manager.broadcast({
+            "type": "chat_stream_done",
+            "message": {
+                "message_id": f"err_{uuid.uuid4().hex[:12]}",
+                "timestamp": "",
+                "role": "assistant",
+                "content": "I'm sorry, I encountered an error. Please try again.",
+                "referenced_cards": [],
+                "referenced_events": [],
+            },
+        })
 
 
 async def _store_user_event(

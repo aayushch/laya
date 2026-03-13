@@ -3,6 +3,8 @@
 import json
 import time
 import uuid
+from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from typing import Any
 
 import structlog
@@ -13,6 +15,15 @@ from laya.config import load_settings
 from laya.db.sqlite import get_db
 
 log = structlog.get_logger()
+
+
+@dataclass
+class ToolCall:
+    """A tool call from the LLM response."""
+
+    id: str
+    name: str
+    arguments: dict[str, Any]
 
 
 class LLMResponse(BaseModel):
@@ -26,6 +37,8 @@ class LLMResponse(BaseModel):
     latency_ms: int
     finish_reason: str = "stop"
     truncated: bool = False
+    tool_calls: list | None = None  # List of ToolCall objects
+    raw_message_dict: dict | None = None  # Raw message for tool loop continuation
 
 
 async def _get_space_model(role: str, space_id: str) -> str | None:
@@ -92,6 +105,76 @@ def _add_provider_prefix(model_name: str) -> str:
     return model_name
 
 
+def _resolve_custom_provider(model: str) -> tuple[str, dict[str, Any]] | None:
+    """Check if a model string references a custom provider.
+
+    Custom provider models use format: {provider_id}/{model_name}
+    e.g., "lmstudio-local/qwen2.5-7b-instruct"
+
+    Returns (litellm_model_string, extra_kwargs) or None if not a custom provider.
+    """
+    if "/" not in model:
+        return None
+
+    prefix = model.split("/")[0]
+
+    # Skip known cloud provider prefixes
+    if prefix in ("anthropic", "openai", "gemini", "openrouter", "ollama"):
+        return None
+
+    from laya.llm.providers import get_custom_provider, _get_provider_api_key
+
+    provider = get_custom_provider(prefix)
+    if not provider:
+        return None
+
+    model_name = model.split("/", 1)[1]
+    ptype = provider.get("provider_type", "openai_compatible")
+    base_url = provider["base_url"].rstrip("/")
+
+    extra: dict[str, Any] = {
+        "timeout": float(provider.get("default_timeout", 120)),
+    }
+
+    if ptype == "ollama":
+        litellm_model = f"ollama/{model_name}"
+        extra["api_base"] = base_url
+    else:
+        # Both lmstudio and openai_compatible use OpenAI-compat endpoint
+        litellm_model = f"openai/{model_name}"
+        extra["api_base"] = f"{base_url}/v1"
+
+    # API key from keychain
+    api_key = _get_provider_api_key(provider)
+    if api_key:
+        extra["api_key"] = api_key
+    elif ptype in ("lmstudio", "ollama"):
+        extra["api_key"] = "not-needed"  # LiteLLM requires a non-empty value
+
+    return litellm_model, extra
+
+
+def _get_custom_provider_meta(model: str) -> dict | None:
+    """Get capability metadata for a custom provider model."""
+    if "/" not in model:
+        return None
+    prefix = model.split("/")[0]
+    if prefix in ("anthropic", "openai", "gemini", "openrouter", "ollama"):
+        return None
+    from laya.llm.providers import get_custom_provider
+
+    provider = get_custom_provider(prefix)
+    if not provider:
+        return None
+    ptype = provider.get("provider_type", "openai_compatible")
+    caps = provider.get("capabilities_override", {})
+    return {
+        "provider_type": ptype,
+        "supports_structured_output": caps.get("supports_structured_output", ptype == "lmstudio"),
+        "supports_tool_calling": caps.get("supports_tool_calling", ptype == "lmstudio"),
+    }
+
+
 async def _log_to_audit(
     event_id: str | None,
     card_id: str | None,
@@ -142,6 +225,7 @@ async def llm_call(
     max_tokens: int = 2000,
     num_retries: int = 3,
     space_id: str | None = None,
+    tools: list[dict] | None = None,
 ) -> LLMResponse:
     """Make an LLM call via LiteLLM with retries and audit logging.
 
@@ -176,6 +260,13 @@ async def llm_call(
         if provider:
             space_api_key = await _get_space_api_key(provider, space_id)
 
+    # Resolve custom provider overrides (api_base, timeout, api_key)
+    custom_provider_extra: dict[str, Any] = {}
+    custom_meta = _get_custom_provider_meta(model)
+    custom = _resolve_custom_provider(model)
+    if custom:
+        model, custom_provider_extra = custom
+
     # Gemini 3+ models degrade with temperature < 1.0 — force it to 1.0
     effective_temperature = temperature
     model_name = model.split("/")[-1]  # strip provider prefix
@@ -190,15 +281,46 @@ async def llm_call(
         "timeout": 60.0,
     }
 
-    # Use space-specific API key if available
+    # Merge custom provider overrides (api_base, timeout, api_key)
+    kwargs.update(custom_provider_extra)
+
+    # Use space-specific API key if available (takes precedence)
     if space_api_key:
         kwargs["api_key"] = space_api_key
 
+    # Structured output handling
     if response_schema:
-        kwargs["response_format"] = {
-            "type": "json_schema",
-            "json_schema": response_schema,
-        }
+        if custom_meta and not custom_meta.get("supports_structured_output", True):
+            # Inject schema as text instruction for models without native support
+            schema_text = json.dumps(
+                response_schema.get("schema", response_schema), indent=2
+            )
+            instruction = (
+                f"\n\nYou MUST respond with valid JSON matching this exact schema. "
+                f"Output ONLY the JSON object, no other text.\n\nSchema:\n{schema_text}"
+            )
+            msg_list = list(messages)
+            if msg_list and msg_list[0].get("role") == "system":
+                msg_list[0] = {
+                    **msg_list[0],
+                    "content": msg_list[0]["content"] + instruction,
+                }
+            else:
+                msg_list.insert(0, {"role": "system", "content": instruction})
+            kwargs["messages"] = msg_list
+        else:
+            kwargs["response_format"] = {
+                "type": "json_schema",
+                "json_schema": response_schema,
+            }
+
+    # Tools support
+    if tools:
+        if custom_meta and not custom_meta.get("supports_tool_calling", True):
+            pass  # Skip tools for models that don't support them
+        else:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
 
     # Tenacity retry with exponential backoff
     @tenacity.retry(
@@ -281,6 +403,44 @@ async def llm_call(
                     truncated=truncated,
                 )
 
+        # Extract tool calls if present
+        tool_calls_list = None
+        raw_msg_dict = None
+        msg = response.choices[0].message
+        if hasattr(msg, "tool_calls") and msg.tool_calls:
+            tool_calls_list = [
+                ToolCall(
+                    id=tc.id,
+                    name=tc.function.name,
+                    arguments=(
+                        json.loads(tc.function.arguments)
+                        if isinstance(tc.function.arguments, str)
+                        else tc.function.arguments
+                    ),
+                )
+                for tc in msg.tool_calls
+            ]
+            raw_msg_dict = {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": (
+                                tc.function.arguments
+                                if isinstance(tc.function.arguments, str)
+                                else json.dumps(tc.function.arguments)
+                            ),
+                        },
+                    }
+                    for tc in msg.tool_calls
+                ],
+            }
+            if msg.content:
+                raw_msg_dict["content"] = msg.content
+
         result = LLMResponse(
             content=content,
             parsed=parsed,
@@ -290,6 +450,8 @@ async def llm_call(
             latency_ms=elapsed_ms,
             finish_reason=finish_reason,
             truncated=truncated,
+            tool_calls=tool_calls_list,
+            raw_message_dict=raw_msg_dict,
         )
 
         log.info(
@@ -332,3 +494,199 @@ async def llm_call(
             error=str(e),
         )
         raise
+
+
+@dataclass
+class StreamEvent:
+    """A single event from the streaming LLM response."""
+
+    type: str  # "chunk" | "tool_calls" | "done" | "error"
+    content: str = ""
+    tool_calls: list[ToolCall] | None = None
+    raw_message_dict: dict | None = None
+    model: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    latency_ms: int = 0
+    finish_reason: str = ""
+
+
+async def llm_call_streaming(
+    role: str,
+    messages: list[dict[str, str]],
+    step: str = "chat",
+    temperature: float = 0.3,
+    max_tokens: int = 2000,
+    space_id: str | None = None,
+    tools: list[dict] | None = None,
+) -> AsyncGenerator[StreamEvent, None]:
+    """Streaming LLM call — yields content chunks as they arrive.
+
+    When the LLM returns tool calls instead of content, yields a single
+    StreamEvent(type="tool_calls") with the parsed tool calls, then stops.
+    The caller is responsible for executing tools and re-calling.
+
+    The final yield is always StreamEvent(type="done") with usage stats.
+    """
+    from litellm import acompletion
+
+    # Resolve model
+    model = _get_model_for_role(role)
+    if space_id:
+        space_model = await _get_space_model(role, space_id)
+        if space_model:
+            model = _add_provider_prefix(space_model)
+
+    space_api_key = None
+    if space_id:
+        provider = model.split("/")[0] if "/" in model else None
+        if provider:
+            space_api_key = await _get_space_api_key(provider, space_id)
+
+    custom_provider_extra: dict[str, Any] = {}
+    custom_meta = _get_custom_provider_meta(model)
+    custom = _resolve_custom_provider(model)
+    if custom:
+        model, custom_provider_extra = custom
+
+    effective_temperature = temperature
+    model_name = model.split("/")[-1]
+    if model_name.startswith("gemini-3"):
+        effective_temperature = 1.0
+
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "temperature": effective_temperature,
+        "max_tokens": max_tokens,
+        "timeout": 60.0,
+        "stream": True,
+    }
+    kwargs.update(custom_provider_extra)
+    if space_api_key:
+        kwargs["api_key"] = space_api_key
+
+    if tools:
+        if not (custom_meta and not custom_meta.get("supports_tool_calling", True)):
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
+
+    start = time.monotonic()
+
+    try:
+        response = await acompletion(**kwargs)
+
+        collected_content = ""
+        collected_tool_calls: dict[int, dict] = {}  # index -> {id, name, arguments_str}
+        finish_reason = "stop"
+
+        async for chunk in response:
+            delta = chunk.choices[0].delta if chunk.choices else None
+            if not delta:
+                continue
+
+            # Finish reason
+            if chunk.choices[0].finish_reason:
+                finish_reason = chunk.choices[0].finish_reason
+
+            # Content chunks
+            if delta.content:
+                collected_content += delta.content
+                yield StreamEvent(type="chunk", content=delta.content, model=model)
+
+            # Tool call chunks (streamed incrementally)
+            if hasattr(delta, "tool_calls") and delta.tool_calls:
+                for tc_chunk in delta.tool_calls:
+                    idx = tc_chunk.index
+                    if idx not in collected_tool_calls:
+                        collected_tool_calls[idx] = {
+                            "id": tc_chunk.id or "",
+                            "name": tc_chunk.function.name if tc_chunk.function and tc_chunk.function.name else "",
+                            "arguments_str": "",
+                        }
+                    if tc_chunk.id:
+                        collected_tool_calls[idx]["id"] = tc_chunk.id
+                    if tc_chunk.function:
+                        if tc_chunk.function.name:
+                            collected_tool_calls[idx]["name"] = tc_chunk.function.name
+                        if tc_chunk.function.arguments:
+                            collected_tool_calls[idx]["arguments_str"] += tc_chunk.function.arguments
+
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+
+        # Estimate tokens from stream (usage may not be available in all providers)
+        est_input_tokens = sum(len(m.get("content", "")) for m in messages) // 4
+        est_output_tokens = len(collected_content) // 4
+
+        # If tool calls were collected, yield them
+        if collected_tool_calls:
+            tool_calls_list = []
+            raw_tcs = []
+            for idx in sorted(collected_tool_calls.keys()):
+                tc_data = collected_tool_calls[idx]
+                try:
+                    args = json.loads(tc_data["arguments_str"]) if tc_data["arguments_str"] else {}
+                except json.JSONDecodeError:
+                    args = {}
+                tool_calls_list.append(
+                    ToolCall(id=tc_data["id"], name=tc_data["name"], arguments=args)
+                )
+                raw_tcs.append({
+                    "id": tc_data["id"],
+                    "type": "function",
+                    "function": {
+                        "name": tc_data["name"],
+                        "arguments": tc_data["arguments_str"],
+                    },
+                })
+
+            raw_msg: dict[str, Any] = {"role": "assistant", "tool_calls": raw_tcs}
+            if collected_content:
+                raw_msg["content"] = collected_content
+
+            yield StreamEvent(
+                type="tool_calls",
+                content=collected_content,
+                tool_calls=tool_calls_list,
+                raw_message_dict=raw_msg,
+                model=model,
+            )
+
+        # Final done event
+        yield StreamEvent(
+            type="done",
+            content=collected_content,
+            model=model,
+            input_tokens=est_input_tokens,
+            output_tokens=est_output_tokens,
+            latency_ms=elapsed_ms,
+            finish_reason=finish_reason,
+        )
+
+        # Audit log
+        await _log_to_audit(
+            event_id=None,
+            card_id=None,
+            step=step,
+            model=model,
+            input_tokens=est_input_tokens,
+            output_tokens=est_output_tokens,
+            latency_ms=elapsed_ms,
+            success=True,
+        )
+
+    except Exception as e:
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        log.error("llm_stream_failed", role=role, model=model, error=str(e))
+        yield StreamEvent(type="error", content=str(e), model=model, latency_ms=elapsed_ms)
+        await _log_to_audit(
+            event_id=None,
+            card_id=None,
+            step=step,
+            model=model,
+            input_tokens=0,
+            output_tokens=0,
+            latency_ms=elapsed_ms,
+            success=False,
+            error=str(e),
+        )

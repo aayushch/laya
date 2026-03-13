@@ -27,7 +27,10 @@ import type {
 	Source,
 	SpaceApiKeysResponse,
 	SpaceReposResponse,
-	AvailableModelsResponse
+	AvailableModelsResponse,
+	CustomProvider,
+	CustomProviderTestResult,
+	DiscoveredModel
 } from './types';
 
 const ENGINE_URL = 'http://127.0.0.1:8420';
@@ -328,6 +331,51 @@ export const engineApi = {
 			method: 'PUT',
 			body: JSON.stringify({ source_ids: sourceIds })
 		}),
+
+	// Custom Providers (local models)
+	getCustomProviders: () =>
+		request<{ providers: CustomProvider[] }>('/settings/custom-providers'),
+
+	addCustomProvider: (provider: {
+		name: string;
+		base_url: string;
+		provider_type: string;
+		api_key?: string;
+		default_timeout?: number;
+		capabilities_override?: { supports_tool_calling?: boolean; supports_structured_output?: boolean };
+	}) =>
+		request<{ status: string; provider: CustomProvider }>('/settings/custom-providers', {
+			method: 'POST',
+			body: JSON.stringify(provider)
+		}),
+
+	updateCustomProvider: (providerId: string, updates: {
+		name?: string;
+		base_url?: string;
+		provider_type?: string;
+		api_key?: string;
+		default_timeout?: number;
+		capabilities_override?: { supports_tool_calling?: boolean; supports_structured_output?: boolean };
+	}) =>
+		request<{ status: string; provider: CustomProvider }>(`/settings/custom-providers/${providerId}`, {
+			method: 'PUT',
+			body: JSON.stringify(updates)
+		}),
+
+	deleteCustomProvider: (providerId: string) =>
+		request<{ status: string; provider_id: string }>(`/settings/custom-providers/${providerId}`, {
+			method: 'DELETE'
+		}),
+
+	testCustomProvider: (providerId: string) =>
+		request<CustomProviderTestResult>(`/settings/custom-providers/${providerId}/test`, {
+			method: 'POST'
+		}),
+
+	getProviderModels: (providerId: string) =>
+		request<{ provider_id: string; provider_name: string; models: DiscoveredModel[] }>(
+			`/settings/custom-providers/${providerId}/models`
+		),
 
 	// Audit Log
 	getAuditLog: (params?: {

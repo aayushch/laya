@@ -45,6 +45,7 @@ keyring==25.7.0
 kubernetes==35.0.0
 litellm==1.81.14
 markdown-it-py==4.0.0
+mcp>=1.0.0
 MarkupSafe==3.0.3
 mdurl==0.1.2
 mmh3==5.2.0

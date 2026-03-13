@@ -1,6 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { chatOpen, chatMessages, chatInputPreset } from '$lib/stores/chat';
+	import {
+		chatOpen,
+		chatMessages,
+		chatInputPreset,
+		streamingMessageId,
+		activeTools
+	} from '$lib/stores/chat';
 	import { wsStatus, lastMessage, sendMessage } from '$lib/stores/websocket';
 	import { engineApi } from '$lib/api/engine';
 	import type { ChatMessage as ChatMessageType } from '$lib/api/types';
@@ -45,7 +51,7 @@
 		}
 	});
 
-	// Auto-resize textarea to fit content, capped at 160px
+	// Auto-resize textarea to fit content, capped at 240px
 	$effect(() => {
 		if (!textareaEl) return;
 		input; // track changes
@@ -56,19 +62,92 @@
 	// Scroll to bottom when messages change
 	$effect(() => {
 		if ($chatMessages.length > 0) {
-			// Use tick to ensure DOM update
 			setTimeout(scrollToBottom, 0);
 		}
 	});
 
-	// Listen for WS chat responses
+	// Handle streaming WS events
 	$effect(() => {
 		const msg = $lastMessage;
-		if (msg?.type === 'chat_response' && msg.payload) {
-			const chatMsg = msg.payload as unknown as { message: ChatMessageType };
-			if (chatMsg.message) {
-				chatMessages.update((msgs) => [...msgs, chatMsg.message]);
+		if (!msg) return;
+
+		// Cast to any-like for streaming fields that live at the top level
+		const raw = msg as unknown as Record<string, unknown>;
+
+		switch (msg.type) {
+			case 'chat_stream_start': {
+				const msgId = raw.message_id as string;
+				streamingMessageId.set(msgId);
+				activeTools.set([]);
+				// Add placeholder message
+				const placeholder: ChatMessageType = {
+					message_id: msgId,
+					timestamp: new Date().toISOString(),
+					role: 'assistant',
+					content: '',
+					referenced_cards: [],
+					referenced_events: []
+				};
+				chatMessages.update((msgs) => [...msgs, placeholder]);
+				break;
+			}
+
+			case 'chat_stream_chunk': {
+				const chunk = raw.content as string;
+				if (chunk) {
+					chatMessages.update((msgs) => {
+						const last = msgs[msgs.length - 1];
+						if (last && last.role === 'assistant' && last.message_id === $streamingMessageId) {
+							return [
+								...msgs.slice(0, -1),
+								{ ...last, content: last.content + chunk }
+							];
+						}
+						return msgs;
+					});
+				}
+				break;
+			}
+
+			case 'chat_stream_tool': {
+				const toolName = raw.tool as string;
+				const status = raw.status as string;
+				if (status === 'calling') {
+					activeTools.update((t) => [...t, toolName]);
+				} else if (status === 'done') {
+					activeTools.update((t) => t.filter((n) => n !== toolName));
+				}
+				break;
+			}
+
+			case 'chat_stream_done': {
+				const chatMsg = raw.message as ChatMessageType;
+				if (chatMsg) {
+					// Replace the streaming placeholder with the final message
+					chatMessages.update((msgs) => {
+						const idx = msgs.findIndex((m) => m.message_id === $streamingMessageId);
+						if (idx >= 0) {
+							const updated = [...msgs];
+							updated[idx] = chatMsg;
+							return updated;
+						}
+						return [...msgs, chatMsg];
+					});
+				}
+				streamingMessageId.set(null);
+				activeTools.set([]);
 				sending = false;
+				break;
+			}
+
+			// Legacy non-streaming fallback
+			case 'chat_response': {
+				const payload = msg.payload as unknown as { message: ChatMessageType };
+				if (payload?.message) {
+					chatMessages.update((msgs) => [...msgs, payload.message]);
+					sending = false;
+				}
+				break;
 			}
 		}
 	});
@@ -151,10 +230,22 @@
 				</p>
 			{:else}
 				{#each $chatMessages as msg (msg.message_id)}
-					<ChatMessage message={msg} />
+					<ChatMessage message={msg} streaming={msg.message_id === $streamingMessageId} />
 				{/each}
 			{/if}
-			{#if sending}
+
+			<!-- Tool calling indicator -->
+			{#if $activeTools.length > 0}
+				<div class="flex justify-start">
+					<div class="rounded-xl bg-surface-800 px-3.5 py-2 text-xs text-surface-400 ring-1 ring-surface-600">
+						<span class="mr-1.5 inline-block h-2 w-2 animate-pulse rounded-full bg-laya-orange"></span>
+						Looking up: {$activeTools.join(', ')}
+					</div>
+				</div>
+			{/if}
+
+			<!-- Waiting indicator (before stream starts) -->
+			{#if sending && !$streamingMessageId && $activeTools.length === 0}
 				<div class="flex justify-start">
 					<div class="rounded-xl bg-surface-700 px-3.5 py-2.5 text-sm text-surface-400">
 						<span class="inline-flex gap-1">

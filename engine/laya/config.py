@@ -64,6 +64,7 @@ DEFAULT_SETTINGS = {
             "outlook_calendar": "outlook-calendar-executor",
         },
     },
+    "custom_providers": [],
 }
 
 
@@ -169,3 +170,9 @@ def save_repos(repos: dict) -> None:
     ensure_directories()
     with open(LAYA_REPOS_FILE, "w") as f:
         json.dump(repos, f, indent=2)
+
+
+def get_all_custom_providers() -> list[dict]:
+    """Get all configured custom model providers."""
+    settings = load_settings()
+    return settings.get("custom_providers", [])
