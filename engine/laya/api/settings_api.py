@@ -8,7 +8,7 @@ import structlog
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
-from laya.config import get_n8n_config, load_repos, load_settings, save_repos, save_settings
+from laya.config import get_n8n_config, load_repos, load_settings, save_repos, save_settings, get_all_custom_providers
 from laya.integrations.n8n_bootstrap import ensure_n8n_ready
 from laya.security.keychain import delete_api_key, get_api_key, has_api_key, store_api_key
 
@@ -107,9 +107,11 @@ def _fetch_models_for_provider(provider: str) -> list[dict[str, str]]:
 async def get_setup_status() -> dict:
     """Check whether first-run setup has been completed."""
     settings = load_settings()
+    has_key = has_api_key("anthropic") or has_api_key("openai") or has_api_key("google") or has_api_key("openrouter")
+    has_custom = len(settings.get("custom_providers", [])) > 0
     return {
         "setup_complete": settings.get("setup_complete", False),
-        "has_api_key": has_api_key("anthropic") or has_api_key("openai") or has_api_key("google") or has_api_key("openrouter"),
+        "has_api_key": has_key or has_custom,
     }
 
 
@@ -144,6 +146,24 @@ async def update_settings(body: dict) -> dict:
 class ApiKeyRequest(BaseModel):
     provider: str
     api_key: str
+
+
+class CustomProviderCreate(BaseModel):
+    name: str
+    base_url: str
+    provider_type: str = "openai_compatible"  # lmstudio | ollama | openai_compatible
+    api_key: str | None = None
+    default_timeout: int = 120
+    capabilities_override: dict | None = None
+
+
+class CustomProviderUpdate(BaseModel):
+    name: str | None = None
+    base_url: str | None = None
+    provider_type: str | None = None
+    api_key: str | None = None
+    default_timeout: int | None = None
+    capabilities_override: dict | None = None
 
 
 @router.put("/settings/api-key")
@@ -213,7 +233,213 @@ async def get_available_models(refresh: bool = Query(default=False)) -> dict:
                     "models": cached_models,
                 })
 
+    # Also include models from custom providers
+    for custom_provider in get_all_custom_providers():
+        try:
+            from laya.llm.providers import discover_models_cached
+
+            custom_models = await discover_models_cached(custom_provider)
+            llm_models = [m for m in custom_models if m.model_type == "llm"]
+            if llm_models:
+                result.append({
+                    "provider": custom_provider["id"],
+                    "label": custom_provider["name"],
+                    "models": [
+                        {"id": m.key, "name": m.display_name}
+                        for m in llm_models
+                    ],
+                })
+        except Exception as e:
+            log.warning(
+                "custom_provider_model_fetch_failed",
+                provider=custom_provider.get("id"),
+                error=str(e),
+            )
+
     return {"providers": result}
+
+
+# ---------------------------------------------------------------------------
+# Custom providers (self-hosted models)
+# ---------------------------------------------------------------------------
+
+
+def _slugify(name: str) -> str:
+    """Generate a URL-safe slug from a provider name."""
+    import re
+
+    slug = name.lower().strip()
+    slug = re.sub(r"[^a-z0-9]+", "-", slug)
+    slug = slug.strip("-")
+    return slug or "custom"
+
+
+@router.get("/settings/custom-providers")
+async def list_custom_providers() -> dict:
+    """List all configured custom providers."""
+    providers = get_all_custom_providers()
+    return {"providers": providers}
+
+
+@router.post("/settings/custom-providers")
+async def add_custom_provider(body: CustomProviderCreate) -> dict:
+    """Add a custom model provider (LMStudio, Ollama, etc.)."""
+    settings = load_settings()
+    providers = settings.get("custom_providers", [])
+
+    # Generate unique ID
+    base_id = _slugify(body.name)
+    provider_id = base_id
+    existing_ids = {p["id"] for p in providers}
+    counter = 2
+    while provider_id in existing_ids:
+        provider_id = f"{base_id}-{counter}"
+        counter += 1
+
+    provider: dict = {
+        "id": provider_id,
+        "name": body.name,
+        "base_url": body.base_url.rstrip("/"),
+        "provider_type": body.provider_type,
+        "default_timeout": body.default_timeout,
+    }
+
+    if body.capabilities_override:
+        provider["capabilities_override"] = body.capabilities_override
+
+    # Store API key in keychain if provided
+    if body.api_key:
+        key_ref = f"custom_{provider_id}"
+        store_api_key(key_ref, body.api_key)
+        provider["api_key_ref"] = key_ref
+
+    providers.append(provider)
+    settings["custom_providers"] = providers
+    save_settings(settings)
+
+    log.info("custom_provider_added", provider_id=provider_id, type=body.provider_type)
+    return {"status": "created", "provider": provider}
+
+
+@router.put("/settings/custom-providers/{provider_id}")
+async def update_custom_provider(provider_id: str, body: CustomProviderUpdate) -> dict:
+    """Update a custom model provider."""
+    settings = load_settings()
+    providers = settings.get("custom_providers", [])
+
+    target = None
+    for p in providers:
+        if p["id"] == provider_id:
+            target = p
+            break
+
+    if not target:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail=f"Provider '{provider_id}' not found")
+
+    if body.name is not None:
+        target["name"] = body.name
+    if body.base_url is not None:
+        target["base_url"] = body.base_url.rstrip("/")
+    if body.provider_type is not None:
+        target["provider_type"] = body.provider_type
+    if body.default_timeout is not None:
+        target["default_timeout"] = body.default_timeout
+    if body.capabilities_override is not None:
+        target["capabilities_override"] = body.capabilities_override
+
+    if body.api_key is not None:
+        key_ref = f"custom_{provider_id}"
+        store_api_key(key_ref, body.api_key)
+        target["api_key_ref"] = key_ref
+
+    settings["custom_providers"] = providers
+    save_settings(settings)
+
+    from laya.llm.providers import invalidate_discovery_cache
+
+    invalidate_discovery_cache(provider_id)
+
+    log.info("custom_provider_updated", provider_id=provider_id)
+    return {"status": "updated", "provider": target}
+
+
+@router.delete("/settings/custom-providers/{provider_id}")
+async def delete_custom_provider(provider_id: str) -> dict:
+    """Remove a custom model provider."""
+    settings = load_settings()
+    providers = settings.get("custom_providers", [])
+
+    original_len = len(providers)
+    providers = [p for p in providers if p["id"] != provider_id]
+
+    if len(providers) == original_len:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail=f"Provider '{provider_id}' not found")
+
+    # Clean up keychain entry
+    key_ref = f"custom_{provider_id}"
+    delete_api_key(key_ref)
+
+    settings["custom_providers"] = providers
+    save_settings(settings)
+
+    from laya.llm.providers import invalidate_discovery_cache
+
+    invalidate_discovery_cache(provider_id)
+
+    log.info("custom_provider_deleted", provider_id=provider_id)
+    return {"status": "deleted", "provider_id": provider_id}
+
+
+@router.post("/settings/custom-providers/{provider_id}/test")
+async def test_custom_provider(provider_id: str) -> dict:
+    """Test connectivity and inference for a custom provider."""
+    from laya.llm.providers import get_custom_provider, test_provider_connectivity
+
+    provider = get_custom_provider(provider_id)
+    if not provider:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail=f"Provider '{provider_id}' not found")
+
+    result = await test_provider_connectivity(provider)
+    return {"provider_id": provider_id, **result}
+
+
+@router.get("/settings/custom-providers/{provider_id}/models")
+async def list_provider_models(provider_id: str) -> dict:
+    """List models from a specific custom provider with capability metadata."""
+    from laya.llm.providers import get_custom_provider, discover_models_cached
+
+    provider = get_custom_provider(provider_id)
+    if not provider:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail=f"Provider '{provider_id}' not found")
+
+    models = await discover_models_cached(provider)
+    return {
+        "provider_id": provider_id,
+        "provider_name": provider["name"],
+        "models": [
+            {
+                "id": m.key,
+                "name": m.display_name,
+                "type": m.model_type,
+                "max_context_length": m.max_context_length,
+                "supports_tool_calling": m.supports_tool_calling,
+                "supports_structured_output": m.supports_structured_output,
+                "supports_vision": m.supports_vision,
+                "params": m.params_string,
+                "quantization": m.quantization,
+                "loaded": m.loaded,
+            }
+            for m in models
+        ],
+    }
 
 
 @router.post("/settings/n8n/test")

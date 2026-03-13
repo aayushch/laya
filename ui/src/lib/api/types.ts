@@ -590,3 +590,43 @@ export interface SpaceReposResponse {
 export interface SpaceApiKeysResponse {
 	providers: Record<string, { configured: boolean }>;
 }
+
+/** A custom local model provider (LMStudio, Ollama, etc.) */
+export interface CustomProvider {
+	id: string;
+	name: string;
+	base_url: string;
+	provider_type: 'lmstudio' | 'ollama' | 'openai_compatible';
+	default_timeout: number;
+	api_key_ref?: string;
+	capabilities_override?: {
+		supports_tool_calling?: boolean;
+		supports_structured_output?: boolean;
+	};
+}
+
+/** Result from testing a custom provider's connectivity */
+export interface CustomProviderTestResult {
+	provider_id: string;
+	reachable: boolean;
+	models_count: number;
+	llm_count: number;
+	embedding_count: number;
+	inference_ok: boolean;
+	latency_ms: number;
+	error: string | null;
+}
+
+/** A model discovered from a custom provider */
+export interface DiscoveredModel {
+	id: string;
+	name: string;
+	type: string;
+	max_context_length: number | null;
+	supports_tool_calling: boolean;
+	supports_structured_output: boolean;
+	supports_vision: boolean;
+	params: string | null;
+	quantization: string | null;
+	loaded: boolean;
+}

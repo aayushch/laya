@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
-	import type { ProviderModels } from '$lib/api/types';
+	import type { ProviderModels, CustomProvider, CustomProviderTestResult, DiscoveredModel } from '$lib/api/types';
 	import ModelSelect from './ModelSelect.svelte';
 
 	const roles = [
@@ -10,11 +10,17 @@
 		{ id: 'chat', label: 'Chat', hint: 'Conversational responses' }
 	];
 
-	const providers = [
+	const cloudProviders = [
 		{ id: 'anthropic', label: 'Anthropic', envVar: 'ANTHROPIC_API_KEY' },
 		{ id: 'openai', label: 'OpenAI', envVar: 'OPENAI_API_KEY' },
 		{ id: 'google', label: 'Google', envVar: 'GOOGLE_API_KEY' },
 		{ id: 'openrouter', label: 'OpenRouter', envVar: 'OPENROUTER_API_KEY' }
+	];
+
+	const providerTypes = [
+		{ id: 'lmstudio', label: 'LM Studio', defaultUrl: 'http://localhost:1234' },
+		{ id: 'ollama', label: 'Ollama', defaultUrl: 'http://localhost:11434' },
+		{ id: 'openai_compatible', label: 'OpenAI Compatible', defaultUrl: 'http://localhost:8080' }
 	];
 
 	let models = $state({
@@ -44,13 +50,35 @@
 	let availableModels = $state<ProviderModels[]>([]);
 	let modelsLoading = $state(false);
 
+	// Local providers state
+	let customProviders = $state<CustomProvider[]>([]);
+	let showAddProvider = $state(false);
+	let newProvider = $state({ name: '', base_url: '', provider_type: 'lmstudio', api_key: '' });
+	let addingProvider = $state(false);
+	let addError = $state('');
+
+	// Per-provider state
+	let testingProvider = $state<string | null>(null);
+	let testResults = $state<Record<string, CustomProviderTestResult>>({});
+	let providerModels = $state<Record<string, DiscoveredModel[]>>({});
+	let expandedProvider = $state<string | null>(null);
+	let deletingProvider = $state<string | null>(null);
+
+	// Edit state
+	let editingProvider = $state<string | null>(null);
+	let editForm = $state({ name: '', base_url: '', api_key: '' });
+	let editSaving = $state(false);
+
 	onMount(async () => {
 		try {
-			const settings = await engineApi.getSettings();
+			const [settings, providersResp] = await Promise.all([
+				engineApi.getSettings(),
+				engineApi.getCustomProviders()
+			]);
 			models = { ...models, ...settings.models };
 			apiKeys = { ...apiKeys, ...settings.api_keys };
+			customProviders = providersResp.providers;
 			loaded = true;
-			// Fetch available models after settings load
 			await fetchModels();
 		} catch (e) {
 			console.error('Failed to load settings:', e);
@@ -90,13 +118,11 @@
 	async function saveApiKey(provider: string) {
 		const key = keyInputs[provider];
 		if (!key.trim()) return;
-
 		savingKey = provider;
 		try {
 			await engineApi.setApiKey(provider, key.trim());
 			apiKeys[provider] = true;
 			keyInputs[provider] = '';
-			// Re-fetch models since a new provider is now available
 			await fetchModels();
 		} catch (e) {
 			console.error('Failed to save API key:', e);
@@ -109,11 +135,127 @@
 		try {
 			await engineApi.deleteApiKey(provider);
 			apiKeys[provider] = false;
-			// Re-fetch models since a provider was removed
 			await fetchModels();
 		} catch (e) {
 			console.error('Failed to remove API key:', e);
 		}
+	}
+
+	// --- Local provider management ---
+
+	function handleProviderTypeChange(type: string) {
+		newProvider.provider_type = type;
+		const preset = providerTypes.find(p => p.id === type);
+		if (preset && !newProvider.base_url) {
+			newProvider.base_url = preset.defaultUrl;
+		}
+	}
+
+	async function addProvider() {
+		if (!newProvider.name.trim() || !newProvider.base_url.trim()) return;
+		addingProvider = true;
+		addError = '';
+		try {
+			const resp = await engineApi.addCustomProvider({
+				name: newProvider.name.trim(),
+				base_url: newProvider.base_url.trim(),
+				provider_type: newProvider.provider_type,
+				api_key: newProvider.api_key.trim() || undefined
+			});
+			customProviders = [...customProviders, resp.provider];
+			newProvider = { name: '', base_url: '', provider_type: 'lmstudio', api_key: '' };
+			showAddProvider = false;
+			// Refresh models to include models from new provider
+			await fetchModels(true);
+		} catch (e: any) {
+			addError = e.message || 'Failed to add provider';
+		} finally {
+			addingProvider = false;
+		}
+	}
+
+	async function deleteProvider(providerId: string) {
+		deletingProvider = providerId;
+		try {
+			await engineApi.deleteCustomProvider(providerId);
+			customProviders = customProviders.filter(p => p.id !== providerId);
+			delete testResults[providerId];
+			delete providerModels[providerId];
+			if (expandedProvider === providerId) expandedProvider = null;
+			await fetchModels(true);
+		} catch (e) {
+			console.error('Failed to delete provider:', e);
+		} finally {
+			deletingProvider = null;
+		}
+	}
+
+	async function testProvider(providerId: string) {
+		testingProvider = providerId;
+		try {
+			const result = await engineApi.testCustomProvider(providerId);
+			testResults[providerId] = result;
+		} catch (e: any) {
+			testResults[providerId] = {
+				provider_id: providerId,
+				reachable: false,
+				models_count: 0,
+				llm_count: 0,
+				embedding_count: 0,
+				inference_ok: false,
+				latency_ms: 0,
+				error: e.message || 'Connection failed'
+			};
+		} finally {
+			testingProvider = null;
+		}
+	}
+
+	async function toggleExpand(providerId: string) {
+		if (expandedProvider === providerId) {
+			expandedProvider = null;
+			return;
+		}
+		expandedProvider = providerId;
+		if (!providerModels[providerId]) {
+			try {
+				const resp = await engineApi.getProviderModels(providerId);
+				providerModels[providerId] = resp.models;
+			} catch (e) {
+				console.error('Failed to fetch provider models:', e);
+				providerModels[providerId] = [];
+			}
+		}
+	}
+
+	function startEdit(provider: CustomProvider) {
+		editingProvider = provider.id;
+		editForm = { name: provider.name, base_url: provider.base_url, api_key: '' };
+	}
+
+	async function saveEdit(providerId: string) {
+		editSaving = true;
+		try {
+			const updates: Record<string, any> = {};
+			if (editForm.name.trim()) updates.name = editForm.name.trim();
+			if (editForm.base_url.trim()) updates.base_url = editForm.base_url.trim();
+			if (editForm.api_key.trim()) updates.api_key = editForm.api_key.trim();
+			const resp = await engineApi.updateCustomProvider(providerId, updates);
+			customProviders = customProviders.map(p => p.id === providerId ? resp.provider : p);
+			editingProvider = null;
+			// Clear cached models for this provider and refresh
+			delete providerModels[providerId];
+			delete testResults[providerId];
+			await fetchModels(true);
+		} catch (e) {
+			console.error('Failed to update provider:', e);
+		} finally {
+			editSaving = false;
+		}
+	}
+
+	function getTypeLabel(type: string) {
+		return providerTypes.find(p => p.id === type)?.label ?? type;
 	}
 </script>
 
@@ -121,14 +263,14 @@
 	<div class="flex items-center justify-center py-12 text-surface-400">Loading settings...</div>
 {:else}
 	<div class="space-y-8">
-		<!-- API Keys (first, since models depend on configured keys) -->
+		<!-- API Keys -->
 		<div class="rounded-lg border border-surface-700 bg-surface-800 p-5">
 			<h3 class="mb-4 text-lg font-medium">API Keys</h3>
 			<p class="mb-4 text-sm text-surface-400">
 				Keys are stored securely in your OS keychain. They are never sent to the UI.
 			</p>
 			<div class="space-y-4">
-				{#each providers as provider}
+				{#each cloudProviders as provider}
 					<div class="flex items-center gap-3">
 						<div class="flex w-28 items-center gap-2">
 							<span
@@ -167,12 +309,255 @@
 			</div>
 		</div>
 
+		<!-- Local Providers -->
+		<div class="rounded-lg border border-surface-700 bg-surface-800 p-5">
+			<div class="mb-4 flex items-center justify-between">
+				<div>
+					<h3 class="mb-1 text-lg font-medium">Local Providers</h3>
+					<p class="text-xs text-surface-500">Connect to LM Studio, Ollama, or any OpenAI-compatible server running on your machine.</p>
+				</div>
+				<button
+					onclick={() => { showAddProvider = !showAddProvider; addError = ''; }}
+					class="rounded-md border border-surface-600 px-3 py-1.5 text-sm text-surface-400 transition-colors hover:border-surface-500 hover:text-surface-300"
+				>
+					{showAddProvider ? 'Cancel' : '+ Add Provider'}
+				</button>
+			</div>
+
+			<!-- Add Provider Form -->
+			{#if showAddProvider}
+				<div class="mb-5 rounded-md border border-surface-600 bg-surface-700/50 p-4 space-y-3">
+					<div class="grid grid-cols-3 gap-3">
+						{#each providerTypes as pt}
+							<button
+								onclick={() => handleProviderTypeChange(pt.id)}
+								class="rounded-md border px-3 py-2 text-sm transition-colors
+									{newProvider.provider_type === pt.id
+										? 'border-laya-orange/50 bg-laya-orange/10 text-laya-orange'
+										: 'border-surface-600 text-surface-400 hover:border-surface-500 hover:text-surface-300'}"
+							>
+								{pt.label}
+							</button>
+						{/each}
+					</div>
+					<div class="grid grid-cols-2 gap-3">
+						<input
+							type="text"
+							bind:value={newProvider.name}
+							placeholder="Display name (e.g. My LM Studio)"
+							class="rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+						/>
+						<input
+							type="text"
+							bind:value={newProvider.base_url}
+							placeholder={providerTypes.find(p => p.id === newProvider.provider_type)?.defaultUrl ?? 'http://localhost:1234'}
+							class="rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+						/>
+					</div>
+					{#if newProvider.provider_type === 'openai_compatible'}
+						<input
+							type="password"
+							bind:value={newProvider.api_key}
+							placeholder="API key (optional)"
+							class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+						/>
+					{/if}
+					{#if addError}
+						<p class="text-sm text-red-400">{addError}</p>
+					{/if}
+					<div class="flex justify-end">
+						<button
+							onclick={addProvider}
+							disabled={!newProvider.name.trim() || !newProvider.base_url.trim() || addingProvider}
+							class="rounded-md bg-laya-orange px-4 py-2 text-sm font-medium text-surface-900 transition-colors hover:bg-laya-gold disabled:opacity-50"
+						>
+							{addingProvider ? 'Adding...' : 'Add Provider'}
+						</button>
+					</div>
+				</div>
+			{/if}
+
+			<!-- Provider List -->
+			{#if customProviders.length === 0 && !showAddProvider}
+				<div class="rounded-md border border-dashed border-surface-600 py-8 text-center">
+					<p class="text-sm text-surface-500">No local providers configured</p>
+					<p class="mt-1 text-xs text-surface-600">Add LM Studio, Ollama, or another local server to use local models</p>
+				</div>
+			{:else}
+				<div class="space-y-3">
+					{#each customProviders as provider (provider.id)}
+						<div class="rounded-md border border-surface-600 bg-surface-700/30">
+							<!-- Provider header -->
+							<div class="flex items-center gap-3 px-4 py-3">
+								<button
+									onclick={() => toggleExpand(provider.id)}
+									class="flex flex-1 items-center gap-3 text-left"
+								>
+									<svg
+										class="h-4 w-4 shrink-0 text-surface-400 transition-transform {expandedProvider === provider.id ? 'rotate-90' : ''}"
+										fill="none" stroke="currentColor" viewBox="0 0 24 24"
+									>
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+									</svg>
+									<div class="min-w-0 flex-1">
+										<div class="flex items-center gap-2">
+											<span class="text-sm font-medium text-surface-200">{provider.name}</span>
+											<span class="rounded-full bg-surface-600 px-2 py-0.5 text-[10px] text-surface-400">
+												{getTypeLabel(provider.provider_type)}
+											</span>
+											{#if testResults[provider.id]}
+												{@const tr = testResults[provider.id]}
+												<span class="h-2 w-2 rounded-full {tr.reachable ? (tr.inference_ok ? 'bg-green-500' : 'bg-yellow-500') : 'bg-red-500'}"></span>
+											{/if}
+										</div>
+										<p class="mt-0.5 truncate text-xs text-surface-500">{provider.base_url}</p>
+									</div>
+								</button>
+
+								<div class="flex items-center gap-1.5">
+									<button
+										onclick={() => testProvider(provider.id)}
+										disabled={testingProvider === provider.id}
+										class="rounded px-2 py-1 text-xs text-surface-400 transition-colors hover:bg-surface-600 hover:text-surface-300 disabled:opacity-50"
+										title="Test connection"
+									>
+										{#if testingProvider === provider.id}
+											<svg class="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+												<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+												<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+											</svg>
+										{:else}
+											Test
+										{/if}
+									</button>
+									<button
+										onclick={() => startEdit(provider)}
+										class="rounded px-2 py-1 text-xs text-surface-400 transition-colors hover:bg-surface-600 hover:text-surface-300"
+									>
+										Edit
+									</button>
+									<button
+										onclick={() => deleteProvider(provider.id)}
+										disabled={deletingProvider === provider.id}
+										class="rounded px-2 py-1 text-xs text-red-400/70 transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+									>
+										{deletingProvider === provider.id ? '...' : 'Remove'}
+									</button>
+								</div>
+							</div>
+
+							<!-- Test result -->
+							{#if testResults[provider.id]}
+								{@const tr = testResults[provider.id]}
+								<div class="border-t border-surface-600/50 px-4 py-2 text-xs">
+									{#if tr.reachable}
+										<div class="flex items-center gap-4 text-surface-400">
+											<span class="text-green-400">Connected</span>
+											<span>{tr.models_count} model{tr.models_count !== 1 ? 's' : ''}</span>
+											<span>Inference: <span class="{tr.inference_ok ? 'text-green-400' : 'text-yellow-400'}">{tr.inference_ok ? 'OK' : 'failed'}</span></span>
+											<span>{tr.latency_ms}ms</span>
+										</div>
+									{:else}
+										<span class="text-red-400">{tr.error || 'Unreachable'}</span>
+									{/if}
+								</div>
+							{/if}
+
+							<!-- Edit form -->
+							{#if editingProvider === provider.id}
+								<div class="border-t border-surface-600/50 px-4 py-3 space-y-3">
+									<div class="grid grid-cols-2 gap-3">
+										<input
+											type="text"
+											bind:value={editForm.name}
+											placeholder="Display name"
+											class="rounded-md border border-surface-600 bg-surface-700 px-3 py-1.5 text-sm text-surface-100 placeholder:text-surface-500"
+										/>
+										<input
+											type="text"
+											bind:value={editForm.base_url}
+											placeholder="Base URL"
+											class="rounded-md border border-surface-600 bg-surface-700 px-3 py-1.5 text-sm text-surface-100 placeholder:text-surface-500"
+										/>
+									</div>
+									<input
+										type="password"
+										bind:value={editForm.api_key}
+										placeholder="New API key (leave blank to keep current)"
+										class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-1.5 text-sm text-surface-100 placeholder:text-surface-500"
+									/>
+									<div class="flex justify-end gap-2">
+										<button
+											onclick={() => { editingProvider = null; }}
+											class="rounded-md px-3 py-1.5 text-sm text-surface-400 hover:text-surface-300"
+										>
+											Cancel
+										</button>
+										<button
+											onclick={() => saveEdit(provider.id)}
+											disabled={editSaving}
+											class="rounded-md bg-laya-orange px-3 py-1.5 text-sm font-medium text-surface-900 transition-colors hover:bg-laya-gold disabled:opacity-50"
+										>
+											{editSaving ? 'Saving...' : 'Save'}
+										</button>
+									</div>
+								</div>
+							{/if}
+
+							<!-- Expanded model list -->
+							{#if expandedProvider === provider.id}
+								<div class="border-t border-surface-600/50 px-4 py-3">
+									{#if !providerModels[provider.id]}
+										<p class="text-xs text-surface-500">Loading models...</p>
+									{:else if providerModels[provider.id].length === 0}
+										<p class="text-xs text-surface-500">No models found. Is the server running?</p>
+									{:else}
+										<div class="space-y-1.5">
+											{#each providerModels[provider.id] as model}
+												<div class="flex items-center gap-3 rounded px-2 py-1.5 text-xs hover:bg-surface-700/50">
+													<div class="flex items-center gap-1.5 min-w-0 flex-1">
+														{#if model.loaded}
+															<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-green-500" title="Loaded"></span>
+														{:else}
+															<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-surface-500" title="Not loaded"></span>
+														{/if}
+														<span class="truncate text-surface-200">{model.name}</span>
+													</div>
+													<div class="flex items-center gap-2 shrink-0 text-surface-500">
+														{#if model.params}
+															<span>{model.params}</span>
+														{/if}
+														{#if model.quantization}
+															<span class="rounded bg-surface-600 px-1.5 py-0.5">{model.quantization}</span>
+														{/if}
+														{#if model.max_context_length}
+															<span>{Math.round(model.max_context_length / 1024)}K ctx</span>
+														{/if}
+														{#if model.supports_tool_calling}
+															<span class="rounded bg-blue-500/15 px-1.5 py-0.5 text-blue-400" title="Supports tool calling">tools</span>
+														{/if}
+														{#if model.supports_vision}
+															<span class="rounded bg-purple-500/15 px-1.5 py-0.5 text-purple-400" title="Supports vision">vision</span>
+														{/if}
+													</div>
+												</div>
+											{/each}
+										</div>
+									{/if}
+								</div>
+							{/if}
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</div>
+
 		<!-- Model Selection -->
 		<div class="rounded-lg border border-surface-700 bg-surface-800 p-5">
 			<div class="mb-4 flex items-center justify-between">
 				<div>
 					<h3 class="mb-1 text-lg font-medium">Model Selection</h3>
-					<p class="text-xs text-surface-500">Choose any model for each pipeline stage based on your cost and quality preference.</p>
+					<p class="text-xs text-surface-500">Choose any model for each pipeline stage. Local provider models appear alongside cloud models.</p>
 				</div>
 				<button
 					onclick={() => fetchModels(true)}
@@ -205,21 +590,6 @@
 						/>
 					</div>
 				{/each}
-
-				<div class="grid grid-cols-[140px_1fr] items-center gap-3">
-					<div>
-						<label for="local-model" class="text-sm text-surface-400">Local</label>
-						<p class="text-[10px] text-surface-500">Privacy-focused local model</p>
-					</div>
-					<input
-						id="local-model"
-						type="text"
-						bind:value={models.local}
-						onchange={saveModels}
-						placeholder="ollama/llama3"
-						class="rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
-					/>
-				</div>
 			</div>
 			{#if saving}
 				<p class="mt-3 text-xs text-surface-400">Saving...</p>

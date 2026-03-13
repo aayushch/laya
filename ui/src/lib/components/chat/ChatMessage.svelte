@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { ChatMessage } from '$lib/api/types';
 
-	let { message }: { message: ChatMessage } = $props();
+	let { message, streaming = false }: { message: ChatMessage; streaming?: boolean } = $props();
 
 	const isUser = $derived(message.role === 'user');
 	const time = $derived(
@@ -29,11 +29,13 @@
 			: 'bg-surface-700 text-surface-200'}"
 	>
 		<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-		<div class="whitespace-pre-wrap break-words">{@html renderContent(message.content)}</div>
-		<div
-			class="mt-1 text-[10px] {isUser ? 'text-laya-orange/60' : 'text-surface-500'}"
-		>
-			{time}
-		</div>
+		<div class="whitespace-pre-wrap break-words">{@html renderContent(message.content)}{#if streaming && message.content}<span class="animate-pulse text-laya-orange">|</span>{/if}</div>
+		{#if !streaming}
+			<div
+				class="mt-1 text-[10px] {isUser ? 'text-laya-orange/60' : 'text-surface-500'}"
+			>
+				{time}
+			</div>
+		{/if}
 	</div>
 </div>

@@ -17,15 +17,15 @@ router = APIRouter()
 
 @router.post("/chat")
 async def send_chat_message(body: ChatRequest) -> ChatResponse:
-    """Send a chat message and receive an AI response.
-
-    REST fallback for when WebSocket is unavailable.
-    """
+    """Send a chat message and receive an AI response."""
     if not body.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
     try:
-        response = await process_chat_message(body.message.strip())
+        response = await process_chat_message(
+            body.message.strip(),
+            space_id=body.space_id,
+        )
         return response
     except Exception as e:
         log.error("chat_endpoint_failed", error=str(e))
@@ -59,14 +59,14 @@ async def get_chat_history(limit: int = 50, before: str | None = None) -> list[C
 
     messages = []
     for row in rows:
-        ref_cards = json.loads(row[4]) if row[4] else []
-        ref_events = json.loads(row[5]) if row[5] else []
+        ref_cards = json.loads(row["referenced_cards"]) if row["referenced_cards"] else []
+        ref_events = json.loads(row["referenced_events"]) if row["referenced_events"] else []
         messages.append(
             ChatMessage(
-                message_id=row[0],
-                timestamp=row[1],
-                role=row[2],
-                content=row[3],
+                message_id=row["message_id"],
+                timestamp=row["timestamp"],
+                role=row["role"],
+                content=row["content"],
                 referenced_cards=ref_cards,
                 referenced_events=ref_events,
             )

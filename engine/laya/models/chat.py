@@ -16,6 +16,7 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
+    space_id: str | None = None
 
 
 class ChatResponse(BaseModel):
