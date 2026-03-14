@@ -3,8 +3,13 @@
 
 import sys
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_submodules
 
 block_cipher = None
+
+# ChromaDB uses importlib.import_module() heavily via its config system —
+# enumerate all submodules so PyInstaller bundles them.
+chromadb_imports = collect_submodules('chromadb')
 
 engine_dir = Path(SPECPATH)
 
@@ -45,9 +50,8 @@ a = Analysis(
         'sentence_transformers',
         'torch',
         'transformers',
-        # ChromaDB
-        'chromadb',
-        'chromadb.config',
+        # ChromaDB (all submodules — heavy use of dynamic imports)
+        *chromadb_imports,
         'onnxruntime',
         # Keyring
         'keyring',
