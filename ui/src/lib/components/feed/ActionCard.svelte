@@ -218,7 +218,7 @@
 							<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Mark as Done</span>
+					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Mark as Done</span>
 				</div>
 				<!-- Dismiss -->
 				<div class="group/act relative">
@@ -232,7 +232,7 @@
 							<path stroke-linecap="round" d="M6 18L18 6M6 6l12 12" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Dismiss</span>
+					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Dismiss</span>
 				</div>
 				<!-- Archive -->
 				<div class="group/act relative">
@@ -246,7 +246,7 @@
 							<path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
+					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
 				</div>
 			{:else if card.status === 'requires_approval'}
 				<!-- Approve Agent -->
@@ -261,7 +261,7 @@
 							<path d="M8 5v14l11-7z" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-violet-500/30 bg-surface-800 px-2 py-1 text-[10px] font-medium text-violet-400 opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Approve Agent</span>
+					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-violet-500/30 bg-surface-800 px-2 py-1 text-[10px] font-medium text-violet-400 opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Approve Agent</span>
 				</div>
 				<!-- Dismiss -->
 				<div class="group/act relative">
@@ -275,7 +275,7 @@
 							<path stroke-linecap="round" d="M6 18L18 6M6 6l12 12" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Dismiss</span>
+					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Dismiss</span>
 				</div>
 				<!-- Archive -->
 				<div class="group/act relative">
@@ -289,7 +289,7 @@
 							<path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
+					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
 				</div>
 			{:else if card.status === 'dismissed'}
 				<!-- Reopen -->
@@ -304,7 +304,7 @@
 							<path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 010 10H9m-6-10l4-4m-4 4l4 4" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Reopen</span>
+					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Reopen</span>
 				</div>
 				<!-- Archive -->
 				<div class="group/act relative">
@@ -318,7 +318,7 @@
 							<path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
+					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
 				</div>
 			{:else if card.status === 'archived'}
 				<!-- Unarchive -->
@@ -333,7 +333,7 @@
 							<path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 010 10H9m-6-10l4-4m-4 4l4 4" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Unarchive</span>
+					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Unarchive</span>
 				</div>
 				<!-- Delete -->
 				<div class="group/act relative">
@@ -347,7 +347,7 @@
 							<path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-red-500/30 bg-surface-800 px-2 py-1 text-[10px] font-medium text-red-400 opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Delete</span>
+					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-red-500/30 bg-surface-800 px-2 py-1 text-[10px] font-medium text-red-400 opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Delete</span>
 				</div>
 			{:else if card.status === 'done'}
 				<!-- Archive -->
@@ -362,7 +362,7 @@
 							<path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
+					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
 				</div>
 			{:else if card.status === 'failed'}
 				<!-- Retry -->
@@ -378,7 +378,7 @@
 							<path stroke-linecap="round" stroke-linejoin="round" d="M20.49 9A9 9 0 105.64 5.64L4 4m16 16l-1.64-1.64" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Retry</span>
+					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Retry</span>
 				</div>
 				<!-- Archive -->
 				<div class="group/act relative">
@@ -392,7 +392,7 @@
 							<path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
+					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
 				</div>
 			{:else if card.status === 'awaiting_input'}
 				<!-- Archive -->
@@ -407,7 +407,7 @@
 							<path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
+					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
 				</div>
 			{/if}
 			{#if card.has_workspace}
@@ -423,7 +423,7 @@
 							<path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
 						</svg>
 					</a>
-					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-violet-500/30 bg-surface-800 px-2 py-1 text-[10px] font-medium text-violet-400 opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Open Workspace</span>
+					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-violet-500/30 bg-surface-800 px-2 py-1 text-[10px] font-medium text-violet-400 opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Open Workspace</span>
 				</div>
 			{/if}
 		</div>
@@ -449,7 +449,7 @@
 						</svg>
 					{/if}
 				</span>
-				<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">{copied ? 'Copied!' : 'Copy ID'}</span>
+				<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">{copied ? 'Copied!' : 'Copy ID'}</span>
 			</div>
 			<!-- Chat -->
 			<div class="group/act relative">
@@ -464,7 +464,7 @@
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
 					</svg>
 				</span>
-				<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Chat</span>
+				<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Chat</span>
 			</div>
 			<!-- Status indicator -->
 			<span class="ml-1 flex items-center gap-1 shrink-0">
