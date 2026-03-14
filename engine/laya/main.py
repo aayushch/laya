@@ -28,7 +28,7 @@ from laya.api.team import router as team_router
 from laya.api.websocket import manager
 from laya.api.workspace_api import router as workspace_router
 from laya.api.ws_router import handle_ws_message
-from laya.config import ENGINE_HOST, ENGINE_PORT, ensure_directories, load_repos, load_rules, load_team
+from laya.config import ENGINE_HOST, ENGINE_PORT, ensure_directories, load_repos, load_rules, load_settings, load_team
 from laya.integrations.n8n_bootstrap import ensure_n8n_ready, sync_workflows_background
 from laya.db.chromadb_store import connect_chromadb, disconnect_chromadb
 from laya.db.migrate import run_migrations
@@ -60,6 +60,20 @@ async def lifespan(app: FastAPI):
 
     # Load API keys from OS keychain into environment
     load_all_keys_to_env()
+
+    # Auto-detect agent binary paths (if not already configured)
+    try:
+        from laya.config import detect_agent_paths, save_settings
+        _settings = load_settings()
+        _agent_paths = _settings.get("agent_paths", {})
+        if not any(_agent_paths.values()):
+            detected = detect_agent_paths()
+            if any(detected.values()):
+                _settings["agent_paths"] = detected
+                save_settings(_settings)
+                log.info("agent_paths_detected", **detected)
+    except Exception as e:
+        log.warning("agent_path_detection_failed", error=str(e))
 
     # Auto-provision n8n (owner account + API key)
     try:

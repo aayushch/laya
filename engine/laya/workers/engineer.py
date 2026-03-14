@@ -428,7 +428,7 @@ async def run_engineer_from_prompt(
     dummy_router = RouterOutput(
         persona=Persona.ENGINEER,
         priority=Priority.MEDIUM,
-        category=Category.CODE_REVIEW,
+        category=Category.CODE,
         confidence=0.8,
         entities=[],
     )

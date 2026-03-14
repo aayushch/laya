@@ -488,6 +488,15 @@ async def bootstrap_n8n() -> dict:
     return result
 
 
+@router.get("/settings/detect-agents")
+async def detect_agents() -> dict:
+    """Auto-detect installed agent CLI binaries and return their paths."""
+    from laya.config import detect_agent_paths
+
+    paths = detect_agent_paths()
+    return {"agent_paths": paths}
+
+
 @router.get("/repos")
 async def get_repos(platform: str | None = Query(default=None)) -> dict:
     """Return configured repositories, optionally filtered by platform."""

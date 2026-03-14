@@ -184,6 +184,7 @@ export interface Settings {
 	api_keys: ApiKeyStatus;
 	coding_agent: string;
 	agent_execution_mode: 'automatic' | 'requires_approval';
+	agent_paths: Record<string, string>;
 	privacy: {
 		tier3_sources: string[];
 		tier3_processing: string;

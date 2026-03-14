@@ -11,8 +11,10 @@
 
 	let selected = $state('claude_code');
 	let executionMode = $state<'automatic' | 'requires_approval'>('requires_approval');
+	let agentPaths = $state<Record<string, string>>({ claude_code: '', gemini_cli: '', codex_cli: '' });
 	let loading = $state(true);
 	let saving = $state(false);
+	let detecting = $state(false);
 	let error = $state<string | null>(null);
 
 	const hasAgent = $derived(selected !== 'none');
@@ -22,6 +24,7 @@
 			const settings = await engineApi.getSettings();
 			selected = settings.coding_agent || 'claude_code';
 			executionMode = settings.agent_execution_mode || 'requires_approval';
+			agentPaths = settings.agent_paths || { claude_code: '', gemini_cli: '', codex_cli: '' };
 		} catch {
 			error = 'Failed to load settings';
 		} finally {
@@ -50,6 +53,34 @@
 			await engineApi.updateSettings({ agent_execution_mode: mode });
 		} catch {
 			error = 'Failed to save execution mode';
+		} finally {
+			saving = false;
+		}
+	}
+
+	async function detectPaths() {
+		detecting = true;
+		error = null;
+		try {
+			const result = await engineApi.detectAgentPaths();
+			agentPaths = result.agent_paths;
+			await engineApi.updateSettings({ agent_paths: result.agent_paths });
+		} catch {
+			error = 'Failed to detect agent paths';
+		} finally {
+			detecting = false;
+		}
+	}
+
+	async function saveAgentPath(agentType: string, path: string) {
+		saving = true;
+		error = null;
+		try {
+			const updated = { ...agentPaths, [agentType]: path };
+			agentPaths = updated;
+			await engineApi.updateSettings({ agent_paths: updated });
+		} catch {
+			error = 'Failed to save agent path';
 		} finally {
 			saving = false;
 		}
@@ -83,16 +114,64 @@
 							<div class="h-2 w-2 rounded-full bg-blue-500"></div>
 						{/if}
 					</div>
-					<div>
+					<div class="flex-1">
 						<div class="text-sm font-medium">{agent.label}</div>
 						<div class="text-xs text-surface-400">{agent.description}</div>
 					</div>
+					{#if agent.value !== 'none' && agentPaths[agent.value]}
+						<span class="text-[10px] text-green-400/70" title={agentPaths[agent.value]}>detected</span>
+					{:else if agent.value !== 'none'}
+						<span class="text-[10px] text-surface-500">not found</span>
+					{/if}
 				</button>
 			{/each}
 		</div>
 
 		{#if saving}
 			<div class="mt-3 text-xs text-surface-400">Saving...</div>
+		{/if}
+	</div>
+
+	<!-- Agent Binary Paths -->
+	<div class="mt-4 rounded-xl border border-surface-700 bg-surface-800 p-4 {!hasAgent ? 'opacity-50' : ''}">
+		<div class="mb-3 flex items-center justify-between">
+			<div>
+				<h3 class="text-sm font-medium">Agent Binary Path</h3>
+				<p class="text-xs text-surface-400">
+					{#if hasAgent}
+						Path to the agent CLI binary. Auto-detected on startup, or set manually.
+					{:else}
+						Enable a coding agent above to configure the binary path
+					{/if}
+				</p>
+			</div>
+			{#if hasAgent}
+				<button
+					class="rounded-md border border-surface-600 bg-surface-700 px-3 py-1.5 text-xs font-medium transition-colors hover:bg-surface-600 disabled:opacity-50"
+					onclick={detectPaths}
+					disabled={detecting || !hasAgent}
+				>
+					{detecting ? 'Detecting...' : 'Auto-detect'}
+				</button>
+			{/if}
+		</div>
+
+		{#if hasAgent}
+			<div class="flex items-center gap-2">
+				<input
+					type="text"
+					class="flex-1 rounded-md border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-200 placeholder-surface-500 focus:border-blue-500 focus:outline-none"
+					placeholder="/path/to/{selected === 'claude_code' ? 'claude' : selected === 'gemini_cli' ? 'gemini' : 'codex'}"
+					value={agentPaths[selected] || ''}
+					onchange={(e) => saveAgentPath(selected, (e.target as HTMLInputElement).value)}
+					disabled={!hasAgent}
+				/>
+			</div>
+			{#if agentPaths[selected]}
+				<p class="mt-1.5 text-[11px] text-green-400/70">{agentPaths[selected]}</p>
+			{:else}
+				<p class="mt-1.5 text-[11px] text-yellow-400/70">No path configured — agent may not be found in bundled app mode</p>
+			{/if}
 		{/if}
 	</div>
 

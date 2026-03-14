@@ -30,6 +30,11 @@ DEFAULT_SETTINGS = {
     },
     "coding_agent": "claude_code",
     "agent_execution_mode": "requires_approval",
+    "agent_paths": {
+        "claude_code": "",
+        "gemini_cli": "",
+        "codex_cli": "",
+    },
     "privacy": {
         "tier3_sources": ["gmail", "outlook", "slack_dm"],
         "tier3_processing": "cloud_with_warning",
@@ -184,3 +189,75 @@ def get_all_custom_providers() -> list[dict]:
     """Get all configured custom model providers."""
     settings = load_settings()
     return settings.get("custom_providers", [])
+
+
+# Agent binary names for each agent type
+_AGENT_BINARIES = {
+    "claude_code": "claude",
+    "gemini_cli": "gemini",
+    "codex_cli": "codex",
+}
+
+# Extra PATH locations to search — covers common install paths that
+# macOS .app bundles don't inherit.
+_EXTRA_SEARCH_PATHS = [
+    os.path.expanduser("~/.local/bin"),
+    os.path.expanduser("~/.cargo/bin"),
+    "/usr/local/bin",
+    "/opt/homebrew/bin",
+    # npm global installs
+    os.path.expanduser("~/.npm-global/bin"),
+    "/usr/local/lib/node_modules/.bin",
+]
+
+
+def _augmented_path() -> str:
+    """Return PATH with common user binary dirs prepended."""
+    current = os.environ.get("PATH", "")
+    parts = current.split(os.pathsep)
+    for p in reversed(_EXTRA_SEARCH_PATHS):
+        if p not in parts and os.path.isdir(p):
+            parts.insert(0, p)
+    return os.pathsep.join(parts)
+
+
+def detect_agent_paths() -> dict[str, str]:
+    """Auto-detect installed agent binary paths using `which` with augmented PATH.
+
+    Returns a dict mapping agent type to absolute binary path (empty string if not found).
+    """
+    import shutil
+
+    augmented = _augmented_path()
+    results: dict[str, str] = {}
+
+    for agent_type, binary_name in _AGENT_BINARIES.items():
+        # shutil.which respects the `path` argument
+        found = shutil.which(binary_name, path=augmented)
+        results[agent_type] = found or ""
+
+    return results
+
+
+def get_agent_binary(agent_type: str) -> str:
+    """Get the binary path for an agent type.
+
+    Checks settings first (user override), then falls back to auto-detection.
+    Returns the bare command name as last resort.
+    """
+    settings = load_settings()
+    agent_paths = settings.get("agent_paths", {})
+
+    # User-configured path takes priority
+    configured = agent_paths.get(agent_type, "")
+    if configured and os.path.isfile(configured):
+        return configured
+
+    # Auto-detect
+    detected = detect_agent_paths()
+    path = detected.get(agent_type, "")
+    if path:
+        return path
+
+    # Last resort: bare command name (may work if PATH is correct)
+    return _AGENT_BINARIES.get(agent_type, agent_type)
