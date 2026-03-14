@@ -112,8 +112,15 @@
 	const priorityColors: Record<string, string> = {
 		CRITICAL: 'bg-red-600 text-red-50',
 		HIGH:     'bg-orange-500 text-orange-50',
-		MEDIUM:   'bg-blue-600 text-blue-50',
+		MEDIUM:   'bg-laya-coral/20 text-laya-coral',
 		LOW:      'bg-laya-gold/25 text-laya-amber'
+	};
+
+	const priorityLabel: Record<string, string> = {
+		CRITICAL: 'CRIT',
+		HIGH: 'HIGH',
+		MEDIUM: 'MED',
+		LOW: 'LOW'
 	};
 
 	const personaColors: Record<string, string> = {
@@ -217,7 +224,7 @@
 				</span>
 				<div class="flex items-center gap-1.5">
 					<span class="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase {priorityColors[group.top_priority] ?? priorityColors.MEDIUM}">
-						{group.top_priority}
+						{priorityLabel[group.top_priority] ?? group.top_priority}
 					</span>
 					<span class="rounded-full border border-surface-600 bg-surface-700 px-2 py-0.5 text-[10px] font-semibold text-surface-300">
 						+{extraCount}
@@ -279,7 +286,7 @@
 				</span>
 				<div class="ml-auto flex items-center gap-2">
 					<span class="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase {priorityColors[group.top_priority] ?? priorityColors.MEDIUM}">
-						{group.top_priority}
+						{priorityLabel[group.top_priority] ?? group.top_priority}
 					</span>
 					{#if group.has_pending}
 						<button

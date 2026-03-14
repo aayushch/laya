@@ -49,7 +49,9 @@ class AgentProcess:
             cwd: Working directory (the repo path).
             env: Optional environment overrides (merged with os.environ).
         """
-        spawn_env = {**os.environ}
+        from laya.config import _augmented_path
+
+        spawn_env = {**os.environ, "PATH": _augmented_path()}
         if env:
             spawn_env.update(env)
 

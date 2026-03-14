@@ -238,10 +238,16 @@ async def execute_action(
 
     # 7. Update card final status — separate try so it always runs even if action_log write fails
     try:
-        await db.execute(
-            "UPDATE action_cards SET status = ?, updated_at = ? WHERE card_id = ?",
-            (result_status, now, card_id),
-        )
+        if result_status == "failed":
+            await db.execute(
+                "UPDATE action_cards SET status = ?, failed_stage = 'action_execution', updated_at = ? WHERE card_id = ?",
+                (result_status, now, card_id),
+            )
+        else:
+            await db.execute(
+                "UPDATE action_cards SET status = ?, failed_stage = NULL, updated_at = ? WHERE card_id = ?",
+                (result_status, now, card_id),
+            )
         await db.commit()
     except Exception as db_err:
         log.error("card_status_update_failed", card_id=card_id, error=str(db_err))

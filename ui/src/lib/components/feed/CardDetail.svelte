@@ -25,9 +25,16 @@
 
 	const priorityColors: Record<string, string> = {
 		CRITICAL: 'bg-red-600 text-red-50',
-		HIGH: 'bg-orange-600 text-orange-50',
-		MEDIUM: 'bg-blue-600 text-blue-50',
-		LOW: 'bg-surface-600 text-surface-200'
+		HIGH: 'bg-orange-500 text-orange-50',
+		MEDIUM: 'bg-laya-coral/20 text-laya-coral',
+		LOW: 'bg-laya-gold/25 text-laya-amber'
+	};
+
+	const priorityLabel: Record<string, string> = {
+		CRITICAL: 'CRIT',
+		HIGH: 'HIGH',
+		MEDIUM: 'MED',
+		LOW: 'LOW'
 	};
 
 	const personaColors: Record<string, string> = {
@@ -179,7 +186,7 @@
 	<div class="flex items-center justify-between border-b border-surface-700 px-5 py-4">
 		<div class="flex items-center gap-2">
 			<span class="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase {priorityColors[card.priority] ?? priorityColors.MEDIUM}">
-				{card.priority}
+				{priorityLabel[card.priority] ?? card.priority}
 			</span>
 			<span class="rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase {personaColors[card.persona] ?? personaColors.ENGINEER}">
 				{card.persona}
