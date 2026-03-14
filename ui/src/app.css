@@ -83,7 +83,7 @@
 /* Priority badge text - ensure contrast in light mode */
 [data-theme='light'] .bg-red-600      { background-color: oklch(0.50 0.22 27);  }
 [data-theme='light'] .bg-orange-500   { background-color: oklch(0.62 0.18 47);  }
-[data-theme='light'] .bg-blue-600     { background-color: oklch(0.46 0.20 240); }
+/* bg-blue-600 override removed — MEDIUM priority now uses laya-coral brand color */
 
 /* Subtle action button bg adjustments */
 [data-theme='light'] .bg-green-700\/30,

@@ -336,7 +336,7 @@ async def _run_workers_pipeline(
         try:
             db = await get_db()
             await db.execute(
-                "UPDATE action_cards SET status='failed', updated_at=CURRENT_TIMESTAMP WHERE card_id=?",
+                "UPDATE action_cards SET status='failed', failed_stage='pipeline', updated_at=CURRENT_TIMESTAMP WHERE card_id=?",
                 (card_id,),
             )
             await db.commit()

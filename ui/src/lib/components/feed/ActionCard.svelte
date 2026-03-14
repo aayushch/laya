@@ -21,8 +21,15 @@
 	const priorityColors: Record<string, string> = {
 		CRITICAL: 'bg-red-600 text-red-50',
 		HIGH:     'bg-orange-500 text-orange-50',
-		MEDIUM:   'bg-blue-600 text-blue-50',
+		MEDIUM:   'bg-laya-coral/20 text-laya-coral',
 		LOW:      'bg-laya-gold/25 text-laya-amber'
+	};
+
+	const priorityLabel: Record<string, string> = {
+		CRITICAL: 'CRIT',
+		HIGH: 'HIGH',
+		MEDIUM: 'MED',
+		LOW: 'LOW'
 	};
 
 	const personaColors: Record<string, string> = {
@@ -467,13 +474,13 @@
 				<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Chat</span>
 			</div>
 			<!-- Status indicator -->
-			<span class="ml-1 flex items-center gap-1 min-w-0">
+			<span class="ml-1 flex items-center gap-1">
 				<span class="h-1.5 w-1.5 rounded-full shrink-0 {statusDot[card.status] ?? statusDot.pending}"></span>
-				<span class="text-[10px] text-surface-400 truncate">{statusLabel[card.status] ?? card.status}</span>
+				<span class="text-[10px] text-surface-400 whitespace-nowrap">{statusLabel[card.status] ?? card.status}</span>
 			</span>
 			<!-- Priority chip -->
 			<span class="ml-1 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase {priorityColors[card.priority] ?? priorityColors.MEDIUM}">
-				{card.priority}
+				{priorityLabel[card.priority] ?? card.priority}
 			</span>
 		</div>
 	</div>

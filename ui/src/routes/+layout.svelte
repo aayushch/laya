@@ -5,7 +5,8 @@
 	import HealthBadge from '$lib/components/HealthBadge.svelte';
 	import ChatSidebar from '$lib/components/chat/ChatSidebar.svelte';
 	import { initWebSocket, closeWebSocket } from '$lib/stores/websocket';
-	import { startHealthPolling, stopHealthPolling } from '$lib/stores/health';
+	import { startHealthPolling, stopHealthPolling, startupReady } from '$lib/stores/health';
+	import StartupScreen from '$lib/components/StartupScreen.svelte';
 	import { chatOpen } from '$lib/stores/chat';
 	import { theme } from '$lib/stores/theme';
 	import { feedFilters, loadFeedFilters, saveFeedFilters, feedDate, feedPrevDate, feedNextDate, localToday } from '$lib/stores/feedFilters';
@@ -75,27 +76,27 @@
 
 	const activeSpace = $derived($spaces.find((s) => s.space_id === $feedFilters.spaceFilter));
 
-	onMount(async () => {
+	// Check setup status once engine is ready
+	let setupChecked = $state(false);
+	$effect(() => {
+		if (!$startupReady || setupChecked || isSetupRoute) return;
+		setupChecked = true;
+		fetch('http://127.0.0.1:8420/settings/setup-status')
+			.then((resp) => resp.ok ? resp.json() : null)
+			.then((data) => {
+				if (data && !data.setup_complete) goto('/setup');
+			})
+			.catch(() => {});
+		// Load spaces once engine is available
+		loadSpaces();
+	});
+
+	onMount(() => {
 		startHealthPolling();
 		initWebSocket();
 		loadFeedFilters();
-		loadSpaces();
 
 		document.addEventListener('click', closeDropdowns);
-
-		if (!isSetupRoute) {
-			try {
-				const resp = await fetch('http://127.0.0.1:8420/settings/setup-status');
-				if (resp.ok) {
-					const data = await resp.json();
-					if (!data.setup_complete) {
-						goto('/setup');
-					}
-				}
-			} catch {
-				// Engine not ready yet — don't redirect
-			}
-		}
 
 		return () => {
 			stopHealthPolling();
@@ -111,6 +112,8 @@
 
 {#if isSetupRoute}
 	{@render children()}
+{:else if !$startupReady}
+	<StartupScreen />
 {:else}
 	<div class="flex h-screen flex-col bg-surface-900 text-surface-50">
 		<!-- Header -->

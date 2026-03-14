@@ -219,7 +219,24 @@ async def run_engineer(
         )
     except Exception as e:
         log.error("engineer_agent_spawn_failed", error=str(e))
+        db = await get_db()
+        await db.execute(
+            "UPDATE action_cards SET failed_stage = 'agent_spawn', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            (effective_card_id,),
+        )
+        await db.commit()
         return WorkerResult(persona="ENGINEER", error=f"Failed to spawn coding agent: {e}")
+
+    # Mark workspace as available immediately so UI shows the icon
+    db = await get_db()
+    await db.execute(
+        "UPDATE action_cards SET has_workspace = 1, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+        (effective_card_id,),
+    )
+    await db.commit()
+    await manager.broadcast(
+        {"type": "card_updated", "card_id": effective_card_id, "payload": {"has_workspace": True}}
+    )
 
     # 5. Stream events — persist all to SQLite, only broadcast approval/error via WS
     findings: dict[str, Any] = {}
@@ -286,6 +303,12 @@ async def run_engineer(
     except Exception as e:
         log.error("engineer_stream_error", session_id=session_id, error=str(e))
         await session_manager.complete_session(session_id, error=str(e))
+        db = await get_db()
+        await db.execute(
+            "UPDATE action_cards SET failed_stage = 'agent_execution', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            (effective_card_id,),
+        )
+        await db.commit()
         return WorkerResult(persona="ENGINEER", session_id=session_id, error=str(e))
 
     # 6. Complete session (unless agent is waiting for user input)
@@ -322,7 +345,7 @@ async def run_engineer(
         card_status = "awaiting_input" if has_unanswered else "ready"
 
         await db.execute(
-            "UPDATE action_cards SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            "UPDATE action_cards SET status = ?, failed_stage = NULL, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
             (card_status, effective_card_id),
         )
         await db.commit()
@@ -391,7 +414,7 @@ async def run_engineer(
         # Mark card as failed so it doesn't stay stuck on agent_running
         db = await get_db()
         await db.execute(
-            "UPDATE action_cards SET status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_execution', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
             (effective_card_id,),
         )
         await db.commit()
@@ -437,7 +460,7 @@ async def run_engineer_from_prompt(
         log.error("engineer_from_prompt_no_repo", card_id=card_id)
         db = await get_db()
         await db.execute(
-            "UPDATE action_cards SET status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_spawn', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
             (card_id,),
         )
         await db.commit()
@@ -458,7 +481,7 @@ async def run_engineer_from_prompt(
         log.error("engineer_from_prompt_spawn_failed", card_id=card_id, error=str(e))
         db = await get_db()
         await db.execute(
-            "UPDATE action_cards SET status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_spawn', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
             (card_id,),
         )
         await db.commit()
@@ -466,6 +489,17 @@ async def run_engineer_from_prompt(
             {"type": "card_updated", "card_id": card_id, "payload": {"status": "failed"}}
         )
         return
+
+    # Mark workspace as available immediately so UI shows the icon
+    db = await get_db()
+    await db.execute(
+        "UPDATE action_cards SET has_workspace = 1, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+        (card_id,),
+    )
+    await db.commit()
+    await manager.broadcast(
+        {"type": "card_updated", "card_id": card_id, "payload": {"has_workspace": True}}
+    )
 
     # Stream events (same logic as run_engineer's main loop)
     findings: dict[str, Any] = {}
@@ -512,7 +546,7 @@ async def run_engineer_from_prompt(
         await session_manager.complete_session(session_id, error=str(e))
         db = await get_db()
         await db.execute(
-            "UPDATE action_cards SET status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_execution', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
             (card_id,),
         )
         await db.commit()
@@ -542,12 +576,12 @@ async def run_engineer_from_prompt(
         card_status = "awaiting_input" if has_unanswered else "ready"
 
         await db.execute(
-            "UPDATE action_cards SET status = ?, has_workspace = 1, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            "UPDATE action_cards SET status = ?, failed_stage = NULL, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
             (card_status, card_id),
         )
         await db.commit()
         await manager.broadcast(
-            {"type": "card_updated", "card_id": card_id, "payload": {"status": card_status, "has_workspace": True}}
+            {"type": "card_updated", "card_id": card_id, "payload": {"status": card_status}}
         )
         await manager.broadcast(
             {"type": "agent_completed", "card_id": card_id, "session_id": session_id, "payload": {"findings": findings}}
@@ -560,7 +594,7 @@ async def run_engineer_from_prompt(
         log.error("engineer_from_prompt_failed", session_id=session_id, error=error_msg)
         await session_manager.complete_session(session_id, error=error_msg)
         await db.execute(
-            "UPDATE action_cards SET status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_execution', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
             (card_id,),
         )
         await db.commit()

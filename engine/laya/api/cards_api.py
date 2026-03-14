@@ -406,16 +406,25 @@ async def archive_card(card_id: str) -> dict:
 
 @router.post("/cards/{card_id}/reopen")
 async def reopen_card(card_id: str) -> dict:
-    """Reopen a card, setting its status back to pending."""
+    """Reopen a card, retrying the last failed stage when applicable.
+
+    Retry strategy based on failed_stage:
+    - agent_spawn / agent_execution: re-queue for agent approval (requires_approval)
+    - action_execution: reset to ready so user can re-execute the action
+    - pipeline / NULL: reset to pending for full reprocessing
+    - Non-failed cards (dismissed, done, archived): always reset to pending
+    """
     db = await get_db()
 
     rows = await db.execute_fetchall(
-        "SELECT status FROM action_cards WHERE card_id = ?", (card_id,)
+        "SELECT status, failed_stage, agent_prompt, persona, space_id FROM action_cards WHERE card_id = ?",
+        (card_id,),
     )
     if not rows:
         raise HTTPException(status_code=404, detail="Card not found")
 
-    current = rows[0]["status"]
+    row = rows[0]
+    current = row["status"]
     reopenable = {"dismissed", "done", "failed", "archived", "agent_running"}
     if current not in reopenable:
         raise HTTPException(
@@ -423,17 +432,53 @@ async def reopen_card(card_id: str) -> dict:
         )
 
     now = datetime.now(timezone.utc).isoformat()
-    await db.execute(
-        "UPDATE action_cards SET status = 'pending', resolved_at = NULL, updated_at = ? WHERE card_id = ?",
-        (now, card_id),
-    )
-    await db.commit()
+    failed_stage = row["failed_stage"] if current == "failed" else None
 
-    await manager.broadcast(
-        {"type": "card_updated", "card_id": card_id, "payload": {"status": "pending"}}
-    )
+    if failed_stage in ("agent_spawn", "agent_execution") and row["agent_prompt"]:
+        # Agent failed — put card back to requires_approval so user can click
+        # "Approve Agent" again (or auto-run if in automatic mode)
+        new_status = "requires_approval"
+        await db.execute(
+            "UPDATE action_cards SET status = ?, failed_stage = NULL, resolved_at = NULL, updated_at = ? WHERE card_id = ?",
+            (new_status, now, card_id),
+        )
+        await db.commit()
 
-    log.info("card_reopened", card_id=card_id)
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": card_id, "payload": {"status": new_status}}
+        )
+
+        log.info("card_reopened", card_id=card_id, retry_stage=failed_stage, new_status=new_status)
+
+    elif failed_stage == "action_execution":
+        # Action execution failed — put card back to ready so user can re-execute
+        new_status = "ready"
+        await db.execute(
+            "UPDATE action_cards SET status = ?, failed_stage = NULL, resolved_at = NULL, updated_at = ? WHERE card_id = ?",
+            (new_status, now, card_id),
+        )
+        await db.commit()
+
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": card_id, "payload": {"status": new_status}}
+        )
+
+        log.info("card_reopened", card_id=card_id, retry_stage=failed_stage, new_status=new_status)
+
+    else:
+        # Pipeline failure, no failed_stage, or non-failed card — reset to pending
+        new_status = "pending"
+        await db.execute(
+            "UPDATE action_cards SET status = ?, failed_stage = NULL, resolved_at = NULL, updated_at = ? WHERE card_id = ?",
+            (new_status, now, card_id),
+        )
+        await db.commit()
+
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": card_id, "payload": {"status": new_status}}
+        )
+
+        log.info("card_reopened", card_id=card_id, retry_stage=failed_stage, new_status=new_status)
 
     # Update daily summary with status change
     header_rows = await db.execute_fetchall(
@@ -441,11 +486,11 @@ async def reopen_card(card_id: str) -> dict:
     )
     if header_rows:
         asyncio.create_task(
-            trigger_summary_status_update(card_id, header_rows[0]["header"], "pending"),
+            trigger_summary_status_update(card_id, header_rows[0]["header"], new_status),
             name=f"summary_status_{card_id}",
         )
 
-    return {"status": "pending", "card_id": card_id}
+    return {"status": new_status, "card_id": card_id}
 
 
 @router.get("/cards/{card_id}")
