@@ -3,20 +3,25 @@
 	import { engineApi } from '$lib/api/engine';
 
 	const agents = [
+		{ value: 'none', label: 'None', description: 'No coding agent — handle code tasks manually' },
 		{ value: 'claude_code', label: 'Claude Code', description: 'Anthropic CLI — structured JSON streaming, approval prompts' },
 		{ value: 'gemini_cli', label: 'Gemini CLI', description: 'Google CLI — raw line-by-line output' },
 		{ value: 'codex_cli', label: 'Codex CLI', description: 'OpenAI CLI — raw line-by-line output' }
 	];
 
 	let selected = $state('claude_code');
+	let executionMode = $state<'automatic' | 'requires_approval'>('requires_approval');
 	let loading = $state(true);
 	let saving = $state(false);
 	let error = $state<string | null>(null);
+
+	const hasAgent = $derived(selected !== 'none');
 
 	onMount(async () => {
 		try {
 			const settings = await engineApi.getSettings();
 			selected = settings.coding_agent || 'claude_code';
+			executionMode = settings.agent_execution_mode || 'requires_approval';
 		} catch {
 			error = 'Failed to load settings';
 		} finally {
@@ -32,6 +37,19 @@
 			await engineApi.updateSettings({ coding_agent: value });
 		} catch {
 			error = 'Failed to save coding agent preference';
+		} finally {
+			saving = false;
+		}
+	}
+
+	async function setExecutionMode(mode: 'automatic' | 'requires_approval') {
+		executionMode = mode;
+		saving = true;
+		error = null;
+		try {
+			await engineApi.updateSettings({ agent_execution_mode: mode });
+		} catch {
+			error = 'Failed to save execution mode';
 		} finally {
 			saving = false;
 		}
@@ -76,5 +94,61 @@
 		{#if saving}
 			<div class="mt-3 text-xs text-surface-400">Saving...</div>
 		{/if}
+	</div>
+
+	<!-- Execution Mode -->
+	<div class="mt-4 rounded-xl border border-surface-700 bg-surface-800 p-4 {!hasAgent ? 'opacity-50' : ''}">
+		<h3 class="mb-1 text-sm font-medium">Agent Execution Mode</h3>
+		<p class="mb-4 text-xs text-surface-400">
+			{#if hasAgent}
+				Choose when the coding agent starts on new ENGINEER cards
+			{:else}
+				Enable a coding agent above to configure execution mode
+			{/if}
+		</p>
+
+		<div class="space-y-2">
+			<button
+				class="flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors
+					{executionMode === 'requires_approval'
+						? 'border-blue-500 bg-blue-500/10'
+						: 'border-surface-600 bg-surface-900 hover:border-surface-500'}
+					{!hasAgent ? 'pointer-events-none' : ''}"
+				onclick={() => setExecutionMode('requires_approval')}
+				disabled={saving || !hasAgent}
+			>
+				<div class="flex h-4 w-4 items-center justify-center rounded-full border-2
+					{executionMode === 'requires_approval' ? 'border-blue-500' : 'border-surface-500'}">
+					{#if executionMode === 'requires_approval'}
+						<div class="h-2 w-2 rounded-full bg-blue-500"></div>
+					{/if}
+				</div>
+				<div>
+					<div class="text-sm font-medium">Requires Approval</div>
+					<div class="text-xs text-surface-400">You approve each agent run before it starts</div>
+				</div>
+			</button>
+
+			<button
+				class="flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors
+					{executionMode === 'automatic'
+						? 'border-blue-500 bg-blue-500/10'
+						: 'border-surface-600 bg-surface-900 hover:border-surface-500'}
+					{!hasAgent ? 'pointer-events-none' : ''}"
+				onclick={() => setExecutionMode('automatic')}
+				disabled={saving || !hasAgent}
+			>
+				<div class="flex h-4 w-4 items-center justify-center rounded-full border-2
+					{executionMode === 'automatic' ? 'border-blue-500' : 'border-surface-500'}">
+					{#if executionMode === 'automatic'}
+						<div class="h-2 w-2 rounded-full bg-blue-500"></div>
+					{/if}
+				</div>
+				<div>
+					<div class="text-sm font-medium">Automatic</div>
+					<div class="text-xs text-surface-400">Agent starts immediately for new cards</div>
+				</div>
+			</button>
+		</div>
 	</div>
 {/if}

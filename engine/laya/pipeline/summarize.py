@@ -136,7 +136,7 @@ def _compact_summary(summary: dict) -> dict:
             status = item.get("status", "pending")
             priority = item.get("priority", "MEDIUM")
             # Keep all pending items and high-priority resolved items
-            if status == "pending" or priority in ("CRITICAL", "HIGH"):
+            if status in ("pending", "ready", "requires_approval") or priority in ("CRITICAL", "HIGH"):
                 kept.append(item)
             else:
                 removed += 1

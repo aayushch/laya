@@ -99,10 +99,15 @@ async def run_emit(
     else:
         source_ref = _subj_id or None
 
-    # 1. Detect has_workspace
+    # 1. Detect has_workspace and resolve card status from worker results
     has_workspace = False
+    card_status = "ready"  # default for non-worker cards
     if worker_results:
         has_workspace = any(r.session_id is not None for r in worker_results)
+        # Worker can override the initial card status
+        for wr in worker_results:
+            if wr.card_status:
+                card_status = wr.card_status
 
     # 2. Serialize JSON fields
     intelligence_json = json.dumps(stager_output.intelligence_report)
@@ -119,7 +124,7 @@ async def run_emit(
             """UPDATE action_cards SET
                priority=?, persona=?, category=?, header=?, summary=?,
                intelligence=?, staged_output=?, suggested_actions=?,
-               status='pending', privacy_tier=?, has_workspace=?,
+               status=?, privacy_tier=?, has_workspace=?,
                confidence=?, entity_id=?, source_ref=?, source_url=?,
                space_id=?, updated_at=CURRENT_TIMESTAMP
                WHERE card_id=?""",
@@ -132,6 +137,7 @@ async def run_emit(
                 intelligence_json,
                 staged_output_json,
                 suggested_actions_json,
+                card_status,
                 stager_output.privacy_tier,
                 has_workspace,
                 router_output.confidence,
@@ -161,7 +167,7 @@ async def run_emit(
                 intelligence_json,
                 staged_output_json,
                 suggested_actions_json,
-                "pending",
+                card_status,
                 stager_output.privacy_tier,
                 has_workspace,
                 router_output.confidence,
@@ -239,7 +245,7 @@ async def run_emit(
                 "priority": router_output.priority.value,
                 "persona": router_output.persona.value,
                 "category": router_output.category.value,
-                "status": "pending",
+                "status": card_status,
                 "has_workspace": has_workspace,
                 "privacy_tier": stager_output.privacy_tier,
             },

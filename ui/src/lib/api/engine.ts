@@ -145,10 +145,13 @@ export const engineApi = {
 			`/cards/group/${encodeURIComponent(entityId)}/dismiss-all`,
 			{ method: 'POST' }
 		),
-	approveCard: (cardId: string, modifications?: Record<string, unknown>) =>
-		request<{ status: string; card_id: string }>(`/cards/${cardId}/approve`, {
-			method: 'POST',
-			body: JSON.stringify({ modifications: modifications ?? null })
+	markCardDone: (cardId: string) =>
+		request<{ status: string; card_id: string }>(`/cards/${cardId}/done`, {
+			method: 'POST'
+		}),
+	approveAgent: (cardId: string) =>
+		request<{ status: string; card_id: string }>(`/cards/${cardId}/approve-agent`, {
+			method: 'POST'
 		}),
 	dismissCard: (cardId: string, reason?: string, feedbackType?: string) =>
 		request<{ status: string; card_id: string }>(`/cards/${cardId}/dismiss`, {

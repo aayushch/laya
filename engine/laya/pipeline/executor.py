@@ -48,10 +48,10 @@ async def execute_action(
     current_status = card_row["status"]
 
     # 2. Validate status
-    if current_status not in ("pending", "approved", "failed"):
+    if current_status not in ("pending", "ready", "requires_approval", "failed"):
         raise ValueError(
             f"Card {card_id} status is '{current_status}', "
-            "must be 'pending', 'approved', or 'failed' to execute"
+            "must be 'pending', 'ready', 'requires_approval', or 'failed' to execute"
         )
 
     # 3. Find the specific action from suggested_actions JSON
@@ -153,7 +153,7 @@ async def execute_action(
         "event_platform": event_ctx.get("source_platform", target_platform),
     }
 
-    result_status = "completed"
+    result_status = "done"
     result_data: dict = {}
     error_message: str | None = None
     result_url: str | None = None
@@ -181,7 +181,7 @@ async def execute_action(
 
         if resp_data is not None:
             if resp_data.get("success"):
-                result_status = "completed"
+                result_status = "done"
                 result_data = resp_data.get("result", {})
                 result_url = (
                     result_data.get("pr_url")

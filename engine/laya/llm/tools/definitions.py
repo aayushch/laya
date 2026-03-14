@@ -31,9 +31,9 @@ def _read_tools() -> list[dict]:
                         "status": {
                             "type": "string",
                             "enum": [
-                                "pending", "approved", "executing", "completed",
+                                "pending", "ready", "requires_approval", "done",
                                 "failed", "dismissed", "archived", "agent_running",
-                                "awaiting_input", "staged",
+                                "awaiting_input",
                             ],
                             "description": "Filter by card status.",
                         },

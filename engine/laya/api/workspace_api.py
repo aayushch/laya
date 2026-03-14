@@ -290,7 +290,7 @@ async def _run_resumed_session(
 
             # If there are unanswered questions, keep card as awaiting_input
             has_unanswered = await session_manager.has_unanswered_questions(session_id)
-            card_status = "awaiting_input" if has_unanswered else "completed"
+            card_status = "awaiting_input" if has_unanswered else "ready"
 
             await db.execute(
                 "UPDATE action_cards SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",

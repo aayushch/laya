@@ -29,6 +29,7 @@ DEFAULT_SETTINGS = {
         "local": "ollama/llama3",
     },
     "coding_agent": "claude_code",
+    "agent_execution_mode": "requires_approval",
     "privacy": {
         "tier3_sources": ["gmail", "outlook", "slack_dm"],
         "tier3_processing": "cloud_with_warning",

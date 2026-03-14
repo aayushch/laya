@@ -9,7 +9,7 @@ import structlog
 
 from laya.agents import session_manager
 from laya.api.websocket import manager
-from laya.config import load_repos
+from laya.config import load_repos, load_settings
 from laya.db.chromadb_store import memory_search
 from laya.db.sqlite import get_db
 from laya.llm.client import llm_call
@@ -153,16 +153,16 @@ async def run_engineer(
 ) -> WorkerResult:
     """Run the ENGINEER worker.
 
-    1. Gather context from memory
-    2. Build agent task prompt via LLM
-    3. Resolve target repo
-    4. Spawn coding agent session
-    5. Stream events — all events persisted to SQLite; only approval
-       requests and errors are broadcast via WebSocket in real-time.
-       The UI fetches full event history from the DB on completion.
-    6. Return structured findings
+    Checks agent configuration and execution mode:
+    - No agent configured → gather context + build prompt, skip agent spawn
+    - Agent + automatic → spawn agent immediately
+    - Agent + requires_approval → store prompt, defer agent spawn to user approval
     """
     log.info("engineer_worker_start", event_id=event.event_id)
+
+    settings = load_settings()
+    agent_type = settings.get("coding_agent", "none")
+    exec_mode = settings.get("agent_execution_mode", "requires_approval")
 
     # 1. Gather context
     related_context = await _gather_context(event, router_output)
@@ -170,14 +170,43 @@ async def run_engineer(
     # 2. Build agent prompt
     agent_prompt = await _build_agent_prompt(event, router_output, related_context)
 
+    # --- No agent configured: skip agent, return findings with prompt ---
+    if agent_type == "none":
+        log.info("engineer_no_agent_configured", event_id=event.event_id)
+        return WorkerResult(
+            persona="ENGINEER",
+            findings={"agent_prompt": agent_prompt, "agent_skipped": True},
+            card_status="ready",
+        )
+
     # 3. Resolve repo
     repo_path = await _resolve_repo_path(router_output, event, space_id=space_id)
     if not repo_path:
         log.warning("engineer_no_repo", event_id=event.event_id)
         return WorkerResult(
             persona="ENGINEER",
+            findings={"agent_prompt": agent_prompt, "agent_skipped": True},
+            card_status="ready",
             error="No repository configured. Add repos in Settings > Repos.",
         )
+
+    # --- Requires approval: store prompt and defer ---
+    if exec_mode == "requires_approval":
+        log.info("engineer_deferred", event_id=event.event_id, card_id=card_id)
+        effective_card_id = card_id or event.event_id
+        db = await get_db()
+        await db.execute(
+            "UPDATE action_cards SET agent_prompt = ?, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            (agent_prompt, effective_card_id),
+        )
+        await db.commit()
+        return WorkerResult(
+            persona="ENGINEER",
+            findings={"agent_prompt": agent_prompt, "deferred": True},
+            card_status="requires_approval",
+        )
+
+    # --- Automatic mode: spawn agent immediately ---
 
     # 4. Spawn agent session
     effective_card_id = card_id or event.event_id
@@ -290,7 +319,7 @@ async def run_engineer(
         # If there are unanswered questions, keep card as awaiting_input
         # so the notification persists until the user responds
         has_unanswered = await session_manager.has_unanswered_questions(session_id)
-        card_status = "awaiting_input" if has_unanswered else "completed"
+        card_status = "awaiting_input" if has_unanswered else "ready"
 
         await db.execute(
             "UPDATE action_cards SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
@@ -322,10 +351,10 @@ async def run_engineer(
     elif final_status == SessionStatus.CANCELLED:
         await session_manager.complete_session(session_id, error="Cancelled by user")
 
-        # Revert card from agent_running back to approved so user can retry
+        # Revert card from agent_running back to ready so user can retry
         db = await get_db()
         await db.execute(
-            "UPDATE action_cards SET status = 'approved', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            "UPDATE action_cards SET status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
             (effective_card_id,),
         )
         await db.commit()
@@ -334,7 +363,7 @@ async def run_engineer(
             {
                 "type": "card_updated",
                 "card_id": effective_card_id,
-                "payload": {"status": "approved"},
+                "payload": {"status": "ready"},
             }
         )
         await manager.broadcast(
@@ -376,3 +405,165 @@ async def run_engineer(
         )
 
         return WorkerResult(persona="ENGINEER", session_id=session_id, error=error_msg)
+
+
+async def run_engineer_from_prompt(
+    card_id: str,
+    agent_prompt: str,
+    space_id: str | None = None,
+) -> None:
+    """Spawn a coding agent for a card that was previously deferred (requires_approval).
+
+    Called as a background task from the approve-agent endpoint.  Resolves
+    the repo, spawns the agent, streams events, and updates card status
+    exactly like the automatic path in run_engineer().
+    """
+    log.info("engineer_from_prompt_start", card_id=card_id)
+
+    # Resolve repo — we need a RouterOutput-like object, but we only need entities.
+    # Since the prompt is already built, we just need the repo path.
+    from laya.models.classification import RouterOutput, Persona, Priority, Category
+
+    # Build a minimal RouterOutput for repo resolution
+    dummy_router = RouterOutput(
+        persona=Persona.ENGINEER,
+        priority=Priority.MEDIUM,
+        category=Category.CODE_REVIEW,
+        confidence=0.8,
+        entities=[],
+    )
+    repo_path = await _resolve_repo_path(dummy_router, space_id=space_id)
+    if not repo_path:
+        log.error("engineer_from_prompt_no_repo", card_id=card_id)
+        db = await get_db()
+        await db.execute(
+            "UPDATE action_cards SET status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            (card_id,),
+        )
+        await db.commit()
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": card_id, "payload": {"status": "failed"}}
+        )
+        return
+
+    # Spawn agent
+    try:
+        session_id, agent = await session_manager.start_session(
+            card_id=card_id,
+            prompt=agent_prompt,
+            repo_path=repo_path,
+            space_id=space_id,
+        )
+    except Exception as e:
+        log.error("engineer_from_prompt_spawn_failed", card_id=card_id, error=str(e))
+        db = await get_db()
+        await db.execute(
+            "UPDATE action_cards SET status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            (card_id,),
+        )
+        await db.commit()
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": card_id, "payload": {"status": "failed"}}
+        )
+        return
+
+    # Stream events (same logic as run_engineer's main loop)
+    findings: dict[str, Any] = {}
+    cc_session_id_stored = False
+
+    try:
+        async for ws_event in agent.stream_events():
+            inserted = await session_manager.store_workspace_event(ws_event)
+            if not inserted:
+                continue
+
+            if not cc_session_id_stored and hasattr(agent, "cc_session_id") and agent.cc_session_id:
+                await session_manager.store_cc_session_id(session_id, agent.cc_session_id)
+                cc_session_id_stored = True
+
+            if ws_event.event_type == WorkspaceEventType.APPROVAL_REQUEST:
+                if ws_event.content.get("ask_user_question"):
+                    db = await get_db()
+                    await db.execute(
+                        "UPDATE action_cards SET status = 'awaiting_input', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+                        (card_id,),
+                    )
+                    await db.commit()
+                    await manager.broadcast(
+                        {"type": "card_updated", "card_id": card_id, "payload": {"status": "awaiting_input"}}
+                    )
+                await manager.broadcast(
+                    {"type": "approval_request", "card_id": card_id, "session_id": session_id, "payload": ws_event.content}
+                )
+            elif ws_event.event_type == WorkspaceEventType.ERROR:
+                findings["last_error"] = ws_event.content.get("error", "")
+                await manager.broadcast(
+                    {"type": "agent_error", "card_id": card_id, "session_id": session_id, "payload": ws_event.content}
+                )
+
+            if ws_event.event_type == WorkspaceEventType.AGENT_MESSAGE and ws_event.content.get("is_plan"):
+                findings["agent_plan"] = ws_event.content.get("text", "")
+            if ws_event.event_type == WorkspaceEventType.STATUS_CHANGE:
+                if ws_event.content.get("status") == "result_received":
+                    findings["agent_result"] = ws_event.content.get("result", "")
+
+    except Exception as e:
+        log.error("engineer_from_prompt_stream_error", session_id=session_id, error=str(e))
+        await session_manager.complete_session(session_id, error=str(e))
+        db = await get_db()
+        await db.execute(
+            "UPDATE action_cards SET status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            (card_id,),
+        )
+        await db.commit()
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": card_id, "payload": {"status": "failed"}}
+        )
+        return
+
+    # Complete session and update card status
+    final_status = agent.get_status()
+    db = await get_db()
+
+    if final_status == SessionStatus.COMPLETED:
+        await session_manager.complete_session(session_id, findings=findings)
+
+        agent_plan = findings.get("agent_plan", "")
+        agent_result = findings.get("agent_result", "")
+        staged_content = agent_plan or agent_result
+        if staged_content:
+            staged_type = "agent_plan" if agent_plan else "agent_result"
+            await db.execute(
+                "UPDATE action_cards SET staged_output = ?, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+                (json.dumps({"type": staged_type, "content": staged_content}), card_id),
+            )
+
+        has_unanswered = await session_manager.has_unanswered_questions(session_id)
+        card_status = "awaiting_input" if has_unanswered else "ready"
+
+        await db.execute(
+            "UPDATE action_cards SET status = ?, has_workspace = 1, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            (card_status, card_id),
+        )
+        await db.commit()
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": card_id, "payload": {"status": card_status, "has_workspace": True}}
+        )
+        await manager.broadcast(
+            {"type": "agent_completed", "card_id": card_id, "session_id": session_id, "payload": {"findings": findings}}
+        )
+    else:
+        last_error = findings.get("last_error", "")
+        error_msg = f"Agent ended with status: {final_status.value}"
+        if last_error:
+            error_msg += f" — {last_error}"
+        log.error("engineer_from_prompt_failed", session_id=session_id, error=error_msg)
+        await session_manager.complete_session(session_id, error=error_msg)
+        await db.execute(
+            "UPDATE action_cards SET status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            (card_id,),
+        )
+        await db.commit()
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": card_id, "payload": {"status": "failed"}}
+        )

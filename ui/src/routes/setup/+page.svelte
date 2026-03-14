@@ -314,11 +314,12 @@
 	<!-- Step 3: Coding Agent + Repo -->
 	{:else if step === 3}
 		<div class="space-y-4">
-			<h2 class="text-xl font-semibold">Coding Agent</h2>
-			<p class="text-sm text-surface-400">Choose which coding agent Laya should use for code tasks.</p>
+			<h2 class="text-xl font-semibold">Coding Agent (optional)</h2>
+			<p class="text-sm text-surface-400">Choose a coding agent for automated code tasks, or skip if you don't need one.</p>
 
 			<div class="space-y-2">
 				{#each [
+					{ value: 'none', label: 'No Agent', desc: 'I\'ll handle code tasks myself' },
 					{ value: 'claude_code', label: 'Claude Code', desc: 'Anthropic CLI agent' },
 					{ value: 'gemini_cli', label: 'Gemini CLI', desc: 'Google CLI agent' },
 					{ value: 'codex_cli', label: 'Codex CLI', desc: 'OpenAI CLI agent' }

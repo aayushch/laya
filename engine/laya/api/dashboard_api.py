@@ -99,11 +99,11 @@ async def get_dashboard(days: int = 30) -> DashboardResponse:
         events_filtered=events_filtered,
         cards_generated=cards_generated,
         cards_pending=card_counts.get("pending", 0),
-        cards_approved=card_counts.get("approved", 0) + card_counts.get("completed", 0),
+        cards_approved=card_counts.get("done", 0) + card_counts.get("ready", 0),
         cards_dismissed=card_counts.get("dismissed", 0),
         cards_edited=cards_edited,
         actions_executed=sum(action_counts.values()),
-        actions_completed=action_counts.get("completed", 0),
+        actions_completed=action_counts.get("done", 0),
         actions_failed=action_counts.get("failed", 0),
     )
 
@@ -111,7 +111,7 @@ async def get_dashboard(days: int = 30) -> DashboardResponse:
     time_rows = await db.execute_fetchall(
         f"""SELECT action_type, COUNT(*) as count
             FROM action_log
-            WHERE result_status = 'completed' AND executed_at > {date_filter}
+            WHERE result_status = 'done' AND executed_at > {date_filter}
             GROUP BY action_type"""
     )
     by_action_type: dict[str, float] = {}

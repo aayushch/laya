@@ -199,7 +199,7 @@
 							}
 						}).catch(() => {});
 					}
-					group.has_pending = group.cards.some((c) => c.status === 'pending');
+					group.has_pending = group.cards.some((c) => c.status === 'pending' || c.status === 'ready' || c.status === 'requires_approval');
 					if (wasAgent && payload.status !== 'agent_running') {
 						scheduleReload();
 					}
@@ -304,6 +304,9 @@
 	}
 
 	const totalCards = $derived(groups.reduce((sum, g) => sum + g.card_count, 0));
+	const requiresApprovalCount = $derived(
+		groups.reduce((sum, g) => sum + g.cards.filter((c) => c.status === 'requires_approval').length, 0)
+	);
 
 	// Responsive masonry
 	const CARD_WIDTH = 320;
@@ -363,7 +366,9 @@
 	<!-- Sticky summary bar spanning full width -->
 	<div class="flex items-center gap-2 pb-3">
 		<span class="text-xs text-surface-500">
-			{totalGroups} {totalGroups === 1 ? 'group' : 'groups'} · {totalCards} cards
+			{totalGroups} {totalGroups === 1 ? 'group' : 'groups'} · {totalCards} cards{#if requiresApprovalCount > 0}
+				<span class="text-violet-400"> · {requiresApprovalCount} {requiresApprovalCount === 1 ? 'requires' : 'require'} approval</span>
+			{/if}
 		</span>
 		<div class="flex-1"></div>
 		<!-- View toggle -->

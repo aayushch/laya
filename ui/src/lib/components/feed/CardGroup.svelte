@@ -56,54 +56,51 @@
 
 	// Status priority for group color: highest-priority status wins
 	const statusPriority: string[] = [
-		'awaiting_input', 'failed', 'agent_running', 'executing',
-		'pending', 'staged', 'approved', 'completed', 'dismissed', 'archived'
+		'awaiting_input', 'failed', 'agent_running', 'requires_approval',
+		'pending', 'ready', 'done', 'dismissed', 'archived'
 	];
 
 	const groupStatusStyle: Record<string, string> = {
-		pending:        'bg-amber-950/55  border-amber-800/30  hover:border-amber-700/45',
-		approved:       'bg-green-950/55  border-green-800/25  hover:border-green-700/40',
-		executing:      'bg-sky-950/55    border-sky-800/25    hover:border-sky-700/40',
-		completed:      'bg-emerald-950/50 border-emerald-800/20 hover:border-emerald-700/35',
-		failed:         'bg-red-950/60    border-red-800/35    hover:border-red-700/50',
-		dismissed:      'bg-surface-800/40 border-surface-700/25 hover:border-surface-600/40',
-		archived:       'bg-surface-800/40 border-surface-700/25 hover:border-surface-600/40',
-		agent_running:  'bg-violet-950/55 border-violet-800/25 hover:border-violet-700/40',
-		awaiting_input: 'bg-amber-950/55  border-amber-800/30  hover:border-amber-700/45',
-		staged:         'bg-teal-950/50   border-teal-800/20   hover:border-teal-700/35',
+		pending:            'bg-amber-950/55  border-amber-800/30  hover:border-amber-700/45',
+		ready:              'bg-amber-950/55  border-amber-800/30  hover:border-amber-700/45',
+		requires_approval:  'bg-violet-950/55 border-violet-800/25 hover:border-violet-700/40',
+		done:               'bg-emerald-950/50 border-emerald-800/20 hover:border-emerald-700/35',
+		failed:             'bg-red-950/60    border-red-800/35    hover:border-red-700/50',
+		dismissed:          'bg-surface-800/40 border-surface-700/25 hover:border-surface-600/40',
+		archived:           'bg-surface-800/40 border-surface-700/25 hover:border-surface-600/40',
+		agent_running:      'bg-violet-950/55 border-violet-800/25 hover:border-violet-700/40',
+		awaiting_input:     'bg-amber-950/55  border-amber-800/30  hover:border-amber-700/45',
 	};
 
 	const ghostBorderStyle: Record<string, string> = {
-		pending:        'border-amber-800/20',
-		approved:       'border-green-800/15',
-		executing:      'border-sky-800/15',
-		completed:      'border-emerald-800/12',
-		failed:         'border-red-800/25',
-		dismissed:      'border-surface-700/20',
-		archived:       'border-surface-700/20',
-		agent_running:  'border-violet-800/15',
-		awaiting_input: 'border-amber-800/20',
-		staged:         'border-teal-800/12',
+		pending:            'border-amber-800/20',
+		ready:              'border-amber-800/20',
+		requires_approval:  'border-violet-800/15',
+		done:               'border-emerald-800/12',
+		failed:             'border-red-800/25',
+		dismissed:          'border-surface-700/20',
+		archived:           'border-surface-700/20',
+		agent_running:      'border-violet-800/15',
+		awaiting_input:     'border-amber-800/20',
 	};
 
 	const ghostBgStyle: Record<string, string> = {
-		pending:        'bg-amber-950/30',
-		approved:       'bg-green-950/30',
-		executing:      'bg-sky-950/30',
-		completed:      'bg-emerald-950/25',
-		failed:         'bg-red-950/35',
-		dismissed:      'bg-surface-900/40',
-		archived:       'bg-surface-900/40',
-		agent_running:  'bg-violet-950/30',
-		awaiting_input: 'bg-amber-950/30',
-		staged:         'bg-teal-950/25',
+		pending:            'bg-amber-950/30',
+		ready:              'bg-amber-950/30',
+		requires_approval:  'bg-violet-950/30',
+		done:               'bg-emerald-950/25',
+		failed:             'bg-red-950/35',
+		dismissed:          'bg-surface-900/40',
+		archived:           'bg-surface-900/40',
+		agent_running:      'bg-violet-950/30',
+		awaiting_input:     'bg-amber-950/30',
 	};
 
 	// Determine dominant status across all cards in the group
 	const dominantStatus = $derived.by(() => {
 		const statuses = new Set(group.cards.map(c => c.status));
 		for (const s of statusPriority) {
-			if (statuses.has(s)) return s;
+			if (statuses.has(s as ActionCard['status'])) return s;
 		}
 		return group.cards[0]?.status ?? 'pending';
 	});
@@ -176,7 +173,7 @@
 		try {
 			await engineApi.dismissGroup(group.entity_id);
 			for (const card of group.cards) {
-				if (!['completed', 'dismissed', 'failed'].includes(card.status)) {
+				if (!['done', 'dismissed', 'failed'].includes(card.status)) {
 					card.status = 'dismissed';
 				}
 			}

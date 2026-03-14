@@ -16,7 +16,7 @@ _last_briefing_date: str | None = None
 _last_housekeeping_date: str | None = None
 
 # Statuses that are safe to auto-delete (never auto-delete active/in-progress cards)
-_HOUSEKEEPING_STATUSES = ("archived", "dismissed", "completed", "failed")
+_HOUSEKEEPING_STATUSES = ("archived", "dismissed", "done", "failed")
 
 
 async def _run_housekeeping(retention_days: int) -> None:
