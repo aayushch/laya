@@ -7,6 +7,14 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::time::Duration;
 
+/// Return the user's home directory via the HOME (Unix) or USERPROFILE (Windows) env var.
+fn home_dir() -> Option<PathBuf> {
+    #[cfg(unix)]
+    { std::env::var_os("HOME").map(PathBuf::from) }
+    #[cfg(windows)]
+    { std::env::var_os("USERPROFILE").map(PathBuf::from) }
+}
+
 /// Find the engine directory (relative to the Tauri project root).
 /// Only used in dev mode.
 fn engine_dir() -> PathBuf {
@@ -82,10 +90,28 @@ pub fn spawn_engine() -> Result<Child, String> {
 }
 
 /// Spawn the PyInstaller-bundled sidecar binary.
+///
+/// Redirects stdout/stderr to `~/.laya/logs/sidecar.log` so that early
+/// crashes (before Python logging is configured) are still captured.
 fn spawn_sidecar(bin: &PathBuf) -> Result<Child, String> {
     log::info!("Spawning engine sidecar: {}", bin.display());
 
+    let log_dir = home_dir()
+        .ok_or("Cannot determine home directory")?
+        .join(".laya")
+        .join("logs");
+    std::fs::create_dir_all(&log_dir)
+        .map_err(|e| format!("Failed to create log dir: {}", e))?;
+
+    let log_file = std::fs::File::create(log_dir.join("sidecar.log"))
+        .map_err(|e| format!("Failed to create sidecar log: {}", e))?;
+    let stderr_file = log_file
+        .try_clone()
+        .map_err(|e| format!("Failed to clone log file handle: {}", e))?;
+
     Command::new(bin)
+        .stdout(log_file)
+        .stderr(stderr_file)
         .spawn()
         .map_err(|e| format!("Failed to spawn engine sidecar: {}", e))
 }

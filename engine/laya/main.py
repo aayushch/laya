@@ -1,6 +1,7 @@
 """Laya Engine — FastAPI entry point."""
 
 import asyncio
+import sys
 from contextlib import asynccontextmanager
 
 import structlog
@@ -162,9 +163,14 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "laya.main:app",
-        host=ENGINE_HOST,
-        port=ENGINE_PORT,
-        reload=True,
-    )
+    if getattr(sys, "frozen", False):
+        # PyInstaller bundle: pass app object directly and disable reload
+        # (reload uses sys.executable to respawn, which breaks in frozen bundles)
+        uvicorn.run(app, host=ENGINE_HOST, port=ENGINE_PORT)
+    else:
+        uvicorn.run(
+            "laya.main:app",
+            host=ENGINE_HOST,
+            port=ENGINE_PORT,
+            reload=True,
+        )
