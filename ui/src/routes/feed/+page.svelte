@@ -213,7 +213,15 @@
 	let _scrollToCardId = $state<string | null>(null);
 
 	function gotoCard(card: ActionCard) {
-		const cardDate = card.created_at ? card.created_at.slice(0, 10) : null;
+		let cardDate: string | null = null;
+		if (card.created_at) {
+			// created_at is stored as UTC in the DB (e.g. "2026-03-13 20:00:00") without
+			// a timezone indicator. Append 'Z' so Date parses it as UTC, then extract the
+			// local date — matching the timezone-aware grouping used by feedDate.
+			const raw = card.created_at.endsWith('Z') || card.created_at.includes('+') ? card.created_at : card.created_at.replace(' ', 'T') + 'Z';
+			const d = new Date(raw);
+			cardDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+		}
 		_scrollToCardId = card.card_id;
 
 		if (cardDate && cardDate !== $feedDate) {

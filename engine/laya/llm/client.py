@@ -273,16 +273,28 @@ async def llm_call(
     if model_name.startswith("gemini-3"):
         effective_temperature = 1.0
 
+    from laya.pipeline.queue import get_model_timeout, get_llm_retries
+
+    # Use configured values (settings.json pipeline section)
+    configured_timeout = get_model_timeout()
+    # If caller didn't override num_retries from the default, use configured value
+    if num_retries == 3:
+        num_retries = get_llm_retries()
+
     kwargs: dict[str, Any] = {
         "model": model,
         "messages": messages,
         "temperature": effective_temperature,
         "max_tokens": max_tokens,
-        "timeout": 60.0,
+        "timeout": configured_timeout,
     }
 
-    # Merge custom provider overrides (api_base, timeout, api_key)
+    # Merge custom provider overrides (api_base, api_key, etc.)
+    # Use the higher of global pipeline timeout vs provider timeout
+    provider_timeout = custom_provider_extra.pop("timeout", None)
     kwargs.update(custom_provider_extra)
+    if provider_timeout is not None:
+        kwargs["timeout"] = max(float(kwargs["timeout"]), float(provider_timeout))
 
     # Use space-specific API key if available (takes precedence)
     if space_api_key:
@@ -554,12 +566,14 @@ async def llm_call_streaming(
     if model_name.startswith("gemini-3"):
         effective_temperature = 1.0
 
+    from laya.pipeline.queue import get_model_timeout
+
     kwargs: dict[str, Any] = {
         "model": model,
         "messages": messages,
         "temperature": effective_temperature,
         "max_tokens": max_tokens,
-        "timeout": 60.0,
+        "timeout": get_model_timeout(),
         "stream": True,
     }
     kwargs.update(custom_provider_extra)
