@@ -321,19 +321,82 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
-            if let tauri::RunEvent::Exit = event {
-                // Kill engine sidecar
-                if let Some(state) = app.try_state::<EngineProcess>() {
-                    if let Ok(mut guard) = state.0.lock() {
-                        if let Some(ref mut child) = *guard {
-                            log::info!("Killing engine process");
-                            let _ = child.kill();
-                        }
+            match event {
+                // macOS: hide window instead of quitting when the red X is clicked.
+                // The user can quit via tray menu → Quit, or Cmd+Q.
+                #[cfg(target_os = "macos")]
+                tauri::RunEvent::WindowEvent {
+                    label,
+                    event: tauri::WindowEvent::CloseRequested { api, .. },
+                    ..
+                } => {
+                    api.prevent_close();
+                    if let Some(window) = app.get_webview_window(&label) {
+                        let _ = window.hide();
+                    }
+                    log::info!("Window hidden (macOS close-to-dock behavior)");
+                }
+                // macOS: re-show the window when the dock icon is clicked
+                #[cfg(target_os = "macos")]
+                tauri::RunEvent::Reopen { .. } => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
                     }
                 }
-                // Stop n8n container
-                log::info!("Stopping n8n container");
-                docker::shutdown_n8n();
+                tauri::RunEvent::Exit => {
+                    // Gracefully stop engine: SIGTERM first, then SIGKILL fallback
+                    if let Some(state) = app.try_state::<EngineProcess>() {
+                        if let Ok(mut guard) = state.0.lock() {
+                            if let Some(ref mut child) = *guard {
+                                let pid = child.id();
+                                log::info!("Sending SIGTERM to engine process (pid {})", pid);
+
+                                #[cfg(unix)]
+                                {
+                                    // Send SIGTERM to allow graceful shutdown
+                                    unsafe { libc::kill(pid as i32, libc::SIGTERM); }
+
+                                    // Wait up to 5 seconds for graceful exit
+                                    let start = std::time::Instant::now();
+                                    loop {
+                                        match child.try_wait() {
+                                            Ok(Some(_)) => {
+                                                log::info!("Engine exited gracefully");
+                                                break;
+                                            }
+                                            Ok(None) => {
+                                                if start.elapsed() > Duration::from_secs(5) {
+                                                    log::warn!("Engine did not exit in time, sending SIGKILL");
+                                                    let _ = child.kill();
+                                                    let _ = child.wait();
+                                                    break;
+                                                }
+                                                std::thread::sleep(Duration::from_millis(100));
+                                            }
+                                            Err(e) => {
+                                                log::error!("Error waiting for engine: {}", e);
+                                                let _ = child.kill();
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                #[cfg(not(unix))]
+                                {
+                                    log::info!("Killing engine process");
+                                    let _ = child.kill();
+                                    let _ = child.wait();
+                                }
+                            }
+                        }
+                    }
+                    // Stop n8n container
+                    log::info!("Stopping n8n container");
+                    docker::shutdown_n8n();
+                }
+                _ => {}
             }
         });
 }

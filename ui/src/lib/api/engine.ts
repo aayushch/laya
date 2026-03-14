@@ -86,6 +86,9 @@ export const engineApi = {
 			body: JSON.stringify(settings)
 		}),
 
+	detectAgentPaths: () =>
+		request<{ agent_paths: Record<string, string> }>('/settings/detect-agents'),
+
 	// API Keys
 	setApiKey: (provider: string, apiKey: string) =>
 		request<{ status: string; provider: string }>('/settings/api-key', {

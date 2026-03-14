@@ -15,7 +15,7 @@ from laya.agents.base import CodingAgent
 from laya.agents.claude_code import ClaudeCodeAgent
 from laya.agents.codex_cli import CodexCliAgent
 from laya.agents.gemini_cli import GeminiCliAgent
-from laya.config import load_settings
+from laya.config import get_agent_binary, load_settings
 from laya.db.sqlite import get_db
 from laya.models.workspace import AgentType, SessionStatus, WorkspaceEvent
 
@@ -28,14 +28,15 @@ _card_sessions: dict[str, str] = {}
 
 
 def _create_agent(agent_type: AgentType) -> CodingAgent:
-    """Factory: create the appropriate CodingAgent adapter."""
+    """Factory: create the appropriate CodingAgent adapter with resolved binary path."""
+    binary = get_agent_binary(agent_type.value)
     match agent_type:
         case AgentType.CLAUDE_CODE:
-            return ClaudeCodeAgent()
+            return ClaudeCodeAgent(binary_path=binary)
         case AgentType.GEMINI_CLI:
-            return GeminiCliAgent()
+            return GeminiCliAgent(binary_path=binary)
         case AgentType.CODEX_CLI:
-            return CodexCliAgent()
+            return CodexCliAgent(binary_path=binary)
         case _:
             raise ValueError(f"Unknown agent type: {agent_type}")
 

@@ -36,7 +36,8 @@ class GeminiCliAgent(CodingAgent):
     AGENT_MESSAGE events so nothing is lost.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, binary_path: str = "gemini") -> None:
+        self._binary = binary_path
         self._process = AgentProcess()
         self._session_id: str = ""
         self._gemini_session_id: str | None = None
@@ -56,7 +57,7 @@ class GeminiCliAgent(CodingAgent):
         self._status = SessionStatus.STARTING
 
         args = [
-            "gemini",
+            self._binary,
             "-p",
             prompt,
             "--output-format",
@@ -83,7 +84,7 @@ class GeminiCliAgent(CodingAgent):
         self._status = SessionStatus.STARTING
 
         args = [
-            "gemini",
+            self._binary,
             "-p",
             answer_text,
             "--resume",

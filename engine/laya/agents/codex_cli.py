@@ -29,7 +29,8 @@ APPROVAL_PATTERNS = [
 class CodexCliAgent(CodingAgent):
     """OpenAI Codex CLI adapter. Spawns `codex` as a subprocess."""
 
-    def __init__(self) -> None:
+    def __init__(self, binary_path: str = "codex") -> None:
+        self._binary = binary_path
         self._process = AgentProcess()
         self._session_id: str = ""
         self._status: SessionStatus = SessionStatus.STARTING
@@ -37,7 +38,7 @@ class CodexCliAgent(CodingAgent):
     async def start_session(self, session_id: str, prompt: str, repo_path: str) -> None:
         self._session_id = session_id
         self._status = SessionStatus.STARTING
-        args = ["codex", prompt]
+        args = [self._binary, prompt]
         await self._process.spawn(args=args, cwd=repo_path)
         self._status = SessionStatus.RUNNING
 

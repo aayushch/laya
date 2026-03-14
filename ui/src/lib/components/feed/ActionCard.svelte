@@ -369,7 +369,7 @@
 				<div class="group/act relative">
 					<button
 						aria-label="Retry"
-						class="flex h-6 w-6 items-center justify-center rounded-md text-orange-400/60 transition-all hover:bg-orange-500/15 hover:text-orange-400 disabled:opacity-40"
+						class="flex h-6 w-6 items-center justify-center rounded-md text-laya-orange/60 transition-all hover:bg-laya-orange/15 hover:text-laya-orange disabled:opacity-40"
 						onclick={reopen}
 						disabled={reopening}
 					>
@@ -384,7 +384,7 @@
 				<div class="group/act relative">
 					<button
 						aria-label="Archive"
-						class="flex h-6 w-6 items-center justify-center rounded-md text-red-400/60 transition-all hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40"
+						class="flex h-6 w-6 items-center justify-center rounded-md text-surface-500 transition-all hover:bg-surface-500/15 hover:text-surface-300 disabled:opacity-40"
 						onclick={archive}
 						disabled={archiving}
 					>
@@ -429,7 +429,7 @@
 		</div>
 
 		<!-- Right: utility icons (appear on hover) + priority chip -->
-		<div class="flex items-center gap-0.5">
+		<div class="flex items-center gap-0.5 min-w-0">
 			<!-- Copy card ID -->
 			<div class="group/act relative">
 				<span
@@ -467,9 +467,9 @@
 				<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Chat</span>
 			</div>
 			<!-- Status indicator -->
-			<span class="ml-1 flex items-center gap-1 shrink-0">
-				<span class="h-1.5 w-1.5 rounded-full {statusDot[card.status] ?? statusDot.pending}"></span>
-				<span class="text-[10px] text-surface-400">{statusLabel[card.status] ?? card.status}</span>
+			<span class="ml-1 flex items-center gap-1 min-w-0">
+				<span class="h-1.5 w-1.5 rounded-full shrink-0 {statusDot[card.status] ?? statusDot.pending}"></span>
+				<span class="text-[10px] text-surface-400 truncate">{statusLabel[card.status] ?? card.status}</span>
 			</span>
 			<!-- Priority chip -->
 			<span class="ml-1 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase {priorityColors[card.priority] ?? priorityColors.MEDIUM}">

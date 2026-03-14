@@ -41,7 +41,8 @@ class ClaudeCodeAgent(CodingAgent):
     Parses the JSON stream lines for structured events.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, binary_path: str = "claude") -> None:
+        self._binary = binary_path
         self._process = AgentProcess()
         self._session_id: str = ""
         self._cc_session_id: str | None = None
@@ -59,7 +60,7 @@ class ClaudeCodeAgent(CodingAgent):
         self._status = SessionStatus.STARTING
 
         args = [
-            "claude",
+            self._binary,
             "-p",
             prompt,
             "--output-format",
@@ -88,7 +89,7 @@ class ClaudeCodeAgent(CodingAgent):
         self._status = SessionStatus.STARTING
 
         args = [
-            "claude",
+            self._binary,
             "-p",
             answer_text,
             "--resume",
