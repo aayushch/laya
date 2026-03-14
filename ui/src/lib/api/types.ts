@@ -169,6 +169,15 @@ export interface FeedPreferences {
 	spaceFilter: string | null;
 }
 
+/** Pipeline processing settings (advanced) */
+export interface PipelineSettings {
+	model_timeout: number;
+	llm_retries: number;
+	max_retry_attempts: number;
+	max_concurrent_events: number;
+	queue_poll_interval: number;
+}
+
 /** Full settings response from GET /settings */
 export interface Settings {
 	models: ModelSettings;
@@ -189,6 +198,7 @@ export interface Settings {
 	};
 	n8n?: N8nSettings;
 	feed_preferences?: FeedPreferences;
+	pipeline?: PipelineSettings;
 }
 
 /** Staged output attached to an action card */

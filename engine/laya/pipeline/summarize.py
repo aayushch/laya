@@ -17,7 +17,7 @@ from laya.llm.prompts.summarizer import (
 
 # Maximum number of items across all sections before compaction kicks in.
 _COMPACTION_THRESHOLD = 40
-_SUMMARY_MAX_TOKENS = 16384
+_SUMMARY_MAX_TOKENS = 65536
 
 log = structlog.get_logger()
 
