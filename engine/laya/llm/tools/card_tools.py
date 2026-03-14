@@ -196,7 +196,7 @@ async def _update_card_status(card_id: str, new_status: str) -> dict[str, Any]:
         return {"error": f"Card '{card_id}' not found"}
 
     old_status = rows[0]["status"]
-    resolved_at = now if new_status in ("dismissed", "completed", "archived") else None
+    resolved_at = now if new_status in ("dismissed", "done", "archived") else None
 
     await db.execute(
         """UPDATE action_cards
@@ -219,9 +219,9 @@ async def dismiss_card(card_id: str) -> dict[str, Any]:
     return await _update_card_status(card_id, "dismissed")
 
 
-async def approve_card(card_id: str) -> dict[str, Any]:
-    """Approve a card for execution."""
-    return await _update_card_status(card_id, "approved")
+async def mark_card_done(card_id: str) -> dict[str, Any]:
+    """Mark a card as done."""
+    return await _update_card_status(card_id, "done")
 
 
 async def archive_card(card_id: str) -> dict[str, Any]:

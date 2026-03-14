@@ -10,7 +10,8 @@
 		ongotocard
 	}: { card: ActionCard; onclose: () => void; ongotocard?: (card: ActionCard) => void } = $props();
 
-	let approving = $state(false);
+	let markingDone = $state(false);
+	let approvingAgent = $state(false);
 	let dismissing = $state(false);
 	let archiving = $state(false);
 	let reopening = $state(false);
@@ -44,22 +45,33 @@
 		agent_plan: 'Implementation Plan'
 	};
 
-	const terminalStatuses = new Set(['completed', 'failed', 'dismissed', 'archived']);
-	const actionableStatuses = new Set(['pending', 'approved', 'staged', 'agent_running', 'awaiting_input']);
+	const terminalStatuses = new Set(['done', 'failed', 'dismissed', 'archived']);
+	const actionableStatuses = new Set(['ready', 'requires_approval', 'agent_running', 'awaiting_input']);
 	let isActionable = $derived(actionableStatuses.has(card.status));
 	let isTerminal = $derived(terminalStatuses.has(card.status));
 
 	const statusColors: Record<string, string> = {
 		pending: 'text-yellow-400',
-		approved: 'text-green-400',
-		executing: 'text-blue-400',
-		completed: 'text-green-500',
-		failed: 'text-red-500',
-		dismissed: 'text-surface-500',
-		archived: 'text-surface-600',
+		ready: 'text-amber-400',
+		requires_approval: 'text-violet-400',
 		agent_running: 'text-violet-400',
 		awaiting_input: 'text-yellow-400',
-		staged: 'text-emerald-400'
+		done: 'text-green-500',
+		failed: 'text-red-500',
+		dismissed: 'text-surface-500',
+		archived: 'text-surface-600'
+	};
+
+	const statusLabels: Record<string, string> = {
+		pending: 'Processing',
+		ready: 'Ready',
+		requires_approval: 'Needs Approval',
+		agent_running: 'Agent Running',
+		awaiting_input: 'Input Needed',
+		done: 'Done',
+		failed: 'Failed',
+		dismissed: 'Dismissed',
+		archived: 'Archived'
 	};
 
 	async function executeAction(actionId: string) {
@@ -76,13 +88,23 @@
 		}
 	}
 
-	async function approve() {
-		approving = true;
+	async function markDone() {
+		markingDone = true;
 		try {
-			await engineApi.approveCard(card.card_id);
-			card.status = 'approved';
+			await engineApi.markCardDone(card.card_id);
+			card.status = 'done';
 		} finally {
-			approving = false;
+			markingDone = false;
+		}
+	}
+
+	async function approveAgent() {
+		approvingAgent = true;
+		try {
+			await engineApi.approveAgent(card.card_id);
+			card.status = 'agent_running';
+		} finally {
+			approvingAgent = false;
 		}
 	}
 
@@ -299,7 +321,7 @@
 										: 'border-surface-600 bg-surface-700/50 text-surface-200 hover:bg-surface-600'}
 								{!isSelected && card.selected_action_id ? 'opacity-50' : ''}"
 							onclick={() => executeAction(action.action_id)}
-							disabled={!!executingActionId || isTerminal || card.status === 'executing'}
+							disabled={!!executingActionId || isTerminal}
 						>
 							{#if executingActionId === action.action_id}
 								Executing...
@@ -350,7 +372,7 @@
 					<span>Confidence: {Math.round(card.confidence * 100)}%</span>
 				{/if}
 				<span>Category: {card.category}</span>
-				<span class={statusColors[card.status] ?? 'text-surface-400'}>Status: {card.status}</span>
+				<span class={statusColors[card.status] ?? 'text-surface-400'}>Status: {statusLabels[card.status] ?? card.status}</span>
 				{#if card.has_workspace}
 					<a href="/workspace/{card.card_id}" class="text-violet-400 hover:text-violet-300 underline">Open Workspace</a>
 				{/if}
@@ -363,7 +385,7 @@
 
 	<!-- Action buttons -->
 	<div class="border-t border-surface-700 px-5 py-3">
-		{#if isActionable}
+		{#if card.status === 'ready'}
 			{#if showDismissInput}
 				<div class="flex gap-2">
 					<input
@@ -389,10 +411,10 @@
 				<div class="flex gap-2">
 					<button
 						class="flex-1 rounded-lg bg-green-700/40 py-2 text-sm font-medium text-green-300 transition-colors hover:bg-green-700/60"
-						onclick={approve}
-						disabled={approving}
+						onclick={markDone}
+						disabled={markingDone}
 					>
-						{approving ? 'Approving...' : 'Approve'}
+						{markingDone ? 'Marking...' : 'Mark as Done'}
 					</button>
 					<button
 						class="flex-1 rounded-lg bg-surface-700/50 py-2 text-sm font-medium text-surface-400 transition-colors hover:bg-surface-700"
@@ -406,7 +428,54 @@
 						disabled={archiving}
 						title="Archive this card"
 					>
-						{archiving ? '…' : 'Archive'}
+						{archiving ? '...' : 'Archive'}
+					</button>
+				</div>
+			{/if}
+		{:else if card.status === 'requires_approval'}
+			{#if showDismissInput}
+				<div class="flex gap-2">
+					<input
+						bind:value={dismissReason}
+						placeholder="Reason (optional)"
+						class="flex-1 rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500"
+					/>
+					<button
+						class="rounded-lg bg-surface-600 px-4 py-2 text-sm font-medium text-surface-200 hover:bg-surface-500"
+						onclick={dismiss}
+						disabled={dismissing}
+					>
+						{dismissing ? 'Dismissing...' : 'Confirm'}
+					</button>
+					<button
+						class="text-sm text-surface-400 hover:text-surface-200"
+						onclick={() => (showDismissInput = false)}
+					>
+						Cancel
+					</button>
+				</div>
+			{:else}
+				<div class="flex gap-2">
+					<button
+						class="flex-1 rounded-lg bg-violet-700/40 py-2 text-sm font-medium text-violet-300 transition-colors hover:bg-violet-700/60"
+						onclick={approveAgent}
+						disabled={approvingAgent}
+					>
+						{approvingAgent ? 'Starting...' : 'Approve Agent'}
+					</button>
+					<button
+						class="flex-1 rounded-lg bg-surface-700/50 py-2 text-sm font-medium text-surface-400 transition-colors hover:bg-surface-700"
+						onclick={() => (showDismissInput = true)}
+					>
+						Dismiss
+					</button>
+					<button
+						class="rounded-lg bg-surface-700/30 px-3 py-2 text-sm font-medium text-surface-500 transition-colors hover:bg-surface-700"
+						onclick={archive}
+						disabled={archiving}
+						title="Archive this card"
+					>
+						{archiving ? '...' : 'Archive'}
 					</button>
 				</div>
 			{/if}
@@ -425,7 +494,7 @@
 						onclick={archive}
 						disabled={archiving}
 					>
-						{archiving ? '…' : 'Archive'}
+						{archiving ? '...' : 'Archive'}
 					</button>
 				{/if}
 				{#if card.status === 'archived'}
@@ -457,7 +526,7 @@
 					onclick={archive}
 					disabled={archiving}
 				>
-					{archiving ? '…' : 'Archive'}
+					{archiving ? '...' : 'Archive'}
 				</button>
 			</div>
 		{/if}
@@ -501,7 +570,7 @@
 					onclick={deleteCard}
 					disabled={deleting}
 				>
-					{deleting ? 'Deleting…' : 'Delete permanently'}
+					{deleting ? 'Deleting...' : 'Delete permanently'}
 				</button>
 			</div>
 		</div>

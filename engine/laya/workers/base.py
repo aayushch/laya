@@ -14,4 +14,5 @@ class WorkerResult(BaseModel):
     findings: dict[str, Any] = Field(default_factory=dict)
     drafted_output: dict[str, Any] = Field(default_factory=dict)
     session_id: str | None = None
+    card_status: str | None = None
     error: str | None = None

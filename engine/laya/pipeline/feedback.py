@@ -38,7 +38,7 @@ async def query_feedback_patterns(
                FROM action_cards ac
                JOIN events e ON ac.event_id = e.event_id
                WHERE e.source_platform = ?
-                 AND ac.status IN ('approved', 'dismissed')
+                 AND ac.status IN ('done', 'dismissed')
                  AND ac.resolved_at IS NOT NULL
                  AND ac.created_at > datetime('now', '-30 days')
                GROUP BY e.source_platform, e.source_raw_event_type,
@@ -82,7 +82,7 @@ def format_feedback_section(patterns: list[dict]) -> str | None:
         key = (p["source_platform"], p["event_type"])
         if key not in groups:
             groups[key] = {"approved": 0, "dismissed": 0, "details": []}
-        if p["status"] == "approved":
+        if p["status"] == "done":
             groups[key]["approved"] += p["count"]
         elif p["status"] == "dismissed":
             groups[key]["dismissed"] += p["count"]
@@ -108,7 +108,7 @@ def format_feedback_section(patterns: list[dict]) -> str | None:
             prio = d["priority"]
             if prio not in priority_stats:
                 priority_stats[prio] = {"approved": 0, "dismissed": 0}
-            if d["status"] == "approved":
+            if d["status"] == "done":
                 priority_stats[prio]["approved"] += d["count"]
             else:
                 priority_stats[prio]["dismissed"] += d["count"]

@@ -57,7 +57,7 @@ async def generate_briefing() -> str:
     pending_rows = await db.execute_fetchall(
         """SELECT card_id, header, summary, priority, persona
            FROM action_cards
-           WHERE status = 'pending'
+           WHERE status IN ('pending', 'ready', 'requires_approval')
            ORDER BY CASE priority
                WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1
                WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3 END ASC

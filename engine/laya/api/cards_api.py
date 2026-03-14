@@ -150,7 +150,7 @@ async def list_cards(
 
 
 _PRIORITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
-_TERMINAL = {"completed", "dismissed", "failed"}
+_TERMINAL = {"done", "dismissed", "failed"}
 
 
 @router.get("/cards/grouped")
@@ -257,7 +257,7 @@ async def get_grouped_cards(
             key=lambda p: _PRIORITY_ORDER.get(p, 99),
         )
         latest_at = max((c.created_at or "") for c in cards)
-        has_pending = any(c.status == "pending" for c in cards)
+        has_pending = any(c.status in ("pending", "ready", "requires_approval") for c in cards)
         result.append(
             CardGroup(
                 entity_id=entity_id,
@@ -336,7 +336,7 @@ async def dismiss_group(entity_id: str) -> dict:
     db = await get_db()
 
     rows = await db.execute_fetchall(
-        "SELECT card_id FROM action_cards WHERE entity_id = ? AND status NOT IN ('completed', 'dismissed', 'failed')",
+        "SELECT card_id FROM action_cards WHERE entity_id = ? AND status NOT IN ('done', 'dismissed', 'failed')",
         (entity_id,),
     )
 
@@ -416,7 +416,7 @@ async def reopen_card(card_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Card not found")
 
     current = rows[0]["status"]
-    reopenable = {"dismissed", "completed", "failed", "archived", "executing", "agent_running"}
+    reopenable = {"dismissed", "done", "failed", "archived", "agent_running"}
     if current not in reopenable:
         raise HTTPException(
             status_code=409, detail=f"Card status '{current}' cannot be reopened"
@@ -475,47 +475,37 @@ async def get_card(card_id: str) -> CardResponse:
     return _row_to_card(rows[0])
 
 
-class ApproveRequest(BaseModel):
-    modifications: dict[str, Any] | None = None
-
-
-@router.post("/cards/{card_id}/approve")
-async def approve_card(card_id: str, body: ApproveRequest | None = None) -> dict:
-    """Approve an action card."""
+@router.post("/cards/{card_id}/done")
+async def mark_card_done(card_id: str) -> dict:
+    """Mark an action card as done (user has reviewed/acted on it)."""
     db = await get_db()
 
-    # Check current status
     rows = await db.execute_fetchall(
         "SELECT status FROM action_cards WHERE card_id = ?", (card_id,)
     )
     if not rows:
         raise HTTPException(status_code=404, detail="Card not found")
 
-    approvable = {"pending", "agent_running", "awaiting_input", "staged", "failed"}
-    if rows[0]["status"] not in approvable:
+    doneable = {"pending", "ready", "requires_approval", "awaiting_input"}
+    if rows[0]["status"] not in doneable:
         raise HTTPException(
-            status_code=409, detail=f"Card status '{rows[0]['status']}' cannot be approved"
+            status_code=409, detail=f"Card status '{rows[0]['status']}' cannot be marked done"
         )
 
     now = datetime.now(timezone.utc).isoformat()
-    modifications_json = None
-    if body and body.modifications:
-        modifications_json = json.dumps(body.modifications)
-
     await db.execute(
         """UPDATE action_cards
-           SET status = 'approved', resolved_at = ?, user_feedback = ?,
-               updated_at = ?
+           SET status = 'done', resolved_at = ?, updated_at = ?
            WHERE card_id = ?""",
-        (now, modifications_json, now, card_id),
+        (now, now, card_id),
     )
     await db.commit()
 
     await manager.broadcast(
-        {"type": "card_updated", "card_id": card_id, "payload": {"status": "approved"}}
+        {"type": "card_updated", "card_id": card_id, "payload": {"status": "done"}}
     )
 
-    log.info("card_approved", card_id=card_id)
+    log.info("card_done", card_id=card_id)
 
     # Update daily summary with status change
     header_rows = await db.execute_fetchall(
@@ -523,11 +513,67 @@ async def approve_card(card_id: str, body: ApproveRequest | None = None) -> dict
     )
     if header_rows:
         asyncio.create_task(
-            trigger_summary_status_update(card_id, header_rows[0]["header"], "approved"),
+            trigger_summary_status_update(card_id, header_rows[0]["header"], "done"),
             name=f"summary_status_{card_id}",
         )
 
-    return {"status": "approved", "card_id": card_id}
+    return {"status": "done", "card_id": card_id}
+
+
+@router.post("/cards/{card_id}/approve-agent")
+async def approve_agent(card_id: str) -> dict:
+    """Approve agent execution for a requires_approval card.
+
+    Retrieves the stored agent prompt, spawns the coding agent in the
+    background, and transitions the card to agent_running.
+    """
+    db = await get_db()
+
+    rows = await db.execute_fetchall(
+        "SELECT status, event_id, agent_prompt, persona, space_id FROM action_cards WHERE card_id = ?",
+        (card_id,),
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    row = rows[0]
+    if row["status"] != "requires_approval":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Card status '{row['status']}' is not requires_approval",
+        )
+
+    if not row["agent_prompt"]:
+        raise HTTPException(
+            status_code=409, detail="No agent prompt stored for this card"
+        )
+
+    # Transition to agent_running immediately
+    now = datetime.now(timezone.utc).isoformat()
+    await db.execute(
+        "UPDATE action_cards SET status = 'agent_running', updated_at = ? WHERE card_id = ?",
+        (now, card_id),
+    )
+    await db.commit()
+
+    await manager.broadcast(
+        {"type": "card_updated", "card_id": card_id, "payload": {"status": "agent_running"}}
+    )
+
+    # Spawn agent in background
+    from laya.workers.engineer import run_engineer_from_prompt
+
+    asyncio.create_task(
+        run_engineer_from_prompt(
+            card_id=card_id,
+            agent_prompt=row["agent_prompt"],
+            space_id=row["space_id"],
+        ),
+        name=f"agent_{card_id}",
+    )
+
+    log.info("agent_approved", card_id=card_id)
+    return {"status": "agent_running", "card_id": card_id}
 
 
 async def _delete_card_cascade(db, card_id: str, event_id: str | None) -> None:
@@ -605,7 +651,7 @@ async def dismiss_card(card_id: str, body: DismissRequest | None = None) -> dict
     if not rows:
         raise HTTPException(status_code=404, detail="Card not found")
 
-    terminal = {"completed", "failed", "dismissed"}
+    terminal = {"done", "failed", "dismissed"}
     if rows[0]["status"] in terminal:
         raise HTTPException(
             status_code=409, detail=f"Card status '{rows[0]['status']}' is terminal"

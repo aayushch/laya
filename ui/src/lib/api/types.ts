@@ -183,6 +183,7 @@ export interface Settings {
 	models: ModelSettings;
 	api_keys: ApiKeyStatus;
 	coding_agent: string;
+	agent_execution_mode: 'automatic' | 'requires_approval';
 	privacy: {
 		tier3_sources: string[];
 		tier3_processing: string;
@@ -231,15 +232,14 @@ export interface ActionCard {
 	suggested_actions?: SuggestedAction[];
 	status:
 		| 'pending'
-		| 'approved'
-		| 'executing'
-		| 'completed'
+		| 'ready'
+		| 'requires_approval'
+		| 'done'
 		| 'failed'
 		| 'dismissed'
 		| 'archived'
 		| 'agent_running'
-		| 'awaiting_input'
-		| 'staged';
+		| 'awaiting_input';
 	privacy_tier: number;
 	has_workspace: boolean;
 	resolved_at?: string;

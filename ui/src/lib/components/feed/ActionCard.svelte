@@ -7,7 +7,8 @@
 
 	const isSelected = $derived(card.card_id === selectedCardId);
 
-	let approving = $state(false);
+	let markingDone = $state(false);
+	let approvingAgent = $state(false);
 	let dismissing = $state(false);
 	let archiving = $state(false);
 	let reopening = $state(false);
@@ -31,29 +32,27 @@
 	};
 
 	const statusDot: Record<string, string> = {
-		pending:        'bg-yellow-400',
-		approved:       'bg-green-400',
-		executing:      'bg-blue-400 animate-pulse',
-		completed:      'bg-green-500',
-		failed:         'bg-red-500',
-		dismissed:      'bg-surface-500',
-		archived:       'bg-surface-600',
-		agent_running:  'bg-violet-400 animate-pulse',
-		awaiting_input: 'bg-yellow-400 animate-pulse',
-		staged:         'bg-emerald-400'
+		pending:            'bg-yellow-400 animate-pulse',
+		ready:              'bg-amber-400',
+		requires_approval:  'bg-violet-400',
+		agent_running:      'bg-violet-400 animate-pulse',
+		awaiting_input:     'bg-yellow-400 animate-pulse',
+		done:               'bg-green-500',
+		failed:             'bg-red-500',
+		dismissed:          'bg-surface-500',
+		archived:           'bg-surface-600'
 	};
 
 	const statusLabel: Record<string, string> = {
-		pending:        'Pending',
-		approved:       'Approved',
-		executing:      'Executing',
-		completed:      'Completed',
-		failed:         'Failed',
-		dismissed:      'Dismissed',
-		archived:       'Archived',
-		agent_running:  'Agent Running',
-		awaiting_input: 'Input Needed',
-		staged:         'Staged'
+		pending:            'Processing',
+		ready:              'Ready',
+		requires_approval:  'Needs Approval',
+		agent_running:      'Agent Running',
+		awaiting_input:     'Input Needed',
+		done:               'Done',
+		failed:             'Failed',
+		dismissed:          'Dismissed',
+		archived:           'Archived'
 	};
 
 	const platformLabel: Record<string, string> = {
@@ -67,15 +66,14 @@
 	};
 
 	const statusCardStyle: Record<string, string> = {
-		pending:        'bg-amber-950/55  border-amber-800/30  hover:border-amber-700/45',
-		approved:       'bg-green-950/55  border-green-800/25  hover:border-green-700/40',
-		executing:      'bg-sky-950/55    border-sky-800/25    hover:border-sky-700/40',
-		completed:      'bg-emerald-950/50 border-emerald-800/20 hover:border-emerald-700/35',
-		failed:         'bg-red-950/60    border-red-800/35    hover:border-red-700/50',
-		dismissed:      'bg-surface-800/40 border-surface-700/25 hover:border-surface-600/40 opacity-50 hover:opacity-75',
-		agent_running:  'bg-violet-950/55 border-violet-800/25 hover:border-violet-700/40',
-		awaiting_input: 'bg-amber-950/55  border-amber-800/30  hover:border-amber-700/45',
-		staged:         'bg-teal-950/50   border-teal-800/20   hover:border-teal-700/35',
+		pending:            'bg-amber-950/55  border-amber-800/30  hover:border-amber-700/45',
+		ready:              'bg-amber-950/55  border-amber-800/30  hover:border-amber-700/45',
+		requires_approval:  'bg-violet-950/55 border-violet-800/25 hover:border-violet-700/40',
+		agent_running:      'bg-violet-950/55 border-violet-800/25 hover:border-violet-700/40',
+		awaiting_input:     'bg-amber-950/55  border-amber-800/30  hover:border-amber-700/45',
+		done:               'bg-emerald-950/50 border-emerald-800/20 hover:border-emerald-700/35',
+		failed:             'bg-red-950/60    border-red-800/35    hover:border-red-700/50',
+		dismissed:          'bg-surface-800/40 border-surface-700/25 hover:border-surface-600/40 opacity-50 hover:opacity-75',
 	};
 
 	const baseCardStyle = $derived(
@@ -108,14 +106,25 @@
 		return `${Math.floor(hours / 24)}d ago`;
 	}
 
-	async function approve(e: Event) {
+	async function markDone(e: Event) {
 		e.stopPropagation();
-		approving = true;
+		markingDone = true;
 		try {
-			await engineApi.approveCard(card.card_id);
-			card.status = 'approved';
+			await engineApi.markCardDone(card.card_id);
+			card.status = 'done';
 		} finally {
-			approving = false;
+			markingDone = false;
+		}
+	}
+
+	async function approveAgent(e: Event) {
+		e.stopPropagation();
+		approvingAgent = true;
+		try {
+			await engineApi.approveAgent(card.card_id);
+			card.status = 'agent_running';
+		} finally {
+			approvingAgent = false;
 		}
 	}
 
@@ -196,20 +205,63 @@
 	<div class="mb-2 flex items-center justify-between">
 		<!-- Action icons -->
 		<div class="flex items-center gap-1">
-			{#if card.status === 'pending'}
-				<!-- Approve -->
+			{#if card.status === 'ready'}
+				<!-- Mark as Done -->
 				<div class="group/act relative">
 					<button
-						aria-label="Approve"
+						aria-label="Mark as Done"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-green-400/60 transition-all hover:bg-green-500/15 hover:text-green-400 disabled:opacity-40"
-						onclick={approve}
-						disabled={approving}
+						onclick={markDone}
+						disabled={markingDone}
 					>
 						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Approve</span>
+					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Mark as Done</span>
+				</div>
+				<!-- Dismiss -->
+				<div class="group/act relative">
+					<button
+						aria-label="Dismiss"
+						class="flex h-6 w-6 items-center justify-center rounded-md text-surface-500 transition-all hover:bg-surface-500/15 hover:text-surface-300 disabled:opacity-40"
+						onclick={dismiss}
+						disabled={dismissing}
+					>
+						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+							<path stroke-linecap="round" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Dismiss</span>
+				</div>
+				<!-- Archive -->
+				<div class="group/act relative">
+					<button
+						aria-label="Archive"
+						class="flex h-6 w-6 items-center justify-center rounded-md text-red-400/60 transition-all hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40"
+						onclick={archive}
+						disabled={archiving}
+					>
+						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+						</svg>
+					</button>
+					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
+				</div>
+			{:else if card.status === 'requires_approval'}
+				<!-- Approve Agent -->
+				<div class="group/act relative">
+					<button
+						aria-label="Approve Agent"
+						class="flex h-6 w-6 items-center justify-center rounded-md text-violet-400/60 transition-all hover:bg-violet-500/15 hover:text-violet-400 disabled:opacity-40"
+						onclick={approveAgent}
+						disabled={approvingAgent}
+					>
+						<svg class="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
+							<path d="M8 5v14l11-7z" />
+						</svg>
+					</button>
+					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-violet-500/30 bg-surface-800 px-2 py-1 text-[10px] font-medium text-violet-400 opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Approve Agent</span>
 				</div>
 				<!-- Dismiss -->
 				<div class="group/act relative">
@@ -297,6 +349,21 @@
 					</button>
 					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-red-500/30 bg-surface-800 px-2 py-1 text-[10px] font-medium text-red-400 opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Delete</span>
 				</div>
+			{:else if card.status === 'done'}
+				<!-- Archive -->
+				<div class="group/act relative">
+					<button
+						aria-label="Archive"
+						class="flex h-6 w-6 items-center justify-center rounded-md text-red-400/60 transition-all hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40"
+						onclick={archive}
+						disabled={archiving}
+					>
+						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+						</svg>
+					</button>
+					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
+				</div>
 			{:else if card.status === 'failed'}
 				<!-- Retry -->
 				<div class="group/act relative">
@@ -329,21 +396,6 @@
 				</div>
 			{:else if card.status === 'awaiting_input'}
 				<!-- Archive -->
-				<div class="group/act relative">
-					<button
-						aria-label="Archive"
-						class="flex h-6 w-6 items-center justify-center rounded-md text-red-400/60 transition-all hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40"
-						onclick={archive}
-						disabled={archiving}
-					>
-						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-						</svg>
-					</button>
-					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
-				</div>
-			{:else}
-				<!-- Archive only -->
 				<div class="group/act relative">
 					<button
 						aria-label="Archive"
