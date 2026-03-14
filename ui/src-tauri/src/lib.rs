@@ -318,10 +318,12 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
                 }
             }
         })
-        .on_window_event(|window, event| {
-            // Kill engine and stop n8n when the app exits
-            if let tauri::WindowEvent::Destroyed = event {
-                if let Some(state) = window.try_state::<EngineProcess>() {
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                // Kill engine sidecar
+                if let Some(state) = app.try_state::<EngineProcess>() {
                     if let Ok(mut guard) = state.0.lock() {
                         if let Some(ref mut child) = *guard {
                             log::info!("Killing engine process");
@@ -329,10 +331,9 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
                         }
                     }
                 }
+                // Stop n8n container
                 log::info!("Stopping n8n container");
                 docker::shutdown_n8n();
             }
-        })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        });
 }

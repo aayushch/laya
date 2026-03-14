@@ -2,8 +2,9 @@
 # Build Laya for distribution.
 #
 # Usage:
-#   ./scripts/build.sh          # Build for current platform
-#   ./scripts/build.sh --skip-engine  # Skip engine build (use existing binary)
+#   ./scripts/build.sh                              # Build for current platform
+#   ./scripts/build.sh --skip-engine                 # Skip engine build (use existing binary)
+#   ./scripts/build.sh --sign "Developer ID Application: ..."  # macOS signed build
 #
 # Prerequisites:
 #   - Python 3 venv at engine/.venv with PyInstaller installed
@@ -20,12 +21,17 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SKIP_ENGINE=false
+CODESIGN_IDENTITY="${CODESIGN_IDENTITY:-}"
 
-for arg in "$@"; do
-    case "$arg" in
-        --skip-engine) SKIP_ENGINE=true ;;
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --skip-engine) SKIP_ENGINE=true; shift ;;
+        --sign) CODESIGN_IDENTITY="$2"; shift 2 ;;
+        *) shift ;;
     esac
 done
+
+export CODESIGN_IDENTITY
 
 # Detect target triple for sidecar naming
 detect_target_triple() {
@@ -52,6 +58,9 @@ BINARIES_DIR="$REPO_ROOT/ui/src-tauri/binaries"
 
 echo "=== Laya Build ==="
 echo "  Platform: $TARGET_TRIPLE"
+if [ -n "$CODESIGN_IDENTITY" ]; then
+    echo "  Signing:  $CODESIGN_IDENTITY"
+fi
 echo ""
 
 # ── Step 1: Build Python engine with PyInstaller ──────────────────────
