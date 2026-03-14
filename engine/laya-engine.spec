@@ -1,15 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
 """PyInstaller spec for bundling the Laya engine into a single executable."""
 
+import os
 import sys
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
 
 # ChromaDB uses importlib.import_module() heavily via its config system —
 # enumerate all submodules so PyInstaller bundles them.
 chromadb_imports = collect_submodules('chromadb')
+
+# LiteLLM ships JSON data files (model_prices_and_context_window_backup.json)
+# loaded at runtime via file paths relative to the package.
+litellm_data = collect_data_files('litellm')
 
 engine_dir = Path(SPECPATH)
 
@@ -22,6 +27,8 @@ a = Analysis(
         (str(engine_dir / 'laya' / 'db' / 'migrations'), 'laya/db/migrations'),
         # Include prompt templates
         (str(engine_dir / 'laya' / 'llm' / 'prompts'), 'laya/llm/prompts'),
+        # LiteLLM data files (model pricing JSON, etc.)
+        *litellm_data,
     ],
     hiddenimports=[
         # FastAPI / Starlette
@@ -95,6 +102,9 @@ a = Analysis(
         'jupyter',
         'matplotlib',
         'tkinter',
+        # ChromaDB server mode (we use PersistentClient, not the server)
+        'chromadb.server',
+        'opentelemetry.instrumentation',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -115,13 +125,13 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=True,  # Engine is a headless server
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
-    codesign_identity=None,
+    codesign_identity=os.environ.get('CODESIGN_IDENTITY'),
     entitlements_file=None,
 )
