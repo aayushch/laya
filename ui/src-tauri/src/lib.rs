@@ -42,9 +42,8 @@ fn parse_remote_url(url: &str) -> Option<(String, String)> {
 
 #[tauri::command]
 fn pick_repo_folder() -> Result<RepoDetection, String> {
-    // Open native macOS folder picker via osascript
     let output = std::process::Command::new("osascript")
-        .args(["-e", "POSIX path of (choose folder with prompt \"Select a git repository\")"])
+        .args(["-e", "tell application \"System Events\" to activate\nPOSIX path of (choose folder with prompt \"Select a git repository\")"])
         .output()
         .map_err(|e| format!("osascript error: {e}"))?;
 
@@ -60,7 +59,6 @@ fn pick_repo_folder() -> Result<RepoDetection, String> {
         return Err("cancelled".to_string());
     }
 
-    // Get git remote URL
     let git_out = std::process::Command::new("git")
         .args(["-C", &path, "remote", "get-url", "origin"])
         .output()
@@ -82,6 +80,115 @@ fn pick_repo_folder() -> Result<RepoDetection, String> {
 
     Ok(RepoDetection { path, name, platform, remote_id })
 }
+
+// ── Setup commands ──────────────────────────────────────────────────────
+
+/// Check if the Python environment is ready.
+#[tauri::command]
+fn check_environment() -> sidecar::EnvStatus {
+    sidecar::check_environment()
+}
+
+/// Event payload emitted during setup for frontend progress display.
+#[derive(serde::Serialize, Clone)]
+struct SetupEvent {
+    step: &'static str,   // "python", "venv", "deps", "engine"
+    status: &'static str, // "running", "done", "error"
+    message: String,
+}
+
+/// Run full environment setup: detect Python → create venv → install deps → start engine.
+/// Emits `setup-progress` events throughout.
+#[tauri::command]
+fn setup_environment(app: tauri::AppHandle) {
+    use tauri::Emitter;
+
+    std::thread::spawn(move || {
+        let emit = |step, status, msg: &str| {
+            let _ = app.emit("setup-progress", SetupEvent {
+                step,
+                status,
+                message: msg.to_string(),
+            });
+        };
+
+        // Step 1: Find Python
+        emit("python", "running", "Detecting Python installation...");
+        let (python_path, _python_version) = match sidecar::find_python() {
+            Ok((path, ver)) => {
+                emit("python", "done", &format!("Python {} found", ver));
+                (path, ver)
+            }
+            Err(e) => {
+                emit("python", "error", &e);
+                return;
+            }
+        };
+
+        // Step 2: Create venv (if needed)
+        if !sidecar::check_environment().venv_ready {
+            emit("venv", "running", "Creating Python environment...");
+            match sidecar::create_venv(&python_path) {
+                Ok(()) => emit("venv", "done", "Python environment created"),
+                Err(e) => {
+                    emit("venv", "error", &e);
+                    return;
+                }
+            }
+        } else {
+            emit("venv", "done", "Python environment exists");
+        }
+
+        // Step 3: Install dependencies
+        let env = sidecar::check_environment();
+        if !env.deps_installed {
+            emit("deps", "running", "Installing dependencies (this may take a few minutes)...");
+
+            let app_clone = app.clone();
+            match sidecar::install_requirements(|line| {
+                // Forward pip output lines as progress
+                let _ = app_clone.emit("setup-progress", SetupEvent {
+                    step: "deps",
+                    status: "running",
+                    message: line.to_string(),
+                });
+            }) {
+                Ok(()) => emit("deps", "done", "All dependencies installed"),
+                Err(e) => {
+                    emit("deps", "error", &e);
+                    return;
+                }
+            }
+        } else {
+            emit("deps", "done", "Dependencies up to date");
+        }
+
+        // Step 4: Start engine
+        emit("engine", "running", "Starting Laya engine...");
+        match sidecar::spawn_engine() {
+            Ok(child) => {
+                // Store the child process for lifecycle management
+                if let Some(state) = app.try_state::<EngineProcess>() {
+                    if let Ok(mut guard) = state.0.lock() {
+                        *guard = Some(child);
+                    }
+                }
+
+                // Wait for engine to become healthy
+                if sidecar::wait_for_engine(std::time::Duration::from_secs(60)) {
+                    emit("engine", "done", "Engine is running");
+                } else {
+                    emit("engine", "error", "Engine started but is not responding");
+                }
+            }
+            Err(e) => {
+                emit("engine", "error", &e);
+            }
+        }
+    });
+}
+
+// ── Main app ────────────────────────────────────────────────────────────
 
 use std::sync::Mutex;
 use std::time::Duration;
@@ -110,7 +217,6 @@ fn start_health_polling(tray: TrayIcon) {
                         let engine = body.get("engine").and_then(|v| v.as_str()).unwrap_or("unknown");
                         let n8n = body.get("n8n").and_then(|v| v.as_str()).unwrap_or("unknown");
 
-                        // Query pending card count
                         let pending = client
                             .get("http://127.0.0.1:8420/cards?status=pending&limit=1")
                             .send()
@@ -146,7 +252,6 @@ pub fn run() {
                 let mut log_builder = tauri_plugin_log::Builder::default();
 
                 if cfg!(debug_assertions) {
-                    // Dev: log to file + stdout for easy debugging
                     log_builder = log_builder
                         .level(log::LevelFilter::Debug)
                         .targets([
@@ -154,7 +259,6 @@ pub fn run() {
                             Target::new(TargetKind::Stdout),
                         ]);
                 } else {
-                    // Release: log to file only (stdout causes a Terminal window on macOS)
                     log_builder = log_builder
                         .level(log::LevelFilter::Info)
                         .targets([
@@ -218,7 +322,6 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // Start background health polling for tray tooltip
             start_health_polling(tray);
 
             // --- Start n8n via Docker Compose ---
@@ -231,7 +334,6 @@ pub fn run() {
                 }
                 docker::N8nStartResult::DockerNotAvailable(msg) => {
                     log::warn!("Docker not available: {}", msg);
-                    // Show a non-blocking notification to the user via JS
                     if let Some(window) = app.get_webview_window("main") {
                         let escaped = msg.replace('\\', "\\\\").replace('\'', "\\'");
                         let _ = window.eval(&format!(
@@ -248,22 +350,30 @@ pub fn run() {
                 }
             }
 
-            // --- Spawn Python engine ---
-            match sidecar::spawn_engine() {
-                Ok(child) => {
-                    app.manage(EngineProcess(Mutex::new(Some(child))));
+            // --- Initialize engine process slot ---
+            // In dev mode, try to spawn immediately (venv already exists).
+            // In production, the frontend drives setup via check_environment + setup_environment.
+            app.manage(EngineProcess(Mutex::new(None)));
 
-                    // Poll for readiness in a background thread
-                    std::thread::spawn(|| {
-                        sidecar::wait_for_engine(Duration::from_secs(30));
-                    });
-                }
-                Err(e) => {
-                    log::error!("Failed to start engine: {}", e);
-                    // Store None — the app can still run, health badge will show unhealthy
-                    app.manage(EngineProcess(Mutex::new(None)));
+            if cfg!(dev) {
+                match sidecar::spawn_engine() {
+                    Ok(child) => {
+                        if let Some(state) = app.try_state::<EngineProcess>() {
+                            if let Ok(mut guard) = state.0.lock() {
+                                *guard = Some(child);
+                            }
+                        }
+                        std::thread::spawn(|| {
+                            sidecar::wait_for_engine(Duration::from_secs(30));
+                        });
+                    }
+                    Err(e) => {
+                        log::error!("Failed to start engine: {}", e);
+                    }
                 }
             }
+            // In production, the frontend calls check_environment() then setup_environment()
+            // which handles venv creation, dep install, and engine spawning with progress events.
 
             Ok(())
         })
@@ -273,13 +383,13 @@ pub fn run() {
             docker::start_n8n,
             docker::stop_n8n,
             pick_repo_folder,
+            check_environment,
+            setup_environment,
         ])
         .on_page_load(|webview, payload| {
             use tauri::webview::PageLoadEvent;
             if let PageLoadEvent::Finished = payload.event() {
                 let url = payload.url().to_string();
-                // Only our app's own URLs are internal — other localhost
-                // services (e.g. n8n on :5678) should get the back bar.
                 let is_internal = url.starts_with("http://localhost:5173")
                     || url.starts_with("http://127.0.0.1:5173")
                     || url.starts_with("http://127.0.0.1:8420")
@@ -322,8 +432,6 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
         .expect("error while building tauri application")
         .run(|app, event| {
             match event {
-                // macOS: hide window instead of quitting when the red X is clicked.
-                // The user can quit via tray menu → Quit, or Cmd+Q.
                 #[cfg(target_os = "macos")]
                 tauri::RunEvent::WindowEvent {
                     label,
@@ -336,7 +444,6 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
                     }
                     log::info!("Window hidden (macOS close-to-dock behavior)");
                 }
-                // macOS: re-show the window when the dock icon is clicked
                 #[cfg(target_os = "macos")]
                 tauri::RunEvent::Reopen { .. } => {
                     if let Some(window) = app.get_webview_window("main") {
@@ -345,7 +452,7 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
                     }
                 }
                 tauri::RunEvent::Exit => {
-                    // Gracefully stop engine: SIGTERM first, then SIGKILL fallback
+                    // Gracefully stop engine
                     if let Some(state) = app.try_state::<EngineProcess>() {
                         if let Ok(mut guard) = state.0.lock() {
                             if let Some(ref mut child) = *guard {
@@ -354,10 +461,8 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
 
                                 #[cfg(unix)]
                                 {
-                                    // Send SIGTERM to allow graceful shutdown
                                     unsafe { libc::kill(pid as i32, libc::SIGTERM); }
 
-                                    // Wait up to 5 seconds for graceful exit
                                     let start = std::time::Instant::now();
                                     loop {
                                         match child.try_wait() {
@@ -392,7 +497,6 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
                             }
                         }
                     }
-                    // Stop n8n container
                     log::info!("Stopping n8n container");
                     docker::shutdown_n8n();
                 }

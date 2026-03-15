@@ -3,5 +3,10 @@
 /target/
 /gen/schemas
 
-# Sidecar binaries (built by scripts/build.sh)
+# Sidecar binaries (legacy, no longer used)
 /binaries/
+
+# Bundled engine source (populated by scripts/build.sh)
+/resources/engine/laya/
+/resources/engine/requirements.txt
+!/resources/engine/laya/__init__.py

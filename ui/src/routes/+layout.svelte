@@ -7,6 +7,7 @@
 	import { initWebSocket, closeWebSocket } from '$lib/stores/websocket';
 	import { startHealthPolling, stopHealthPolling, startupReady } from '$lib/stores/health';
 	import StartupScreen from '$lib/components/StartupScreen.svelte';
+	import { needsSetup, setupComplete } from '$lib/stores/setup';
 	import { chatOpen } from '$lib/stores/chat';
 	import { theme } from '$lib/stores/theme';
 	import { feedFilters, loadFeedFilters, saveFeedFilters, feedDate, feedPrevDate, feedNextDate, localToday } from '$lib/stores/feedFilters';
@@ -112,7 +113,7 @@
 
 {#if isSetupRoute}
 	{@render children()}
-{:else if !$startupReady}
+{:else if $needsSetup || !$startupReady}
 	<StartupScreen />
 {:else}
 	<div class="flex h-screen flex-col bg-surface-900 text-surface-50">

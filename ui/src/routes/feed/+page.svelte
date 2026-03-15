@@ -167,9 +167,9 @@
 				persona?: string;
 				category?: string;
 				has_workspace?: boolean;
+				session_id?: string;
 				selected_action_id?: string;
 			};
-			if (!payload.status) return;
 
 			if (payload.status === 'archived' && !$feedFilters.showArchived) {
 				scheduleReload();
@@ -179,30 +179,27 @@
 			for (const group of groups) {
 				const card = group.cards.find((c) => c.card_id === msg.card_id);
 				if (card) {
-					// When a card transitions from agent_running to a real status,
-					// the full card data (suggested_actions, intelligence, etc.) has
-					// changed significantly — reload to get fresh data from the API.
-					const wasAgent = card.status === 'agent_running';
-					card.status = payload.status as ActionCard['status'];
-					if (payload.header) card.header = payload.header;
-					if (payload.summary) card.summary = payload.summary;
-					if (payload.priority) card.priority = payload.priority as ActionCard['priority'];
-					if (payload.persona) card.persona = payload.persona as ActionCard['persona'];
+					if (payload.status) {
+						// When a card transitions from agent_running to a real status,
+						// the full card data (suggested_actions, intelligence, etc.) has
+						// changed significantly — reload to get fresh data from the API.
+						const wasAgent = card.status === 'agent_running';
+						card.status = payload.status as ActionCard['status'];
+						if (payload.header) card.header = payload.header;
+						if (payload.summary) card.summary = payload.summary;
+						if (payload.priority) card.priority = payload.priority as ActionCard['priority'];
+						if (payload.persona) card.persona = payload.persona as ActionCard['persona'];
+						if (payload.selected_action_id) card.selected_action_id = payload.selected_action_id;
+						group.has_pending = group.cards.some((c) => c.status === 'pending' || c.status === 'ready' || c.status === 'requires_approval');
+						if (wasAgent && payload.status !== 'agent_running') {
+							scheduleReload();
+						}
+					}
 					if (payload.has_workspace !== undefined) card.has_workspace = payload.has_workspace;
-					if (payload.selected_action_id) card.selected_action_id = payload.selected_action_id;
 					if (selectedCard?.card_id === msg.card_id) {
-						Object.assign(selectedCard, { status: card.status, header: card.header, summary: card.summary, selected_action_id: card.selected_action_id });
-						// Re-fetch full card to get suggested_actions and other fields
-						engineApi.getCard(msg.card_id).then((fresh) => {
-							if (selectedCard?.card_id === msg.card_id) {
-								selectedCard = fresh as ActionCard;
-							}
-						}).catch(() => {});
+						selectedCard = { ...selectedCard, ...card } as ActionCard;
 					}
-					group.has_pending = group.cards.some((c) => c.status === 'pending' || c.status === 'ready' || c.status === 'requires_approval');
-					if (wasAgent && payload.status !== 'agent_running') {
-						scheduleReload();
-					}
+					groups = groups;
 					break;
 				}
 			}

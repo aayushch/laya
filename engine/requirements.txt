@@ -15,6 +15,7 @@ chromadb==1.5.1
 click==8.3.1
 distro==1.9.0
 durationpy==0.10
+einops==0.8.1
 fastapi==0.131.0
 fastuuid==0.14.0
 filelock==3.24.3

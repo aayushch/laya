@@ -1,6 +1,9 @@
 """Laya Engine — FastAPI entry point."""
 
 import asyncio
+import os
+import signal
+import socket
 import sys
 from contextlib import asynccontextmanager
 
@@ -41,12 +44,90 @@ from laya.security.keychain import load_all_keys_to_env
 log = structlog.get_logger()
 
 
+def _start_parent_watchdog() -> None:
+    """Monitor parent process and shut down if it disappears.
+
+    When Laya.app quits (or crashes), the engine becomes an orphan — its
+    parent PID changes to 1 (launchd on macOS).  This watchdog thread polls
+    every 2 seconds and sends SIGTERM to ourselves when that happens, giving
+    uvicorn a chance to run the lifespan shutdown cleanly.
+    """
+    if sys.platform == "win32":
+        return  # Windows handles child process cleanup differently
+
+    import threading
+
+    parent_pid = os.getppid()
+    if parent_pid <= 1:
+        # Already orphaned (launched standalone) — nothing to watch
+        return
+
+    def _watch():
+        while True:
+            import time
+            time.sleep(2)
+            current_parent = os.getppid()
+            if current_parent != parent_pid:
+                log.info(
+                    "parent_exited",
+                    original_parent=parent_pid,
+                    new_parent=current_parent,
+                )
+                os.kill(os.getpid(), signal.SIGTERM)
+                return
+
+    t = threading.Thread(target=_watch, daemon=True, name="parent-watchdog")
+    t.start()
+    log.info("parent_watchdog_started", parent_pid=parent_pid)
+
+
+def _kill_stale_engine(host: str, port: int) -> None:
+    """If another process is holding our port, kill it before we proceed."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind((host, port))
+        sock.close()
+        return  # Port is free
+    except OSError:
+        sock.close()
+
+    log.warning("port_in_use", host=host, port=port)
+
+    # Find the PID holding the port and kill it
+    if sys.platform != "win32":
+        import subprocess
+
+        try:
+            result = subprocess.run(
+                ["lsof", "-ti", f"tcp:{port}", "-s", "tcp:listen"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            pids = [int(p) for p in result.stdout.strip().split("\n") if p.strip()]
+            my_pid = os.getpid()
+            for pid in pids:
+                if pid != my_pid:
+                    log.warning("killing_stale_engine", pid=pid, port=port)
+                    os.kill(pid, signal.SIGTERM)
+            if pids:
+                import time
+
+                time.sleep(1)
+        except Exception as e:
+            log.warning("stale_engine_cleanup_failed", error=str(e))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle."""
     setup_logging()
+    _start_parent_watchdog()
     ensure_directories()
     log.info("engine_starting", host=ENGINE_HOST, port=ENGINE_PORT)
+
+    # Check if port is already in use and kill stale engine process
+    _kill_stale_engine(ENGINE_HOST, ENGINE_PORT)
 
     # Connect to SQLite and run migrations
     db = await connect()

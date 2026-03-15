@@ -380,8 +380,8 @@ async def archive_card(card_id: str) -> dict:
 
     now = datetime.now(timezone.utc).isoformat()
     await db.execute(
-        "UPDATE action_cards SET status = 'archived', updated_at = ? WHERE card_id = ?",
-        (now, card_id),
+        "UPDATE action_cards SET status = 'archived', pre_archive_status = ?, updated_at = ? WHERE card_id = ?",
+        (current, now, card_id),
     )
     await db.commit()
 
@@ -412,12 +412,13 @@ async def reopen_card(card_id: str) -> dict:
     - agent_spawn / agent_execution: re-queue for agent approval (requires_approval)
     - action_execution: reset to ready so user can re-execute the action
     - pipeline / NULL: reset to pending for full reprocessing
-    - Non-failed cards (dismissed, done, archived): always reset to pending
+    - Archived cards: restore the pre-archive status (or pending if unknown)
+    - Non-failed cards (dismissed, done): always reset to pending
     """
     db = await get_db()
 
     rows = await db.execute_fetchall(
-        "SELECT status, failed_stage, agent_prompt, persona, space_id FROM action_cards WHERE card_id = ?",
+        "SELECT status, failed_stage, agent_prompt, persona, space_id, pre_archive_status FROM action_cards WHERE card_id = ?",
         (card_id,),
     )
     if not rows:
@@ -464,6 +465,21 @@ async def reopen_card(card_id: str) -> dict:
         )
 
         log.info("card_reopened", card_id=card_id, retry_stage=failed_stage, new_status=new_status)
+
+    elif current == "archived" and row["pre_archive_status"]:
+        # Archived card — restore the status it had before archiving
+        new_status = row["pre_archive_status"]
+        await db.execute(
+            "UPDATE action_cards SET status = ?, pre_archive_status = NULL, resolved_at = NULL, updated_at = ? WHERE card_id = ?",
+            (new_status, now, card_id),
+        )
+        await db.commit()
+
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": card_id, "payload": {"status": new_status}}
+        )
+
+        log.info("card_reopened", card_id=card_id, from_archive=True, new_status=new_status)
 
     else:
         # Pipeline failure, no failed_stage, or non-failed card — reset to pending
