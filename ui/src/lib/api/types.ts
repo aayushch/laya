@@ -1,9 +1,19 @@
+/** Embedding backend info from health endpoint */
+export interface EmbeddingInfo {
+	backend: string;
+	model: string;
+	dimensions: string;
+	status: string; // "active" | "fallback" | "not_initialized"
+}
+
 /** Health check response from GET /health */
 export interface HealthResponse {
 	engine: string;
 	sqlite: string;
+	chromadb?: string;
 	n8n: string;
 	uptime_seconds: number;
+	embeddings?: EmbeddingInfo;
 }
 
 /** WebSocket message from the engine */

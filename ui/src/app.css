@@ -158,6 +158,31 @@
    Darken light-on-dark utility text for cream backgrounds.
    ───────────────────────────────────────────────────────────── */
 /* ─────────────────────────────────────────────────────────────
+   CARD PULSE GLOW — subtle breathing glow for active statuses
+   Uses box-shadow so it won't cause layout reflow.
+   ───────────────────────────────────────────────────────────── */
+@keyframes card-pulse-glow {
+	0%, 100% { box-shadow: 0 0 0 0 transparent; }
+	50%      { box-shadow: 0 0 12px 2px var(--card-pulse-color); }
+}
+
+.card-pulse-violet {
+	--card-pulse-color: oklch(0.55 0.18 285 / 0.2);
+	animation: card-pulse-glow 2.5s ease-in-out infinite;
+}
+.card-pulse-amber {
+	--card-pulse-color: oklch(0.60 0.16 70 / 0.2);
+	animation: card-pulse-glow 2.5s ease-in-out infinite;
+}
+
+[data-theme='light'] .card-pulse-violet {
+	--card-pulse-color: oklch(0.50 0.28 285 / 0.35);
+}
+[data-theme='light'] .card-pulse-amber {
+	--card-pulse-color: oklch(0.55 0.24 70 / 0.35);
+}
+
+/* ─────────────────────────────────────────────────────────────
    PROSE-PLAN — Markdown rendering for agent plans
    Minimal typographic styles for rendered markdown inside
    workspace AgentPanel and CardDetail staged output.

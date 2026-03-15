@@ -40,14 +40,6 @@ fn venv_python() -> PathBuf {
     }
 }
 
-/// pip binary inside the managed venv.
-fn venv_pip() -> PathBuf {
-    if cfg!(target_os = "windows") {
-        venv_dir().join("Scripts").join("pip.exe")
-    } else {
-        venv_dir().join("bin").join("pip")
-    }
-}
 
 /// Engine source directory (dev: repo checkout, prod: bundled in .app).
 fn engine_source_dir() -> PathBuf {
@@ -77,6 +69,11 @@ fn engine_source_dir() -> PathBuf {
 /// Path to the bundled requirements.txt.
 fn requirements_path() -> PathBuf {
     engine_source_dir().join("requirements.txt")
+}
+
+/// Path to the optional ML requirements (torch, sentence-transformers, etc.).
+fn requirements_ml_path() -> PathBuf {
+    engine_source_dir().join("requirements-ml.txt")
 }
 
 /// Path to the requirements hash file (used to detect when deps need updating).
@@ -126,9 +123,22 @@ pub fn check_environment() -> EnvStatus {
 /// Returns (path, version_string).
 pub fn find_python() -> Result<(PathBuf, String), String> {
     let candidates: Vec<&str> = if cfg!(target_os = "windows") {
-        vec!["python3", "python", "py"]
+        vec!["python3.13", "python3.12", "python3.11", "python3.10", "python3", "python", "py"]
     } else {
         vec![
+            // Prefer versioned binaries so we find 3.13 even if python3 -> 3.14
+            "python3.13",
+            "python3.12",
+            "python3.11",
+            "python3.10",
+            "/opt/homebrew/bin/python3.13",
+            "/opt/homebrew/bin/python3.12",
+            "/opt/homebrew/bin/python3.11",
+            "/opt/homebrew/bin/python3.10",
+            "/usr/local/bin/python3.13",
+            "/usr/local/bin/python3.12",
+            "/usr/local/bin/python3.11",
+            "/usr/local/bin/python3.10",
             "python3",
             "/opt/homebrew/bin/python3",
             "/usr/local/bin/python3",
@@ -137,19 +147,25 @@ pub fn find_python() -> Result<(PathBuf, String), String> {
         ]
     };
 
-    for name in candidates {
-        if let Ok(output) = Command::new(name).args(["--version"]).output() {
-            if output.status.success() {
-                let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if let Some(ver) = version.strip_prefix("Python ") {
-                    let parts: Vec<&str> = ver.split('.').collect();
-                    if parts.len() >= 2 {
-                        let major: u32 = parts[0].parse().unwrap_or(0);
-                        let minor: u32 = parts[1].parse().unwrap_or(0);
-                        if major == 3 && minor >= 10 {
-                            // Resolve the full path
-                            let path = which(name).unwrap_or_else(|| PathBuf::from(name));
-                            return Ok((path, ver.to_string()));
+    // First pass: prefer 3.10–3.13 (known to work with ML packages)
+    // Second pass: accept any 3.10+
+    for strict in [true, false] {
+        for name in &candidates {
+            if let Ok(output) = Command::new(name).args(["--version"]).output() {
+                if output.status.success() {
+                    let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if let Some(ver) = version.strip_prefix("Python ") {
+                        let parts: Vec<&str> = ver.split('.').collect();
+                        if parts.len() >= 2 {
+                            let major: u32 = parts[0].parse().unwrap_or(0);
+                            let minor: u32 = parts[1].parse().unwrap_or(0);
+                            if major == 3 && minor >= 10 {
+                                if strict && minor > 13 {
+                                    continue; // first pass skips 3.14+
+                                }
+                                let path = which(name).unwrap_or_else(|| PathBuf::from(name));
+                                return Ok((path, ver.to_string()));
+                            }
                         }
                     }
                 }
@@ -157,7 +173,7 @@ pub fn find_python() -> Result<(PathBuf, String), String> {
         }
     }
 
-    Err("Python 3.10+ not found. Please install Python 3.10 or newer.".to_string())
+    Err("Python 3.10+ not found. Please install Python 3.13 or newer.".to_string())
 }
 
 /// Simple `which` implementation — resolve a command name to its absolute path.
@@ -198,16 +214,21 @@ pub fn create_venv(python: &PathBuf) -> Result<(), String> {
     Ok(())
 }
 
-/// Check if installed deps match the bundled requirements.txt (by hash).
+/// Check if installed deps match the bundled requirements files (by hash).
 fn deps_up_to_date() -> bool {
-    let req_path = requirements_path();
     let hash_path = deps_hash_path();
 
-    let current_hash = match std::fs::read_to_string(&req_path) {
-        Ok(content) => simple_hash(&content),
-        Err(_) => return false,
-    };
+    let mut combined = String::new();
+    if let Ok(content) = std::fs::read_to_string(requirements_path()) {
+        combined.push_str(&content);
+    } else {
+        return false;
+    }
+    if let Ok(content) = std::fs::read_to_string(requirements_ml_path()) {
+        combined.push_str(&content);
+    }
 
+    let current_hash = simple_hash(&combined);
     match std::fs::read_to_string(&hash_path) {
         Ok(stored) => stored.trim() == current_hash,
         Err(_) => false,
@@ -216,10 +237,11 @@ fn deps_up_to_date() -> bool {
 
 /// Save the current requirements hash after successful install.
 fn save_deps_hash() {
-    if let Ok(content) = std::fs::read_to_string(requirements_path()) {
-        let hash = simple_hash(&content);
-        let _ = std::fs::write(deps_hash_path(), hash);
-    }
+    let mut combined = String::new();
+    if let Ok(c) = std::fs::read_to_string(requirements_path()) { combined.push_str(&c); }
+    if let Ok(c) = std::fs::read_to_string(requirements_ml_path()) { combined.push_str(&c); }
+    let hash = simple_hash(&combined);
+    let _ = std::fs::write(deps_hash_path(), hash);
 }
 
 /// Simple string hash (not cryptographic — just for change detection).
@@ -231,46 +253,107 @@ fn simple_hash(s: &str) -> String {
     format!("{:016x}", h.finish())
 }
 
-/// Install requirements into the managed venv.
-///
-/// Calls `on_line` for each line of pip output (for progress reporting).
-pub fn install_requirements<F: FnMut(&str)>(mut on_line: F) -> Result<(), String> {
-    let pip = venv_pip();
-    let req = requirements_path();
-
-    if !pip.exists() {
-        return Err("pip not found in venv — venv may be corrupt".to_string());
-    }
+/// Run pip install for a given requirements file.
+/// Returns Ok(true) on success, Ok(false) if the file doesn't exist (skipped),
+/// or Err on failure.
+fn pip_install<F: FnMut(&str)>(
+    req: &std::path::Path,
+    log_name: &str,
+    on_line: &mut F,
+) -> Result<bool, String> {
     if !req.exists() {
-        return Err(format!("requirements.txt not found at {}", req.display()));
+        return Ok(false);
     }
 
-    log::info!("Installing requirements from {}", req.display());
+    let python = venv_python();
+    if !python.exists() {
+        return Err("Python not found in venv — venv may be corrupt".to_string());
+    }
 
-    let mut child = Command::new(&pip)
+    let log_dir = laya_home().join("logs");
+    std::fs::create_dir_all(&log_dir).ok();
+    let log_path = log_dir.join(log_name);
+
+    log::info!("Installing from {} (log: {})", req.display(), log_path.display());
+
+    let mut child = Command::new(&python)
         .args([
+            "-m", "pip",
             "install", "-r", &req.to_string_lossy(),
-            "--quiet",       // reduce noise
             "--progress-bar", "off",
+            "--log", &log_path.to_string_lossy(),
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to start pip: {e}"))?;
 
-    // Stream stderr (pip writes progress there)
-    if let Some(stderr) = child.stderr.take() {
-        let reader = BufReader::new(stderr);
+    let mut output_lines: Vec<String> = Vec::new();
+
+    if let Some(stdout) = child.stdout.take() {
+        let stderr = child.stderr.take();
+        let reader = BufReader::new(stdout);
         for line in reader.lines() {
             if let Ok(line) = line {
                 on_line(&line);
+                output_lines.push(line);
+            }
+        }
+        if let Some(stderr) = stderr {
+            let reader = BufReader::new(stderr);
+            for line in reader.lines() {
+                if let Ok(line) = line {
+                    on_line(&line);
+                    output_lines.push(line);
+                }
             }
         }
     }
 
     let status = child.wait().map_err(|e| format!("pip wait failed: {e}"))?;
     if !status.success() {
-        return Err("pip install failed — check logs for details".to_string());
+        let tail: Vec<&str> = output_lines.iter().rev().take(5).map(|s| s.as_str()).collect();
+        let detail = tail.into_iter().rev().collect::<Vec<_>>().join("\n");
+        let msg = format!(
+            "pip install failed (exit code {}).\nSee full log: {}\n\nLast output:\n{}",
+            status.code().unwrap_or(-1),
+            log_path.display(),
+            detail
+        );
+        return Err(msg);
+    }
+
+    Ok(true)
+}
+
+/// Install all requirements into the managed venv.
+///
+/// 1. Core deps (required — fails the setup if these fail)
+/// 2. ML deps (optional — logs a warning but continues if unavailable)
+///
+/// Calls `on_line` for each line of pip output (for progress reporting).
+pub fn install_requirements<F: FnMut(&str)>(mut on_line: F) -> Result<(), String> {
+    // Core dependencies — must succeed
+    let req = requirements_path();
+    if !req.exists() {
+        return Err(format!("requirements.txt not found at {}", req.display()));
+    }
+    pip_install(&req, "pip-install.log", &mut on_line)?;
+
+    // ML dependencies (torch, sentence-transformers, onnxruntime) — optional.
+    // These may fail on platforms without compatible wheels (e.g., macOS x86_64).
+    let ml_req = requirements_ml_path();
+    match pip_install(&ml_req, "pip-install-ml.log", &mut on_line) {
+        Ok(true) => {
+            log::info!("ML dependencies installed successfully");
+        }
+        Ok(false) => {
+            log::info!("No ML requirements file found — skipping");
+        }
+        Err(e) => {
+            log::warn!("ML dependencies failed to install (non-fatal): {}", e);
+            on_line("Note: ML packages unavailable on this platform — local embeddings disabled");
+        }
     }
 
     save_deps_hash();
@@ -351,7 +434,10 @@ fn spawn_prod_engine() -> Result<Child, String> {
         .arg("laya.main")
         .current_dir(&engine)
         .stdout(log_file)
-        .stderr(stderr_file);
+        .stderr(stderr_file)
+        // Prevent Python from writing __pycache__/*.pyc into the signed .app bundle,
+        // which would invalidate the code signature.
+        .env("PYTHONDONTWRITEBYTECODE", "1");
 
     #[cfg(unix)]
     unsafe {

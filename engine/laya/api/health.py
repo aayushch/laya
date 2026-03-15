@@ -7,7 +7,7 @@ import structlog
 from fastapi import APIRouter
 
 from laya.config import get_n8n_config
-from laya.db.chromadb_store import is_chromadb_healthy
+from laya.db.chromadb_store import is_chromadb_healthy, get_embedding_info
 from laya.db.sqlite import is_healthy as sqlite_healthy
 
 log = structlog.get_logger()
@@ -44,4 +44,5 @@ async def health_check() -> dict:
         "chromadb": chromadb_status,
         "n8n": n8n_status,
         "uptime_seconds": uptime,
+        "embeddings": get_embedding_info(),
     }

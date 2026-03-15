@@ -64,8 +64,15 @@ if [ "$SKIP_ENGINE" = false ]; then
     # Copy engine Python source (the actual application code)
     cp -R "$REPO_ROOT/engine/laya" "$ENGINE_BUNDLE/laya"
 
-    # Copy requirements.txt (used at first-run to create user's venv)
+    # Copy requirements files (used at first-run to create user's venv)
     cp "$REPO_ROOT/engine/requirements.txt" "$ENGINE_BUNDLE/requirements.txt"
+    cp "$REPO_ROOT/engine/requirements-ml.txt" "$ENGINE_BUNDLE/requirements-ml.txt"
+
+    # Copy n8n workflows (imported into n8n on first run)
+    if [ -d "$REPO_ROOT/n8n/workflows" ]; then
+        cp -R "$REPO_ROOT/n8n/workflows" "$ENGINE_BUNDLE/n8n_workflows"
+        echo "  $(ls "$ENGINE_BUNDLE/n8n_workflows" | wc -l | tr -d ' ') n8n workflows bundled"
+    fi
 
     # Remove any __pycache__ or .pyc files
     find "$ENGINE_BUNDLE" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
