@@ -57,11 +57,15 @@ fn engine_source_dir() -> PathBuf {
     } else {
         let exe_dir = std::env::current_exe()
             .ok()
+            .and_then(|p| p.canonicalize().ok())
             .and_then(|p| p.parent().map(|d| d.to_path_buf()))
             .unwrap_or_default();
-        // macOS: Contents/MacOS/../Resources/resources/engine
+        // macOS .app bundle: Contents/MacOS/ -> Contents/Resources/resources/engine
         // (Tauri nests bundle resources under a "resources" subdirectory)
-        let resources = exe_dir.join("../Resources/resources/engine");
+        let resources = exe_dir
+            .parent()                   // Contents/
+            .map(|p| p.join("Resources").join("resources").join("engine"))
+            .unwrap_or_else(|| exe_dir.join("engine"));
         if resources.exists() {
             return resources;
         }
