@@ -3,8 +3,10 @@
 #
 # Usage:
 #   ./scripts/build.sh                              # Build for current platform
+#   ./scripts/build.sh --target x86_64-apple-darwin  # Cross-compile for Intel Mac
 #   ./scripts/build.sh --skip-engine                 # Skip engine bundling
 #   ./scripts/build.sh --sign "Developer ID Application: ..."  # macOS signed build
+#   ./scripts/build.sh --universal                   # Build universal (arm64 + x86_64) binary
 #
 # Prerequisites:
 #   - Node.js + npm
@@ -21,11 +23,15 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SKIP_ENGINE=false
 CODESIGN_IDENTITY="${CODESIGN_IDENTITY:-}"
+TARGET=""
+UNIVERSAL=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --skip-engine) SKIP_ENGINE=true; shift ;;
         --sign) CODESIGN_IDENTITY="$2"; shift 2 ;;
+        --target) TARGET="$2"; shift 2 ;;
+        --universal) UNIVERSAL=true; shift ;;
         *) shift ;;
     esac
 done
@@ -33,6 +39,12 @@ done
 export CODESIGN_IDENTITY
 
 echo "=== Laya Build ==="
+if [ -n "$TARGET" ]; then
+    echo "  Target:   $TARGET"
+fi
+if [ "$UNIVERSAL" = true ]; then
+    echo "  Target:   universal (aarch64 + x86_64)"
+fi
 if [ -n "$CODESIGN_IDENTITY" ]; then
     echo "  Signing:  $CODESIGN_IDENTITY"
 fi
@@ -80,8 +92,16 @@ if [ ! -d "node_modules" ]; then
     npm install
 fi
 
-echo "  Running tauri build..."
-npx tauri build
+TAURI_ARGS=()
+if [ -n "$TARGET" ]; then
+    TAURI_ARGS+=(--target "$TARGET")
+fi
+if [ "$UNIVERSAL" = true ]; then
+    TAURI_ARGS+=(--target universal-apple-darwin)
+fi
+
+echo "  Running tauri build ${TAURI_ARGS[*]:-}..."
+npx tauri build "${TAURI_ARGS[@]+"${TAURI_ARGS[@]}"}"
 
 echo ""
 echo "=== Build Complete ==="
