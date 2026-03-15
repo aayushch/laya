@@ -128,9 +128,9 @@
 [data-theme='light'] .hover\:border-sky-700\/40:hover { border-color: oklch(0.64 0.10 230 / 60%); }
 
 /* Completed — light emerald */
-[data-theme='light'] .bg-emerald-950\/50 { background-color: oklch(0.94 0.04 162); }
-[data-theme='light'] .border-emerald-800\/20 { border-color: oklch(0.74 0.07 162 / 40%); }
-[data-theme='light'] .hover\:border-emerald-700\/35:hover { border-color: oklch(0.64 0.10 162 / 55%); }
+[data-theme='light'] .bg-emerald-950\/50 { background-color: oklch(0.97 0.015 162); }
+[data-theme='light'] .border-emerald-800\/20 { border-color: oklch(0.82 0.04 162 / 30%); }
+[data-theme='light'] .hover\:border-emerald-700\/35:hover { border-color: oklch(0.72 0.06 162 / 45%); }
 
 /* Failed — soft blush */
 [data-theme='light'] .bg-red-950\/60     { background-color: oklch(0.94 0.045 25); }

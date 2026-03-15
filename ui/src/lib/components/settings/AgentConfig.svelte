@@ -103,15 +103,15 @@
 				<button
 					class="flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors
 						{selected === agent.value
-							? 'border-blue-500 bg-blue-500/10'
+							? 'border-laya-orange bg-laya-orange/10'
 							: 'border-surface-600 bg-surface-900 hover:border-surface-500'}"
 					onclick={() => selectAgent(agent.value)}
 					disabled={saving}
 				>
 					<div class="flex h-4 w-4 items-center justify-center rounded-full border-2
-						{selected === agent.value ? 'border-blue-500' : 'border-surface-500'}">
+						{selected === agent.value ? 'border-laya-orange' : 'border-surface-500'}">
 						{#if selected === agent.value}
-							<div class="h-2 w-2 rounded-full bg-blue-500"></div>
+							<div class="h-2 w-2 rounded-full bg-laya-orange"></div>
 						{/if}
 					</div>
 					<div class="flex-1">
@@ -160,7 +160,7 @@
 			<div class="flex items-center gap-2">
 				<input
 					type="text"
-					class="flex-1 rounded-md border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-200 placeholder-surface-500 focus:border-blue-500 focus:outline-none"
+					class="flex-1 rounded-md border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-200 placeholder-surface-500 focus:border-laya-orange focus:outline-none"
 					placeholder="/path/to/{selected === 'claude_code' ? 'claude' : selected === 'gemini_cli' ? 'gemini' : 'codex'}"
 					value={agentPaths[selected] || ''}
 					onchange={(e) => saveAgentPath(selected, (e.target as HTMLInputElement).value)}
@@ -190,16 +190,16 @@
 			<button
 				class="flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors
 					{executionMode === 'requires_approval'
-						? 'border-blue-500 bg-blue-500/10'
+						? 'border-laya-orange bg-laya-orange/10'
 						: 'border-surface-600 bg-surface-900 hover:border-surface-500'}
 					{!hasAgent ? 'pointer-events-none' : ''}"
 				onclick={() => setExecutionMode('requires_approval')}
 				disabled={saving || !hasAgent}
 			>
 				<div class="flex h-4 w-4 items-center justify-center rounded-full border-2
-					{executionMode === 'requires_approval' ? 'border-blue-500' : 'border-surface-500'}">
+					{executionMode === 'requires_approval' ? 'border-laya-orange' : 'border-surface-500'}">
 					{#if executionMode === 'requires_approval'}
-						<div class="h-2 w-2 rounded-full bg-blue-500"></div>
+						<div class="h-2 w-2 rounded-full bg-laya-orange"></div>
 					{/if}
 				</div>
 				<div>
@@ -211,16 +211,16 @@
 			<button
 				class="flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors
 					{executionMode === 'automatic'
-						? 'border-blue-500 bg-blue-500/10'
+						? 'border-laya-orange bg-laya-orange/10'
 						: 'border-surface-600 bg-surface-900 hover:border-surface-500'}
 					{!hasAgent ? 'pointer-events-none' : ''}"
 				onclick={() => setExecutionMode('automatic')}
 				disabled={saving || !hasAgent}
 			>
 				<div class="flex h-4 w-4 items-center justify-center rounded-full border-2
-					{executionMode === 'automatic' ? 'border-blue-500' : 'border-surface-500'}">
+					{executionMode === 'automatic' ? 'border-laya-orange' : 'border-surface-500'}">
 					{#if executionMode === 'automatic'}
-						<div class="h-2 w-2 rounded-full bg-blue-500"></div>
+						<div class="h-2 w-2 rounded-full bg-laya-orange"></div>
 					{/if}
 				</div>
 				<div>

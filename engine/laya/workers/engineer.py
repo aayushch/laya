@@ -235,7 +235,7 @@ async def run_engineer(
     )
     await db.commit()
     await manager.broadcast(
-        {"type": "card_updated", "card_id": effective_card_id, "payload": {"has_workspace": True}}
+        {"type": "card_updated", "card_id": effective_card_id, "payload": {"has_workspace": True, "session_id": session_id}}
     )
 
     # 5. Stream events — persist all to SQLite, only broadcast approval/error via WS
@@ -498,7 +498,7 @@ async def run_engineer_from_prompt(
     )
     await db.commit()
     await manager.broadcast(
-        {"type": "card_updated", "card_id": card_id, "payload": {"has_workspace": True}}
+        {"type": "card_updated", "card_id": card_id, "payload": {"has_workspace": True, "session_id": session_id}}
     )
 
     # Stream events (same logic as run_engineer's main loop)

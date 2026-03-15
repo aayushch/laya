@@ -69,6 +69,10 @@
 			formPlatform = result.platform;
 			formRemoteId = result.remote_id;
 			detectionStatus = { ok: true, msg: `${result.platform} · ${result.remote_id}` };
+			// Auto-add when in add mode (not editing)
+			if (editingIndex === null) {
+				await addRepo();
+			}
 		} catch (err: unknown) {
 			const msg = String(err);
 			if (!msg.includes('cancelled')) {

@@ -327,10 +327,10 @@
 					<label
 						class="flex cursor-pointer items-center gap-3 rounded-md border p-3 transition-colors
 							{codingAgent === option.value
-							? 'border-primary-500 bg-surface-700'
+							? 'border-laya-orange bg-laya-orange/10'
 							: 'border-surface-600 bg-surface-800 hover:border-surface-500'}"
 					>
-						<input type="radio" bind:group={codingAgent} value={option.value} class="accent-primary-500" />
+						<input type="radio" bind:group={codingAgent} value={option.value} class="accent-laya-orange" />
 						<div>
 							<div class="text-sm font-medium">{option.label}</div>
 							<div class="text-xs text-surface-400">{option.desc}</div>
@@ -430,7 +430,7 @@
 
 			<div class="space-y-3">
 				<label class="flex items-center gap-3 rounded-md border border-surface-600 p-3">
-					<input type="checkbox" class="accent-primary-500" bind:checked={ignoreBots} />
+					<input type="checkbox" class="accent-laya-orange" bind:checked={ignoreBots} />
 					<div>
 						<div class="text-sm font-medium">Ignore bot messages</div>
 						<div class="text-xs text-surface-400">Filter events from CI bots, webhooks, etc.</div>
@@ -438,7 +438,7 @@
 				</label>
 
 				<label class="flex items-center gap-3 rounded-md border border-surface-600 p-3">
-					<input type="checkbox" class="accent-primary-500" bind:checked={muteRandom} />
+					<input type="checkbox" class="accent-laya-orange" bind:checked={muteRandom} />
 					<div>
 						<div class="text-sm font-medium">Mute #random</div>
 						<div class="text-xs text-surface-400">Filter Slack messages from #random channel</div>
