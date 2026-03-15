@@ -9,4 +9,5 @@
 # Bundled engine source (populated by scripts/build.sh)
 /resources/engine/laya/
 /resources/engine/requirements.txt
+/resources/engine/requirements-ml.txt
 !/resources/engine/laya/__init__.py

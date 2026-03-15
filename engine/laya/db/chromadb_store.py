@@ -18,11 +18,21 @@ COLLECTION_NAME = "laya_memory"
 # Module-level singletons (same pattern as sqlite.py)
 _client: chromadb.ClientAPI | None = None
 _collection: Collection | None = None
-_embedding_model: Any = None  # Lazy-loaded SentenceTransformer
+_embedding_model: Any = None  # Lazy-loaded SentenceTransformer (or None if unavailable)
+_embedding_backend: str = "unknown"  # "nomic" or "chromadb_default"
 
 # Task prefixes for nomic-embed-text (improves retrieval quality)
 _DOC_PREFIX = "search_document: "
 _QUERY_PREFIX = "search_query: "
+
+
+def _has_sentence_transformers() -> bool:
+    """Check if sentence-transformers (and torch) are importable."""
+    try:
+        import sentence_transformers  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 
 class LayaDocumentEmbeddingFunction(EmbeddingFunction[Documents]):
@@ -56,17 +66,71 @@ def _get_embedding_model() -> Any:
     return _embedding_model
 
 
+def _choose_embedding_function() -> EmbeddingFunction[Documents] | None:
+    """Select the best available embedding function.
+
+    Returns a Laya custom function (nomic via sentence-transformers) if available,
+    otherwise None to let ChromaDB use its built-in default (all-MiniLM-L6-v2 via onnxruntime).
+    """
+    global _embedding_backend
+
+    if _has_sentence_transformers():
+        _embedding_backend = "nomic"
+        log.info("embedding_backend_selected", backend="nomic", model="nomic-embed-text-v1.5")
+        return LayaDocumentEmbeddingFunction()
+    else:
+        _embedding_backend = "chromadb_default"
+        log.info(
+            "embedding_backend_selected",
+            backend="chromadb_default",
+            model="all-MiniLM-L6-v2",
+            reason="sentence-transformers not available, using ChromaDB built-in",
+        )
+        # Return None → ChromaDB uses its built-in DefaultEmbeddingFunction
+        return None
+
+
+def get_embedding_info() -> dict[str, str]:
+    """Return info about the active embedding backend (for health/status endpoints)."""
+    if _embedding_backend == "nomic":
+        return {
+            "backend": "nomic",
+            "model": "nomic-embed-text-v1.5",
+            "dimensions": "768",
+            "status": "active",
+        }
+    elif _embedding_backend == "chromadb_default":
+        return {
+            "backend": "chromadb_default",
+            "model": "all-MiniLM-L6-v2",
+            "dimensions": "384",
+            "status": "fallback",
+        }
+    return {
+        "backend": "unknown",
+        "model": "unknown",
+        "dimensions": "unknown",
+        "status": "not_initialized",
+    }
+
+
 def connect_chromadb() -> Collection:
     """Initialize ChromaDB persistent client and return the collection."""
     global _client, _collection
 
     CHROMADB_DIR.mkdir(parents=True, exist_ok=True)
     _client = chromadb.PersistentClient(path=str(CHROMADB_DIR))
-    _collection = _client.get_or_create_collection(
-        name=COLLECTION_NAME,
-        metadata={"hnsw:space": "cosine"},
-        embedding_function=LayaDocumentEmbeddingFunction(),
-    )
+
+    embedding_fn = _choose_embedding_function()
+
+    kwargs: dict[str, Any] = {
+        "name": COLLECTION_NAME,
+        "metadata": {"hnsw:space": "cosine"},
+    }
+    if embedding_fn is not None:
+        kwargs["embedding_function"] = embedding_fn
+
+    _collection = _client.get_or_create_collection(**kwargs)
 
     log.info("chromadb_connected", path=str(CHROMADB_DIR), collection=COLLECTION_NAME)
     return _collection
@@ -168,21 +232,24 @@ async def memory_search(
 ) -> list[dict[str, Any]]:
     """Semantic similarity search on past events/content.
 
-    Uses query-prefixed embeddings for better retrieval quality.
+    When using nomic embeddings, applies query prefix for better retrieval.
+    When using ChromaDB default, passes the query as-is (ChromaDB handles embedding).
     Returns list of dicts with keys: id, document, metadata, distance.
     """
     collection = get_collection()
 
-    # Embed query with query prefix
-    query_fn = LayaQueryEmbeddingFunction()
-    query_embeddings = query_fn([query])
-
-    kwargs: dict[str, Any] = {
-        "query_embeddings": query_embeddings,
-        "n_results": n_results,
-    }
+    kwargs: dict[str, Any] = {"n_results": n_results}
     if where:
         kwargs["where"] = where
+
+    if _embedding_backend == "nomic":
+        # Use query-prefixed embeddings for better retrieval quality
+        query_fn = LayaQueryEmbeddingFunction()
+        query_embeddings = query_fn([query])
+        kwargs["query_embeddings"] = query_embeddings
+    else:
+        # ChromaDB default: pass query text and let it embed internally
+        kwargs["query_texts"] = [query]
 
     try:
         results = collection.query(**kwargs)

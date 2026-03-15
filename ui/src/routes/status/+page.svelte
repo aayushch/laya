@@ -196,6 +196,41 @@
 			</div>
 		</div>
 
+		<!-- Embeddings info -->
+		{#if $health?.embeddings}
+			{@const emb = $health.embeddings}
+			<div class="mt-3 rounded-xl border border-surface-700 bg-surface-800 p-4">
+				<div class="flex items-center justify-between">
+					<div>
+						<div class="text-[10px] uppercase tracking-wider text-surface-400">Embeddings</div>
+						<div class="mt-1 flex items-center gap-2">
+							<span class="text-sm text-surface-200">{emb.model}</span>
+							<span class="text-[10px] text-surface-500">{emb.dimensions}d</span>
+							{#if emb.status === 'fallback'}
+								<span class="rounded-full bg-laya-gold/20 px-2 py-0.5 text-[10px] font-medium text-laya-amber">Fallback</span>
+							{:else if emb.status === 'active'}
+								<span class="rounded-full bg-green-500/20 px-2 py-0.5 text-[10px] font-medium text-green-400">Active</span>
+							{:else}
+								<span class="rounded-full bg-surface-600/50 px-2 py-0.5 text-[10px] font-medium text-surface-400">{emb.status}</span>
+							{/if}
+						</div>
+					</div>
+					<div class="text-right">
+						<div class="text-[10px] text-surface-500">Backend</div>
+						<div class="mt-0.5 text-xs text-surface-300">
+							{#if emb.backend === 'nomic'}
+								sentence-transformers
+							{:else if emb.backend === 'chromadb_default'}
+								ChromaDB built-in (onnxruntime)
+							{:else}
+								{emb.backend}
+							{/if}
+						</div>
+					</div>
+				</div>
+			</div>
+		{/if}
+
 		<!-- Docker / n8n control -->
 		{#if dockerAvailable}
 			<div class="mt-3 rounded-xl border border-surface-700 bg-surface-800 p-4">

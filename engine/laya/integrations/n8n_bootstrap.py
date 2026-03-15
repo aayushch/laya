@@ -23,8 +23,13 @@ _DEFAULT_PASSWORD = os.environ.get("LAYA_N8N_OWNER_PASSWORD", "LayaAutoAdmin2026
 _DEFAULT_FIRST_NAME = "Laya"
 _DEFAULT_LAST_NAME = "Admin"
 
-# Where Laya's bundled n8n workflows live
-WORKFLOWS_DIR = Path(__file__).parent.parent.parent.parent / "n8n" / "workflows"
+# Where Laya's bundled n8n workflows live.
+# In repo: engine/../../n8n/workflows
+# In bundled app: engine/n8n_workflows (sibling to laya/ inside the engine resource)
+_ENGINE_ROOT = Path(__file__).parent.parent.parent  # -> engine/ or .../resources/engine/
+_REPO_WORKFLOWS = _ENGINE_ROOT.parent / "n8n" / "workflows"
+_BUNDLED_WORKFLOWS = _ENGINE_ROOT / "n8n_workflows"
+WORKFLOWS_DIR = _REPO_WORKFLOWS if _REPO_WORKFLOWS.is_dir() else _BUNDLED_WORKFLOWS
 
 
 def _generate_password() -> str:

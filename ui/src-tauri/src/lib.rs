@@ -350,12 +350,16 @@ pub fn run() {
                 }
             }
 
-            // --- Initialize engine process slot ---
-            // In dev mode, try to spawn immediately (venv already exists).
-            // In production, the frontend drives setup via check_environment + setup_environment.
+            // --- Spawn engine ---
+            // If the environment is ready (dev venv or managed venv), spawn immediately.
+            // If not (first run in production), the frontend drives setup via
+            // check_environment + setup_environment, which spawns the engine when done.
             app.manage(EngineProcess(Mutex::new(None)));
 
-            if cfg!(dev) {
+            let env = sidecar::check_environment();
+            let can_spawn = cfg!(dev) || (env.venv_ready && env.deps_installed && env.engine_source_found);
+
+            if can_spawn {
                 match sidecar::spawn_engine() {
                     Ok(child) => {
                         if let Some(state) = app.try_state::<EngineProcess>() {
@@ -372,8 +376,6 @@ pub fn run() {
                     }
                 }
             }
-            // In production, the frontend calls check_environment() then setup_environment()
-            // which handles venv creation, dep install, and engine spawning with progress events.
 
             Ok(())
         })

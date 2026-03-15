@@ -314,11 +314,41 @@ async def _run_resumed_session(
             log.info("agent_awaiting_more_input", session_id=session_id)
         else:
             error_msg = f"Agent ended with status: {final_status.value}"
+            log.error("resumed_session_agent_failed", session_id=session_id, card_id=card_id, error=error_msg)
             await session_manager.complete_session(session_id, error=error_msg)
 
+            # Mark card as failed so it doesn't stay stuck on agent_running
+            db = await get_db()
+            await db.execute(
+                "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_execution', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+                (card_id,),
+            )
+            await db.commit()
+            await manager.broadcast({
+                "type": "card_updated",
+                "card_id": card_id,
+                "payload": {"status": "failed"},
+            })
+
     except Exception as e:
-        log.error("resumed_session_failed", session_id=session_id, error=str(e))
+        log.error("resumed_session_failed", session_id=session_id, card_id=card_id, error=str(e))
         await session_manager.complete_session(session_id, error=str(e))
+
+        # Mark card as failed so it doesn't stay stuck on agent_running
+        try:
+            db = await get_db()
+            await db.execute(
+                "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_execution', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+                (card_id,),
+            )
+            await db.commit()
+            await manager.broadcast({
+                "type": "card_updated",
+                "card_id": card_id,
+                "payload": {"status": "failed"},
+            })
+        except Exception:
+            log.error("resumed_session_card_update_failed", session_id=session_id, card_id=card_id)
 
 
 @router.post("/workspace/{session_id}/resume")

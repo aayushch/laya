@@ -16,6 +16,9 @@
 	let error = $state<string | null>(null);
 	let selectedCard = $state<ActionCard | null>(null);
 
+	// Search state (ephemeral — resets on date change)
+	let searchQuery = $state('');
+
 	// Summary View state
 	let daySummary = $state<DaySummary | null>(null);
 	let summaryUpdatedAt = $state<string | null>(null);
@@ -111,6 +114,7 @@
 	$effect(() => {
 		$feedDate;
 		$feedFilters;
+		searchQuery = '';
 		loadGroups();
 	});
 
@@ -305,6 +309,78 @@
 		groups.reduce((sum, g) => sum + g.cards.filter((c) => c.status === 'requires_approval').length, 0)
 	);
 
+	// Search filtering
+	function cardMatchesSearch(card: ActionCard, terms: string[]): boolean {
+		const searchable = [
+			card.header,
+			card.summary,
+			card.category,
+			card.entity_id,
+			card.source_ref,
+			card.actor_name,
+			card.actor_email,
+			card.space_name,
+			...(card.intelligence ?? []),
+			card.staged_output?.content,
+			...(card.suggested_actions?.map((a) => a.label) ?? [])
+		]
+			.filter(Boolean)
+			.join(' ')
+			.toLowerCase();
+		return terms.every((term) => searchable.includes(term));
+	}
+
+	const searchTerms = $derived(
+		searchQuery.trim() === '' ? [] : searchQuery.toLowerCase().split(/\s+/).filter(Boolean)
+	);
+
+	const filteredGroups = $derived.by(() => {
+		if (searchTerms.length === 0) return groups;
+		return groups
+			.map((group) => {
+				// Check group-level fields first
+				const groupText = [group.entity_title, group.platform].join(' ').toLowerCase();
+				if (searchTerms.every((t) => groupText.includes(t))) return group;
+				// Filter individual cards
+				const matching = group.cards.filter((c) => cardMatchesSearch(c, searchTerms));
+				if (matching.length === 0) return null;
+				return {
+					...group,
+					cards: matching,
+					card_count: matching.length,
+					has_pending: matching.some(
+						(c) => c.status === 'pending' || c.status === 'ready' || c.status === 'requires_approval'
+					)
+				};
+			})
+			.filter((g): g is CardGroup => g !== null);
+	});
+
+	const filteredDaySummary = $derived.by((): DaySummary | null => {
+		if (!daySummary || searchTerms.length === 0) return daySummary;
+		function filterItems(items: import('$lib/api/types').SummaryItem[]) {
+			return items.filter((item) => {
+				const text = item.text.toLowerCase();
+				return searchTerms.every((t) => text.includes(t));
+			});
+		}
+		const filtered: DaySummary = {
+			events_and_meetings: filterItems(daySummary.events_and_meetings),
+			action_items: filterItems(daySummary.action_items),
+			key_updates: filterItems(daySummary.key_updates)
+		};
+		// Return null if everything was filtered out
+		if (
+			filtered.events_and_meetings.length === 0 &&
+			filtered.action_items.length === 0 &&
+			filtered.key_updates.length === 0
+		)
+			return null;
+		return filtered;
+	});
+
+	const filteredTotalCards = $derived(filteredGroups.reduce((sum, g) => sum + g.card_count, 0));
+
 	// Responsive masonry
 	const CARD_WIDTH = 320;
 	const COL_GAP = 16;
@@ -331,13 +407,13 @@
 	}
 
 	// Default columns for non-sorted view
-	const columns = $derived(toColumns(groups));
+	const columns = $derived(toColumns(filteredGroups));
 
 	// Sort sections: group by sort_key when a non-date sort is active
 	const sections = $derived.by(() => {
 		if ($feedFilters.sortBy === 'newest' || $feedFilters.sortBy === 'oldest') return null;
 		const map = new Map<string, CardGroup[]>();
-		for (const g of groups) {
+		for (const g of filteredGroups) {
 			const key = g.sort_key ?? 'Other';
 			if (!map.has(key)) map.set(key, []);
 			map.get(key)!.push(g);
@@ -363,11 +439,36 @@
 	<!-- Sticky summary bar spanning full width -->
 	<div class="flex items-center gap-2 pb-3">
 		<span class="text-xs text-surface-500">
-			{totalGroups} {totalGroups === 1 ? 'group' : 'groups'} · {totalCards} cards{#if requiresApprovalCount > 0}
+			{totalGroups} {totalGroups === 1 ? 'group' : 'groups'} · {totalCards} cards{#if searchTerms.length > 0 && filteredTotalCards !== totalCards}
+				<span class="text-laya-orange"> · {filteredGroups.length} shown</span>
+			{/if}{#if requiresApprovalCount > 0}
 				<span class="text-violet-400"> · {requiresApprovalCount} {requiresApprovalCount === 1 ? 'requires' : 'require'} approval</span>
 			{/if}
 		</span>
 		<div class="flex-1"></div>
+		<!-- Search -->
+		<div class="relative">
+			<svg class="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-surface-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+			</svg>
+			<input
+				type="text"
+				bind:value={searchQuery}
+				placeholder="Search cards..."
+				class="h-7 w-48 rounded-lg border border-surface-700 bg-surface-800/60 pl-7 pr-7 text-xs text-surface-200 placeholder-surface-500 outline-none transition-colors focus:border-laya-orange/50 focus:ring-1 focus:ring-laya-orange/25"
+			/>
+			{#if searchQuery}
+				<button
+					class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-surface-500 hover:text-surface-300"
+					onclick={() => (searchQuery = '')}
+					title="Clear search"
+				>
+					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			{/if}
+		</div>
 		<!-- View toggle -->
 		<div class="flex items-center rounded-lg border border-surface-700 bg-surface-800/60 p-0.5">
 			<button
@@ -402,8 +503,16 @@
 						<div class="flex h-full items-center justify-center text-surface-400">
 							<span class="text-sm">Loading summary...</span>
 						</div>
+					{:else if !filteredDaySummary && searchTerms.length > 0 && daySummary}
+						<div class="flex h-full flex-col items-center justify-center text-surface-500">
+							<svg class="mb-2 h-8 w-8 text-surface-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+							</svg>
+							<p class="text-sm">No summary items match "<span class="text-surface-300">{searchQuery}</span>"</p>
+							<button class="mt-2 text-xs text-laya-orange hover:underline" onclick={() => (searchQuery = '')}>Clear search</button>
+						</div>
 					{:else}
-						<DaySummaryComponent summary={daySummary} updatedAt={summaryUpdatedAt} ongotocard={handleSummaryGotoCard} spaceFilter={$feedFilters.spaceFilter} />
+						<DaySummaryComponent summary={filteredDaySummary} updatedAt={summaryUpdatedAt} ongotocard={handleSummaryGotoCard} spaceFilter={$feedFilters.spaceFilter} />
 					{/if}
 				</div>
 			<!-- Card grid -->
@@ -425,6 +534,14 @@
 							Cards will appear here as events are processed
 						{/if}
 					</p>
+				</div>
+			{:else if filteredGroups.length === 0 && searchTerms.length > 0}
+				<div class="py-12 text-center text-surface-500">
+					<svg class="mx-auto mb-2 h-8 w-8 text-surface-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+					</svg>
+					<p class="text-sm">No cards match "<span class="text-surface-300">{searchQuery}</span>"</p>
+					<button class="mt-2 text-xs text-laya-orange hover:underline" onclick={() => (searchQuery = '')}>Clear search</button>
 				</div>
 			{:else if sections}
 				<!-- Sorted view with section separators -->
