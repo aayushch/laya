@@ -162,24 +162,28 @@
    Uses box-shadow so it won't cause layout reflow.
    ───────────────────────────────────────────────────────────── */
 @keyframes card-pulse-glow {
-	0%, 100% { box-shadow: 0 0 0 0 transparent; }
-	50%      { box-shadow: 0 0 12px 2px var(--card-pulse-color); }
+	0%, 100% { box-shadow: 0 0 8px 1px var(--card-pulse-base); }
+	50%      { box-shadow: 0 0 18px 4px var(--card-pulse-color); }
 }
 
 .card-pulse-violet {
-	--card-pulse-color: oklch(0.55 0.18 285 / 0.2);
+	--card-pulse-base: oklch(0.65 0.20 25 / 0.25);
+	--card-pulse-color: oklch(0.65 0.20 25 / 0.45);
 	animation: card-pulse-glow 2.5s ease-in-out infinite;
 }
 .card-pulse-amber {
-	--card-pulse-color: oklch(0.60 0.16 70 / 0.2);
+	--card-pulse-base: oklch(0.60 0.16 70 / 0.20);
+	--card-pulse-color: oklch(0.60 0.16 70 / 0.40);
 	animation: card-pulse-glow 2.5s ease-in-out infinite;
 }
 
 [data-theme='light'] .card-pulse-violet {
-	--card-pulse-color: oklch(0.50 0.28 285 / 0.35);
+	--card-pulse-base: oklch(0.60 0.22 25 / 0.30);
+	--card-pulse-color: oklch(0.60 0.22 25 / 0.50);
 }
 [data-theme='light'] .card-pulse-amber {
-	--card-pulse-color: oklch(0.55 0.24 70 / 0.35);
+	--card-pulse-base: oklch(0.55 0.24 70 / 0.30);
+	--card-pulse-color: oklch(0.55 0.24 70 / 0.45);
 }
 
 /* ─────────────────────────────────────────────────────────────

@@ -38,6 +38,7 @@ vite.config.ts.timestamp-*
 # =========================
 target/
 Cargo.lock
+ui/src-tauri/resources/engine/
 
 # =========================
 # IDE / Editors

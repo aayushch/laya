@@ -9,6 +9,7 @@
 	import CardDetail from '$lib/components/feed/CardDetail.svelte';
 	import DaySummaryComponent from '$lib/components/feed/DaySummary.svelte';
 	import { showSummary } from '$lib/stores/feedView';
+	import { recentCards, recentDrawerOpen, trackCardVisit, clearRecentCards, type RecentCardEntry } from '$lib/stores/recentCards';
 
 	let groups = $state<CardGroup[]>([]);
 	let totalGroups = $state(0);
@@ -260,6 +261,7 @@
 	function selectCard(card: ActionCard) {
 		selectedCard = card;
 		sessionStorage.setItem(SELECTED_CARD_KEY, card.card_id);
+		trackCardVisit(card);
 		// Fetch full card from API to ensure suggested_actions and other fields
 		// that may be missing from WS-patched data are present.
 		engineApi.getCard(card.card_id).then((fresh) => {
@@ -304,9 +306,40 @@
 		}).catch(() => {});
 	}
 
+	function handleRecentCardClick(entry: RecentCardEntry) {
+		// Find the card in currently loaded groups
+		for (const g of groups) {
+			const found = g.cards.find((c) => c.card_id === entry.card_id);
+			if (found) {
+				selectCard(found);
+				scrollToCard(entry.card_id);
+				return;
+			}
+		}
+		// Card not in current view — fetch it to find its date, then navigate
+		engineApi.getCard(entry.card_id).then((card) => {
+			gotoCard(card as ActionCard);
+			selectCard(card as ActionCard);
+		}).catch(() => {});
+	}
+
+	function formatRecentTime(epochMs: number): string {
+		const diff = Date.now() - epochMs;
+		const mins = Math.floor(diff / 60_000);
+		if (mins < 1) return 'just now';
+		if (mins < 60) return `${mins}m ago`;
+		const hours = Math.floor(mins / 60);
+		if (hours < 24) return `${hours}h ago`;
+		const days = Math.floor(hours / 24);
+		return `${days}d ago`;
+	}
+
 	const totalCards = $derived(groups.reduce((sum, g) => sum + g.card_count, 0));
 	const requiresApprovalCount = $derived(
 		groups.reduce((sum, g) => sum + g.cards.filter((c) => c.status === 'requires_approval').length, 0)
+	);
+	const agentRunningCount = $derived(
+		groups.reduce((sum, g) => sum + g.cards.filter((c) => c.status === 'agent_running').length, 0)
 	);
 
 	// Search filtering
@@ -441,11 +474,26 @@
 		<span class="text-xs text-surface-500">
 			{totalGroups} {totalGroups === 1 ? 'group' : 'groups'} · {totalCards} cards{#if searchTerms.length > 0 && filteredTotalCards !== totalCards}
 				<span class="text-laya-orange"> · {filteredGroups.length} shown</span>
+			{/if}{#if agentRunningCount > 0}
+				<span class="text-laya-coral"> · {agentRunningCount} running</span>
 			{/if}{#if requiresApprovalCount > 0}
 				<span class="text-violet-400"> · {requiresApprovalCount} {requiresApprovalCount === 1 ? 'requires' : 'require'} approval</span>
 			{/if}
 		</span>
 		<div class="flex-1"></div>
+		<!-- Recent Cards toggle -->
+		<button
+			class="flex items-center justify-center rounded-lg border px-2 py-1 transition-colors
+				{$recentDrawerOpen
+					? 'border-laya-orange/40 bg-laya-orange/10 text-laya-orange'
+					: 'border-surface-700 bg-surface-800/60 text-surface-500 hover:text-surface-200 hover:border-surface-600'}"
+			onclick={() => ($recentDrawerOpen = !$recentDrawerOpen)}
+			title="Recent Cards"
+		>
+			<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+			</svg>
+		</button>
 		<!-- Search -->
 		<div class="relative">
 			<svg class="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-surface-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -454,7 +502,7 @@
 			<input
 				type="text"
 				bind:value={searchQuery}
-				placeholder="Search cards..."
+				placeholder="Search"
 				class="h-7 w-48 rounded-lg border border-surface-700 bg-surface-800/60 pl-7 pr-7 text-xs text-surface-200 placeholder-surface-500 outline-none transition-colors focus:border-laya-orange/50 focus:ring-1 focus:ring-laya-orange/25"
 			/>
 			{#if searchQuery}
@@ -479,6 +527,7 @@
 				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
 				</svg>
+				<span>Cards</span>
 			</button>
 			<button
 				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {$showSummary ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-200'}"
@@ -488,12 +537,73 @@
 				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
 				</svg>
+				<span>Summary</span>
 			</button>
 		</div>
 	</div>
 
-	<!-- Content area: cards + detail panel side by side -->
+	<!-- Content area: recent drawer + cards + detail panel side by side -->
 	<div class="flex min-h-0 flex-1 gap-4">
+		<!-- Recent Cards drawer -->
+		{#if $recentDrawerOpen}
+			<div class="flex w-[260px] flex-shrink-0 flex-col overflow-hidden rounded-xl border border-surface-700/50 bg-surface-900/60">
+				<div class="flex items-center justify-between border-b border-surface-700/50 px-3 py-2">
+					<span class="text-xs font-medium text-surface-300">Recent Cards</span>
+					<div class="flex items-center gap-1">
+						{#if $recentCards.length > 0}
+							<button
+								class="rounded p-0.5 text-surface-600 transition-colors hover:text-surface-300"
+								onclick={() => clearRecentCards()}
+								title="Clear history"
+							>
+								<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+								</svg>
+							</button>
+						{/if}
+						<button
+							class="rounded p-0.5 text-surface-600 transition-colors hover:text-surface-300"
+							onclick={() => ($recentDrawerOpen = false)}
+							title="Close"
+						>
+							<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+							</svg>
+						</button>
+					</div>
+				</div>
+				<div class="flex-1 overflow-y-auto">
+					{#if $recentCards.length === 0}
+						<div class="flex flex-col items-center justify-center px-4 py-8 text-surface-600">
+							<svg class="mb-2 h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+							</svg>
+							<p class="text-[11px]">No recent cards yet</p>
+							<p class="mt-0.5 text-[10px] text-surface-700">Cards you view will appear here</p>
+						</div>
+					{:else}
+						{#each $recentCards as entry (entry.card_id)}
+							<button
+								class="flex w-full flex-col gap-0.5 border-b border-surface-800/50 px-3 py-2 text-left transition-colors hover:bg-surface-800/60
+									{selectedCard?.card_id === entry.card_id ? 'bg-laya-orange/5 border-l-2 border-l-laya-orange/40' : ''}"
+								onclick={() => handleRecentCardClick(entry)}
+							>
+								<div class="flex items-start justify-between gap-2">
+									<span class="line-clamp-1 text-xs text-surface-200">{entry.header}</span>
+									<span class="shrink-0 text-[9px] text-surface-600">{formatRecentTime(entry.visited_at)}</span>
+								</div>
+								<span class="line-clamp-1 text-[10px] text-surface-500">
+									{#if entry.source_ref}{entry.source_ref}{:else if entry.entity_id}{entry.entity_id}{:else if entry.category}{entry.category}{/if}
+									{#if entry.space_name}
+										<span class="text-surface-600"> · {entry.space_name}</span>
+									{/if}
+								</span>
+							</button>
+						{/each}
+					{/if}
+				</div>
+			</div>
+		{/if}
 		<!-- Cards / Summary section -->
 		<div bind:this={containerEl} class="flex min-w-0 flex-1 flex-col overflow-y-auto pl-0.5 pt-0.5">
 			<!-- Summary View -->
