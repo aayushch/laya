@@ -117,7 +117,7 @@ class GeminiCliAgent(CodingAgent):
 
             # Try to parse as JSON (stream-json format)
             events = self._parse_stream_json(line)
-            if events:
+            if events is not None:
                 for event in events:
                     yield event
                 continue
@@ -184,8 +184,12 @@ class GeminiCliAgent(CodingAgent):
                 {"error": error_msg, "exit_code": exit_code},
             )
 
-    def _parse_stream_json(self, line: str) -> list[WorkspaceEvent]:
+    def _parse_stream_json(self, line: str) -> list[WorkspaceEvent] | None:
         """Parse a stream-json line from Gemini CLI into workspace events.
+
+        Returns a list of events (possibly empty if the line was parsed
+        successfully but produced no events, e.g. delta chunks being buffered),
+        or ``None`` if the line is not valid JSON.
 
         Gemini stream-json types:
         - init: session metadata (session_id, model)
@@ -199,7 +203,7 @@ class GeminiCliAgent(CodingAgent):
         try:
             data = json.loads(line)
         except json.JSONDecodeError:
-            return []
+            return None
 
         msg_type = data.get("type", "")
 

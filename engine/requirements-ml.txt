@@ -1,0 +1,16 @@
+# Laya Engine — ML/embedding dependencies (optional)
+#
+# These provide local embeddings for ChromaDB's semantic search.
+# They require platform-specific native wheels (torch, onnxruntime)
+# which may not be available on all architectures (e.g., macOS x86_64).
+#
+# If these fail to install, Laya still works — ChromaDB falls back to
+# its default embedding function.
+
+sentence-transformers>=5.2.3
+torch>=2.0.0
+transformers>=5.2.0
+einops>=0.8.1
+numpy>=2.0.0
+scipy>=1.13.0
+scikit-learn>=1.5.0

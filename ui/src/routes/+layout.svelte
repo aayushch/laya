@@ -201,7 +201,6 @@
 										>
 											<span class="h-2 w-2 rounded-full shrink-0" style="background-color: {space.color}"></span>
 											{space.name}
-											<span class="ml-auto text-[10px] text-surface-500">{space.source_count}</span>
 										</button>
 									{/each}
 								</div>
