@@ -1,16 +1,5 @@
 <script lang="ts">
 	import { theme, type Theme } from '$lib/stores/theme';
-
-	const swatches = [
-		{ color: '#f6ac69', label: 'Orange',     cls: 'bg-laya-orange' },
-		{ color: '#f6bc66', label: 'Gold',        cls: 'bg-laya-gold' },
-		{ color: '#ffdab9', label: 'Peach',       cls: 'bg-laya-peach' },
-		{ color: '#ff9770', label: 'Coral',       cls: 'bg-laya-coral' },
-		{ color: '#c97b42', label: 'Amber',       cls: 'bg-laya-amber' },
-		{ color: '#e8d5b0', label: 'Sand',        cls: 'bg-laya-sand' },
-		{ color: '#f2e0d5', label: 'Blush',       cls: 'bg-laya-blush' },
-		{ color: '#9e5a3d', label: 'Terracotta',  cls: 'bg-laya-terracotta' }
-	];
 </script>
 
 <div class="space-y-8">
@@ -91,31 +80,5 @@
 		</div>
 	</div>
 
-	<!-- Brand palette -->
-	<div class="rounded-xl border border-surface-700 bg-surface-800 p-6">
-		<h3 class="mb-1 font-semibold text-surface-50">Brand Palette</h3>
-		<p class="mb-5 text-sm text-surface-400">Laya's warm pastel color system — used across the interface for accents, highlights, and interactive elements.</p>
-
-		<div class="grid grid-cols-4 gap-3">
-			{#each swatches as swatch}
-				<div class="flex flex-col items-center gap-2">
-					<div
-						class="h-12 w-full rounded-lg shadow-sm {swatch.cls}"
-						title={swatch.color}
-					></div>
-					<span class="text-[11px] font-medium text-surface-300">{swatch.label}</span>
-					<span class="font-mono text-[10px] text-surface-500">{swatch.color}</span>
-				</div>
-			{/each}
-		</div>
-	</div>
-
-	<!-- Quick tip -->
-	<div class="flex items-start gap-3 rounded-xl border border-laya-orange/20 bg-laya-orange/5 px-5 py-4">
-		<div class="mt-0.5 h-4 w-4 shrink-0 rounded-full bg-laya-orange/30 text-center text-[10px] leading-4 text-laya-orange font-bold">i</div>
-		<p class="text-sm text-surface-300">
-			Theme preference is saved locally and persists across sessions. Laya's warm palette is optimised for both dark and light environments.
-		</p>
-	</div>
 
 </div>

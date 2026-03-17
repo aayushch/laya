@@ -341,6 +341,9 @@
 	const agentRunningCount = $derived(
 		groups.reduce((sum, g) => sum + g.cards.filter((c) => c.status === 'agent_running').length, 0)
 	);
+	const failedCount = $derived(
+		groups.reduce((sum, g) => sum + g.cards.filter((c) => c.status === 'failed').length, 0)
+	);
 
 	// Search filtering
 	function cardMatchesSearch(card: ActionCard, terms: string[]): boolean {
@@ -471,15 +474,35 @@
 <div class="flex h-full flex-col">
 	<!-- Sticky summary bar spanning full width -->
 	<div class="flex items-center gap-2 pb-3">
-		<span class="text-xs text-surface-500">
-			{totalGroups} {totalGroups === 1 ? 'group' : 'groups'} · {totalCards} cards{#if searchTerms.length > 0 && filteredTotalCards !== totalCards}
-				<span class="text-laya-orange"> · {filteredGroups.length} shown</span>
-			{/if}{#if agentRunningCount > 0}
-				<span class="text-laya-coral"> · {agentRunningCount} running</span>
-			{/if}{#if requiresApprovalCount > 0}
-				<span class="text-violet-400"> · {requiresApprovalCount} {requiresApprovalCount === 1 ? 'requires' : 'require'} approval</span>
+		<div class="flex items-center gap-1.5">
+			<span class="text-xs text-surface-500">{totalGroups} {totalGroups === 1 ? 'group' : 'groups'}</span>
+			<span class="text-[10px] text-surface-600">·</span>
+			<span class="text-xs text-surface-500">{totalCards} cards</span>
+			{#if searchTerms.length > 0 && filteredTotalCards !== totalCards}
+				<span class="inline-flex items-center gap-1 rounded-full bg-laya-orange/10 px-2 py-0.5 text-[10px] font-medium text-laya-orange">
+					<svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+					{filteredGroups.length} shown
+				</span>
 			{/if}
-		</span>
+			{#if agentRunningCount > 0}
+				<span class="inline-flex items-center gap-1 rounded-full bg-laya-coral/10 px-2 py-0.5 text-[10px] font-medium text-laya-coral">
+					<span class="h-1.5 w-1.5 rounded-full bg-laya-coral animate-pulse"></span>
+					{agentRunningCount} running
+				</span>
+			{/if}
+			{#if failedCount > 0}
+				<span class="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-medium text-red-400">
+					<span class="h-1.5 w-1.5 rounded-full bg-red-400"></span>
+					{failedCount} failed
+				</span>
+			{/if}
+			{#if requiresApprovalCount > 0}
+				<span class="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-400">
+					<span class="h-1.5 w-1.5 rounded-full bg-violet-400"></span>
+					{requiresApprovalCount} {requiresApprovalCount === 1 ? 'needs' : 'need'} approval
+				</span>
+			{/if}
+		</div>
 		<div class="flex-1"></div>
 		<!-- Recent Cards toggle -->
 		<button
@@ -527,7 +550,6 @@
 				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
 				</svg>
-				<span>Cards</span>
 			</button>
 			<button
 				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {$showSummary ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-200'}"
@@ -537,7 +559,6 @@
 				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
 				</svg>
-				<span>Summary</span>
 			</button>
 		</div>
 	</div>
@@ -605,7 +626,7 @@
 			</div>
 		{/if}
 		<!-- Cards / Summary section -->
-		<div bind:this={containerEl} class="flex min-w-0 flex-1 flex-col overflow-y-auto pl-0.5 pt-0.5">
+		<div bind:this={containerEl} class="flex min-w-0 flex-1 flex-col overflow-y-auto p-3">
 			<!-- Summary View -->
 			{#if $showSummary}
 				<div class="flex-1 overflow-y-auto rounded-xl border border-surface-700/50 bg-surface-900/30 p-6">

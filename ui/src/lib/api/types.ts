@@ -63,7 +63,7 @@ export interface Rule {
 	name: string;
 	enabled: boolean;
 	condition: RuleCondition;
-	action: 'drop';
+	action: 'drop' | 'allow';
 }
 
 /** rules.json structure */

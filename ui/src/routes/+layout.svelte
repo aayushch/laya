@@ -251,7 +251,7 @@
 						</button>
 						{#if statusDropdownOpen}
 							<div class="absolute left-0 top-full z-50 mt-1.5 w-44 rounded-lg border border-surface-600 bg-surface-800 p-1.5 shadow-xl shadow-black/30">
-								{#each [['pending', 'Processing'], ['ready', 'Ready'], ['requires_approval', 'Needs Approval'], ['done', 'Done'], ['dismissed', 'Dismissed'], ['archived', 'Archived']] as [value, label]}
+								{#each [['pending', 'Processing'], ['ready', 'Ready'], ['requires_approval', 'Needs Approval'], ['agent_running', 'Running'], ['failed', 'Failed'], ['done', 'Done'], ['dismissed', 'Dismissed'], ['archived', 'Archived']] as [value, label]}
 									<button
 										class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors hover:bg-surface-700
 											{$feedFilters.statusFilters.includes(value) ? 'text-laya-orange' : 'text-surface-300'}"
@@ -382,7 +382,7 @@
 		</header>
 
 		<!-- Main content -->
-		<main class="flex-1 overflow-auto p-6">
+		<main class="flex-1 overflow-auto p-4">
 			{@render children()}
 		</main>
 	</div>
