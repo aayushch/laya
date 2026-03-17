@@ -13,13 +13,27 @@
 	}: { group: CardGroup; onselect: (card: ActionCard) => void; ondelete?: (cardId: string) => void; selectedCardId?: string; hasSelection?: boolean; scrollToCardId?: string | null } = $props();
 
 	let expanded = $state(false);
-	let dismissingAll = $state(false);
+	let bulkActionRunning = $state(false);
+	let groupMenuOpen = $state(false);
 
 	// Auto-expand when a card in this group is targeted for scroll
 	$effect(() => {
 		if (scrollToCardId && !expanded && group.cards.some(c => c.card_id === scrollToCardId)) {
 			expanded = true;
 		}
+	});
+
+	// Close group menu on outside click
+	$effect(() => {
+		if (!groupMenuOpen) return;
+		function handleClick(e: MouseEvent) {
+			const target = e.target as HTMLElement;
+			if (!target.closest('.group-menu')) {
+				groupMenuOpen = false;
+			}
+		}
+		document.addEventListener('click', handleClick, true);
+		return () => document.removeEventListener('click', handleClick, true);
 	});
 
 	const topCard = $derived(group.cards.find((c) => c.status === 'pending') ?? group.cards[0]);
@@ -170,22 +184,72 @@
 	const isGroupSelected = $derived(group.cards.some((c) => c.card_id === selectedCardId));
 	const isDimmed = $derived(hasSelection && !isGroupSelected);
 
+	// Bulk action menu visibility — only show actions that apply to at least one card
+	const canApproveAll = $derived(group.cards.some(c => c.status === 'requires_approval'));
+	const canCompleteAll = $derived(group.cards.some(c => c.status !== 'done' && !['dismissed', 'archived', 'failed'].includes(c.status)));
+	const canDismissAll = $derived(group.cards.some(c => c.status !== 'dismissed' && !['archived', 'done', 'failed'].includes(c.status)));
+	const canArchiveAll = $derived(group.cards.some(c => c.status !== 'archived'));
+	const canReopenAll = $derived(group.cards.some(c => ['dismissed', 'archived', 'done'].includes(c.status)));
+	const canUnarchiveAll = $derived(group.cards.some(c => c.status === 'archived'));
+
+	const hasAnyAction = $derived(canApproveAll || canCompleteAll || canDismissAll || canArchiveAll || canReopenAll || canUnarchiveAll);
+
 	function toggle() {
 		expanded = !expanded;
 	}
 
-	async function dismissAll(e: Event) {
+	function toggleGroupMenu(e: Event) {
 		e.stopPropagation();
-		dismissingAll = true;
+		groupMenuOpen = !groupMenuOpen;
+	}
+
+	function closeGroupMenu() {
+		groupMenuOpen = false;
+	}
+
+	async function bulkAction(action: 'approve' | 'complete' | 'dismiss' | 'archive' | 'reopen' | 'unarchive', e: Event) {
+		e.stopPropagation();
+		groupMenuOpen = false;
+		bulkActionRunning = true;
 		try {
-			await engineApi.dismissGroup(group.entity_id);
+			const promises: Promise<unknown>[] = [];
 			for (const card of group.cards) {
-				if (!['done', 'dismissed', 'failed'].includes(card.status)) {
-					card.status = 'dismissed';
+				switch (action) {
+					case 'approve':
+						if (card.status === 'requires_approval') {
+							promises.push(engineApi.approveAgent(card.card_id).then(() => { card.status = 'agent_running'; }));
+						}
+						break;
+					case 'complete':
+						if (card.status !== 'done' && !['dismissed', 'archived', 'failed'].includes(card.status)) {
+							promises.push(engineApi.markCardDone(card.card_id).then(() => { card.status = 'done'; }));
+						}
+						break;
+					case 'dismiss':
+						if (card.status !== 'dismissed' && !['archived', 'done', 'failed'].includes(card.status)) {
+							promises.push(engineApi.dismissCard(card.card_id).then(() => { card.status = 'dismissed'; }));
+						}
+						break;
+					case 'archive':
+						if (card.status !== 'archived') {
+							promises.push(engineApi.archiveCard(card.card_id).then(() => { card.status = 'archived'; }));
+						}
+						break;
+					case 'reopen':
+						if (['dismissed', 'archived', 'done'].includes(card.status)) {
+							promises.push(engineApi.reopenCard(card.card_id).then(() => { card.status = 'ready'; }));
+						}
+						break;
+					case 'unarchive':
+						if (card.status === 'archived') {
+							promises.push(engineApi.reopenCard(card.card_id).then(() => { card.status = 'ready'; }));
+						}
+						break;
 				}
 			}
+			await Promise.all(promises);
 		} finally {
-			dismissingAll = false;
+			bulkActionRunning = false;
 		}
 	}
 </script>
@@ -288,14 +352,94 @@
 					<span class="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase {priorityColors[group.top_priority] ?? priorityColors.MEDIUM}">
 						{priorityLabel[group.top_priority] ?? group.top_priority}
 					</span>
-					{#if group.has_pending}
-						<button
-							onclick={dismissAll}
-							disabled={dismissingAll}
-							class="text-[10px] text-surface-500 transition-colors hover:text-red-400 disabled:opacity-50"
-						>
-							{dismissingAll ? 'Dismissing…' : 'Dismiss all'}
-						</button>
+					{#if hasAnyAction}
+						<!-- Three-dot group actions menu -->
+						<div class="group-menu relative">
+							<button
+								onclick={toggleGroupMenu}
+								disabled={bulkActionRunning}
+								class="rounded p-1 text-surface-500 transition-colors hover:bg-surface-700 hover:text-surface-300 disabled:opacity-50"
+								title="Group actions"
+							>
+								{#if bulkActionRunning}
+									<svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+										<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+										<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+									</svg>
+								{:else}
+									<svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+										<path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+									</svg>
+								{/if}
+							</button>
+							{#if groupMenuOpen}
+								<div
+									class="absolute right-0 top-full z-50 mt-1 w-40 rounded-lg border border-surface-600 bg-surface-800 p-1 shadow-xl shadow-black/30"
+									role="menu"
+								>
+									{#if canApproveAll}
+										<button
+											class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-violet-400"
+											role="menuitem"
+											onclick={(e) => bulkAction('approve', e)}
+										>
+											<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+											Approve All
+										</button>
+									{/if}
+									{#if canCompleteAll}
+										<button
+											class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-green-400"
+											role="menuitem"
+											onclick={(e) => bulkAction('complete', e)}
+										>
+											<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+											Complete All
+										</button>
+									{/if}
+									{#if canDismissAll}
+										<button
+											class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400"
+											role="menuitem"
+											onclick={(e) => bulkAction('dismiss', e)}
+										>
+											<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+											Dismiss All
+										</button>
+									{/if}
+									{#if canReopenAll}
+										<button
+											class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-laya-orange"
+											role="menuitem"
+											onclick={(e) => bulkAction('reopen', e)}
+										>
+											<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+											Reopen All
+										</button>
+									{/if}
+									{#if canArchiveAll}
+										<button
+											class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-surface-400"
+											role="menuitem"
+											onclick={(e) => bulkAction('archive', e)}
+										>
+											<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
+											Archive All
+										</button>
+									{/if}
+									{#if canUnarchiveAll}
+										<button
+											class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-laya-orange"
+											role="menuitem"
+											onclick={(e) => bulkAction('unarchive', e)}
+										>
+											<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4l3 3m0 0l3-3m-3 3V9" /></svg>
+											Unarchive All
+										</button>
+									{/if}
+								</div>
+							{/if}
+						</div>
 					{/if}
 					<!-- Collapse chevron (pointing up = expanded) -->
 					<svg class="h-3.5 w-3.5 shrink-0 rotate-180 text-surface-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">

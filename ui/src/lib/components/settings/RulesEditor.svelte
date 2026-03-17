@@ -7,10 +7,15 @@
 	const commonFields = [
 		'actor.email',
 		'actor.name',
+		'actor.platform_handle',
 		'source.platform',
+		'source.connection_id',
 		'source.raw_event_type',
 		'subject.type',
 		'subject.id',
+		'subject.title',
+		'subject.url',
+		'content.body',
 		'content.metadata.slack_channel',
 		'content.metadata.jira_project'
 	];
@@ -27,6 +32,7 @@
 	let formField = $state('actor.email');
 	let formOperator = $state<SimpleCondition['operator']>('contains');
 	let formValue = $state('');
+	let formAction = $state<'drop' | 'allow'>('drop');
 
 	onMount(async () => {
 		try {
@@ -73,6 +79,7 @@
 		formField = 'actor.email';
 		formOperator = 'contains';
 		formValue = '';
+		formAction = 'drop';
 		showAddForm = false;
 		editingIndex = null;
 	}
@@ -82,7 +89,7 @@
 			name: formName,
 			enabled: true,
 			condition: { field: formField, operator: formOperator, value: formValue },
-			action: 'drop'
+			action: formAction
 		});
 		resetForm();
 		await save();
@@ -91,6 +98,7 @@
 	function startEdit(index: number) {
 		const r = rules[index];
 		formName = r.name;
+		formAction = r.action;
 		if (isSimple(r.condition)) {
 			const c = r.condition as SimpleCondition;
 			formField = c.field;
@@ -106,6 +114,7 @@
 			rules[editingIndex] = {
 				...rules[editingIndex],
 				name: formName,
+				action: formAction,
 				condition: { field: formField, operator: formOperator, value: formValue }
 			};
 			resetForm();
@@ -145,6 +154,7 @@
 							>
 								<span class="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform {rule.enabled ? 'left-[1.125rem]' : 'left-0.5'}"></span>
 							</button>
+							<span class="rounded px-1.5 py-0.5 text-xs font-semibold uppercase {rule.action === 'allow' ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}">{rule.action === 'allow' ? 'Allow' : 'Ignore'}</span>
 							<span class="font-medium {rule.enabled ? 'text-surface-50' : 'text-surface-500'}">{rule.name}</span>
 						</div>
 						<p class="mt-1 pl-12 font-mono text-xs text-surface-400">{conditionSummary(rule.condition)}</p>
@@ -170,7 +180,19 @@
 		<div class="rounded-xl border border-surface-700 bg-surface-800 p-4">
 			<h3 class="mb-3 text-sm font-medium">{editingIndex !== null ? 'Edit Rule' : 'Add Rule'}</h3>
 			<div class="space-y-3">
-				<input bind:value={formName} placeholder="Rule name" class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500" />
+				<div class="flex gap-3">
+					<input bind:value={formName} placeholder="Rule name" class="flex-1 rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500" />
+					<div class="flex rounded-lg border border-surface-600 overflow-hidden">
+						<button
+							class="px-3 py-2 text-sm font-medium transition-colors {formAction === 'drop' ? 'bg-red-900/60 text-red-300' : 'bg-surface-900 text-surface-400 hover:text-surface-200'}"
+							onclick={() => (formAction = 'drop')}
+						>Ignore</button>
+						<button
+							class="px-3 py-2 text-sm font-medium transition-colors {formAction === 'allow' ? 'bg-green-900/60 text-green-300' : 'bg-surface-900 text-surface-400 hover:text-surface-200'}"
+							onclick={() => (formAction = 'allow')}
+						>Allow</button>
+					</div>
+				</div>
 				<div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
 					<select bind:value={formField} class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50">
 						{#each commonFields as field}

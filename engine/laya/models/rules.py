@@ -45,7 +45,7 @@ class Rule(BaseModel):
     name: str
     enabled: bool = True
     condition: RuleCondition
-    action: Literal["drop"] = "drop"
+    action: Literal["drop", "allow"] = "drop"
 
 
 class RulesConfig(BaseModel):

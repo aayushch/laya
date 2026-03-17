@@ -96,6 +96,13 @@ async def run_rules(event: LayaEvent) -> tuple[bool, str | None]:
             continue
 
         if _evaluate_condition(rule.condition, event):
+            if rule.action == "allow":
+                log.info(
+                    "event_allowed", event_id=event.event_id, rule=rule.name
+                )
+                return False, None
+
+            # action == "drop"
             db = await get_db()
             await db.execute(
                 "UPDATE events SET filtered = TRUE, filter_rule = ? WHERE event_id = ?",

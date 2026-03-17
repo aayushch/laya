@@ -144,11 +144,11 @@ def _resolve_custom_provider(model: str) -> tuple[str, dict[str, Any]] | None:
         litellm_model = f"openai/{model_name}"
         extra["api_base"] = f"{base_url}/v1"
 
-    # API key from keychain
+    # API key from keychain (optional for local providers)
     api_key = _get_provider_api_key(provider)
     if api_key:
         extra["api_key"] = api_key
-    elif ptype in ("lmstudio", "ollama"):
+    else:
         extra["api_key"] = "not-needed"  # LiteLLM requires a non-empty value
 
     return litellm_model, extra

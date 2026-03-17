@@ -383,14 +383,12 @@
 							class="rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
 						/>
 					</div>
-					{#if newProvider.provider_type === 'openai_compatible'}
-						<input
-							type="password"
-							bind:value={newProvider.api_key}
-							placeholder="API key (optional)"
-							class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
-						/>
-					{/if}
+										<input
+						type="password"
+						bind:value={newProvider.api_key}
+						placeholder="API key (optional — leave blank if not required)"
+						class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+					/>
 					{#if addError}
 						<p class="text-sm text-red-400">{addError}</p>
 					{/if}
