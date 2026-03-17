@@ -10,7 +10,7 @@
 	import { needsSetup, setupComplete } from '$lib/stores/setup';
 	import { chatOpen } from '$lib/stores/chat';
 	import { theme } from '$lib/stores/theme';
-	import { feedFilters, loadFeedFilters, saveFeedFilters, feedDate, feedPrevDate, feedNextDate, localToday } from '$lib/stores/feedFilters';
+	import { feedFilters, loadFeedFilters, saveFeedFilters, filtersLoaded, feedDate, feedPrevDate, feedNextDate, localToday } from '$lib/stores/feedFilters';
 	import { spaces, loadSpaces } from '$lib/stores/spaces';
 	import { onMount } from 'svelte';
 
@@ -55,10 +55,10 @@
 		return arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value];
 	}
 
-	// Persist when filters change
+	// Persist when filters change (only after initial load to avoid overwriting saved prefs with defaults)
 	$effect(() => {
 		$feedFilters;
-		saveFeedFilters();
+		if (filtersLoaded()) saveFeedFilters();
 	});
 
 	// Status/priority/space filter dropdowns
@@ -88,14 +88,14 @@
 				if (data && !data.setup_complete) goto('/setup');
 			})
 			.catch(() => {});
-		// Load spaces once engine is available
+		// Load spaces and feed filters once engine is available
 		loadSpaces();
+		loadFeedFilters();
 	});
 
 	onMount(() => {
 		startHealthPolling();
 		initWebSocket();
-		loadFeedFilters();
 
 		document.addEventListener('click', closeDropdowns);
 
@@ -251,7 +251,7 @@
 						</button>
 						{#if statusDropdownOpen}
 							<div class="absolute left-0 top-full z-50 mt-1.5 w-44 rounded-lg border border-surface-600 bg-surface-800 p-1.5 shadow-xl shadow-black/30">
-								{#each [['pending', 'Processing'], ['ready', 'Ready'], ['requires_approval', 'Needs Approval'], ['agent_running', 'Running'], ['failed', 'Failed'], ['done', 'Done'], ['dismissed', 'Dismissed'], ['archived', 'Archived']] as [value, label]}
+								{#each [['pending', 'Processing'], ['ready', 'Ready'], ['requires_approval', 'Needs Approval'], ['agent_running', 'Running'], ['failed', 'Failed'], ['done', 'Done'], ['dismissed', 'Dismissed']] as [value, label]}
 									<button
 										class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors hover:bg-surface-700
 											{$feedFilters.statusFilters.includes(value) ? 'text-laya-orange' : 'text-surface-300'}"

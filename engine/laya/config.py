@@ -56,6 +56,7 @@ DEFAULT_SETTINGS = {
         "priorityFilters": [],
         "sortBy": "newest",
         "showArchived": False,
+        "spaceFilter": None,
     },
     "setup_complete": False,
     "n8n": {
