@@ -9,8 +9,9 @@
 	import AuditLogViewer from '$lib/components/settings/AuditLogViewer.svelte';
 	import AppearanceConfig from '$lib/components/settings/AppearanceConfig.svelte';
 	import DataConfig from '$lib/components/settings/DataConfig.svelte';
+	import BriefingConfig from '$lib/components/settings/BriefingConfig.svelte';
 
-	let activeTab = $state<'team' | 'rules' | 'models' | 'repos' | 'agent' | 'integrations' | 'spaces' | 'audit' | 'appearance' | 'data'>('team');
+	let activeTab = $state<'team' | 'rules' | 'models' | 'repos' | 'agent' | 'integrations' | 'spaces' | 'briefing' | 'audit' | 'appearance' | 'data'>('team');
 	let exporting = $state(false);
 
 	async function exportDiagnostics() {
@@ -49,6 +50,7 @@
 			{ id: 'agent',        label: 'Agent' },
 			{ id: 'integrations', label: 'Integrations' },
 			{ id: 'spaces',       label: 'Spaces' },
+			{ id: 'briefing',     label: 'Briefing' },
 			{ id: 'audit',        label: 'Audit' },
 			{ id: 'appearance',   label: 'Appearance' },
 			{ id: 'data',         label: 'Data' }
@@ -79,6 +81,8 @@
 		<IntegrationsConfig />
 	{:else if activeTab === 'spaces'}
 		<SpacesConfig />
+	{:else if activeTab === 'briefing'}
+		<BriefingConfig />
 	{:else if activeTab === 'appearance'}
 		<AppearanceConfig />
 	{:else if activeTab === 'data'}

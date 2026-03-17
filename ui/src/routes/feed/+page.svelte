@@ -176,9 +176,31 @@
 				selected_action_id?: string;
 			};
 
-			if (payload.status === 'archived' && !$feedFilters.showArchived) {
-				scheduleReload();
-				return;
+			// Check if the new status is excluded by active filters
+			if (payload.status) {
+				const activeStatuses = $feedFilters.statusFilters;
+				const isArchived = payload.status === 'archived';
+				const excludedByArchiveToggle = isArchived && !$feedFilters.showArchived;
+				const excludedByStatusFilter = activeStatuses.length > 0 && !activeStatuses.includes(payload.status);
+
+				if (excludedByArchiveToggle || excludedByStatusFilter) {
+					const cardId = msg.card_id!;
+					// Mark card as exiting to trigger fade-out transition
+					exitingCardIds = new Set([...exitingCardIds, cardId]);
+					if (selectedCard?.card_id === cardId) {
+						selectedCard = null;
+						sessionStorage.removeItem(SELECTED_CARD_KEY);
+					}
+					// Remove after transition completes
+					setTimeout(() => {
+						groups = groups
+							.map((g) => ({ ...g, cards: g.cards.filter((c) => c.card_id !== cardId) }))
+							.filter((g) => g.cards.length > 0);
+						totalGroups = groups.length;
+						exitingCardIds = new Set([...exitingCardIds].filter((id) => id !== cardId));
+					}, EXIT_DURATION);
+					return;
+				}
 			}
 
 			for (const group of groups) {
@@ -210,6 +232,10 @@
 			}
 		}
 	});
+
+	// Cards exiting due to filter mismatch — tracked for fade-out transition
+	let exitingCardIds = $state(new Set<string>());
+	const EXIT_DURATION = 250; // ms — fast but visible
 
 	// ID of card to scroll into view after next render (set by gotoCard)
 	let _scrollToCardId = $state<string | null>(null);
@@ -697,12 +723,15 @@
 							{#each toColumns(sectionGroups) as col}
 								<div class="flex w-[320px] flex-col gap-4">
 									{#each col as group (group.entity_id)}
+									{@const isGroupExiting = group.cards.every((c) => exitingCardIds.has(c.card_id))}
+									<div class="card-exit-wrap {isGroupExiting ? 'card-exiting' : ''}">
 										{#if group.card_count === 1}
 											<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} />
 										{:else}
 											<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} scrollToCardId={_scrollToCardId} />
 										{/if}
-									{/each}
+									</div>
+								{/each}
 								</div>
 							{/each}
 						</div>

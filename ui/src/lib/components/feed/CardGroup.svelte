@@ -119,9 +119,22 @@
 		return group.cards[0]?.status ?? 'pending';
 	});
 
-	const groupStyle = $derived(groupStatusStyle[dominantStatus] ?? 'bg-surface-900 border-surface-600 hover:border-laya-orange/30');
-	const ghostBorder = $derived(ghostBorderStyle[dominantStatus] ?? 'border-surface-700');
-	const ghostBg = $derived(ghostBgStyle[dominantStatus] ?? 'bg-surface-950');
+	const allArchived = $derived(group.cards.every(c => c.status === 'archived'));
+	const groupStyle = $derived(
+		allArchived
+			? 'bg-surface-900/60 border-dashed border-surface-700/50 opacity-50 hover:opacity-80'
+			: (groupStatusStyle[dominantStatus] ?? 'bg-surface-900 border-surface-600 hover:border-laya-orange/30')
+	);
+	const ghostBorder = $derived(
+		allArchived
+			? 'border-dashed border-surface-700/50'
+			: (ghostBorderStyle[dominantStatus] ?? 'border-surface-700')
+	);
+	const ghostBg = $derived(
+		allArchived
+			? 'bg-surface-900/40'
+			: (ghostBgStyle[dominantStatus] ?? 'bg-surface-950')
+	);
 
 	const priorityColors: Record<string, string> = {
 		CRITICAL: 'bg-red-600 text-red-50',
@@ -358,17 +371,17 @@
 							<button
 								onclick={toggleGroupMenu}
 								disabled={bulkActionRunning}
-								class="rounded p-1 text-surface-500 transition-colors hover:bg-surface-700 hover:text-surface-300 disabled:opacity-50"
+								class="flex h-6 w-6 items-center justify-center rounded-full text-surface-500 transition-colors hover:bg-surface-700 hover:text-surface-300 disabled:opacity-50"
 								title="Group actions"
 							>
 								{#if bulkActionRunning}
-									<svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+									<svg class="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
 										<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 										<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
 									</svg>
 								{:else}
-									<svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-										<path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+									<svg class="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20">
+										<path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM18 10a2 2 0 11-4 0 2 2 0 014 0z" />
 									</svg>
 								{/if}
 							</button>

@@ -187,6 +187,19 @@
 }
 
 /* ─────────────────────────────────────────────────────────────
+   CARD EXIT TRANSITION
+   Fast fade+shrink when a card is removed due to filter mismatch.
+   ───────────────────────────────────────────────────────────── */
+.card-exit-wrap {
+	transition: opacity 250ms ease-out, transform 250ms ease-out;
+}
+.card-exit-wrap.card-exiting {
+	opacity: 0;
+	transform: scale(0.96);
+	pointer-events: none;
+}
+
+/* ─────────────────────────────────────────────────────────────
    PROSE-PLAN — Markdown rendering for agent plans
    Minimal typographic styles for rendered markdown inside
    workspace AgentPanel and CardDetail staged output.

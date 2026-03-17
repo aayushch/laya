@@ -33,6 +33,11 @@ export const feedFilters = writable<FeedFilters>({ ...defaults });
 let _saveTimer: ReturnType<typeof setTimeout> | null = null;
 let _loaded = false;
 
+/** True once filters have been loaded from the engine at least once. */
+export function filtersLoaded(): boolean {
+	return _loaded;
+}
+
 /** Load feed preferences from the engine settings API. */
 export async function loadFeedFilters(): Promise<void> {
 	try {
@@ -49,8 +54,8 @@ export async function loadFeedFilters(): Promise<void> {
 		}
 		_loaded = true;
 	} catch {
-		// Engine not ready yet — use defaults
-		_loaded = true;
+		// Engine not ready yet — use defaults but don't mark as loaded
+		// so we don't overwrite saved preferences with defaults
 	}
 }
 
