@@ -192,6 +192,10 @@ async def get_grouped_cards(
     if status:
         # Support comma-separated multi-select, e.g. "pending,approved"
         statuses = [s.strip() for s in status.split(",") if s.strip()]
+        # When show_archived is on, ensure 'archived' is included alongside
+        # any active status filters so the Archived button always works
+        if show_archived and "archived" not in statuses:
+            statuses.append("archived")
         if len(statuses) == 1:
             conditions.append("c.status = ?")
             params.append(statuses[0])

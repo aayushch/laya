@@ -68,6 +68,9 @@
 
 	function closeDropdowns(e: MouseEvent) {
 		const target = e.target as HTMLElement;
+		// If the click target was removed from the DOM (e.g. checkbox SVG toggled off),
+		// it won't have a parent chain — don't close the dropdown in that case.
+		if (!target.isConnected) return;
 		if (!target.closest('.filter-dropdown')) {
 			statusDropdownOpen = false;
 			priorityDropdownOpen = false;
