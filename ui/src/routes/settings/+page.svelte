@@ -41,7 +41,7 @@
 	</div>
 
 	<!-- Tab bar -->
-	<div class="flex flex-wrap gap-1 rounded-lg border border-surface-700 bg-surface-800 p-1">
+	<div class="flex gap-0.5 rounded-lg border border-surface-700 bg-surface-800 p-1">
 		{#each [
 			{ id: 'team',         label: 'Team' },
 			{ id: 'rules',        label: 'Rules' },
@@ -56,7 +56,7 @@
 			{ id: 'data',         label: 'Data' }
 		] as tab}
 			<button
-				class="rounded-md px-4 py-2 text-sm font-medium transition-colors
+				class="rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors
 					{activeTab === tab.id
 						? 'bg-laya-orange/15 text-laya-orange'
 						: 'text-surface-400 hover:text-surface-200'}"
