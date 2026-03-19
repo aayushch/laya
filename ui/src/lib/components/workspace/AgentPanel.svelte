@@ -184,10 +184,10 @@
 		cancelled: 'bg-surface-700 text-surface-400'
 	};
 
-	const toolIcons: Record<string, string> = {
-		file_read: '\u{1F4C4}',
-		file_write: '\u{270F}\uFE0F',
-		tool_call: '\u{1F527}'
+	const toolIconPaths: Record<string, string> = {
+		file_read: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Zm-2 1.5L18.5 10H12V3.5ZM8 13h8v1.5H8V13Zm0 3h5v1.5H8V16Z',
+		file_write: 'M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25ZM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83Z',
+		tool_call: 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z'
 	};
 
 	function toolLabel(ev: WorkspaceEvent): string {
@@ -493,7 +493,9 @@
 						<div class="border-t border-surface-700/40 divide-y divide-surface-700/30">
 							{#each groupEvents as ev (ev.event_id)}
 								<div id="event-{ev.event_id}" class="flex items-start gap-2 px-3 py-1.5">
-									<span class="mt-0.5 flex-shrink-0 text-xs">{toolIcons[ev.event_type] ?? '\u{1F527}'}</span>
+									<svg class="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-surface-400" viewBox="0 0 24 24" fill="currentColor">
+										<path d={toolIconPaths[ev.event_type] ?? toolIconPaths.tool_call} />
+									</svg>
 									<div class="min-w-0 flex-1">
 										<p class="text-xs font-mono text-surface-300 truncate" title={toolLabel(ev)}>
 											{toolLabel(ev)}

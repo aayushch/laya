@@ -36,6 +36,7 @@ def _register_tools() -> None:
         # Write tools
         "dismiss_card": card_tools.dismiss_card,
         "approve_card": card_tools.approve_card,
+        "mark_card_done": card_tools.mark_card_done,
         "archive_card": card_tools.archive_card,
         "reopen_card": card_tools.reopen_card,
     }

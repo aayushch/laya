@@ -208,6 +208,10 @@ export interface Settings {
 		enabled: boolean;
 		min_priority: string;
 	};
+	retention?: {
+		card_retention_days: number;
+		chat_retention_days: number;
+	};
 	n8n?: N8nSettings;
 	feed_preferences?: FeedPreferences;
 	pipeline?: PipelineSettings;
@@ -408,6 +412,7 @@ export interface ChatMessage {
 	content: string;
 	referenced_cards: string[];
 	referenced_events: string[];
+	conversation_id?: string;
 }
 
 /** Chat response from POST /chat */
@@ -415,6 +420,17 @@ export interface ChatResponse {
 	message: ChatMessage;
 	referenced_cards: string[];
 	referenced_events: string[];
+}
+
+/** Chat conversation */
+export interface Conversation {
+	conversation_id: string;
+	title: string;
+	space_id: string | null;
+	created_at: string;
+	updated_at: string;
+	preview: string;
+	message_count: number;
 }
 
 /** Audit log entry */
@@ -548,6 +564,7 @@ export interface Space {
 	chat_model?: string;
 	coding_agent?: string;
 	is_default: boolean;
+	paused: boolean;
 	position: number;
 	source_count: number;
 	created_at?: string;

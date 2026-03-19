@@ -21,8 +21,13 @@ class CodingAgent(abc.ABC):
         session_id: str,
         prompt: str,
         repo_path: str,
+        add_dirs: list[str] | None = None,
     ) -> None:
-        """Spawn the agent subprocess in the target repo directory."""
+        """Spawn the agent subprocess in the target repo directory.
+
+        Args:
+            add_dirs: Additional directory paths to include via --add-dir / --include-directories.
+        """
         ...
 
     async def resume_with_answer(self, answer_text: str, add_dirs: list[str] | None = None) -> None:

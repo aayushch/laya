@@ -25,16 +25,16 @@
 		error: 'border-laya-terracotta/50'
 	};
 
-	const typeIcons: Record<string, string> = {
-		agent_message: '\u{1F916}',
-		user_response: '\u{1F464}',
-		tool_call: '\u{1F527}',
-		file_read: '\u{1F4C4}',
-		file_write: '\u{270F}\uFE0F',
-		approval_request: '\u{26A0}\uFE0F',
-		approval_response: '\u{2705}',
-		status_change: '\u{1F504}',
-		error: '\u{274C}'
+	const typeIcons: Record<string, { path: string; viewBox?: string }> = {
+		agent_message: { path: 'M12 2a2 2 0 0 1 2 2v1h2a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-3l-3 3-3-3H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2V4a2 2 0 0 1 2-2h4Z' },
+		user_response: { path: 'M12 12c2.7 0 5-2.3 5-5s-2.3-5-5-5-5 2.3-5 5 2.3 5 5 5Zm0 2c-3.3 0-10 1.7-10 5v2h20v-2c0-3.3-6.7-5-10-5Z' },
+		tool_call: { path: 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z' },
+		file_read: { path: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Zm-2 1.5L18.5 10H12V3.5ZM8 13h8v1.5H8V13Zm0 3h5v1.5H8V16Z' },
+		file_write: { path: 'M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25ZM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83Z' },
+		approval_request: { path: 'M1 21h22L12 2 1 21Zm12-3h-2v-2h2v2Zm0-4h-2v-4h2v4Z' },
+		approval_response: { path: 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17Z' },
+		status_change: { path: 'M12 4V1L8 5l4 4V6a6 6 0 0 1 6 6 5.87 5.87 0 0 1-.7 2.8l1.46 1.46A8 8 0 0 0 12 4ZM12 18a6 6 0 0 1-6-6c0-1 .25-1.97.7-2.8L5.24 7.74A8 8 0 0 0 12 20v3l4-4-4-4v3Z' },
+		error: { path: 'M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41Z' }
 	};
 
 	function eventSummary(event: WorkspaceEvent): string {
@@ -88,7 +88,13 @@
 				class="group flex w-full items-start gap-2 border-l-2 px-3 py-2 text-left transition-colors hover:bg-surface-800 {typeColors[event.event_type] ?? 'border-surface-600'}"
 				onclick={() => onselect?.(event)}
 			>
-				<span class="mt-0.5 flex-shrink-0 text-xs">{typeIcons[event.event_type] ?? '\u{25CF}'}</span>
+				<svg class="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-surface-400" viewBox="0 0 24 24" fill="currentColor">
+					{#if typeIcons[event.event_type]}
+						<path d={typeIcons[event.event_type].path} />
+					{:else}
+						<circle cx="12" cy="12" r="5" />
+					{/if}
+				</svg>
 				<div class="min-w-0 flex-1">
 					<p class="truncate text-xs text-surface-200">{eventSummary(event)}</p>
 					<p class="text-[10px] text-surface-500">{formatTime(event.timestamp)}</p>

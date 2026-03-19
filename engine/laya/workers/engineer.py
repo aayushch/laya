@@ -39,8 +39,14 @@ async def _resolve_repo_path(
     router_output: RouterOutput,
     event: LayaEvent | None = None,
     space_id: str | None = None,
-) -> str | None:
-    """Resolve the target repo path from space assignment, entities, and repos.json.
+) -> tuple[str | None, list[str]]:
+    """Resolve the target repo path and additional directories.
+
+    Returns:
+        Tuple of (primary_repo_path, additional_dir_paths).
+        When repo resolution is confident (exact/entity/keyword match), additional dirs
+        are the remaining repos. When resolution falls back to the first repo, ALL repos
+        are included as additional dirs so the agent has full context.
 
     Matching strategy (first match wins):
     0. If space has repos assigned, narrow candidates to those repos.
@@ -48,13 +54,19 @@ async def _resolve_repo_path(
     1. Exact name match on entity value vs repo name
     2. Substring match on entity value vs repo name or remote_id
     3. Keyword match: scan event subject/body for repo names
-    4. Fallback: first repo in the (possibly narrowed) candidate list
+    4. Fallback: first repo in the (possibly narrowed) candidate list + all others as add_dirs
     """
     repos_data = load_repos()
     repos = repos_data.get("repos", [])
 
     if not repos:
-        return None
+        return None, []
+
+    all_repo_paths = [r["path"] for r in repos if r.get("path")]
+
+    def _other_paths(chosen_path: str) -> list[str]:
+        """Return all repo paths except the chosen one."""
+        return [p for p in all_repo_paths if p != chosen_path]
 
     # 0. Narrow to space-assigned repos if available
     if space_id:
@@ -62,53 +74,58 @@ async def _resolve_repo_path(
         if space_repo_names:
             space_repos = [r for r in repos if r.get("name") in space_repo_names]
             if space_repos:
+                all_repo_paths = [r["path"] for r in space_repos if r.get("path")]
                 if len(space_repos) == 1:
-                    return space_repos[0]["path"]
+                    return space_repos[0]["path"], []
                 repos = space_repos
                 log.info("repo_narrowed_by_space", space_id=space_id, candidates=len(repos))
 
     if len(repos) == 1:
-        return repos[0]["path"]
+        return repos[0]["path"], []
 
-    # 1 & 2. Entity-based matching (exact then substring)
+    # 1 & 2. Entity-based matching (exact then substring) — confident resolution
     repo_entities = [e for e in router_output.entities if e.entity_type in ("repo", "repository")]
     for entity in repo_entities:
         val = entity.value.lower().strip()
         # Exact name match first
         for repo in repos:
             if val == repo.get("name", "").lower():
-                return repo["path"]
+                path = repo["path"]
+                return path, _other_paths(path)
         # Substring match on name or remote_id
         for repo in repos:
             repo_name = repo.get("name", "").lower()
             remote_id = repo.get("remote_id", "").lower()
             if val and (val in repo_name or repo_name in val or val in remote_id or remote_id in val):
-                return repo["path"]
+                path = repo["path"]
+                return path, _other_paths(path)
 
-    # 3. Keyword match: scan event text for repo names
+    # 3. Keyword match: scan event text for repo names — confident resolution
     if event:
         search_text = f"{event.subject.title} {event.content.body[:500]}".lower()
-        # Score each repo by how many of its name parts appear in the text
         best_repo = None
         best_score = 0
         for repo in repos:
             name = repo.get("name", "").lower()
             if not name:
                 continue
-            # Check full name first
             if name in search_text:
-                return repo["path"]
-            # Check name parts (e.g. "laya" from "laya-engine")
+                path = repo["path"]
+                return path, _other_paths(path)
             parts = [p for p in name.replace("-", " ").replace("_", " ").split() if len(p) > 2]
             score = sum(1 for p in parts if p in search_text)
             if score > best_score:
                 best_score = score
                 best_repo = repo
         if best_repo and best_score > 0:
-            return best_repo["path"]
+            path = best_repo["path"]
+            return path, _other_paths(path)
 
-    # 4. Fallback: first repo in the (possibly narrowed) candidate list
-    return repos[0]["path"]
+    # 4. Fallback: first repo + ALL remaining repos as additional dirs
+    # (repo resolution failed, give the agent access to everything)
+    primary = repos[0]["path"]
+    log.info("repo_resolution_fallback", primary=primary, add_dirs=len(all_repo_paths) - 1)
+    return primary, _other_paths(primary)
 
 
 async def _gather_context(event: LayaEvent, router_output: RouterOutput) -> list[dict]:
@@ -179,8 +196,8 @@ async def run_engineer(
             card_status="ready",
         )
 
-    # 3. Resolve repo
-    repo_path = await _resolve_repo_path(router_output, event, space_id=space_id)
+    # 3. Resolve repo (primary + additional dirs for agent context)
+    repo_path, add_dirs = await _resolve_repo_path(router_output, event, space_id=space_id)
     if not repo_path:
         log.warning("engineer_no_repo", event_id=event.event_id)
         return WorkerResult(
@@ -216,6 +233,7 @@ async def run_engineer(
             prompt=agent_prompt,
             repo_path=repo_path,
             space_id=space_id,
+            add_dirs=add_dirs,
         )
     except Exception as e:
         log.error("engineer_agent_spawn_failed", error=str(e))
@@ -455,7 +473,7 @@ async def run_engineer_from_prompt(
         confidence=0.8,
         entities=[],
     )
-    repo_path = await _resolve_repo_path(dummy_router, space_id=space_id)
+    repo_path, add_dirs = await _resolve_repo_path(dummy_router, space_id=space_id)
     if not repo_path:
         log.error("engineer_from_prompt_no_repo", card_id=card_id)
         db = await get_db()
@@ -476,6 +494,7 @@ async def run_engineer_from_prompt(
             prompt=agent_prompt,
             repo_path=repo_path,
             space_id=space_id,
+            add_dirs=add_dirs,
         )
     except Exception as e:
         log.error("engineer_from_prompt_spawn_failed", card_id=card_id, error=str(e))

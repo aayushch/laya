@@ -51,7 +51,9 @@ class GeminiCliAgent(CodingAgent):
         """Gemini's internal session UUID (stored in the generic cc_session_id column)."""
         return self._gemini_session_id
 
-    async def start_session(self, session_id: str, prompt: str, repo_path: str) -> None:
+    async def start_session(
+        self, session_id: str, prompt: str, repo_path: str, add_dirs: list[str] | None = None,
+    ) -> None:
         self._session_id = session_id
         self._repo_path = repo_path
         self._status = SessionStatus.STARTING
@@ -63,6 +65,10 @@ class GeminiCliAgent(CodingAgent):
             "--output-format",
             "stream-json",
         ]
+
+        if add_dirs:
+            for d in add_dirs:
+                args.extend(["--include-directories", d])
 
         await self._process.spawn(args=args, cwd=repo_path)
         self._status = SessionStatus.RUNNING

@@ -68,10 +68,14 @@ async def start_session(
     repo_path: str,
     agent_type: AgentType | None = None,
     space_id: str | None = None,
+    add_dirs: list[str] | None = None,
 ) -> tuple[str, CodingAgent]:
     """Create and start a new agent session.
 
     Resolves agent type in order: explicit agent_type > space override > global default.
+
+    Args:
+        add_dirs: Additional directory paths to include via --add-dir / --include-directories.
 
     Returns:
         Tuple of (session_id, CodingAgent instance).
@@ -85,26 +89,33 @@ async def start_session(
 
     session_id = f"sess_{uuid.uuid4().hex[:12]}"
 
-    # Persist session to SQLite
+    # Persist session to SQLite (including add_dirs for resumption)
     db = await get_db()
     await db.execute(
         """INSERT INTO workspace_sessions
-           (session_id, card_id, agent_type, status, repo_path, initial_prompt)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (session_id, card_id, agent_type.value, SessionStatus.STARTING.value, repo_path, prompt),
+           (session_id, card_id, agent_type, status, repo_path, initial_prompt, add_dirs)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (session_id, card_id, agent_type.value, SessionStatus.STARTING.value,
+         repo_path, prompt, json.dumps(add_dirs) if add_dirs else None),
     )
     await db.commit()
 
     # Create and start the agent
     agent = _create_agent(agent_type)
-    await agent.start_session(session_id, prompt, repo_path)
+    await agent.start_session(session_id, prompt, repo_path, add_dirs=add_dirs)
     _active_sessions[session_id] = agent
     _card_sessions[card_id] = session_id
 
     # Update status to running
     await _update_session_status(session_id, SessionStatus.RUNNING)
 
-    log.info("session_started", session_id=session_id, card_id=card_id, agent_type=agent_type.value)
+    log.info(
+        "session_started",
+        session_id=session_id,
+        card_id=card_id,
+        agent_type=agent_type.value,
+        add_dirs_count=len(add_dirs) if add_dirs else 0,
+    )
     return session_id, agent
 
 

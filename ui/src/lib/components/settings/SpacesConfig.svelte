@@ -68,6 +68,9 @@
 	let allRepos = $state<Repo[]>([]);
 	let spaceRepoNames = $state<Record<string, string[]>>({});
 
+	// Pause state
+	let togglingPause = $state<string | null>(null);
+
 	// Expanded space detail
 	let expandedSpaceId = $state<string | null>(null);
 
@@ -180,6 +183,24 @@
 			await loadData();
 		} catch (e) {
 			console.error('Failed to delete space:', e);
+		}
+	}
+
+	// Pause / Unpause
+	async function togglePause(space: Space) {
+		const newPaused = !space.paused;
+		togglingPause = space.space_id;
+		try {
+			const res = await engineApi.setSpacePaused(space.space_id, newPaused);
+			if (res.errors.length > 0) {
+				const names = res.errors.map((e) => e.name).join(', ');
+				console.warn(`Some workflows could not be toggled: ${names}`);
+			}
+			await loadData();
+		} catch (e) {
+			console.error('Failed to toggle pause:', e);
+		} finally {
+			togglingPause = null;
 		}
 	}
 
@@ -515,7 +536,7 @@
 		{#each spaces as space (space.space_id)}
 			{@const spaceSources = sourcesForSpace(space.space_id)}
 			<div class="rounded-lg border bg-surface-800 transition-colors
-				{expandedSpaceId === space.space_id ? 'border-laya-orange/30' : 'border-surface-700'}">
+				{space.paused ? 'border-laya-amber/30 border-dashed' : expandedSpaceId === space.space_id ? 'border-laya-orange/30' : 'border-surface-700'}">
 				<!-- Space Header -->
 				<button
 					onclick={() => toggleExpand(space.space_id)}
@@ -531,6 +552,9 @@
 							<span class="font-medium">{space.name}</span>
 							{#if space.is_default}
 								<span class="rounded bg-surface-600 px-1.5 py-0.5 text-[10px] text-surface-400">DEFAULT</span>
+							{/if}
+							{#if space.paused}
+								<span class="rounded bg-laya-amber/20 px-1.5 py-0.5 text-[10px] font-medium text-laya-amber">PAUSED</span>
 							{/if}
 						</div>
 						{#if space.description}
@@ -556,6 +580,28 @@
 						</svg>
 					</div>
 				</button>
+				{#if spaceSources.length > 0}
+					<div class="flex justify-end px-4 -mt-2 pb-2">
+						<button
+							onclick={() => togglePause(space)}
+							disabled={togglingPause === space.space_id}
+							class="rounded-md px-2 py-1 text-xs font-medium transition-colors
+								{space.paused
+									? 'bg-laya-orange/15 text-laya-orange hover:bg-laya-orange/25'
+									: 'bg-surface-700 text-surface-400 hover:bg-surface-600 hover:text-surface-200'}
+								disabled:opacity-50"
+							title={space.paused ? 'Resume all ingestion workflows' : 'Pause all ingestion workflows'}
+						>
+							{#if togglingPause === space.space_id}
+								...
+							{:else if space.paused}
+								▶ Resume
+							{:else}
+								⏸ Pause
+							{/if}
+						</button>
+					</div>
+				{/if}
 
 				<!-- Expanded Detail -->
 				{#if expandedSpaceId === space.space_id}

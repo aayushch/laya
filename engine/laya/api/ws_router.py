@@ -155,6 +155,7 @@ async def _handle_chat_message(msg: dict) -> None:
     payload = msg.get("payload", {})
     message = payload.get("message", "")
     space_id = payload.get("space_id")
+    conversation_id = payload.get("conversation_id")
 
     if not message.strip():
         log.warning("ws_chat_empty_message")
@@ -165,7 +166,7 @@ async def _handle_chat_message(msg: dict) -> None:
 
     try:
         async for event in process_chat_message_streaming(
-            message.strip(), space_id=space_id,
+            message.strip(), space_id=space_id, conversation_id=conversation_id,
         ):
             await manager.broadcast(event)
 

@@ -428,7 +428,7 @@
 						{#if workflowError}
 							<div class="flex items-center gap-2 rounded-md border border-red-800/50 bg-surface-800 px-3 py-1.5 shadow-lg">
 								<span class="text-[11px] text-red-300 flex-1 truncate">{workflowError}</span>
-								<button onclick={() => (workflowError = null)} class="shrink-0 text-red-500/60 hover:text-red-300 transition-colors">
+								<button onclick={() => (workflowError = null)} aria-label="Dismiss error" class="shrink-0 text-red-500/60 hover:text-red-300 transition-colors">
 									<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
 								</button>
 							</div>
@@ -439,7 +439,7 @@
 									<span class="text-yellow-400/60"> — </span>
 									<span class="text-yellow-300/70">{workflowIssues.issues.join('; ')}</span>
 								</span>
-								<button onclick={() => (workflowIssues = null)} class="shrink-0 text-yellow-500/60 hover:text-yellow-300 transition-colors">
+								<button onclick={() => (workflowIssues = null)} aria-label="Dismiss warning" class="shrink-0 text-yellow-500/60 hover:text-yellow-300 transition-colors">
 									<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
 								</button>
 							</div>

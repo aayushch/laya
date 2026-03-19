@@ -43,6 +43,11 @@
 	}
 
 	const isToday = $derived($feedDate === localToday());
+	const filteredRecentCards = $derived(
+		$feedFilters.spaceFilter
+			? $recentCards.filter((e) => (e.space_id || 'default') === $feedFilters.spaceFilter)
+			: $recentCards
+	);
 
 	let _fetchId = 0;
 	let _reloadTimer: ReturnType<typeof setTimeout> | null = null;
@@ -597,7 +602,7 @@
 				<div class="flex items-center justify-between border-b border-surface-700/50 px-3 py-2">
 					<span class="text-xs font-medium text-surface-300">Recent Cards</span>
 					<div class="flex items-center gap-1">
-						{#if $recentCards.length > 0}
+						{#if filteredRecentCards.length > 0}
 							<button
 								class="rounded p-0.5 text-surface-600 transition-colors hover:text-surface-300"
 								onclick={() => clearRecentCards()}
@@ -620,16 +625,16 @@
 					</div>
 				</div>
 				<div class="flex-1 overflow-y-auto">
-					{#if $recentCards.length === 0}
+					{#if filteredRecentCards.length === 0}
 						<div class="flex flex-col items-center justify-center px-4 py-8 text-surface-600">
 							<svg class="mb-2 h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
 							</svg>
-							<p class="text-[11px]">No recent cards yet</p>
+							<p class="text-[11px]">{$feedFilters.spaceFilter ? 'No recent cards in this space' : 'No recent cards yet'}</p>
 							<p class="mt-0.5 text-[10px] text-surface-700">Cards you view will appear here</p>
 						</div>
 					{:else}
-						{#each $recentCards as entry (entry.card_id)}
+						{#each filteredRecentCards as entry (entry.card_id)}
 							<button
 								class="flex w-full flex-col gap-0.5 border-b border-surface-800/50 px-3 py-2 text-left transition-colors hover:bg-surface-800/60
 									{selectedCard?.card_id === entry.card_id ? 'bg-laya-orange/5 border-l-2 border-l-laya-orange/40' : ''}"

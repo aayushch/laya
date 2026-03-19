@@ -486,16 +486,16 @@
 					</button>
 				</div>
 			{/if}
-		{:else if card.status === 'dismissed' || card.status === 'archived'}
+		{:else if card.status === 'dismissed' || card.status === 'archived' || card.status === 'done' || card.status === 'failed'}
 			<div class="flex gap-2">
 				<button
 					class="flex-1 rounded-lg bg-laya-orange/15 py-2 text-sm font-medium text-laya-orange transition-colors hover:bg-laya-orange/25 disabled:opacity-50"
 					onclick={reopen}
 					disabled={reopening}
 				>
-					{reopening ? 'Reopening...' : card.status === 'archived' ? 'Unarchive' : 'Reopen'}
+					{reopening ? 'Reopening...' : card.status === 'archived' ? 'Unarchive' : card.status === 'failed' ? 'Retry' : 'Reopen'}
 				</button>
-				{#if card.status === 'dismissed'}
+				{#if card.status !== 'archived'}
 					<button
 						class="rounded-lg bg-surface-700/30 px-3 py-2 text-sm font-medium text-surface-500 transition-colors hover:bg-surface-700 disabled:opacity-50"
 						onclick={archive}
@@ -519,15 +519,6 @@
 			</div>
 		{:else}
 			<div class="flex gap-2">
-				{#if card.status === 'failed'}
-					<button
-						class="flex-1 rounded-lg bg-orange-700/30 py-2 text-sm font-medium text-orange-300 transition-colors hover:bg-orange-700/50 disabled:opacity-50"
-						onclick={reopen}
-						disabled={reopening}
-					>
-						{reopening ? 'Retrying...' : 'Retry'}
-					</button>
-				{/if}
 				<button
 					class="rounded-lg bg-surface-700/30 px-3 py-2 text-sm font-medium text-surface-500 transition-colors hover:bg-surface-700 disabled:opacity-50"
 					onclick={archive}
