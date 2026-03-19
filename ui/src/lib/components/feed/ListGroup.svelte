@@ -46,6 +46,22 @@
 
 	const topCard = $derived(group.cards[0]);
 
+	const statusDisplayLabel: Record<string, string> = {
+		pending: 'processing', ready: 'ready', requires_approval: 'needs approval',
+		agent_running: 'running', awaiting_input: 'needs input', done: 'done',
+		failed: 'failed', dismissed: 'dismissed', archived: 'archived'
+	};
+
+	const statusSummaryTooltip = $derived.by(() => {
+		const counts = new Map<string, number>();
+		for (const c of group.cards) {
+			counts.set(c.status, (counts.get(c.status) ?? 0) + 1);
+		}
+		return [...counts.entries()]
+			.map(([status, count]) => `${count} ${statusDisplayLabel[status] ?? status}`)
+			.join(', ');
+	});
+
 	function timeAgo(dateStr?: string): string {
 		if (!dateStr) return '';
 		const utcStr = dateStr.endsWith('Z') || dateStr.includes('+') ? dateStr : dateStr + 'Z';
@@ -116,7 +132,7 @@
 		tabindex="0"
 	>
 		<!-- Expand/collapse chevron — same w-5 as card spacer -->
-		<button class="w-5 shrink-0 flex items-center justify-center rounded text-surface-500 hover:text-surface-300">
+		<button aria-label="{expanded ? 'Collapse' : 'Expand'} group" class="w-5 shrink-0 flex items-center justify-center rounded text-surface-500 hover:text-surface-300">
 			<svg class="h-3 w-3 transition-transform {expanded ? '' : '-rotate-90'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
 			</svg>
@@ -132,10 +148,15 @@
 			{group.entity_title}
 		</span>
 
-		<!-- Card count — occupies the status+actions zone -->
-		<span class="shrink-0 rounded-full border border-surface-600 bg-surface-700 px-2 py-0.5 text-[10px] font-semibold text-surface-300 ml-2">
-			{group.card_count}
-		</span>
+		<!-- Card count — with status summary tooltip -->
+		<div class="group/count relative shrink-0 ml-2">
+			<span class="rounded-full border border-surface-600 bg-surface-700 px-2 py-0.5 text-[10px] font-semibold text-surface-300 cursor-default">
+				{group.card_count}
+			</span>
+			<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/count:opacity-100">
+				{statusSummaryTooltip}
+			</span>
+		</div>
 
 		<!-- Three-dot menu -->
 		{#if hasAnyAction}
