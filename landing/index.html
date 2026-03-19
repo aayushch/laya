@@ -1,0 +1,2224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Laya — Your AI Command Center</title>
+<meta name="description" content="Laya intercepts your notifications, researches context with AI, and delivers ready-to-approve action cards. Stop reacting. Start commanding.">
+<style>
+/* ═══════════════════════════════════════════════════
+   RESET & BASE
+   ═══════════════════════════════════════════════════ */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: #1a1714;
+  color: #e8ddd0;
+  overflow-x: hidden;
+  line-height: 1.6;
+}
+
+/* ═══════════════════════════════════════════════════
+   BRAND PALETTE  (from Laya's app.css)
+   ═══════════════════════════════════════════════════ */
+:root {
+  --laya-orange:     #f6ac69;
+  --laya-gold:       #f6bc66;
+  --laya-peach:      #ffdab9;
+  --laya-coral:      #ff9770;
+  --laya-amber:      #d4803c;
+  --laya-sand:       #e8d5b8;
+  --laya-blush:      #f5e8d8;
+  --laya-terracotta: #b86840;
+
+  --surface-950: #1a1714;
+  --surface-900: #2a2520;
+  --surface-800: #3d3630;
+  --surface-700: #504840;
+  --surface-600: #6b6058;
+  --surface-500: #877a70;
+  --surface-400: #a19488;
+  --surface-300: #bbb0a4;
+  --surface-200: #d4cbbf;
+  --surface-100: #ece5db;
+  --surface-50:  #f8f3ec;
+}
+
+/* ═══════════════════════════════════════════════════
+   TYPOGRAPHY
+   ═══════════════════════════════════════════════════ */
+h1, h2, h3, h4 { font-weight: 700; line-height: 1.15; letter-spacing: -0.02em; }
+h1 { font-size: clamp(2.8rem, 6vw, 5rem); }
+h2 { font-size: clamp(2rem, 4vw, 3.2rem); }
+h3 { font-size: clamp(1.2rem, 2vw, 1.5rem); }
+p { color: var(--surface-300); }
+
+.text-gradient {
+  background: linear-gradient(135deg, var(--laya-peach) 0%, var(--laya-orange) 40%, var(--laya-coral) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-orange { color: var(--laya-orange); }
+.text-muted  { color: var(--surface-400); }
+
+/* ═══════════════════════════════════════════════════
+   LAYOUT
+   ═══════════════════════════════════════════════════ */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+section { padding: 100px 0; position: relative; }
+
+/* ═══════════════════════════════════════════════════
+   NAV
+   ═══════════════════════════════════════════════════ */
+nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  padding: 16px 0;
+  transition: background 0.3s, backdrop-filter 0.3s, box-shadow 0.3s;
+}
+nav.scrolled {
+  background: rgba(26, 23, 20, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 1px 0 rgba(246, 172, 105, 0.08);
+}
+nav .container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.nav-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+}
+.nav-logo img {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+}
+.nav-logo span {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--laya-orange);
+  letter-spacing: -0.03em;
+}
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  list-style: none;
+}
+.nav-links a {
+  color: var(--surface-300);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+.nav-links a:hover { color: var(--laya-orange); }
+
+/* ═══════════════════════════════════════════════════
+   BUTTONS
+   ═══════════════════════════════════════════════════ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 32px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: all 0.25s ease;
+  cursor: pointer;
+  border: none;
+}
+.btn-primary {
+  background: linear-gradient(135deg, var(--laya-orange), var(--laya-coral));
+  color: var(--surface-950);
+  box-shadow: 0 4px 24px rgba(246, 172, 105, 0.3);
+}
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(246, 172, 105, 0.45);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--laya-orange);
+  border: 1.5px solid rgba(246, 172, 105, 0.3);
+}
+.btn-ghost:hover {
+  border-color: var(--laya-orange);
+  background: rgba(246, 172, 105, 0.06);
+}
+.btn-sm { padding: 10px 22px; font-size: 0.85rem; border-radius: 10px; }
+
+/* ═══════════════════════════════════════════════════
+   HERO
+   ═══════════════════════════════════════════════════ */
+.hero {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  padding-top: 80px;
+  position: relative;
+  overflow: hidden;
+}
+.hero-content {
+  text-align: center;
+  max-width: 860px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 2;
+}
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border-radius: 100px;
+  background: rgba(246, 172, 105, 0.08);
+  border: 1px solid rgba(246, 172, 105, 0.15);
+  color: var(--laya-orange);
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin-bottom: 32px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.hero-badge .pulse-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--laya-orange);
+  border-radius: 50%;
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+.hero h1 {
+  margin-bottom: 24px;
+  color: var(--surface-50);
+}
+.hero p.subtitle {
+  font-size: clamp(1.1rem, 2vw, 1.35rem);
+  color: var(--surface-300);
+  max-width: 640px;
+  margin: 0 auto 40px;
+  line-height: 1.7;
+}
+.hero-buttons {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.hero-footnote {
+  font-size: 0.8rem;
+  color: var(--surface-500);
+  margin-top: 8px;
+}
+
+/* Hero glow effects */
+.hero-glow {
+  position: absolute;
+  width: 600px;
+  height: 600px;
+  border-radius: 50%;
+  filter: blur(120px);
+  opacity: 0.15;
+  pointer-events: none;
+}
+.hero-glow-1 {
+  top: -100px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--laya-orange);
+}
+.hero-glow-2 {
+  bottom: -200px;
+  right: -100px;
+  width: 400px;
+  height: 400px;
+  background: var(--laya-coral);
+  opacity: 0.1;
+}
+
+/* ═══════════════════════════════════════════════════
+   SCREENSHOT SHOWCASE
+   ═══════════════════════════════════════════════════ */
+.showcase {
+  padding: 0 0 80px;
+  position: relative;
+}
+.showcase-frame {
+  max-width: 1100px;
+  margin: 0 auto;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(246, 172, 105, 0.1),
+    0 24px 80px rgba(0, 0, 0, 0.6),
+    0 0 120px rgba(246, 172, 105, 0.06);
+  position: relative;
+}
+.showcase-frame img {
+  width: 100%;
+  display: block;
+}
+
+/* Screenshot tabs */
+.showcase-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 32px;
+}
+.showcase-tab {
+  padding: 10px 24px;
+  border-radius: 100px;
+  background: var(--surface-900);
+  border: 1px solid var(--surface-700);
+  color: var(--surface-300);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s;
+}
+.showcase-tab.active,
+.showcase-tab:hover {
+  background: rgba(246, 172, 105, 0.1);
+  border-color: rgba(246, 172, 105, 0.3);
+  color: var(--laya-orange);
+}
+
+/* ═══════════════════════════════════════════════════
+   SOCIAL PROOF BAR
+   ═══════════════════════════════════════════════════ */
+.proof-bar {
+  padding: 48px 0;
+  border-top: 1px solid rgba(246, 172, 105, 0.06);
+  border-bottom: 1px solid rgba(246, 172, 105, 0.06);
+}
+.proof-stats {
+  display: flex;
+  justify-content: center;
+  gap: 64px;
+  flex-wrap: wrap;
+}
+.proof-stat {
+  text-align: center;
+}
+.proof-stat .number {
+  font-size: 2.4rem;
+  font-weight: 800;
+  color: var(--laya-orange);
+  line-height: 1;
+  margin-bottom: 8px;
+}
+.proof-stat .label {
+  font-size: 0.85rem;
+  color: var(--surface-400);
+  font-weight: 500;
+}
+
+/* ═══════════════════════════════════════════════════
+   PROBLEM / SOLUTION
+   ═══════════════════════════════════════════════════ */
+.problem-section {
+  background: linear-gradient(180deg, var(--surface-950) 0%, var(--surface-900) 100%);
+}
+.split-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 80px;
+  align-items: start;
+}
+.problem-col h3 { color: var(--surface-100); margin-bottom: 24px; }
+.pain-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.pain-list li {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  font-size: 0.95rem;
+  color: var(--surface-300);
+}
+.pain-list .icon {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  margin-top: 2px;
+}
+.pain-list .icon-red {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+.pain-list .icon-green {
+  background: rgba(246, 172, 105, 0.12);
+  color: var(--laya-orange);
+}
+.vs-divider {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--surface-800);
+  border: 1px solid var(--surface-700);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.75rem;
+  color: var(--surface-400);
+  letter-spacing: 0.05em;
+}
+
+/* ═══════════════════════════════════════════════════
+   FEATURES GRID
+   ═══════════════════════════════════════════════════ */
+.features-section { position: relative; }
+.section-header {
+  text-align: center;
+  max-width: 700px;
+  margin: 0 auto 64px;
+}
+.section-header h2 { color: var(--surface-50); margin-bottom: 16px; }
+.section-header p { font-size: 1.1rem; }
+
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+.feature-card {
+  background: var(--surface-900);
+  border: 1px solid var(--surface-800);
+  border-radius: 16px;
+  padding: 32px;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+.feature-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(246, 172, 105, 0.3), transparent);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.feature-card:hover {
+  border-color: rgba(246, 172, 105, 0.15);
+  transform: translateY(-4px);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
+}
+.feature-card:hover::before { opacity: 1; }
+.feature-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+  background: rgba(246, 172, 105, 0.08);
+  border: 1px solid rgba(246, 172, 105, 0.12);
+}
+.feature-icon svg {
+  flex-shrink: 0;
+}
+.feature-card h3 {
+  color: var(--surface-100);
+  margin-bottom: 10px;
+  font-size: 1.1rem;
+}
+.feature-card p {
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+
+/* ═══════════════════════════════════════════════════
+   HOW IT WORKS
+   ═══════════════════════════════════════════════════ */
+.how-section {
+  background: linear-gradient(180deg, var(--surface-950) 0%, var(--surface-900) 50%, var(--surface-950) 100%);
+}
+.steps {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 32px;
+  margin-top: 64px;
+  position: relative;
+}
+.steps::before {
+  content: '';
+  position: absolute;
+  top: 32px;
+  left: 12.5%;
+  right: 12.5%;
+  height: 2px;
+  background: linear-gradient(90deg, var(--surface-700), var(--laya-orange), var(--surface-700));
+  opacity: 0.3;
+}
+.step {
+  text-align: center;
+  position: relative;
+}
+.step-number {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--surface-900);
+  border: 2px solid var(--laya-orange);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+  position: relative;
+  z-index: 2;
+}
+.step-number span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.step h3 {
+  color: var(--surface-100);
+  margin-bottom: 8px;
+  font-size: 1.05rem;
+}
+.step p {
+  font-size: 0.85rem;
+  line-height: 1.6;
+  max-width: 220px;
+  margin: 0 auto;
+}
+
+/* ═══════════════════════════════════════════════════
+   SCREENSHOT FEATURE SECTIONS
+   ═══════════════════════════════════════════════════ */
+.feature-showcase {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px;
+  align-items: center;
+}
+.feature-showcase.reverse { direction: rtl; }
+.feature-showcase.reverse > * { direction: ltr; }
+.feature-text { max-width: 480px; }
+.feature-text .tag {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: rgba(246, 172, 105, 0.08);
+  color: var(--laya-orange);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+.feature-text h2 {
+  color: var(--surface-50);
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  margin-bottom: 16px;
+}
+.feature-text p {
+  margin-bottom: 24px;
+  font-size: 1rem;
+}
+.feature-text ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.feature-text li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  color: var(--surface-200);
+  font-size: 0.9rem;
+}
+.feature-text li .check {
+  flex-shrink: 0;
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+}
+.feature-image {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(246, 172, 105, 0.08),
+    0 16px 48px rgba(0, 0, 0, 0.4);
+}
+.feature-image img {
+  width: 100%;
+  display: block;
+}
+
+/* ═══════════════════════════════════════════════════
+   INTEGRATIONS
+   ═══════════════════════════════════════════════════ */
+.integrations-grid {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  flex-wrap: wrap;
+  margin-top: 48px;
+}
+.integration-pill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 24px;
+  border-radius: 12px;
+  background: var(--surface-900);
+  border: 1px solid var(--surface-800);
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--surface-200);
+  transition: all 0.25s;
+}
+.integration-pill:hover {
+  border-color: rgba(246, 172, 105, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+.integration-pill .icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════
+   PERSONAS
+   ═══════════════════════════════════════════════════ */
+.personas-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  margin-top: 48px;
+}
+.persona-card {
+  text-align: center;
+  padding: 40px 28px;
+  background: var(--surface-900);
+  border: 1px solid var(--surface-800);
+  border-radius: 16px;
+  transition: all 0.3s;
+}
+.persona-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+.persona-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  margin: 0 auto 16px;
+}
+.persona-engineer .persona-avatar { background: rgba(139, 92, 246, 0.12); border: 1px solid rgba(139, 92, 246, 0.2); }
+.persona-comms .persona-avatar    { background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.2); }
+.persona-ops .persona-avatar      { background: rgba(246, 172, 105, 0.12); border: 1px solid rgba(246, 172, 105, 0.2); }
+.persona-card h3 {
+  color: var(--surface-100);
+  margin-bottom: 8px;
+  font-size: 1.1rem;
+}
+.persona-card p {
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+/* ═══════════════════════════════════════════════════
+   PRIVACY SECTION
+   ═══════════════════════════════════════════════════ */
+.privacy-section {
+  background: var(--surface-900);
+  border-top: 1px solid rgba(246, 172, 105, 0.06);
+  border-bottom: 1px solid rgba(246, 172, 105, 0.06);
+}
+.privacy-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 32px;
+  margin-top: 48px;
+}
+.privacy-item {
+  text-align: center;
+  padding: 24px;
+}
+.privacy-item .icon {
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: center;
+}
+.privacy-item h3 {
+  color: var(--surface-100);
+  font-size: 1rem;
+  margin-bottom: 8px;
+}
+.privacy-item p {
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+/* ═══════════════════════════════════════════════════
+   CTA
+   ═══════════════════════════════════════════════════ */
+.cta-section {
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.cta-section::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 800px;
+  height: 400px;
+  background: radial-gradient(ellipse, rgba(246, 172, 105, 0.1) 0%, transparent 70%);
+  pointer-events: none;
+}
+.cta-section h2 {
+  color: var(--surface-50);
+  margin-bottom: 16px;
+}
+.cta-section > .container > p {
+  font-size: 1.1rem;
+  max-width: 500px;
+  margin: 0 auto 36px;
+}
+.cta-section .hero-buttons { margin-bottom: 0; }
+
+/* ═══════════════════════════════════════════════════
+   FOOTER
+   ═══════════════════════════════════════════════════ */
+footer {
+  padding: 48px 0;
+  border-top: 1px solid var(--surface-800);
+}
+.footer-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.footer-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.footer-left img {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+.footer-left span {
+  font-weight: 700;
+  color: var(--laya-orange);
+}
+footer p { font-size: 0.8rem; color: var(--surface-500); }
+.footer-links {
+  display: flex;
+  gap: 24px;
+  list-style: none;
+}
+.footer-links a {
+  color: var(--surface-400);
+  text-decoration: none;
+  font-size: 0.85rem;
+  transition: color 0.2s;
+}
+.footer-links a:hover { color: var(--laya-orange); }
+
+/* ═══════════════════════════════════════════════════
+   ANIMATIONS
+   ═══════════════════════════════════════════════════ */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(246, 172, 105, 0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(246, 172, 105, 0); }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes float-in {
+  from { opacity: 0; transform: translateY(50px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.animate-on-scroll {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+.animate-on-scroll.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.hero-content {
+  animation: fade-up 0.9s ease forwards;
+}
+.showcase-frame {
+  animation: float-in 1s ease 0.3s both;
+}
+
+/* Floating particles */
+.particles {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+.particle {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  background: var(--laya-orange);
+  border-radius: 50%;
+  opacity: 0;
+  animation: particle-float 8s ease-in-out infinite;
+}
+@keyframes particle-float {
+  0% { opacity: 0; transform: translateY(100vh) scale(0); }
+  10% { opacity: 0.4; }
+  90% { opacity: 0.1; }
+  100% { opacity: 0; transform: translateY(-20vh) scale(1.5); }
+}
+
+/* ═══════════════════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  .split-grid,
+  .features-grid,
+  .personas-grid,
+  .privacy-grid,
+  .feature-showcase { grid-template-columns: 1fr; }
+  .feature-showcase.reverse { direction: ltr; }
+  .steps { grid-template-columns: repeat(2, 1fr); }
+  .steps::before { display: none; }
+  .proof-stats { gap: 32px; }
+  .nav-links { display: none; }
+  section { padding: 64px 0; }
+  .hero { min-height: auto; padding: 120px 0 60px; }
+}
+@media (max-width: 480px) {
+  .steps { grid-template-columns: 1fr; }
+  .hero-buttons { flex-direction: column; align-items: center; }
+}
+
+/* ═══════════════════════════════════════════════════
+   DOCUMENTATION PAGE
+   ═══════════════════════════════════════════════════ */
+#docs-page { display: none; }
+#docs-page.active { display: flex; }
+#landing-page.hidden { display: none; }
+
+.docs-layout {
+  display: flex;
+  min-height: 100vh;
+  padding-top: 64px;
+}
+
+/* Sidebar */
+.docs-sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  position: fixed;
+  top: 64px;
+  left: 0;
+  bottom: 0;
+  overflow-y: auto;
+  background: var(--surface-900);
+  border-right: 1px solid var(--surface-800);
+  padding: 24px 0;
+  z-index: 50;
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-700) transparent;
+}
+.docs-sidebar::-webkit-scrollbar { width: 4px; }
+.docs-sidebar::-webkit-scrollbar-thumb { background: var(--surface-700); border-radius: 4px; }
+
+.docs-sidebar .sidebar-section {
+  padding: 0 20px;
+  margin-bottom: 24px;
+}
+.docs-sidebar .sidebar-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--surface-400);
+  margin-bottom: 8px;
+  padding: 0 12px;
+}
+.docs-sidebar a {
+  display: block;
+  padding: 6px 12px;
+  border-radius: 8px;
+  color: var(--surface-300);
+  text-decoration: none;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  transition: all 0.15s;
+}
+.docs-sidebar a:hover {
+  color: var(--laya-orange);
+  background: rgba(246, 172, 105, 0.06);
+}
+.docs-sidebar a.active {
+  color: var(--laya-orange);
+  background: rgba(246, 172, 105, 0.1);
+  font-weight: 600;
+}
+
+/* Content */
+.docs-content {
+  flex: 1;
+  margin-left: 280px;
+  padding: 40px 48px 80px;
+  max-width: 900px;
+}
+.docs-content h1 {
+  font-size: 2.2rem;
+  color: var(--surface-50);
+  margin-bottom: 8px;
+}
+.docs-content .docs-subtitle {
+  font-size: 1.1rem;
+  color: var(--surface-400);
+  margin-bottom: 40px;
+}
+.docs-content h2 {
+  font-size: 1.5rem;
+  color: var(--surface-50);
+  margin-top: 56px;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--surface-800);
+}
+.docs-content h2:first-of-type { margin-top: 0; }
+.docs-content h3 {
+  font-size: 1.15rem;
+  color: var(--surface-100);
+  margin-top: 32px;
+  margin-bottom: 12px;
+}
+.docs-content h4 {
+  font-size: 0.95rem;
+  color: var(--laya-orange);
+  margin-top: 24px;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+.docs-content p {
+  margin-bottom: 16px;
+  font-size: 0.92rem;
+  line-height: 1.75;
+}
+.docs-content ul, .docs-content ol {
+  margin-bottom: 16px;
+  padding-left: 24px;
+}
+.docs-content li {
+  margin-bottom: 6px;
+  font-size: 0.92rem;
+  line-height: 1.65;
+  color: var(--surface-300);
+}
+.docs-content li strong { color: var(--surface-100); }
+.docs-content code {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.82em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--surface-800);
+  color: var(--laya-peach);
+}
+.docs-content pre {
+  margin-bottom: 20px;
+  padding: 16px 20px;
+  border-radius: 10px;
+  background: var(--surface-900);
+  border: 1px solid var(--surface-800);
+  overflow-x: auto;
+  line-height: 1.6;
+}
+.docs-content pre code {
+  padding: 0;
+  background: transparent;
+  color: var(--surface-200);
+  font-size: 0.82rem;
+}
+.docs-content table {
+  width: 100%;
+  margin-bottom: 20px;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.docs-content th {
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 2px solid var(--surface-700);
+  color: var(--surface-100);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.docs-content td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--surface-800);
+  color: var(--surface-300);
+  vertical-align: top;
+}
+.docs-content td code {
+  font-size: 0.8em;
+  white-space: nowrap;
+}
+.docs-content .callout {
+  padding: 16px 20px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+.docs-content .callout p { margin-bottom: 0; }
+.callout-info {
+  background: rgba(246, 172, 105, 0.06);
+  border: 1px solid rgba(246, 172, 105, 0.15);
+  color: var(--surface-200);
+}
+.callout-warn {
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.15);
+  color: var(--surface-200);
+}
+.callout-info strong, .callout-warn strong { color: var(--laya-orange); }
+.callout-warn strong { color: #ef4444; }
+
+.docs-content .back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--laya-orange);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 24px;
+  transition: opacity 0.2s;
+}
+.docs-content .back-link:hover { opacity: 0.8; }
+
+.docs-nav-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  padding: 14px 0;
+  background: rgba(26, 23, 20, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--surface-800);
+}
+.docs-nav-bar .container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.docs-nav-bar .nav-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.docs-nav-bar .breadcrumb {
+  font-size: 0.85rem;
+  color: var(--surface-400);
+}
+.docs-nav-bar .breadcrumb span { color: var(--surface-200); }
+
+/* Mobile docs */
+@media (max-width: 768px) {
+  .docs-sidebar { display: none; }
+  .docs-content { margin-left: 0; padding: 24px 20px 60px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════ LANDING PAGE ═══════════════════ -->
+<div id="landing-page">
+
+<!-- ═══════════════════ NAV ═══════════════════ -->
+<nav id="nav">
+  <div class="container">
+    <a href="#" class="nav-logo">
+      <img src="images/logo-icon.png" alt="Laya">
+      <span>Laya</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#intelligence">Intelligence</a></li>
+      <li><a href="#privacy">Privacy</a></li>
+      <li><a href="#cta" class="btn btn-primary btn-sm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> Star on GitHub</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ═══════════════════ HERO ═══════════════════ -->
+<section class="hero">
+  <div class="hero-glow hero-glow-1"></div>
+  <div class="hero-glow hero-glow-2"></div>
+  <div class="particles" id="particles"></div>
+  <div class="container">
+    <div class="hero-content">
+      <div class="hero-badge">
+        <span class="pulse-dot"></span>
+        Open Source &middot; AI-Powered Command Center
+      </div>
+      <h1>Stop Reacting.<br><span class="text-gradient">Start Commanding.</span></h1>
+      <p class="subtitle">
+        Laya intercepts your notifications across every platform, researches context with AI agents, and delivers ready-to-approve action cards &mdash; before you even open the app.
+      </p>
+      <div class="hero-buttons">
+        <a href="#cta" class="btn btn-primary"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg> Download Free on GitHub</a>
+        <a href="#how-it-works" class="btn btn-ghost">See How It Works</a>
+      </div>
+      <p class="hero-footnote">Open source. Local-first. Privacy-respecting. Your API keys, your data.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ SHOWCASE ═══════════════════ -->
+<section class="showcase">
+  <div class="container">
+    <div class="showcase-tabs">
+      <button class="showcase-tab active" data-target="shot-list">List View</button>
+      <button class="showcase-tab" data-target="shot-cards">Card View</button>
+      <button class="showcase-tab" data-target="shot-brief">Daily Briefing</button>
+    </div>
+    <div class="showcase-frame">
+      <img id="shot-list" src="images/list-view.png" alt="Laya List View — AI action cards with intelligence reports" style="display: block;">
+      <img id="shot-cards" src="images/card-view.png" alt="Laya Card View — grouped action cards in 3-column grid" style="display: none;">
+      <img id="shot-brief" src="images/briefing-view.png" alt="Laya Daily Briefing — AI-synthesized morning summary" style="display: none;">
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ SOCIAL PROOF ═══════════════════ -->
+<section class="proof-bar">
+  <div class="container">
+    <div class="proof-stats">
+      <div class="proof-stat animate-on-scroll">
+        <div class="number">7+</div>
+        <div class="label">Platform Integrations</div>
+      </div>
+      <div class="proof-stat animate-on-scroll">
+        <div class="number">3</div>
+        <div class="label">AI Personas</div>
+      </div>
+      <div class="proof-stat animate-on-scroll">
+        <div class="number">6-Stage</div>
+        <div class="label">Intelligence Pipeline</div>
+      </div>
+      <div class="proof-stat animate-on-scroll">
+        <div class="number">100%</div>
+        <div class="label">Open Source &amp; Local-First</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ PROBLEM / SOLUTION ═══════════════════ -->
+<section class="problem-section" id="why-laya">
+  <div class="container">
+    <div class="section-header">
+      <h2 class="text-gradient">Your workflow is broken.</h2>
+      <p>You're drowning in context switches between Slack, Jira, Gmail, GitHub, and Calendar. Every notification demands attention. None of them come with context.</p>
+    </div>
+    <div class="split-grid animate-on-scroll" style="position: relative;">
+      <div class="problem-col">
+        <h3>Without Laya</h3>
+        <ul class="pain-list">
+          <li><span class="icon icon-red"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span> <span>Open Slack notification. No context. Search Jira for the ticket. Open Bitbucket for the PR. Piece together what happened. 15 minutes gone.</span></li>
+          <li><span class="icon icon-red"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span> <span>Miss a critical email buried under 40 promotional messages you need to manually triage.</span></li>
+          <li><span class="icon icon-red"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span> <span>Start your morning with 30 minutes of "catching up" — reading threads, checking calendars, reviewing PRs.</span></li>
+          <li><span class="icon icon-red"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span> <span>Context-switch 50+ times per day between tools. Each switch costs 23 minutes of focus.</span></li>
+        </ul>
+      </div>
+      <div class="problem-col">
+        <h3>With Laya</h3>
+        <ul class="pain-list">
+          <li><span class="icon icon-green"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> <span>Open Laya. AI already researched the context, cross-referenced the ticket, found related PRs, and drafted a response. One click to approve.</span></li>
+          <li><span class="icon icon-green"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> <span>AI intelligence reports flag the recruitment email as legitimate, auto-archives 39 promotional ones, surfaces what matters.</span></li>
+          <li><span class="icon icon-green"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> <span>Daily briefing synthesizes overnight activity into Events, Action Items, and Key Updates — ready at 7 AM.</span></li>
+          <li><span class="icon icon-green"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> <span>One unified feed. Every platform. Every notification pre-processed with intelligence. Zero context switching.</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ FEATURES ═══════════════════ -->
+<section class="features-section" id="features">
+  <div class="container">
+    <div class="section-header">
+      <h2>Intelligence, <span class="text-orange">not notifications.</span></h2>
+      <p>Every card Laya delivers has already been researched, classified, and prepared for action.</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card animate-on-scroll">
+        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg></div>
+        <h3>Intelligence Reports</h3>
+        <p>Every notification gets an AI-generated intelligence report. Sender reputation, cross-platform context, pattern recognition from your history, and actionable insights — all before you read a single word.</p>
+      </div>
+      <div class="feature-card animate-on-scroll">
+        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
+        <h3>Pre-Drafted Actions</h3>
+        <p>Draft replies, code fixes, briefing summaries — ready for one-click approval. The AI does the work. You just say "go" or refine the details.</p>
+      </div>
+      <div class="feature-card animate-on-scroll">
+        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></div>
+        <h3>Daily Briefings</h3>
+        <p>Wake up to an AI-synthesized morning briefing. Events & meetings, action items, key updates — organized by priority across all your spaces.</p>
+      </div>
+      <div class="feature-card animate-on-scroll">
+        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/><line x1="14" y1="4" x2="10" y2="20" stroke="#ff9770"/></svg></div>
+        <h3>Coding Agents</h3>
+        <p>Laya spawns real coding agents (Claude Code, Gemini CLI, Codex) in your repos. Watch them work in real-time. Approve or guide their actions from the workspace.</p>
+      </div>
+      <div class="feature-card animate-on-scroll">
+        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+        <h3>Smart Classification</h3>
+        <p>Every event is automatically categorized by persona (Engineer, Comms, Ops), priority (Critical to Low), and category — using a multi-model AI pipeline.</p>
+      </div>
+      <div class="feature-card animate-on-scroll">
+        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></div>
+        <h3>Spaces</h3>
+        <p>Organize your life into separate contexts — Work, Personal, side projects. Each space has its own sources, model configs, and API keys.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ HOW IT WORKS ═══════════════════ -->
+<section class="how-section" id="how-it-works">
+  <div class="container">
+    <div class="section-header">
+      <h2>How <span class="text-orange">Laya</span> works</h2>
+      <p>A 6-stage AI pipeline transforms raw notifications into ready-to-approve intelligence.</p>
+    </div>
+    <div class="steps">
+      <div class="step animate-on-scroll">
+        <div class="step-number"><span><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg></span></div>
+        <h3>Ingest</h3>
+        <p>Events flow in from Jira, Slack, Gmail, GitHub, Calendar and more via webhooks.</p>
+      </div>
+      <div class="step animate-on-scroll">
+        <div class="step-number"><span><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg></span></div>
+        <h3>Route &amp; Classify</h3>
+        <p>Fast AI classifies priority, category, persona, and builds a research plan.</p>
+      </div>
+      <div class="step animate-on-scroll">
+        <div class="step-number"><span><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span></div>
+        <h3>Research &amp; Draft</h3>
+        <p>Specialized workers research context, draft replies, spawn coding agents, gather intelligence.</p>
+      </div>
+      <div class="step animate-on-scroll">
+        <div class="step-number"><span><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4" stroke="#ff9770"/><path d="M3 5h4" stroke="#ff9770"/><path d="M19 17v4" stroke="#f6bc66"/><path d="M17 19h4" stroke="#f6bc66"/></svg></span></div>
+        <h3>Deliver</h3>
+        <p>Polished action cards land in your feed with intelligence reports and one-click actions.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ FEATURE DEEP DIVES ═══════════════════ -->
+<section id="intelligence">
+  <div class="container">
+
+    <!-- Deep dive 1: Intelligence -->
+    <div class="feature-showcase animate-on-scroll" style="margin-bottom: 100px;">
+      <div class="feature-text">
+        <span class="tag">Intelligence</span>
+        <h2>Every card comes pre-researched</h2>
+        <p>Laya doesn't just forward notifications. It investigates them. Each card includes an AI intelligence report with cross-platform context and pattern-matched history.</p>
+        <ul>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Sender reputation and domain verification</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Cross-referenced past events from memory</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Tracking link analysis and safety flags</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Confidence scoring on every classification</li>
+        </ul>
+      </div>
+      <div class="feature-image">
+        <img src="images/list-view.png" alt="Laya intelligence report showing sender analysis and cross-platform context">
+      </div>
+    </div>
+
+    <!-- Deep dive 2: Multiple Views -->
+    <div class="feature-showcase reverse animate-on-scroll" style="margin-bottom: 100px;">
+      <div class="feature-text">
+        <span class="tag">Views</span>
+        <h2>Your feed, your way</h2>
+        <p>Switch between list view for rapid triage, card view for visual scanning, or summary view for the big picture. Sort by newest, priority, category, or platform.</p>
+        <ul>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> List, Card, and Summary view modes</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Filter by status, priority, category, space</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Bulk actions — approve, dismiss, archive</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Real-time WebSocket updates</li>
+        </ul>
+      </div>
+      <div class="feature-image">
+        <img src="images/card-view.png" alt="Laya card grid view showing grouped action cards">
+      </div>
+    </div>
+
+    <!-- Deep dive 3: Briefings -->
+    <div class="feature-showcase animate-on-scroll">
+      <div class="feature-text">
+        <span class="tag">Briefings</span>
+        <h2>Your morning, already organized</h2>
+        <p>Every morning, Laya synthesizes overnight activity across all your platforms into a structured briefing. Events, action items, and key updates — prioritized and ready.</p>
+        <ul>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Automated daily synthesis at your preferred time</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Events &amp; meetings with context</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Action items ranked by priority</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Key updates filtered from noise</li>
+        </ul>
+      </div>
+      <div class="feature-image">
+        <img src="images/briefing-view.png" alt="Laya daily briefing showing events, action items, and key updates">
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ═══════════════════ PERSONAS ═══════════════════ -->
+<section>
+  <div class="container">
+    <div class="section-header">
+      <h2>Three AI personas.<br><span class="text-orange">Zero context switching.</span></h2>
+      <p>Laya automatically routes each notification to the right specialist persona, so you get expert-level output every time.</p>
+    </div>
+    <div class="personas-grid">
+      <div class="persona-card persona-engineer animate-on-scroll">
+        <div class="persona-avatar"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+        <h3>Engineer</h3>
+        <p>Spawns coding agents, analyzes PRs, reviews build failures, drafts code fixes, and surfaces implementation plans with full repo context.</p>
+      </div>
+      <div class="persona-card persona-comms animate-on-scroll">
+        <div class="persona-avatar"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+        <h3>Comms</h3>
+        <p>Drafts email replies, Slack responses, and PR comments. Analyzes sender intent, checks communication history, and prepares context-aware responses.</p>
+      </div>
+      <div class="persona-card persona-ops animate-on-scroll">
+        <div class="persona-avatar"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
+        <h3>Ops</h3>
+        <p>Aggregates calendar events, manages scheduling conflicts, synthesizes meeting prep, and monitors operational updates across all platforms.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ INTEGRATIONS ═══════════════════ -->
+<section>
+  <div class="container">
+    <div class="section-header">
+      <h2>Connects to everything <span class="text-orange">you already use</span></h2>
+      <p>Laya listens to your tools via webhooks and normalizes everything into a unified event stream.</p>
+    </div>
+    <div class="integrations-grid animate-on-scroll">
+      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></span> Gmail</div>
+      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 10c-.83 0-1.5-.67-1.5-1.5v-5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5z"/><path d="M20.5 10H19V8.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/><path d="M9.5 14c.83 0 1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5S8 21.33 8 20.5v-5c0-.83.67-1.5 1.5-1.5z"/><path d="M3.5 14H5v1.5c0 .83-.67 1.5-1.5 1.5S2 16.33 2 15.5 2.67 14 3.5 14z"/><path d="M14 14.5c0-.83.67-1.5 1.5-1.5h5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-5c-.83 0-1.5-.67-1.5-1.5z"/><path d="M14 20.5c0-.83.67-1.5 1.5-1.5h0c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h0c-.83 0-1.5-.67-1.5-1.5z" style="display:none"/><path d="M15.5 16H14v1.5c0 .83-.67 1.5-1.5 1.5" style="display:none"/><path d="M10 9.5c0 .83-.67 1.5-1.5 1.5h-5C2.67 11 2 10.33 2 9.5S2.67 8 3.5 8h5c.83 0 1.5.67 1.5 1.5z"/><path d="M10 3.5C10 4.33 9.33 5 8.5 5H8v0" style="display:none"/></svg></span> Slack</div>
+      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/></svg></span> Jira</div>
+      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg></span> GitHub</div>
+      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12.5V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h8"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/><path d="M18 15.28c.2-.4.5-.8.9-1a2.1 2.1 0 0 1 2.6.4c.3.4.5.8.5 1.3 0 1.3-2 2-2 2" /><path d="M20 21v.01"/></svg></span> Bitbucket</div>
+      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span> Calendar</div>
+      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/><line x1="2" y1="20" x2="8" y2="13"/><line x1="22" y1="20" x2="16" y2="13"/></svg></span> Outlook</div>
+      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span> More via n8n</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ PRIVACY ═══════════════════ -->
+<section class="privacy-section" id="privacy">
+  <div class="container">
+    <div class="section-header">
+      <h2>Your data stays <span class="text-orange">yours</span></h2>
+      <p>Laya is local-first by design. Your data never leaves your machine unless you choose a cloud model.</p>
+    </div>
+    <div class="privacy-grid">
+      <div class="privacy-item animate-on-scroll">
+        <div class="icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+        <h3>Local-First Architecture</h3>
+        <p>SQLite database, ChromaDB vectors, and all configs stored on your machine. No cloud account required.</p>
+      </div>
+      <div class="privacy-item animate-on-scroll">
+        <div class="icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg></div>
+        <h3>Your Keys, Your Models</h3>
+        <p>Bring your own API keys. Use Claude, GPT, Gemini, or run Ollama locally for complete air-gapped privacy.</p>
+      </div>
+      <div class="privacy-item animate-on-scroll">
+        <div class="icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4" stroke="#f6bc66"/></svg></div>
+        <h3>3-Tier Privacy Classification</h3>
+        <p>Sensitive content (DMs, emails) can be routed to local models only. Metadata stays separate from content.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ CTA ═══════════════════ -->
+<section class="cta-section" id="cta">
+  <div class="container">
+    <h2>Ready to take<br><span class="text-gradient">command?</span></h2>
+    <p>Laya is free and open source. Clone the repo, run the engine, and take control of your workflow in minutes.</p>
+    <div class="hero-buttons">
+      <a href="#" class="btn btn-primary"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg> Get Laya on GitHub</a>
+      <a href="#docs" class="btn btn-ghost" onclick="event.preventDefault(); showDocs();"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> Read the Docs</a>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ FOOTER ═══════════════════ -->
+<footer>
+  <div class="container">
+    <div class="footer-content">
+      <div class="footer-left">
+        <img src="images/logo-icon.png" alt="Laya">
+        <span>Laya</span>
+      </div>
+      <p>&copy; 2026 Laya. Open source. Built for professionals who refuse to drown in notifications.</p>
+      <ul class="footer-links">
+        <li><a href="#">GitHub</a></li>
+        <li><a href="#docs" onclick="event.preventDefault(); showDocs();">Docs</a></li>
+        <li><a href="#">Privacy</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+
+</div><!-- end #landing-page -->
+
+<!-- ═══════════════════════════════════════════════════════════
+     DOCUMENTATION PAGE
+     ═══════════════════════════════════════════════════════════ -->
+<div id="docs-page">
+
+  <!-- Docs Nav -->
+  <div class="docs-nav-bar">
+    <div class="container">
+      <div class="nav-left">
+        <a href="#" class="nav-logo" onclick="showLanding(); return false;">
+          <img src="images/logo-icon.png" alt="Laya">
+          <span>Laya</span>
+        </a>
+        <span class="breadcrumb">/ <span>Documentation</span></span>
+      </div>
+      <a href="#" class="btn btn-primary btn-sm" onclick="showLanding(); return false;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> Back to Home</a>
+    </div>
+  </div>
+
+  <div class="docs-layout">
+
+    <!-- Sidebar -->
+    <aside class="docs-sidebar" id="docs-sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-title">Getting Started</div>
+        <a href="#doc-overview">Overview</a>
+        <a href="#doc-prerequisites">Prerequisites</a>
+        <a href="#doc-installation">Installation</a>
+        <a href="#doc-first-run">First Run</a>
+        <a href="#doc-setup-wizard">Setup Wizard</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">n8n Integration</div>
+        <a href="#doc-n8n-overview">How n8n Works</a>
+        <a href="#doc-n8n-docker">Docker Setup</a>
+        <a href="#doc-n8n-bootstrap">Auto-Provisioning</a>
+        <a href="#doc-n8n-manual">Manual Setup</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Connecting Platforms</div>
+        <a href="#doc-platforms-overview">Overview</a>
+        <a href="#doc-gmail">Gmail</a>
+        <a href="#doc-slack">Slack</a>
+        <a href="#doc-jira">Jira</a>
+        <a href="#doc-github">GitHub</a>
+        <a href="#doc-bitbucket">Bitbucket</a>
+        <a href="#doc-calendar">Google Calendar</a>
+        <a href="#doc-outlook">Outlook</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">The Feed</div>
+        <a href="#doc-feed-views">Views &amp; Layouts</a>
+        <a href="#doc-feed-filters">Filters &amp; Sort</a>
+        <a href="#doc-feed-actions">Card Actions</a>
+        <a href="#doc-feed-statuses">Card Statuses</a>
+        <a href="#doc-daily-briefing">Daily Briefing</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Configuration</div>
+        <a href="#doc-settings-models">AI Models</a>
+        <a href="#doc-settings-custom">Self-Hosted Models</a>
+        <a href="#doc-settings-agents">Coding Agents</a>
+        <a href="#doc-settings-spaces">Spaces &amp; Sources</a>
+        <a href="#doc-settings-rules">Rules &amp; Filters</a>
+        <a href="#doc-settings-team">Team Directory</a>
+        <a href="#doc-settings-repos">Repositories</a>
+        <a href="#doc-settings-briefing">Briefing Schedule</a>
+        <a href="#doc-settings-appearance">Appearance</a>
+        <a href="#doc-settings-data">Data &amp; Retention</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Privacy &amp; Security</div>
+        <a href="#doc-privacy-tiers">Privacy Tiers</a>
+        <a href="#doc-privacy-keys">API Key Storage</a>
+        <a href="#doc-privacy-local">Local-Only Mode</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Advanced</div>
+        <a href="#doc-pipeline">Processing Pipeline</a>
+        <a href="#doc-event-schema">Event Schema</a>
+        <a href="#doc-config-files">Config Files</a>
+        <a href="#doc-troubleshooting">Troubleshooting</a>
+      </div>
+    </aside>
+
+    <!-- Content -->
+    <main class="docs-content">
+
+      <a href="#" class="back-link" onclick="showLanding(); return false;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> Back to Home</a>
+
+      <h1>Laya Documentation</h1>
+      <p class="docs-subtitle">Everything you need to set up, configure, and master Laya.</p>
+
+      <!-- ─── GETTING STARTED ─── -->
+      <h2 id="doc-overview">Overview</h2>
+      <p>Laya is an open-source, local-first AI command center that intercepts notifications from your professional tools (Gmail, Slack, Jira, GitHub, Calendar, and more), processes them through a multi-stage AI pipeline, and delivers ready-to-approve <strong>Action Cards</strong> to your desktop.</p>
+      <p>By the time you open Laya, the AI has already researched context, drafted responses, classified priorities, and packaged everything into one-click actions.</p>
+
+      <div class="callout callout-info">
+        <p><strong>Architecture at a glance:</strong> Laya consists of three components &mdash; the <strong>Engine</strong> (Python/FastAPI backend), the <strong>UI</strong> (Svelte 5/Tauri desktop app), and <strong>n8n</strong> (Docker-based integration gateway). All data stays on your machine.</p>
+      </div>
+
+      <h2 id="doc-prerequisites">Prerequisites</h2>
+      <ul>
+        <li><strong>macOS, Windows, or Linux</strong> desktop</li>
+        <li><strong>Docker &amp; Docker Compose</strong> &mdash; for running n8n (the integration gateway)</li>
+        <li><strong>Python 3.11+</strong> &mdash; for the Laya Engine (bundled in releases)</li>
+        <li><strong>Node.js 18+</strong> &mdash; only if building from source</li>
+        <li><strong>An LLM provider</strong> &mdash; either a cloud API key (Anthropic, OpenAI, Google, OpenRouter) <em>or</em> a self-hosted model server like <strong>Ollama</strong>, <strong>LM Studio</strong>, or any OpenAI-compatible endpoint. No API key needed for local models.</li>
+        <li><strong>OS Keychain access</strong> &mdash; macOS Keychain, Windows Credential Manager, or Linux Secret Service</li>
+      </ul>
+
+      <h2 id="doc-installation">Installation</h2>
+
+      <h3>Option A: Download Release</h3>
+      <p>Download the latest release from GitHub. The desktop app bundles the Engine, so you only need Docker for n8n.</p>
+
+      <h3>Option B: Build from Source</h3>
+<pre><code># Clone the repository
+git clone https://github.com/your-org/laya.git
+cd laya
+
+# Start n8n (Docker)
+docker compose up -d
+
+# Start the Engine
+cd engine
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python -m laya.main
+
+# Start the UI (development)
+cd ../ui
+npm install
+npm run dev</code></pre>
+
+      <h2 id="doc-first-run">First Run</h2>
+      <p>When Laya starts for the first time, it automatically:</p>
+      <ol>
+        <li>Creates the <code>~/.laya/</code> directory with default config files</li>
+        <li>Initializes the SQLite database and runs all migrations</li>
+        <li>Sets up ChromaDB for semantic search</li>
+        <li>Detects and bootstraps n8n (creates admin account, imports workflows)</li>
+        <li>Auto-detects installed coding agent CLIs</li>
+        <li>Opens the Setup Wizard in the UI</li>
+      </ol>
+
+      <h2 id="doc-setup-wizard">Setup Wizard</h2>
+      <p>The 5-step onboarding wizard walks you through initial configuration:</p>
+      <ol>
+        <li><strong>LLM Provider</strong> &mdash; Enter a cloud API key (Anthropic, OpenAI, Google, OpenRouter) or connect a self-hosted model server (Ollama, LM Studio, or any OpenAI-compatible endpoint)</li>
+        <li><strong>n8n Check</strong> &mdash; Detects and auto-configures your n8n instance</li>
+        <li><strong>Coding Agent + Repo</strong> &mdash; Select an agent (Claude Code, Gemini CLI, or Codex) and add your first repository</li>
+        <li><strong>Team Setup</strong> &mdash; Add team members so Laya can recognize actors in events</li>
+        <li><strong>Rules</strong> &mdash; Configure basic event filtering (e.g., ignore bot messages)</li>
+      </ol>
+
+      <!-- ─── N8N ─── -->
+      <h2 id="doc-n8n-overview">How n8n Works with Laya</h2>
+      <p><strong>n8n</strong> is the integration gateway that connects Laya to your external services. It runs as a Docker container alongside the Engine and handles all platform-specific communication.</p>
+      <p>There are two types of n8n workflows:</p>
+      <ul>
+        <li><strong>Ingestion workflows</strong> &mdash; Listen to external services (Gmail, Slack, Jira, etc.) and forward normalized events to the Laya Engine at <code>POST http://host.docker.internal:8420/events</code></li>
+        <li><strong>Executor workflows</strong> &mdash; Receive action payloads from Laya and execute them on the target platform (send an email, post a Slack message, create a Jira comment)</li>
+      </ul>
+
+      <h2 id="doc-n8n-docker">Docker Setup</h2>
+      <p>Laya ships with a <code>docker-compose.yml</code> that starts n8n automatically:</p>
+<pre><code># Start n8n
+docker compose up -d
+
+# Check status
+docker compose ps
+
+# View logs
+docker compose logs -f laya-n8n</code></pre>
+
+      <table>
+        <tr><th>Setting</th><th>Value</th></tr>
+        <tr><td>Image</td><td><code>n8nio/n8n:latest</code></td></tr>
+        <tr><td>Port</td><td><code>5678</code></td></tr>
+        <tr><td>Container name</td><td><code>laya-n8n</code></td></tr>
+        <tr><td>Data volume</td><td><code>n8n_data:/home/node/.n8n</code></td></tr>
+        <tr><td>Default admin email</td><td><code>laya@local.host</code></td></tr>
+        <tr><td>Default admin password</td><td><code>LayaAutoAdmin2026!</code></td></tr>
+      </table>
+
+      <div class="callout callout-warn">
+        <p><strong>Warning:</strong> Running <code>docker compose down -v</code> will delete the n8n data volume, including all credentials and workflow customizations. Use <code>docker compose down</code> (without <code>-v</code>) to stop without losing data.</p>
+      </div>
+
+      <h2 id="doc-n8n-bootstrap">Auto-Provisioning</h2>
+      <p>On engine startup, Laya automatically provisions n8n:</p>
+      <ol>
+        <li>Waits for n8n to become healthy (up to 30 seconds)</li>
+        <li>Creates the admin account (or logs in if it already exists)</li>
+        <li>Generates an API key with full workflow and credential scopes</li>
+        <li>Imports all bundled ingestion &amp; executor workflows from <code>n8n/workflows/</code></li>
+        <li>Stores the API key and admin password in the OS keychain</li>
+      </ol>
+      <p>This process is fully idempotent &mdash; it's safe to restart and won't create duplicates.</p>
+
+      <h2 id="doc-n8n-manual">Manual Setup</h2>
+      <p>If auto-provisioning doesn't work (e.g., custom n8n instance), you can configure manually:</p>
+      <ol>
+        <li>Open the n8n dashboard at <code>http://localhost:5678</code></li>
+        <li>Create an account and generate an API key under <strong>Settings &rarr; API</strong></li>
+        <li>In Laya, go to <strong>Settings &rarr; Integrations</strong> and enter the API key manually</li>
+        <li>Import workflows from the <code>n8n/workflows/</code> directory via n8n's import UI</li>
+      </ol>
+
+      <h3>Environment Variables</h3>
+      <table>
+        <tr><th>Variable</th><th>Default</th><th>Description</th></tr>
+        <tr><td><code>N8N_URL</code></td><td><code>http://localhost:5678</code></td><td>Override n8n base URL</td></tr>
+        <tr><td><code>LAYA_N8N_OWNER_EMAIL</code></td><td><code>laya@local.host</code></td><td>Admin account email</td></tr>
+        <tr><td><code>LAYA_N8N_OWNER_PASSWORD</code></td><td><code>LayaAutoAdmin2026!</code></td><td>Admin account password</td></tr>
+      </table>
+
+      <!-- ─── PLATFORMS ─── -->
+      <h2 id="doc-platforms-overview">Connecting Platforms</h2>
+      <p>Each platform connects to Laya through an n8n ingestion workflow. Workflows are pre-bundled and auto-imported on first run. You just need to add credentials for each platform inside n8n.</p>
+
+      <h3>General Steps</h3>
+      <ol>
+        <li>Open the n8n dashboard at <code>http://localhost:5678</code></li>
+        <li>Open the ingestion workflow for the platform you want to connect</li>
+        <li>Click the trigger node and add credentials (OAuth or API key)</li>
+        <li>Activate the workflow (toggle the switch)</li>
+        <li>In Laya, go to <strong>Settings &rarr; Integrations</strong> to verify the workflow is active</li>
+      </ol>
+
+      <h2 id="doc-gmail">Gmail</h2>
+      <table>
+        <tr><th>Property</th><th>Value</th></tr>
+        <tr><td>Workflow</td><td><code>gmail-ingestion.json</code></td></tr>
+        <tr><td>Trigger</td><td>Polling (every minute, INBOX only)</td></tr>
+        <tr><td>Credentials</td><td>Google OAuth2 (Gmail scope)</td></tr>
+        <tr><td>Executor</td><td><code>gmail-executor.json</code> &mdash; send/reply to emails</td></tr>
+      </table>
+      <p>The Gmail workflow polls your inbox every minute for new messages, extracts sender, subject, body, thread ID, and labels, then forwards a normalized event to the Engine.</p>
+
+      <h2 id="doc-slack">Slack</h2>
+      <table>
+        <tr><th>Property</th><th>Value</th></tr>
+        <tr><td>Workflow</td><td><code>slack-ingestion.json</code></td></tr>
+        <tr><td>Trigger</td><td>Webhook (real-time via Slack Events API)</td></tr>
+        <tr><td>Credentials</td><td>Slack OAuth2 (Bot token)</td></tr>
+        <tr><td>Executor</td><td><code>slack-executor.json</code> &mdash; send messages, post thread replies</td></tr>
+      </table>
+      <p>Configure a Slack app with Event Subscriptions pointing to the n8n webhook URL. Events arrive in real-time with channel, thread, and mention metadata.</p>
+
+      <h2 id="doc-jira">Jira</h2>
+      <table>
+        <tr><th>Property</th><th>Value</th></tr>
+        <tr><td>Workflow</td><td><code>jira-ingestion.json</code></td></tr>
+        <tr><td>Trigger</td><td>Polling (every minute, <code>updated >= "-2m"</code>)</td></tr>
+        <tr><td>Credentials</td><td>Jira API Token (email + token)</td></tr>
+        <tr><td>Executor</td><td>Built-in n8n Jira node &mdash; add comments, update fields</td></tr>
+      </table>
+      <p>The Jira workflow searches for recently updated issues every minute. It resolves the latest actor (commenter, reporter, or assignee) and includes project, labels, priority, and status metadata.</p>
+
+      <h2 id="doc-github">GitHub</h2>
+      <table>
+        <tr><th>Property</th><th>Value</th></tr>
+        <tr><td>Workflow</td><td><code>github-ingestion.json</code></td></tr>
+        <tr><td>Trigger</td><td>Webhook (real-time via GitHub Webhooks)</td></tr>
+        <tr><td>Credentials</td><td>GitHub Personal Access Token or OAuth App</td></tr>
+      </table>
+      <p>Configure a GitHub webhook on your repository pointing to the n8n webhook URL. Supports PRs, issues, pushes, reviews, and CI checks.</p>
+
+      <h2 id="doc-bitbucket">Bitbucket</h2>
+      <table>
+        <tr><th>Property</th><th>Value</th></tr>
+        <tr><td>Workflow</td><td><code>bitbucket-ingestion.json</code></td></tr>
+        <tr><td>Trigger</td><td>Webhook (real-time via Bitbucket Webhooks)</td></tr>
+        <tr><td>Credentials</td><td>Bitbucket App Password</td></tr>
+        <tr><td>Executor</td><td>Built-in n8n Bitbucket node &mdash; create PRs, comment</td></tr>
+      </table>
+      <p>Handles PR events, build status changes, branch pushes, and code review requests. Includes repository, branch, and reviewer metadata.</p>
+
+      <h2 id="doc-calendar">Google Calendar</h2>
+      <table>
+        <tr><th>Property</th><th>Value</th></tr>
+        <tr><td>Workflow</td><td><code>calendar-ingestion.json</code></td></tr>
+        <tr><td>Trigger</td><td>Polling (scheduled)</td></tr>
+        <tr><td>Credentials</td><td>Google OAuth2 (Calendar scope)</td></tr>
+        <tr><td>Executor</td><td><code>google-calendar-executor.json</code> &mdash; create events</td></tr>
+      </table>
+
+      <h2 id="doc-outlook">Outlook</h2>
+      <table>
+        <tr><th>Property</th><th>Value</th></tr>
+        <tr><td>Workflows</td><td><code>outlook-email-ingestion.json</code>, <code>outlook-calendar-ingestion.json</code></td></tr>
+        <tr><td>Credentials</td><td>Microsoft OAuth2</td></tr>
+        <tr><td>Executors</td><td><code>outlook-email-executor.json</code>, <code>outlook-calendar-executor.json</code></td></tr>
+      </table>
+      <p>Separate workflows for Outlook email and calendar. Supports both webhook and polling triggers depending on Microsoft Graph API configuration.</p>
+
+      <!-- ─── THE FEED ─── -->
+      <h2 id="doc-feed-views">Views &amp; Layouts</h2>
+      <p>The Feed is the main interface for interacting with your Action Cards. It supports three view modes accessible from the header:</p>
+      <ul>
+        <li><strong>Card View</strong> &mdash; 3-column grid of grouped cards, best for visual scanning</li>
+        <li><strong>List View</strong> &mdash; Dense tabular layout, best for rapid triage of many items</li>
+        <li><strong>Summary View</strong> &mdash; AI-synthesized daily briefing with Events, Action Items, and Key Updates</li>
+      </ul>
+      <p>Click any card to open its <strong>Detail Panel</strong> on the right, showing the full intelligence report, staged output (draft replies, code diffs), and action buttons.</p>
+
+      <h2 id="doc-feed-filters">Filters &amp; Sort</h2>
+      <p>The header toolbar provides comprehensive filtering:</p>
+      <table>
+        <tr><th>Control</th><th>Options</th><th>Default</th></tr>
+        <tr><td><strong>Date Navigation</strong></td><td>Previous/Next day, Today button</td><td>Today</td></tr>
+        <tr><td><strong>Space Filter</strong></td><td>All Spaces, or specific space</td><td>All Spaces</td></tr>
+        <tr><td><strong>Sort</strong></td><td>Newest, Priority, Persona, Category, Source</td><td>Newest</td></tr>
+        <tr><td><strong>Status Filter</strong></td><td>Processing, Ready, Needs Approval, Running, Failed, Done, Dismissed</td><td>All</td></tr>
+        <tr><td><strong>Priority Filter</strong></td><td>Critical, High, Medium, Low</td><td>All</td></tr>
+        <tr><td><strong>Archived</strong></td><td>Show/hide archived cards</td><td>Hidden</td></tr>
+      </table>
+      <p>Filters are persisted to the backend so they survive page reloads and app restarts.</p>
+
+      <h2 id="doc-feed-actions">Card Actions</h2>
+      <p>Each card provides quick actions depending on its status:</p>
+      <table>
+        <tr><th>Action</th><th>Description</th></tr>
+        <tr><td><strong>Mark as Done</strong></td><td>Confirm the card is handled. Moves to <code>done</code> status.</td></tr>
+        <tr><td><strong>Dismiss</strong></td><td>Reject or skip the card. Optionally provide a reason (used for AI learning).</td></tr>
+        <tr><td><strong>Archive</strong></td><td>Hide from feed. Can be reopened later. Preserves original status.</td></tr>
+        <tr><td><strong>Reopen</strong></td><td>Bring back a dismissed, archived, or failed card for reprocessing.</td></tr>
+        <tr><td><strong>Approve Agent</strong></td><td>Start a coding agent to work on the task (for <code>requires_approval</code> cards).</td></tr>
+        <tr><td><strong>Execute Action</strong></td><td>Run a suggested action (send email, post comment) via n8n.</td></tr>
+        <tr><td><strong>Delete</strong></td><td>Permanently remove an archived card and all its data.</td></tr>
+      </table>
+
+      <h2 id="doc-feed-statuses">Card Statuses</h2>
+      <p>Cards flow through a lifecycle of statuses:</p>
+      <table>
+        <tr><th>Status</th><th>Meaning</th><th>Visual</th></tr>
+        <tr><td><code>pending</code></td><td>Event received, being processed by AI pipeline</td><td>Amber pulse glow</td></tr>
+        <tr><td><code>ready</code></td><td>Card fully processed, ready for user action</td><td>Warm peach tint</td></tr>
+        <tr><td><code>requires_approval</code></td><td>Coding agent needs user approval before starting</td><td>Violet pulse glow</td></tr>
+        <tr><td><code>agent_running</code></td><td>Coding agent actively working in a workspace</td><td>Lavender tint</td></tr>
+        <tr><td><code>awaiting_input</code></td><td>Agent paused, waiting for user decision</td><td>Amber tint</td></tr>
+        <tr><td><code>done</code></td><td>Completed and confirmed by user</td><td>Soft emerald</td></tr>
+        <tr><td><code>failed</code></td><td>Processing or execution error (can be reopened)</td><td>Soft red</td></tr>
+        <tr><td><code>dismissed</code></td><td>Rejected by user (can be reopened)</td><td>Muted gray</td></tr>
+        <tr><td><code>archived</code></td><td>Hidden from feed (can be reopened or deleted)</td><td>Dashed border</td></tr>
+      </table>
+
+      <h2 id="doc-daily-briefing">Daily Briefing</h2>
+      <p>Laya generates a synthesized daily briefing at your configured time (default 7:00 AM). The briefing aggregates overnight activity into three sections:</p>
+      <ul>
+        <li><strong>Events &amp; Meetings</strong> &mdash; Calendar events and notable communications</li>
+        <li><strong>Action Items</strong> &mdash; Tasks requiring your attention, ranked by priority</li>
+        <li><strong>Key Updates</strong> &mdash; Important changes filtered from noise</li>
+      </ul>
+      <p>Access the briefing via the <strong>Summary View</strong> in the feed. Configure schedule under <strong>Settings &rarr; Briefing</strong>.</p>
+
+      <!-- ─── CONFIGURATION ─── -->
+      <h2 id="doc-settings-models">AI Models</h2>
+      <p>Laya uses multiple AI models for different pipeline stages. Configure under <strong>Settings &rarr; Models</strong>.</p>
+
+      <h3>Pipeline Roles</h3>
+      <table>
+        <tr><th>Role</th><th>Purpose</th><th>Default</th><th>Recommendation</th></tr>
+        <tr><td><strong>Router</strong></td><td>Fast classification (priority, category, persona)</td><td><code>claude-haiku-4-5</code></td><td>Use a fast, cheap model</td></tr>
+        <tr><td><strong>Stager</strong></td><td>Synthesize polished action cards &amp; intelligence reports</td><td><code>claude-sonnet-4-6</code></td><td>Use a capable model</td></tr>
+        <tr><td><strong>Chat</strong></td><td>Conversational responses in chat interface</td><td><code>claude-sonnet-4-6</code></td><td>Use a conversational model</td></tr>
+        <tr><td><strong>Local</strong></td><td>Privacy-sensitive processing (Tier 3 data)</td><td><code>ollama/llama3</code></td><td>Any local model via Ollama</td></tr>
+      </table>
+
+      <h3>Supported Cloud Providers</h3>
+      <table>
+        <tr><th>Provider</th><th>Model Format</th><th>Example</th></tr>
+        <tr><td>Anthropic</td><td><code>anthropic/model-name</code></td><td><code>anthropic/claude-sonnet-4-6</code></td></tr>
+        <tr><td>OpenAI</td><td><code>openai/model-name</code></td><td><code>openai/gpt-4o</code></td></tr>
+        <tr><td>Google</td><td><code>gemini/model-name</code></td><td><code>gemini/gemini-2.0-flash-exp</code></td></tr>
+        <tr><td>OpenRouter</td><td><code>openrouter/provider/model</code></td><td><code>openrouter/openai/gpt-4-turbo</code></td></tr>
+      </table>
+
+      <h3>Advanced Pipeline Settings</h3>
+      <table>
+        <tr><th>Setting</th><th>Default</th><th>Description</th></tr>
+        <tr><td>Model Timeout</td><td>120s</td><td>Maximum wait time for LLM API responses</td></tr>
+        <tr><td>LLM Retries</td><td>3</td><td>Retry attempts for failed LLM calls (exponential backoff)</td></tr>
+        <tr><td>Event Queue Retries</td><td>5</td><td>Max retries for failed event processing</td></tr>
+        <tr><td>Concurrency</td><td>5</td><td>Number of events to process simultaneously</td></tr>
+      </table>
+
+      <h2 id="doc-settings-custom">Self-Hosted Models</h2>
+      <p>Laya supports self-hosted model providers. Add them under <strong>Settings &rarr; Models &rarr; Local Providers</strong>.</p>
+
+      <h3>Supported Provider Types</h3>
+      <table>
+        <tr><th>Type</th><th>Software</th><th>Default URL</th><th>Auto-Discovery</th></tr>
+        <tr><td><code>lmstudio</code></td><td>LM Studio</td><td><code>http://localhost:1234</code></td><td>Rich metadata with capabilities</td></tr>
+        <tr><td><code>ollama</code></td><td>Ollama</td><td><code>http://localhost:11434</code></td><td>Basic model list</td></tr>
+        <tr><td><code>openai_compatible</code></td><td>vLLM, LMStack, etc.</td><td>Custom</td><td>Standard OpenAI format</td></tr>
+      </table>
+
+      <p>After adding a provider, its models appear in the model selection dropdowns. Use them like: <code>my-provider-id/model-name</code>.</p>
+
+      <div class="callout callout-info">
+        <p><strong>Tip:</strong> Use the <strong>Test Connection</strong> button to verify provider connectivity and check model capabilities (tool calling, structured output, vision).</p>
+      </div>
+
+      <h2 id="doc-settings-agents">Coding Agents</h2>
+      <p>Laya can spawn real coding agent CLIs to work on tasks in your repositories. Configure under <strong>Settings &rarr; Agent</strong>.</p>
+
+      <h3>Supported Agents</h3>
+      <table>
+        <tr><th>Agent</th><th>Binary</th><th>Provider</th></tr>
+        <tr><td>Claude Code</td><td><code>claude</code></td><td>Anthropic</td></tr>
+        <tr><td>Gemini CLI</td><td><code>gemini</code></td><td>Google</td></tr>
+        <tr><td>Codex CLI</td><td><code>codex</code></td><td>OpenAI</td></tr>
+      </table>
+
+      <h3>Execution Modes</h3>
+      <ul>
+        <li><strong>Requires Approval</strong> (recommended) &mdash; Card status becomes <code>requires_approval</code>; you must click "Approve" before the agent starts</li>
+        <li><strong>Automatic</strong> &mdash; Agent runs immediately when an ENGINEER card is ready (use with caution)</li>
+      </ul>
+      <p>Agent paths are auto-detected on startup. If detection fails, specify the binary path manually in settings.</p>
+
+      <h2 id="doc-settings-spaces">Spaces &amp; Sources</h2>
+      <p>Spaces let you organize your workflow into separate contexts (e.g., Work, Personal, Side Projects). Configure under <strong>Settings &rarr; Spaces</strong>.</p>
+
+      <h3>What Spaces Control</h3>
+      <ul>
+        <li><strong>Event routing</strong> &mdash; Events from assigned sources land in the correct space</li>
+        <li><strong>Feed filtering</strong> &mdash; Filter the feed by space in the header toolbar</li>
+        <li><strong>Model overrides</strong> &mdash; Each space can use different AI models</li>
+        <li><strong>API key overrides</strong> &mdash; Each space can have its own provider API keys</li>
+        <li><strong>Repository assignment</strong> &mdash; Link repos to spaces for coding agent context</li>
+        <li><strong>Pause/resume</strong> &mdash; Temporarily stop all ingestion for a space</li>
+      </ul>
+
+      <div class="callout callout-info">
+        <p><strong>Default Space:</strong> A "Default" space always exists and cannot be deleted. Unknown or unassigned sources automatically land here.</p>
+      </div>
+
+      <h3>Source Management</h3>
+      <p>Sources are n8n workflows linked to spaces. When an ingestion workflow sends an event, Laya resolves the space via the workflow ID (<code>source.connection_id</code>). You can reassign sources between spaces at any time under the Spaces settings.</p>
+
+      <h2 id="doc-settings-rules">Rules &amp; Filters</h2>
+      <p>Rules let you automatically filter incoming events before they hit the AI pipeline. Configure under <strong>Settings &rarr; Rules</strong>.</p>
+
+      <h3>Rule Structure</h3>
+      <p>Each rule has a <strong>condition</strong> and an <strong>action</strong>:</p>
+      <ul>
+        <li><strong>Drop</strong> &mdash; Discard the event silently</li>
+        <li><strong>Allow</strong> &mdash; Bypass remaining rules and allow the event through</li>
+      </ul>
+      <p>Rules are evaluated in order. The first matching rule determines the outcome. If no rule matches, the event passes through.</p>
+
+      <h3>Available Fields</h3>
+<pre><code>actor.email          actor.name           actor.platform_handle
+source.platform      source.connection_id source.raw_event_type
+subject.type         subject.id           subject.title
+content.body         content.metadata.*</code></pre>
+
+      <h3>Operators</h3>
+      <table>
+        <tr><th>Operator</th><th>Behavior</th></tr>
+        <tr><td><code>equals</code></td><td>Case-insensitive exact match</td></tr>
+        <tr><td><code>not_equals</code></td><td>Negation of equals</td></tr>
+        <tr><td><code>contains</code></td><td>Substring match (case-insensitive)</td></tr>
+        <tr><td><code>starts_with</code></td><td>Prefix match</td></tr>
+        <tr><td><code>ends_with</code></td><td>Suffix match</td></tr>
+        <tr><td><code>in</code></td><td>List membership</td></tr>
+      </table>
+
+      <h3>Examples</h3>
+<pre><code>// Ignore all bot messages
+{ "field": "actor.email", "operator": "contains", "value": "bot" } → drop
+
+// Ignore a specific Slack channel
+{ "field": "content.metadata.slack_channel", "operator": "equals", "value": "#random" } → drop
+
+// Always allow critical priority
+{ "field": "priority", "operator": "equals", "value": "CRITICAL" } → allow</code></pre>
+
+      <h2 id="doc-settings-team">Team Directory</h2>
+      <p>The team directory helps Laya recognize actors in events and understand organizational relationships. Configure under <strong>Settings &rarr; Team</strong>.</p>
+      <table>
+        <tr><th>Field</th><th>Description</th></tr>
+        <tr><td><strong>Name</strong></td><td>Display name</td></tr>
+        <tr><td><strong>Email</strong></td><td>Email address (used to match event actors)</td></tr>
+        <tr><td><strong>Role</strong></td><td>Job title or function</td></tr>
+        <tr><td><strong>Relationship</strong></td><td>manager, teammate, direct_report, peer, or external</td></tr>
+      </table>
+      <p>When an event arrives, the Engine matches <code>actor.email</code> against the team directory to enrich context with role and relationship information.</p>
+
+      <h2 id="doc-settings-repos">Repositories</h2>
+      <p>Add your code repositories so coding agents can operate in the right context. Configure under <strong>Settings &rarr; Repos</strong>.</p>
+      <ul>
+        <li>Use the <strong>Browse</strong> button to select a local directory</li>
+        <li>Laya auto-detects the platform (GitHub, Bitbucket) and remote ID</li>
+        <li>Assign repos to Spaces so the right agent gets the right context</li>
+      </ul>
+
+      <h2 id="doc-settings-briefing">Briefing Schedule</h2>
+      <p>Configure when your daily briefing is generated under <strong>Settings &rarr; Briefing</strong>.</p>
+      <table>
+        <tr><th>Setting</th><th>Default</th><th>Description</th></tr>
+        <tr><td>Enabled</td><td>On</td><td>Toggle briefing generation</td></tr>
+        <tr><td>Time</td><td>07:00</td><td>Time of day (24-hour format)</td></tr>
+        <tr><td>Timezone</td><td>America/New_York</td><td>IANA timezone (46 timezones available)</td></tr>
+      </table>
+
+      <h2 id="doc-settings-appearance">Appearance</h2>
+      <p>Switch between <strong>Dark</strong> and <strong>Light</strong> themes under <strong>Settings &rarr; Appearance</strong>.</p>
+      <ul>
+        <li><strong>Dark theme</strong> (default) &mdash; Warm-tinted dark grays with the Laya orange accent palette</li>
+        <li><strong>Light theme</strong> &mdash; Warm cream background with inverted surface scale</li>
+      </ul>
+      <p>Theme preference is stored in your browser&rsquo;s localStorage and applied instantly.</p>
+
+      <h2 id="doc-settings-data">Data &amp; Retention</h2>
+      <p>Configure how long Laya retains historical data under <strong>Settings &rarr; Data</strong>.</p>
+      <table>
+        <tr><th>Setting</th><th>Default</th><th>Applies to</th></tr>
+        <tr><td>Card Retention</td><td>90 days</td><td>Cards in terminal states: archived, dismissed, done, failed</td></tr>
+        <tr><td>Chat Retention</td><td>90 days</td><td>Idle chat conversations</td></tr>
+      </table>
+      <p>A housekeeping task runs daily at ~00:00 UTC to remove expired data. Active cards and recent conversations are never auto-deleted.</p>
+
+      <!-- ─── PRIVACY ─── -->
+      <h2 id="doc-privacy-tiers">Privacy Tiers</h2>
+      <p>Laya classifies event data into three privacy tiers:</p>
+      <table>
+        <tr><th>Tier</th><th>Sources</th><th>Processing</th></tr>
+        <tr><td><strong>Tier 1</strong> (Metadata)</td><td>All sources</td><td>Always cloud-processable</td></tr>
+        <tr><td><strong>Tier 2</strong> (Default)</td><td>Jira, Bitbucket, Slack channels, Calendar</td><td>Cloud OK with audit trail</td></tr>
+        <tr><td><strong>Tier 3</strong> (Sensitive)</td><td>Gmail, Outlook, Slack DMs</td><td>Warning or local-only</td></tr>
+      </table>
+
+      <h3>Tier 3 Processing Modes</h3>
+      <ul>
+        <li><code>cloud_with_warning</code> (default) &mdash; Allow cloud models but show a privacy indicator on the card</li>
+        <li><code>local_only</code> &mdash; Force all Tier 3 data through local models only (e.g., Ollama)</li>
+      </ul>
+
+      <h2 id="doc-privacy-keys">API Key Storage</h2>
+      <p>All API keys are stored in your <strong>operating system's keychain</strong>, never in config files or environment variables:</p>
+      <ul>
+        <li><strong>macOS</strong> &mdash; Keychain Access (service: <code>laya-engine</code>)</li>
+        <li><strong>Windows</strong> &mdash; Credential Manager</li>
+        <li><strong>Linux</strong> &mdash; Secret Service / Pass</li>
+      </ul>
+      <p>On engine startup, keys are loaded from the keychain into memory. They never touch disk in plaintext.</p>
+
+      <h2 id="doc-privacy-local">Local-Only Mode</h2>
+      <p>For maximum privacy, you can run Laya entirely without cloud models:</p>
+      <ol>
+        <li>Install <strong>Ollama</strong> or <strong>LM Studio</strong> locally</li>
+        <li>Add the local provider under <strong>Settings &rarr; Models &rarr; Local Providers</strong></li>
+        <li>Set all model roles (Router, Stager, Chat) to local models</li>
+        <li>Set <code>tier3_processing</code> to <code>local_only</code></li>
+      </ol>
+      <p>In this mode, no data ever leaves your machine &mdash; complete air-gapped privacy.</p>
+
+      <!-- ─── ADVANCED ─── -->
+      <h2 id="doc-pipeline">Processing Pipeline</h2>
+      <p>Every event flows through Laya's 6-stage AI pipeline:</p>
+      <ol>
+        <li><strong>INGEST</strong> &mdash; Parse event, resolve actor from team directory, store raw event, resolve space</li>
+        <li><strong>RULES</strong> &mdash; Evaluate user-defined filter rules; drop or pass</li>
+        <li><strong>ROUTER</strong> (Fast LLM) &mdash; Classify priority, category, persona; extract entities; build research plan; query memory for related events</li>
+        <li><strong>WORKERS</strong> (Specialized) &mdash; Engineer worker (code analysis, agent spawning), Comms worker (draft replies), Ops worker (calendar synthesis)</li>
+        <li><strong>STAGER</strong> (Strong LLM) &mdash; Synthesize research + drafts into polished card; generate intelligence report; prepare suggested actions</li>
+        <li><strong>EMIT</strong> &mdash; Store card in database, embed summary in ChromaDB, push to UI via WebSocket</li>
+      </ol>
+      <p>Every step is recorded in the <strong>Audit Log</strong> (Settings &rarr; Audit) with model used, token counts, latency, and success/failure status.</p>
+
+      <h2 id="doc-event-schema">Event Schema</h2>
+      <p>Events sent from n8n to the Laya Engine follow this schema:</p>
+<pre><code>{
+  "event_id": "evt_unique-id",
+  "timestamp": "2026-03-19T14:30:00Z",
+  "source": {
+    "platform": "gmail|slack|jira|github|bitbucket|calendar|outlook",
+    "connection_id": "n8n-workflow-id",
+    "raw_event_type": "platform_specific_type"
+  },
+  "actor": {
+    "name": "Alice Smith",
+    "email": "alice@company.com",
+    "platform_handle": "@alice"
+  },
+  "subject": {
+    "type": "ticket|pull_request|build|thread|email_thread|meeting",
+    "id": "PROJ-123",
+    "title": "Fix login timeout bug",
+    "url": "https://jira.company.com/browse/PROJ-123"
+  },
+  "content": {
+    "body": "Full event content text...",
+    "metadata": { "platform_specific": "fields" }
+  }
+}</code></pre>
+
+      <h2 id="doc-config-files">Configuration Files</h2>
+      <p>All user configuration lives in <code>~/.laya/</code>:</p>
+      <table>
+        <tr><th>File</th><th>Purpose</th></tr>
+        <tr><td><code>settings.json</code></td><td>Main engine configuration (models, pipeline, privacy, briefing, n8n)</td></tr>
+        <tr><td><code>team.json</code></td><td>Team member directory</td></tr>
+        <tr><td><code>rules.json</code></td><td>Event filter rules</td></tr>
+        <tr><td><code>repos.json</code></td><td>Repository definitions</td></tr>
+        <tr><td><code>data/laya.db</code></td><td>SQLite database (events, cards, actions, audit log)</td></tr>
+        <tr><td><code>data/chromadb/</code></td><td>ChromaDB vector store for semantic search</td></tr>
+        <tr><td><code>logs/</code></td><td>Application log files</td></tr>
+      </table>
+
+      <div class="callout callout-info">
+        <p><strong>Note:</strong> All config files are created automatically on first run with sensible defaults. You can edit them directly or use the Settings UI.</p>
+      </div>
+
+      <h2 id="doc-troubleshooting">Troubleshooting</h2>
+
+      <h3>n8n won't connect</h3>
+      <ul>
+        <li>Check Docker is running: <code>docker compose ps</code></li>
+        <li>Check n8n health: <code>curl http://localhost:5678/healthz</code></li>
+        <li>Check logs: <code>docker compose logs laya-n8n</code></li>
+        <li>Try manual bootstrap: Settings &rarr; Integrations &rarr; Auto-Configure</li>
+      </ul>
+
+      <h3>Events not appearing</h3>
+      <ul>
+        <li>Verify the n8n workflow is <strong>active</strong> (green toggle in n8n dashboard)</li>
+        <li>Check n8n workflow execution history for errors</li>
+        <li>Verify credentials are configured in the n8n trigger node</li>
+        <li>Check if a rule is dropping the event (Settings &rarr; Rules)</li>
+        <li>Check engine logs at <code>~/.laya/logs/</code></li>
+      </ul>
+
+      <h3>LLM errors</h3>
+      <ul>
+        <li>Verify your API key is valid (Settings &rarr; Models, check green dot)</li>
+        <li>Check the Audit Log for specific error messages</li>
+        <li>Try increasing the model timeout (Settings &rarr; Models &rarr; Advanced)</li>
+        <li>If using local models, ensure the provider is running and accessible</li>
+      </ul>
+
+      <h3>Coding agent not detected</h3>
+      <ul>
+        <li>Ensure the CLI binary is installed and in your PATH</li>
+        <li>Try <strong>Auto-Detect</strong> in Settings &rarr; Agent</li>
+        <li>Or set the binary path manually</li>
+      </ul>
+
+      <h3>Export diagnostics</h3>
+      <p>For debugging, use the <strong>Export Diagnostics</strong> button at the bottom of the Settings page. This creates a ZIP file containing system info, sanitized config, recent logs, and database statistics.</p>
+
+    </main>
+  </div>
+</div>
+
+<!-- ═══════════════════ SCRIPTS ═══════════════════ -->
+<script>
+// ── Page Navigation (Landing ↔ Docs) ──
+const landingPage = document.getElementById('landing-page');
+const docsPage = document.getElementById('docs-page');
+
+function showDocs(hash) {
+  landingPage.classList.add('hidden');
+  docsPage.classList.add('active');
+  window.scrollTo(0, 0);
+  if (hash) {
+    setTimeout(() => {
+      const el = document.getElementById(hash);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  }
+  history.pushState(null, '', '#docs');
+}
+
+function showLanding() {
+  docsPage.classList.remove('active');
+  landingPage.classList.remove('hidden');
+  window.scrollTo(0, 0);
+  history.pushState(null, '', window.location.pathname);
+}
+
+// Handle browser back/forward
+window.addEventListener('popstate', () => {
+  if (window.location.hash === '#docs') showDocs();
+  else { docsPage.classList.remove('active'); landingPage.classList.remove('hidden'); }
+});
+
+// Load docs if URL has #docs
+if (window.location.hash === '#docs') showDocs();
+
+// ── Nav scroll effect ──
+const nav = document.getElementById('nav');
+window.addEventListener('scroll', () => {
+  nav.classList.toggle('scrolled', window.scrollY > 50);
+});
+
+// ── Screenshot tabs ──
+document.querySelectorAll('.showcase-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.showcase-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const target = tab.dataset.target;
+    document.querySelectorAll('.showcase-frame img').forEach(img => {
+      img.style.display = img.id === target ? 'block' : 'none';
+    });
+  });
+});
+
+// ── Scroll animations ──
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.1, rootMargin: '0px 0px -60px 0px' });
+
+document.querySelectorAll('.animate-on-scroll').forEach(el => observer.observe(el));
+
+// ── Floating particles ──
+const particlesContainer = document.getElementById('particles');
+for (let i = 0; i < 20; i++) {
+  const p = document.createElement('div');
+  p.classList.add('particle');
+  p.style.left = Math.random() * 100 + '%';
+  p.style.animationDelay = Math.random() * 8 + 's';
+  p.style.animationDuration = (6 + Math.random() * 6) + 's';
+  p.style.width = (2 + Math.random() * 3) + 'px';
+  p.style.height = p.style.width;
+  particlesContainer.appendChild(p);
+}
+
+// ── Smooth scroll for anchor links (landing only) ──
+document.querySelectorAll('#landing-page a[href^="#"]').forEach(anchor => {
+  anchor.addEventListener('click', function(e) {
+    const href = this.getAttribute('href');
+    if (href === '#docs') { e.preventDefault(); showDocs(); return; }
+    const target = document.querySelector(href);
+    if (target && landingPage.contains(target)) {
+      e.preventDefault();
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+});
+
+// ── Docs sidebar active state on scroll ──
+const docsSidebar = document.getElementById('docs-sidebar');
+if (docsSidebar) {
+  const sidebarLinks = docsSidebar.querySelectorAll('a[href^="#doc-"]');
+  const docSections = [];
+  sidebarLinks.forEach(link => {
+    const id = link.getAttribute('href').slice(1);
+    const el = document.getElementById(id);
+    if (el) docSections.push({ id, el, link });
+  });
+  window.addEventListener('scroll', () => {
+    if (!docsPage.classList.contains('active')) return;
+    let current = docSections[0];
+    for (const s of docSections) {
+      if (s.el.getBoundingClientRect().top <= 120) current = s;
+    }
+    sidebarLinks.forEach(l => l.classList.remove('active'));
+    if (current) current.link.classList.add('active');
+  });
+  // Docs sidebar link clicks
+  sidebarLinks.forEach(link => {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+      const id = this.getAttribute('href').slice(1);
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+}
+</script>
+
+</body>
+</html>
