@@ -12,14 +12,31 @@ class ChatMessage(BaseModel):
     content: str
     referenced_cards: list[str] = Field(default_factory=list)
     referenced_events: list[str] = Field(default_factory=list)
+    conversation_id: str | None = None
 
 
 class ChatRequest(BaseModel):
     message: str
     space_id: str | None = None
+    conversation_id: str | None = None
 
 
 class ChatResponse(BaseModel):
     message: ChatMessage
     referenced_cards: list[str] = Field(default_factory=list)
     referenced_events: list[str] = Field(default_factory=list)
+
+
+class Conversation(BaseModel):
+    conversation_id: str
+    title: str
+    space_id: str | None = None
+    created_at: str
+    updated_at: str
+    preview: str = ""
+    message_count: int = 0
+
+
+class CreateConversationRequest(BaseModel):
+    title: str = "New Chat"
+    space_id: str | None = None

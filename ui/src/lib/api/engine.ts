@@ -11,6 +11,7 @@ import type {
 	DashboardResponse,
 	ChatMessage,
 	ChatResponse,
+	Conversation,
 	AuditLogResponse,
 	N8nTestResult,
 	PlatformsResponse,
@@ -213,14 +214,41 @@ export const engineApi = {
 	},
 
 	// Chat
-	getChatHistory: (limit?: number) => {
-		const qs = limit ? `?limit=${limit}` : '';
-		return request<ChatMessage[]>(`/chat/history${qs}`);
+	getChatHistory: (limit?: number, conversationId?: string) => {
+		const params = new URLSearchParams();
+		if (limit) params.set('limit', String(limit));
+		if (conversationId) params.set('conversation_id', conversationId);
+		const qs = params.toString();
+		return request<ChatMessage[]>(`/chat/history${qs ? '?' + qs : ''}`);
 	},
-	sendChat: (message: string) =>
+	sendChat: (message: string, conversationId?: string) =>
 		request<ChatResponse>('/chat', {
 			method: 'POST',
-			body: JSON.stringify({ message })
+			body: JSON.stringify({ message, conversation_id: conversationId ?? null })
+		}),
+
+	// Chat Conversations
+	getConversations: (limit?: number) => {
+		const qs = limit ? `?limit=${limit}` : '';
+		return request<Conversation[]>(`/chat/conversations${qs}`);
+	},
+	createConversation: (title?: string, spaceId?: string) =>
+		request<Conversation>('/chat/conversations', {
+			method: 'POST',
+			body: JSON.stringify({ title: title ?? 'New Chat', space_id: spaceId ?? null })
+		}),
+	getConversationMessages: (conversationId: string, limit?: number) => {
+		const qs = limit ? `?limit=${limit}` : '';
+		return request<ChatMessage[]>(`/chat/conversations/${conversationId}/messages${qs}`);
+	},
+	deleteConversation: (conversationId: string) =>
+		request<{ status: string; conversation_id: string }>(`/chat/conversations/${conversationId}`, {
+			method: 'DELETE'
+		}),
+	renameConversation: (conversationId: string, title: string) =>
+		request<{ status: string; conversation_id: string }>(`/chat/conversations/${conversationId}`, {
+			method: 'PUT',
+			body: JSON.stringify({ title })
 		}),
 
 	// n8n
@@ -292,6 +320,13 @@ export const engineApi = {
 	deleteSpaceApiKey: (spaceId: string, provider: string) =>
 		request<{ status: string; provider: string }>(`/spaces/${spaceId}/api-key/${provider}`, {
 			method: 'DELETE'
+		}),
+
+	// Space Pause / Unpause
+	setSpacePaused: (spaceId: string, paused: boolean) =>
+		request<{ status: string; space_id: string; workflows_toggled: number; errors: Array<{ workflow_id: string; name: string; error?: string; issues?: string[] }> }>(`/spaces/${spaceId}/paused`, {
+			method: 'PUT',
+			body: JSON.stringify({ paused })
 		}),
 
 	// Space Repos

@@ -50,6 +50,36 @@ async def _run_housekeeping(retention_days: int) -> None:
     log.info("housekeeping_complete", deleted=deleted, retention_days=retention_days)
 
 
+async def _run_chat_housekeeping(retention_days: int) -> None:
+    """Delete chat conversations that have been idle longer than `retention_days` days."""
+    from laya.db.sqlite import get_db
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT conversation_id FROM chat_conversations WHERE updated_at < ?",
+        (cutoff,),
+    )
+
+    if not rows:
+        log.info("chat_housekeeping_nothing_to_delete", retention_days=retention_days)
+        return
+
+    deleted = 0
+    for row in rows:
+        try:
+            conv_id = row["conversation_id"]
+            await db.execute("DELETE FROM chat_messages WHERE conversation_id = ?", (conv_id,))
+            await db.execute("DELETE FROM chat_conversations WHERE conversation_id = ?", (conv_id,))
+            deleted += 1
+        except Exception as e:
+            log.warning("chat_housekeeping_delete_failed", conversation_id=row["conversation_id"], error=str(e))
+
+    await db.commit()
+    log.info("chat_housekeeping_complete", deleted=deleted, retention_days=retention_days)
+
+
 async def _scheduler_loop() -> None:
     """Main scheduler loop — runs every 60 seconds."""
     global _last_briefing_date, _last_housekeeping_date
@@ -102,6 +132,13 @@ async def _scheduler_loop() -> None:
                     await _run_housekeeping(retention_days)
                 except Exception as e:
                     log.error("housekeeping_failed", error=str(e))
+
+                # Chat conversation housekeeping
+                chat_retention_days = int(retention_cfg.get("chat_retention_days", 90))
+                try:
+                    await _run_chat_housekeeping(chat_retention_days)
+                except Exception as e:
+                    log.error("chat_housekeeping_failed", error=str(e))
 
         except asyncio.CancelledError:
             raise

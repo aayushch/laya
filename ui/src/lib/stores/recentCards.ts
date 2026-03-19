@@ -10,6 +10,7 @@ export interface RecentCardEntry {
 	source_ref?: string;
 	entity_id?: string;
 	category?: string;
+	space_id?: string;
 	space_name?: string;
 	visited_at: number; // epoch ms
 }
@@ -43,6 +44,7 @@ export function trackCardVisit(card: {
 	source_ref?: string;
 	entity_id?: string;
 	category?: string;
+	space_id?: string;
 	space_name?: string;
 }) {
 	update((entries) => {
@@ -56,6 +58,7 @@ export function trackCardVisit(card: {
 			existing.source_ref = card.source_ref;
 			existing.entity_id = card.entity_id;
 			existing.category = card.category;
+			existing.space_id = card.space_id;
 			existing.space_name = card.space_name;
 			const updated = [existing, ...entries.filter((e) => e.card_id !== card.card_id)];
 			saveToStorage(updated);
@@ -68,6 +71,7 @@ export function trackCardVisit(card: {
 			source_ref: card.source_ref,
 			entity_id: card.entity_id,
 			category: card.category,
+			space_id: card.space_id,
 			space_name: card.space_name,
 			visited_at: Date.now()
 		};

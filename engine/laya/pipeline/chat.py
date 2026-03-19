@@ -41,9 +41,29 @@ _STOPWORDS = frozenset({
 })
 
 
+async def _ensure_conversation(
+    db, user_message: str, conversation_id: str | None, space_id: str | None,
+) -> str:
+    """Return a valid conversation_id, creating one if needed."""
+    if conversation_id:
+        return conversation_id
+
+    conv_id = f"conv_{uuid.uuid4().hex[:12]}"
+    title = user_message[:50].strip() or "New Chat"
+    now = datetime.now(timezone.utc).isoformat()
+    await db.execute(
+        """INSERT INTO chat_conversations (conversation_id, title, space_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        (conv_id, title, space_id, now, now),
+    )
+    await db.commit()
+    return conv_id
+
+
 async def process_chat_message(
     user_message: str,
     space_id: str | None = None,
+    conversation_id: str | None = None,
 ) -> ChatResponse:
     """Process a user chat message through the enhanced pipeline.
 
@@ -56,14 +76,17 @@ async def process_chat_message(
         ChatResponse with assistant message and references.
     """
     db = await get_db()
+    conversation_id = await _ensure_conversation(db, user_message, conversation_id, space_id)
 
     # Step 1: Hybrid retrieval
     context = await _retrieve_context(user_message, space_id=space_id)
 
-    # Step 2: Load recent chat history
+    # Step 2: Load recent chat history (scoped to conversation)
     history_rows = await db.execute_fetchall(
         """SELECT role, content FROM chat_messages
-           ORDER BY timestamp DESC LIMIT 10"""
+           WHERE conversation_id = ?
+           ORDER BY timestamp DESC LIMIT 10""",
+        (conversation_id,),
     )
     chat_history = [
         {"role": row["role"], "content": row["content"]}
@@ -148,9 +171,9 @@ async def process_chat_message(
     now = datetime.now(timezone.utc).isoformat()
     await db.execute(
         """INSERT INTO chat_messages
-           (message_id, timestamp, role, content, space_id)
-           VALUES (?, ?, ?, ?, ?)""",
-        (user_msg_id, now, "user", user_message, space_id),
+           (message_id, timestamp, role, content, space_id, conversation_id)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (user_msg_id, now, "user", user_message, space_id, conversation_id),
     )
 
     # Store assistant message
@@ -160,8 +183,8 @@ async def process_chat_message(
         """INSERT INTO chat_messages
            (message_id, timestamp, role, content, referenced_cards,
             referenced_events, context_used, model_used, input_tokens,
-            output_tokens, latency_ms, tool_calls_json, space_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            output_tokens, latency_ms, tool_calls_json, space_id, conversation_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             assistant_msg_id,
             assistant_ts,
@@ -179,7 +202,13 @@ async def process_chat_message(
             total_latency_ms,
             json.dumps(tool_calls_log) if tool_calls_log else None,
             space_id,
+            conversation_id,
         ),
+    )
+    # Update conversation timestamp
+    await db.execute(
+        "UPDATE chat_conversations SET updated_at = ? WHERE conversation_id = ?",
+        (assistant_ts, conversation_id),
     )
     await db.commit()
 
@@ -197,6 +226,7 @@ async def process_chat_message(
         content=assistant_content,
         referenced_cards=referenced_cards,
         referenced_events=referenced_events,
+        conversation_id=conversation_id,
     )
 
     return ChatResponse(
@@ -209,11 +239,12 @@ async def process_chat_message(
 async def process_chat_message_streaming(
     user_message: str,
     space_id: str | None = None,
+    conversation_id: str | None = None,
 ):
     """Streaming version of process_chat_message.
 
     Yields dicts suitable for WebSocket broadcast:
-        {"type": "chat_stream_start", "message_id": "..."}
+        {"type": "chat_stream_start", "message_id": "...", "conversation_id": "..."}
         {"type": "chat_stream_chunk", "content": "..."}
         {"type": "chat_stream_tool", "tool": "...", "status": "calling"|"done"}
         {"type": "chat_stream_done", "message": {...}}
@@ -221,14 +252,17 @@ async def process_chat_message_streaming(
     The full message is persisted to DB after streaming completes.
     """
     db = await get_db()
+    conversation_id = await _ensure_conversation(db, user_message, conversation_id, space_id)
 
     # Hybrid retrieval
     context = await _retrieve_context(user_message, space_id=space_id)
 
-    # Chat history
+    # Chat history (scoped to conversation)
     history_rows = await db.execute_fetchall(
         """SELECT role, content FROM chat_messages
-           ORDER BY timestamp DESC LIMIT 10"""
+           WHERE conversation_id = ?
+           ORDER BY timestamp DESC LIMIT 10""",
+        (conversation_id,),
     )
     chat_history = [
         {"role": row["role"], "content": row["content"]}
@@ -252,16 +286,16 @@ async def process_chat_message_streaming(
     # Generate message IDs up front
     assistant_msg_id = f"msg_{uuid.uuid4().hex[:12]}"
 
-    yield {"type": "chat_stream_start", "message_id": assistant_msg_id}
+    yield {"type": "chat_stream_start", "message_id": assistant_msg_id, "conversation_id": conversation_id}
 
     # Store user message immediately
     user_msg_id = f"msg_{uuid.uuid4().hex[:12]}"
     now = datetime.now(timezone.utc).isoformat()
     await db.execute(
         """INSERT INTO chat_messages
-           (message_id, timestamp, role, content, space_id)
-           VALUES (?, ?, ?, ?, ?)""",
-        (user_msg_id, now, "user", user_message, space_id),
+           (message_id, timestamp, role, content, space_id, conversation_id)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (user_msg_id, now, "user", user_message, space_id, conversation_id),
     )
     await db.commit()
 
@@ -351,8 +385,8 @@ async def process_chat_message_streaming(
         """INSERT INTO chat_messages
            (message_id, timestamp, role, content, referenced_cards,
             referenced_events, context_used, model_used, input_tokens,
-            output_tokens, latency_ms, tool_calls_json, space_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            output_tokens, latency_ms, tool_calls_json, space_id, conversation_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             assistant_msg_id,
             assistant_ts,
@@ -370,7 +404,13 @@ async def process_chat_message_streaming(
             total_latency_ms,
             json.dumps(tool_calls_log) if tool_calls_log else None,
             space_id,
+            conversation_id,
         ),
+    )
+    # Update conversation timestamp
+    await db.execute(
+        "UPDATE chat_conversations SET updated_at = ? WHERE conversation_id = ?",
+        (assistant_ts, conversation_id),
     )
     await db.commit()
 
@@ -384,6 +424,7 @@ async def process_chat_message_streaming(
             "content": full_content,
             "referenced_cards": referenced_cards,
             "referenced_events": referenced_events,
+            "conversation_id": conversation_id,
         },
     }
 

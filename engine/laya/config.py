@@ -50,6 +50,7 @@ DEFAULT_SETTINGS = {
     },
     "retention": {
         "card_retention_days": 90,
+        "chat_retention_days": 90,
     },
     "feed_preferences": {
         "statusFilters": [],

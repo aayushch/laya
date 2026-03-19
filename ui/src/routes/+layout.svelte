@@ -8,7 +8,7 @@
 	import { startHealthPolling, stopHealthPolling, startupReady } from '$lib/stores/health';
 	import StartupScreen from '$lib/components/StartupScreen.svelte';
 	import { needsSetup, setupComplete } from '$lib/stores/setup';
-	import { chatOpen } from '$lib/stores/chat';
+	import { chatOpen, chatListOpen } from '$lib/stores/chat';
 	import { theme } from '$lib/stores/theme';
 	import { feedFilters, loadFeedFilters, saveFeedFilters, filtersLoaded, feedDate, feedPrevDate, feedNextDate, localToday } from '$lib/stores/feedFilters';
 	import { spaces, loadSpaces } from '$lib/stores/spaces';
@@ -99,10 +99,21 @@
 	onMount(() => {
 		startHealthPolling();
 		initWebSocket();
-
 		document.addEventListener('click', closeDropdowns);
 
+		// Auto-advance feedDate at midnight so "Today"/"Yesterday" labels stay correct
+		function scheduleMidnightUpdate() {
+			const now = Date.now();
+			const midnight = new Date(new Date().toDateString()).getTime() + 86_400_000;
+			return setTimeout(() => {
+				feedDate.set(localToday());
+				midnightTimer = scheduleMidnightUpdate();
+			}, midnight - now);
+		}
+		let midnightTimer = scheduleMidnightUpdate();
+
 		return () => {
+			clearTimeout(midnightTimer);
 			stopHealthPolling();
 			closeWebSocket();
 			document.removeEventListener('click', closeDropdowns);
@@ -350,7 +361,14 @@
 			<div class="flex items-center gap-1 ml-3">
 				<!-- Chat -->
 				<button
-					onclick={() => chatOpen.update((v) => !v)}
+					onclick={() => {
+						if ($chatOpen) {
+							chatOpen.set(false);
+						} else {
+							chatListOpen.set(true);
+							chatOpen.set(true);
+						}
+					}}
 					class="rounded-lg p-1.5 transition-colors hover:bg-surface-800
 						{$chatOpen
 							? 'bg-laya-orange/10 text-laya-orange'

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { ActionCard } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
+	import { goto } from '$app/navigation';
 	import { chatOpen, chatInputPreset } from '$lib/stores/chat';
 
 	let { card, onselect, ondelete, selectedCardId = '', hasSelection = false }: { card: ActionCard; onselect: (card: ActionCard) => void; ondelete?: (cardId: string) => void; selectedCardId?: string; hasSelection?: boolean } = $props();
@@ -357,6 +358,20 @@
 					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-red-500/30 bg-surface-800 px-2 py-1 text-[10px] font-medium text-red-400 opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Delete</span>
 				</div>
 			{:else if card.status === 'done'}
+				<!-- Reopen -->
+				<div class="group/act relative">
+					<button
+						aria-label="Reopen"
+						class="flex h-6 w-6 items-center justify-center rounded-md text-laya-orange/60 transition-all hover:bg-laya-orange/15 hover:text-laya-orange disabled:opacity-40"
+						onclick={reopen}
+						disabled={reopening}
+					>
+						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 010 10H9m-6-10l4-4m-4 4l4 4" />
+						</svg>
+					</button>
+					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Reopen</span>
+				</div>
 				<!-- Archive -->
 				<div class="group/act relative">
 					<button
@@ -424,7 +439,7 @@
 						href="/workspace/{card.card_id}"
 						aria-label="Open Workspace"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-violet-400/60 transition-all hover:bg-violet-500/15 hover:text-violet-400"
-						onclick={(e) => e.stopPropagation()}
+						onclick={(e) => { e.preventDefault(); e.stopPropagation(); goto(`/workspace/${card.card_id}`); }}
 					>
 						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />

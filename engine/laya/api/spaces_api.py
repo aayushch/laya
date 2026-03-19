@@ -62,6 +62,7 @@ async def list_spaces() -> dict:
             chat_model=r["chat_model"],
             coding_agent=r["coding_agent"],
             is_default=bool(r["is_default"]),
+            paused=bool(r["paused"]),
             position=r["position"],
             source_count=r["source_count"],
             created_at=r["created_at"],
@@ -184,6 +185,79 @@ async def delete_space(space_id: str) -> dict:
 
     log.info("space_deleted", space_id=space_id)
     return {"status": "deleted", "space_id": space_id}
+
+
+# ---------------------------------------------------------------------------
+# Pause / Unpause (flow control)
+# ---------------------------------------------------------------------------
+
+
+@router.put("/spaces/{space_id}/paused")
+async def set_space_paused(space_id: str, body: dict) -> dict:
+    """Pause or unpause a space by deactivating/activating all its source workflows.
+
+    Body: {"paused": true/false}
+    When pausing, deactivates all n8n ingestion workflows for the space.
+    When unpausing, activates them (with readiness checks).
+    """
+    paused = body.get("paused")
+    if paused is None:
+        raise HTTPException(status_code=422, detail="'paused' field is required")
+
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT space_id FROM spaces WHERE space_id = ?", (space_id,)
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Space not found")
+
+    # Get all ingestion source workflow IDs for this space
+    source_rows = await db.execute_fetchall(
+        """SELECT workflow_id, name FROM sources
+           WHERE space_id = ? AND source_type = 'ingestion'""",
+        (space_id,),
+    )
+
+    results = []
+    errors = []
+    for sr in source_rows:
+        wf_id = sr["workflow_id"]
+        try:
+            if paused:
+                await activate_workflow(wf_id, active=False)
+            else:
+                readiness = await check_workflow_readiness(wf_id)
+                if not readiness["ready"]:
+                    errors.append({
+                        "workflow_id": wf_id,
+                        "name": sr["name"],
+                        "issues": readiness["issues"],
+                    })
+                    continue
+                await activate_workflow(wf_id, active=True)
+            results.append(wf_id)
+        except (N8nApiError, N8nApiKeyMissing) as e:
+            errors.append({
+                "workflow_id": wf_id,
+                "name": sr["name"],
+                "error": str(e),
+            })
+
+    # Persist paused state
+    await db.execute(
+        "UPDATE spaces SET paused = ?, updated_at = CURRENT_TIMESTAMP WHERE space_id = ?",
+        (1 if paused else 0, space_id),
+    )
+    await db.commit()
+
+    log.info("space_paused_toggled", space_id=space_id, paused=paused,
+             toggled=len(results), errors=len(errors))
+    return {
+        "status": "paused" if paused else "active",
+        "space_id": space_id,
+        "workflows_toggled": len(results),
+        "errors": errors,
+    }
 
 
 # ---------------------------------------------------------------------------

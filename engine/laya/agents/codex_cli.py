@@ -35,10 +35,13 @@ class CodexCliAgent(CodingAgent):
         self._session_id: str = ""
         self._status: SessionStatus = SessionStatus.STARTING
 
-    async def start_session(self, session_id: str, prompt: str, repo_path: str) -> None:
+    async def start_session(
+        self, session_id: str, prompt: str, repo_path: str, add_dirs: list[str] | None = None,
+    ) -> None:
         self._session_id = session_id
         self._status = SessionStatus.STARTING
         args = [self._binary, prompt]
+        # Codex CLI doesn't support --add-dir natively; add_dirs ignored
         await self._process.spawn(args=args, cwd=repo_path)
         self._status = SessionStatus.RUNNING
 

@@ -308,6 +308,23 @@ def _write_tools() -> list[dict]:
         {
             "type": "function",
             "function": {
+                "name": "mark_card_done",
+                "description": "Mark an action card as done/completed. Use when the user says a card is done, completed, or finished.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "card_id": {
+                            "type": "string",
+                            "description": "The card ID to mark as done.",
+                        },
+                    },
+                    "required": ["card_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "reopen_card",
                 "description": "Reopen a dismissed or archived card back to pending status.",
                 "parameters": {

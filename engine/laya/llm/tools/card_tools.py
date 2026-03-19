@@ -6,6 +6,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
+from laya.api.websocket import manager
 from laya.db.sqlite import get_db
 
 
@@ -184,7 +185,7 @@ async def get_cards_for_event(event_id: str) -> dict[str, Any]:
 
 
 async def _update_card_status(card_id: str, new_status: str) -> dict[str, Any]:
-    """Update a card's status and return result."""
+    """Update a card's status, broadcast to frontend, and return result."""
     db = await get_db()
     now = datetime.now(timezone.utc).isoformat()
 
@@ -206,6 +207,11 @@ async def _update_card_status(card_id: str, new_status: str) -> dict[str, Any]:
     )
     await db.commit()
 
+    # Broadcast status change to frontend so UI updates in real-time
+    await manager.broadcast(
+        {"type": "card_updated", "card_id": card_id, "payload": {"status": new_status}}
+    )
+
     return {
         "card_id": card_id,
         "old_status": old_status,
@@ -222,6 +228,52 @@ async def dismiss_card(card_id: str) -> dict[str, Any]:
 async def mark_card_done(card_id: str) -> dict[str, Any]:
     """Mark a card as done."""
     return await _update_card_status(card_id, "done")
+
+
+async def approve_card(card_id: str) -> dict[str, Any]:
+    """Approve a card that requires approval (triggers agent execution)."""
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT card_id, status, agent_prompt FROM action_cards WHERE card_id = ?",
+        (card_id,),
+    )
+    if not rows:
+        return {"error": f"Card '{card_id}' not found"}
+
+    card = rows[0]
+    if card["status"] != "requires_approval":
+        return {"error": f"Card '{card_id}' is '{card['status']}', not 'requires_approval'"}
+
+    if not card["agent_prompt"]:
+        return {"error": f"Card '{card_id}' has no agent prompt — cannot approve"}
+
+    # Update status and trigger agent via the API endpoint logic
+    now = datetime.now(timezone.utc).isoformat()
+    await db.execute(
+        "UPDATE action_cards SET status = 'agent_running', updated_at = ? WHERE card_id = ?",
+        (now, card_id),
+    )
+    await db.commit()
+
+    await manager.broadcast(
+        {"type": "card_updated", "card_id": card_id, "payload": {"status": "agent_running"}}
+    )
+
+    # Spawn the agent in background
+    import asyncio
+    from laya.workers.engineer import run_engineer_from_prompt
+    space_rows = await db.execute_fetchall(
+        "SELECT space_id FROM action_cards WHERE card_id = ?", (card_id,),
+    )
+    space_id = space_rows[0]["space_id"] if space_rows else None
+    asyncio.create_task(run_engineer_from_prompt(card_id, card["agent_prompt"], space_id=space_id))
+
+    return {
+        "card_id": card_id,
+        "old_status": "requires_approval",
+        "new_status": "agent_running",
+        "success": True,
+    }
 
 
 async def archive_card(card_id: str) -> dict[str, Any]:

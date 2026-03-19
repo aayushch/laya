@@ -115,6 +115,7 @@
 						onclick={() => (enabled = !enabled)}
 						role="switch"
 						aria-checked={enabled}
+						aria-label="Toggle daily briefing"
 					>
 						<span class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform {enabled ? 'translate-x-5' : ''}"></span>
 					</button>
