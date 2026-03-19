@@ -2,6 +2,13 @@
 @import '@skeletonlabs/skeleton';
 @import '@skeletonlabs/skeleton/themes/cerberus';
 
+/* Prevent macOS elastic overscroll from moving fixed header/footer */
+html, body {
+	overflow: hidden;
+	overscroll-behavior: none;
+	height: 100%;
+}
+
 /* ─────────────────────────────────────────────────────────────
    LAYA BRAND PALETTE
    Core: #f6ac69 (orange) · #f6bc66 (gold) · #ffdab9 (peach) · #ff9770 (coral)
