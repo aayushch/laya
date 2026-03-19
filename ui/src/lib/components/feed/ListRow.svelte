@@ -1,0 +1,265 @@
+<script lang="ts">
+	import type { ActionCard } from '$lib/api/types';
+	import { engineApi } from '$lib/api/engine';
+	import { goto } from '$app/navigation';
+
+	let {
+		card,
+		onselect,
+		ondelete,
+		selectedCardId = '',
+		indented = false
+	}: {
+		card: ActionCard;
+		onselect: (card: ActionCard) => void;
+		ondelete?: (cardId: string) => void;
+		selectedCardId?: string;
+		indented?: boolean;
+	} = $props();
+
+	const isSelected = $derived(card.card_id === selectedCardId);
+
+	let markingDone = $state(false);
+	let approvingAgent = $state(false);
+	let dismissing = $state(false);
+	let archiving = $state(false);
+	let reopening = $state(false);
+	let showDeleteConfirm = $state(false);
+	let deleting = $state(false);
+
+	const priorityColors: Record<string, string> = {
+		CRITICAL: 'bg-red-600 text-red-50',
+		HIGH: 'bg-orange-500 text-orange-50',
+		MEDIUM: 'bg-laya-coral/20 text-laya-coral',
+		LOW: 'bg-laya-gold/25 text-laya-amber'
+	};
+	const priorityLabel: Record<string, string> = {
+		CRITICAL: 'CRIT',
+		HIGH: 'HIGH',
+		MEDIUM: 'MED',
+		LOW: 'LOW'
+	};
+	const personaColors: Record<string, string> = {
+		ENGINEER: 'text-violet-400 bg-violet-500/10 border-violet-500/20',
+		COMMS: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+		OPS: 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+	};
+	const statusDot: Record<string, string> = {
+		pending: 'bg-yellow-400 animate-pulse',
+		ready: 'bg-amber-400',
+		requires_approval: 'bg-violet-400',
+		agent_running: 'bg-violet-400 animate-pulse',
+		awaiting_input: 'bg-yellow-400 animate-pulse',
+		done: 'bg-green-500',
+		failed: 'bg-red-500',
+		dismissed: 'bg-surface-500',
+		archived: 'bg-surface-600'
+	};
+	const statusLabel: Record<string, string> = {
+		pending: 'Processing',
+		ready: 'Ready',
+		requires_approval: 'Approval',
+		agent_running: 'Running',
+		awaiting_input: 'Input',
+		done: 'Done',
+		failed: 'Failed',
+		dismissed: 'Dismissed',
+		archived: 'Archived'
+	};
+	const platformLabel: Record<string, string> = {
+		jira: 'Jira',
+		gmail: 'Gmail',
+		slack: 'Slack',
+		bitbucket: 'Bitbucket',
+		calendar: 'Calendar',
+		github: 'GitHub',
+		laya: 'Laya'
+	};
+
+	const platform = $derived(
+		card.entity_id
+			? (platformLabel[card.entity_id.split(':')[0]] ?? card.entity_id.split(':')[0])
+			: ''
+	);
+
+	const isArchived = $derived(card.status === 'archived');
+
+	function timeAgo(dateStr?: string): string {
+		if (!dateStr) return '';
+		const utcStr =
+			dateStr.endsWith('Z') || dateStr.includes('+') ? dateStr : dateStr + 'Z';
+		const diff = Date.now() - new Date(utcStr).getTime();
+		const mins = Math.floor(diff / 60000);
+		if (mins < 1) return 'just now';
+		if (mins < 60) return `${mins}m ago`;
+		const hours = Math.floor(mins / 60);
+		if (hours < 24) return `${hours}h ago`;
+		return `${Math.floor(hours / 24)}d ago`;
+	}
+
+	async function markDone(e: Event) {
+		e.stopPropagation();
+		markingDone = true;
+		try { await engineApi.markCardDone(card.card_id); card.status = 'done'; } finally { markingDone = false; }
+	}
+	async function approveAgent(e: Event) {
+		e.stopPropagation();
+		approvingAgent = true;
+		try { await engineApi.approveAgent(card.card_id); card.status = 'agent_running'; } finally { approvingAgent = false; }
+	}
+	async function dismiss(e: Event) {
+		e.stopPropagation();
+		dismissing = true;
+		try { await engineApi.dismissCard(card.card_id); card.status = 'dismissed'; } finally { dismissing = false; }
+	}
+	async function archive(e: Event) {
+		e.stopPropagation();
+		archiving = true;
+		try { await engineApi.archiveCard(card.card_id); card.status = 'archived'; } finally { archiving = false; }
+	}
+	async function reopen(e: Event) {
+		e.stopPropagation();
+		reopening = true;
+		try { await engineApi.reopenCard(card.card_id); card.status = 'pending'; } finally { reopening = false; }
+	}
+	function deleteCard(e: Event) {
+		e.stopPropagation();
+		showDeleteConfirm = false;
+		ondelete?.(card.card_id);
+		engineApi.deleteCard(card.card_id).catch(() => {});
+	}
+</script>
+
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+	data-card-id={card.card_id}
+	class="group/row flex items-center rounded-lg px-3 py-1.5 text-left transition-colors cursor-pointer
+		{isSelected ? 'bg-laya-orange/10 border border-laya-orange/30' : 'border border-transparent hover:bg-surface-800/60'}
+		{isArchived ? 'opacity-50 hover:opacity-75' : ''}"
+	onclick={() => onselect(card)}
+	onkeydown={(e) => e.key === 'Enter' && onselect(card)}
+	role="button"
+	tabindex="0"
+>
+	<!-- Chevron spacer — aligns with group chevron -->
+	<div class="w-5 shrink-0 {indented ? 'ml-1' : ''}"></div>
+
+	<!-- Source — fixed width -->
+	<span class="w-[60px] shrink-0 text-[10px] font-semibold uppercase tracking-wider text-surface-500 truncate" title={platform}>
+		{platform}
+	</span>
+
+	<!-- Actor — fixed width, always present for alignment -->
+	<span class="w-[100px] shrink-0 truncate text-xs text-surface-400 ml-2" title={card.actor_name ?? ''}>
+		{card.actor_name ?? ''}
+	</span>
+
+	<!-- Subject (header) — takes remaining space -->
+	<span class="min-w-0 flex-1 truncate text-xs font-medium text-surface-200 ml-2" title={card.header}>{card.header}</span>
+
+	<!-- Status — fixed width -->
+	<span class="w-[70px] shrink-0 flex items-center gap-1 ml-2">
+		<span class="h-1.5 w-1.5 rounded-full shrink-0 {statusDot[card.status] ?? 'bg-surface-500'}"></span>
+		<span class="text-[10px] text-surface-500 whitespace-nowrap truncate">{statusLabel[card.status] ?? card.status}</span>
+	</span>
+
+	<!-- Action buttons — fixed width slot (visible on hover) -->
+	<div class="w-[68px] shrink-0 flex items-center justify-end gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
+		{#if card.status === 'ready'}
+			<button aria-label="Done" class="h-5 w-5 flex items-center justify-center rounded text-green-400/60 hover:bg-green-500/15 hover:text-green-400 disabled:opacity-40" onclick={markDone} disabled={markingDone}>
+				<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+			</button>
+			<button aria-label="Dismiss" class="h-5 w-5 flex items-center justify-center rounded text-surface-500 hover:bg-surface-500/15 hover:text-surface-300 disabled:opacity-40" onclick={dismiss} disabled={dismissing}>
+				<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12" /></svg>
+			</button>
+			<button aria-label="Archive" class="h-5 w-5 flex items-center justify-center rounded text-red-400/60 hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40" onclick={archive} disabled={archiving}>
+				<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
+			</button>
+		{:else if card.status === 'requires_approval'}
+			<button aria-label="Approve" class="h-5 w-5 flex items-center justify-center rounded text-violet-400/60 hover:bg-violet-500/15 hover:text-violet-400 disabled:opacity-40" onclick={approveAgent} disabled={approvingAgent}>
+				<svg class="h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+			</button>
+			<button aria-label="Dismiss" class="h-5 w-5 flex items-center justify-center rounded text-surface-500 hover:bg-surface-500/15 hover:text-surface-300 disabled:opacity-40" onclick={dismiss} disabled={dismissing}>
+				<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12" /></svg>
+			</button>
+		{:else if card.status === 'dismissed' || card.status === 'done'}
+			<button aria-label="Reopen" class="h-5 w-5 flex items-center justify-center rounded text-laya-orange/60 hover:bg-laya-orange/15 hover:text-laya-orange disabled:opacity-40" onclick={reopen} disabled={reopening}>
+				<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 010 10H9m-6-10l4-4m-4 4l4 4" /></svg>
+			</button>
+			<button aria-label="Archive" class="h-5 w-5 flex items-center justify-center rounded text-red-400/60 hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40" onclick={archive} disabled={archiving}>
+				<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
+			</button>
+		{:else if card.status === 'archived'}
+			<button aria-label="Unarchive" class="h-5 w-5 flex items-center justify-center rounded text-laya-orange/60 hover:bg-laya-orange/15 hover:text-laya-orange disabled:opacity-40" onclick={reopen} disabled={reopening}>
+				<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 010 10H9m-6-10l4-4m-4 4l4 4" /></svg>
+			</button>
+			<button aria-label="Delete" class="h-5 w-5 flex items-center justify-center rounded text-red-400/60 hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40" onclick={(e) => { e.stopPropagation(); showDeleteConfirm = true; }} disabled={deleting}>
+				<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+			</button>
+		{:else if card.status === 'failed'}
+			<button aria-label="Retry" class="h-5 w-5 flex items-center justify-center rounded text-laya-orange/60 hover:bg-laya-orange/15 hover:text-laya-orange disabled:opacity-40" onclick={reopen} disabled={reopening}>
+				<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M1 4v6h6" /><path stroke-linecap="round" stroke-linejoin="round" d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>
+			</button>
+			<button aria-label="Archive" class="h-5 w-5 flex items-center justify-center rounded text-surface-500 hover:bg-surface-500/15 hover:text-surface-300 disabled:opacity-40" onclick={archive} disabled={archiving}>
+				<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
+			</button>
+		{/if}
+		{#if card.has_workspace}
+			<a href="/workspace/{card.card_id}" aria-label="Workspace" class="h-5 w-5 flex items-center justify-center rounded text-violet-400/60 hover:bg-violet-500/15 hover:text-violet-400" onclick={(e) => { e.preventDefault(); e.stopPropagation(); goto(`/workspace/${card.card_id}`); }}>
+				<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+			</a>
+		{/if}
+	</div>
+
+	<!-- Persona badge — fixed width -->
+	<span class="w-[62px] shrink-0 text-center rounded border px-1 py-0.5 text-[9px] font-bold uppercase ml-1 {personaColors[card.persona] ?? personaColors.ENGINEER}">
+		{card.persona}
+	</span>
+
+	<!-- Priority badge — fixed width -->
+	<span class="w-[36px] shrink-0 text-center rounded px-1 py-0.5 text-[9px] font-bold uppercase ml-1 {priorityColors[card.priority] ?? priorityColors.MEDIUM}">
+		{priorityLabel[card.priority] ?? card.priority}
+	</span>
+
+	<!-- Space badge — fixed width -->
+	<span class="w-[72px] shrink-0 flex items-center gap-1 ml-1 truncate">
+		{#if card.space_name}
+			<span class="inline-flex items-center gap-1 rounded border border-surface-700 bg-surface-800/60 px-1.5 py-0.5 text-[9px] text-surface-400 truncate">
+				<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {card.space_color ?? '#F97316'}"></span>
+				<span class="truncate">{card.space_name}</span>
+			</span>
+		{/if}
+	</span>
+
+	<!-- Time — fixed width -->
+	<span class="w-[52px] shrink-0 text-right text-[10px] text-surface-500 whitespace-nowrap">{timeAgo(card.created_at)}</span>
+</div>
+
+{#if showDeleteConfirm}
+	<div
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+		role="dialog"
+		aria-label="Confirm delete"
+		tabindex="-1"
+		onclick={(e) => { if (e.target === e.currentTarget) showDeleteConfirm = false; }}
+		onkeydown={(e) => { if (e.key === 'Escape') showDeleteConfirm = false; }}
+	>
+		<div class="mx-4 w-full max-w-sm rounded-xl border border-red-800/40 bg-surface-800 p-5 shadow-2xl">
+			<div class="mb-3 flex items-start gap-3">
+				<div class="mt-0.5 rounded-full bg-red-950/60 p-1.5">
+					<svg class="h-4 w-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+					</svg>
+				</div>
+				<div>
+					<h4 class="text-sm font-semibold text-surface-50">Delete card permanently?</h4>
+					<p class="mt-1 text-xs leading-relaxed text-surface-400">This cannot be undone.</p>
+				</div>
+			</div>
+			<div class="flex justify-end gap-2">
+				<button class="rounded-md px-3 py-1.5 text-xs text-surface-400 hover:text-surface-200" onclick={(e) => { e.stopPropagation(); showDeleteConfirm = false; }}>Cancel</button>
+				<button class="rounded-md bg-red-700 px-3 py-1.5 text-xs font-medium text-red-50 hover:bg-red-600" onclick={deleteCard} disabled={deleting}>{deleting ? 'Deleting...' : 'Delete'}</button>
+			</div>
+		</div>
+	</div>
+{/if}

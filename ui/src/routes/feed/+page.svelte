@@ -8,7 +8,9 @@
 	import ActionCardComponent from '$lib/components/feed/ActionCard.svelte';
 	import CardDetail from '$lib/components/feed/CardDetail.svelte';
 	import DaySummaryComponent from '$lib/components/feed/DaySummary.svelte';
-	import { showSummary } from '$lib/stores/feedView';
+	import { feedViewMode } from '$lib/stores/feedView';
+	import ListRow from '$lib/components/feed/ListRow.svelte';
+	import ListGroupComponent from '$lib/components/feed/ListGroup.svelte';
 	import { recentCards, recentDrawerOpen, trackCardVisit, clearRecentCards, type RecentCardEntry } from '$lib/stores/recentCards';
 
 	let groups = $state<CardGroup[]>([]);
@@ -127,7 +129,7 @@
 	// Load summary when date changes or summary view is toggled on
 	$effect(() => {
 		$feedDate;
-		if ($showSummary) loadSummary();
+		if ($feedViewMode === 'summary') loadSummary();
 	});
 
 	// Track last processed WS message to prevent infinite re-triggering.
@@ -320,7 +322,7 @@
 
 	function handleSummaryGotoCard(cardId: string) {
 		// Switch to card view and select + scroll to the card
-		$showSummary = false;
+		$feedViewMode = 'card';
 		// Find the card in groups
 		for (const g of groups) {
 			const found = g.cards.find((c) => c.card_id === cardId);
@@ -574,8 +576,8 @@
 		<!-- View toggle -->
 		<div class="flex items-center rounded-lg border border-surface-700 bg-surface-800/60 p-0.5">
 			<button
-				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {!$showSummary ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-200'}"
-				onclick={() => ($showSummary = false)}
+				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {$feedViewMode === 'card' ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-200'}"
+				onclick={() => ($feedViewMode = 'card')}
 				title="Card View"
 			>
 				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -583,8 +585,17 @@
 				</svg>
 			</button>
 			<button
-				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {$showSummary ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-200'}"
-				onclick={() => ($showSummary = true)}
+				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {$feedViewMode === 'list' ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-200'}"
+				onclick={() => ($feedViewMode = 'list')}
+				title="List View"
+			>
+				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+				</svg>
+			</button>
+			<button
+				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {$feedViewMode === 'summary' ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-200'}"
+				onclick={() => ($feedViewMode = 'summary')}
 				title="Summary View"
 			>
 				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -656,10 +667,10 @@
 				</div>
 			</div>
 		{/if}
-		<!-- Cards / Summary section -->
+		<!-- Cards / Summary / List section -->
 		<div bind:this={containerEl} class="flex min-w-0 flex-1 flex-col overflow-y-auto p-3">
 			<!-- Summary View -->
-			{#if $showSummary}
+			{#if $feedViewMode === 'summary'}
 				<div class="flex-1 overflow-y-auto rounded-xl border border-surface-700/50 bg-surface-900/30 p-6">
 					{#if summaryLoading}
 						<div class="flex h-full items-center justify-center text-surface-400">
@@ -677,7 +688,7 @@
 						<DaySummaryComponent summary={filteredDaySummary} updatedAt={summaryUpdatedAt} ongotocard={handleSummaryGotoCard} spaceFilter={$feedFilters.spaceFilter} />
 					{/if}
 				</div>
-			<!-- Card grid -->
+			<!-- List / Card shared empty states -->
 			{:else if loading && groups.length === 0}
 				<div class="py-12 text-center text-surface-400">Loading cards...</div>
 			{:else if error}
@@ -705,6 +716,51 @@
 					<p class="text-sm">No cards match "<span class="text-surface-300">{searchQuery}</span>"</p>
 					<button class="mt-2 text-xs text-laya-orange hover:underline" onclick={() => (searchQuery = '')}>Clear search</button>
 				</div>
+			<!-- ── LIST VIEW ── -->
+			{:else if $feedViewMode === 'list'}
+				{#if sections}
+					<!-- Sorted list view with section separators -->
+					{#each sections as [sectionTitle, sectionGroups], si}
+						{@const isCollapsed = collapsedSections.has(sectionTitle)}
+						<div
+							class="flex cursor-pointer items-center gap-3 pr-3 {si > 0 ? 'mt-5' : ''} mb-2 select-none"
+							role="button"
+							tabindex="0"
+							onclick={() => toggleSection(sectionTitle)}
+							onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSection(sectionTitle); } }}
+						>
+							<svg class="h-3.5 w-3.5 shrink-0 text-surface-500 transition-transform {isCollapsed ? '-rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+							</svg>
+							<span class="text-xs font-semibold uppercase tracking-wider text-surface-400">{sectionTitle}</span>
+							<div class="flex-1 border-t border-surface-700"></div>
+							<span class="text-[10px] text-surface-500">{sectionGroups.reduce((s, g) => s + g.card_count, 0)}</span>
+						</div>
+						{#if !isCollapsed}
+							<div class="flex flex-col gap-1 mb-2">
+								{#each sectionGroups as group (group.entity_id)}
+									{#if group.card_count === 1}
+										<ListRow card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} />
+									{:else}
+										<ListGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} scrollToCardId={_scrollToCardId} />
+									{/if}
+								{/each}
+							</div>
+						{/if}
+					{/each}
+				{:else}
+					<!-- Default list view -->
+					<div class="flex flex-col gap-1">
+						{#each filteredGroups as group (group.entity_id)}
+							{#if group.card_count === 1}
+								<ListRow card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} />
+							{:else}
+								<ListGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} scrollToCardId={_scrollToCardId} />
+							{/if}
+						{/each}
+					</div>
+				{/if}
+			<!-- ── CARD VIEW ── -->
 			{:else if sections}
 				<!-- Sorted view with section separators -->
 				{#each sections as [sectionTitle, sectionGroups], si}
@@ -761,7 +817,7 @@
 		</div>
 
 		<!-- Detail panel (hidden in summary view) -->
-		{#if !$showSummary}
+		{#if $feedViewMode !== 'summary'}
 			<div class="w-[420px] flex-shrink-0 overflow-y-auto">
 				{#if selectedCard}
 					<CardDetail card={selectedCard} onclose={closeDetail} ongotocard={gotoCard} />

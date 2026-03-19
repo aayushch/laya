@@ -1,4 +1,19 @@
 import { writable } from 'svelte/store';
 
-/** Whether the feed is showing the summary view (true) or card view (false) */
-export const showSummary = writable(false);
+export type FeedViewMode = 'card' | 'summary' | 'list';
+
+/** Current feed view mode */
+export const feedViewMode = writable<FeedViewMode>('card');
+
+/** Backward-compatible derived check */
+export const showSummary = {
+	subscribe(fn: (val: boolean) => void) {
+		return feedViewMode.subscribe((mode) => fn(mode === 'summary'));
+	},
+	set(val: boolean) {
+		feedViewMode.set(val ? 'summary' : 'card');
+	},
+	update(fn: (val: boolean) => boolean) {
+		feedViewMode.update((mode) => fn(mode === 'summary') ? 'summary' : 'card');
+	}
+};
