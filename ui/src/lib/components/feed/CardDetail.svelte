@@ -464,6 +464,13 @@
 			{:else}
 				<div class="flex gap-2">
 					<button
+						class="flex-1 rounded-lg bg-green-700/40 py-2 text-sm font-medium text-green-300 transition-colors hover:bg-green-700/60"
+						onclick={markDone}
+						disabled={markingDone}
+					>
+						{markingDone ? 'Marking...' : 'Mark as Done'}
+					</button>
+					<button
 						class="flex-1 rounded-lg bg-violet-700/40 py-2 text-sm font-medium text-violet-300 transition-colors hover:bg-violet-700/60"
 						onclick={approveAgent}
 						disabled={approvingAgent}

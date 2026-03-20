@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { ChatMessage } from '$lib/api/types';
 	import { marked } from 'marked';
+	import { goto } from '$app/navigation';
+	import { pendingCardId } from '$lib/stores/chat';
 
 	let { message, streaming = false }: { message: ChatMessage; streaming?: boolean } = $props();
 
@@ -14,7 +16,7 @@
 		return text
 			.replace(
 				/\[card:([^\]]+)\]/g,
-				'<a href="/feed/$1" class="text-laya-orange underline hover:text-laya-peach">card:$1</a>'
+				'<button data-card-link="$1" class="text-laya-orange underline hover:text-laya-peach cursor-pointer">card:$1</button>'
 			)
 			.replace(
 				/\[event:([^\]]+)\]/g,
@@ -29,6 +31,16 @@
 		// Render markdown for assistant messages, then replace card/event markers
 		return replaceMarkers(marked(text) as string);
 	}
+
+	function handleClick(e: MouseEvent) {
+		const target = (e.target as HTMLElement).closest('[data-card-link]') as HTMLElement | null;
+		if (!target) return;
+		const cardId = target.dataset.cardLink;
+		if (!cardId) return;
+		e.preventDefault();
+		pendingCardId.set(cardId);
+		goto('/feed');
+	}
 </script>
 
 <div class="flex {isUser ? 'justify-end' : 'justify-start'}">
@@ -38,7 +50,7 @@
 			: 'bg-surface-700 text-surface-200'}"
 	>
 		<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-		<div class="{isUser ? 'whitespace-pre-wrap' : 'prose-plan'} break-words">{@html renderContent(message.content)}{#if streaming && message.content}<span class="animate-pulse text-laya-orange">|</span>{/if}</div>
+		<div class="{isUser ? 'whitespace-pre-wrap' : 'prose-plan'} break-words" onclick={handleClick}>{@html renderContent(message.content)}{#if streaming && message.content}<span class="animate-pulse text-laya-orange">|</span>{/if}</div>
 		{#if !streaming}
 			<div
 				class="mt-1 text-[10px] {isUser ? 'text-laya-orange/60' : 'text-surface-500'}"

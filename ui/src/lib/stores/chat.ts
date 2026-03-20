@@ -19,3 +19,6 @@ export const conversations = writable<Conversation[]>([]);
 
 /** Whether the chat list panel is shown (vs the active chat view) */
 export const chatListOpen = writable(true);
+
+/** Card ID to navigate to in the feed (set by chat card links, consumed by feed page) */
+export const pendingCardId = writable<string | null>(null);
