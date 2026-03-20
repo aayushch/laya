@@ -19,10 +19,9 @@
 		return status ?? fallback;
 	}
 
-	// Docker/n8n management (only available in Tauri)
-	let dockerAvailable = $state(false);
-	let n8nContainerStatus = $state('checking...');
-	let dockerAction = $state('');
+	// n8n process management (available in Tauri)
+	let n8nProcessStatus = $state('checking...');
+	let n8nAction = $state('');
 
 	async function invoke(cmd: string): Promise<any> {
 		try {
@@ -33,31 +32,25 @@
 		}
 	}
 
-	async function checkDocker() {
-		const available = await invoke('check_docker');
-		dockerAvailable = available === true;
-		if (dockerAvailable) {
-			const status = await invoke('n8n_status');
-			n8nContainerStatus = status ?? 'unknown';
-		} else {
-			n8nContainerStatus = 'docker not available';
-		}
+	async function checkN8nProcess() {
+		const status = await invoke('n8n_status');
+		n8nProcessStatus = status ?? 'unknown';
 	}
 
 	async function startN8n() {
-		dockerAction = 'starting';
+		n8nAction = 'starting';
 		await invoke('start_n8n');
 		await new Promise((r) => setTimeout(r, 2000));
-		await checkDocker();
-		dockerAction = '';
+		await checkN8nProcess();
+		n8nAction = '';
 	}
 
 	async function stopN8n() {
-		dockerAction = 'stopping';
+		n8nAction = 'stopping';
 		await invoke('stop_n8n');
 		await new Promise((r) => setTimeout(r, 1000));
-		await checkDocker();
-		dockerAction = '';
+		await checkN8nProcess();
+		n8nAction = '';
 	}
 
 	// --- Dashboard / Analytics ---
@@ -142,7 +135,7 @@
 	}
 
 	onMount(() => {
-		checkDocker();
+		checkN8nProcess();
 		loadDashboard();
 	});
 </script>
@@ -231,40 +224,38 @@
 			</div>
 		{/if}
 
-		<!-- Docker / n8n control -->
-		{#if dockerAvailable}
-			<div class="mt-3 rounded-xl border border-surface-700 bg-surface-800 p-4">
-				<div class="flex items-center justify-between">
-					<div>
-						<div class="text-[10px] uppercase tracking-wider text-surface-400">n8n Container</div>
-						<div class="mt-1 text-sm">
-							<span class={n8nContainerStatus === 'running' ? 'text-green-400' : 'text-surface-400'}>
-								{n8nContainerStatus}
-							</span>
-						</div>
-					</div>
-					<div class="flex gap-2">
-						{#if n8nContainerStatus !== 'running'}
-							<button
-								class="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-green-500 disabled:opacity-50"
-								onclick={startN8n}
-								disabled={!!dockerAction}
-							>
-								{dockerAction === 'starting' ? 'Starting...' : 'Start'}
-							</button>
-						{:else}
-							<button
-								class="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-500 disabled:opacity-50"
-								onclick={stopN8n}
-								disabled={!!dockerAction}
-							>
-								{dockerAction === 'stopping' ? 'Stopping...' : 'Stop'}
-							</button>
-						{/if}
+		<!-- n8n process control -->
+		<div class="mt-3 rounded-xl border border-surface-700 bg-surface-800 p-4">
+			<div class="flex items-center justify-between">
+				<div>
+					<div class="text-[10px] uppercase tracking-wider text-surface-400">n8n Process</div>
+					<div class="mt-1 text-sm">
+						<span class={n8nProcessStatus === 'running' ? 'text-green-400' : n8nProcessStatus === 'starting' ? 'text-yellow-400' : 'text-surface-400'}>
+							{n8nProcessStatus}
+						</span>
 					</div>
 				</div>
+				<div class="flex gap-2">
+					{#if n8nProcessStatus !== 'running' && n8nProcessStatus !== 'starting'}
+						<button
+							class="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-green-500 disabled:opacity-50"
+							onclick={startN8n}
+							disabled={!!n8nAction}
+						>
+							{n8nAction === 'starting' ? 'Starting...' : 'Start'}
+						</button>
+					{:else if n8nProcessStatus === 'running'}
+						<button
+							class="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-500 disabled:opacity-50"
+							onclick={stopN8n}
+							disabled={!!n8nAction}
+						>
+							{n8nAction === 'stopping' ? 'Stopping...' : 'Stop'}
+						</button>
+					{/if}
+				</div>
 			</div>
-		{/if}
+		</div>
 
 		<!-- Last WS message -->
 		{#if $lastMessage}

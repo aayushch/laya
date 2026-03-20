@@ -95,6 +95,10 @@ pub struct EnvStatus {
     pub deps_installed: bool,
     /// Whether the engine source is available
     pub engine_source_found: bool,
+    /// Whether Node.js 18+ is available on the system
+    pub node_found: bool,
+    /// Whether n8n is installed in ~/.laya/n8n_module/
+    pub n8n_installed: bool,
 }
 
 /// Check the full environment status.
@@ -107,6 +111,8 @@ pub fn check_environment() -> EnvStatus {
     let venv_ready = venv_python().exists();
     let deps_installed = venv_ready && deps_up_to_date();
     let engine_source_found = engine_source_dir().join("laya").join("main.py").exists();
+    let node_found = crate::n8n::find_node().is_ok();
+    let n8n_installed = crate::n8n::is_n8n_installed();
 
     EnvStatus {
         python_path,
@@ -114,6 +120,8 @@ pub fn check_environment() -> EnvStatus {
         venv_ready,
         deps_installed,
         engine_source_found,
+        node_found,
+        n8n_installed,
     }
 }
 

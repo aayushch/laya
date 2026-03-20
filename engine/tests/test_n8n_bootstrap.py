@@ -31,7 +31,7 @@ class TestWaitForN8n:
         mock_client.get = AsyncMock(return_value=mock_resp)
 
         with patch("laya.integrations.n8n_bootstrap.httpx.AsyncClient", return_value=mock_client):
-            result = await _wait_for_n8n("http://localhost:5678", timeout=2.0)
+            result = await _wait_for_n8n("http://localhost:45678", timeout=2.0)
 
         assert result is True
 
@@ -42,7 +42,7 @@ class TestWaitForN8n:
         mock_client.get = AsyncMock(side_effect=httpx.ConnectError("refused"))
 
         with patch("laya.integrations.n8n_bootstrap.httpx.AsyncClient", return_value=mock_client):
-            result = await _wait_for_n8n("http://localhost:5678", timeout=1.5)
+            result = await _wait_for_n8n("http://localhost:45678", timeout=1.5)
 
         assert result is False
 
@@ -62,7 +62,7 @@ class TestTryLogin:
         mock_client.post = AsyncMock(return_value=mock_resp)
 
         with patch("laya.integrations.n8n_bootstrap.httpx.AsyncClient", return_value=mock_client):
-            result = await _try_login("http://localhost:5678", "a@b.com", "pass")
+            result = await _try_login("http://localhost:45678", "a@b.com", "pass")
 
         assert result == {"n8n-auth": "session-cookie"}
 
@@ -77,7 +77,7 @@ class TestTryLogin:
         mock_client.post = AsyncMock(return_value=mock_resp)
 
         with patch("laya.integrations.n8n_bootstrap.httpx.AsyncClient", return_value=mock_client):
-            result = await _try_login("http://localhost:5678", "a@b.com", "wrong")
+            result = await _try_login("http://localhost:45678", "a@b.com", "wrong")
 
         assert result is None
 
@@ -97,7 +97,7 @@ class TestCreateOwner:
         mock_client.post = AsyncMock(return_value=mock_resp)
 
         with patch("laya.integrations.n8n_bootstrap.httpx.AsyncClient", return_value=mock_client):
-            result = await _create_owner("http://localhost:5678", "a@b.com", "pass")
+            result = await _create_owner("http://localhost:45678", "a@b.com", "pass")
 
         assert result == {"n8n-auth": "owner-cookie"}
 
@@ -112,7 +112,7 @@ class TestCreateOwner:
         mock_client.post = AsyncMock(return_value=mock_resp)
 
         with patch("laya.integrations.n8n_bootstrap.httpx.AsyncClient", return_value=mock_client):
-            result = await _create_owner("http://localhost:5678", "a@b.com", "pass")
+            result = await _create_owner("http://localhost:45678", "a@b.com", "pass")
 
         assert result is None
 
@@ -133,7 +133,7 @@ class TestCreateApiKey:
         mock_client.post = AsyncMock(return_value=mock_resp)
 
         with patch("laya.integrations.n8n_bootstrap.httpx.AsyncClient", return_value=mock_client):
-            result = await _create_api_key("http://localhost:5678", {"n8n-auth": "cookie"})
+            result = await _create_api_key("http://localhost:45678", {"n8n-auth": "cookie"})
 
         assert result == "test-key-123"
 
@@ -149,7 +149,7 @@ class TestCreateApiKey:
         mock_client.post = AsyncMock(return_value=mock_resp)
 
         with patch("laya.integrations.n8n_bootstrap.httpx.AsyncClient", return_value=mock_client):
-            result = await _create_api_key("http://localhost:5678", {"n8n-auth": "cookie"})
+            result = await _create_api_key("http://localhost:45678", {"n8n-auth": "cookie"})
 
         assert result == "flat-key-456"
 
@@ -160,7 +160,7 @@ class TestEnsureN8nReady:
 
     async def test_returns_unreachable_when_n8n_down(self):
         with patch("laya.integrations.n8n_bootstrap._wait_for_n8n", new_callable=AsyncMock, return_value=False):
-            with patch("laya.integrations.n8n_bootstrap.get_n8n_config", return_value={"base_url": "http://localhost:5678"}):
+            with patch("laya.integrations.n8n_bootstrap.get_n8n_config", return_value={"base_url": "http://localhost:45678"}):
                 result = await ensure_n8n_ready()
 
         assert result["status"] == "unreachable"
@@ -169,7 +169,7 @@ class TestEnsureN8nReady:
     async def test_returns_already_configured_when_key_valid(self):
         with patch("laya.integrations.n8n_bootstrap._wait_for_n8n", new_callable=AsyncMock, return_value=True):
             with patch("laya.integrations.n8n_bootstrap._test_existing_api_key", new_callable=AsyncMock, return_value=True):
-                with patch("laya.integrations.n8n_bootstrap.get_n8n_config", return_value={"base_url": "http://localhost:5678"}):
+                with patch("laya.integrations.n8n_bootstrap.get_n8n_config", return_value={"base_url": "http://localhost:45678"}):
                     result = await ensure_n8n_ready()
 
         assert result["status"] == "already_configured"
@@ -184,7 +184,7 @@ class TestEnsureN8nReady:
                         with patch("laya.integrations.n8n_bootstrap.store_api_key", return_value=True):
                             with patch("laya.integrations.n8n_bootstrap._create_api_key", new_callable=AsyncMock, return_value="test-api-key"):
                                 with patch("laya.integrations.n8n_bootstrap.import_workflows", new_callable=AsyncMock, return_value=5):
-                                    with patch("laya.integrations.n8n_bootstrap.get_n8n_config", return_value={"base_url": "http://localhost:5678"}):
+                                    with patch("laya.integrations.n8n_bootstrap.get_n8n_config", return_value={"base_url": "http://localhost:45678"}):
                                         result = await ensure_n8n_ready()
 
         assert result["status"] == "ready"
@@ -201,7 +201,7 @@ class TestEnsureN8nReady:
                             with patch("laya.integrations.n8n_bootstrap._create_api_key", new_callable=AsyncMock, return_value="new-key"):
                                 with patch("laya.integrations.n8n_bootstrap.store_api_key", return_value=True):
                                     with patch("laya.integrations.n8n_bootstrap.import_workflows", new_callable=AsyncMock, return_value=0):
-                                        with patch("laya.integrations.n8n_bootstrap.get_n8n_config", return_value={"base_url": "http://localhost:5678"}):
+                                        with patch("laya.integrations.n8n_bootstrap.get_n8n_config", return_value={"base_url": "http://localhost:45678"}):
                                             result = await ensure_n8n_ready()
 
         assert result["status"] == "ready"
@@ -213,7 +213,7 @@ class TestEnsureN8nReady:
                 with patch("laya.integrations.n8n_bootstrap.get_api_key", return_value="wrong_pass"):
                     with patch("laya.integrations.n8n_bootstrap._create_owner", new_callable=AsyncMock, return_value=None):
                         with patch("laya.integrations.n8n_bootstrap._try_login", new_callable=AsyncMock, return_value=None):
-                            with patch("laya.integrations.n8n_bootstrap.get_n8n_config", return_value={"base_url": "http://localhost:5678"}):
+                            with patch("laya.integrations.n8n_bootstrap.get_n8n_config", return_value={"base_url": "http://localhost:45678"}):
                                 result = await ensure_n8n_ready()
 
         assert result["status"] == "error"
@@ -227,7 +227,7 @@ class TestEnsureN8nReady:
                     with patch("laya.integrations.n8n_bootstrap._create_owner", new_callable=AsyncMock, return_value={"n8n-auth": "cookie"}):
                         with patch("laya.integrations.n8n_bootstrap.store_api_key", return_value=True):
                             with patch("laya.integrations.n8n_bootstrap._create_api_key", new_callable=AsyncMock, return_value=None):
-                                with patch("laya.integrations.n8n_bootstrap.get_n8n_config", return_value={"base_url": "http://localhost:5678"}):
+                                with patch("laya.integrations.n8n_bootstrap.get_n8n_config", return_value={"base_url": "http://localhost:45678"}):
                                     result = await ensure_n8n_ready()
 
         assert result["status"] == "error"
@@ -254,13 +254,13 @@ class TestImportWorkflows:
         with patch("laya.integrations.n8n_bootstrap.WORKFLOWS_DIR", wf_dir):
             with patch("laya.integrations.n8n_bootstrap.get_api_key", return_value="test-key"):
                 with patch("laya.integrations.n8n_bootstrap.httpx.AsyncClient", return_value=mock_client):
-                    count = await import_workflows("http://localhost:5678")
+                    count = await import_workflows("http://localhost:45678")
 
         assert count == 1
 
     async def test_skips_when_no_api_key(self):
         with patch("laya.integrations.n8n_bootstrap.get_api_key", return_value=None):
-            count = await import_workflows("http://localhost:5678")
+            count = await import_workflows("http://localhost:45678")
 
         assert count == 0
 

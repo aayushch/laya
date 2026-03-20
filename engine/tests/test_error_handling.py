@@ -141,7 +141,7 @@ class TestRetryableActions:
         await self._seed_card(db_m8)
 
         with patch("laya.pipeline.executor.manager", MagicMock(broadcast=AsyncMock())):
-            with patch("laya.pipeline.executor.get_n8n_config", return_value={"base_url": "http://localhost:5678", "webhooks": {"jira": "jira-executor"}}):
+            with patch("laya.pipeline.executor.get_n8n_config", return_value={"base_url": "http://localhost:45678", "webhooks": {"jira": "jira-executor"}}):
                 # Mock httpx to raise TimeoutException
                 async def _timeout_post(url, json=None):
                     raise httpx.TimeoutException("timed out")
@@ -173,7 +173,7 @@ class TestRetryableActions:
         await self._seed_card(db_m8, card_id="card_conn", action_id="act_conn")
 
         with patch("laya.pipeline.executor.manager", MagicMock(broadcast=AsyncMock())):
-            with patch("laya.pipeline.executor.get_n8n_config", return_value={"base_url": "http://localhost:5678", "webhooks": {"jira": "jira-executor"}}):
+            with patch("laya.pipeline.executor.get_n8n_config", return_value={"base_url": "http://localhost:45678", "webhooks": {"jira": "jira-executor"}}):
                 async def _conn_error(url, json=None):
                     raise httpx.ConnectError("connection refused")
 
@@ -200,7 +200,7 @@ class TestRetryableActions:
         await self._seed_card(db_m8, card_id="card_gen", action_id="act_gen")
 
         with patch("laya.pipeline.executor.manager", MagicMock(broadcast=AsyncMock())):
-            with patch("laya.pipeline.executor.get_n8n_config", return_value={"base_url": "http://localhost:5678", "webhooks": {"jira": "jira-executor"}}):
+            with patch("laya.pipeline.executor.get_n8n_config", return_value={"base_url": "http://localhost:45678", "webhooks": {"jira": "jira-executor"}}):
                 async def _generic_error(url, json=None):
                     raise RuntimeError("unexpected error")
 

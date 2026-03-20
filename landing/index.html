@@ -1472,7 +1472,7 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
       <div class="sidebar-section">
         <div class="sidebar-title">n8n Integration</div>
         <a href="#doc-n8n-overview">How n8n Works</a>
-        <a href="#doc-n8n-docker">Docker Setup</a>
+        <a href="#doc-n8n-docker">Local Installation</a>
         <a href="#doc-n8n-bootstrap">Auto-Provisioning</a>
         <a href="#doc-n8n-manual">Manual Setup</a>
       </div>
@@ -1537,31 +1537,36 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
       <p>By the time you open Laya, the AI has already researched context, drafted responses, classified priorities, and packaged everything into one-click actions.</p>
 
       <div class="callout callout-info">
-        <p><strong>Architecture at a glance:</strong> Laya consists of three components &mdash; the <strong>Engine</strong> (Python/FastAPI backend), the <strong>UI</strong> (Svelte 5/Tauri desktop app), and <strong>n8n</strong> (Docker-based integration gateway). All data stays on your machine.</p>
+        <p><strong>Architecture at a glance:</strong> Laya consists of three components &mdash; the <strong>Engine</strong> (Python/FastAPI backend), the <strong>UI</strong> (Svelte 5/Tauri desktop app), and <strong>n8n</strong> (local Node.js integration gateway). All data stays on your machine.</p>
       </div>
 
       <h2 id="doc-prerequisites">Prerequisites</h2>
       <ul>
         <li><strong>macOS, Windows, or Linux</strong> desktop</li>
-        <li><strong>Docker &amp; Docker Compose</strong> &mdash; for running n8n (the integration gateway)</li>
+        <li><strong>Node.js 18+</strong> &mdash; required for n8n (the integration gateway). n8n is installed automatically as a local npm module.</li>
         <li><strong>Python 3.11+</strong> &mdash; for the Laya Engine (bundled in releases)</li>
-        <li><strong>Node.js 18+</strong> &mdash; only if building from source</li>
         <li><strong>An LLM provider</strong> &mdash; either a cloud API key (Anthropic, OpenAI, Google, OpenRouter) <em>or</em> a self-hosted model server like <strong>Ollama</strong>, <strong>LM Studio</strong>, or any OpenAI-compatible endpoint. No API key needed for local models.</li>
-        <li><strong>OS Keychain access</strong> &mdash; macOS Keychain, Windows Credential Manager, or Linux Secret Service</li>
+        <li><strong>OS Keychain access</strong> &mdash; macOS Keychain, Windows Credential Manager, or Linux Secret Service (for storing API keys securely)</li>
       </ul>
 
       <h2 id="doc-installation">Installation</h2>
 
       <h3>Option A: Download Release</h3>
-      <p>Download the latest release from GitHub. The desktop app bundles the Engine, so you only need Docker for n8n.</p>
+      <p>Download the latest release from GitHub. The desktop app bundles the Engine and automatically installs n8n on first launch.</p>
 
       <h3>Option B: Build from Source</h3>
 <pre><code># Clone the repository
 git clone https://github.com/your-org/laya.git
 cd laya
 
-# Start n8n (Docker)
-docker compose up -d
+# Run the setup script (installs Python deps, Node deps, and n8n)
+./scripts/setup-dev.sh
+
+# Or do it manually:
+
+# Install n8n locally
+mkdir -p ~/.laya/n8n_module ~/.laya/n8n
+npm install --prefix ~/.laya/n8n_module n8n
 
 # Start the Engine
 cd engine
@@ -1578,9 +1583,11 @@ npm run dev</code></pre>
       <p>When Laya starts for the first time, it automatically:</p>
       <ol>
         <li>Creates the <code>~/.laya/</code> directory with default config files</li>
+        <li>Detects Node.js and installs n8n locally (into <code>~/.laya/n8n_module/</code>)</li>
+        <li>Starts n8n as a local process on port <code>45678</code></li>
         <li>Initializes the SQLite database and runs all migrations</li>
         <li>Sets up ChromaDB for semantic search</li>
-        <li>Detects and bootstraps n8n (creates admin account, imports workflows)</li>
+        <li>Bootstraps n8n (creates admin account, imports workflows)</li>
         <li>Auto-detects installed coding agent CLIs</li>
         <li>Opens the Setup Wizard in the UI</li>
       </ol>
@@ -1589,7 +1596,7 @@ npm run dev</code></pre>
       <p>The 5-step onboarding wizard walks you through initial configuration:</p>
       <ol>
         <li><strong>LLM Provider</strong> &mdash; Enter a cloud API key (Anthropic, OpenAI, Google, OpenRouter) or connect a self-hosted model server (Ollama, LM Studio, or any OpenAI-compatible endpoint)</li>
-        <li><strong>n8n Check</strong> &mdash; Detects and auto-configures your n8n instance</li>
+        <li><strong>n8n Check</strong> &mdash; Detects Node.js, installs n8n locally if needed, and auto-configures it</li>
         <li><strong>Coding Agent + Repo</strong> &mdash; Select an agent (Claude Code, Gemini CLI, or Codex) and add your first repository</li>
         <li><strong>Team Setup</strong> &mdash; Add team members so Laya can recognize actors in events</li>
         <li><strong>Rules</strong> &mdash; Configure basic event filtering (e.g., ignore bot messages)</li>
@@ -1597,53 +1604,54 @@ npm run dev</code></pre>
 
       <!-- ─── N8N ─── -->
       <h2 id="doc-n8n-overview">How n8n Works with Laya</h2>
-      <p><strong>n8n</strong> is the integration gateway that connects Laya to your external services. It runs as a Docker container alongside the Engine and handles all platform-specific communication.</p>
+      <p><strong>n8n</strong> is the integration gateway that connects Laya to your external services. It runs as a <strong>local Node.js process</strong> on port <code>45678</code> and handles all platform-specific communication.</p>
       <p>There are two types of n8n workflows:</p>
       <ul>
-        <li><strong>Ingestion workflows</strong> &mdash; Listen to external services (Gmail, Slack, Jira, etc.) and forward normalized events to the Laya Engine at <code>POST http://host.docker.internal:8420/events</code></li>
+        <li><strong>Ingestion workflows</strong> &mdash; Listen to external services (Gmail, Slack, Jira, etc.) and forward normalized events to the Laya Engine at <code>POST http://127.0.0.1:8420/events</code></li>
         <li><strong>Executor workflows</strong> &mdash; Receive action payloads from Laya and execute them on the target platform (send an email, post a Slack message, create a Jira comment)</li>
       </ul>
 
-      <h2 id="doc-n8n-docker">Docker Setup</h2>
-      <p>Laya ships with a <code>docker-compose.yml</code> that starts n8n automatically:</p>
-<pre><code># Start n8n
-docker compose up -d
-
-# Check status
-docker compose ps
-
-# View logs
-docker compose logs -f laya-n8n</code></pre>
+      <h2 id="doc-n8n-docker">n8n Local Installation</h2>
+      <p>n8n runs as a local Node.js process. The Tauri desktop app manages the n8n lifecycle automatically (starts on app launch, stops on quit).</p>
 
       <table>
         <tr><th>Setting</th><th>Value</th></tr>
-        <tr><td>Image</td><td><code>n8nio/n8n:latest</code></td></tr>
-        <tr><td>Port</td><td><code>5678</code></td></tr>
-        <tr><td>Container name</td><td><code>laya-n8n</code></td></tr>
-        <tr><td>Data volume</td><td><code>n8n_data:/home/node/.n8n</code></td></tr>
+        <tr><td>Port</td><td><code>45678</code> (avoids conflict with a user's own n8n on default 5678)</td></tr>
+        <tr><td>Installation path</td><td><code>~/.laya/n8n_module/</code> (installed via npm)</td></tr>
+        <tr><td>n8n binary</td><td><code>~/.laya/n8n_module/node_modules/.bin/n8n</code></td></tr>
+        <tr><td>Data directory</td><td><code>~/.laya/n8n/</code> (N8N_USER_FOLDER)</td></tr>
         <tr><td>Default admin email</td><td><code>laya@local.host</code></td></tr>
         <tr><td>Default admin password</td><td><code>LayaAutoAdmin2026!</code></td></tr>
       </table>
 
-      <div class="callout callout-warn">
-        <p><strong>Warning:</strong> Running <code>docker compose down -v</code> will delete the n8n data volume, including all credentials and workflow customizations. Use <code>docker compose down</code> (without <code>-v</code>) to stop without losing data.</p>
+      <p>If you're building from source, the setup script installs n8n for you:</p>
+<pre><code># Automatic (via setup script)
+./scripts/setup-dev.sh
+
+# Manual installation
+mkdir -p ~/.laya/n8n_module ~/.laya/n8n
+npm install --prefix ~/.laya/n8n_module n8n</code></pre>
+
+      <div class="callout callout-info">
+        <p><strong>Lightweight footprint:</strong> n8n runs as a simple Node.js process &mdash; no containers, no VMs. It starts fast, uses minimal memory, and is easy to debug.</p>
       </div>
 
       <h2 id="doc-n8n-bootstrap">Auto-Provisioning</h2>
-      <p>On engine startup, Laya automatically provisions n8n:</p>
+      <p>On startup, the Tauri app starts n8n as a local process, then the Engine provisions it automatically:</p>
       <ol>
-        <li>Waits for n8n to become healthy (up to 30 seconds)</li>
+        <li>Tauri detects Node.js and starts <code>~/.laya/n8n_module/node_modules/.bin/n8n</code> on port 45678</li>
+        <li>Engine waits for n8n to become healthy (up to 30 seconds)</li>
         <li>Creates the admin account (or logs in if it already exists)</li>
         <li>Generates an API key with full workflow and credential scopes</li>
         <li>Imports all bundled ingestion &amp; executor workflows from <code>n8n/workflows/</code></li>
         <li>Stores the API key and admin password in the OS keychain</li>
       </ol>
-      <p>This process is fully idempotent &mdash; it's safe to restart and won't create duplicates.</p>
+      <p>This process is fully idempotent &mdash; it's safe to restart and won't create duplicates. n8n is automatically stopped when you quit the Laya app.</p>
 
       <h2 id="doc-n8n-manual">Manual Setup</h2>
-      <p>If auto-provisioning doesn't work (e.g., custom n8n instance), you can configure manually:</p>
+      <p>If auto-provisioning doesn't work (e.g., custom n8n instance or external server), you can configure manually:</p>
       <ol>
-        <li>Open the n8n dashboard at <code>http://localhost:5678</code></li>
+        <li>Open the n8n dashboard at <code>http://localhost:45678</code></li>
         <li>Create an account and generate an API key under <strong>Settings &rarr; API</strong></li>
         <li>In Laya, go to <strong>Settings &rarr; Integrations</strong> and enter the API key manually</li>
         <li>Import workflows from the <code>n8n/workflows/</code> directory via n8n's import UI</li>
@@ -1652,7 +1660,7 @@ docker compose logs -f laya-n8n</code></pre>
       <h3>Environment Variables</h3>
       <table>
         <tr><th>Variable</th><th>Default</th><th>Description</th></tr>
-        <tr><td><code>N8N_URL</code></td><td><code>http://localhost:5678</code></td><td>Override n8n base URL</td></tr>
+        <tr><td><code>N8N_URL</code></td><td><code>http://localhost:45678</code></td><td>Override n8n base URL</td></tr>
         <tr><td><code>LAYA_N8N_OWNER_EMAIL</code></td><td><code>laya@local.host</code></td><td>Admin account email</td></tr>
         <tr><td><code>LAYA_N8N_OWNER_PASSWORD</code></td><td><code>LayaAutoAdmin2026!</code></td><td>Admin account password</td></tr>
       </table>
@@ -1663,7 +1671,7 @@ docker compose logs -f laya-n8n</code></pre>
 
       <h3>General Steps</h3>
       <ol>
-        <li>Open the n8n dashboard at <code>http://localhost:5678</code></li>
+        <li>Open the n8n dashboard at <code>http://localhost:45678</code></li>
         <li>Open the ingestion workflow for the platform you want to connect</li>
         <li>Click the trigger node and add credentials (OAuth or API key)</li>
         <li>Activate the workflow (toggle the switch)</li>
@@ -2051,6 +2059,8 @@ content.body         content.metadata.*</code></pre>
         <tr><td><code>repos.json</code></td><td>Repository definitions</td></tr>
         <tr><td><code>data/laya.db</code></td><td>SQLite database (events, cards, actions, audit log)</td></tr>
         <tr><td><code>data/chromadb/</code></td><td>ChromaDB vector store for semantic search</td></tr>
+        <tr><td><code>n8n_module/</code></td><td>n8n npm installation (binary at <code>node_modules/.bin/n8n</code>)</td></tr>
+        <tr><td><code>n8n/</code></td><td>n8n data directory (database, encryption key, credentials)</td></tr>
         <tr><td><code>logs/</code></td><td>Application log files</td></tr>
       </table>
 
@@ -2062,9 +2072,10 @@ content.body         content.metadata.*</code></pre>
 
       <h3>n8n won't connect</h3>
       <ul>
-        <li>Check Docker is running: <code>docker compose ps</code></li>
-        <li>Check n8n health: <code>curl http://localhost:5678/healthz</code></li>
-        <li>Check logs: <code>docker compose logs laya-n8n</code></li>
+        <li>Check Node.js is installed: <code>node --version</code> (requires 18+)</li>
+        <li>Check n8n is installed: <code>ls ~/.laya/n8n_module/node_modules/.bin/n8n</code></li>
+        <li>Check n8n health: <code>curl http://localhost:45678/healthz</code></li>
+        <li>Manually start n8n: <code>N8N_PORT=45678 N8N_USER_FOLDER=~/.laya/n8n ~/.laya/n8n_module/node_modules/.bin/n8n start</code></li>
         <li>Try manual bootstrap: Settings &rarr; Integrations &rarr; Auto-Configure</li>
       </ul>
 

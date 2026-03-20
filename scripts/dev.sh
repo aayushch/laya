@@ -2,8 +2,8 @@
 # Start all Laya services for development.
 #
 # n8n lifecycle is managed by the Tauri app (auto-start on launch,
-# auto-stop on quit), so this script only starts the Python engine
-# and the Tauri dev server.
+# auto-stop on quit) as a local Node.js process on port 45678.
+# This script starts the Python engine and the Tauri dev server.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -18,7 +18,7 @@ cleanup() {
 trap cleanup SIGINT SIGTERM
 
 echo "=== Laya Dev ==="
-echo "  n8n is managed by the Tauri app (auto-start/stop)"
+echo "  n8n is managed by the Tauri app (auto-start/stop on port 45678)"
 echo ""
 
 # Start Python engine

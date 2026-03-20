@@ -27,7 +27,6 @@
     "active": true,
     "targets": "all",
     "resources": [
-      "resources/docker-compose.yml",
       "resources/engine/**/*"
     ],
     "icon": [

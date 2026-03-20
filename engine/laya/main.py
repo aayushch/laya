@@ -164,7 +164,7 @@ async def lifespan(app: FastAPI):
         log.warning("n8n_bootstrap_failed", error=str(e))
 
     # Import any new bundled workflows in the background — retries for up to
-    # 10 min so a slow-starting n8n (Docker cold-start) is handled gracefully.
+    # 10 min so a slow-starting n8n is handled gracefully.
     _workflow_sync_task = asyncio.create_task(sync_workflows_background())  # noqa: F841
 
     # Connect ChromaDB vector store

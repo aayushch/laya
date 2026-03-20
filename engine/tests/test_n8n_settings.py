@@ -18,9 +18,9 @@ class TestN8nConfig:
         with patch("laya.config.LAYA_CONFIG_FILE", tmp_path / "missing.json"):
             config = get_n8n_config()
 
-        assert config["base_url"] == "http://localhost:5678"
+        assert config["base_url"] == "http://localhost:45678"
         assert config["webhooks"]["jira"] == "jira-executor"
-        assert len(config["webhooks"]) == 5
+        assert len(config["webhooks"]) == 7
 
     def test_env_var_overrides_base_url(self, tmp_path):
         """N8N_URL env var overrides base_url from settings."""
@@ -74,13 +74,13 @@ class TestN8nTestEndpoint:
             async with AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.post(
                     "/settings/n8n/test",
-                    json={"base_url": "http://localhost:5678"},
+                    json={"base_url": "http://localhost:45678"},
                 )
 
         assert resp.status_code == 200
         data = resp.json()
         assert data["health"] == "healthy"
-        assert data["base_url"] == "http://localhost:5678"
+        assert data["base_url"] == "http://localhost:45678"
 
     async def test_unreachable_connection(self):
         """Returns unreachable on ConnectError."""
@@ -205,7 +205,7 @@ class TestExecutorUsesConfig:
 
         # Config with no github webhook defined
         config = {
-            "base_url": "http://localhost:5678",
+            "base_url": "http://localhost:45678",
             "webhooks": {"jira": "jira-executor"},
         }
 
@@ -214,4 +214,4 @@ class TestExecutorUsesConfig:
                 with patch("laya.pipeline.executor.manager", MagicMock(broadcast=AsyncMock())):
                     await execute_action("card_unk", "act_unk")
 
-        assert posted_url == "http://localhost:5678/webhook/github-executor"
+        assert posted_url == "http://localhost:45678/webhook/github-executor"

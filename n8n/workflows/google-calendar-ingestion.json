@@ -1,5 +1,5 @@
 {
-  "name": "Laya - Calendar Ingestion",
+  "name": "Laya - Google Calendar Ingestion",
   "nodes": [
     {
       "parameters": {
@@ -43,7 +43,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://host.docker.internal:8420/events",
+        "url": "http://127.0.0.1:8420/events",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

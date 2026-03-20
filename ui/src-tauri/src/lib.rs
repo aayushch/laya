@@ -1,4 +1,4 @@
-mod docker;
+mod n8n;
 mod sidecar;
 
 #[derive(serde::Serialize, Clone)]
@@ -97,7 +97,8 @@ struct SetupEvent {
     message: String,
 }
 
-/// Run full environment setup: detect Python → create venv → install deps → start engine.
+/// Run full environment setup: detect Python → create venv → install deps
+/// → detect Node.js → install n8n → start n8n → start engine.
 /// Emits `setup-progress` events throughout.
 #[tauri::command]
 fn setup_environment(app: tauri::AppHandle) {
@@ -163,7 +164,67 @@ fn setup_environment(app: tauri::AppHandle) {
             emit("deps", "done", "Dependencies up to date");
         }
 
-        // Step 4: Start engine
+        // Step 4: Detect Node.js
+        emit("node", "running", "Detecting Node.js installation...");
+        match n8n::find_node() {
+            Ok((_, ver)) => {
+                emit("node", "done", &format!("Node.js {} found", ver));
+            }
+            Err(e) => {
+                emit("node", "error", &e);
+                // Node.js is needed for n8n but not for the engine — continue
+                // so the user can still use Laya without integrations.
+                log::warn!("Node.js not found: {}", e);
+            }
+        }
+
+        // Step 5: Install n8n (if Node.js is available)
+        if n8n::find_node().is_ok() && !n8n::is_n8n_installed() {
+            emit("n8n", "running", "Installing n8n...");
+            let app_clone = app.clone();
+            match n8n::install_n8n(|line| {
+                let _ = app_clone.emit("setup-progress", SetupEvent {
+                    step: "n8n",
+                    status: "running",
+                    message: line.to_string(),
+                });
+            }) {
+                Ok(()) => emit("n8n", "done", "n8n installed"),
+                Err(e) => {
+                    emit("n8n", "error", &e);
+                    log::warn!("n8n installation failed: {}", e);
+                }
+            }
+        } else if n8n::is_n8n_installed() {
+            emit("n8n", "done", "n8n already installed");
+        } else {
+            emit("n8n", "error", "Skipped — Node.js required");
+        }
+
+        // Step 6: Start n8n (if installed)
+        if APP_EXITING.load(Ordering::Relaxed) {
+            log::info!("App is exiting, aborting setup");
+            return;
+        }
+        if n8n::is_n8n_installed() {
+            match n8n::startup_n8n() {
+                n8n::N8nStartResult::Started => {
+                    log::info!("n8n started during setup");
+                }
+                n8n::N8nStartResult::AlreadyRunning => {
+                    log::info!("n8n was already running");
+                }
+                other => {
+                    log::warn!("n8n startup result: {:?}", other);
+                }
+            }
+        }
+
+        // Step 7: Start engine
+        if APP_EXITING.load(Ordering::Relaxed) {
+            log::info!("App is exiting, skipping engine spawn");
+            return;
+        }
         emit("engine", "running", "Starting Laya engine...");
         match sidecar::spawn_engine() {
             Ok(child) => {
@@ -190,6 +251,7 @@ fn setup_environment(app: tauri::AppHandle) {
 
 // ── Main app ────────────────────────────────────────────────────────────
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{
@@ -199,6 +261,11 @@ use tauri::{
 };
 
 struct EngineProcess(Mutex<Option<std::process::Child>>);
+
+/// Set to `true` when the app is shutting down.  Background threads
+/// (e.g. `setup_environment`) check this before spawning new processes
+/// to avoid orphaning them after the Exit handler has already run.
+static APP_EXITING: AtomicBool = AtomicBool::new(false);
 
 /// Poll the engine health endpoint and update the tray tooltip.
 fn start_health_polling(tray: TrayIcon) {
@@ -239,6 +306,26 @@ fn start_health_polling(tray: TrayIcon) {
             let _ = tray.set_tooltip(Some(&tooltip));
         }
     });
+}
+
+/// Best-effort kill of any process listening on the given TCP port.
+/// Used as a safety net during shutdown to catch orphaned engine processes.
+#[cfg(unix)]
+fn kill_process_on_port(port: u16) {
+    if let Ok(output) = std::process::Command::new("lsof")
+        .args(["-ti", &format!("tcp:{}", port)])
+        .output()
+    {
+        if output.status.success() {
+            let pids = String::from_utf8_lossy(&output.stdout);
+            for pid_str in pids.split_whitespace() {
+                if let Ok(pid) = pid_str.parse::<i32>() {
+                    log::info!("Killing orphaned process on port {} (pid {})", port, pid);
+                    unsafe { libc::kill(pid, libc::SIGTERM); }
+                }
+            }
+        }
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -324,28 +411,21 @@ pub fn run() {
 
             start_health_polling(tray);
 
-            // --- Start n8n via Docker Compose ---
-            match docker::startup_n8n() {
-                docker::N8nStartResult::Started => {
-                    log::info!("n8n container started successfully");
+            // --- Start n8n as a local process ---
+            match n8n::startup_n8n() {
+                n8n::N8nStartResult::Started => {
+                    log::info!("n8n process started successfully");
                 }
-                docker::N8nStartResult::AlreadyRunning => {
-                    log::info!("n8n container was already running");
+                n8n::N8nStartResult::AlreadyRunning => {
+                    log::info!("n8n was already running");
                 }
-                docker::N8nStartResult::DockerNotAvailable(msg) => {
-                    log::warn!("Docker not available: {}", msg);
-                    if let Some(window) = app.get_webview_window("main") {
-                        let escaped = msg.replace('\\', "\\\\").replace('\'', "\\'");
-                        let _ = window.eval(&format!(
-                            "setTimeout(() => window.__laya_docker_warning = '{}', 1000)",
-                            escaped
-                        ));
-                    }
+                n8n::N8nStartResult::NodeNotFound(msg) => {
+                    log::warn!("Node.js not available: {}", msg);
                 }
-                docker::N8nStartResult::ComposeNotFound(msg) => {
-                    log::error!("docker-compose.yml not found: {}", msg);
+                n8n::N8nStartResult::N8nNotInstalled(msg) => {
+                    log::warn!("n8n not installed: {}", msg);
                 }
-                docker::N8nStartResult::StartFailed(msg) => {
+                n8n::N8nStartResult::StartFailed(msg) => {
                     log::error!("Failed to start n8n: {}", msg);
                 }
             }
@@ -380,10 +460,11 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            docker::check_docker,
-            docker::n8n_status,
-            docker::start_n8n,
-            docker::stop_n8n,
+            n8n::check_node,
+            n8n::check_n8n_installed,
+            n8n::n8n_status,
+            n8n::start_n8n,
+            n8n::stop_n8n,
             pick_repo_folder,
             check_environment,
             setup_environment,
@@ -454,12 +535,18 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
                     }
                 }
                 tauri::RunEvent::Exit => {
-                    // Gracefully stop engine
+                    // Signal background threads (e.g. setup_environment) to stop
+                    // spawning new processes.
+                    APP_EXITING.store(true, Ordering::Relaxed);
+
+                    // Gracefully stop engine (if we have a handle)
+                    let mut killed_engine = false;
                     if let Some(state) = app.try_state::<EngineProcess>() {
                         if let Ok(mut guard) = state.0.lock() {
                             if let Some(ref mut child) = *guard {
                                 let pid = child.id();
                                 log::info!("Sending SIGTERM to engine process (pid {})", pid);
+                                killed_engine = true;
 
                                 #[cfg(unix)]
                                 {
@@ -499,8 +586,17 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
                             }
                         }
                     }
-                    log::info!("Stopping n8n container");
-                    docker::shutdown_n8n();
+
+                    // Safety net: if setup_environment spawned the engine after
+                    // our cleanup above (race), or if we never got a handle,
+                    // kill any process listening on the engine port (8420).
+                    #[cfg(unix)]
+                    if !killed_engine {
+                        kill_process_on_port(8420);
+                    }
+
+                    log::info!("Stopping n8n process");
+                    n8n::shutdown_n8n();
                 }
                 _ => {}
             }

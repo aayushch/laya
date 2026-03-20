@@ -16,8 +16,7 @@ from laya.security.keychain import get_api_key, has_api_key, store_api_key
 
 log = structlog.get_logger()
 
-# Default owner credentials — read from env (set in docker-compose.yml),
-# falling back to hardcoded defaults.
+# Default owner credentials — falling back to hardcoded defaults.
 _DEFAULT_EMAIL = os.environ.get("LAYA_N8N_OWNER_EMAIL", "laya@local.host")
 _DEFAULT_PASSWORD = os.environ.get("LAYA_N8N_OWNER_PASSWORD", "LayaAutoAdmin2026!")
 _DEFAULT_FIRST_NAME = "Laya"
@@ -260,7 +259,7 @@ async def sync_workflows_background() -> None:
     """Background task: wait for n8n then import any missing workflows.
 
     Retries every 15 s for up to 10 minutes, so a slow-starting n8n
-    (e.g. Docker cold-start) never causes workflows to be skipped.
+    never causes workflows to be skipped.
     Idempotent — already-imported workflows are skipped by name.
     """
     n8n_config = get_n8n_config()
