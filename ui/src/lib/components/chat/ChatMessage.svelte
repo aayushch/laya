@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { ChatMessage } from '$lib/api/types';
+	import { marked } from 'marked';
 
 	let { message, streaming = false }: { message: ChatMessage; streaming?: boolean } = $props();
 
@@ -9,7 +10,7 @@
 	);
 
 	// Replace [card:ID] and [event:ID] markers with clickable links
-	function renderContent(text: string): string {
+	function replaceMarkers(text: string): string {
 		return text
 			.replace(
 				/\[card:([^\]]+)\]/g,
@@ -20,6 +21,14 @@
 				'<span class="text-violet-400">event:$1</span>'
 			);
 	}
+
+	function renderContent(text: string): string {
+		if (isUser) {
+			return replaceMarkers(text);
+		}
+		// Render markdown for assistant messages, then replace card/event markers
+		return replaceMarkers(marked(text) as string);
+	}
 </script>
 
 <div class="flex {isUser ? 'justify-end' : 'justify-start'}">
@@ -29,7 +38,7 @@
 			: 'bg-surface-700 text-surface-200'}"
 	>
 		<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-		<div class="whitespace-pre-wrap break-words">{@html renderContent(message.content)}{#if streaming && message.content}<span class="animate-pulse text-laya-orange">|</span>{/if}</div>
+		<div class="{isUser ? 'whitespace-pre-wrap' : 'prose-plan'} break-words">{@html renderContent(message.content)}{#if streaming && message.content}<span class="animate-pulse text-laya-orange">|</span>{/if}</div>
 		{#if !streaming}
 			<div
 				class="mt-1 text-[10px] {isUser ? 'text-laya-orange/60' : 'text-surface-500'}"
