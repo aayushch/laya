@@ -257,6 +257,18 @@
 					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
 				</div>
 			{:else if card.status === 'requires_approval'}
+				<!-- Mark as Done -->
+				<div class="group/act relative">
+					<button
+						aria-label="Mark as Done"
+						class="flex h-6 w-6 items-center justify-center rounded-md text-green-400/60 transition-all hover:bg-green-500/15 hover:text-green-400 disabled:opacity-40"
+						onclick={markDone}
+						disabled={markingDone}
+					>
+						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+					</button>
+					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Done</span>
+				</div>
 				<!-- Approve Agent -->
 				<div class="group/act relative">
 					<button
@@ -489,9 +501,9 @@
 				<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Chat</span>
 			</div>
 			<!-- Status indicator -->
-			<span class="ml-1 flex items-center gap-1">
+			<span class="ml-1 flex items-center gap-1 min-w-0 overflow-hidden">
 				<span class="h-1.5 w-1.5 rounded-full shrink-0 {statusDot[card.status] ?? statusDot.pending}"></span>
-				<span class="text-[10px] text-surface-400 whitespace-nowrap">{statusLabel[card.status] ?? card.status}</span>
+				<span class="text-[10px] text-surface-400 truncate">{statusLabel[card.status] ?? card.status}</span>
 			</span>
 			<!-- Priority chip -->
 			<span class="ml-1 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase {priorityColors[card.priority] ?? priorityColors.MEDIUM}">

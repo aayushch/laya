@@ -15,6 +15,7 @@
 	import type { ChatMessage as ChatMessageType } from '$lib/api/types';
 	import ChatMessage from './ChatMessage.svelte';
 	import ChatConversationList from './ChatConversationList.svelte';
+	import { fly } from 'svelte/transition';
 
 	let input = $state('');
 	let sending = $state(false);
@@ -233,6 +234,7 @@
 	<aside
 		class="fixed bottom-0 right-0 z-50 flex w-[460px] flex-col border-l border-surface-700 bg-surface-900"
 		style="top: var(--header-h);"
+		transition:fly={{ x: 460, duration: 250, opacity: 1 }}
 	>
 		{#if showList}
 			<ChatConversationList />

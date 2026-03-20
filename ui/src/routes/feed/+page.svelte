@@ -12,6 +12,7 @@
 	import ListRow from '$lib/components/feed/ListRow.svelte';
 	import ListGroupComponent from '$lib/components/feed/ListGroup.svelte';
 	import { recentCards, recentDrawerOpen, trackCardVisit, clearRecentCards, type RecentCardEntry } from '$lib/stores/recentCards';
+	import { pendingCardId } from '$lib/stores/chat';
 
 	let groups = $state<CardGroup[]>([]);
 	let totalGroups = $state(0);
@@ -290,6 +291,30 @@
 		};
 		attempt(5);
 	}
+
+	// Handle card link clicks from chat — find the card and navigate to it
+	$effect(() => {
+		const cardId = $pendingCardId;
+		if (!cardId) return;
+		pendingCardId.set(null);
+		// Look for the card in currently loaded groups first
+		for (const g of groups) {
+			const found = g.cards.find((c) => c.card_id === cardId);
+			if (found) {
+				gotoCard(found);
+				selectCard(found);
+				return;
+			}
+		}
+		// Card not in current view — fetch it from API and navigate to its date
+		engineApi.getCard(cardId).then((card) => {
+			gotoCard(card as ActionCard);
+			selectCard(card as ActionCard);
+		}).catch(() => {
+			// Card not found — scroll attempt with just the ID
+			scrollToCard(cardId);
+		});
+	});
 
 	function selectCard(card: ActionCard) {
 		selectedCard = card;

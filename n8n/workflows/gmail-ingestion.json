@@ -82,7 +82,7 @@
         "assignments": {
           "assignments": [
             { "name": "event_id", "value": "={{ 'evt_gmail_' + ($json.gmail_id || Date.now()) }}", "type": "string" },
-            { "name": "timestamp", "value": "={{ $json.gmail_internalDate ? new Date(parseInt($json.gmail_internalDate) > 9999999999 ? parseInt($json.gmail_internalDate) : parseInt($json.gmail_internalDate) * 1000).toISOString() : new Date().toISOString() }}", "type": "string" },
+            { "name": "timestamp", "value": "={{ (() => { const raw = $json.gmail_internalDate; if (!raw) return new Date().toISOString(); const n = Number(raw); if (!isNaN(n) && n > 0) return new Date(n > 9999999999 ? n : n * 1000).toISOString(); const d = new Date(raw); return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString(); })() }}", "type": "string" },
             { "name": "source.platform", "value": "gmail", "type": "string" },
             { "name": "source.connection_id", "value": "={{ $workflow.id }}", "type": "string" },
             { "name": "source.raw_event_type", "value": "={{ $json.is_reply ? 'reply_received' : 'new_email' }}", "type": "string" },
