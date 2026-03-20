@@ -21,26 +21,26 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
          |
          | webhooks / polling (managed by n8n)
          v
-+----------------+    HTTP POST     +--------------------+
-|      n8n       | --------------> |    Laya Engine      |
-|   (Docker)     |   Laya Event    |    (Python)         |
-|                | <-------------- |                     |
-|  Normalize     |   Action Req    |  Classify           |
-|  events        |                 |  Research            |
-|  Execute       |                 |  Stage               |
-|  actions       |                 |  Learn               |
-+----------------+                 +---------+------------+
-                                             |
++----------------+    HTTP POST    +--------------------+
+|      n8n       | --------------> |    Laya Engine     |
+|   (Docker)     |   Laya Event    |    (Python)        |
+|                | <-------------- |                    |
+|  Normalize     |   Action Req    |  Classify          |
+|  events        |                 |  Research          |
+|                |                 |  Stage             |
+|  Execute       |                 |  Learn             |
+|  actions       |                 +---------+----------+
++----------------+                           |
                                              | WebSocket (bidirectional)
                                              v
                                    +--------------------+
                                    |     Tauri UI       |
                                    |   (Svelte)         |
-                                   |                     |
-                                   |  Dashboard          |
-                                   |  Action Card Feed   |
-                                   |  Card Workspaces    |
-                                   |  Chat Sidebar       |
+                                   |                    |
+                                   |  Dashboard         |
+                                   |  Action Card Feed  |
+                                   |  Card Workspaces   |
+                                   |  Chat Sidebar      |
                                    +--------------------+
 ```
 
@@ -55,100 +55,100 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 ## 3. Detailed Architecture
 
 ```
-+-----------------------------------------------------------------------+
-|                           USER'S MACHINE                               |
-|                                                                        |
-|  +- TAURI v2 APP SHELL -------------------------------------------+   |
-|  |                                                                  |   |
-|  |  +- Svelte Frontend ------------------------------------------+ |   |
-|  |  |                                                             | |   |
-|  |  |  +- Dashboard -+  +- Feed ----------+  +- Chat ---------+ | |   |
-|  |  |  | Stats,      |  | Action Cards    |  | Conversational | | |   |
-|  |  |  | Analytics,  |  | sorted by       |  | interface to   | | |   |
-|  |  |  | Time saved, |  | priority/time   |  | query context  | | |   |
-|  |  |  | LLM costs   |  |                 |  |                | | |   |
-|  |  |  +-------------+  | Simple: approve |  +----------------+ | |   |
-|  |  |                    |  from feed      |                      | |   |
-|  |  |  +- Workspace ----+                 |  +- Settings -----+ | |   |
-|  |  |  | Timeline,      | Complex: open   |  | Models, keys,  | | |   |
-|  |  |  | Live Agent,    |  workspace      |  | repos, team,   | | |   |
-|  |  |  | Context,       |                 |  | rules, privacy | | |   |
-|  |  |  | Staged Outputs +-----------------+  +----------------+ | |   |
-|  |  |  +----------------+                                        | |   |
-|  |  +----------------------------+-------------------------------+ |   |
-|  |                               | WebSocket (bidirectional)       |   |
-|  |  Rust: System tray, native    |                                 |   |
-|  |  notifications, sidecar mgmt  |                                 |   |
-|  +-------------------------------+---------------------------------+   |
-|                                  |                                     |
-|  +- LAYA ENGINE (Python) --------+-------------------------------+     |
-|  |                                                                |     |
-|  |  +- FastAPI Server ------------------------------------------+|     |
-|  |  |  POST /events          (receives from n8n)                 ||     |
-|  |  |  POST /actions/approve (receives from UI)                  ||     |
-|  |  |  GET  /cards           (UI fetches feed)                   ||     |
-|  |  |  GET  /dashboard       (UI fetches stats)                  ||     |
-|  |  |  WS   /ws              (real-time bidirectional)           ||     |
-|  |  |  GET  /health          (health check)                      ||     |
-|  |  |  CRUD /settings        (configuration)                     ||     |
-|  |  +------------------------------------------------------------+|     |
-|  |                                                                |     |
-|  |  +- LangGraph Orchestration ----------------------------------+|     |
-|  |  |                                                             ||     |
-|  |  | INGEST -> RULES -> ROUTER -> WORKER(s) -> STAGER -> EMIT   ||     |
-|  |  |                      |                                      ||     |
-|  |  |           +----------+-----------+                          ||     |
-|  |  |           |      LiteLLM        |                          ||     |
-|  |  |           |  Router: Haiku      |                          ||     |
-|  |  |           |  Stager: Sonnet     |                          ||     |
-|  |  |           |  Local: Ollama      |                          ||     |
-|  |  |           +---------------------+                          ||     |
-|  |  |                                                             ||     |
-|  |  |  Workers:                                                   ||     |
-|  |  |    ENGINEER -> Coding Agent (Claude Code/Gemini/Codex PTY) ||     |
-|  |  |    COMMS    -> LLM drafting with memory context            ||     |
-|  |  |    OPS      -> Calendar/event aggregation + LLM synthesis  ||     |
-|  |  +------------------------------------------------------------+|     |
-|  |                                                                |     |
-|  |  +- Internal Tools (Python functions) ------------------------+|     |
-|  |  |  memory_search | event_lookup | entity_lookup | entity_link||     |
-|  |  |  team_lookup   | card_history | feedback_query             ||     |
-|  |  +------------------------------------------------------------+|     |
-|  |                                                                |     |
-|  |  +- Scheduled Jobs ------------------------------------------+|     |
-|  |  |  Daily Briefing (cron) | Memory cleanup (weekly)           ||     |
-|  |  +------------------------------------------------------------+|     |
-|  +----------------------------------------------------------------+     |
-|           |                    |                    |                    |
-|           | HTTP               | Read/Write         | Embed/Query       |
-|           v                    v                    v                    |
-|  +-------------+    +-------------+    +------------------+             |
-|  |     n8n     |    |   SQLite    |    |    ChromaDB      |             |
-|  |  (Docker)   |    |             |    |   (embedded)     |             |
-|  |             |    | events      |    |                  |             |
-|  | Ingestion:  |    | action_cards|    | laya_memory      |             |
-|  |  Jira       |    | action_log  |    | collection       |             |
-|  |  Bitbucket  |    | entities    |    |                  |             |
-|  |  Slack      |    | workspace_* |    | nomic-embed      |             |
-|  |  Gmail      |    | audit_log   |    | (local)          |             |
-|  |  Calendar   |    |             |    |                  |             |
-|  |             |    +-------------+    +------------------+             |
-|  | Execution:  |                                                        |
-|  |  Create PR  |    +-------------+    +------------------+             |
-|  |  Send email |    | Config      |    | Coding Agent     |             |
-|  |  Post Slack |    | Files       |    | (PTY subprocess) |             |
-|  |  Add comment|    |             |    |                  |             |
-|  |  Update Jira|    | settings.json   | Claude Code  OR  |             |
-|  |             |    | team.json   |    | Gemini CLI   OR  |             |
-|  +-------------+    | repos.json  |    | Codex CLI        |             |
-|                     | rules.json  |    |                  |             |
-|                     +-------------+    +------------------+             |
-|                                                                        |
-|  +- Optional -------------------------------------------------------+  |
-|  |  Ollama (local LLMs for privacy-sensitive processing)             |  |
-|  +-------------------------------------------------------------------+  |
-|                                                                        |
-+------------------------------------------------------------------------+
++---------------------------------------------------------------------------+
+|                           USER'S MACHINE                                  |
+|                                                                           |
+|  +- TAURI v2 APP SHELL -----------------------------------------------+   |
+|  |                                                                    |   |
+|  |  +- Svelte Frontend --------------------------------------------+  |   |
+|  |  |                                                              |  |   |
+|  |  |  +- Dashboard -+    +- Feed ----------+  +- Chat ---------+  |  |   |
+|  |  |  | Stats,      |    | Action Cards    |  | Conversational |  |  |   |
+|  |  |  | Analytics,  |    | sorted by       |  | interface to   |  |  |   |
+|  |  |  | Time saved, |    | priority/time   |  | query context  |  |  |   |
+|  |  |  | LLM costs   |    |                 |  |                |  |  |   |
+|  |  |  +-------------+    | Simple: approve |  +----------------+  |  |   |
+|  |  |                     |  from feed      |                      |  |   |
+|  |  |  +- Workspace ----+ |                 |  +- Settings -----+  |  |   |
+|  |  |  | Timeline,      | | Complex: open   |  | Models, keys,  |  |  |   |
+|  |  |  | Live Agent,    | |  workspace      |  | repos, team,   |  |  |   |
+|  |  |  | Context,       | |                 |  | rules, privacy |  |  |   |
+|  |  |  | Staged Outputs | +-----------------+  +----------------+  |  |   |
+|  |  |  +----------------+                                          |  |   |
+|  |  +----------------------------+---------------------------------+  |   |
+|  |                               | WebSocket (bidirectional)          |   |
+|  |  Rust: System tray, native    |                                    |   |
+|  |  notifications, sidecar mgmt  |                                    |   |
+|  +-------------------------------+------------------------------------+   |
+|                                  |                                        |
+|  +- LAYA ENGINE (Python) --------+----------------------------------+     |
+|  |                                                                  |     |
+|  |  +- FastAPI Server -------------------------------------------+  |     |
+|  |  |  POST /events          (receives from n8n)                 |  |     |
+|  |  |  POST /actions/approve (receives from UI)                  |  |     |
+|  |  |  GET  /cards           (UI fetches feed)                   |  |     |
+|  |  |  GET  /dashboard       (UI fetches stats)                  |  |     |
+|  |  |  WS   /ws              (real-time bidirectional)           |  |     |
+|  |  |  GET  /health          (health check)                      |  |     |
+|  |  |  CRUD /settings        (configuration)                     |  |     |
+|  |  +------------------------------------------------------------+  |     |
+|  |                                                                  |     |
+|  |  +- LangGraph Orchestration ----------------------------------+  |     |
+|  |  |                                                            |  |     |
+|  |  | INGEST -> RULES -> ROUTER -> WORKER(s) -> STAGER -> EMIT   |  |     |
+|  |  |                      |                                     |  |     |
+|  |  |           +----------+----------+                          |  |     |
+|  |  |           |      LiteLLM        |                          |  |     |
+|  |  |           |  Router: Haiku      |                          |  |     |
+|  |  |           |  Stager: Sonnet     |                          |  |     |
+|  |  |           |  Local: Ollama      |                          |  |     |
+|  |  |           +---------------------+                          |  |     |
+|  |  |                                                            |  |     |
+|  |  |  Workers:                                                  |  |     |
+|  |  |    ENGINEER -> Coding Agent (Claude Code/Gemini/Codex PTY) |  |     |
+|  |  |    COMMS    -> LLM drafting with memory context            |  |     |
+|  |  |    OPS      -> Calendar/event aggregation + LLM synthesis  |  |     |
+|  |  +------------------------------------------------------------+  |     |
+|  |                                                                  |     |
+|  |  +- Internal Tools (Python functions) ------------------------+  |     |
+|  |  |  memory_search | event_lookup | entity_lookup | entity_link|  |     |
+|  |  |  team_lookup   | card_history | feedback_query             |  |     |
+|  |  +------------------------------------------------------------+  |     |
+|  |                                                                  |     |
+|  |  +- Scheduled Jobs -------------------------------------------+  |     |
+|  |  |  Daily Briefing (cron) | Memory cleanup (weekly)           |  |     |
+|  |  +------------------------------------------------------------+  |     |
+|  +------------------------------------------------------------------+     |
+|          |                  |                    |                        |
+|          | HTTP             | Read/Write         | Embed/Query            |
+|          v                  v                    v                        |
+|  +--------------+   +---------------+   +-------------------+             |
+|  |     n8n      |   |   SQLite      |   |    ChromaDB       |             |
+|  |  (Docker)    |   |               |   |   (embedded)      |             |
+|  |              |   | events        |   |                   |             |
+|  | Ingestion:   |   | action_cards  |   | laya_memory       |             |
+|  |  Jira        |   | action_log    |   | collection        |             |
+|  |  Bitbucket   |   | entities      |   |                   |             |
+|  |  Slack       |   | workspace_*   |   | nomic-embed       |             |
+|  |  Gmail       |   | audit_log     |   | (local)           |             |
+|  |  Calendar    |   |               |   |                   |             |
+|  |              |   +---------------+   +-------------------+             |
+|  | Execution:   |                                                         |
+|  |  Create PR   |   +---------------+    +------------------+             |
+|  |  Send email  |   | Config        |    | Coding Agent     |             |
+|  |  Post Slack  |   | Files         |    | (PTY subprocess) |             |
+|  |  Add comment |   |               |    |                  |             |
+|  |  Update Jira |   | settings.json |    | Claude Code  OR  |             |
+|  |              |   | team.json     |    | Gemini CLI   OR  |             |
+|  +--------------+   | repos.json    |    | Codex CLI        |             |
+|                     | rules.json    |    |                  |             |
+|                     +---------------+    +------------------+             |
+|                                                                           |
+|  +- Optional -------------------------------------------------------+     |
+|  |  Ollama (local LLMs for privacy-sensitive processing)            |     |
+|  +------------------------------------------------------------------+     |
+|                                                                           |
++---------------------------------------------------------------------------+
 ```
 
 ## 4. n8n: The Integration Gateway
@@ -223,17 +223,17 @@ n8n POST /events
        +-- persona=ENGINEER, requires_research=true
        |         |
        |         v
-       |   +-------------------+
-       |   | ENGINEER WORKER   |
-       |   |                   |
-       |   | 1. Gather internal context (memory, entities, past cards)
-       |   | 2. Build prompt with research_plan + context
-       |   | 3. Spawn coding agent PTY session
-       |   | 4. Stream progress to UI via WebSocket
-       |   | 5. Surface agent approval requests to workspace UI
-       |   | 6. Pipe user responses back to agent
-       |   | 7. Parse structured findings on completion
-       |   +--------+----------+
+       |   +-----------------------------------------------------------+
+       |   | ENGINEER WORKER                                           |
+       |   |                                                           |
+       |   | 1. Gather internal context (memory, entities, past cards) |
+       |   | 2. Build prompt with research_plan + context              |
+       |   | 3. Spawn coding agent PTY session                         |
+       |   | 4. Stream progress to UI via WebSocket                    |
+       |   | 5. Surface agent approval requests to workspace UI        |
+       |   | 6. Pipe user responses back to agent                      |
+       |   | 7. Parse structured findings on completion                |
+       |   +--------+--------------------------------------------------+
        |            |
        |            +-- secondary_persona=COMMS?
        |            |         |
