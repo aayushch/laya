@@ -55,6 +55,17 @@
 		dismissed: 'bg-surface-500',
 		archived: 'bg-surface-600'
 	};
+	const statusRowStyle: Record<string, string> = {
+		pending:            'bg-amber-950/55  hover:bg-amber-950/70',
+		ready:              'bg-amber-950/55  hover:bg-amber-950/70',
+		requires_approval:  'bg-violet-950/55 hover:bg-violet-950/70',
+		agent_running:      'bg-violet-950/55 hover:bg-violet-950/70',
+		awaiting_input:     'bg-amber-950/55  hover:bg-amber-950/70',
+		done:               'bg-emerald-950/50 hover:bg-emerald-950/65',
+		failed:             'bg-red-950/60    hover:bg-red-950/75',
+		dismissed:          'bg-surface-800/40 hover:bg-surface-800/60',
+		archived:           'bg-surface-900/60 hover:bg-surface-900/80',
+	};
 	const statusLabel: Record<string, string> = {
 		pending: 'Processing',
 		ready: 'Ready',
@@ -134,7 +145,7 @@
 <div
 	data-card-id={card.card_id}
 	class="group/row flex items-center rounded-lg px-3 py-1.5 text-left transition-colors cursor-pointer
-		{isSelected ? 'bg-laya-orange/10 border border-laya-orange/30' : 'border border-transparent hover:bg-surface-800/60'}
+		{isSelected ? 'bg-laya-orange/10 border border-laya-orange/30' : `border border-transparent ${statusRowStyle[card.status] ?? 'hover:bg-surface-800/60'}`}
 		{isArchived ? 'opacity-50 hover:opacity-75' : ''}"
 	onclick={() => onselect(card)}
 	onkeydown={(e) => e.key === 'Enter' && onselect(card)}

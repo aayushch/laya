@@ -50,7 +50,7 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |---|---|---|
 | **Tauri App** | Rust + Svelte | Desktop shell, system tray, native notifications, manages other processes |
 | **Laya Engine** | Python (FastAPI + LangGraph) | Orchestration, LLM calls, memory, agent management |
-| **n8n** | Docker container | Sole gateway to external services (both inbound and outbound) |
+| **n8n** | Local Node.js process (npm) | Sole gateway to external services (both inbound and outbound) |
 
 ## 3. Detailed Architecture
 
@@ -435,7 +435,7 @@ BACKEND (Python 3.11+)
 
 INFRASTRUCTURE
   - Tauri v2 / Rust (app shell, sidecar management)
-  - n8n / Docker (integration gateway)
+  - n8n / local npm (integration gateway)
   - Ollama (optional, local LLMs)
 
 DATA

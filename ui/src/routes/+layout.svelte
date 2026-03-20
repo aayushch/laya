@@ -125,10 +125,10 @@
 	const hasActiveFilters = $derived(activeStatusCount > 0 || activePriorityCount > 0 || $feedFilters.showArchived || !!$feedFilters.spaceFilter);
 </script>
 
-{#if isSetupRoute}
-	{@render children()}
-{:else if $needsSetup || !$startupReady}
+{#if $needsSetup || !$startupReady}
 	<StartupScreen />
+{:else if isSetupRoute}
+	{@render children()}
 {:else}
 	<div class="flex h-screen flex-col bg-surface-900 text-surface-50">
 		<!-- Header -->

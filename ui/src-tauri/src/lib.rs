@@ -97,15 +97,22 @@ struct SetupEvent {
     message: String,
 }
 
-/// Run full environment setup: detect Python → create venv → install deps
-/// → detect Node.js → install n8n → start n8n → start engine.
+/// Run full environment setup with fail-fast preflight checks.
+///
+/// Steps:
+/// 1. Preflight — verify Python 3.10+ and Node.js 18+ are installed
+/// 2. Environment — create Python venv
+/// 3. Dependencies — pip install requirements
+/// 4. Automation — install n8n via npm + start it
+/// 5. Engine — start the Laya engine
+///
 /// Emits `setup-progress` events throughout.
 #[tauri::command]
 fn setup_environment(app: tauri::AppHandle) {
     use tauri::Emitter;
 
     std::thread::spawn(move || {
-        let emit = |step, status, msg: &str| {
+        let emit = |step: &'static str, status: &'static str, msg: &str| {
             let _ = app.emit("setup-progress", SetupEvent {
                 step,
                 status,
@@ -113,114 +120,110 @@ fn setup_environment(app: tauri::AppHandle) {
             });
         };
 
-        // Step 1: Find Python
-        emit("python", "running", "Detecting Python installation...");
-        let (python_path, _python_version) = match sidecar::find_python() {
+        // ── Step 1: Preflight checks ────────────────────────────────
+        // Fail fast if required runtimes are missing, before spending
+        // minutes on pip install only to fail at the n8n step.
+        emit("preflight", "running", "Checking for Python...");
+
+        let python_path = match sidecar::find_python() {
             Ok((path, ver)) => {
-                emit("python", "done", &format!("Python {} found", ver));
-                (path, ver)
+                emit("preflight", "running", &format!("Python {} found. Checking for Node.js...", ver));
+                path
             }
             Err(e) => {
-                emit("python", "error", &e);
+                emit("preflight", "error", &format!("Python 3.10+ is required. {}", e));
                 return;
             }
         };
 
-        // Step 2: Create venv (if needed)
+        match n8n::find_node() {
+            Ok((_, ver)) => {
+                emit("preflight", "done", &format!("Python and Node.js {} found", ver));
+            }
+            Err(e) => {
+                emit("preflight", "error", &format!("Node.js 18+ is required. {}", e));
+                return;
+            }
+        };
+
+        // ── Step 2: Set up environment ──────────────────────────────
         if !sidecar::check_environment().venv_ready {
-            emit("venv", "running", "Creating Python environment...");
+            emit("environment", "running", "Creating Python environment...");
             match sidecar::create_venv(&python_path) {
-                Ok(()) => emit("venv", "done", "Python environment created"),
+                Ok(()) => emit("environment", "done", "Python environment created"),
                 Err(e) => {
-                    emit("venv", "error", &e);
+                    emit("environment", "error", &e);
                     return;
                 }
             }
         } else {
-            emit("venv", "done", "Python environment exists");
+            emit("environment", "done", "Python environment ready");
         }
 
-        // Step 3: Install dependencies
+        // ── Step 3: Install dependencies ────────────────────────────
         let env = sidecar::check_environment();
         if !env.deps_installed {
-            emit("deps", "running", "Installing dependencies (this may take a few minutes)...");
+            emit("deps", "running", "Installing packages (this may take a few minutes)...");
 
             let app_clone = app.clone();
             match sidecar::install_requirements(|line| {
-                // Forward pip output lines as progress
                 let _ = app_clone.emit("setup-progress", SetupEvent {
                     step: "deps",
                     status: "running",
                     message: line.to_string(),
                 });
             }) {
-                Ok(()) => emit("deps", "done", "All dependencies installed"),
+                Ok(()) => emit("deps", "done", "All packages installed"),
                 Err(e) => {
                     emit("deps", "error", &e);
                     return;
                 }
             }
         } else {
-            emit("deps", "done", "Dependencies up to date");
+            emit("deps", "done", "Packages up to date");
         }
 
-        // Step 4: Detect Node.js
-        emit("node", "running", "Detecting Node.js installation...");
-        match n8n::find_node() {
-            Ok((_, ver)) => {
-                emit("node", "done", &format!("Node.js {} found", ver));
-            }
-            Err(e) => {
-                emit("node", "error", &e);
-                // Node.js is needed for n8n but not for the engine — continue
-                // so the user can still use Laya without integrations.
-                log::warn!("Node.js not found: {}", e);
-            }
-        }
-
-        // Step 5: Install n8n (if Node.js is available)
-        if n8n::find_node().is_ok() && !n8n::is_n8n_installed() {
-            emit("n8n", "running", "Installing n8n...");
+        // ── Step 4: Set up automation (n8n) ─────────────────────────
+        if !n8n::is_n8n_installed() {
+            emit("automation", "running", "Installing n8n...");
             let app_clone = app.clone();
             match n8n::install_n8n(|line| {
                 let _ = app_clone.emit("setup-progress", SetupEvent {
-                    step: "n8n",
+                    step: "automation",
                     status: "running",
                     message: line.to_string(),
                 });
             }) {
-                Ok(()) => emit("n8n", "done", "n8n installed"),
+                Ok(()) => {}
                 Err(e) => {
-                    emit("n8n", "error", &e);
-                    log::warn!("n8n installation failed: {}", e);
+                    emit("automation", "error", &e);
+                    return;
                 }
             }
-        } else if n8n::is_n8n_installed() {
-            emit("n8n", "done", "n8n already installed");
-        } else {
-            emit("n8n", "error", "Skipped — Node.js required");
         }
 
-        // Step 6: Start n8n (if installed)
         if APP_EXITING.load(Ordering::Relaxed) {
             log::info!("App is exiting, aborting setup");
             return;
         }
-        if n8n::is_n8n_installed() {
-            match n8n::startup_n8n() {
-                n8n::N8nStartResult::Started => {
-                    log::info!("n8n started during setup");
-                }
-                n8n::N8nStartResult::AlreadyRunning => {
-                    log::info!("n8n was already running");
-                }
-                other => {
-                    log::warn!("n8n startup result: {:?}", other);
-                }
+
+        // Start n8n
+        emit("automation", "running", "Starting n8n...");
+        match n8n::startup_n8n() {
+            n8n::N8nStartResult::Started => {
+                emit("automation", "done", "n8n running");
+            }
+            n8n::N8nStartResult::AlreadyRunning => {
+                emit("automation", "done", "n8n already running");
+            }
+            other => {
+                log::warn!("n8n startup: {:?}", other);
+                emit("automation", "error", &format!("Failed to start n8n: {:?}", other));
+                return;
             }
         }
 
-        // Step 7: Start engine
+        // ── Step 5: Start engine ────────────────────────────────────
         if APP_EXITING.load(Ordering::Relaxed) {
             log::info!("App is exiting, skipping engine spawn");
             return;
@@ -228,14 +231,12 @@ fn setup_environment(app: tauri::AppHandle) {
         emit("engine", "running", "Starting Laya engine...");
         match sidecar::spawn_engine() {
             Ok(child) => {
-                // Store the child process for lifecycle management
                 if let Some(state) = app.try_state::<EngineProcess>() {
                     if let Ok(mut guard) = state.0.lock() {
                         *guard = Some(child);
                     }
                 }
 
-                // Wait for engine to become healthy
                 if sidecar::wait_for_engine(std::time::Duration::from_secs(60)) {
                     emit("engine", "done", "Engine is running");
                 } else {

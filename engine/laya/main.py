@@ -258,14 +258,21 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 if __name__ == "__main__":
-    if getattr(sys, "frozen", False):
-        # PyInstaller bundle: pass app object directly and disable reload
-        # (reload uses sys.executable to respawn, which breaks in frozen bundles)
-        uvicorn.run(app, host=ENGINE_HOST, port=ENGINE_PORT)
-    else:
+    # Enable reload only when running from the repo checkout (dev mode).
+    # The Tauri-bundled app runs Python source directly (not PyInstaller),
+    # so sys.frozen is False — detect dev mode by checking for the repo's
+    # engine/.venv directory instead.
+    is_dev = (
+        not getattr(sys, "frozen", False)
+        and os.path.isdir(os.path.join(os.path.dirname(__file__), "..", ".venv"))
+    )
+
+    if is_dev:
         uvicorn.run(
             "laya.main:app",
             host=ENGINE_HOST,
             port=ENGINE_PORT,
             reload=True,
         )
+    else:
+        uvicorn.run(app, host=ENGINE_HOST, port=ENGINE_PORT)

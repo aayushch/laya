@@ -41,3 +41,8 @@ jsonschema>=4.26.0
 tqdm>=4.67.3
 tenacity>=9.1.4
 rich>=14.3.3
+
+# Build support — setuptools provides the `distutils` shim needed by
+# node-gyp (used to compile n8n's isolated-vm native addon).
+# Python 3.12+ removed distutils from stdlib (PEP 632).
+setuptools>=80.0.0

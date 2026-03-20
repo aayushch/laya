@@ -92,8 +92,8 @@ Every architectural and design decision made during the planning phase, with rat
 | 44 | **Python 3.11+ for engine** | Required by LangGraph (Python-native). Mature ecosystem for AI/ML (sentence-transformers, ChromaDB, LiteLLM). asyncio task groups in 3.11+. |
 | 45 | **LiteLLM for unified LLM interface** | Single `completion()` call works with 100+ providers (Anthropic, OpenAI, Google, Ollama). Perfectly implements configurable model settings without provider-specific code. |
 | 46 | **Svelte + Skeleton + Tailwind for frontend** | Lightweight, fast, clean DX. Skeleton for accessible UI components. Tailwind for utility-first styling. Excellent Tauri integration. Layerchart or Chart.js for dashboard charts. |
-| 47 | **Tauri v2 manages everything** | Single install for the user. Tauri launches Python engine as sidecar process, manages n8n Docker container. Native system tray + notifications. Auto-update support built in. |
-| 48 | **n8n via Docker, pre-built workflows** | n8n runs as a Docker container alongside the app. 10 workflow JSON files (5 ingestion + 5 execution) shipped with Laya, auto-imported on first launch. |
+| 47 | **Tauri v2 manages everything** | Single install for the user. Tauri launches Python engine as sidecar process, installs and manages n8n via npm. Native system tray + notifications. Auto-update support built in. |
+| 48 | **n8n via npm, pre-built workflows** | n8n is installed locally via npm (no Docker required). 10 workflow JSON files (5 ingestion + 5 execution) shipped with Laya, auto-imported on first launch. Two-attempt install strategy: first tries full native addons, falls back to skip native compilation if node-gyp fails. |
 | 49 | **SQLite + ChromaDB embedded** | All data stored locally in `~/.laya/`. No external database servers. SQLite for structured data, ChromaDB (embedded mode) for vector search. Zero-config persistence. |
 | 50 | **pytest + Vitest + Playwright for testing** | pytest + pytest-asyncio for Python engine. Vitest + Svelte Testing Library for frontend components. Playwright for end-to-end browser tests through Tauri's webview. |
 

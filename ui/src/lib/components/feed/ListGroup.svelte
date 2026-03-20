@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { CardGroup, ActionCard } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
+	import { slide } from 'svelte/transition';
 	import ListRow from './ListRow.svelte';
 
 	let {
@@ -45,6 +46,40 @@
 	};
 
 	const topCard = $derived(group.cards[0]);
+
+	// Status priority for group color: highest-priority status wins
+	const statusPriority: string[] = [
+		'awaiting_input', 'failed', 'agent_running', 'requires_approval',
+		'pending', 'ready', 'done', 'dismissed', 'archived'
+	];
+
+	const groupRowStyle: Record<string, string> = {
+		pending:            'bg-amber-950/55  hover:bg-amber-950/70',
+		ready:              'bg-amber-950/55  hover:bg-amber-950/70',
+		requires_approval:  'bg-violet-950/55 hover:bg-violet-950/70',
+		agent_running:      'bg-violet-950/55 hover:bg-violet-950/70',
+		awaiting_input:     'bg-amber-950/55  hover:bg-amber-950/70',
+		done:               'bg-emerald-950/50 hover:bg-emerald-950/65',
+		failed:             'bg-red-950/60    hover:bg-red-950/75',
+		dismissed:          'bg-surface-800/40 hover:bg-surface-800/60',
+		archived:           'bg-surface-900/60 hover:bg-surface-900/80',
+	};
+
+	const dominantStatus = $derived.by(() => {
+		const statuses = new Set(group.cards.map(c => c.status));
+		for (const s of statusPriority) {
+			if (statuses.has(s as ActionCard['status'])) return s;
+		}
+		return group.cards[0]?.status ?? 'pending';
+	});
+
+	const allArchived = $derived(group.cards.every(c => c.status === 'archived'));
+
+	const groupBgStyle = $derived(
+		allArchived
+			? 'bg-surface-900/60 opacity-50 hover:opacity-80'
+			: (groupRowStyle[dominantStatus] ?? 'hover:bg-surface-800/60')
+	);
 
 	const statusDisplayLabel: Record<string, string> = {
 		pending: 'processing', ready: 'ready', requires_approval: 'needs approval',
@@ -121,11 +156,11 @@
 	}
 </script>
 
-<div class="rounded-lg border border-surface-700/40 bg-surface-900/30">
+<div class="rounded-lg border border-surface-700/40 {groupBgStyle} transition-colors">
 	<!-- Group header row -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="group/grow flex items-center px-3 py-1.5 cursor-pointer transition-colors hover:bg-surface-800/60"
+		class="group/grow flex items-center px-3 py-1.5 cursor-pointer transition-colors"
 		onclick={toggle}
 		onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}
 		role="button"
@@ -219,7 +254,7 @@
 
 	<!-- Expanded: child card rows -->
 	{#if expanded}
-		<div class="border-t border-surface-700/30 py-1">
+		<div class="border-t border-surface-700/30 py-1" transition:slide={{ duration: 200 }}>
 			{#each group.cards as card (card.card_id)}
 				<ListRow {card} {onselect} {ondelete} {selectedCardId} indented={true} />
 			{/each}

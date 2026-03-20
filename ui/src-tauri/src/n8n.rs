@@ -248,37 +248,14 @@ pub fn install_n8n<F: FnMut(&str)>(mut on_line: F) -> Result<(), String> {
     std::fs::create_dir_all(&module_dir)
         .map_err(|e| format!("Failed to create {}: {e}", module_dir.display()))?;
 
-    // Also create n8n data directory
     std::fs::create_dir_all(n8n_data_dir())
         .map_err(|e| format!("Failed to create n8n data directory: {e}"))?;
 
-    log::info!("Installing n8n via npm into {}", module_dir.display());
-    on_line("Installing n8n (this may take a few minutes)...");
-
     let path = augmented_path();
-    log::info!("npm install PATH: {}", path);
 
-    let mut cmd = Command::new(&npm);
-    cmd.args([
-        "install",
-        "--prefix",
-        &module_dir.to_string_lossy(),
-        "n8n",
-    ])
-    .env("PATH", &path);
-
-    // Point node-gyp at a Python that has `setuptools` installed
-    // (provides the `distutils` shim that node-gyp needs).
-    // Without this, native addons like `isolated-vm` fail to compile
-    // on Python 3.12+ where `distutils` was removed from stdlib.
-    //
-    // Preference order:
-    // 1. Laya managed venv (~/.laya/venv/bin/python) — production
-    // 2. Dev engine venv  (engine/.venv/bin/python)  — development
-    // 3. Skip — npm will use system Python (may lack setuptools)
+    // Resolve a Python with setuptools for node-gyp (distutils shim).
     let venv_py = venv_python();
     let dev_venv_py = {
-        // In dev mode, the engine venv is at <repo>/engine/.venv/
         let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         manifest.join("..").join("..").join("engine").join(".venv").join("bin").join("python")
     };
@@ -289,11 +266,172 @@ pub fn install_n8n<F: FnMut(&str)>(mut on_line: F) -> Result<(), String> {
     } else {
         None
     };
+
+    // ── Attempt 1: full install (native addons compile → isolated-vm sandboxing)
+    log::info!("Installing n8n via npm into {}", module_dir.display());
+    on_line("Installing n8n (this may take a few minutes)...");
+
+    let attempt1 = run_npm_install(&npm, &module_dir, &path, &gyp_python, false, &mut on_line);
+
+    if attempt1.is_ok() && n8n_bin().exists() {
+        log::info!("n8n installed successfully (with native addons)");
+        on_line("n8n installed successfully");
+        return Ok(());
+    }
+
+    // ── Attempt 2: skip native compilation, remove isolated-vm
+    // Native addon build can fail for many reasons (missing Xcode CLT,
+    // broken xcodebuild, wrong Node version, missing compiler, etc.).
+    // Fall back to --ignore-scripts and remove isolated-vm so n8n uses
+    // its non-sandboxed code execution mode.
+    log::warn!("Full install failed, retrying without native addons...");
+    on_line("Retrying without native compilation...");
+
+    // Clean up the failed install
+    let node_modules = module_dir.join("node_modules");
+    if node_modules.exists() {
+        let _ = std::fs::remove_dir_all(&node_modules);
+    }
+
+    run_npm_install(&npm, &module_dir, &path, &gyp_python, true, &mut on_line)?;
+
+    if !n8n_bin().exists() {
+        return Err("n8n binary not found after npm install".to_string());
+    }
+
+    // --ignore-scripts skipped ALL native addon builds. We need to rebuild
+    // the ones n8n actually requires (sqlite3, better-sqlite3) while leaving
+    // the problematic one (isolated-vm) alone.
+    on_line("Building database drivers...");
+    rebuild_native_addon(&npm, &module_dir, &path, &gyp_python, "sqlite3", &mut on_line);
+    rebuild_native_addon(&npm, &module_dir, &path, &gyp_python, "better-sqlite3", &mut on_line);
+
+    // Replace isolated-vm with a stub module. The --ignore-scripts flag
+    // skipped its native compilation, and it's the one that fails (Xcode CLT,
+    // node-gyp issues, etc.). Newer n8n versions hard-require the module at
+    // load time, so we can't delete it. The stub exports the expected classes
+    // but throws on use — n8n catches this during async init and falls back
+    // to non-sandboxed expression evaluation.
+    stub_isolated_vm(&module_dir);
+
+    log::info!("n8n installed successfully (without native addons)");
+    on_line("n8n installed (without sandboxed execution)");
+    Ok(())
+}
+
+/// Replace `isolated-vm` with a JS stub that loads without crashing but
+/// throws when actually used.  Newer n8n versions hard-require the module
+/// at load time (`require("isolated-vm")` at top of isolated-vm-bridge.js),
+/// so we can't just delete it.  The stub exports the expected `Isolate`
+/// class whose constructor throws, which n8n catches during async
+/// initialization and falls back to non-sandboxed expression evaluation.
+fn stub_isolated_vm(module_dir: &std::path::Path) {
+    let ivm_dir = module_dir.join("node_modules").join("isolated-vm");
+
+    // Remove the real module (with its broken native binary)
+    if ivm_dir.exists() {
+        let _ = std::fs::remove_dir_all(&ivm_dir);
+    }
+
+    if let Err(e) = std::fs::create_dir_all(&ivm_dir) {
+        log::warn!("Failed to create isolated-vm stub dir: {}", e);
+        return;
+    }
+
+    let stub_js = r#"'use strict';
+// Stub: native isolated-vm addon was not compiled.
+// Exports the expected API surface but throws on use,
+// causing n8n to fall back to non-sandboxed evaluation.
+class Isolate {
+  constructor() {
+    throw new Error('isolated-vm native addon not available');
+  }
+}
+class Reference {
+  constructor() {
+    throw new Error('isolated-vm native addon not available');
+  }
+}
+module.exports = { Isolate, Reference };
+"#;
+
+    let pkg_json = r#"{"name":"isolated-vm","version":"0.0.0-stub","main":"isolated-vm.js"}"#;
+
+    if let Err(e) = std::fs::write(ivm_dir.join("isolated-vm.js"), stub_js) {
+        log::warn!("Failed to write isolated-vm stub: {}", e);
+    }
+    if let Err(e) = std::fs::write(ivm_dir.join("package.json"), pkg_json) {
+        log::warn!("Failed to write isolated-vm stub package.json: {}", e);
+    }
+
+    log::info!("Installed isolated-vm stub (native addon unavailable)");
+}
+
+/// Rebuild a single native addon that was skipped by --ignore-scripts.
+/// Best-effort — logs a warning on failure but doesn't abort the install.
+fn rebuild_native_addon<F: FnMut(&str)>(
+    npm: &str,
+    module_dir: &std::path::Path,
+    path: &str,
+    gyp_python: &Option<PathBuf>,
+    package: &str,
+    on_line: &mut F,
+) {
+    let pkg_dir = module_dir.join("node_modules").join(package);
+    if !pkg_dir.exists() {
+        return; // Package not installed (may not be a dependency in this n8n version)
+    }
+
+    log::info!("Rebuilding native addon: {}", package);
+
+    let mut cmd = Command::new(npm);
+    cmd.args(["rebuild", package])
+        .current_dir(module_dir)
+        .env("PATH", path);
+
     if let Some(ref py) = gyp_python {
-        log::info!("Setting node-gyp Python to {}", py.display());
         cmd.env("npm_config_python", py);
+    }
+
+    match cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output() {
+        Ok(output) => {
+            if output.status.success() {
+                log::info!("Rebuilt {} successfully", package);
+                on_line(&format!("{} ready", package));
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                log::warn!("Failed to rebuild {} (non-fatal): {}", package, stderr.chars().take(200).collect::<String>());
+                on_line(&format!("{} build failed (will try prebuilt)", package));
+            }
+        }
+        Err(e) => {
+            log::warn!("Failed to run npm rebuild {}: {}", package, e);
+        }
+    }
+}
+
+/// Run `npm install` and stream output. Returns Ok(()) on success.
+fn run_npm_install<F: FnMut(&str)>(
+    npm: &str,
+    module_dir: &std::path::Path,
+    path: &str,
+    gyp_python: &Option<PathBuf>,
+    ignore_scripts: bool,
+    on_line: &mut F,
+) -> Result<(), String> {
+    let mut cmd = Command::new(npm);
+    let prefix = module_dir.to_string_lossy();
+
+    if ignore_scripts {
+        cmd.args(["install", "--prefix", &prefix, "--ignore-scripts", "n8n"]);
     } else {
-        log::warn!("No venv Python found for node-gyp; native addons may fail to compile");
+        cmd.args(["install", "--prefix", &prefix, "n8n"]);
+    }
+
+    cmd.env("PATH", path);
+
+    if let Some(ref py) = gyp_python {
+        cmd.env("npm_config_python", py);
     }
 
     let mut child = cmd
@@ -302,46 +440,48 @@ pub fn install_n8n<F: FnMut(&str)>(mut on_line: F) -> Result<(), String> {
         .spawn()
         .map_err(|e| format!("Failed to run npm install: {e}"))?;
 
-    // Read stdout + stderr for progress
-    let mut output_lines: Vec<String> = Vec::new();
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
 
-    if let Some(stdout) = child.stdout.take() {
-        let stderr = child.stderr.take();
-        let reader = std::io::BufReader::new(stdout);
-        for line in reader.lines() {
-            if let Ok(line) = line {
-                on_line(&line);
-                output_lines.push(line);
+    let stdout_tx = tx.clone();
+    let stdout_thread = child.stdout.take().map(|stdout| {
+        std::thread::spawn(move || {
+            let reader = std::io::BufReader::new(stdout);
+            for line in reader.lines().map_while(Result::ok) {
+                let _ = stdout_tx.send(line);
             }
-        }
-        if let Some(stderr) = stderr {
+        })
+    });
+
+    let stderr_tx = tx;
+    let stderr_thread = child.stderr.take().map(|stderr| {
+        std::thread::spawn(move || {
             let reader = std::io::BufReader::new(stderr);
-            for line in reader.lines() {
-                if let Ok(line) = line {
-                    on_line(&line);
-                    output_lines.push(line);
-                }
+            for line in reader.lines().map_while(Result::ok) {
+                let _ = stderr_tx.send(line);
             }
-        }
+        })
+    });
+
+    let mut output_lines: Vec<String> = Vec::new();
+    for line in rx {
+        on_line(&line);
+        output_lines.push(line);
     }
+
+    if let Some(h) = stdout_thread { let _ = h.join(); }
+    if let Some(h) = stderr_thread { let _ = h.join(); }
 
     let status = child.wait().map_err(|e| format!("npm wait failed: {e}"))?;
     if !status.success() {
         let tail: Vec<&str> = output_lines.iter().rev().take(5).map(|s| s.as_str()).collect();
         let detail = tail.into_iter().rev().collect::<Vec<_>>().join("\n");
         return Err(format!(
-            "npm install n8n failed (exit code {}).\nLast output:\n{}",
+            "npm install failed (exit code {}).\n{}",
             status.code().unwrap_or(-1),
             detail,
         ));
     }
 
-    if !n8n_bin().exists() {
-        return Err("n8n binary not found after npm install".to_string());
-    }
-
-    log::info!("n8n installed successfully at {}", n8n_bin().display());
-    on_line("n8n installed successfully");
     Ok(())
 }
 

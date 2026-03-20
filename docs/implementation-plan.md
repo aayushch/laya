@@ -14,7 +14,7 @@ This document defines the build sequence for Laya v0.1. The plan is organized in
 
 - [x] **Tauri app** launches and shows a blank Svelte page with Skeleton UI + Tailwind
 - [x] **Python engine** starts as a Tauri sidecar process, serves FastAPI on `localhost:8420`
-- [x] **n8n Docker container** starts via docker-compose
+- [x] **n8n** installs via npm and starts as a local Node.js process
 - [x] WebSocket connection established between Svelte UI and FastAPI engine
 - [x] `POST /events` endpoint accepts a JSON payload and returns 202
 - [x] `GET /health` endpoint returns status of engine, n8n, SQLite
@@ -270,7 +270,7 @@ Full end-to-end: Jira ticket created -> n8n fires -> Engine classifies -> Worker
   - Step 5: Event filter presets (ignore bots, ignore status changes, etc.)
 - [ ] **PyInstaller bundle** of Python engine (self-contained binary)
 - [ ] **Tauri sidecar integration:** Launch bundled engine binary on app start
-- [ ] **Docker management from Tauri:** Start/stop/restart n8n container, detect Docker availability
+- [x] **n8n management from Tauri:** Install via npm, start/stop n8n process, two-attempt install with native addon fallback
 - [ ] **Platform-specific installers:**
   - macOS: DMG with drag-to-Applications, code signed
   - Linux: AppImage + .deb package
@@ -283,7 +283,7 @@ Full end-to-end: Jira ticket created -> n8n fires -> Engine classifies -> Worker
   - LLM API timeout: retry with backoff, show "processing delayed" on card
   - Coding agent crash: mark session as failed, preserve workspace state, show error
   - Invalid event: log validation error, drop event, don't crash
-- [ ] **Graceful shutdown:** Save workspace states, stop agent sessions, stop n8n container
+- [ ] **Graceful shutdown:** Save workspace states, stop agent sessions, stop n8n process
 - [ ] **Database migrations** verified: fresh install and upgrade from earlier milestone builds
 - [ ] **Test suites:**
   - Python unit tests (pytest): all graph nodes, tools, rules engine, models

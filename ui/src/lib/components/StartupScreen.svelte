@@ -78,6 +78,7 @@
 		running: 'text-laya-orange animate-pulse',
 		ready: 'text-green-500',
 		done: 'text-green-500',
+		warning: 'text-yellow-500',
 		error: 'text-red-500',
 	};
 
@@ -87,11 +88,13 @@
 		running: 'Running',
 		ready: 'Ready',
 		done: 'Done',
+		warning: 'Warning',
 		error: 'Error',
 	};
 
 	function dotColor(state: string): string {
 		if (state === 'ready' || state === 'done') return 'bg-green-500';
+		if (state === 'warning') return 'bg-yellow-500';
 		if (state === 'error') return 'bg-red-500';
 		if (state === 'loading' || state === 'running') return 'bg-laya-orange';
 		return 'bg-surface-600';
@@ -117,20 +120,18 @@
 			{:else}
 				<!-- Setup steps -->
 				{#each $setupSteps as step}
-					<div class="flex items-center gap-3 rounded-lg border border-surface-700/50 bg-surface-800/50 px-4 py-2.5">
-						<span class="relative flex h-2.5 w-2.5 shrink-0">
-							{#if step.status === 'running'}
-								<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-laya-orange opacity-50"></span>
-							{/if}
-							<span class="relative inline-flex h-2.5 w-2.5 rounded-full {dotColor(step.status)}"></span>
-						</span>
-						<div class="flex-1 min-w-0">
-							<span class="text-sm text-surface-200">{step.label}</span>
-							{#if step.status === 'running'}
-								<p class="text-[10px] text-surface-500 truncate mt-0.5">{step.message}</p>
-							{/if}
+					<div class="rounded-lg border border-surface-700/50 bg-surface-800/50 px-4 py-2.5">
+						<div class="flex items-center gap-3">
+							<span class="relative flex h-2.5 w-2.5 shrink-0">
+								{#if step.status === 'running'}
+									<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-laya-orange opacity-50"></span>
+								{/if}
+								<span class="relative inline-flex h-2.5 w-2.5 rounded-full {dotColor(step.status)}"></span>
+							</span>
+							<span class="flex-1 text-sm text-surface-200">{step.label}</span>
+							<span class="text-xs {stateIcon[step.status]}">{stateLabel[step.status]}</span>
 						</div>
-						<span class="text-xs {stateIcon[step.status]}">{stateLabel[step.status]}</span>
+						<p class="h-4 text-[10px] truncate mt-1 pl-[22px] {step.status === 'error' ? 'text-red-400' : step.status === 'running' ? 'text-surface-500' : 'text-transparent'}">{step.message || '\u00A0'}</p>
 					</div>
 				{/each}
 
