@@ -6,7 +6,7 @@
 laya/
 |-- README.md
 |-- LICENSE
-|-- docker-compose.yml                    # n8n container definition
+|-- package.json                          # n8n installed via npm (local node_modules)
 |
 |-- engine/                               # Python backend
 |   |-- pyproject.toml                    # dependencies (poetry/pdm)
@@ -151,7 +151,7 @@ laya/
 |   |   |   |-- lib.rs                   # Tauri command handlers
 |   |   |   |-- tray.rs                  # System tray setup + badge management
 |   |   |   |-- sidecar.rs              # Python engine process lifecycle management
-|   |   |   |-- docker.rs               # n8n Docker container management
+|   |   |   |-- n8n.rs                 # n8n process lifecycle management (npm install + start)
 |   |   |   |-- notifications.rs         # Native OS notification bridge
 |   |   |   |-- health.rs               # Periodic health check polling
 |   |   |-- icons/                       # App icons per platform

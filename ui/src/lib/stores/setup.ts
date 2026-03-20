@@ -19,7 +19,7 @@ export interface EnvStatus {
 export interface SetupStep {
 	id: string;
 	label: string;
-	status: 'waiting' | 'running' | 'done' | 'error';
+	status: 'waiting' | 'running' | 'done' | 'warning' | 'error';
 	message: string;
 }
 
@@ -28,12 +28,11 @@ export const needsSetup = writable<boolean | null>(null);
 
 /** Current setup steps with their progress. */
 export const setupSteps = writable<SetupStep[]>([
-	{ id: 'python', label: 'Python', status: 'waiting', message: 'Detecting Python...' },
-	{ id: 'venv', label: 'Environment', status: 'waiting', message: 'Creating virtual environment...' },
-	{ id: 'deps', label: 'Dependencies', status: 'waiting', message: 'Installing packages...' },
-	{ id: 'node', label: 'Node.js', status: 'waiting', message: 'Detecting Node.js...' },
-	{ id: 'n8n', label: 'n8n', status: 'waiting', message: 'Installing n8n...' },
-	{ id: 'engine', label: 'Engine', status: 'waiting', message: 'Starting Laya engine...' },
+	{ id: 'preflight', label: 'Preflight checks', status: 'waiting', message: 'Checking prerequisites...' },
+	{ id: 'environment', label: 'Setting up environment', status: 'waiting', message: 'Creating virtual environment...' },
+	{ id: 'deps', label: 'Installing dependencies', status: 'waiting', message: 'Installing packages...' },
+	{ id: 'automation', label: 'Setting up automation', status: 'waiting', message: 'Installing n8n...' },
+	{ id: 'engine', label: 'Starting engine', status: 'waiting', message: 'Starting Laya engine...' },
 ]);
 
 /** Error message if setup fails. */
@@ -51,9 +50,6 @@ export async function checkEnvironment(): Promise<EnvStatus | null> {
 		// If everything is ready, no setup needed
 		if (status.venv_ready && status.deps_installed && status.engine_source_found) {
 			needsSetup.set(false);
-		} else if (!status.python_path) {
-			needsSetup.set(true);
-			setupError.set('Python 3.10+ is required but was not found. Please install Python and restart Laya.');
 		} else {
 			needsSetup.set(true);
 		}

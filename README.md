@@ -10,7 +10,7 @@ Laya is a local-first desktop application that acts as an AI operating system fo
 Your Tools (Jira, Slack, Gmail, Bitbucket, Calendar)
          |
          v
-      n8n (local Docker) -- normalizes events
+      n8n (local Node.js) -- normalizes events
          |
          v
    Laya Engine (Python) -- classifies, researches, stages
@@ -39,9 +39,9 @@ Your Tools (Jira, Slack, Gmail, Bitbucket, Calendar)
 |---|---|
 | Desktop Shell | Tauri v2 (Rust) |
 | Frontend | Svelte 5 + Skeleton UI + Tailwind CSS |
-| Backend | Python 3.11+ / FastAPI / LangGraph |
+| Backend | Python 3.10+ / FastAPI / LangGraph |
 | LLM Interface | LiteLLM (supports Anthropic, OpenAI, Google, Ollama) |
-| Integration Gateway | n8n (Docker) |
+| Integration Gateway | n8n (local npm) |
 | Structured Storage | SQLite |
 | Vector Storage | ChromaDB (embedded) |
 | Embeddings | nomic-embed / all-MiniLM (local via sentence-transformers) |
@@ -71,23 +71,22 @@ The original concept documents that informed this architecture:
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.10+
 - Node.js 18+
 - Rust toolchain (via `rustup`)
-- Docker (for n8n)
 - Xcode Command Line Tools (macOS): `xcode-select --install`
 
 ### Setup
 
 ```bash
-scripts/setup-dev.sh   # One-time: creates venv, installs deps, pulls n8n image
+scripts/setup-dev.sh   # One-time: creates venv, installs deps, installs n8n via npm
 ```
 
 ### Running Locally
 
 ```bash
 scripts/dev.sh
-# Starts n8n (Docker), Python engine, and Tauri dev window
+# Starts n8n (local Node.js), Python engine, and Tauri dev window
 # Engine: http://127.0.0.1:8420  |  UI: http://localhost:5173
 ```
 
@@ -203,4 +202,4 @@ For cross-platform releases, use GitHub Actions with a matrix build:
 
 **Phase:** Pre-development (architecture and design complete)
 
-**Next step:** Milestone 1 -- Skeleton (get Tauri + Python engine + n8n Docker running and talking to each other)
+**Next step:** Milestone 1 -- Skeleton (get Tauri + Python engine + n8n running and talking to each other)

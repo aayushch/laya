@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { CardGroup, ActionCard } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
+	import { slide } from 'svelte/transition';
 	import ActionCardComponent from './ActionCard.svelte';
 
 	let {
@@ -466,7 +467,7 @@
 		</div>
 
 		<!-- Card list -->
-		<div class="space-y-2 px-3 pb-3 pt-2">
+		<div class="space-y-2 px-3 pb-3 pt-2" transition:slide={{ duration: 200 }}>
 			{#each group.cards as card (card.card_id)}
 				<ActionCardComponent {card} onselect={onselect} {ondelete} {selectedCardId} {hasSelection} />
 			{/each}
