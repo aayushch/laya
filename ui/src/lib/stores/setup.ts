@@ -12,6 +12,8 @@ export interface EnvStatus {
 	venv_ready: boolean;
 	deps_installed: boolean;
 	engine_source_found: boolean;
+	node_found: boolean;
+	n8n_installed: boolean;
 }
 
 export interface SetupStep {
@@ -29,6 +31,8 @@ export const setupSteps = writable<SetupStep[]>([
 	{ id: 'python', label: 'Python', status: 'waiting', message: 'Detecting Python...' },
 	{ id: 'venv', label: 'Environment', status: 'waiting', message: 'Creating virtual environment...' },
 	{ id: 'deps', label: 'Dependencies', status: 'waiting', message: 'Installing packages...' },
+	{ id: 'node', label: 'Node.js', status: 'waiting', message: 'Detecting Node.js...' },
+	{ id: 'n8n', label: 'n8n', status: 'waiting', message: 'Installing n8n...' },
 	{ id: 'engine', label: 'Engine', status: 'waiting', message: 'Starting Laya engine...' },
 ]);
 

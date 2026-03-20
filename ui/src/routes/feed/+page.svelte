@@ -707,6 +707,45 @@
 							Cards will appear here as events are processed
 						{/if}
 					</p>
+
+					<!-- First-run integrations prompt (no cards ever, viewing today) -->
+					{#if !$feedPrevDate && isToday}
+						<div class="mx-auto mt-8 max-w-md rounded-xl border border-surface-700 bg-surface-800 p-6 text-left">
+							<div class="flex items-start gap-3">
+								<div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-laya-orange/10">
+									<svg class="h-4 w-4 text-laya-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+									</svg>
+								</div>
+								<div>
+									<h3 class="text-sm font-medium text-surface-200">Set up your integrations</h3>
+									<p class="mt-1 text-xs text-surface-400">
+										To start receiving cards, activate your workflows and configure credentials
+										in the n8n dashboard. Connect Gmail, Jira, Slack, GitHub, and more.
+									</p>
+									<div class="mt-3 flex flex-wrap items-center gap-2">
+										<a
+											href="http://localhost:45678"
+											target="_blank"
+											rel="noopener noreferrer"
+											class="inline-flex items-center gap-1.5 rounded-md bg-laya-orange/10 px-3 py-1.5 text-xs font-medium text-laya-orange transition-colors hover:bg-laya-orange/20"
+										>
+											<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+											</svg>
+											Open n8n Dashboard
+										</a>
+										<a
+											href="/settings"
+											class="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs text-surface-400 transition-colors hover:text-surface-200"
+										>
+											Settings
+										</a>
+									</div>
+								</div>
+							</div>
+						</div>
+					{/if}
 				</div>
 			{:else if filteredGroups.length === 0 && searchTerms.length > 0}
 				<div class="py-12 text-center text-surface-500">

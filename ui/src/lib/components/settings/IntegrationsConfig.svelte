@@ -22,7 +22,7 @@
 	let error = $state<string | null>(null);
 
 	// n8n connection
-	let baseUrl = $state('http://localhost:5678');
+	let baseUrl = $state('http://localhost:45678');
 	let n8nHealth = $state<string | null>(null);
 	let hasN8nKey = $state(false);
 	let showAdvanced = $state(false);
@@ -385,7 +385,7 @@
 							type="url"
 							bind:value={baseUrl}
 							onblur={saveSettings}
-							placeholder="http://localhost:5678"
+							placeholder="http://localhost:45678"
 							class="flex-1 rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
 						/>
 						<button
@@ -471,9 +471,11 @@
 						class="ml-auto text-surface-500 transition-colors hover:text-surface-200"
 						title="Refresh"
 					>
-						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5" />
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.49 9A9 9 0 105.64 5.64L4 4m16 16l-1.64-1.64" />
+						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5" />
+							<path stroke-linecap="round" stroke-linejoin="round" d="M20 20v-5h-5" />
+							<path stroke-linecap="round" stroke-linejoin="round" d="M20.49 9A9 9 0 0 0 5.64 5.64L4 4" />
+							<path stroke-linecap="round" stroke-linejoin="round" d="M3.51 15A9 9 0 0 0 18.36 18.36L20 20" />
 						</svg>
 					</button>
 				</div>

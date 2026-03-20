@@ -16,7 +16,7 @@ LAYA_REPOS_FILE = LAYA_HOME / "repos.json"
 # Engine defaults
 ENGINE_HOST = "127.0.0.1"
 ENGINE_PORT = 8420
-N8N_URL = "http://localhost:5678"
+N8N_URL = "http://localhost:45678"
 DB_PATH = LAYA_DATA_DIR / "laya.db"
 MIGRATIONS_DIR = Path(__file__).parent / "db" / "migrations"
 
@@ -61,7 +61,7 @@ DEFAULT_SETTINGS = {
     },
     "setup_complete": False,
     "n8n": {
-        "base_url": "http://localhost:5678",
+        "base_url": "http://localhost:45678",
         "webhooks": {
             "jira": "jira-executor",
             "bitbucket": "bitbucket-executor",

@@ -23,6 +23,13 @@
 	let provider = $state('anthropic');
 	let apiKey = $state('');
 	let keyStatus = $state('');
+	let savedKeys = $state<Array<{ provider: string; label: string }>>([]);
+
+	const providerLabels: Record<string, string> = {
+		anthropic: 'Anthropic (Claude)',
+		openai: 'OpenAI',
+		google: 'Google (Gemini)'
+	};
 
 	// Step 3: Coding Agent + Repo
 	let codingAgent = $state('claude_code');
@@ -32,6 +39,8 @@
 	let repoRemoteId = $state('');
 	let repoBrowseStatus = $state<{ ok: boolean; msg: string } | null>(null);
 	let browsing = $state(false);
+	let savedRepos = $state<Array<{ name: string; path: string; platform: string; remote_id: string }>>([]);
+	let showManualRepo = $state(false);
 
 	// Step 4: Team
 	let members = $state<Array<{ name: string; email: string; role: string }>>([
@@ -51,7 +60,9 @@
 		if (!apiKey.trim()) return;
 		try {
 			await engineApi.setApiKey(provider, apiKey.trim());
-			keyStatus = 'saved';
+			savedKeys = [...savedKeys.filter((k) => k.provider !== provider), { provider, label: providerLabels[provider] || provider }];
+			apiKey = '';
+			keyStatus = '';
 		} catch {
 			keyStatus = 'error';
 		}
@@ -96,11 +107,13 @@
 		repoBrowseStatus = null;
 		try {
 			const result = await invoke<RepoDetection>('pick_repo_folder');
-			repoPath = result.path;
-			repoName = result.name;
-			repoPlatform = result.platform;
-			repoRemoteId = result.remote_id;
-			repoBrowseStatus = { ok: true, msg: `${result.platform} · ${result.remote_id}` };
+			// Auto-add the browsed repo directly
+			savedRepos = [...savedRepos, {
+				name: result.name,
+				path: result.path,
+				platform: result.platform || 'github',
+				remote_id: result.remote_id
+			}];
 		} catch (err: unknown) {
 			const msg = String(err);
 			if (!msg.includes('cancelled')) {
@@ -109,6 +122,26 @@
 		} finally {
 			browsing = false;
 		}
+	}
+
+	function addRepo() {
+		if (!repoName.trim() || !repoPath.trim()) return;
+		savedRepos = [...savedRepos, {
+			name: repoName.trim(),
+			path: repoPath.trim(),
+			platform: repoPlatform || 'github',
+			remote_id: repoRemoteId
+		}];
+		// Clear inputs for next repo
+		repoName = '';
+		repoPath = '';
+		repoPlatform = '';
+		repoRemoteId = '';
+		repoBrowseStatus = null;
+	}
+
+	function removeRepo(index: number) {
+		savedRepos = savedRepos.filter((_, i) => i !== index);
 	}
 
 	function addMember() {
@@ -120,12 +153,15 @@
 	}
 
 	async function finish() {
-		// Step 3: Save agent + repo
+		// Step 3: Save agent + repos
 		await engineApi.updateSettings({ coding_agent: codingAgent });
+		// Include any unsaved repo still in the input fields
+		const allRepos = [...savedRepos];
 		if (repoName.trim() && repoPath.trim()) {
-			await engineApi.updateRepos({
-				repos: [{ name: repoName.trim(), path: repoPath.trim(), platform: repoPlatform || 'github', remote_id: repoRemoteId }]
-			});
+			allRepos.push({ name: repoName.trim(), path: repoPath.trim(), platform: repoPlatform || 'github', remote_id: repoRemoteId });
+		}
+		if (allRepos.length > 0) {
+			await engineApi.updateRepos({ repos: allRepos });
 		}
 
 		// Step 4: Save team
@@ -183,7 +219,7 @@
 	}
 </script>
 
-<div class="space-y-6 rounded-xl border border-surface-700 bg-surface-800 p-8">
+<div class="max-h-[calc(100vh-4rem)] overflow-y-auto space-y-6 rounded-xl border border-surface-700 bg-surface-800 p-8">
 	<!-- Step indicator -->
 	<div class="flex items-center justify-center gap-2">
 		{#each Array(totalSteps) as _, i}
@@ -201,6 +237,19 @@
 			<p class="text-sm text-surface-400">
 				Let's get you set up. First, add an API key for your LLM provider.
 			</p>
+
+			<!-- Saved keys -->
+			{#if savedKeys.length > 0}
+				<div class="space-y-1.5">
+					{#each savedKeys as key}
+						<div class="flex items-center gap-2 rounded-md border border-green-500/20 bg-green-500/5 px-3 py-2">
+							<span class="h-1.5 w-1.5 rounded-full bg-green-500"></span>
+							<span class="text-sm text-surface-200">{key.label}</span>
+							<span class="text-xs text-green-400">saved</span>
+						</div>
+					{/each}
+				</div>
+			{/if}
 
 			<div class="space-y-3">
 				<label class="block text-sm font-medium">
@@ -226,15 +275,14 @@
 				</label>
 
 				<button
-					class="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-500"
+					class="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-500 disabled:opacity-50"
 					onclick={saveApiKey}
+					disabled={!apiKey.trim()}
 				>
 					Save Key
 				</button>
 
-				{#if keyStatus === 'saved'}
-					<p class="text-sm text-green-400">Key saved to keychain</p>
-				{:else if keyStatus === 'error'}
+				{#if keyStatus === 'error'}
 					<p class="text-sm text-red-400">Failed to save key</p>
 				{/if}
 			</div>
@@ -285,8 +333,7 @@
 
 				{#if n8nStatus === 'not_running'}
 					<p class="mt-3 text-sm text-surface-400">
-						Start n8n with <code class="rounded bg-surface-600 px-1.5 py-0.5 text-xs text-surface-300">docker compose up -d</code>
-						then click retry.
+						n8n will start automatically when the app launches. Click retry to check again.
 					</p>
 					<button
 						onclick={checkN8n}
@@ -340,7 +387,28 @@
 			</div>
 
 			<div class="space-y-3 pt-2">
-				<p class="text-sm font-medium">Repository (optional)</p>
+				<p class="text-sm font-medium">Repositories (optional)</p>
+
+				<!-- Saved repos (scrollable) -->
+				{#if savedRepos.length > 0}
+					<div class="max-h-32 space-y-1.5 overflow-y-auto pr-1">
+						{#each savedRepos as repo, i}
+							<div class="flex items-center gap-2 rounded-md border border-green-500/20 bg-green-500/5 px-3 py-1.5">
+								<span class="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0"></span>
+								<span class="flex-1 min-w-0 truncate text-sm text-surface-200">{repo.name}</span>
+								<span class="text-xs text-surface-500">{repo.platform}</span>
+								<button
+									class="shrink-0 text-xs text-red-400 hover:text-red-300"
+									onclick={() => removeRepo(i)}
+								>
+									Remove
+								</button>
+							</div>
+						{/each}
+					</div>
+				{/if}
+
+				<!-- Browse button + error -->
 				<div class="flex items-center gap-3">
 					<button
 						class="rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm font-medium transition-colors hover:bg-surface-600 disabled:opacity-50"
@@ -349,24 +417,51 @@
 					>
 						{browsing ? 'Opening…' : 'Browse…'}
 					</button>
-					{#if repoBrowseStatus}
-						<span class="text-sm {repoBrowseStatus.ok ? 'text-green-400' : 'text-red-400'}">
-							{repoBrowseStatus.ok ? '✓' : '✗'} {repoBrowseStatus.msg}
-						</span>
+					{#if repoBrowseStatus && !repoBrowseStatus.ok}
+						<span class="text-sm text-red-400">{repoBrowseStatus.msg}</span>
+					{/if}
+					{#if !showManualRepo}
+						<button
+							class="text-xs text-surface-500 hover:text-surface-300"
+							onclick={() => showManualRepo = true}
+						>
+							or add manually
+						</button>
 					{/if}
 				</div>
-				<input
-					type="text"
-					class="block w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm"
-					placeholder="Repository name"
-					bind:value={repoName}
-				/>
-				<input
-					type="text"
-					class="block w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm"
-					placeholder="/path/to/repo"
-					bind:value={repoPath}
-				/>
+
+				<!-- Manual entry (hidden by default) -->
+				{#if showManualRepo}
+					<div class="space-y-2 rounded-md border border-surface-700 bg-surface-800/50 p-3">
+						<input
+							type="text"
+							class="block w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm"
+							placeholder="Repository name"
+							bind:value={repoName}
+						/>
+						<input
+							type="text"
+							class="block w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm"
+							placeholder="/path/to/repo"
+							bind:value={repoPath}
+						/>
+						<div class="flex items-center gap-2">
+							<button
+								class="rounded-md bg-surface-600 px-3 py-1.5 text-sm font-medium text-surface-200 transition-colors hover:bg-surface-500 disabled:opacity-50"
+								onclick={addRepo}
+								disabled={!repoName.trim() || !repoPath.trim()}
+							>
+								Add
+							</button>
+							<button
+								class="text-xs text-surface-500 hover:text-surface-300"
+								onclick={() => { showManualRepo = false; repoName = ''; repoPath = ''; }}
+							>
+								Cancel
+							</button>
+						</div>
+					</div>
+				{/if}
 			</div>
 		</div>
 
@@ -466,7 +561,7 @@
 				class="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-500"
 				onclick={() => (step += 1)}
 			>
-				{step === 1 && !apiKey && keyStatus !== 'saved' ? 'Skip' : 'Next'}
+				{step === 1 && savedKeys.length === 0 ? 'Skip' : 'Next'}
 			</button>
 		{:else}
 			<button

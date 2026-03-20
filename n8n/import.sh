@@ -3,7 +3,7 @@
 # Usage: ./n8n/import.sh [N8N_URL]
 set -euo pipefail
 
-N8N_URL="${1:-http://localhost:5678}"
+N8N_URL="${1:-http://localhost:45678}"
 WORKFLOW_DIR="$(cd "$(dirname "$0")/workflows" && pwd)"
 
 echo "Importing Laya workflows into n8n at $N8N_URL..."
