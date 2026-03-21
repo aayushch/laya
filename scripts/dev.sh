@@ -13,6 +13,11 @@ cleanup() {
     echo "Shutting down..."
     # Kill background engine process (if started standalone)
     [ -n "${ENGINE_PID:-}" ] && kill "$ENGINE_PID" 2>/dev/null && echo "  Engine stopped"
+    # Kill n8n process on port 45678 (Tauri's RunEvent::Exit may not fire in dev mode)
+    N8N_PIDS=$(lsof -ti tcp:45678 2>/dev/null || true)
+    if [ -n "$N8N_PIDS" ]; then
+        echo "$N8N_PIDS" | xargs kill 2>/dev/null && echo "  n8n stopped"
+    fi
     exit 0
 }
 trap cleanup SIGINT SIGTERM
