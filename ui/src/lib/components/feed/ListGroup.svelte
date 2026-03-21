@@ -209,7 +209,7 @@
 			</div>
 		{/if}
 
-		<div class="flex-1 rounded-lg border {expanded ? 'border-surface-600 bg-surface-900' : 'border-surface-700/40 ' + groupBgStyle} transition-colors">
+		<div class="flex-1 border {expanded ? 'rounded-t-lg border-surface-600 border-b-0 bg-surface-900' : 'rounded-lg border-surface-700/40 ' + groupBgStyle} transition-colors">
 			<!-- Group header row -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
@@ -308,12 +308,43 @@
 		</div>
 	</div>
 
-	<!-- Expanded: child card rows — rendered outside bordered container so checkboxes align in gutter -->
+	<!-- Expanded: child card rows — checkboxes in gutter, cards in container -->
 	{#if expanded}
-		<div class="py-1" transition:slide={{ duration: 200 }}>
-			{#each group.cards as card (card.card_id)}
-				<ListRow {card} {onselect} {ondelete} {selectedCardId} indented={true} bulkSelected={bulkSelectedIds?.has(card.card_id) ?? false} {onbulktoggle} />
-			{/each}
+		<div transition:slide={{ duration: 200 }}>
+			<div class="flex {onbulktoggle ? 'gap-1.5' : ''}">
+				<!-- Gutter spacer to align container with header -->
+				{#if onbulktoggle}
+					<div class="w-5 shrink-0"></div>
+				{/if}
+				<div class="flex-1 rounded-b-lg border border-t-0 border-surface-600 bg-surface-900 py-1">
+					{#each group.cards as card (card.card_id)}
+						<div class="flex items-center">
+							<!-- Checkbox pulled into the gutter via negative margin -->
+							{#if onbulktoggle}
+								<div class="w-5 shrink-0 flex items-center justify-center -ml-[26px] mr-[6px]">
+									<button
+										class="h-3.5 w-3.5 rounded border flex items-center justify-center transition-colors
+											{bulkSelectedIds?.has(card.card_id)
+												? 'bg-laya-orange border-laya-orange'
+												: 'border-surface-500 hover:border-surface-300 bg-transparent'}"
+										onclick={(e) => { e.stopPropagation(); onbulktoggle(card.card_id, e); }}
+										aria-label="{bulkSelectedIds?.has(card.card_id) ? 'Deselect' : 'Select'} card"
+									>
+										{#if bulkSelectedIds?.has(card.card_id)}
+											<svg class="h-2.5 w-2.5 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+											</svg>
+										{/if}
+									</button>
+								</div>
+							{/if}
+							<div class="flex-1">
+								<ListRow {card} {onselect} {ondelete} {selectedCardId} indented={true} />
+							</div>
+						</div>
+					{/each}
+				</div>
+			</div>
 		</div>
 	{/if}
 </div>
