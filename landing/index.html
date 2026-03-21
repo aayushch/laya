@@ -584,6 +584,46 @@ nav .container {
   display: block;
 }
 
+/* Agent showcase tabs */
+.agent-showcase {
+  box-shadow: none;
+  overflow: visible;
+}
+.agent-screenshots {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(246, 172, 105, 0.08),
+    0 16px 48px rgba(0, 0, 0, 0.4);
+}
+.agent-screenshots img {
+  width: 100%;
+  display: block;
+}
+.agent-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+.agent-tab {
+  padding: 8px 20px;
+  border-radius: 100px;
+  background: var(--surface-900);
+  border: 1px solid var(--surface-700);
+  color: var(--surface-300);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s;
+}
+.agent-tab.active,
+.agent-tab:hover {
+  background: rgba(246, 172, 105, 0.1);
+  border-color: rgba(246, 172, 105, 0.3);
+  color: var(--laya-orange);
+}
+
 /* ═══════════════════════════════════════════════════
    INTEGRATIONS
    ═══════════════════════════════════════════════════ */
@@ -1326,6 +1366,33 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
       </div>
       <div class="feature-image">
         <img src="images/briefing-view.png" alt="Laya daily briefing showing events, action items, and key updates">
+      </div>
+    </div>
+
+    <!-- Deep dive 4: Coding Agents -->
+    <div class="feature-showcase reverse animate-on-scroll" style="margin-top: 100px;">
+      <div class="feature-text">
+        <span class="tag">Agents</span>
+        <h2>Real coding agents, right in your feed</h2>
+        <p>When a card needs code changes, Laya can spawn real coding agents — Claude Code, Gemini CLI, or Codex — directly in your repos. Approve the agent, watch it work in real-time, and review results in the workspace.</p>
+        <ul>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> One-click agent approval from your feed</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Live timeline of agent actions and tool calls</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Full workspace with context, draft replies, and related entities</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Pause, cancel, or guide agents at any point</li>
+        </ul>
+      </div>
+      <div class="feature-image agent-showcase">
+        <div class="agent-screenshots">
+          <img src="images/agent-approve.png" alt="Laya agent approval — one-click to approve a coding agent from your feed" class="agent-shot" id="agent-shot-approve" style="display: block;">
+          <img src="images/agent-running.png" alt="Laya agent running — live view of a coding agent working on your task" class="agent-shot" id="agent-shot-running" style="display: none;">
+          <img src="images/agent-workspace.png" alt="Laya agent workspace — full workspace with timeline, context, and draft replies" class="agent-shot" id="agent-shot-workspace" style="display: none;">
+        </div>
+        <div class="agent-tabs">
+          <button class="agent-tab active" data-agent-target="agent-shot-approve">Approve</button>
+          <button class="agent-tab" data-agent-target="agent-shot-running">Running</button>
+          <button class="agent-tab" data-agent-target="agent-shot-workspace">Workspace</button>
+        </div>
       </div>
     </div>
 
@@ -2158,6 +2225,18 @@ document.querySelectorAll('.showcase-tab').forEach(tab => {
     tab.classList.add('active');
     const target = tab.dataset.target;
     document.querySelectorAll('.showcase-frame img').forEach(img => {
+      img.style.display = img.id === target ? 'block' : 'none';
+    });
+  });
+});
+
+// ── Agent screenshot tabs ──
+document.querySelectorAll('.agent-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.agent-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const target = tab.dataset.agentTarget;
+    document.querySelectorAll('.agent-shot').forEach(img => {
       img.style.display = img.id === target ? 'block' : 'none';
     });
   });
