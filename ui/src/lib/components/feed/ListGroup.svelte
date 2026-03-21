@@ -232,7 +232,7 @@
 		</span>
 
 		<!-- Subject (entity title) — skip actor column, use ml to match card's actor+gap -->
-		<span class="min-w-0 flex-1 truncate text-xs font-medium text-surface-200 ml-2" title={group.entity_title}>
+		<span class="min-w-0 flex-1 truncate text-xs font-medium text-laya-amber ml-2" title={group.entity_title}>
 			{group.entity_title}
 		</span>
 
