@@ -1119,9 +1119,86 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
   .docs-sidebar { display: none; }
   .docs-content { margin-left: 0; padding: 24px 20px 60px; }
 }
+
+/* ═══════════════════════════════════════════════════
+   IMAGE LIGHTBOX
+   ═══════════════════════════════════════════════════ */
+.img-zoom-wrapper {
+  position: relative;
+  cursor: zoom-in;
+}
+.img-zoom-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(246, 172, 105, 0.2);
+  color: var(--laya-orange);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-in;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 2;
+  backdrop-filter: blur(8px);
+}
+.img-zoom-wrapper:hover .img-zoom-btn {
+  opacity: 1;
+}
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(12px);
+  z-index: 10000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  cursor: zoom-out;
+}
+.lightbox-overlay.active {
+  display: flex;
+}
+.lightbox-overlay img {
+  max-width: 95vw;
+  max-height: 90vh;
+  border-radius: 12px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+}
+.lightbox-close {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
 </style>
 </head>
 <body>
+
+<!-- Lightbox modal -->
+<div class="lightbox-overlay" id="lightbox">
+  <button class="lightbox-close" id="lightbox-close">&times;</button>
+  <img id="lightbox-img" src="" alt="">
+</div>
 
 <!-- ═══════════════════ LANDING PAGE ═══════════════════ -->
 <div id="landing-page">
@@ -2330,6 +2407,41 @@ if (docsSidebar) {
     });
   });
 }
+
+// ── Image lightbox ──
+(function() {
+  const overlay = document.getElementById('lightbox');
+  const lightboxImg = document.getElementById('lightbox-img');
+  const magnifySvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>';
+
+  // Wrap all feature/showcase images with zoom button
+  document.querySelectorAll('.feature-image > img, .showcase-frame > img, .agent-screenshots > img').forEach(img => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'img-zoom-wrapper';
+    img.parentNode.insertBefore(wrapper, img);
+    wrapper.appendChild(img);
+
+    const btn = document.createElement('button');
+    btn.className = 'img-zoom-btn';
+    btn.innerHTML = magnifySvg;
+    wrapper.appendChild(btn);
+
+    function openLightbox(e) {
+      e.stopPropagation();
+      lightboxImg.src = img.src;
+      lightboxImg.alt = img.alt;
+      overlay.classList.add('active');
+    }
+    btn.addEventListener('click', openLightbox);
+    wrapper.addEventListener('click', openLightbox);
+  });
+
+  overlay.addEventListener('click', () => overlay.classList.remove('active'));
+  document.getElementById('lightbox-close').addEventListener('click', () => overlay.classList.remove('active'));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') overlay.classList.remove('active');
+  });
+})();
 </script>
 
 </body>
