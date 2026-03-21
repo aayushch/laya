@@ -556,6 +556,27 @@
 							{#if space.paused}
 								<span class="rounded bg-laya-amber/20 px-1.5 py-0.5 text-[10px] font-medium text-laya-amber">PAUSED</span>
 							{/if}
+							{#if spaceSources.length > 0}
+								<!-- svelte-ignore a11y_click_events_have_key_events -->
+								<!-- svelte-ignore a11y_no_static_element_interactions -->
+								<span
+									onclick={(e) => { e.stopPropagation(); togglePause(space); }}
+									class="rounded-md px-2 py-0.5 text-[10px] font-medium cursor-pointer transition-colors
+										{space.paused
+											? 'bg-laya-orange/15 text-laya-orange hover:bg-laya-orange/25'
+											: 'bg-surface-700 text-surface-400 hover:bg-surface-600 hover:text-surface-200'}
+										{togglingPause === space.space_id ? ' opacity-50 pointer-events-none' : ''}"
+									title={space.paused ? 'Resume all ingestion workflows' : 'Pause all ingestion workflows'}
+								>
+									{#if togglingPause === space.space_id}
+										...
+									{:else if space.paused}
+										▶ Resume
+									{:else}
+										⏸ Pause
+									{/if}
+								</span>
+							{/if}
 						</div>
 						{#if space.description}
 							<p class="truncate text-xs text-surface-500">{space.description}</p>
@@ -580,29 +601,7 @@
 						</svg>
 					</div>
 				</button>
-				{#if spaceSources.length > 0}
-					<div class="flex justify-end px-4 -mt-2 pb-2">
-						<button
-							onclick={() => togglePause(space)}
-							disabled={togglingPause === space.space_id}
-							class="rounded-md px-2 py-1 text-xs font-medium transition-colors
-								{space.paused
-									? 'bg-laya-orange/15 text-laya-orange hover:bg-laya-orange/25'
-									: 'bg-surface-700 text-surface-400 hover:bg-surface-600 hover:text-surface-200'}
-								disabled:opacity-50"
-							title={space.paused ? 'Resume all ingestion workflows' : 'Pause all ingestion workflows'}
-						>
-							{#if togglingPause === space.space_id}
-								...
-							{:else if space.paused}
-								▶ Resume
-							{:else}
-								⏸ Pause
-							{/if}
-						</button>
-					</div>
-				{/if}
-
+	
 				<!-- Expanded Detail -->
 				{#if expandedSpaceId === space.space_id}
 					<div class="border-t border-surface-700 p-4 space-y-4">

@@ -10,6 +10,7 @@ import tenacity
 from laya.api.websocket import manager
 from laya.config import get_n8n_config
 from laya.db.sqlite import get_db
+from laya.http_client import get_client
 
 log = structlog.get_logger()
 
@@ -167,8 +168,7 @@ async def execute_action(
         reraise=True,
     )
     async def _post_to_n8n():
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            return await client.post(webhook_url, json=n8n_payload)
+        return await get_client().post(webhook_url, json=n8n_payload, timeout=30.0)
 
     try:
         resp = await _post_to_n8n()

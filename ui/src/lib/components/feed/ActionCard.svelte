@@ -80,7 +80,7 @@
 		agent_running:      'bg-violet-950/55 border-violet-800/25 hover:border-violet-700/40 card-pulse-violet',
 		awaiting_input:     'bg-amber-950/55  border-amber-800/30  hover:border-amber-700/45  card-pulse-amber',
 		done:               'bg-emerald-950/50 border-emerald-800/20 hover:border-emerald-700/35',
-		failed:             'bg-red-950/60    border-red-800/35    hover:border-red-700/50',
+		failed:             'bg-rose-950/60   border-rose-800/35   hover:border-rose-700/50',
 		dismissed:          'bg-surface-800/40 border-surface-700/25 hover:border-surface-600/40 opacity-50 hover:opacity-75',
 	};
 

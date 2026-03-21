@@ -9,6 +9,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from laya.config import get_n8n_config, load_repos, load_settings, save_repos, save_settings, get_all_custom_providers
+from laya.http_client import get_client
 from laya.integrations.n8n_bootstrap import ensure_n8n_ready
 from laya.security.keychain import delete_api_key, get_api_key, has_api_key, store_api_key
 
@@ -452,9 +453,8 @@ async def test_n8n_connection(body: dict | None = None) -> dict:
     result: dict = {"base_url": base_url, "health": "unknown", "webhook": None}
 
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(f"{base_url}/healthz")
-            result["health"] = "healthy" if resp.status_code == 200 else "unhealthy"
+        resp = await get_client().get(f"{base_url}/healthz", timeout=5.0)
+        result["health"] = "healthy" if resp.status_code == 200 else "unhealthy"
     except httpx.ConnectError:
         result["health"] = "unreachable"
     except httpx.TimeoutException:
@@ -465,12 +465,12 @@ async def test_n8n_connection(body: dict | None = None) -> dict:
     webhook_path = body.get("webhook_path") if body else None
     if webhook_path and result["health"] == "healthy":
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                resp = await client.post(
-                    f"{base_url}/webhook-test/{webhook_path}",
-                    json={"test": True},
-                )
-                result["webhook"] = {
+            resp = await get_client().post(
+                f"{base_url}/webhook-test/{webhook_path}",
+                json={"test": True},
+                timeout=5.0,
+            )
+            result["webhook"] = {
                     "path": webhook_path,
                     "status_code": resp.status_code,
                     "reachable": resp.status_code < 500,

@@ -26,6 +26,10 @@
 	let reopening = $state(false);
 	let showDeleteConfirm = $state(false);
 	let deleting = $state(false);
+	let actorTruncated = $state(false);
+	let subjectTruncated = $state(false);
+	let actorEl: HTMLSpanElement | undefined = $state();
+	let subjectEl: HTMLSpanElement | undefined = $state();
 
 	const priorityColors: Record<string, string> = {
 		CRITICAL: 'bg-red-600 text-red-50',
@@ -62,7 +66,7 @@
 		agent_running:      'bg-violet-950/55 hover:bg-violet-950/70',
 		awaiting_input:     'bg-amber-950/55  hover:bg-amber-950/70',
 		done:               'bg-emerald-950/50 hover:bg-emerald-950/65',
-		failed:             'bg-red-950/60    hover:bg-red-950/75',
+		failed:             'bg-rose-950/60   hover:bg-rose-950/75',
 		dismissed:          'bg-surface-800/40 hover:bg-surface-800/60',
 		archived:           'bg-surface-900/60 hover:bg-surface-900/80',
 	};
@@ -161,12 +165,32 @@
 	</span>
 
 	<!-- Actor — fixed width, always present for alignment -->
-	<span class="w-[100px] shrink-0 truncate text-xs text-surface-400 ml-2" title={card.actor_name ?? ''}>
-		{card.actor_name ?? ''}
+	<span class="group/actor relative w-[100px] shrink-0 ml-2"
+		onmouseenter={() => { if (actorEl) actorTruncated = actorEl.scrollWidth > actorEl.clientWidth; }}
+	>
+		<span bind:this={actorEl} class="block truncate text-xs text-surface-400">
+			{card.actor_name ?? ''}
+		</span>
+		{#if actorTruncated}
+			<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/actor:opacity-100">
+				{card.actor_name}
+			</span>
+		{/if}
 	</span>
 
 	<!-- Subject (header) — takes remaining space -->
-	<span class="min-w-0 flex-1 truncate text-xs font-medium text-surface-200 ml-2" title={card.header}>{card.header}</span>
+	<span class="group/subject relative min-w-0 flex-1 ml-2"
+		onmouseenter={() => { if (subjectEl) subjectTruncated = subjectEl.scrollWidth > subjectEl.clientWidth; }}
+	>
+		<span bind:this={subjectEl} class="block truncate text-xs font-medium text-surface-200">
+			{card.header}
+		</span>
+		{#if subjectTruncated}
+			<span class="pointer-events-none absolute top-full left-0 z-10 mt-1 max-w-xs whitespace-normal rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/subject:opacity-100">
+				{card.header}
+			</span>
+		{/if}
+	</span>
 
 	<!-- Status — fixed width -->
 	<span class="w-[70px] shrink-0 flex items-center gap-1 ml-2">

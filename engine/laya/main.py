@@ -32,6 +32,7 @@ from laya.api.websocket import manager
 from laya.api.workspace_api import router as workspace_router
 from laya.api.ws_router import handle_ws_message
 from laya.config import ENGINE_HOST, ENGINE_PORT, ensure_directories, load_repos, load_rules, load_settings, load_team
+from laya.http_client import close_client as close_http_client
 from laya.integrations.n8n_bootstrap import ensure_n8n_ready, sync_workflows_background
 from laya.db.chromadb_store import connect_chromadb, disconnect_chromadb
 from laya.db.migrate import run_migrations
@@ -185,6 +186,7 @@ async def lifespan(app: FastAPI):
     await stop_consumer()
     stop_scheduler()
     await session_manager.cleanup_on_shutdown()
+    await close_http_client()
     disconnect_chromadb()
     await disconnect()
 
