@@ -72,9 +72,35 @@ The original concept documents that informed this architecture:
 ### Prerequisites
 
 - Python 3.10+
-- Node.js 18+
+- Node.js 20.19+ (required by `@sveltejs/vite-plugin-svelte`)
 - Rust toolchain (via `rustup`)
-- Xcode Command Line Tools (macOS): `xcode-select --install`
+
+#### Platform-specific dependencies
+
+**macOS:**
+
+```bash
+xcode-select --install
+```
+
+**Linux (Ubuntu/Debian):**
+
+Tauri v2 requires several system libraries for GTK, WebKit, and app-indicator support:
+
+```bash
+sudo apt install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+```
+
+The default Linux inotify file watcher limit (65,536) is too low for this project -- Vite needs to watch the source files while the Rust `target/` directory consumes most of the quota, causing Tailwind CSS to silently fail to generate utility classes. Increase the limit:
+
+```bash
+# Immediate (resets on reboot)
+echo 524288 | sudo tee /proc/sys/fs/inotify/max_user_watches
+
+# Permanent
+echo 'fs.inotify.max_user_watches=524288' | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
+```
 
 ### Setup
 
@@ -86,9 +112,11 @@ scripts/setup-dev.sh   # One-time: creates venv, installs deps, installs n8n via
 
 ```bash
 scripts/dev.sh
-# Starts n8n (local Node.js), Python engine, and Tauri dev window
+# Starts Python engine and Tauri dev window
 # Engine: http://127.0.0.1:8420  |  UI: http://localhost:5173
 ```
+
+> **Note:** If the engine fails with "Address already in use", a stale engine process may be holding port 8420. The engine will attempt to kill it automatically on startup.
 
 ## Building the Installable App
 
@@ -101,7 +129,7 @@ This builds the app using your local Python venv -- the resulting app expects Py
 ```bash
 cd ui
 npm run build          # Build SvelteKit frontend -> ui/build/
-npx tauri build        # Compile Rust + bundle into platform installer
+npx @tauri-apps/cli build        # Compile Rust + bundle into platform installer
 ```
 
 Output locations:
@@ -178,7 +206,7 @@ ui/src-tauri/binaries/
 
 ```bash
 cd ui
-npx tauri build    # Bundles SvelteKit + Rust + sidecar binary into installer
+npx @tauri-apps/cli build    # Bundles SvelteKit + Rust + sidecar binary into installer
 ```
 
 #### Estimated bundle sizes
@@ -196,7 +224,7 @@ For cross-platform releases, use GitHub Actions with a matrix build:
 2. Feed the resulting binaries into the Tauri build step
 3. Tauri produces the platform-specific installer
 
-> **Development workflow** is unaffected -- `scripts/dev.sh` and `npx tauri dev` continue to use the Python venv directly. The bundled binary is only used for production builds.
+> **Development workflow** is unaffected -- `scripts/dev.sh` and `npx @tauri-apps/cli dev` continue to use the Python venv directly. The bundled binary is only used for production builds.
 
 ## Project Status
 
