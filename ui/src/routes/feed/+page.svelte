@@ -298,9 +298,11 @@
 
 	// Handle card link clicks from chat — find the card and navigate to it
 	$effect(() => {
-		const cardId = $pendingCardId;
-		if (!cardId) return;
+		const rawId = $pendingCardId;
+		if (!rawId) return;
 		pendingCardId.set(null);
+		// Normalize: LLM may omit the "card_" prefix
+		const cardId = rawId.startsWith('card_') ? rawId : `card_${rawId}`;
 		// Look for the card in currently loaded groups first
 		for (const g of groups) {
 			const found = g.cards.find((c) => c.card_id === cardId);

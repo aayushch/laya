@@ -516,6 +516,9 @@ async def reopen_card(card_id: str) -> dict:
 @router.get("/cards/{card_id}")
 async def get_card(card_id: str) -> CardResponse:
     """Get full action card detail."""
+    # Normalize: chat LLM may reference cards without the "card_" prefix
+    if not card_id.startswith("card_"):
+        card_id = f"card_{card_id}"
     db = await get_db()
 
     rows = await db.execute_fetchall(
