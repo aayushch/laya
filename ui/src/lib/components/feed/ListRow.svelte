@@ -8,13 +8,17 @@
 		onselect,
 		ondelete,
 		selectedCardId = '',
-		indented = false
+		indented = false,
+		bulkSelected = false,
+		onbulktoggle
 	}: {
 		card: ActionCard;
 		onselect: (card: ActionCard) => void;
 		ondelete?: (cardId: string) => void;
 		selectedCardId?: string;
 		indented?: boolean;
+		bulkSelected?: boolean;
+		onbulktoggle?: (cardId: string, event: MouseEvent) => void;
 	} = $props();
 
 	const isSelected = $derived(card.card_id === selectedCardId);
@@ -146,20 +150,41 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div
-	data-card-id={card.card_id}
-	class="group/row flex items-center rounded-lg px-3 py-1.5 text-left transition-colors cursor-pointer
-		{isSelected ? 'bg-laya-orange/10 border border-laya-orange/30' : `border border-transparent ${statusRowStyle[card.status] ?? 'hover:bg-surface-800/60'}`}
-		{isArchived ? 'opacity-50 hover:opacity-75' : ''}"
-	onclick={() => onselect(card)}
-	onkeydown={(e) => e.key === 'Enter' && onselect(card)}
-	role="button"
-	tabindex="0"
->
-	<!-- Chevron spacer — aligns with group chevron -->
-	<div class="w-5 shrink-0 {indented ? 'ml-1' : ''}"></div>
+<div class="flex items-center {onbulktoggle ? 'gap-1.5' : ''}">
+	<!-- Bulk selection checkbox — outside the row -->
+	{#if onbulktoggle}
+		<div class="w-5 shrink-0 flex items-center justify-center">
+			<button
+				class="h-3.5 w-3.5 rounded border flex items-center justify-center transition-colors
+					{bulkSelected
+						? 'bg-laya-orange border-laya-orange'
+						: 'border-surface-500 hover:border-surface-300 bg-transparent'}"
+				onclick={(e) => { e.stopPropagation(); onbulktoggle(card.card_id, e); }}
+				aria-label="{bulkSelected ? 'Deselect' : 'Select'} card"
+			>
+				{#if bulkSelected}
+					<svg class="h-2.5 w-2.5 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+					</svg>
+				{/if}
+			</button>
+		</div>
+	{/if}
 
-	<!-- Source — fixed width -->
+	<div
+		data-card-id={card.card_id}
+		class="group/row flex flex-1 items-center rounded-lg px-3 py-1.5 text-left transition-colors cursor-pointer
+			{isSelected ? 'bg-laya-orange/10 border border-laya-orange/30' : `border border-transparent ${statusRowStyle[card.status] ?? 'hover:bg-surface-800/60'}`}
+			{isArchived ? 'opacity-50 hover:opacity-75' : ''}"
+		onclick={() => onselect(card)}
+		onkeydown={(e) => e.key === 'Enter' && onselect(card)}
+		role="button"
+		tabindex="0"
+	>
+		<!-- Chevron spacer — aligns with group chevron -->
+		<div class="w-5 shrink-0 {indented ? 'ml-1' : ''}"></div>
+
+		<!-- Source — fixed width -->
 	<span class="w-[60px] shrink-0 text-[10px] font-semibold uppercase tracking-wider text-surface-500 truncate" title={platform}>
 		{platform}
 	</span>
@@ -310,6 +335,7 @@
 
 	<!-- Time — fixed width -->
 	<span class="w-[52px] shrink-0 text-right text-[10px] text-surface-500 whitespace-nowrap">{timeAgo(card.created_at)}</span>
+	</div>
 </div>
 
 {#if showDeleteConfirm}

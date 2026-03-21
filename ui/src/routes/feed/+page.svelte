@@ -9,8 +9,10 @@
 	import CardDetail from '$lib/components/feed/CardDetail.svelte';
 	import DaySummaryComponent from '$lib/components/feed/DaySummary.svelte';
 	import { feedViewMode } from '$lib/stores/feedView';
+	import { feedSelection } from '$lib/stores/feedSelection';
 	import ListRow from '$lib/components/feed/ListRow.svelte';
 	import ListGroupComponent from '$lib/components/feed/ListGroup.svelte';
+	import BulkActionsDropdown from '$lib/components/feed/BulkActionsDropdown.svelte';
 	import { recentCards, recentDrawerOpen, trackCardVisit, clearRecentCards, type RecentCardEntry } from '$lib/stores/recentCards';
 	import { pendingCardId } from '$lib/stores/chat';
 
@@ -167,6 +169,7 @@
 				selectedCard = null;
 				sessionStorage.removeItem(SELECTED_CARD_KEY);
 			}
+			feedSelection.removeDeleted(msg.card_id);
 			groups = groups
 				.map((g) => ({ ...g, cards: g.cards.filter((c) => c.card_id !== msg.card_id) }))
 				.filter((g) => g.cards.length > 0);
@@ -195,6 +198,7 @@
 					const cardId = msg.card_id!;
 					// Mark card as exiting to trigger fade-out transition
 					exitingCardIds = new Set([...exitingCardIds, cardId]);
+					feedSelection.removeDeleted(cardId);
 					if (selectedCard?.card_id === cardId) {
 						selectedCard = null;
 						sessionStorage.removeItem(SELECTED_CARD_KEY);
@@ -527,41 +531,95 @@
 		if (next.has(key)) next.delete(key); else next.add(key);
 		collapsedSections = next;
 	}
+
+	// ── Bulk selection ──────────────────────────────────────────────────
+	const allVisibleCardIds = $derived(filteredGroups.flatMap(g => g.cards.map(c => c.card_id)));
+	const allVisibleCardsMap = $derived(
+		new Map(filteredGroups.flatMap(g => g.cards.map(c => [c.card_id, c] as const)))
+	);
+	const selectionCount = $derived($feedSelection.size);
+	const hasSelection = $derived(selectionCount > 0);
+	const selectedCards = $derived(
+		[...$feedSelection].map(id => allVisibleCardsMap.get(id)).filter(Boolean) as ActionCard[]
+	);
+
+	// Clear selection when leaving list view
+	$effect(() => {
+		if ($feedViewMode !== 'list') feedSelection.deselectAll();
+	});
+
+	function handleBulkToggle(cardId: string, event: MouseEvent) {
+		if (event.shiftKey && feedSelection.getLastClicked()) {
+			const lastId = feedSelection.getLastClicked()!;
+			const startIdx = allVisibleCardIds.indexOf(lastId);
+			const endIdx = allVisibleCardIds.indexOf(cardId);
+			if (startIdx !== -1 && endIdx !== -1) {
+				const [from, to] = [Math.min(startIdx, endIdx), Math.max(startIdx, endIdx)];
+				feedSelection.selectMany(allVisibleCardIds.slice(from, to + 1));
+			}
+		} else {
+			feedSelection.toggleCard(cardId);
+		}
+		feedSelection.setLastClicked(cardId);
+	}
+
+	function handleBulkToggleGroup(cardIds: string[], selected: boolean) {
+		if (selected) feedSelection.selectMany(cardIds);
+		else feedSelection.deselectMany(cardIds);
+	}
 </script>
 
 <div class="flex h-full flex-col">
 	<!-- Sticky summary bar spanning full width -->
 	<div class="flex items-center gap-2 pb-3">
-		<div class="flex items-center gap-1.5">
-			<span class="text-xs text-surface-500">{totalGroups} {totalGroups === 1 ? 'group' : 'groups'}</span>
-			<span class="text-[10px] text-surface-600">·</span>
-			<span class="text-xs text-surface-500">{totalCards} cards</span>
-			{#if searchTerms.length > 0 && filteredTotalCards !== totalCards}
-				<span class="inline-flex items-center gap-1 rounded-full bg-laya-orange/10 px-2 py-0.5 text-[10px] font-medium text-laya-orange">
-					<svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-					{filteredGroups.length} shown
-				</span>
-			{/if}
-			{#if agentRunningCount > 0}
-				<span class="inline-flex items-center gap-1 rounded-full bg-laya-coral/10 px-2 py-0.5 text-[10px] font-medium text-laya-coral">
-					<span class="h-1.5 w-1.5 rounded-full bg-laya-coral animate-pulse"></span>
-					{agentRunningCount} running
-				</span>
-			{/if}
-			{#if failedCount > 0}
-				<span class="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-medium text-red-400">
-					<span class="h-1.5 w-1.5 rounded-full bg-red-400"></span>
-					{failedCount} failed
-				</span>
-			{/if}
-			{#if requiresApprovalCount > 0}
-				<span class="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-400">
-					<span class="h-1.5 w-1.5 rounded-full bg-violet-400"></span>
-					{requiresApprovalCount} {requiresApprovalCount === 1 ? 'needs' : 'need'} approval
-				</span>
-			{/if}
-		</div>
-		<div class="flex-1"></div>
+		{#if hasSelection && $feedViewMode === 'list'}
+			<!-- Bulk selection mode header -->
+			<div class="flex items-center gap-2">
+				<span class="text-xs font-medium text-laya-orange">{selectionCount} selected</span>
+				<span class="text-[10px] text-surface-600">·</span>
+				<button
+					class="text-xs text-surface-400 hover:text-surface-200 transition-colors"
+					onclick={() => feedSelection.deselectAll()}
+				>
+					Deselect All
+				</button>
+			</div>
+			<div class="ml-3">
+				<BulkActionsDropdown {selectedCards} ondelete={handleDelete} />
+			</div>
+			<div class="flex-1"></div>
+		{:else}
+			<div class="flex items-center gap-1.5">
+				<span class="text-xs text-surface-500">{totalGroups} {totalGroups === 1 ? 'group' : 'groups'}</span>
+				<span class="text-[10px] text-surface-600">·</span>
+				<span class="text-xs text-surface-500">{totalCards} cards</span>
+				{#if searchTerms.length > 0 && filteredTotalCards !== totalCards}
+					<span class="inline-flex items-center gap-1 rounded-full bg-laya-orange/10 px-2 py-0.5 text-[10px] font-medium text-laya-orange">
+						<svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+						{filteredGroups.length} shown
+					</span>
+				{/if}
+				{#if agentRunningCount > 0}
+					<span class="inline-flex items-center gap-1 rounded-full bg-laya-coral/10 px-2 py-0.5 text-[10px] font-medium text-laya-coral">
+						<span class="h-1.5 w-1.5 rounded-full bg-laya-coral animate-pulse"></span>
+						{agentRunningCount} running
+					</span>
+				{/if}
+				{#if failedCount > 0}
+					<span class="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-medium text-red-400">
+						<span class="h-1.5 w-1.5 rounded-full bg-red-400"></span>
+						{failedCount} failed
+					</span>
+				{/if}
+				{#if requiresApprovalCount > 0}
+					<span class="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-400">
+						<span class="h-1.5 w-1.5 rounded-full bg-violet-400"></span>
+						{requiresApprovalCount} {requiresApprovalCount === 1 ? 'needs' : 'need'} approval
+					</span>
+				{/if}
+			</div>
+			<div class="flex-1"></div>
+		{/if}
 		<!-- Recent Cards toggle -->
 		<button
 			class="flex items-center justify-center rounded-lg border px-2 py-1 transition-colors
@@ -804,9 +862,9 @@
 							<div class="flex flex-col gap-1 mb-2">
 								{#each sectionGroups as group (group.entity_id)}
 									{#if group.card_count === 1}
-										<ListRow card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} />
+										<ListRow card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} bulkSelected={$feedSelection.has(group.cards[0].card_id)} onbulktoggle={handleBulkToggle} />
 									{:else}
-										<ListGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} scrollToCardId={_scrollToCardId} />
+										<ListGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} scrollToCardId={_scrollToCardId} bulkSelectedIds={$feedSelection} onbulktoggle={handleBulkToggle} onbulktogglegroup={handleBulkToggleGroup} />
 									{/if}
 								{/each}
 							</div>
@@ -817,9 +875,9 @@
 					<div class="flex flex-col gap-1">
 						{#each filteredGroups as group (group.entity_id)}
 							{#if group.card_count === 1}
-								<ListRow card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} />
+								<ListRow card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} bulkSelected={$feedSelection.has(group.cards[0].card_id)} onbulktoggle={handleBulkToggle} />
 							{:else}
-								<ListGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} scrollToCardId={_scrollToCardId} />
+								<ListGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} scrollToCardId={_scrollToCardId} bulkSelectedIds={$feedSelection} onbulktoggle={handleBulkToggle} onbulktogglegroup={handleBulkToggleGroup} />
 							{/if}
 						{/each}
 					</div>

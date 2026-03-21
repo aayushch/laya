@@ -9,13 +9,19 @@
 		onselect,
 		ondelete,
 		selectedCardId = '',
-		scrollToCardId = null
+		scrollToCardId = null,
+		bulkSelectedIds,
+		onbulktoggle,
+		onbulktogglegroup
 	}: {
 		group: CardGroup;
 		onselect: (card: ActionCard) => void;
 		ondelete?: (cardId: string) => void;
 		selectedCardId?: string;
 		scrollToCardId?: string | null;
+		bulkSelectedIds?: Set<string>;
+		onbulktoggle?: (cardId: string, event: MouseEvent) => void;
+		onbulktogglegroup?: (cardIds: string[], selected: boolean) => void;
 	} = $props();
 
 	let expanded = $state(false);
@@ -109,6 +115,23 @@
 		return `${Math.floor(hours / 24)}d ago`;
 	}
 
+	// Group bulk selection state
+	const groupCardIds = $derived(group.cards.map(c => c.card_id));
+	const selectedInGroupCount = $derived(bulkSelectedIds ? groupCardIds.filter(id => bulkSelectedIds.has(id)).length : 0);
+	const allGroupSelected = $derived(selectedInGroupCount === groupCardIds.length && groupCardIds.length > 0);
+	const someGroupSelected = $derived(selectedInGroupCount > 0 && !allGroupSelected);
+
+	let groupCheckboxEl: HTMLButtonElement | undefined = $state();
+
+	function toggleGroupCheckbox(e: MouseEvent) {
+		e.stopPropagation();
+		if (allGroupSelected) {
+			onbulktogglegroup?.(groupCardIds, false);
+		} else {
+			onbulktogglegroup?.(groupCardIds, true);
+		}
+	}
+
 	function toggle() { expanded = !expanded; }
 	function toggleGroupMenu(e: Event) { e.stopPropagation(); groupMenuOpen = !groupMenuOpen; }
 
@@ -156,24 +179,54 @@
 	}
 </script>
 
-<div class="rounded-lg border {expanded ? 'border-surface-600 bg-surface-900' : 'border-surface-700/40 ' + groupBgStyle} transition-colors">
-	<!-- Group header row -->
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div
-		class="group/grow flex items-center px-3 py-1.5 cursor-pointer transition-colors"
-		onclick={toggle}
-		onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}
-		role="button"
-		tabindex="0"
-	>
-		<!-- Expand/collapse chevron — same w-5 as card spacer -->
-		<button aria-label="{expanded ? 'Collapse' : 'Expand'} group" class="w-5 shrink-0 flex items-center justify-center rounded text-surface-500 hover:text-surface-300">
-			<svg class="h-3 w-3 transition-transform {expanded ? '' : '-rotate-90'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-			</svg>
-		</button>
+<div>
+	<!-- Group header: checkbox in gutter + bordered row -->
+	<div class="flex items-center {onbulktoggle ? 'gap-1.5' : ''}">
+		<!-- Bulk selection checkbox (group-level) — in the gutter -->
+		{#if onbulktoggle}
+			<div class="w-5 shrink-0 flex items-center justify-center">
+				<button
+					bind:this={groupCheckboxEl}
+					class="h-3.5 w-3.5 rounded border flex items-center justify-center transition-colors
+						{allGroupSelected
+							? 'bg-laya-orange border-laya-orange'
+							: someGroupSelected
+								? 'bg-laya-orange/50 border-laya-orange'
+								: 'border-surface-500 hover:border-surface-300 bg-transparent'}"
+					onclick={toggleGroupCheckbox}
+					aria-label="{allGroupSelected ? 'Deselect' : 'Select'} all cards in group"
+				>
+					{#if allGroupSelected}
+						<svg class="h-2.5 w-2.5 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+						</svg>
+					{:else if someGroupSelected}
+						<svg class="h-2.5 w-2.5 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+							<path stroke-linecap="round" d="M6 12h12" />
+						</svg>
+					{/if}
+				</button>
+			</div>
+		{/if}
 
-		<!-- Source — fixed width, matches ListRow -->
+		<div class="flex-1 rounded-lg border {expanded ? 'border-surface-600 bg-surface-900' : 'border-surface-700/40 ' + groupBgStyle} transition-colors">
+			<!-- Group header row -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div
+				class="group/grow flex items-center px-3 py-1.5 cursor-pointer transition-colors"
+				onclick={toggle}
+				onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}
+				role="button"
+				tabindex="0"
+			>
+				<!-- Expand/collapse chevron — same w-5 as card spacer -->
+				<button aria-label="{expanded ? 'Collapse' : 'Expand'} group" class="w-5 shrink-0 flex items-center justify-center rounded text-surface-500 hover:text-surface-300">
+					<svg class="h-3 w-3 transition-transform {expanded ? '' : '-rotate-90'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+					</svg>
+				</button>
+
+				<!-- Source — fixed width, matches ListRow -->
 		<span class="w-[60px] shrink-0 text-[10px] font-semibold uppercase tracking-wider text-surface-500 truncate">
 			{platformLabel[group.platform] ?? group.platform}
 		</span>
@@ -252,11 +305,14 @@
 		<span class="w-[52px] shrink-0 text-right text-[10px] text-surface-500 whitespace-nowrap">{timeAgo(group.latest_at)}</span>
 	</div>
 
-	<!-- Expanded: child card rows -->
+		</div>
+	</div>
+
+	<!-- Expanded: child card rows — rendered outside bordered container so checkboxes align in gutter -->
 	{#if expanded}
-		<div class="border-t border-surface-700/30 py-1" transition:slide={{ duration: 200 }}>
+		<div class="py-1" transition:slide={{ duration: 200 }}>
 			{#each group.cards as card (card.card_id)}
-				<ListRow {card} {onselect} {ondelete} {selectedCardId} indented={true} />
+				<ListRow {card} {onselect} {ondelete} {selectedCardId} indented={true} bulkSelected={bulkSelectedIds?.has(card.card_id) ?? false} {onbulktoggle} />
 			{/each}
 		</div>
 	{/if}
