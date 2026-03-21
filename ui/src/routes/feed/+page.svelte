@@ -539,6 +539,7 @@
 	);
 	const selectionCount = $derived($feedSelection.size);
 	const hasSelection = $derived(selectionCount > 0);
+	const allVisibleSelected = $derived(allVisibleCardIds.length > 0 && allVisibleCardIds.every(id => $feedSelection.has(id)));
 	const selectedCards = $derived(
 		[...$feedSelection].map(id => allVisibleCardsMap.get(id)).filter(Boolean) as ActionCard[]
 	);
@@ -577,6 +578,15 @@
 			<div class="flex items-center gap-2">
 				<span class="text-xs font-medium text-laya-orange">{selectionCount} selected</span>
 				<span class="text-[10px] text-surface-600">·</span>
+				{#if !allVisibleSelected}
+					<button
+						class="text-xs text-surface-400 hover:text-surface-200 transition-colors"
+						onclick={() => feedSelection.selectMany(allVisibleCardIds)}
+					>
+						Select All
+					</button>
+					<span class="text-[10px] text-surface-600">·</span>
+				{/if}
 				<button
 					class="text-xs text-surface-400 hover:text-surface-200 transition-colors"
 					onclick={() => feedSelection.deselectAll()}
