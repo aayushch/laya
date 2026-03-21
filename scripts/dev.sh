@@ -47,7 +47,7 @@ done
 # Start Tauri dev
 echo "Starting Tauri dev server..."
 cd "$REPO_ROOT/ui"
-npx tauri dev
+npx @tauri-apps/cli dev
 
 # If Tauri exits, clean up
 cleanup

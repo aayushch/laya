@@ -127,9 +127,6 @@ async def lifespan(app: FastAPI):
     ensure_directories()
     log.info("engine_starting", host=ENGINE_HOST, port=ENGINE_PORT)
 
-    # Check if port is already in use and kill stale engine process
-    _kill_stale_engine(ENGINE_HOST, ENGINE_PORT)
-
     # Connect to SQLite and run migrations
     db = await connect()
     await run_migrations(db)
@@ -268,6 +265,9 @@ if __name__ == "__main__":
         not getattr(sys, "frozen", False)
         and os.path.isdir(os.path.join(os.path.dirname(__file__), "..", ".venv"))
     )
+
+    # Kill any stale engine holding our port before uvicorn tries to bind
+    _kill_stale_engine(ENGINE_HOST, ENGINE_PORT)
 
     if is_dev:
         uvicorn.run(

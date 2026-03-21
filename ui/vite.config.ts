@@ -3,5 +3,10 @@ import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-	plugins: [sveltekit(), tailwindcss()]
+	plugins: [sveltekit(), tailwindcss()],
+	server: {
+		watch: {
+			ignored: ['**/src-tauri/target/**']
+		}
+	}
 });
