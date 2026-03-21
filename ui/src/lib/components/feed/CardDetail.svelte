@@ -398,14 +398,14 @@
 					<input
 						bind:value={dismissReason}
 						placeholder="Reason (optional)"
-						class="flex-1 rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500"
+						class="flex-1 rounded-md border border-surface-600 bg-surface-900 px-2 py-1.5 text-xs text-surface-50 placeholder-surface-500"
 					/>
 					<button
-						class="rounded-lg bg-surface-600 px-4 py-2 text-sm font-medium text-surface-200 hover:bg-surface-500"
+						class="rounded-md bg-surface-600 px-3 py-1.5 text-xs font-medium text-surface-200 hover:bg-surface-500"
 						onclick={dismiss}
 						disabled={dismissing}
 					>
-						{dismissing ? 'Dismissing...' : 'Confirm'}
+						{dismissing ? '...' : 'Confirm'}
 					</button>
 					<button
 						class="text-sm text-surface-400 hover:text-surface-200"
@@ -417,20 +417,20 @@
 			{:else}
 				<div class="flex gap-2">
 					<button
-						class="flex-1 rounded-lg bg-green-700/40 py-2 text-sm font-medium text-green-300 transition-colors hover:bg-green-700/60"
+						class="flex-1 rounded-md bg-green-700/40 px-2 py-1.5 text-xs font-medium text-green-300 transition-colors hover:bg-green-700/60"
 						onclick={markDone}
 						disabled={markingDone}
 					>
-						{markingDone ? 'Marking...' : 'Mark as Done'}
+						{markingDone ? '...' : 'Done'}
 					</button>
 					<button
-						class="flex-1 rounded-lg bg-surface-700/50 py-2 text-sm font-medium text-surface-400 transition-colors hover:bg-surface-700"
+						class="flex-1 rounded-md bg-surface-700/50 px-2 py-1.5 text-xs font-medium text-surface-400 transition-colors hover:bg-surface-700"
 						onclick={() => (showDismissInput = true)}
 					>
 						Dismiss
 					</button>
 					<button
-						class="rounded-lg bg-surface-700/30 px-3 py-2 text-sm font-medium text-surface-500 transition-colors hover:bg-surface-700"
+						class="rounded-md bg-surface-700/30 px-2 py-1.5 text-xs font-medium text-surface-500 transition-colors hover:bg-surface-700"
 						onclick={archive}
 						disabled={archiving}
 						title="Archive this card"
@@ -445,14 +445,14 @@
 					<input
 						bind:value={dismissReason}
 						placeholder="Reason (optional)"
-						class="flex-1 rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500"
+						class="flex-1 rounded-md border border-surface-600 bg-surface-900 px-2 py-1.5 text-xs text-surface-50 placeholder-surface-500"
 					/>
 					<button
-						class="rounded-lg bg-surface-600 px-4 py-2 text-sm font-medium text-surface-200 hover:bg-surface-500"
+						class="rounded-md bg-surface-600 px-3 py-1.5 text-xs font-medium text-surface-200 hover:bg-surface-500"
 						onclick={dismiss}
 						disabled={dismissing}
 					>
-						{dismissing ? 'Dismissing...' : 'Confirm'}
+						{dismissing ? '...' : 'Confirm'}
 					</button>
 					<button
 						class="text-sm text-surface-400 hover:text-surface-200"
@@ -464,27 +464,27 @@
 			{:else}
 				<div class="flex gap-2">
 					<button
-						class="flex-1 rounded-lg bg-green-700/40 py-2 text-sm font-medium text-green-300 transition-colors hover:bg-green-700/60"
+						class="flex-1 rounded-md bg-green-700/40 px-2 py-1.5 text-xs font-medium text-green-300 transition-colors hover:bg-green-700/60"
 						onclick={markDone}
 						disabled={markingDone}
 					>
-						{markingDone ? 'Marking...' : 'Mark as Done'}
+						{markingDone ? '...' : 'Done'}
 					</button>
 					<button
-						class="flex-1 rounded-lg bg-violet-700/40 py-2 text-sm font-medium text-violet-300 transition-colors hover:bg-violet-700/60"
+						class="flex-1 rounded-md bg-violet-700/40 px-2 py-1.5 text-xs font-medium text-violet-300 transition-colors hover:bg-violet-700/60"
 						onclick={approveAgent}
 						disabled={approvingAgent}
 					>
-						{approvingAgent ? 'Starting...' : 'Approve Agent'}
+						{approvingAgent ? '...' : 'Approve'}
 					</button>
 					<button
-						class="flex-1 rounded-lg bg-surface-700/50 py-2 text-sm font-medium text-surface-400 transition-colors hover:bg-surface-700"
+						class="flex-1 rounded-md bg-surface-700/50 px-2 py-1.5 text-xs font-medium text-surface-400 transition-colors hover:bg-surface-700"
 						onclick={() => (showDismissInput = true)}
 					>
 						Dismiss
 					</button>
 					<button
-						class="rounded-lg bg-surface-700/30 px-3 py-2 text-sm font-medium text-surface-500 transition-colors hover:bg-surface-700"
+						class="rounded-md bg-surface-700/30 px-2 py-1.5 text-xs font-medium text-surface-500 transition-colors hover:bg-surface-700"
 						onclick={archive}
 						disabled={archiving}
 						title="Archive this card"
@@ -496,7 +496,7 @@
 		{:else if card.status === 'dismissed' || card.status === 'archived' || card.status === 'done' || card.status === 'failed'}
 			<div class="flex gap-2">
 				<button
-					class="flex-1 rounded-lg bg-laya-orange/15 py-2 text-sm font-medium text-laya-orange transition-colors hover:bg-laya-orange/25 disabled:opacity-50"
+					class="flex-1 rounded-md bg-laya-orange/15 px-2 py-1.5 text-xs font-medium text-laya-orange transition-colors hover:bg-laya-orange/25 disabled:opacity-50"
 					onclick={reopen}
 					disabled={reopening}
 				>
