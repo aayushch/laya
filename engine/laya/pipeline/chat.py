@@ -113,7 +113,7 @@ async def process_chat_message(
                 messages=messages,
                 step="chat",
                 temperature=0.3,
-                max_tokens=2000,
+                max_tokens=65536,
                 space_id=space_id,
                 tools=tools if iteration < MAX_TOOL_ITERATIONS else None,
             )
@@ -309,7 +309,7 @@ async def process_chat_message_streaming(
                 messages=messages,
                 step="chat",
                 temperature=0.3,
-                max_tokens=2000,
+                max_tokens=65536,
                 space_id=space_id,
                 tools=use_tools,
             ):

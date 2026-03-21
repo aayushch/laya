@@ -3,39 +3,86 @@
   "nodes": [
     {
       "parameters": {
-        "events": ["repo:push", "pullrequest:created", "pullrequest:updated", "pullrequest:comment_created"]
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 2 }]
+        }
       },
-      "name": "Bitbucket Trigger",
-      "type": "n8n-nodes-base.bitbucketTrigger",
-      "typeVersion": 1,
-      "position": [250, 300]
+      "name": "Every 2 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
     },
     {
       "parameters": {
-        "mode": "manual",
-        "assignments": {
-          "assignments": [
-            { "name": "event_id", "value": "={{ 'evt_bb_' + ($json.pullrequest?.id || $json.push?.changes?.[0]?.new?.target?.hash?.substring(0,8) || Date.now()) }}", "type": "string" },
-            { "name": "timestamp", "value": "={{ $json.pullrequest?.updated_on || $json.pullrequest?.created_on || new Date().toISOString() }}", "type": "string" },
-            { "name": "source.platform", "value": "bitbucket", "type": "string" },
-            { "name": "source.connection_id", "value": "={{ $workflow.id }}", "type": "string" },
-            { "name": "source.raw_event_type", "value": "={{ $json.pullrequest ? ($json.comment ? 'pr_commented' : ($json.pullrequest.state === 'MERGED' ? 'pr_merged' : ($json.pullrequest.reviewers?.length ? 'pr_review_requested' : 'pr_created'))) : 'build_failed' }}", "type": "string" },
-            { "name": "actor.name", "value": "={{ $json.actor?.display_name || 'Unknown' }}", "type": "string" },
-            { "name": "actor.email", "value": "={{ $json.actor?.email || '' }}", "type": "string" },
-            { "name": "actor.platform_handle", "value": "={{ $json.actor?.username || $json.actor?.nickname || '' }}", "type": "string" },
-            { "name": "subject.type", "value": "={{ $json.pullrequest ? 'pull_request' : 'build' }}", "type": "string" },
-            { "name": "subject.id", "value": "={{ $json.pullrequest ? 'PR-' + $json.pullrequest.id : $json.push?.changes?.[0]?.new?.target?.hash?.substring(0,8) || '' }}", "type": "string" },
-            { "name": "subject.title", "value": "={{ $json.pullrequest?.title || $json.push?.changes?.[0]?.new?.target?.message?.split('\\n')[0] || '' }}", "type": "string" },
-            { "name": "subject.url", "value": "={{ $json.pullrequest?.links?.html?.href || null }}", "type": "string" },
-            { "name": "content.body", "value": "={{ $json.comment?.content?.raw || $json.pullrequest?.description || '' }}", "type": "string" },
-            { "name": "content.metadata", "value": "={{ JSON.stringify({ bb_repository: $json.repository?.full_name, bb_branch: $json.pullrequest?.source?.branch?.name, bb_target_branch: $json.pullrequest?.destination?.branch?.name, bb_reviewers: ($json.pullrequest?.reviewers || []).map(r => r.email || r.display_name) }) }}", "type": "string" }
+        "method": "GET",
+        "url": "http://127.0.0.1:8420/repos?platform=bitbucket",
+        "options": {}
+      },
+      "name": "Get Repos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const repos = $input.first().json.repos ?? [];\nconst since = new Date(Date.now() - 150000).toISOString();\nreturn repos\n  .filter(r => r.platform === 'bitbucket' && r.remote_id && r.remote_id.includes('/'))\n  .map(r => {\n    const [workspace, repo] = r.remote_id.split('/');\n    return { json: { workspace, repo, name: r.name, since } };\n  });"
+      },
+      "name": "Build Repo Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://api.bitbucket.org/2.0/repositories/' + $json.workspace + '/' + $json.repo + '/pullrequests' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "bitbucketApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "state", "value": "OPEN,MERGED,DECLINED" },
+            { "name": "sort", "value": "-updated_on" },
+            { "name": "pagelen", "value": "25" },
+            { "name": "q", "value": "={{ 'updated_on >= \"' + $json.since.substring(0,19) + '\"' }}" }
           ]
+        },
+        "options": {}
+      },
+      "name": "Get Pull Requests",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const allEvents = [];\nfor (const item of $input.all()) {\n  const prs = item.json.values || [];\n  for (const pr of prs) {\n    const repoSlug = pr.destination?.repository?.full_name || '';\n    const epoch = new Date(pr.updated_on || Date.now()).getTime();\n    const state = (pr.state || '').toUpperCase();\n    let rawEventType = 'pr_updated';\n    if (state === 'MERGED') rawEventType = 'pr_merged';\n    else if (state === 'DECLINED') rawEventType = 'pr_declined';\n    else if (pr.created_on === pr.updated_on) rawEventType = 'pr_created';\n    allEvents.push({\n      json: {\n        event_id: 'evt_bb_pr_' + repoSlug.replace('/', '_') + '_' + pr.id + '_' + epoch,\n        timestamp: pr.updated_on || new Date().toISOString(),\n        source: {\n          platform: 'bitbucket',\n          connection_id: $workflow.id,\n          raw_event_type: rawEventType\n        },\n        actor: {\n          name: pr.author?.display_name || 'Unknown',\n          email: '',\n          platform_handle: pr.author?.nickname || pr.author?.uuid || ''\n        },\n        subject: {\n          type: 'pull_request',\n          id: 'PR-' + pr.id,\n          title: pr.title || '',\n          url: (pr.links && pr.links.html && pr.links.html.href) || ''\n        },\n        content: {\n          body: pr.description || '',\n          attachments: [],\n          metadata: {\n            bb_repository: repoSlug,\n            bb_branch: pr.source?.branch?.name || '',\n            bb_target_branch: pr.destination?.branch?.name || '',\n            bb_state: state,\n            bb_reviewers: (pr.reviewers || []).map(function(r) { return r.display_name || r.nickname || ''; })\n          }\n        }\n      }\n    });\n  }\n}\nreturn allEvents.length ? allEvents : [{ json: { _skip: true } }];"
+      },
+      "name": "Normalize to Laya Events",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "skip-check",
+              "leftValue": "={{ $json._skip }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "notTrue" }
+            }
+          ],
+          "combinator": "and"
         }
       },
-      "name": "Normalize to Laya Event",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [500, 300]
+      "name": "Skip Empty",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 300]
     },
     {
       "parameters": {
@@ -49,21 +96,36 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ event_id: $json.event_id, timestamp: $json.timestamp, source: $json.source, actor: $json.actor, subject: $json.subject, content: { body: $json.content.body, attachments: [], metadata: JSON.parse($json.content.metadata || '{}') } }) }}",
+        "jsonBody": "={{ JSON.stringify({ event_id: $json.event_id, timestamp: $json.timestamp, source: $json.source, actor: $json.actor, subject: $json.subject, content: $json.content }) }}",
         "options": {}
       },
       "name": "POST to Laya Engine",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [750, 300]
+      "position": [1560, 300]
     }
   ],
   "connections": {
-    "Bitbucket Trigger": {
-      "main": [[{ "node": "Normalize to Laya Event", "type": "main", "index": 0 }]]
+    "Every 2 Minutes": {
+      "main": [[{ "node": "Get Repos", "type": "main", "index": 0 }]]
     },
-    "Normalize to Laya Event": {
-      "main": [[{ "node": "POST to Laya Engine", "type": "main", "index": 0 }]]
+    "Get Repos": {
+      "main": [[{ "node": "Build Repo Items", "type": "main", "index": 0 }]]
+    },
+    "Build Repo Items": {
+      "main": [[{ "node": "Get Pull Requests", "type": "main", "index": 0 }]]
+    },
+    "Get Pull Requests": {
+      "main": [[{ "node": "Normalize to Laya Events", "type": "main", "index": 0 }]]
+    },
+    "Normalize to Laya Events": {
+      "main": [[{ "node": "Skip Empty", "type": "main", "index": 0 }]]
+    },
+    "Skip Empty": {
+      "main": [
+        [{ "node": "POST to Laya Engine", "type": "main", "index": 0 }],
+        []
+      ]
     }
   },
   "settings": {

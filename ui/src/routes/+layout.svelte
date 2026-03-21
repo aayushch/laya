@@ -402,8 +402,8 @@
 			</div>
 		</header>
 
-		<!-- Main content -->
-		<main class="flex-1 overflow-auto p-4">
+		<!-- Main content — add right padding when chat sidebar is open so content isn't hidden behind it -->
+		<main class="flex-1 overflow-auto p-4 transition-[padding] duration-250 {$chatOpen ? 'pr-[476px]' : ''}">
 			{@render children()}
 		</main>
 	</div>

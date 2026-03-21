@@ -16,6 +16,7 @@
 	import ChatMessage from './ChatMessage.svelte';
 	import ChatConversationList from './ChatConversationList.svelte';
 	import { fly } from 'svelte/transition';
+	import { tick } from 'svelte';
 
 	let input = $state('');
 	let sending = $state(false);
@@ -31,6 +32,12 @@
 		}
 	}
 
+	function resizeTextarea() {
+		if (!textareaEl) return;
+		textareaEl.style.height = 'auto';
+		textareaEl.style.height = Math.min(textareaEl.scrollHeight, 240) + 'px';
+	}
+
 	// Apply preset message when triggered from a card
 	$effect(() => {
 		const preset = $chatInputPreset;
@@ -43,6 +50,15 @@
 				chatMessages.set([]);
 				chatListOpen.set(false);
 			}
+			// Wait for the textarea to render, then resize to fit the preset text
+			tick().then(resizeTextarea);
+		}
+	});
+
+	// Clear input when switching to the conversation list (new chat)
+	$effect(() => {
+		if ($chatListOpen) {
+			input = '';
 		}
 	});
 
@@ -50,8 +66,7 @@
 	$effect(() => {
 		if (!textareaEl) return;
 		input; // track changes
-		textareaEl.style.height = 'auto';
-		textareaEl.style.height = Math.min(textareaEl.scrollHeight, 240) + 'px';
+		resizeTextarea();
 	});
 
 	// Scroll to bottom when messages change
@@ -232,8 +247,8 @@
 
 {#if $chatOpen}
 	<aside
-		class="fixed bottom-0 right-0 z-50 flex w-[460px] flex-col border-l border-surface-700 bg-surface-900"
-		style="top: var(--header-h);"
+		class="fixed bottom-0 right-0 z-40 flex w-[460px] flex-col border-l border-surface-700 bg-surface-900"
+		style="top: var(--header-h, 45px);"
 		transition:fly={{ x: 460, duration: 250, opacity: 1 }}
 	>
 		{#if showList}
