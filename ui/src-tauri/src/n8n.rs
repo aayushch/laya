@@ -7,8 +7,21 @@
 use std::io::BufRead;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
+
+/// Shared HTTP client for n8n health checks — avoids creating a new TCP
+/// connection (and `reqwest::blocking::Client`) on every call.
+fn shared_client() -> &'static reqwest::blocking::Client {
+    static CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(2))
+            .pool_idle_timeout(Duration::from_secs(60))
+            .build()
+            .expect("failed to build shared reqwest client")
+    })
+}
 
 /// Port for the Laya-managed n8n instance.
 /// Chosen to avoid conflicts with a user's own n8n (default 5678)
@@ -589,15 +602,7 @@ fn spawn_n8n() -> Result<Child, String> {
 
 /// Check if n8n is running by hitting its health endpoint.
 pub fn is_n8n_running() -> bool {
-    let client = match reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build()
-    {
-        Ok(c) => c,
-        Err(_) => return false,
-    };
-
-    client
+    shared_client()
         .get(format!("http://127.0.0.1:{}/healthz", N8N_PORT))
         .send()
         .map(|r| r.status().is_success())

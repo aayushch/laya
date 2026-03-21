@@ -12,6 +12,7 @@ import httpx
 import structlog
 
 from laya.config import get_n8n_config
+from laya.http_client import get_client
 from laya.security.keychain import get_api_key, has_api_key, store_api_key
 
 log = structlog.get_logger()
@@ -46,12 +47,12 @@ async def _wait_for_n8n(base_url: str, timeout: float = 30.0) -> bool:
     deadline = asyncio.get_event_loop().time() + timeout
     while asyncio.get_event_loop().time() < deadline:
         try:
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                health = await client.get(f"{base_url}/healthz")
-                if health.status_code == 200:
-                    settings = await client.get(f"{base_url}/rest/settings")
-                    if settings.status_code == 200:
-                        return True
+            client = get_client()
+            health = await client.get(f"{base_url}/healthz", timeout=3.0)
+            if health.status_code == 200:
+                settings = await client.get(f"{base_url}/rest/settings", timeout=3.0)
+                if settings.status_code == 200:
+                    return True
         except (httpx.ConnectError, httpx.TimeoutException):
             pass
         await asyncio.sleep(1.0)
@@ -67,8 +68,7 @@ async def _needs_setup(base_url: str) -> bool | None:
         None — could not determine (error)
     """
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(f"{base_url}/rest/settings")
+        resp = await get_client().get(f"{base_url}/rest/settings", timeout=5.0)
         if resp.status_code == 200:
             data = resp.json()
             user_mgmt = data.get("userManagement", {})
@@ -87,11 +87,12 @@ async def _needs_setup(base_url: str) -> bool | None:
 async def _try_login(base_url: str, email: str, password: str) -> dict | None:
     """Attempt to login to n8n. Returns cookies on success, None on failure."""
     try:
-        async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
-            resp = await client.post(
-                f"{base_url}/rest/login",
-                json={"emailOrLdapLoginId": email, "password": password},
-            )
+        resp = await get_client().post(
+            f"{base_url}/rest/login",
+            json={"emailOrLdapLoginId": email, "password": password},
+            timeout=5.0,
+            follow_redirects=True,
+        )
         if resp.status_code == 200:
             log.info("n8n_login_success")
             return dict(resp.cookies)
@@ -108,16 +109,17 @@ async def _create_owner(base_url: str, email: str, password: str) -> dict | None
     Returns cookies from the response (auto-login) or None on failure.
     """
     try:
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            resp = await client.post(
-                f"{base_url}/rest/owner/setup",
-                json={
-                    "email": email,
-                    "firstName": _DEFAULT_FIRST_NAME,
-                    "lastName": _DEFAULT_LAST_NAME,
-                    "password": password,
-                },
-            )
+        resp = await get_client().post(
+            f"{base_url}/rest/owner/setup",
+            json={
+                "email": email,
+                "firstName": _DEFAULT_FIRST_NAME,
+                "lastName": _DEFAULT_LAST_NAME,
+                "password": password,
+            },
+            timeout=10.0,
+            follow_redirects=True,
+        )
         if resp.status_code == 200:
             log.info("n8n_owner_created", email=email)
             return dict(resp.cookies)
@@ -131,20 +133,21 @@ async def _create_owner(base_url: str, email: str, password: str) -> dict | None
 async def _create_api_key(base_url: str, cookies: dict) -> str | None:
     """Create an n8n API key using session authentication."""
     try:
-        async with httpx.AsyncClient(timeout=10.0, cookies=cookies) as client:
-            resp = await client.post(
-                f"{base_url}/rest/api-keys/",
-                json={
-                    "label": "laya-engine",
-                    "scopes": [
-                        "workflow:create", "workflow:read", "workflow:update",
-                        "workflow:delete", "workflow:list", "workflow:execute",
-                        "credential:create", "credential:read",
-                        "credential:delete", "credential:list",
-                    ],
-                    "expiresAt": None,
-                },
-            )
+        resp = await get_client().post(
+            f"{base_url}/rest/api-keys/",
+            json={
+                "label": "laya-engine",
+                "scopes": [
+                    "workflow:create", "workflow:read", "workflow:update",
+                    "workflow:delete", "workflow:list", "workflow:execute",
+                    "credential:create", "credential:read",
+                    "credential:delete", "credential:list",
+                ],
+                "expiresAt": None,
+            },
+            cookies=cookies,
+            timeout=10.0,
+        )
         if resp.status_code in (200, 201):
             body = resp.json()
             # Response may wrap in {"data": {...}} or return directly
@@ -168,11 +171,11 @@ async def _test_existing_api_key(base_url: str) -> bool:
     if not api_key:
         return False
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(
-                f"{base_url}/api/v1/credentials",
-                headers={"X-N8N-API-KEY": api_key},
-            )
+        resp = await get_client().get(
+            f"{base_url}/api/v1/credentials",
+            headers={"X-N8N-API-KEY": api_key},
+            timeout=5.0,
+        )
         return resp.status_code == 200
     except Exception:
         return False
@@ -185,12 +188,12 @@ async def _get_existing_workflow_names(base_url: str, api_key: str) -> set[str] 
     distinguish between "API unreachable / not ready" and "genuinely empty".
     """
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(
-                f"{base_url}/api/v1/workflows",
-                headers={"X-N8N-API-KEY": api_key},
-                params={"limit": 250},
-            )
+        resp = await get_client().get(
+            f"{base_url}/api/v1/workflows",
+            headers={"X-N8N-API-KEY": api_key},
+            params={"limit": 250},
+            timeout=10.0,
+        )
         if resp.status_code == 200:
             data = resp.json()
             items = data.get("data", data) if isinstance(data, dict) else data
@@ -234,12 +237,12 @@ async def import_workflows(base_url: str) -> int:
             # Strip read-only fields that the n8n API rejects
             for field in ("active", "id", "createdAt", "updatedAt"):
                 workflow_data.pop(field, None)
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(
-                    f"{base_url}/api/v1/workflows",
-                    headers=headers,
-                    json=workflow_data,
-                )
+            resp = await get_client().post(
+                f"{base_url}/api/v1/workflows",
+                headers=headers,
+                json=workflow_data,
+                timeout=10.0,
+            )
             if resp.status_code in (200, 201):
                 imported += 1
                 log.info("n8n_workflow_imported", name=workflow_file.stem)

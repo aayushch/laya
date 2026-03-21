@@ -10,6 +10,7 @@ import httpx
 import structlog
 
 from laya.config import load_settings
+from laya.http_client import get_client
 
 log = structlog.get_logger()
 
@@ -155,9 +156,8 @@ async def test_provider_connectivity(provider: dict) -> dict[str, Any]:
             if api_key:
                 headers["Authorization"] = f"Bearer {api_key}"
 
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(api_url, json=payload, headers=headers)
-                result["inference_ok"] = resp.status_code == 200
+            resp = await get_client().post(api_url, json=payload, headers=headers, timeout=30.0)
+            result["inference_ok"] = resp.status_code == 200
         except Exception as e:
             result["inference_ok"] = False
             log.debug("inference_test_failed", error=str(e))
@@ -179,10 +179,9 @@ async def _discover_lmstudio(provider: dict) -> list[DiscoveredModel]:
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(f"{base_url}/api/v1/models", headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
+    resp = await get_client().get(f"{base_url}/api/v1/models", headers=headers, timeout=10.0)
+    resp.raise_for_status()
+    data = resp.json()
 
     models = []
     for m in data.get("models", []):
@@ -213,10 +212,9 @@ async def _discover_ollama(provider: dict) -> list[DiscoveredModel]:
     """Use Ollama API for model discovery."""
     base_url = provider["base_url"].rstrip("/")
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(f"{base_url}/api/tags")
-        resp.raise_for_status()
-        data = resp.json()
+    resp = await get_client().get(f"{base_url}/api/tags", timeout=10.0)
+    resp.raise_for_status()
+    data = resp.json()
 
     caps_override = provider.get("capabilities_override", {})
     models = []
@@ -255,10 +253,9 @@ async def _discover_openai_compatible(provider: dict) -> list[DiscoveredModel]:
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(f"{base_url}/v1/models", headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
+    resp = await get_client().get(f"{base_url}/v1/models", headers=headers, timeout=10.0)
+    resp.raise_for_status()
+    data = resp.json()
 
     caps_override = provider.get("capabilities_override", {})
     models = []

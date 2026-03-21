@@ -2,13 +2,13 @@
 
 import time
 
-import httpx
 import structlog
 from fastapi import APIRouter
 
 from laya.config import get_n8n_config
 from laya.db.chromadb_store import is_chromadb_healthy, get_embedding_info
 from laya.db.sqlite import is_healthy as sqlite_healthy
+from laya.http_client import get_client
 
 log = structlog.get_logger()
 router = APIRouter()
@@ -26,10 +26,9 @@ async def health_check() -> dict:
     n8n_status = "unhealthy"
     try:
         n8n_base = get_n8n_config()["base_url"].rstrip("/")
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            resp = await client.get(f"{n8n_base}/healthz")
-            if resp.status_code == 200:
-                n8n_status = "healthy"
+        resp = await get_client().get(f"{n8n_base}/healthz", timeout=2.0)
+        if resp.status_code == 200:
+            n8n_status = "healthy"
     except Exception:
         n8n_status = "unreachable"
 

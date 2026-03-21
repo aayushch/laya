@@ -60,7 +60,7 @@
 		agent_running:      'bg-violet-950/55 hover:bg-violet-950/70',
 		awaiting_input:     'bg-amber-950/55  hover:bg-amber-950/70',
 		done:               'bg-emerald-950/50 hover:bg-emerald-950/65',
-		failed:             'bg-red-950/60    hover:bg-red-950/75',
+		failed:             'bg-rose-950/60   hover:bg-rose-950/75',
 		dismissed:          'bg-surface-800/40 hover:bg-surface-800/60',
 		archived:           'bg-surface-900/60 hover:bg-surface-900/80',
 	};
@@ -156,7 +156,7 @@
 	}
 </script>
 
-<div class="rounded-lg border border-surface-700/40 {groupBgStyle} transition-colors">
+<div class="rounded-lg border {expanded ? 'border-surface-600 bg-surface-900' : 'border-surface-700/40 ' + groupBgStyle} transition-colors">
 	<!-- Group header row -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div

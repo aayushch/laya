@@ -273,6 +273,7 @@ fn start_health_polling(tray: TrayIcon) {
     std::thread::spawn(move || {
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(3))
+            .pool_idle_timeout(Duration::from_secs(60))
             .build()
             .unwrap();
 
