@@ -27,6 +27,7 @@
 	// AskUserQuestion state
 	let questionSelections = $state<Record<string, string>>({});
 	let submittingAnswer = $state(false);
+	let dismissingQuestions = $state(false);
 
 	// Add Path state
 	let allRepos = $state<Repo[]>([]);
@@ -60,6 +61,7 @@
 		'agent_message',
 		'approval_request',
 		'user_response',
+		'questions_dismissed',
 		'error',
 		'file_write',
 		'tool_call',
@@ -115,6 +117,27 @@
 					if (events[j].event_type === 'user_response') {
 						ids.add(ev.event_id);
 						break;
+					}
+				}
+			}
+		}
+		return ids;
+	});
+
+	// Track questions dismissed via the dismiss-questions action
+	const dismissedQuestionIds = $derived.by(() => {
+		const ids = new Set<string>();
+		for (let i = 0; i < events.length; i++) {
+			if (events[i].event_type === 'questions_dismissed') {
+				// All prior unanswered questions are now dismissed
+				for (let j = 0; j < i; j++) {
+					const ev = events[j];
+					if (
+						ev.event_type === 'approval_request' &&
+						ev.content.ask_user_question &&
+						!answeredQuestionIds.has(ev.event_id)
+					) {
+						ids.add(ev.event_id);
 					}
 				}
 			}
@@ -228,6 +251,16 @@
 			await engineApi.answerAgentQuestion(session.session_id, answers, addDirsArray);
 		} finally {
 			submittingAnswer = false;
+		}
+	}
+
+	async function dismissQuestions() {
+		if (!session) return;
+		dismissingQuestions = true;
+		try {
+			await engineApi.dismissQuestions(session.session_id);
+		} finally {
+			dismissingQuestions = false;
 		}
 	}
 
@@ -350,12 +383,15 @@
 							<!-- AskUserQuestion — interactive multi-question form -->
 							{@const questions = (event.content.questions as Array<{header?: string; question?: string; options?: Array<{label: string; description?: string}>; multiSelect?: boolean}>) ?? []}
 							{@const isAnswered = answeredQuestionIds.has(event.event_id)}
-							{@const formDisabled = isAnswered || isAgentActive}
+							{@const isDismissed = dismissedQuestionIds.has(event.event_id)}
+							{@const formDisabled = isAnswered || isDismissed || isAgentActive}
 
 							<div class="mb-2 flex items-center gap-2">
 								<span class="text-xs font-medium text-laya-orange">Agent needs your input</span>
 								{#if isAnswered}
 									<span class="rounded bg-green-900/40 px-1.5 py-0.5 text-[9px] font-medium text-green-300">Answered</span>
+								{:else if isDismissed}
+									<span class="rounded bg-surface-700 px-1.5 py-0.5 text-[9px] font-medium text-surface-400">Dismissed</span>
 								{:else if isAgentActive}
 									<span class="rounded bg-blue-900/40 px-1.5 py-0.5 text-[9px] font-medium text-blue-300">Agent working</span>
 								{/if}
@@ -394,21 +430,28 @@
 								{/each}
 							</div>
 
-							{#if isAnswered}
-								<!-- Already answered — no action needed -->
+							{#if isAnswered || isDismissed}
+								<!-- Already answered or dismissed — no action needed -->
 							{:else if isAgentActive}
 								<div class="mt-3 rounded-lg border border-blue-800/40 bg-blue-900/20 px-3 py-2 text-center text-[11px] text-blue-300">
 									Waiting for agent to complete the current turn...
 								</div>
 							{:else}
 								{@const allAnswered = questions.every((_, idx) => questionSelections[`${event.event_id}_${idx}`])}
-								<div class="mt-3">
+								<div class="mt-3 space-y-1.5">
 									<button
 										class="w-full rounded-lg bg-laya-orange/20 py-2 text-xs font-medium text-laya-orange transition-colors hover:bg-laya-orange/30 disabled:opacity-40 disabled:cursor-not-allowed"
 										onclick={() => submitAnswers(event)}
 										disabled={!allAnswered || submittingAnswer}
 									>
 										{submittingAnswer ? 'Submitting...' : 'Submit answers'}
+									</button>
+									<button
+										class="w-full rounded-lg border border-surface-600 py-2 text-xs font-medium text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-200 disabled:opacity-40 disabled:cursor-not-allowed"
+										onclick={dismissQuestions}
+										disabled={dismissingQuestions}
+									>
+										{dismissingQuestions ? 'Dismissing...' : 'Skip questions'}
 									</button>
 								</div>
 							{/if}
@@ -446,7 +489,10 @@
 								</div>
 							{/if}
 
-						{:else if isPlanEvent(event)}
+						{:else if event.event_type === 'questions_dismissed'}
+						<div class="text-xs italic text-surface-400">Questions dismissed</div>
+
+					{:else if isPlanEvent(event)}
 							<div class="mb-1 flex items-center gap-2">
 								<span class="text-xs font-medium text-laya-gold">Implementation Plan</span>
 							</div>

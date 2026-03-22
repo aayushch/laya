@@ -220,6 +220,7 @@ async def _run_resumed_session(
     card_id: str,
     answer_text: str,
     add_dirs: list[str] | None = None,
+    is_freeform: bool = False,
 ) -> None:
     """Background task: resume agent, stream events, complete session."""
     try:
@@ -289,7 +290,19 @@ async def _run_resumed_session(
                 )
 
             # If there are unanswered questions, keep card as awaiting_input
+            # Unless this was a freeform resume — agent completed after user's freeform prompt,
+            # so implicitly dismiss any outstanding questions.
             has_unanswered = await session_manager.has_unanswered_questions(session_id)
+            if has_unanswered and is_freeform:
+                dismiss_event = WorkspaceEvent(
+                    event_id=f"we_{uuid.uuid4().hex[:12]}",
+                    session_id=session_id,
+                    event_type=WorkspaceEventType.QUESTIONS_DISMISSED,
+                    actor=WorkspaceEventActor.SYSTEM,
+                    content={"message": "Questions auto-dismissed after freeform resume"},
+                )
+                await session_manager.store_workspace_event(dismiss_event)
+                has_unanswered = False
             card_status = "awaiting_input" if has_unanswered else "ready"
 
             await db.execute(
@@ -401,6 +414,59 @@ async def resume_session_with_prompt(session_id: str, body: ResumePromptRequest)
     })
 
     # Resume the agent conversation in the background
-    asyncio.create_task(_run_resumed_session(session_id, card_id, prompt, add_dirs=body.add_dirs))
+    asyncio.create_task(_run_resumed_session(session_id, card_id, prompt, add_dirs=body.add_dirs, is_freeform=True))
 
     return {"status": "resumed", "session_id": session_id}
+
+
+@router.post("/workspace/{session_id}/dismiss-questions")
+async def dismiss_questions(session_id: str) -> dict[str, str]:
+    """Dismiss all pending AskUserQuestion prompts for a session.
+
+    Transitions the card from awaiting_input to ready without answering.
+    """
+    db = await get_db()
+
+    rows = await db.execute_fetchall(
+        "SELECT card_id, status FROM workspace_sessions WHERE session_id = ?",
+        (session_id,),
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    card_id, session_status = rows[0]
+
+    # Only allow dismissal when the session is not actively running
+    if session_status == "running":
+        raise HTTPException(status_code=409, detail="Cannot dismiss questions while agent is running")
+
+    # Store the dismiss event
+    dismiss_event = WorkspaceEvent(
+        event_id=f"we_{uuid.uuid4().hex[:12]}",
+        session_id=session_id,
+        event_type=WorkspaceEventType.QUESTIONS_DISMISSED,
+        actor=WorkspaceEventActor.USER,
+        content={"message": "Questions dismissed by user"},
+    )
+    await session_manager.store_workspace_event(dismiss_event)
+
+    # Transition card to ready
+    await db.execute(
+        "UPDATE action_cards SET status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+        (card_id,),
+    )
+    # Mark session as completed if it was awaiting_input
+    if session_status in ("awaiting_input", "starting"):
+        await db.execute(
+            "UPDATE workspace_sessions SET status = 'completed', completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE session_id = ?",
+            (session_id,),
+        )
+    await db.commit()
+
+    await manager.broadcast({
+        "type": "card_updated",
+        "card_id": card_id,
+        "payload": {"status": "ready"},
+    })
+
+    return {"status": "dismissed", "session_id": session_id}

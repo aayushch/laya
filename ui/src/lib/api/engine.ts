@@ -207,6 +207,11 @@ export const engineApi = {
 			body: JSON.stringify({ prompt, add_dirs: addDirs?.length ? addDirs : undefined })
 		}),
 
+	dismissQuestions: (sessionId: string) =>
+		request<{ status: string; session_id: string }>(`/workspace/${sessionId}/dismiss-questions`, {
+			method: 'POST'
+		}),
+
 	// Dashboard
 	getDashboard: (days?: number) => {
 		const qs = days ? `?days=${days}` : '';

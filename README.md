@@ -22,10 +22,11 @@ Your Tools (Jira, Slack, Gmail, Bitbucket, Calendar)
       n8n -- executes approved actions (creates PRs, sends replies, etc.)
 ```
 
-## Key Features (v0.1)
+## Key Features
 
 - **Multi-persona brain:** Routes events to specialized AI personas (Engineer, Comms, Ops) with domain-specific tools and prompts
 - **Card Workspaces:** Complex tasks (bug fixes, code reviews) open interactive workspaces where you collaborate with a coding agent (Claude Code, Gemini CLI, or Codex) through multiple approval steps
+- **Spaces:** User-defined contexts grouping event sources with per-space model and API key configurations
 - **Cross-platform memory:** Entity resolution links "BUG-1234" in Jira to "PR-891" in Bitbucket to "the payment bug" in Slack
 - **Daily Briefing:** Morning summary of overnight activity, pending cards, and today's calendar with context
 - **Analytics Dashboard:** Track events processed, time saved, LLM costs, and approval rates
@@ -38,42 +39,94 @@ Your Tools (Jira, Slack, Gmail, Bitbucket, Calendar)
 | Layer | Technology |
 |---|---|
 | Desktop Shell | Tauri v2 (Rust) |
-| Frontend | Svelte 5 + Skeleton UI + Tailwind CSS |
-| Backend | Python 3.10+ / FastAPI / LangGraph |
+| Frontend | Svelte 5 (runes) + Skeleton UI + Tailwind CSS v4 |
+| Backend | Python 3.10+ / FastAPI / asyncio |
 | LLM Interface | LiteLLM (supports Anthropic, OpenAI, Google, Ollama) |
-| Integration Gateway | n8n (local npm) |
-| Structured Storage | SQLite |
-| Vector Storage | ChromaDB (embedded) |
-| Embeddings | nomic-embed / all-MiniLM (local via sentence-transformers) |
+| Integration Gateway | n8n (local Node.js on port 45678) |
+| Structured Storage | SQLite (async via aiosqlite, WAL mode) |
+| Vector Storage | ChromaDB (embedded PersistentClient) |
+| Embeddings | ONNX (built-in to ChromaDB) or sentence-transformers (optional) |
 | Coding Agents | Claude Code / Gemini CLI / OpenAI Codex CLI |
 
-## Documentation
+## Project Structure
 
-All design and architecture documents are in [`docs/`](./docs/):
-
-- [**System Architecture**](./docs/architecture.md) -- Complete architecture with diagrams and component descriptions
-- [**Event Schema**](./docs/event-schema.md) -- The Laya Event schema specification (inbound + outbound)
-- [**API Contracts**](./docs/api-contracts.md) -- REST, WebSocket, and inter-service API definitions
-- [**Database Schema**](./docs/database-schema.md) -- SQLite tables and ChromaDB collection design
-- [**Project Structure**](./docs/project-structure.md) -- Repository layout, directory structure, config file schemas
-- [**Implementation Plan**](./docs/implementation-plan.md) -- 8 milestones across ~19 weeks
-- [**Decision Log**](./docs/decision-log.md) -- All 57 architectural decisions with rationale
-
-## Concept Materials
-
-The original concept documents that informed this architecture:
-
-- [Laya Architecture Spec.md](./Laya%20Architecture%20Spec.md) -- Initial technical architecture vision
-- [Laya Master Orchestrator.md](./Laya%20Master%20Orchestrator.md) -- Multi-persona system prompt design
-- [Laya - The Professional AI Operating System.pdf](./Laya%20-%20The%20Professional%20AI%20Operating%20System.pdf) -- Concept slide deck
+```
+laya/
+├── engine/                  # Python FastAPI backend
+│   ├── laya/
+│   │   ├── main.py          # Entry point (uvicorn server on :8420)
+│   │   ├── config.py        # Settings, paths, agent detection
+│   │   ├── api/             # REST + WebSocket endpoints (17 routers)
+│   │   ├── db/              # SQLite + ChromaDB + migrations
+│   │   ├── pipeline/        # Event processing (ingest → route → stage → emit)
+│   │   ├── llm/             # LiteLLM client, prompts, MCP tools
+│   │   ├── agents/          # Coding agent adapters (Claude, Gemini, Codex)
+│   │   ├── workers/         # Multi-persona LLM workers (engineer, comms, ops)
+│   │   ├── integrations/    # n8n bootstrap & client
+│   │   └── security/        # OS keychain integration
+│   ├── requirements.txt     # Core Python dependencies
+│   └── requirements-ml.txt  # Optional: torch + sentence-transformers
+│
+├── ui/                      # SvelteKit + Tauri desktop app
+│   ├── src/                 # Svelte 5 frontend (runes syntax)
+│   │   ├── routes/          # Pages (feed, dashboard, settings, workspace)
+│   │   ├── lib/             # Components, API client, stores
+│   │   ├── app.css          # Tailwind v4 + theme system
+│   │   └── app.html
+│   ├── src-tauri/           # Rust/Tauri shell
+│   │   ├── src/
+│   │   │   ├── lib.rs       # Tauri setup, commands, health polling, tray
+│   │   │   ├── sidecar.rs   # Python venv lifecycle & engine spawning
+│   │   │   └── n8n.rs       # n8n process management
+│   │   ├── tauri.conf.json  # Tauri config (resources, icons, window)
+│   │   └── resources/       # Bundled engine source (production builds)
+│   ├── package.json
+│   └── svelte.config.js     # Static adapter (SPA mode)
+│
+├── n8n/
+│   └── workflows/           # Integration workflows (JSON, ~14 files)
+│
+├── scripts/
+│   ├── setup-dev.sh         # One-time dev environment setup
+│   ├── dev.sh               # Start engine + Tauri dev server
+│   ├── build.sh             # Production build
+│   └── update_icons.sh      # Icon generation
+│
+├── landing/                 # Landing page
+└── docs/                    # Architecture & design documents
+```
 
 ## Development
 
 ### Prerequisites
 
-- Python 3.10+
-- Node.js 20.19+ (required by `@sveltejs/vite-plugin-svelte`)
-- Rust toolchain (via `rustup`)
+You need three runtimes installed. Here's how to get each one:
+
+#### Python 3.10+
+
+- **macOS:** `brew install python@3.12` (or download from [python.org](https://www.python.org/downloads/))
+- **Ubuntu/Debian:** `sudo apt install python3 python3-venv python3-pip`
+- **Windows:** Download from [python.org](https://www.python.org/downloads/) (check "Add to PATH" during install)
+
+Verify: `python3 --version`
+
+#### Node.js 20+
+
+- **All platforms:** Download from [nodejs.org](https://nodejs.org/) (LTS recommended), or use a version manager like [nvm](https://github.com/nvm-sh/nvm) / [fnm](https://github.com/Schniz/fnm)
+- **macOS:** `brew install node`
+- **Ubuntu/Debian:** `curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt install -y nodejs`
+
+Verify: `node --version && npm --version`
+
+#### Rust toolchain
+
+Install via [rustup](https://rustup.rs/):
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+Verify: `cargo --version`
 
 #### Platform-specific dependencies
 
@@ -85,7 +138,7 @@ xcode-select --install
 
 **Linux (Ubuntu/Debian):**
 
-Tauri v2 requires several system libraries for GTK, WebKit, and app-indicator support:
+Tauri v2 requires system libraries for GTK, WebKit, and app-indicator support:
 
 ```bash
 sudo apt install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
@@ -105,34 +158,80 @@ sudo sysctl -p
 ### Setup
 
 ```bash
-scripts/setup-dev.sh   # One-time: creates venv, installs deps, installs n8n via npm
+scripts/setup-dev.sh
 ```
+
+This script does the following:
+
+1. Checks that `python3`, `node`, `npm`, and `cargo` are available
+2. Creates a Python virtual environment at `engine/.venv/` and installs dependencies from `engine/requirements.txt`
+3. Installs npm packages for the UI (`ui/node_modules/`)
+4. Installs n8n as a local npm package into `~/.laya/n8n_module/`
+5. Creates data directories at `~/.laya/data/` and `~/.laya/logs/`
 
 ### Running Locally
 
 ```bash
 scripts/dev.sh
-# Starts Python engine and Tauri dev window
-# Engine: http://127.0.0.1:8420  |  UI: http://localhost:5173
 ```
+
+This starts two processes:
+
+1. **Python engine** -- `python -m laya.main` (with hot reload) at http://127.0.0.1:8420
+2. **Tauri dev server** -- `npx @tauri-apps/cli dev` which starts Vite at http://localhost:5173 and opens the Tauri window
+
+n8n is managed automatically by the Tauri app -- it starts on launch (port 45678) and stops on quit.
 
 > **Note:** If the engine fails with "Address already in use", a stale engine process may be holding port 8420. The engine will attempt to kill it automatically on startup.
 
-## Building the Installable App
+### Configuration
 
-Laya is a Tauri desktop app. The build produces platform-native installers.
+On first launch, the engine creates config files in `~/.laya/`:
 
-### Quick Build (Development Machine)
+| File | Purpose |
+|------|---------|
+| `settings.json` | Models, agent paths, privacy settings, pipeline params |
+| `team.json` | Team member context |
+| `rules.json` | Event filtering rules |
+| `repos.json` | Git repository paths and metadata |
 
-This builds the app using your local Python venv -- the resulting app expects Python and dependencies to be installed on the target machine.
+API keys (Anthropic, OpenAI, Google, etc.) are stored securely in your OS keychain and can be configured through the Settings UI.
+
+### Data Storage
+
+| Store | Location | Purpose |
+|-------|----------|---------|
+| SQLite | `~/.laya/data/laya.db` | Events, cards, workspaces, spaces, chat |
+| ChromaDB | `~/.laya/data/chroma/` | Vector embeddings for semantic search |
+| n8n | `~/.laya/n8n/` | Workflow data, credentials (encrypted) |
+| Logs | `~/.laya/logs/engine.log` | Rotating engine logs (10 MB x 5 files) |
+
+## Building for Distribution
+
+Laya bundles the Python engine source into the Tauri app. On first launch, the app creates a Python virtual environment at `~/.laya/venv/` and installs dependencies automatically -- no Python installation is required on the end user's machine beyond what the app manages.
+
+### Build Command
 
 ```bash
-cd ui
-npm run build          # Build SvelteKit frontend -> ui/build/
-npx @tauri-apps/cli build        # Compile Rust + bundle into platform installer
+scripts/build.sh
 ```
 
-Output locations:
+This does two things:
+
+1. **Bundles engine source** -- copies `engine/laya/`, `requirements.txt`, `requirements-ml.txt`, and `n8n/workflows/` into `ui/src-tauri/resources/engine/`
+2. **Builds the Tauri app** -- compiles the Rust shell, bundles the SvelteKit frontend, and packages everything into a platform-native installer
+
+### Build Options
+
+```bash
+scripts/build.sh                                  # Build for current platform
+scripts/build.sh --target x86_64-apple-darwin      # Cross-compile for Intel Mac
+scripts/build.sh --universal                       # Universal binary (arm64 + x86_64)
+scripts/build.sh --sign "Developer ID App: ..."    # macOS code signing
+scripts/build.sh --skip-engine                     # Skip engine bundling (reuse previous)
+```
+
+### Build Output
 
 | Platform | Format | Path |
 |----------|--------|------|
@@ -143,91 +242,22 @@ Output locations:
 | Linux | `.deb` | `ui/src-tauri/target/release/bundle/deb/` |
 | Linux | AppImage | `ui/src-tauri/target/release/bundle/appimage/` |
 
-> **Note:** macOS builds will be unsigned unless you configure an Apple Developer certificate. Unsigned apps trigger Gatekeeper -- users must right-click > Open to bypass.
+> **Note:** macOS builds are unsigned by default. Unsigned apps trigger Gatekeeper -- users must right-click > Open to bypass. Pass `--sign` with an Apple Developer identity to produce a signed build.
 
-### Self-Contained Build (Bundled Python Engine)
+## Documentation
 
-For a fully distributable app that doesn't require Python on the user's machine, the Python engine must be compiled into a standalone binary using **PyInstaller** and included as a Tauri sidecar.
+Architecture and design documents in [`docs/`](./docs/):
 
-#### Why PyInstaller
+- [**System Architecture**](./docs/architecture.md) -- Component diagrams and service descriptions
+- [**Event Schema**](./docs/event-schema.md) -- The Laya Event schema specification
+- [**API Contracts**](./docs/api-contracts.md) -- REST, WebSocket, and inter-service API definitions
+- [**Database Schema**](./docs/database-schema.md) -- SQLite tables and ChromaDB collection design
+- [**Project Structure**](./docs/project-structure.md) -- Repository layout and config file schemas
+- [**Implementation Plan**](./docs/implementation-plan.md) -- Milestone breakdown
+- [**Decision Log**](./docs/decision-log.md) -- Architectural decisions with rationale
 
-| Tool | Status |
-|------|--------|
-| **PyInstaller** | Recommended -- most mature, proven with FastAPI/uvicorn/chromadb, existing Tauri v2 sidecar examples |
-| Nuitka | Known issues with FastAPI/uvicorn multi-worker mode |
-| PyOxidizer | Abandoned since 2023 |
-| cx_Freeze | Viable but less community coverage for this dependency stack |
+### Concept Materials
 
-#### Step 1: Reduce dependency footprint
-
-The engine currently uses `sentence-transformers` + `torch` (~600MB+) for ChromaDB embeddings. ChromaDB ships a built-in ONNX embedding function using the same `all-MiniLM-L6-v2` model via `onnxruntime` (~15MB). Switching to the built-in function and removing `torch` / `sentence-transformers` / `transformers` / `scipy` / `scikit-learn` from `requirements.txt` cuts the bundle from ~2GB to ~200MB.
-
-#### Step 2: Build the engine binary
-
-```bash
-cd engine
-source .venv/bin/activate
-pip install pyinstaller
-
-# Build standalone binary (output: ui/src-tauri/binaries/)
-pyinstaller laya-engine.spec --distpath ../ui/src-tauri/binaries --clean -y
-
-# Rename with target triple (required by Tauri)
-TARGET=$(rustc --print host-tuple)
-mv ../ui/src-tauri/binaries/laya-engine/laya-engine \
-   ../ui/src-tauri/binaries/laya-engine-$TARGET
-```
-
-The PyInstaller spec file (`engine/laya-engine.spec`) must include hidden imports for chromadb, uvicorn, litellm, and data files for SQLite migrations.
-
-#### Step 3: Configure Tauri sidecar
-
-In `ui/src-tauri/tauri.conf.json`, add `externalBin`:
-
-```json
-{
-  "bundle": {
-    "externalBin": ["binaries/laya-engine"]
-  }
-}
-```
-
-Tauri resolves the platform-specific binary by appending the target triple. Place binaries as:
-
-```
-ui/src-tauri/binaries/
-  laya-engine-aarch64-apple-darwin        # macOS Apple Silicon
-  laya-engine-x86_64-apple-darwin         # macOS Intel
-  laya-engine-x86_64-unknown-linux-gnu    # Linux x64
-  laya-engine-x86_64-pc-windows-msvc.exe  # Windows x64
-```
-
-#### Step 4: Build the full app
-
-```bash
-cd ui
-npx @tauri-apps/cli build    # Bundles SvelteKit + Rust + sidecar binary into installer
-```
-
-#### Estimated bundle sizes
-
-| Configuration | Binary Size |
-|---------------|-------------|
-| With torch (current) | ~1.5--2.5 GB |
-| Without torch, ONNX embeddings (recommended) | ~150--300 MB |
-
-#### CI/CD
-
-For cross-platform releases, use GitHub Actions with a matrix build:
-
-1. Run PyInstaller on each target OS (macOS arm64, macOS x64, Linux x64, Windows x64)
-2. Feed the resulting binaries into the Tauri build step
-3. Tauri produces the platform-specific installer
-
-> **Development workflow** is unaffected -- `scripts/dev.sh` and `npx @tauri-apps/cli dev` continue to use the Python venv directly. The bundled binary is only used for production builds.
-
-## Project Status
-
-**Phase:** Pre-development (architecture and design complete)
-
-**Next step:** Milestone 1 -- Skeleton (get Tauri + Python engine + n8n running and talking to each other)
+- [Laya Architecture Spec](./LayaArchitectureSpec.md) -- Initial technical architecture vision
+- [Laya Master Orchestrator](./LayaMasterOrchestrator.md) -- Multi-persona system prompt design
+- [Laya - The Professional AI Operating System (PDF)](./Laya%20-%20The%20Professional%20AI%20Operating%20System.pdf) -- Concept slide deck

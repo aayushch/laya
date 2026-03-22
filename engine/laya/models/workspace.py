@@ -35,6 +35,7 @@ class WorkspaceEventType(str, Enum):
     APPROVAL_RESPONSE = "approval_response"
     STATUS_CHANGE = "status_change"
     ERROR = "error"
+    QUESTIONS_DISMISSED = "questions_dismissed"
 
 
 class WorkspaceEventActor(str, Enum):
