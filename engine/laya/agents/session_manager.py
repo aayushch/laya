@@ -238,6 +238,8 @@ async def has_unanswered_questions(session_id: str) -> bool:
             unanswered += 1
         elif event_type == "user_response" and unanswered > 0:
             unanswered -= 1
+        elif event_type == "questions_dismissed":
+            unanswered = 0
     return unanswered > 0
 
 
