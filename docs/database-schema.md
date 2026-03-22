@@ -5,7 +5,7 @@
 Laya uses two storage systems:
 
 - **SQLite** (`~/.laya/data/laya.db`): Structured data with exact lookups
-- **ChromaDB** (`~/.laya/data/chromadb/`): Semantic search via vector embeddings
+- **ChromaDB** (`~/.laya/data/chroma/`): Semantic search via vector embeddings
 
 ## SQLite Tables
 
@@ -267,13 +267,15 @@ results = collection.query(
 
 ## Migration Files
 
-Migrations are numbered SQL files in `engine/laya/db/migrations/`:
+Migrations are numbered SQL files in `engine/laya/db/migrations/`. There are currently 26 migrations (001 through 026), covering:
 
-| File | Tables Created |
+| Range | Description |
 |---|---|
-| `001_initial.sql` | `events`, `action_cards`, `action_log`, `schema_version` |
-| `002_entities.sql` | `entities` |
-| `003_workspace.sql` | `workspace_sessions`, `workspace_events` |
-| `004_audit.sql` | `audit_log` |
+| `001`-`003` | Core tables: events, action_cards, action_log, schema_version, entities |
+| `004`-`007` | Workspaces, chat, audit, polish |
+| `008`-`011` | Source refs, deduplication |
+| `012`-`013` | Selections, summaries |
+| `014` | **Spaces**: spaces, sources, space_api_keys tables; space_id added to events and action_cards |
+| `015`-`026` | Executors, repos, session management, event queuing, status lifecycle, chat conversations |
 
 The migration runner (`engine/laya/db/migrate.py`) checks `schema_version` on startup and applies any migrations with version > current version.

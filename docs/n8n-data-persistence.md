@@ -4,15 +4,15 @@ How n8n stores data in Laya, what survives upgrades, and backup strategies.
 
 ## Current Setup
 
-Laya installs n8n locally via npm into `~/.laya/n8n/node_modules/` and runs it as a Node.js process. All n8n data is stored in `~/.laya/n8n-data/`.
+Laya installs n8n locally via npm into `~/.laya/n8n_module/` and runs it as a Node.js process on port 45678. All n8n runtime data is stored in `~/.laya/n8n/`.
 
 ## Data Location
 
 | Item | Path |
 |------|------|
-| n8n installation | `~/.laya/n8n/node_modules/n8n/` |
-| n8n binary | `~/.laya/n8n/node_modules/.bin/n8n` |
-| n8n data directory | `~/.laya/n8n-data/` |
+| n8n installation | `~/.laya/n8n_module/node_modules/n8n/` |
+| n8n binary | `~/.laya/n8n_module/node_modules/.bin/n8n` |
+| n8n data directory | `~/.laya/n8n/` |
 
 ## What n8n Stores
 
@@ -53,7 +53,7 @@ The Tauri app installs n8n using a two-attempt strategy:
 
 | Operation | Data lost? | Why |
 |-----------|-----------|-----|
-| Deleting `~/.laya/n8n-data/` | **Yes** | Direct data deletion |
+| Deleting `~/.laya/n8n/` | **Yes** | Direct data deletion |
 | Deleting `~/.laya/` entirely | **Yes** | Removes all Laya data including n8n |
 
 ## Backup Strategies
@@ -78,7 +78,7 @@ GET /api/v1/workflows  →  ~/.laya/backups/n8n-workflows-<date>.json
 
 ### Option 2: Directory Backup
 
-Back up the entire `~/.laya/n8n-data/` directory:
+Back up the entire `~/.laya/n8n/` directory:
 
 ```bash
 # Back up

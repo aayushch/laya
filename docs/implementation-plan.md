@@ -29,9 +29,9 @@ Manually POST a JSON event to `/events` via curl. Confirm it's stored in SQLite.
 
 ### Key Technical Decisions
 
-- Engine bundling: Use PyInstaller for the sidecar binary. Ensure it works on macOS, Linux, Windows.
-- Docker management: Use Tauri's shell command API to run `docker start/stop`.
-- FastAPI + uvicorn running inside the PyInstaller bundle.
+- Engine bundling: Bundle Python source into Tauri app resources. Tauri creates a managed venv at `~/.laya/venv/` and installs dependencies on first launch.
+- n8n management: Tauri installs n8n via npm and manages it as a local Node.js process on port 45678.
+- FastAPI + uvicorn running from the managed venv.
 
 ---
 
@@ -230,10 +230,10 @@ Full end-to-end: Jira ticket created -> n8n fires -> Engine classifies -> Worker
   - Chat panel with message history
   - Chat input with send button
   - Messages display with Laya responses and referenced cards/events
-- [ ] **Chat graph (LangGraph):**
-  - Parse intent node (fast LLM)
-  - Retrieve context node (ChromaDB + SQLite)
-  - Respond node (strong LLM)
+- [ ] **Chat pipeline (asyncio):**
+  - Parse intent step (fast LLM)
+  - Retrieve context step (ChromaDB + SQLite)
+  - Respond step (strong LLM)
   - Reference specific cards and events in responses
 - [ ] **Chat API:** WebSocket `chat_message` type + `POST /chat` REST fallback
 - [ ] **Daily Briefing:**
@@ -268,8 +268,8 @@ Full end-to-end: Jira ticket created -> n8n fires -> Engine classifies -> Worker
   - Step 3: Coding agent selection + repo directory picker
   - Step 4: Team member entry (name, email, role)
   - Step 5: Event filter presets (ignore bots, ignore status changes, etc.)
-- [ ] **PyInstaller bundle** of Python engine (self-contained binary)
-- [ ] **Tauri sidecar integration:** Launch bundled engine binary on app start
+- [x] **Engine source bundling:** Python source bundled into Tauri app resources, venv created at `~/.laya/venv/` on first launch
+- [x] **Tauri engine lifecycle:** Tauri manages Python venv creation, dependency installation, and engine process start/stop
 - [x] **n8n management from Tauri:** Install via npm, start/stop n8n process, two-attempt install with native addon fallback
 - [ ] **Platform-specific installers:**
   - macOS: DMG with drag-to-Applications, code signed
