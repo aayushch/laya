@@ -126,6 +126,8 @@
 	const allGroupSelected = $derived(selectedInGroupCount === groupCardIds.length && groupCardIds.length > 0);
 	const someGroupSelected = $derived(selectedInGroupCount > 0 && !allGroupSelected);
 
+	let subjectTruncated = $state(false);
+	let subjectEl: HTMLSpanElement | undefined = $state();
 	let groupCheckboxEl: HTMLButtonElement | undefined = $state();
 
 	function toggleGroupCheckbox(e: MouseEvent) {
@@ -214,11 +216,11 @@
 			</div>
 		{/if}
 
-		<div class="flex-1 border {expanded ? 'rounded-t-lg border-surface-600 border-b-0 bg-surface-900' : 'rounded-lg border-surface-700/40 ' + groupBgStyle} transition-colors">
+		<div class="flex-1 min-w-0 border {expanded ? 'rounded-t-lg border-surface-600 border-b-0 bg-surface-900' : 'rounded-lg border-surface-700/40 ' + groupBgStyle} transition-colors">
 			<!-- Group header row -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
-				class="group/grow flex items-center px-3 py-1.5 cursor-pointer transition-colors"
+				class="group/grow flex min-w-0 items-center px-3 py-1.5 cursor-pointer transition-colors"
 				onclick={toggle}
 				onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}
 				role="button"
@@ -237,8 +239,17 @@
 		</span>
 
 		<!-- Subject (entity title) — skip actor column, use ml to match card's actor+gap -->
-		<span class="min-w-0 flex-1 truncate text-xs font-medium text-surface-200 ml-2" title={group.entity_title}>
-			{group.entity_title}
+		<span class="group/subject relative min-w-0 flex-1 ml-2"
+			onmouseenter={() => { if (subjectEl) subjectTruncated = subjectEl.scrollWidth > subjectEl.clientWidth; }}
+		>
+			<span bind:this={subjectEl} class="block truncate text-xs font-medium text-surface-200">
+				{group.entity_title}
+			</span>
+			{#if subjectTruncated}
+				<span class="pointer-events-none absolute top-full left-0 z-10 mt-1 max-w-xs whitespace-normal rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/subject:opacity-100">
+					{group.entity_title}
+				</span>
+			{/if}
 		</span>
 
 		<!-- Card count — with status summary tooltip -->
