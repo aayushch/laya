@@ -55,7 +55,7 @@ Every architectural and design decision made during the planning phase, with rat
 
 | # | Decision | Rationale |
 |---|---|---|
-| 25 | **Hybrid tool architecture** | Internal tools (memory, DB queries) as Python functions in LangGraph -- fast, simple, no overhead. Coding agents as CLI subprocesses. n8n as HTTP. MCP protocol adds value for cross-agent interop but isn't needed for internal tools in v0.1. |
+| 25 | **Hybrid tool architecture** | Internal tools (memory, DB queries) as Python functions in the pipeline -- fast, simple, no overhead. Coding agents as CLI subprocesses. n8n as HTTP. MCP server available for cross-agent interop. |
 | 26 | **Context injection via prompt to coding agents** | Workers query Laya's internal tools first, then pass results to coding agents via prompt text. Coding agents don't need direct access to Laya's databases. Clean separation of concerns. |
 | 27 | **User configures one default coding agent** | Support three agents: Claude Code, Gemini CLI, OpenAI Codex CLI. User picks one in settings. All coding tasks go to that agent. Thin adapter abstraction with common interface. |
 | 28 | **READ is automatic, WRITE requires approval** | All tools can read freely (events, memory, files). Any write to external systems (create PR, send email) goes through the Action Card approval gate. The UI IS the human-in-the-loop control. |
@@ -89,11 +89,11 @@ Every architectural and design decision made during the planning phase, with rat
 
 | # | Decision | Rationale |
 |---|---|---|
-| 44 | **Python 3.11+ for engine** | Required by LangGraph (Python-native). Mature ecosystem for AI/ML (sentence-transformers, ChromaDB, LiteLLM). asyncio task groups in 3.11+. |
+| 44 | **Python 3.10+ for engine** | Mature ecosystem for AI/ML (sentence-transformers, ChromaDB, LiteLLM). asyncio for concurrent event processing. FastAPI for HTTP + WebSocket. |
 | 45 | **LiteLLM for unified LLM interface** | Single `completion()` call works with 100+ providers (Anthropic, OpenAI, Google, Ollama). Perfectly implements configurable model settings without provider-specific code. |
 | 46 | **Svelte + Skeleton + Tailwind for frontend** | Lightweight, fast, clean DX. Skeleton for accessible UI components. Tailwind for utility-first styling. Excellent Tauri integration. Layerchart or Chart.js for dashboard charts. |
-| 47 | **Tauri v2 manages everything** | Single install for the user. Tauri launches Python engine as sidecar process, installs and manages n8n via npm. Native system tray + notifications. Auto-update support built in. |
-| 48 | **n8n via npm, pre-built workflows** | n8n is installed locally via npm (no Docker required). 10 workflow JSON files (5 ingestion + 5 execution) shipped with Laya, auto-imported on first launch. Two-attempt install strategy: first tries full native addons, falls back to skip native compilation if node-gyp fails. |
+| 47 | **Tauri v2 manages everything** | Single install for the user. Tauri manages the Python engine lifecycle (creates venv from bundled source, starts/stops engine process) and n8n (npm install + process management). Native system tray + notifications. Auto-update support built in. |
+| 48 | **n8n via npm, pre-built workflows** | n8n is installed locally via npm (no Docker required). ~15 workflow JSON files (ingestion + execution for multiple platforms) shipped with Laya, auto-imported on first launch. Two-attempt install strategy: first tries full native addons, falls back to skip native compilation if node-gyp fails. n8n runs on port 45678 to avoid conflicts with user's own n8n instances. |
 | 49 | **SQLite + ChromaDB embedded** | All data stored locally in `~/.laya/`. No external database servers. SQLite for structured data, ChromaDB (embedded mode) for vector search. Zero-config persistence. |
 | 50 | **pytest + Vitest + Playwright for testing** | pytest + pytest-asyncio for Python engine. Vitest + Svelte Testing Library for frontend components. Playwright for end-to-end browser tests through Tauri's webview. |
 
@@ -101,9 +101,9 @@ Every architectural and design decision made during the planning phase, with rat
 
 | # | Decision | Rationale |
 |---|---|---|
-| 51 | **Bundled embedded Python runtime** | Use PyInstaller/PyOxidizer to package the engine + all Python dependencies as a self-contained binary (~200MB). User never needs Python installed. No dependency conflicts. |
+| 51 | **Bundled Python source with managed venv** | ~~Originally planned PyInstaller binary.~~ Current approach bundles raw Python source into the Tauri app resources. On first launch, Tauri creates a venv at `~/.laya/venv/` and installs dependencies from the bundled `requirements.txt`. This avoids PyInstaller compatibility issues with complex dependencies (ChromaDB, LiteLLM, sentence-transformers) while still requiring no manual Python setup from the user. |
 | 52 | **All three platforms from day one** | macOS, Linux, and Windows supported in v0.1. Primary development on macOS. CI/CD builds for all three. Tripled QA effort accepted for maximum reach. |
-| 53 | **Single-file installer per platform** | DMG/PKG (macOS), AppImage/deb (Linux), MSI (Windows). Installer checks for Docker and guides user to install it if missing. |
+| 53 | **Single-file installer per platform** | DMG (macOS), AppImage/deb (Linux), MSI/NSIS (Windows). No Docker dependency -- n8n runs as a local Node.js process. |
 | 54 | **Tauri auto-update** | Built-in update checking with stable/beta channels. Non-intrusive notification when update available. Database migrations run automatically on version upgrade. |
 | 55 | **5-step first-run setup wizard** | Step 1: LLM config. Step 2: Connect tools (via n8n OAuth). Step 3: Coding agent + repos. Step 4: Team config. Step 5: Event filters. Gets user to a working state in ~5 minutes. |
 | 56 | **SQL migration system for schema evolution** | Numbered migration files (001_initial.sql, 002_entities.sql, etc.). Engine checks schema version on startup and runs pending migrations. Simple, no heavy ORM framework. |

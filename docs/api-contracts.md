@@ -76,7 +76,7 @@ Sends approved actions to n8n for execution. Each platform has its own executor 
 
 **Request:**
 ```
-POST http://localhost:5678/webhook/<bitbucket-executor-webhook-id>
+POST http://localhost:45678/webhook/<bitbucket-executor-webhook-id>
 Content-Type: application/json
 
 {

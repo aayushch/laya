@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-Laya is a **local-first AI operating system** for professionals. It intercepts events from a user's professional tools (Jira, Bitbucket, Slack, Gmail, Calendar), performs autonomous research and action-staging using LLM-powered agents, and presents the user with ready-to-approve **Action Cards** in a desktop application.
+Laya is a **local-first AI command centre** for professionals. It intercepts events from a user's professional tools (Jira, Bitbucket, Slack, Gmail, Calendar), performs autonomous research and action-staging using LLM-powered agents, and presents the user with ready-to-approve **Action Cards** in a desktop application.
 
 **Core Principle:** By the time a human opens a notification, Laya has already researched context, drafted the response/fix/email, and packaged it into an Action Card for one-click approval.
 
@@ -23,7 +23,7 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
          v
 +----------------+    HTTP POST    +--------------------+
 |      n8n       | --------------> |    Laya Engine     |
-|   (Docker)     |   Laya Event    |    (Python)        |
+| (local Node.js)|   Laya Event    |    (Python)        |
 |                | <-------------- |                    |
 |  Normalize     |   Action Req    |  Classify          |
 |  events        |                 |  Research          |
@@ -49,7 +49,7 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 | Process | Technology | Role |
 |---|---|---|
 | **Tauri App** | Rust + Svelte | Desktop shell, system tray, native notifications, manages other processes |
-| **Laya Engine** | Python (FastAPI + LangGraph) | Orchestration, LLM calls, memory, agent management |
+| **Laya Engine** | Python (FastAPI + asyncio) | Orchestration, LLM calls, memory, agent management |
 | **n8n** | Local Node.js process (npm) | Sole gateway to external services (both inbound and outbound) |
 
 ## 3. Detailed Architecture
@@ -93,7 +93,7 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |  |  CRUD /settings        (configuration)                     |  |     |
 |  |  +------------------------------------------------------------+  |     |
 |  |                                                                  |     |
-|  |  +- LangGraph Orchestration ----------------------------------+  |     |
+|  |  +- Asyncio Pipeline ----------------------------------+  |     |
 |  |  |                                                            |  |     |
 |  |  | INGEST -> RULES -> ROUTER -> WORKER(s) -> STAGER -> EMIT   |  |     |
 |  |  |                      |                                     |  |     |
@@ -124,7 +124,7 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |          v                  v                    v                        |
 |  +--------------+   +---------------+   +-------------------+             |
 |  |     n8n      |   |   SQLite      |   |    ChromaDB       |             |
-|  |  (Docker)    |   |               |   |   (embedded)      |             |
+|  |(local Node.js)|  |               |   |   (embedded)      |             |
 |  |              |   | events        |   |                   |             |
 |  | Ingestion:   |   | action_cards  |   | laya_memory       |             |
 |  |  Jira        |   | action_log    |   | collection        |             |
@@ -167,20 +167,24 @@ n8n is the **sole boundary** between Laya and external services. It has two resp
 - Execute actions against external platforms using their APIs
 - Return results to the Engine
 
-### n8n Workflow Inventory (v0.1)
+### n8n Workflow Inventory
 
 | Workflow | Type | Trigger | Action |
 |---|---|---|---|
 | jira-ingestion | Inbound | Jira webhook (ticket events) | Normalize + POST to engine |
-| jira-executor | Outbound | Engine webhook | Add comment, update ticket |
+| github-ingestion | Inbound | GitHub webhook (PR/issue events) | Normalize + POST to engine |
 | bitbucket-ingestion | Inbound | Bitbucket webhook (PR/build events) | Normalize + POST to engine |
-| bitbucket-executor | Outbound | Engine webhook | Create PR, add comment |
 | slack-ingestion | Inbound | Slack events (messages, mentions) | Normalize + POST to engine |
-| slack-executor | Outbound | Engine webhook | Send message, reply to thread |
 | gmail-ingestion | Inbound | Gmail trigger (new emails) | Normalize + POST to engine |
 | gmail-executor | Outbound | Engine webhook | Send/reply to email |
-| calendar-ingestion | Inbound | Calendar trigger (upcoming/new events) | Normalize + POST to engine |
-| calendar-executor | Outbound | Engine webhook | Create/update calendar event |
+| google-calendar-ingestion | Inbound | Google Calendar trigger | Normalize + POST to engine |
+| google-calendar-executor | Outbound | Engine webhook | Create/update calendar event |
+| outlook-email-ingestion | Inbound | Outlook email trigger | Normalize + POST to engine |
+| outlook-email-executor | Outbound | Engine webhook | Send/reply to email |
+| outlook-imap-ingestion | Inbound | Outlook IMAP trigger | Normalize + POST to engine |
+| outlook-imap-executor | Outbound | Engine webhook | Send/reply to email |
+| outlook-calendar-ingestion | Inbound | Outlook Calendar trigger | Normalize + POST to engine |
+| outlook-calendar-executor | Outbound | Engine webhook | Create/update calendar event |
 
 ### Key Design Properties
 
@@ -190,9 +194,9 @@ n8n is the **sole boundary** between Laya and external services. It has two resp
 
 ## 5. Laya Engine: The Orchestration Layer
 
-The engine is a Python process running FastAPI (HTTP + WebSocket server) and LangGraph (orchestration state machine).
+The engine is a Python process running FastAPI (HTTP + WebSocket server) with an asyncio-based event processing pipeline.
 
-### LangGraph State Machine (Event Mode)
+### Event Processing Pipeline
 
 ```
 n8n POST /events
@@ -269,7 +273,7 @@ Tauri UI shows Action Card
 Engine POSTs action to n8n --> n8n executes --> result stored
 ```
 
-### LangGraph State Machine (Chat Mode)
+### Chat Pipeline
 
 ```
 User types question
@@ -295,34 +299,9 @@ RESPOND (strong LLM)
 WebSocket --> UI chat panel
 ```
 
-### LangGraph State Object
+### Pipeline State
 
-```python
-class LayaState(TypedDict):
-    # Input
-    raw_event: LayaEvent
-    enriched_actor: ActorWithRelationship
-
-    # Rules output
-    rules_result: Literal["pass", "drop"]
-
-    # Router output
-    classification: Classification
-    research_plan: list[str]
-    related_events: list[dict]
-
-    # Worker output
-    research_findings: list[ResearchFinding]
-    drafted_outputs: list[DraftedOutput]
-
-    # Stager output
-    action_card: ActionCard
-
-    # Metadata
-    processing_start: datetime
-    processing_log: list[str]
-    error: Optional[str]
-```
+The pipeline passes state through each step using a database-backed event queue with concurrency control (configurable semaphore, default 5 concurrent events). Events have a `processing_status` (queued, processing, completed, failed) with exponential backoff retry and stalled event recovery on startup.
 
 ## 6. Card Workspace Model
 
@@ -384,7 +363,7 @@ Coding agents (Claude Code, Gemini CLI, Codex) run as PTY subprocesses. The ENGI
 
 ### Embedding Model
 
-Default: `nomic-embed` or `all-MiniLM` via `sentence-transformers` (local). Architecture supports swapping to cloud embedding APIs via configuration.
+Default: ChromaDB's built-in ONNX embedding function (~15MB, no GPU required). Optionally uses `nomic-embed-text-v1.5` via `sentence-transformers` if `requirements-ml.txt` dependencies are installed. Embedding model selection is hardwired (not user-configurable) to ensure consistent vector space across the application.
 
 ## 8. Security Architecture
 
@@ -424,14 +403,15 @@ FRONTEND (Tauri v2)
   - Layerchart / Chart.js (analytics)
   - Svelte stores (state management)
 
-BACKEND (Python 3.11+)
+BACKEND (Python 3.10+)
   - FastAPI (HTTP + WebSocket server)
-  - LangGraph (orchestration state machine)
+  - asyncio pipeline (event processing)
   - LiteLLM (unified LLM interface)
-  - ChromaDB (embedded vector store)
-  - sentence-transformers (local embeddings)
-  - aiosqlite (async SQLite)
+  - ChromaDB (embedded vector store, ONNX embeddings)
+  - sentence-transformers (optional, for nomic-embed)
+  - aiosqlite (async SQLite with WAL mode)
   - asyncio + pty (agent subprocess management)
+  - structlog (structured JSON logging)
 
 INFRASTRUCTURE
   - Tauri v2 / Rust (app shell, sidecar management)
@@ -440,7 +420,7 @@ INFRASTRUCTURE
 
 DATA
   - SQLite (~/.laya/data/laya.db)
-  - ChromaDB (~/.laya/data/chromadb/)
+  - ChromaDB (~/.laya/data/chroma/)
   - JSON configs (~/.laya/*.json)
 
 CODING AGENTS (user configures one)

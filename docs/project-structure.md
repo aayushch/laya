@@ -5,302 +5,224 @@
 ```
 laya/
 |-- README.md
-|-- LICENSE
-|-- package.json                          # n8n installed via npm (local node_modules)
 |
 |-- engine/                               # Python backend
-|   |-- pyproject.toml                    # dependencies (poetry/pdm)
+|   |-- requirements.txt                  # Core dependencies (FastAPI, LiteLLM, ChromaDB, etc.)
+|   |-- requirements-ml.txt               # Optional ML dependencies (torch, sentence-transformers)
+|   |-- laya-engine.spec                  # PyInstaller spec (optional, for standalone binary builds)
 |   |-- laya/
 |   |   |-- __init__.py
-|   |   |-- main.py                       # FastAPI app + startup
-|   |   |-- config.py                     # settings loader (reads ~/.laya/*.json)
+|   |   |-- main.py                       # FastAPI app + startup lifecycle
+|   |   |-- config.py                     # Settings loader, agent path detection, directory management
+|   |   |-- logging_setup.py              # Structured logging (structlog, rotating file handler)
+|   |   |-- scheduler.py                  # Background scheduler (briefings, housekeeping)
+|   |   |-- http_client.py                # Shared HTTP client
 |   |   |
-|   |   |-- api/                          # HTTP + WebSocket endpoints
+|   |   |-- api/                          # HTTP + WebSocket endpoints (17 routers)
 |   |   |   |-- __init__.py
 |   |   |   |-- events.py                 # POST /events (receives from n8n)
-|   |   |   |-- cards.py                  # GET/POST card endpoints
-|   |   |   |-- dashboard.py             # GET /dashboard (analytics)
-|   |   |   |-- settings_api.py          # CRUD /settings
-|   |   |   |-- health.py                # GET /health
-|   |   |   |-- chat.py                  # POST /chat
-|   |   |   |-- websocket.py             # WS /ws handler
-|   |   |   |-- actions.py               # POST /actions/approve, /actions/dismiss
-|   |   |   |-- workspace_api.py         # GET /cards/:id/workspace
+|   |   |   |-- cards_api.py              # Card CRUD, grouping, archive/reopen
+|   |   |   |-- actions_api.py            # POST /actions/approve, /actions/dismiss
+|   |   |   |-- workspace_api.py          # Workspace/agent session endpoints
+|   |   |   |-- chat_api.py               # Chat conversations
+|   |   |   |-- dashboard_api.py          # GET /dashboard (analytics)
+|   |   |   |-- settings_api.py           # CRUD /settings
+|   |   |   |-- spaces_api.py             # Space/source CRUD, bulk assignment
+|   |   |   |-- connections_api.py         # Integration connection status
+|   |   |   |-- rules_api.py              # Event filter rules
+|   |   |   |-- audit_api.py              # Audit log queries
+|   |   |   |-- diagnostics_api.py        # System diagnostics
+|   |   |   |-- health.py                 # GET /health
+|   |   |   |-- team.py                   # Team member endpoints
+|   |   |   |-- websocket.py              # WS /ws handler
+|   |   |   |-- ws_router.py              # WebSocket message routing
 |   |   |
-|   |   |-- graph/                        # LangGraph orchestration
+|   |   |-- pipeline/                     # Event processing pipeline (asyncio-based)
 |   |   |   |-- __init__.py
-|   |   |   |-- state.py                  # LayaState TypedDict
-|   |   |   |-- graph.py                  # Main graph definition + compilation
-|   |   |   |-- ingest.py                # INGEST node
-|   |   |   |-- rules.py                 # RULES ENGINE node
-|   |   |   |-- router.py                # ROUTER node (LLM classification)
-|   |   |   |-- stager.py                # STAGER node (LLM card generation)
-|   |   |   |-- emit.py                  # EMIT node (store + push to UI)
-|   |   |   |-- chat_graph.py            # Chat mode graph (intent -> retrieve -> respond)
+|   |   |   |-- queue.py                  # Database-backed event queue with concurrency control
+|   |   |   |-- ingest.py                 # INGEST step: parse event, resolve actor, store in SQLite
+|   |   |   |-- rules.py                  # RULES step: evaluate user-defined rules (rules.json)
+|   |   |   |-- router.py                 # ROUTER step: LLM classification (category, persona, priority)
+|   |   |   |-- stager.py                 # STAGER step: LLM card generation
+|   |   |   |-- emit.py                   # EMIT step: store card, embed in ChromaDB, push via WebSocket
+|   |   |   |-- executor.py               # Execute approved actions via n8n
+|   |   |   |-- chat.py                   # Chat assistant pipeline
+|   |   |   |-- workers.py                # Multi-persona LLM workers
+|   |   |   |-- entity_resolution.py      # Cross-platform entity linking
+|   |   |   |-- space_resolution.py       # Space/source identification
+|   |   |   |-- feedback.py               # Learning loop (approval pattern tracking)
+|   |   |   |-- summarize.py              # Daily briefing generation
+|   |   |   |-- briefing.py               # Briefing content assembly
 |   |   |
-|   |   |-- workers/                      # Persona workers (LangGraph sub-graphs)
+|   |   |-- workers/                      # Persona workers
 |   |   |   |-- __init__.py
 |   |   |   |-- base.py                   # BaseWorker interface
-|   |   |   |-- engineer.py              # ENGINEER worker (coding agent orchestration)
-|   |   |   |-- comms.py                 # COMMS worker (draft replies)
-|   |   |   |-- ops.py                   # OPS worker (calendar prep, briefings)
+|   |   |   |-- engineer.py               # ENGINEER worker (coding agent orchestration)
+|   |   |   |-- comms.py                  # COMMS worker (draft replies)
+|   |   |   |-- ops.py                    # OPS worker (calendar prep, briefings)
 |   |   |
 |   |   |-- agents/                       # Coding agent adapters
 |   |   |   |-- __init__.py
 |   |   |   |-- base.py                   # CodingAgent protocol + AgentSession protocol
-|   |   |   |-- claude_code.py           # Claude Code CLI adapter
-|   |   |   |-- gemini_cli.py            # Gemini CLI adapter
-|   |   |   |-- codex_cli.py             # OpenAI Codex CLI adapter
-|   |   |   |-- session_manager.py       # Manages active PTY sessions across cards
+|   |   |   |-- claude_code.py            # Claude Code CLI adapter
+|   |   |   |-- gemini_cli.py             # Gemini CLI adapter
+|   |   |   |-- codex_cli.py              # OpenAI Codex CLI adapter
+|   |   |   |-- session_manager.py        # Manages active sessions across cards
 |   |   |
-|   |   |-- tools/                        # Internal tool functions (used by LangGraph)
+|   |   |-- llm/                          # LLM interaction layer
 |   |   |   |-- __init__.py
-|   |   |   |-- memory.py                # memory_search(query) -> ChromaDB similarity search
-|   |   |   |-- events.py                # event_lookup(subject_id, time_range) -> SQLite query
-|   |   |   |-- entities.py              # entity_lookup(id), entity_link(a, b) -> SQLite CRUD
-|   |   |   |-- team.py                  # team_lookup(email) -> team.json lookup
-|   |   |   |-- feedback.py              # feedback_query(event_type) -> past approval patterns
-|   |   |   |-- cards.py                 # card_history(subject_id, status) -> SQLite query
+|   |   |   |-- client.py                 # LiteLLM wrapper with model selection, retries, space overrides
+|   |   |   |-- providers.py              # Custom model provider management
+|   |   |   |-- prompts/                  # Prompt templates (router, stager, engineer, comms, ops, etc.)
+|   |   |   |-- tools/                    # MCP tool definitions
+|   |   |       |-- definitions.py        # Tool schemas
+|   |   |       |-- card_tools.py         # Card query tools
+|   |   |       |-- entity_tools.py       # Entity lookup/link tools
+|   |   |       |-- event_tools.py        # Event query tools
+|   |   |       |-- search_tools.py       # Memory/semantic search tools
+|   |   |       |-- executor.py           # Tool execution
+|   |   |
+|   |   |-- mcp/                          # Model Context Protocol server
+|   |   |   |-- __init__.py
+|   |   |   |-- __main__.py
+|   |   |   |-- server.py                 # MCP server implementation
 |   |   |
 |   |   |-- db/                           # Database layer
 |   |   |   |-- __init__.py
-|   |   |   |-- sqlite.py                # SQLite connection pool + query helpers
-|   |   |   |-- chromadb_store.py        # ChromaDB connection + embed/query operations
-|   |   |   |-- migrations/              # SQL migration files (numbered)
-|   |   |   |   |-- 001_initial.sql      # Core tables: events, action_cards, action_log
-|   |   |   |   |-- 002_entities.sql     # Entity resolution: entities table
-|   |   |   |   |-- 003_workspace.sql    # Workspace: workspace_sessions, workspace_events
-|   |   |   |   |-- 004_audit.sql        # Audit: audit_log table
-|   |   |   |   |-- ...
+|   |   |   |-- sqlite.py                 # Async SQLite connection (WAL mode, foreign keys)
+|   |   |   |-- chromadb_store.py         # ChromaDB vector store (embedded PersistentClient)
+|   |   |   |-- chunking.py              # Document chunking for embeddings
 |   |   |   |-- migrate.py               # Migration runner (check version, apply pending)
+|   |   |   |-- migrations/              # 26 numbered SQL migration files
+|   |   |       |-- 001_initial.sql       # Core tables: events, action_cards, action_log
+|   |   |       |-- 002_entities.sql      # Entity resolution: entities table
+|   |   |       |-- ...
+|   |   |       |-- 014_spaces.sql        # Spaces, sources, space_api_keys
+|   |   |       |-- ...
+|   |   |       |-- 026_chat_conversations.sql
 |   |   |
-|   |   |-- scheduler/                    # Scheduled/cron jobs
+|   |   |-- models/                       # Pydantic data models
 |   |   |   |-- __init__.py
-|   |   |   |-- briefing.py              # Daily briefing generator
-|   |   |   |-- cleanup.py               # 90-day memory cleanup
-|   |   |   |-- scheduler.py             # Job scheduler (APScheduler or custom)
+|   |   |   |-- event.py                  # LayaEvent model
+|   |   |   |-- card.py                   # ActionCard model
+|   |   |   |-- workspace.py              # WorkspaceSession, WorkspaceEvent models
+|   |   |   |-- ...                       # Additional models (action, classification, etc.)
+|   |   |
+|   |   |-- integrations/                 # External service clients
+|   |   |   |-- __init__.py
+|   |   |   |-- n8n_bootstrap.py          # n8n owner setup, API key creation, workflow import
+|   |   |   |-- n8n_client.py             # n8n REST API client
+|   |   |   |-- platforms.py              # Platform detection utilities
 |   |   |
 |   |   |-- security/                     # Security utilities
-|   |   |   |-- __init__.py
-|   |   |   |-- keychain.py              # OS keychain read/write (macOS/Linux/Windows)
-|   |   |   |-- tiers.py                 # Data tier classification logic
-|   |   |   |-- prompt_safety.py         # Input delimiting for LLM prompts
-|   |   |
-|   |   |-- models/                       # Data models / types
-|   |   |   |-- __init__.py
-|   |   |   |-- event.py                 # LayaEvent pydantic model
-|   |   |   |-- card.py                  # ActionCard pydantic model
-|   |   |   |-- action.py               # Action pydantic models
-|   |   |   |-- workspace.py            # WorkspaceSession, WorkspaceEvent models
-|   |   |   |-- classification.py       # Classification, ResearchPlan models
-|   |   |
-|   |   |-- llm/                          # LLM interaction layer
 |   |       |-- __init__.py
-|   |       |-- client.py                # LiteLLM wrapper with model selection from config
-|   |       |-- prompts/                 # Prompt templates
-|   |           |-- router.py            # Router classification prompt
-|   |           |-- stager.py            # Stager card generation prompt
-|   |           |-- engineer.py          # Engineer worker prompt builder
-|   |           |-- comms.py             # Comms worker prompt builder
-|   |           |-- ops.py               # Ops worker prompt builder
-|   |           |-- chat.py              # Chat intent + response prompts
-|   |           |-- briefing.py          # Daily briefing prompt
+|   |       |-- keychain.py               # OS keychain read/write (macOS/Linux/Windows)
 |   |
-|   |-- tests/
-|   |   |-- __init__.py
-|   |   |-- conftest.py                  # Shared fixtures, mock LLM responses
-|   |   |-- unit/
-|   |   |   |-- test_ingest.py           # INGEST node tests
-|   |   |   |-- test_rules.py            # Rules engine tests
-|   |   |   |-- test_router.py           # Router classification tests (mocked LLM)
-|   |   |   |-- test_stager.py           # Stager output tests (mocked LLM)
-|   |   |   |-- test_entities.py         # Entity resolution tests
-|   |   |   |-- test_tools.py            # Internal tools tests
-|   |   |   |-- test_tiers.py            # Data tier classification tests
-|   |   |   |-- test_prompt_safety.py    # Prompt injection defense tests
-|   |   |   |-- test_models.py           # Pydantic model validation tests
-|   |   |   |-- ...
-|   |   |-- integration/
-|   |   |   |-- test_event_flow.py       # Full event pipeline (mocked LLM + real DB)
-|   |   |   |-- test_agent_session.py    # Coding agent subprocess tests (test repo)
-|   |   |   |-- test_n8n_comms.py        # Engine <-> n8n HTTP tests (mocked n8n)
-|   |   |   |-- test_workspace.py        # Workspace state persistence tests
-|   |   |   |-- ...
-|   |   |-- fixtures/
-|   |       |-- events/                  # Sample Laya Event JSONs per platform
-|   |       |   |-- jira_bug_assigned.json
-|   |       |   |-- bitbucket_pr_review.json
-|   |       |   |-- slack_mention.json
-|   |       |   |-- gmail_new_email.json
-|   |       |   |-- calendar_upcoming.json
-|   |       |-- llm_responses/           # Mocked LLM outputs for deterministic tests
-|   |           |-- router_engineer.json
-|   |           |-- router_comms.json
-|   |           |-- stager_card.json
-|   |
-|   |-- build/
-|       |-- pyinstaller.spec             # PyInstaller config for bundling
-|       |-- build.sh                     # Build script for engine binary
+|   |-- .venv/                            # Dev Python virtual environment (created by setup-dev.sh)
 |
 |-- ui/                                   # Tauri + Svelte frontend
 |   |-- src-tauri/                        # Rust (Tauri shell)
 |   |   |-- Cargo.toml
-|   |   |-- tauri.conf.json              # Tauri config: windows, permissions, updater, sidecar
+|   |   |-- tauri.conf.json               # Tauri config: windows, resources, icons
+|   |   |-- build.rs                      # Rust build script (tauri-build)
 |   |   |-- src/
-|   |   |   |-- main.rs                  # Tauri app entry point
-|   |   |   |-- lib.rs                   # Tauri command handlers
-|   |   |   |-- tray.rs                  # System tray setup + badge management
-|   |   |   |-- sidecar.rs              # Python engine process lifecycle management
-|   |   |   |-- n8n.rs                 # n8n process lifecycle management (npm install + start)
-|   |   |   |-- notifications.rs         # Native OS notification bridge
-|   |   |   |-- health.rs               # Periodic health check polling
-|   |   |-- icons/                       # App icons per platform
-|   |   |-- capabilities/               # Tauri v2 capability definitions
+|   |   |   |-- main.rs                   # Tauri app entry point
+|   |   |   |-- lib.rs                    # Tauri setup, commands, health polling, tray menu
+|   |   |   |-- sidecar.rs               # Python venv lifecycle & engine process management
+|   |   |   |-- n8n.rs                    # n8n npm install + process lifecycle management
+|   |   |-- icons/                        # App icons per platform (png, icns, ico)
+|   |   |-- capabilities/                 # Tauri v2 capability definitions (shell, spawn perms)
+|   |   |-- resources/                    # Bundled engine source (populated by build.sh)
 |   |
-|   |-- src/                              # Svelte frontend
-|   |   |-- app.html                     # HTML entry point
-|   |   |-- app.css                      # Global styles + Tailwind imports
+|   |-- src/                              # Svelte 5 frontend (runes syntax)
+|   |   |-- app.html                      # HTML entry point
+|   |   |-- app.css                       # Tailwind v4 + theme system (dark/light, brand tokens)
+|   |   |-- app.d.ts                      # TypeScript declarations
 |   |   |
 |   |   |-- lib/
-|   |   |   |-- stores/                  # Svelte stores (reactive state management)
-|   |   |   |   |-- cards.ts             # Action Cards state (feed data)
-|   |   |   |   |-- workspace.ts         # Active workspace state (per card)
-|   |   |   |   |-- chat.ts              # Chat message history
-|   |   |   |   |-- dashboard.ts         # Analytics/dashboard data
-|   |   |   |   |-- settings.ts          # App configuration state
-|   |   |   |   |-- health.ts            # System health state
-|   |   |   |   |-- notifications.ts     # Notification queue
+|   |   |   |-- stores/                   # Svelte stores (reactive state)
+|   |   |   |   |-- chat.ts               # Chat message history
+|   |   |   |   |-- feedFilters.ts        # Feed filter state
+|   |   |   |   |-- feedSelection.ts      # Selected card state
+|   |   |   |   |-- feedView.ts           # Feed view mode
+|   |   |   |   |-- health.ts             # System health state
+|   |   |   |   |-- recentCards.ts        # Recent card tracking
+|   |   |   |   |-- setup.ts              # First-run setup state
+|   |   |   |   |-- spaces.ts             # Space/source state
+|   |   |   |   |-- theme.ts              # Theme (dark/light), persists to localStorage
+|   |   |   |   |-- websocket.ts          # WebSocket connection state
 |   |   |   |
-|   |   |   |-- api/                     # Engine communication layer
-|   |   |   |   |-- rest.ts              # REST API client (fetch wrapper)
-|   |   |   |   |-- websocket.ts         # WebSocket manager (connect, reconnect, dispatch)
-|   |   |   |   |-- types.ts             # TypeScript types matching API contracts
+|   |   |   |-- api/                      # Engine communication layer
+|   |   |   |   |-- engine.ts             # REST API client (all endpoints)
+|   |   |   |   |-- types.ts              # TypeScript types matching API contracts
 |   |   |   |
 |   |   |   |-- components/              # Reusable UI components
-|   |   |   |   |-- feed/
-|   |   |   |   |   |-- ActionCard.svelte         # Card in feed view (compact)
-|   |   |   |   |   |-- CardList.svelte           # Scrollable card feed
-|   |   |   |   |   |-- PriorityBadge.svelte      # CRITICAL/HIGH/MEDIUM/LOW badge
-|   |   |   |   |   |-- StatusIndicator.svelte    # Card status icon + label
-|   |   |   |   |   |-- FilterBar.svelte          # Feed filter controls
-|   |   |   |   |
-|   |   |   |   |-- workspace/
-|   |   |   |   |   |-- WorkspaceLayout.svelte    # Three-panel workspace layout
-|   |   |   |   |   |-- Timeline.svelte           # Chronological event timeline
-|   |   |   |   |   |-- TimelineEvent.svelte      # Single timeline entry
-|   |   |   |   |   |-- LiveAgent.svelte          # Agent output + approval panel
-|   |   |   |   |   |-- ApprovalPrompt.svelte     # Agent approval request UI
-|   |   |   |   |   |-- ContextSidebar.svelte     # Related entities, cross-refs, team
-|   |   |   |   |   |-- StagedOutput.svelte       # Final output display (diff, draft, etc.)
-|   |   |   |   |   |-- CodeDiff.svelte           # Syntax-highlighted code diff
-|   |   |   |   |   |-- SessionControls.svelte    # Pause, resume, cancel buttons
-|   |   |   |   |
-|   |   |   |   |-- dashboard/
-|   |   |   |   |   |-- DashboardLayout.svelte    # Dashboard grid layout
-|   |   |   |   |   |-- StatCard.svelte           # Single metric card
-|   |   |   |   |   |-- SourceBreakdown.svelte    # Events by source chart
-|   |   |   |   |   |-- ApprovalRates.svelte      # Approval rate by persona chart
-|   |   |   |   |   |-- TimeSaved.svelte          # Running time-saved counter
-|   |   |   |   |
-|   |   |   |   |-- chat/
-|   |   |   |   |   |-- ChatPanel.svelte          # Chat sidebar container
-|   |   |   |   |   |-- ChatMessage.svelte        # Single chat message bubble
-|   |   |   |   |   |-- ChatInput.svelte          # Text input + send button
-|   |   |   |   |
-|   |   |   |   |-- settings/
-|   |   |   |   |   |-- SettingsLayout.svelte     # Settings page tabs
-|   |   |   |   |   |-- ModelConfig.svelte        # LLM model selection
-|   |   |   |   |   |-- SourceConnections.svelte  # Connected services status
-|   |   |   |   |   |-- TeamEditor.svelte         # team.json visual editor
-|   |   |   |   |   |-- RepoConfig.svelte         # repos.json visual editor
-|   |   |   |   |   |-- RulesEditor.svelte        # rules.json visual editor
-|   |   |   |   |   |-- PrivacySettings.svelte    # Privacy tier configuration
-|   |   |   |   |   |-- AgentConfig.svelte        # Coding agent selection
-|   |   |   |   |   |-- AuditLogViewer.svelte     # Audit log browser
-|   |   |   |   |
-|   |   |   |   |-- setup/
-|   |   |   |   |   |-- SetupWizard.svelte        # First-run wizard container
-|   |   |   |   |   |-- StepLLM.svelte            # Step 1: LLM configuration
-|   |   |   |   |   |-- StepConnect.svelte        # Step 2: Connect tools
-|   |   |   |   |   |-- StepAgent.svelte          # Step 3: Coding agent + repos
-|   |   |   |   |   |-- StepTeam.svelte           # Step 4: Team config
-|   |   |   |   |   |-- StepFilters.svelte        # Step 5: Event filters
-|   |   |   |   |
-|   |   |   |   |-- common/
-|   |   |   |       |-- LoadingSpinner.svelte
-|   |   |   |       |-- EmptyState.svelte
-|   |   |   |       |-- ErrorDisplay.svelte
-|   |   |   |       |-- HealthBadge.svelte        # Green/yellow/red system status
-|   |   |   |
-|   |   |   |-- utils/
-|   |   |       |-- time.ts                       # Time formatting helpers
-|   |   |       |-- priority.ts                   # Priority color/sort helpers
+|   |   |       |-- feed/                 # ActionCard, CardGroup, CardDetail, FilterBar, etc.
+|   |   |       |-- workspace/            # AgentPanel, Timeline, Context, StagedOutput, etc.
+|   |   |       |-- dashboard/            # StatCard, charts, analytics components
+|   |   |       |-- chat/                 # ChatPanel, ChatMessage, ChatInput
+|   |   |       |-- settings/             # SettingsLayout, ModelConfig, SpacesConfig, etc.
+|   |   |       |-- setup/                # SetupWizard steps
+|   |   |       |-- common/               # LoadingSpinner, EmptyState, ErrorDisplay, etc.
 |   |   |
-|   |   |-- routes/                      # SvelteKit pages
-|   |       |-- +layout.svelte           # Main layout: sidebar nav + content area + chat
-|   |       |-- +page.svelte             # Home: Dashboard + Feed
+|   |   |-- routes/                       # SvelteKit pages
+|   |       |-- +layout.svelte            # Main layout: sidebar nav + content area + chat
+|   |       |-- +page.svelte              # Home page
+|   |       |-- feed/
+|   |       |   |-- +page.svelte          # Action Card feed
+|   |       |-- dashboard/
+|   |       |   |-- +page.svelte          # Analytics dashboard
 |   |       |-- workspace/
-|   |       |   |-- [cardId]/
-|   |       |       |-- +page.svelte     # Card workspace view
+|   |       |   |-- [card_id]/
+|   |       |       |-- +page.svelte      # Card workspace view
 |   |       |-- settings/
-|   |       |   |-- +page.svelte         # Settings page
+|   |       |   |-- +page.svelte          # Settings page (tabs)
 |   |       |-- setup/
-|   |           |-- +page.svelte         # First-run wizard
+|   |       |   |-- +page.svelte          # First-run wizard
+|   |       |-- status/
+|   |           |-- +page.svelte          # System status page
 |   |
-|   |-- static/                          # Static assets
-|   |   |-- favicon.png
-|   |   |-- logo.svg
-|   |
-|   |-- package.json
-|   |-- svelte.config.js
-|   |-- tailwind.config.js
-|   |-- vite.config.ts
-|   |-- tsconfig.json
-|   |
-|   |-- tests/                           # Frontend tests
-|       |-- components/                  # Component tests (Vitest + Testing Library)
-|       |   |-- ActionCard.test.ts
-|       |   |-- WorkspaceTimeline.test.ts
-|       |   |-- ChatPanel.test.ts
-|       |   |-- ...
-|       |-- e2e/                         # End-to-end tests (Playwright)
-|           |-- event-to-card.spec.ts    # Full flow: event arrives -> card appears
-|           |-- workspace.spec.ts        # Workspace interaction flow
-|           |-- chat.spec.ts             # Chat query flow
-|           |-- setup-wizard.spec.ts     # First-run setup flow
+|   |-- package.json                      # Node dependencies (SvelteKit, Tauri CLI, Tailwind, etc.)
+|   |-- svelte.config.js                  # SvelteKit config (static adapter, SPA fallback)
+|   |-- vite.config.ts                    # Vite bundler config (Tailwind v4 plugin)
+|   |-- tsconfig.json                     # TypeScript config (strict mode)
 |
 |-- n8n/                                  # Pre-built n8n workflow definitions
 |   |-- workflows/
-|   |   |-- jira-ingestion.json          # Jira trigger -> normalize -> POST to engine
-|   |   |-- jira-executor.json           # Webhook -> Jira API action
-|   |   |-- bitbucket-ingestion.json
-|   |   |-- bitbucket-executor.json
-|   |   |-- slack-ingestion.json
-|   |   |-- slack-executor.json
 |   |   |-- gmail-ingestion.json
 |   |   |-- gmail-executor.json
-|   |   |-- calendar-ingestion.json
-|   |   |-- calendar-executor.json
-|   |-- import.sh                        # Script to import workflows into n8n via API
+|   |   |-- slack-ingestion.json
+|   |   |-- jira-ingestion.json
+|   |   |-- github-ingestion.json
+|   |   |-- bitbucket-ingestion.json
+|   |   |-- google-calendar-ingestion.json
+|   |   |-- google-calendar-executor.json
+|   |   |-- outlook-email-ingestion.json
+|   |   |-- outlook-email-executor.json
+|   |   |-- outlook-imap-ingestion.json
+|   |   |-- outlook-imap-executor.json
+|   |   |-- outlook-calendar-ingestion.json
+|   |   |-- outlook-calendar-executor.json
+|   |-- import.sh                         # Script to import workflows into n8n via REST API
 |
-|-- scripts/                             # Development and build scripts
-|   |-- dev.sh                           # Start all services in dev mode
-|   |-- build.sh                         # Build for distribution (all platforms)
-|   |-- test.sh                          # Run all test suites
-|   |-- setup-dev.sh                     # One-time dev environment setup
+|-- scripts/                              # Development and build scripts
+|   |-- setup-dev.sh                      # One-time: creates venv, installs deps, installs n8n
+|   |-- dev.sh                            # Start engine + Tauri dev server
+|   |-- build.sh                          # Production build (bundle engine source + Tauri build)
+|   |-- update_icons.sh                   # Icon generation from SVG
 |
-|-- docs/                                # Documentation
-|   |-- architecture.md                  # System architecture (this document set)
-|   |-- event-schema.md                  # Laya Event schema specification
-|   |-- api-contracts.md                 # Full API documentation
-|   |-- project-structure.md             # This file
-|   |-- implementation-plan.md           # Milestones and timeline
-|   |-- decision-log.md                  # All architectural decisions with rationale
+|-- landing/                              # Landing page (separate web assets)
+|   |-- index.html
 |
-|-- .github/                             # GitHub CI/CD (if using GitHub)
-    |-- workflows/
-        |-- ci.yml                       # Run tests on PR
-        |-- release.yml                  # Build + publish installers on tag
+|-- docs/                                 # Architecture & design documentation
+|   |-- architecture.md                   # System architecture with diagrams
+|   |-- event-schema.md                   # Laya Event schema specification
+|   |-- api-contracts.md                  # REST, WebSocket, and inter-service APIs
+|   |-- database-schema.md                # SQLite tables and ChromaDB collection design
+|   |-- project-structure.md              # This file
+|   |-- implementation-plan.md            # Milestones and timeline
+|   |-- decision-log.md                   # Architectural decisions with rationale
+|   |-- n8n-data-persistence.md           # n8n data storage and backup strategies
 ```
 
 ## User Data Directory
@@ -314,10 +236,13 @@ Laya stores all user data in `~/.laya/`:
 |-- repos.json                 # Local repos: name, path, platform, remote_id
 |-- rules.json                 # Event filter rules: conditions + actions (drop/modify)
 |-- data/
-|   |-- laya.db                # SQLite database (events, cards, actions, entities, workspaces, audit)
-|   |-- chromadb/              # ChromaDB persistence directory (embeddings)
+|   |-- laya.db                # SQLite database (events, cards, workspaces, spaces, audit)
+|   |-- chroma/                # ChromaDB persistence directory (vector embeddings)
 |-- logs/
-    |-- laya.log               # Application logs (rotating, max 50MB)
+|   |-- engine.log             # Application logs (rotating, 10 MB x 5 files)
+|-- venv/                      # Managed Python venv (production, created by Tauri on first launch)
+|-- n8n_module/                # n8n npm installation
+|-- n8n/                       # n8n runtime data (database, encryption key, credentials)
 ```
 
 ## Configuration File Schemas
@@ -346,10 +271,9 @@ Laya stores all user data in `~/.laya/`:
     "min_priority": "HIGH"
   },
   "n8n": {
-    "url": "http://localhost:5678",
+    "url": "http://localhost:45678",
     "webhooks": {
       "jira_executor": "/webhook/jira-exec-id",
-      "bitbucket_executor": "/webhook/bb-exec-id",
       "slack_executor": "/webhook/slack-exec-id",
       "gmail_executor": "/webhook/gmail-exec-id",
       "calendar_executor": "/webhook/cal-exec-id"

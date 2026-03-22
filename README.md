@@ -1,8 +1,8 @@
-# Laya: The AI Operating System
+# Laya: Your AI Command Centre
 
 **A cadence for professional orchestration.**
 
-Laya is a local-first desktop application that acts as an AI operating system for professionals. It intercepts events from your professional tools (Jira, Bitbucket, Slack, Gmail, Calendar), performs autonomous research and action-staging using LLM-powered agents, and presents you with ready-to-approve **Action Cards** -- so the answer is ready before you open the notification.
+Laya is a local-first desktop application that acts as an AI command centre for professionals. It intercepts events from your professional tools (Jira, Bitbucket, Slack, Gmail, Calendar), performs autonomous research and action-staging using LLM-powered agents, and presents you with ready-to-approve **Action Cards** -- so the answer is ready before you open the notification.
 
 ## How It Works
 
@@ -144,7 +144,12 @@ Tauri v2 requires system libraries for GTK, WebKit, and app-indicator support:
 sudo apt install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 ```
 
-The default Linux inotify file watcher limit (65,536) is too low for this project -- Vite needs to watch the source files while the Rust `target/` directory consumes most of the quota, causing Tailwind CSS to silently fail to generate utility classes. Increase the limit:
+### Troubleshooting
+
+<details>
+<summary><strong>Linux: Tailwind CSS classes missing or styles not updating</strong></summary>
+
+The default Linux inotify file watcher limit (65,536) can be too low for this project -- Vite needs to watch the source files while the Rust `target/` directory consumes most of the quota, causing Tailwind CSS to silently fail to generate utility classes. Increase the limit:
 
 ```bash
 # Immediate (resets on reboot)
@@ -154,6 +159,8 @@ echo 524288 | sudo tee /proc/sys/fs/inotify/max_user_watches
 echo 'fs.inotify.max_user_watches=524288' | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
 ```
+
+</details>
 
 ### Setup
 
