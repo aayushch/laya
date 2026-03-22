@@ -231,7 +231,7 @@ This does two things:
 ### Build Options
 
 ```bash
-scripts/build.sh                                  # Build for current platform
+scripts/build.sh                                   # Build for current platform
 scripts/build.sh --target x86_64-apple-darwin      # Cross-compile for Intel Mac
 scripts/build.sh --universal                       # Universal binary (arm64 + x86_64)
 scripts/build.sh --sign "Developer ID App: ..."    # macOS code signing
