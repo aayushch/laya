@@ -194,7 +194,7 @@ async def run_emit(
     entity_refs = ",".join(e.value for e in router_output.entities)
     try:
         await embed_document(
-            doc_id=f"card_{card_id}",
+            doc_id=card_id,
             text=embed_text,
             metadata={
                 "content_type": "card_summary",

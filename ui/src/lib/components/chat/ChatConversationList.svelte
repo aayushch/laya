@@ -159,16 +159,25 @@
 							<span class="mt-0.5 text-[10px] text-surface-600">{conv.message_count} message{conv.message_count === 1 ? '' : 's'}</span>
 						</div>
 						<!-- Delete -->
-						<button
-							onclick={(e) => deleteConversation(e, conv.conversation_id)}
-							class="shrink-0 rounded p-1 text-surface-600 opacity-0 transition-all hover:text-red-400 group-hover:opacity-100
-								{deletingId === conv.conversation_id ? '!opacity-100 !text-red-400' : ''}"
-							title={deletingId === conv.conversation_id ? 'Click again to delete' : 'Delete conversation'}
-						>
-							<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-							</svg>
-						</button>
+						<div class="group/del relative shrink-0">
+							<button
+								onclick={(e) => deleteConversation(e, conv.conversation_id)}
+								class="rounded p-1 text-surface-600 opacity-0 transition-all hover:text-red-400 group-hover:opacity-100
+									{deletingId === conv.conversation_id ? '!opacity-100 !text-red-400' : ''}"
+								aria-label={deletingId === conv.conversation_id ? 'Click again to confirm delete' : 'Double-click to delete'}
+							>
+								<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+								</svg>
+							</button>
+							<span class="pointer-events-none absolute right-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border px-2 py-1 text-[10px] font-medium shadow-lg
+								opacity-0 transition-opacity duration-75 group-hover/del:opacity-100
+								{deletingId === conv.conversation_id
+									? 'border-red-400/30 bg-red-950 text-red-300'
+									: 'border-surface-600 bg-surface-800 text-surface-400'}">
+								{deletingId === conv.conversation_id ? 'Click again to confirm' : 'Double-click to delete'}
+							</span>
+						</div>
 					</div>
 				{/each}
 			</div>

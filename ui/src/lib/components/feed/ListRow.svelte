@@ -10,7 +10,8 @@
 		selectedCardId = '',
 		indented = false,
 		bulkSelected = false,
-		onbulktoggle
+		onbulktoggle,
+		hasSelection = false
 	}: {
 		card: ActionCard;
 		onselect: (card: ActionCard) => void;
@@ -19,6 +20,7 @@
 		indented?: boolean;
 		bulkSelected?: boolean;
 		onbulktoggle?: (cardId: string, event: MouseEvent) => void;
+		hasSelection?: boolean;
 	} = $props();
 
 	const isSelected = $derived(card.card_id === selectedCardId);
@@ -102,6 +104,7 @@
 	);
 
 	const isArchived = $derived(card.status === 'archived');
+	const isDimmed = $derived(!isSelected && hasSelection && !isArchived);
 
 	function timeAgo(dateStr?: string): string {
 		if (!dateStr) return '';
@@ -173,9 +176,9 @@
 
 	<div
 		data-card-id={card.card_id}
-		class="group/row flex flex-1 items-center rounded-lg px-3 py-1.5 text-left transition-colors cursor-pointer
-			{isSelected ? 'bg-laya-orange/10 border border-laya-orange/30' : `border border-transparent ${statusRowStyle[card.status] ?? 'hover:bg-surface-800/60'}`}
-			{isArchived ? 'opacity-50 hover:opacity-75' : ''}"
+		class="group/row flex flex-1 items-center rounded-lg px-3 py-1.5 text-left transition-all cursor-pointer
+			border border-transparent {statusRowStyle[card.status] ?? 'hover:bg-surface-800/60'}
+			{isArchived ? 'opacity-50 hover:opacity-75' : isDimmed ? 'opacity-45 hover:opacity-70' : ''}"
 		onclick={() => onselect(card)}
 		onkeydown={(e) => e.key === 'Enter' && onselect(card)}
 		role="button"
