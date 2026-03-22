@@ -12,7 +12,8 @@
 		scrollToCardId = null,
 		bulkSelectedIds,
 		onbulktoggle,
-		onbulktogglegroup
+		onbulktogglegroup,
+		hasSelection = false
 	}: {
 		group: CardGroup;
 		onselect: (card: ActionCard) => void;
@@ -22,11 +23,15 @@
 		bulkSelectedIds?: Set<string>;
 		onbulktoggle?: (cardId: string, event: MouseEvent) => void;
 		onbulktogglegroup?: (cardIds: string[], selected: boolean) => void;
+		hasSelection?: boolean;
 	} = $props();
 
 	let expanded = $state(false);
 	let groupMenuOpen = $state(false);
 	let bulkActionRunning = $state(false);
+
+	const isGroupSelected = $derived(group.cards.some((c) => c.card_id === selectedCardId));
+	const isDimmed = $derived(hasSelection && !isGroupSelected);
 
 	// Auto-expand when a card in this group is targeted for scroll
 	$effect(() => {
@@ -179,7 +184,7 @@
 	}
 </script>
 
-<div>
+<div class="transition-opacity {isDimmed ? 'opacity-45 hover:opacity-70' : ''}">
 	<!-- Group header: checkbox in gutter + bordered row -->
 	<div class="flex items-center {onbulktoggle ? 'gap-1.5' : ''}">
 		<!-- Bulk selection checkbox (group-level) — in the gutter -->
@@ -232,7 +237,7 @@
 		</span>
 
 		<!-- Subject (entity title) — skip actor column, use ml to match card's actor+gap -->
-		<span class="min-w-0 flex-1 truncate text-xs font-medium text-laya-amber ml-2" title={group.entity_title}>
+		<span class="min-w-0 flex-1 truncate text-xs font-medium text-surface-200 ml-2" title={group.entity_title}>
 			{group.entity_title}
 		</span>
 
@@ -339,7 +344,7 @@
 								</div>
 							{/if}
 							<div class="flex-1">
-								<ListRow {card} {onselect} {ondelete} {selectedCardId} indented={true} />
+								<ListRow {card} {onselect} {ondelete} {selectedCardId} indented={true} {hasSelection} />
 							</div>
 						</div>
 					{/each}

@@ -352,8 +352,8 @@ async def process_chat_message_streaming(
                             "status": "done",
                         }
 
-                    # Reset content for next iteration
-                    full_content = ""
+                    # Content accumulates across iterations so the final
+                    # persisted message contains all streamed text.
 
                 elif event.type == "done":
                     total_input_tokens += event.input_tokens
@@ -490,7 +490,9 @@ async def _semantic_search(query: str, space_id: str | None, n: int) -> list[dic
     results = await memory_search(query, n_results=n, where=where)
     return [
         {
-            "id": r["id"],
+            "id": r["metadata"].get("card_id", r["metadata"].get("event_id", r["id"])),
+            "card_id": r["metadata"].get("card_id"),
+            "event_id": r["metadata"].get("event_id"),
             "type": r["metadata"].get("content_type", "memory"),
             "text": r["document"],
             "metadata": r["metadata"],
@@ -693,8 +695,8 @@ def _format_context_item(item: dict) -> str:
     meta = item.get("metadata", {})
     text = item.get("text", "")
 
-    if itype == "card":
-        card_id = item.get("card_id", item.get("id", "?"))
+    if itype in ("card", "card_summary"):
+        card_id = item.get("card_id") or meta.get("card_id") or item.get("id", "?")
         status = meta.get("status", "?")
         priority = meta.get("priority", "?")
         return f"[Card {card_id}] ({status}/{priority}) {text}"
