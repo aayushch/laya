@@ -23,7 +23,7 @@ def test_model_prefix_openai():
 
 def test_model_prefix_google():
     with patch("laya.llm.client.load_settings", return_value={"models": {"router": "gemini-2.0-flash"}}):
-        assert _get_model_for_role("router") == "google/gemini-2.0-flash"
+        assert _get_model_for_role("router") == "gemini/gemini-2.0-flash"
 
 
 def test_model_prefix_ollama_passthrough():
@@ -39,31 +39,41 @@ def test_model_prefix_already_prefixed():
 def test_model_default_when_missing():
     with patch("laya.llm.client.load_settings", return_value={"models": {}}):
         result = _get_model_for_role("router")
-        assert result == "anthropic/claude-haiku-4-5-20251001"
+        assert result == "anthropic/claude-haiku-4-5"
 
 
 # --- LLM call ---
 
 
-@pytest.mark.asyncio
-async def test_llm_call_success(db_full):
-    """Successful LLM call returns content, parsed JSON, and logs to audit."""
+def _mock_acompletion_response(content='{"result": "test"}', prompt_tokens=100, completion_tokens=50):
+    """Create a mock litellm acompletion response."""
     mock_response = MagicMock()
     mock_response.choices = [MagicMock()]
-    mock_response.choices[0].message.content = '{"result": "test"}'
+    mock_response.choices[0].message.content = content
+    mock_response.choices[0].message.tool_calls = None
+    mock_response.choices[0].finish_reason = "stop"
     mock_response.usage = MagicMock()
-    mock_response.usage.prompt_tokens = 100
-    mock_response.usage.completion_tokens = 50
+    mock_response.usage.prompt_tokens = prompt_tokens
+    mock_response.usage.completion_tokens = completion_tokens
+    return mock_response
+
+
+@pytest.mark.asyncio
+async def test_llm_call_success(db):
+    """Successful LLM call returns content, parsed JSON, and logs to audit."""
+    mock_response = _mock_acompletion_response()
 
     with patch("litellm.acompletion", new_callable=AsyncMock, return_value=mock_response):
         with patch("laya.llm.client.load_settings", return_value={"models": {"router": "claude-haiku-4-5-20251001"}}):
-            result = await llm_call(
-                role="router",
-                messages=[{"role": "user", "content": "test"}],
-                response_schema={"name": "test", "schema": {"type": "object"}},
-                event_id="evt_test",
-                step="route",
-            )
+            with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                    result = await llm_call(
+                        role="router",
+                        messages=[{"role": "user", "content": "test"}],
+                        response_schema={"name": "test", "schema": {"type": "object"}},
+                        event_id="evt_test",
+                        step="route",
+                    )
 
     assert isinstance(result, LLMResponse)
     assert result.parsed == {"result": "test"}
@@ -72,7 +82,7 @@ async def test_llm_call_success(db_full):
     assert "anthropic" in result.model
 
     # Check audit log
-    async with db_full.execute("SELECT * FROM audit_log WHERE event_id = 'evt_test'") as cursor:
+    async with db.execute("SELECT * FROM audit_log WHERE event_id = 'evt_test'") as cursor:
         row = await cursor.fetchone()
         assert row is not None
         assert row["step"] == "route"
@@ -81,19 +91,21 @@ async def test_llm_call_success(db_full):
 
 
 @pytest.mark.asyncio
-async def test_llm_call_logs_audit_on_failure(db_full):
+async def test_llm_call_logs_audit_on_failure(db):
     """Failed LLM call still writes audit log with success=False."""
     with patch("litellm.acompletion", new_callable=AsyncMock, side_effect=Exception("API down")):
         with patch("laya.llm.client.load_settings", return_value={"models": {"router": "claude-haiku-4-5-20251001"}}):
-            with pytest.raises(Exception, match="API down"):
-                await llm_call(
-                    role="router",
-                    messages=[{"role": "user", "content": "test"}],
-                    event_id="evt_fail",
-                    step="route",
-                )
+            with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                    with pytest.raises(Exception, match="API down"):
+                        await llm_call(
+                            role="router",
+                            messages=[{"role": "user", "content": "test"}],
+                            event_id="evt_fail",
+                            step="route",
+                        )
 
-    async with db_full.execute("SELECT * FROM audit_log WHERE event_id = 'evt_fail'") as cursor:
+    async with db.execute("SELECT * FROM audit_log WHERE event_id = 'evt_fail'") as cursor:
         row = await cursor.fetchone()
         assert row is not None
         assert row["success"] == 0
@@ -101,45 +113,39 @@ async def test_llm_call_logs_audit_on_failure(db_full):
 
 
 @pytest.mark.asyncio
-async def test_llm_call_without_schema(db_full):
+async def test_llm_call_without_schema(db):
     """LLM call without response_schema returns content but no parsed dict."""
-    mock_response = MagicMock()
-    mock_response.choices = [MagicMock()]
-    mock_response.choices[0].message.content = "Hello, world!"
-    mock_response.usage = MagicMock()
-    mock_response.usage.prompt_tokens = 50
-    mock_response.usage.completion_tokens = 10
+    mock_response = _mock_acompletion_response(content="Hello, world!", prompt_tokens=50, completion_tokens=10)
 
     with patch("litellm.acompletion", new_callable=AsyncMock, return_value=mock_response):
         with patch("laya.llm.client.load_settings", return_value={"models": {"chat": "claude-sonnet-4-5-20250929"}}):
-            result = await llm_call(
-                role="chat",
-                messages=[{"role": "user", "content": "hello"}],
-                step="chat",
-            )
+            with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                    result = await llm_call(
+                        role="chat",
+                        messages=[{"role": "user", "content": "hello"}],
+                        step="chat",
+                    )
 
     assert result.content == "Hello, world!"
     assert result.parsed is None
 
 
 @pytest.mark.asyncio
-async def test_llm_call_malformed_json(db_full):
+async def test_llm_call_malformed_json(db):
     """LLM call with schema but malformed JSON returns content with parsed=None."""
-    mock_response = MagicMock()
-    mock_response.choices = [MagicMock()]
-    mock_response.choices[0].message.content = "not valid json {"
-    mock_response.usage = MagicMock()
-    mock_response.usage.prompt_tokens = 100
-    mock_response.usage.completion_tokens = 50
+    mock_response = _mock_acompletion_response(content="not valid json {")
 
     with patch("litellm.acompletion", new_callable=AsyncMock, return_value=mock_response):
         with patch("laya.llm.client.load_settings", return_value={"models": {"router": "claude-haiku-4-5-20251001"}}):
-            result = await llm_call(
-                role="router",
-                messages=[{"role": "user", "content": "test"}],
-                response_schema={"name": "test", "schema": {"type": "object"}},
-                step="route",
-            )
+            with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                    result = await llm_call(
+                        role="router",
+                        messages=[{"role": "user", "content": "test"}],
+                        response_schema={"name": "test", "schema": {"type": "object"}},
+                        step="route",
+                    )
 
     assert result.content == "not valid json {"
     assert result.parsed is None

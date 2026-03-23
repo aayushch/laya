@@ -90,11 +90,11 @@ def test_load_all_keys_to_env(mock_keyring):
     assert results["google"] is True
 
     assert os.environ.get("ANTHROPIC_API_KEY") == "sk-ant-1"
-    assert os.environ.get("GOOGLE_API_KEY") == "ggl-2"
+    assert os.environ.get("GEMINI_API_KEY") == "ggl-2"
 
     # Clean up
     os.environ.pop("ANTHROPIC_API_KEY", None)
-    os.environ.pop("GOOGLE_API_KEY", None)
+    os.environ.pop("GEMINI_API_KEY", None)
 
 
 def test_store_graceful_on_keyring_error():

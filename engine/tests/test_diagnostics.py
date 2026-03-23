@@ -8,12 +8,14 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from tests.conftest import insert_test_event
+
 
 @pytest.mark.asyncio
 class TestDiagnosticsExport:
     """Tests for GET /diagnostics/export."""
 
-    async def test_returns_zip(self, db_m8):
+    async def test_returns_zip(self, db):
         """Export returns a valid ZIP file."""
         from laya.main import app
 
@@ -29,7 +31,7 @@ class TestDiagnosticsExport:
         zf = zipfile.ZipFile(io.BytesIO(resp.content))
         assert zf.testzip() is None
 
-    async def test_contains_system_info(self, db_m8):
+    async def test_contains_system_info(self, db):
         """ZIP contains system_info.json with expected fields."""
         from laya.main import app
 
@@ -43,20 +45,15 @@ class TestDiagnosticsExport:
         assert "python_version" in data
         assert data["engine_version"] == "0.1.0"
 
-    async def test_contains_db_stats(self, db_m8):
+    async def test_contains_db_stats(self, db):
         """ZIP contains db_stats.json with table counts."""
         from laya.main import app
 
         # Seed some data to verify counts
-        await db_m8.execute(
-            "INSERT INTO events (event_id, timestamp, source_platform, source_raw_event_type, "
-            "subject_type, subject_id, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("evt_diag", "2026-02-22T14:30:00Z", "jira", "issue_assigned", "ticket", "BUG-1", "{}"),
-        )
-        await db_m8.commit()
+        await insert_test_event(db, event_id="evt_diag")
 
         # Patch get_db at the diagnostics module's import reference
-        with patch("laya.api.diagnostics_api.get_db", return_value=db_m8):
+        with patch("laya.api.diagnostics_api.get_db", return_value=db):
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.get("/diagnostics/export")
@@ -66,7 +63,7 @@ class TestDiagnosticsExport:
         assert "tables" in stats
         assert stats["tables"]["events"] >= 1
 
-    async def test_contains_health(self, db_m8):
+    async def test_contains_health(self, db):
         """ZIP contains health.json."""
         from laya.main import app
 
@@ -78,7 +75,7 @@ class TestDiagnosticsExport:
         health = json.loads(zf.read("health.json"))
         assert "engine" in health or "error" in health
 
-    async def test_redacts_api_keys(self, db_m8, tmp_path):
+    async def test_redacts_api_keys(self, db, tmp_path):
         """Config files have API keys redacted."""
         from laya.main import app
 

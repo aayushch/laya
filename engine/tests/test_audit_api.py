@@ -20,7 +20,7 @@ async def _insert_audit_entry(db, log_id, step="route", success=True,
 
 @pytest.mark.asyncio
 class TestAuditLogAPI:
-    async def test_empty_audit_log(self, db_m7):
+    async def test_empty_audit_log(self, db):
         """GET /audit-log returns empty list when no entries exist."""
         from laya.main import app
         transport = ASGITransport(app=app)
@@ -32,10 +32,10 @@ class TestAuditLogAPI:
         assert data["entries"] == []
         assert data["total"] == 0
 
-    async def test_with_data(self, db_m7):
+    async def test_with_data(self, db):
         """GET /audit-log returns entries when data exists."""
-        await _insert_audit_entry(db_m7, "audit_1")
-        await _insert_audit_entry(db_m7, "audit_2", step="stage")
+        await _insert_audit_entry(db, "audit_1")
+        await _insert_audit_entry(db, "audit_2", step="stage")
 
         from laya.main import app
         transport = ASGITransport(app=app)
@@ -46,10 +46,10 @@ class TestAuditLogAPI:
         assert data["total"] == 2
         assert len(data["entries"]) == 2
 
-    async def test_filter_by_step(self, db_m7):
+    async def test_filter_by_step(self, db):
         """GET /audit-log?step=route filters by step."""
-        await _insert_audit_entry(db_m7, "audit_r", step="route")
-        await _insert_audit_entry(db_m7, "audit_s", step="stage")
+        await _insert_audit_entry(db, "audit_r", step="route")
+        await _insert_audit_entry(db, "audit_s", step="stage")
 
         from laya.main import app
         transport = ASGITransport(app=app)
@@ -60,10 +60,10 @@ class TestAuditLogAPI:
         assert data["total"] == 1
         assert data["entries"][0]["step"] == "route"
 
-    async def test_filter_by_success(self, db_m7):
+    async def test_filter_by_success(self, db):
         """GET /audit-log?success=false filters by success status."""
-        await _insert_audit_entry(db_m7, "audit_ok", success=True)
-        await _insert_audit_entry(db_m7, "audit_fail", success=False)
+        await _insert_audit_entry(db, "audit_ok", success=True)
+        await _insert_audit_entry(db, "audit_fail", success=False)
 
         from laya.main import app
         transport = ASGITransport(app=app)
@@ -74,10 +74,10 @@ class TestAuditLogAPI:
         assert data["total"] == 1
         assert data["entries"][0]["success"] is False
 
-    async def test_pagination(self, db_m7):
+    async def test_pagination(self, db):
         """GET /audit-log supports pagination with limit and offset."""
         for i in range(10):
-            await _insert_audit_entry(db_m7, f"audit_pg_{i}")
+            await _insert_audit_entry(db, f"audit_pg_{i}")
 
         from laya.main import app
         transport = ASGITransport(app=app)

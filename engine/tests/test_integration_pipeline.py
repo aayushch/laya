@@ -11,12 +11,16 @@ from laya.models.event import LayaEvent
 from laya.pipeline.emit import run_emit
 from laya.pipeline.ingest import run_ingest
 from laya.pipeline.router import run_router
-from laya.pipeline.stager import ActionCardData, run_stager
+from laya.pipeline.stager import run_stager
+from laya.models.card import ActionCardData
+
+from tests.conftest import insert_test_event
 
 
 def _make_event(event_id="evt_int_001", platform="jira", event_type="issue_assigned",
                 actor_email="sarah@company.com", subject_type="ticket",
-                subject_id="BUG-1234", title="NPE in PaymentService", body="NullPointerException") -> LayaEvent:
+                subject_id="BUG-1234", title="NPE in PaymentService",
+                body="NullPointerException") -> LayaEvent:
     """Create a test event."""
     return LayaEvent(
         event_id=event_id,
@@ -53,7 +57,7 @@ MOCK_STAGER_RESULT = {
             "label": "Post Comment",
             "action_type": "comment",
             "target_platform": "jira",
-            "payload": '{"body": "Investigation complete."}',
+            "payload": {"body": "Investigation complete."},
         }
     ],
     "privacy_tier": 2,
@@ -61,47 +65,47 @@ MOCK_STAGER_RESULT = {
 
 
 def _mock_llm_response(parsed_dict):
+    """Create a mock LLM response (laya.llm.client.LLMResponse-like)."""
     resp = MagicMock()
-    resp.choices = [MagicMock()]
-    resp.choices[0].message.content = json.dumps(parsed_dict)
-    resp.usage = MagicMock()
-    resp.usage.prompt_tokens = 300
-    resp.usage.completion_tokens = 150
+    resp.content = json.dumps(parsed_dict)
+    resp.parsed = parsed_dict
+    resp.model = "test-model"
+    resp.input_tokens = 300
+    resp.output_tokens = 150
+    resp.latency_ms = 100
+    resp.finish_reason = "stop"
+    resp.tool_calls = None
+    resp.raw_message_dict = None
     return resp
 
 
 async def _store_event(db, event):
     """Insert an event into the DB so router/stager can read it."""
-    await db.execute(
-        "INSERT INTO events (event_id, timestamp, source_platform, source_raw_event_type, "
-        "actor_name, actor_email, subject_type, subject_id, subject_title, content_body, raw_json) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (event.event_id, event.timestamp.isoformat(), event.source.platform,
-         event.source.raw_event_type, event.actor.name, event.actor.email,
-         event.subject.type, event.subject.id, event.subject.title,
-         event.content.body, json.dumps({"raw": "data"})),
+    await insert_test_event(
+        db,
+        event_id=event.event_id,
+        platform=event.source.platform,
+        raw_event_type=event.source.raw_event_type,
+        subject_type=event.subject.type,
+        subject_id=event.subject.id,
+        subject_title=event.subject.title,
+        actor_name=event.actor.name,
+        actor_email=event.actor.email,
+        content_body=event.content.body,
     )
-    await db.commit()
 
 
 @pytest.mark.asyncio
 class TestPipelineIntegration:
     """Full pipeline integration tests."""
 
-    async def test_full_pipeline_creates_card(self, db_m8, sample_team, sample_rules):
-        """Full pipeline: event → ingest → route → stage → emit creates a card."""
+    async def test_full_pipeline_creates_card(self, db, sample_team, sample_rules):
+        """Full pipeline: event -> ingest -> route -> stage -> emit creates a card."""
         event = _make_event()
-        await _store_event(db_m8, event)
+        await _store_event(db, event)
 
-        router_resp = _mock_llm_response(MOCK_ROUTER_RESULT)
-        stager_resp = _mock_llm_response(MOCK_STAGER_RESULT)
-
-        call_count = 0
-
-        async def _mock_completion(**kwargs):
-            nonlocal call_count
-            call_count += 1
-            return router_resp if call_count == 1 else stager_resp
+        router_output = RouterOutput(**MOCK_ROUTER_RESULT)
+        stager_output = ActionCardData(**MOCK_STAGER_RESULT)
 
         with patch("laya.pipeline.ingest.load_team", return_value=sample_team):
             with patch("laya.config.load_team", return_value=sample_team):
@@ -109,47 +113,51 @@ class TestPipelineIntegration:
 
         assert relationship in ("teammate", "manager", "external", "bot")
 
-        with patch("litellm.acompletion", side_effect=_mock_completion):
-            with patch("laya.llm.client.load_settings", return_value={"models": {"router": "claude-haiku-4-5-20251001", "stager": "claude-sonnet-4-5-20250929"}}):
-                with patch("laya.pipeline.router.embed_document", new_callable=AsyncMock):
-                    with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]):
-                        with patch("laya.pipeline.feedback.query_feedback_patterns", new_callable=AsyncMock, return_value=[]):
-                            router_output = await run_router(event, relationship)
+        # Mock all router dependencies
+        mock_router_resp = _mock_llm_response(MOCK_ROUTER_RESULT)
+        with patch("laya.pipeline.router.llm_call", new_callable=AsyncMock, return_value=mock_router_resp):
+            with patch("laya.pipeline.router.embed_document", new_callable=AsyncMock):
+                with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]):
+                    with patch("laya.pipeline.feedback.query_feedback_patterns", new_callable=AsyncMock, return_value=[]):
+                        router_output = await run_router(event, relationship)
 
         assert router_output.persona == "ENGINEER"
         assert router_output.category == "CODE"
 
-        with patch("litellm.acompletion", new_callable=AsyncMock, return_value=stager_resp):
-            with patch("laya.llm.client.load_settings", return_value={"models": {"stager": "claude-sonnet-4-5-20250929"}}):
-                with patch("laya.pipeline.stager.memory_search", new_callable=AsyncMock, return_value=[]):
-                    stager_output = await run_stager(event, router_output)
+        # Mock stager dependencies
+        mock_stager_resp = _mock_llm_response(MOCK_STAGER_RESULT)
+        with patch("laya.pipeline.stager.llm_call", new_callable=AsyncMock, return_value=mock_stager_resp):
+            with patch("laya.pipeline.stager.memory_search", new_callable=AsyncMock, return_value=[]):
+                stager_output = await run_stager(event, router_output)
 
         assert stager_output.header == "Fix NPE in PaymentService"
 
+        # Mock emit dependencies
         with patch("laya.pipeline.emit.embed_document", new_callable=AsyncMock):
             with patch("laya.pipeline.emit.manager", MagicMock(broadcast=AsyncMock())):
                 with patch("laya.pipeline.emit.resolve_semantic_entities", new_callable=AsyncMock):
-                    card_id = await run_emit(event, router_output, stager_output)
+                    with patch("laya.pipeline.emit.trigger_summary_update"):
+                        card_id = await run_emit(event, router_output, stager_output)
 
         assert card_id.startswith("card_")
 
-        # Verify card exists in DB
-        rows = await db_m8.execute_fetchall(
+        # Verify card exists in DB with status 'ready'
+        rows = await db.execute_fetchall(
             "SELECT card_id, header, persona, status FROM action_cards WHERE card_id = ?",
             (card_id,),
         )
         assert len(rows) == 1
         assert rows[0]["header"] == "Fix NPE in PaymentService"
         assert rows[0]["persona"] == "ENGINEER"
-        assert rows[0]["status"] == "pending"
+        assert rows[0]["status"] == "ready"
 
-    async def test_bot_event_resolved_as_bot(self, db_m8, sample_team, sample_rules):
+    async def test_bot_event_resolved_as_bot(self, db, sample_team, sample_rules):
         """Bot team member is resolved with their team role."""
         event = _make_event(
             event_id="evt_bot",
             actor_email="ci@company.com",  # matches CI Bot in sample_team
         )
-        await _store_event(db_m8, event)
+        await _store_event(db, event)
 
         with patch("laya.pipeline.ingest.load_team", return_value=sample_team):
             with patch("laya.config.load_team", return_value=sample_team):
@@ -157,10 +165,10 @@ class TestPipelineIntegration:
 
         assert relationship == "bot"
 
-    async def test_router_failure_no_crash(self, db_m8, sample_team):
-        """Router LLM failure doesn't crash — raises exception."""
+    async def test_router_failure_no_crash(self, db, sample_team):
+        """Router LLM failure doesn't crash -- raises exception."""
         event = _make_event(event_id="evt_fail")
-        await _store_event(db_m8, event)
+        await _store_event(db, event)
 
         with patch("laya.pipeline.ingest.load_team", return_value=sample_team):
             with patch("laya.config.load_team", return_value=sample_team):
@@ -169,79 +177,74 @@ class TestPipelineIntegration:
         async def _llm_fail(**kwargs):
             raise Exception("LLM down")
 
-        with patch("litellm.acompletion", side_effect=_llm_fail):
-            with patch("laya.llm.client.load_settings", return_value={"models": {"router": "claude-haiku-4-5-20251001"}}):
-                with patch("laya.pipeline.router.embed_document", new_callable=AsyncMock):
-                    with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]):
-                        with patch("laya.pipeline.feedback.query_feedback_patterns", new_callable=AsyncMock, return_value=[]):
-                            with pytest.raises(Exception, match="LLM down"):
-                                await run_router(event, relationship)
+        with patch("laya.pipeline.router.llm_call", side_effect=_llm_fail):
+            with patch("laya.pipeline.router.embed_document", new_callable=AsyncMock):
+                with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]):
+                    with patch("laya.pipeline.feedback.query_feedback_patterns", new_callable=AsyncMock, return_value=[]):
+                        with pytest.raises(Exception, match="LLM down"):
+                            await run_router(event, relationship)
 
-    async def test_simple_event_no_research(self, db_m8, sample_team):
+    async def test_simple_event_no_research(self, db, sample_team):
         """Non-research event creates a card without workspace."""
         event = _make_event(event_id="evt_simple")
-        await _store_event(db_m8, event)
+        await _store_event(db, event)
 
-        # Router says no research needed
         no_research = {**MOCK_ROUTER_RESULT, "requires_research": False}
-        router_resp = _mock_llm_response(no_research)
-        stager_resp = _mock_llm_response(MOCK_STAGER_RESULT)
+        mock_router_resp = _mock_llm_response(no_research)
+        mock_stager_resp = _mock_llm_response(MOCK_STAGER_RESULT)
 
         with patch("laya.pipeline.ingest.load_team", return_value=sample_team):
             with patch("laya.config.load_team", return_value=sample_team):
                 relationship = await run_ingest(event)
 
-        with patch("litellm.acompletion", new_callable=AsyncMock, return_value=router_resp):
-            with patch("laya.llm.client.load_settings", return_value={"models": {"router": "claude-haiku-4-5-20251001"}}):
-                with patch("laya.pipeline.router.embed_document", new_callable=AsyncMock):
-                    with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]):
-                        with patch("laya.pipeline.feedback.query_feedback_patterns", new_callable=AsyncMock, return_value=[]):
-                            router_output = await run_router(event, relationship)
+        with patch("laya.pipeline.router.llm_call", new_callable=AsyncMock, return_value=mock_router_resp):
+            with patch("laya.pipeline.router.embed_document", new_callable=AsyncMock):
+                with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]):
+                    with patch("laya.pipeline.feedback.query_feedback_patterns", new_callable=AsyncMock, return_value=[]):
+                        router_output = await run_router(event, relationship)
 
         assert not router_output.requires_research
 
-        with patch("litellm.acompletion", new_callable=AsyncMock, return_value=stager_resp):
-            with patch("laya.llm.client.load_settings", return_value={"models": {"stager": "claude-sonnet-4-5-20250929"}}):
-                with patch("laya.pipeline.stager.memory_search", new_callable=AsyncMock, return_value=[]):
-                    stager_output = await run_stager(event, router_output)
+        with patch("laya.pipeline.stager.llm_call", new_callable=AsyncMock, return_value=mock_stager_resp):
+            with patch("laya.pipeline.stager.memory_search", new_callable=AsyncMock, return_value=[]):
+                stager_output = await run_stager(event, router_output)
 
         with patch("laya.pipeline.emit.embed_document", new_callable=AsyncMock):
             with patch("laya.pipeline.emit.manager", MagicMock(broadcast=AsyncMock())):
                 with patch("laya.pipeline.emit.resolve_semantic_entities", new_callable=AsyncMock):
-                    card_id = await run_emit(event, router_output, stager_output)
+                    with patch("laya.pipeline.emit.trigger_summary_update"):
+                        card_id = await run_emit(event, router_output, stager_output)
 
-        rows = await db_m8.execute_fetchall(
+        rows = await db.execute_fetchall(
             "SELECT has_workspace FROM action_cards WHERE card_id = ?",
             (card_id,),
         )
         assert rows[0]["has_workspace"] == 0
 
-    async def test_research_event_sets_workspace(self, db_m8, sample_team):
+    async def test_research_event_sets_workspace(self, db, sample_team):
         """Event requiring research creates card with has_workspace=True."""
         event = _make_event(event_id="evt_research")
-        await _store_event(db_m8, event)
+        await _store_event(db, event)
 
         research = {**MOCK_ROUTER_RESULT, "requires_research": True}
-        router_resp = _mock_llm_response(research)
-        stager_resp = _mock_llm_response(MOCK_STAGER_RESULT)
+        mock_router_resp = _mock_llm_response(research)
+        mock_stager_resp = _mock_llm_response(MOCK_STAGER_RESULT)
 
         with patch("laya.pipeline.ingest.load_team", return_value=sample_team):
             with patch("laya.config.load_team", return_value=sample_team):
                 relationship = await run_ingest(event)
 
-        with patch("litellm.acompletion", new_callable=AsyncMock, return_value=router_resp):
-            with patch("laya.llm.client.load_settings", return_value={"models": {"router": "claude-haiku-4-5-20251001"}}):
-                with patch("laya.pipeline.router.embed_document", new_callable=AsyncMock):
-                    with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]):
-                        with patch("laya.pipeline.feedback.query_feedback_patterns", new_callable=AsyncMock, return_value=[]):
-                            router_output = await run_router(event, relationship)
+        with patch("laya.pipeline.router.llm_call", new_callable=AsyncMock, return_value=mock_router_resp):
+            with patch("laya.pipeline.router.embed_document", new_callable=AsyncMock):
+                with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]):
+                    with patch("laya.pipeline.feedback.query_feedback_patterns", new_callable=AsyncMock, return_value=[]):
+                        router_output = await run_router(event, relationship)
 
         assert router_output.requires_research
 
-        with patch("litellm.acompletion", new_callable=AsyncMock, return_value=stager_resp):
-            with patch("laya.llm.client.load_settings", return_value={"models": {"stager": "claude-sonnet-4-5-20250929"}}):
-                with patch("laya.pipeline.stager.memory_search", new_callable=AsyncMock, return_value=[]):
-                    stager_output = await run_stager(event, router_output)
+        with patch("laya.pipeline.stager.llm_call", new_callable=AsyncMock, return_value=mock_stager_resp):
+            with patch("laya.pipeline.stager.memory_search", new_callable=AsyncMock, return_value=[]):
+                stager_output = await run_stager(event, router_output)
 
         # Pass worker_results with a session_id to simulate research
         from laya.workers.base import WorkerResult
@@ -255,9 +258,10 @@ class TestPipelineIntegration:
         with patch("laya.pipeline.emit.embed_document", new_callable=AsyncMock):
             with patch("laya.pipeline.emit.manager", MagicMock(broadcast=AsyncMock())):
                 with patch("laya.pipeline.emit.resolve_semantic_entities", new_callable=AsyncMock):
-                    card_id = await run_emit(event, router_output, stager_output, worker_results)
+                    with patch("laya.pipeline.emit.trigger_summary_update"):
+                        card_id = await run_emit(event, router_output, stager_output, worker_results)
 
-        rows = await db_m8.execute_fetchall(
+        rows = await db.execute_fetchall(
             "SELECT has_workspace FROM action_cards WHERE card_id = ?",
             (card_id,),
         )

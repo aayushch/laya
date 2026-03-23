@@ -2,7 +2,6 @@
 
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiosqlite
@@ -10,45 +9,34 @@ import pytest
 import pytest_asyncio
 
 from laya.config import MIGRATIONS_DIR
+from laya.db.migrate import run_migrations
 from laya.models.classification import Persona, RouterOutput
 from laya.models.event import LayaEvent
 from laya.models.rules import RulesConfig
 from laya.models.team import TeamConfig
 
 
+@pytest.fixture(autouse=True)
+def _reset_http_client():
+    """Reset the shared httpx client between tests to prevent state leakage."""
+    import laya.http_client as hc
+    old = hc._client
+    hc._client = None
+    yield
+    hc._client = old
+
+
 @pytest_asyncio.fixture
 async def db(tmp_path):
-    """In-memory SQLite database with the initial schema applied."""
+    """In-memory SQLite database with ALL migrations applied."""
     conn = await aiosqlite.connect(":memory:")
     conn.row_factory = aiosqlite.Row
     await conn.execute("PRAGMA foreign_keys=ON")
 
-    # Apply 001_initial.sql
-    migration = MIGRATIONS_DIR / "001_initial.sql"
-    sql = migration.read_text()
-    await conn.executescript(sql)
+    # Apply all migrations using the migration runner
+    await run_migrations(conn)
 
     # Patch get_db to return this connection
-    with patch("laya.db.sqlite._db", conn):
-        with patch("laya.db.sqlite.get_db", return_value=conn):
-            yield conn
-
-    await conn.close()
-
-
-@pytest_asyncio.fixture
-async def db_full(tmp_path):
-    """In-memory SQLite with ALL M3 migrations applied (001 + 002 + 003)."""
-    conn = await aiosqlite.connect(":memory:")
-    conn.row_factory = aiosqlite.Row
-    await conn.execute("PRAGMA foreign_keys=ON")
-
-    for migration_name in ["001_initial.sql", "002_entities.sql", "003_audit.sql"]:
-        migration = MIGRATIONS_DIR / migration_name
-        if migration.exists():
-            sql = migration.read_text()
-            await conn.executescript(sql)
-
     with patch("laya.db.sqlite._db", conn):
         with patch("laya.db.sqlite.get_db", return_value=conn):
             yield conn
@@ -153,7 +141,7 @@ def mock_rules(sample_rules):
             yield sample_rules
 
 
-# --- M3 Router fixtures ---
+# --- Router fixtures ---
 
 MOCK_ROUTER_RESPONSE = {
     "category": "CODE",
@@ -205,6 +193,8 @@ def _make_mock_llm_response(parsed_dict: dict):
     mock_response = MagicMock()
     mock_response.choices = [MagicMock()]
     mock_response.choices[0].message.content = json.dumps(parsed_dict)
+    mock_response.choices[0].message.tool_calls = None
+    mock_response.choices[0].finish_reason = "stop"
     mock_response.usage = MagicMock()
     mock_response.usage.prompt_tokens = 500
     mock_response.usage.completion_tokens = 200
@@ -217,73 +207,9 @@ def mock_llm_router():
     mock_resp = _make_mock_llm_response(MOCK_ROUTER_RESPONSE)
     with patch("litellm.acompletion", new_callable=AsyncMock, return_value=mock_resp) as mock:
         with patch("laya.llm.client.load_settings", return_value={"models": {"router": "claude-haiku-4-5-20251001"}}):
-            yield mock
-
-
-@pytest_asyncio.fixture
-async def db_m4(tmp_path):
-    """In-memory SQLite with ALL M4 migrations applied (001-004)."""
-    conn = await aiosqlite.connect(":memory:")
-    conn.row_factory = aiosqlite.Row
-    await conn.execute("PRAGMA foreign_keys=ON")
-
-    for migration_name in ["001_initial.sql", "002_entities.sql", "003_audit.sql", "004_workspace.sql"]:
-        migration = MIGRATIONS_DIR / migration_name
-        if migration.exists():
-            sql = migration.read_text()
-            await conn.executescript(sql)
-
-    with patch("laya.db.sqlite._db", conn):
-        with patch("laya.db.sqlite.get_db", return_value=conn):
-            yield conn
-
-    await conn.close()
-
-
-@pytest_asyncio.fixture
-async def db_m7(tmp_path):
-    """In-memory SQLite with ALL M7 migrations applied (001-005)."""
-    conn = await aiosqlite.connect(":memory:")
-    conn.row_factory = aiosqlite.Row
-    await conn.execute("PRAGMA foreign_keys=ON")
-
-    for migration_name in [
-        "001_initial.sql", "002_entities.sql", "003_audit.sql",
-        "004_workspace.sql", "005_chat.sql",
-    ]:
-        migration = MIGRATIONS_DIR / migration_name
-        if migration.exists():
-            sql = migration.read_text()
-            await conn.executescript(sql)
-
-    with patch("laya.db.sqlite._db", conn):
-        with patch("laya.db.sqlite.get_db", return_value=conn):
-            yield conn
-
-    await conn.close()
-
-
-@pytest_asyncio.fixture
-async def db_m8(tmp_path):
-    """In-memory SQLite with ALL M8 migrations applied (001-006)."""
-    conn = await aiosqlite.connect(":memory:")
-    conn.row_factory = aiosqlite.Row
-    await conn.execute("PRAGMA foreign_keys=ON")
-
-    for migration_name in [
-        "001_initial.sql", "002_entities.sql", "003_audit.sql",
-        "004_workspace.sql", "005_chat.sql", "006_polish.sql",
-    ]:
-        migration = MIGRATIONS_DIR / migration_name
-        if migration.exists():
-            sql = migration.read_text()
-            await conn.executescript(sql)
-
-    with patch("laya.db.sqlite._db", conn):
-        with patch("laya.db.sqlite.get_db", return_value=conn):
-            yield conn
-
-    await conn.close()
+            with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                    yield mock
 
 
 @pytest.fixture
@@ -337,10 +263,12 @@ def mock_llm_comms():
     mock_resp = _make_mock_llm_response(MOCK_COMMS_RESPONSE)
     with patch("litellm.acompletion", new_callable=AsyncMock, return_value=mock_resp) as mock:
         with patch("laya.llm.client.load_settings", return_value={"models": {"router": "claude-haiku-4-5-20251001"}}):
-            yield mock
+            with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                    yield mock
 
 
-# --- M5 Stager / Emit fixtures ---
+# --- Stager / Emit fixtures ---
 
 MOCK_STAGER_RESPONSE = {
     "header": "Fix NPE in PaymentService.processPayment()",
@@ -382,7 +310,9 @@ def mock_llm_stager():
     mock_resp = _make_mock_llm_response(MOCK_STAGER_RESPONSE)
     with patch("litellm.acompletion", new_callable=AsyncMock, return_value=mock_resp) as mock:
         with patch("laya.llm.client.load_settings", return_value={"models": {"stager": "claude-sonnet-4-5-20250929"}}):
-            yield mock
+            with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                    yield mock
 
 
 @pytest.fixture
@@ -421,3 +351,58 @@ def sample_worker_result_no_session():
         },
         session_id=None,
     )
+
+
+# --- Helper: insert test event ---
+
+async def insert_test_event(db, event_id="evt_test", platform="jira",
+                            raw_event_type="issue_assigned",
+                            subject_type="ticket", subject_id="BUG-1234",
+                            subject_title="NPE in PaymentService",
+                            actor_name="Sarah", actor_email="sarah@company.com",
+                            content_body="NullPointerException",
+                            space_id=None):
+    """Insert a test event row."""
+    await db.execute(
+        """INSERT INTO events
+           (event_id, timestamp, source_platform, source_raw_event_type,
+            subject_type, subject_id, subject_title, actor_name, actor_email,
+            content_body, raw_json, processed, filtered, space_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (event_id, "2026-02-22T14:30:00Z", platform, raw_event_type,
+         subject_type, subject_id, subject_title, actor_name, actor_email,
+         content_body, "{}", True, False, space_id),
+    )
+    await db.commit()
+
+
+async def insert_test_card(db, card_id="card_test", event_id="evt_test",
+                           priority="HIGH", persona="ENGINEER", category="CODE",
+                           status="pending", header="Test Card Header",
+                           summary="Test summary", space_id=None,
+                           entity_id=None):
+    """Insert a card with its parent event for testing."""
+    # Ensure parent event exists
+    existing = await db.execute_fetchall(
+        "SELECT event_id FROM events WHERE event_id = ?", (event_id,)
+    )
+    if not existing:
+        await insert_test_event(db, event_id, space_id=space_id)
+
+    intelligence = json.dumps(["Finding 1", "Finding 2"])
+    staged_output = json.dumps({"type": "code_fix", "content": "Add null check"})
+    suggested_actions = json.dumps([
+        {"action_id": "act_1", "label": "Post Comment", "action_type": "comment",
+         "target_platform": "jira", "payload": {"body": "Fix found"}}
+    ])
+    await db.execute(
+        """INSERT INTO action_cards
+           (card_id, event_id, priority, persona, category, header, summary,
+            intelligence, staged_output, suggested_actions, status, privacy_tier,
+            entity_id, space_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (card_id, event_id, priority, persona, category, header, summary,
+         intelligence, staged_output, suggested_actions, status, 2,
+         entity_id or f"jira:ticket:BUG-1234", space_id),
+    )
+    await db.commit()

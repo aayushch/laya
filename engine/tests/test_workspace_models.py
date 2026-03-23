@@ -33,7 +33,7 @@ class TestEnums:
         assert WorkspaceEventType.AGENT_MESSAGE.value == "agent_message"
         assert WorkspaceEventType.APPROVAL_REQUEST.value == "approval_request"
         assert WorkspaceEventType.FILE_WRITE.value == "file_write"
-        assert len(WorkspaceEventType) == 9
+        assert len(WorkspaceEventType) == 10
 
     def test_workspace_event_actors(self):
         assert WorkspaceEventActor.AGENT.value == "agent"

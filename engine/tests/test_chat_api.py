@@ -7,6 +7,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from laya.llm.client import LLMResponse
+from tests.conftest import insert_test_card, insert_test_event
 
 
 def _mock_llm_response(content: str = "Here is my response about [card:card_123].") -> LLMResponse:
@@ -20,29 +21,34 @@ def _mock_llm_response(content: str = "Here is my response about [card:card_123]
     )
 
 
-async def _insert_event(db, event_id):
+async def _create_conversation(db, conversation_id="conv_test01", space_id=None):
+    """Create a conversation row and return its ID."""
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
     await db.execute(
-        "INSERT INTO events (event_id, timestamp, source_platform, source_raw_event_type, "
-        "subject_type, subject_id, subject_title, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (event_id, "2026-02-22T14:30:00Z", "jira", "issue_assigned",
-         "ticket", "BUG-1", "NPE in PaymentService", "{}"),
+        """INSERT INTO chat_conversations (conversation_id, title, space_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        (conversation_id, "Test Conversation", space_id, now, now),
     )
     await db.commit()
+    return conversation_id
 
 
-async def _insert_card(db, card_id, event_id):
+async def _insert_chat_message(db, message_id, role, content, conversation_id):
+    """Insert a chat message with the required conversation_id."""
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
     await db.execute(
-        "INSERT INTO action_cards (card_id, event_id, priority, persona, category, "
-        "header, summary, status, privacy_tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (card_id, event_id, "HIGH", "ENGINEER", "CODE",
-         "Fix NPE in PaymentService", "NullPointerException found", "pending", 1),
+        """INSERT INTO chat_messages (message_id, timestamp, role, content, conversation_id)
+           VALUES (?, ?, ?, ?, ?)""",
+        (message_id, now, role, content, conversation_id),
     )
     await db.commit()
 
 
 @pytest.mark.asyncio
 class TestChatAPI:
-    async def test_send_chat_returns_response(self, db_m7):
+    async def test_send_chat_returns_response(self, db):
         """POST /chat returns a response with assistant message."""
         with patch("laya.pipeline.chat.llm_call", new_callable=AsyncMock,
                    return_value=_mock_llm_response()):
@@ -57,7 +63,7 @@ class TestChatAPI:
         assert data["message"]["role"] == "assistant"
         assert len(data["message"]["content"]) > 0
 
-    async def test_chat_stores_messages(self, db_m7):
+    async def test_chat_stores_messages(self, db):
         """POST /chat stores both user and assistant messages in DB."""
         with patch("laya.pipeline.chat.llm_call", new_callable=AsyncMock,
                    return_value=_mock_llm_response("Response text")):
@@ -67,7 +73,7 @@ class TestChatAPI:
                 async with AsyncClient(transport=transport, base_url="http://test") as client:
                     await client.post("/chat", json={"message": "Hello"})
 
-        rows = await db_m7.execute_fetchall(
+        rows = await db.execute_fetchall(
             "SELECT role, content FROM chat_messages ORDER BY timestamp ASC"
         )
         assert len(rows) == 2
@@ -76,18 +82,11 @@ class TestChatAPI:
         assert rows[1][0] == "assistant"
         assert rows[1][1] == "Response text"
 
-    async def test_chat_history_endpoint(self, db_m7):
+    async def test_chat_history_endpoint(self, db):
         """GET /chat/history returns stored messages."""
-        # Insert some messages
-        await db_m7.execute(
-            "INSERT INTO chat_messages (message_id, role, content) VALUES (?, ?, ?)",
-            ("msg_1", "user", "Hello"),
-        )
-        await db_m7.execute(
-            "INSERT INTO chat_messages (message_id, role, content) VALUES (?, ?, ?)",
-            ("msg_2", "assistant", "Hi there!"),
-        )
-        await db_m7.commit()
+        conv_id = await _create_conversation(db)
+        await _insert_chat_message(db, "msg_1", "user", "Hello", conv_id)
+        await _insert_chat_message(db, "msg_2", "assistant", "Hi there!", conv_id)
 
         from laya.main import app
         transport = ASGITransport(app=app)
@@ -98,14 +97,11 @@ class TestChatAPI:
         data = resp.json()
         assert len(data) == 2
 
-    async def test_chat_history_limit(self, db_m7):
+    async def test_chat_history_limit(self, db):
         """GET /chat/history?limit=1 respects limit parameter."""
+        conv_id = await _create_conversation(db)
         for i in range(5):
-            await db_m7.execute(
-                "INSERT INTO chat_messages (message_id, role, content) VALUES (?, ?, ?)",
-                (f"msg_{i}", "user", f"Message {i}"),
-            )
-        await db_m7.commit()
+            await _insert_chat_message(db, f"msg_{i}", "user", f"Message {i}", conv_id)
 
         from laya.main import app
         transport = ASGITransport(app=app)
@@ -115,7 +111,7 @@ class TestChatAPI:
         assert resp.status_code == 200
         assert len(resp.json()) == 2
 
-    async def test_chat_extracts_card_references(self, db_m7):
+    async def test_chat_extracts_card_references(self, db):
         """POST /chat extracts [card:ID] references from assistant response."""
         with patch("laya.pipeline.chat.llm_call", new_callable=AsyncMock,
                    return_value=_mock_llm_response("Found [card:card_abc] and [card:card_def].")):
@@ -129,7 +125,7 @@ class TestChatAPI:
         assert "card_abc" in data["referenced_cards"]
         assert "card_def" in data["referenced_cards"]
 
-    async def test_chat_extracts_event_references(self, db_m7):
+    async def test_chat_extracts_event_references(self, db):
         """POST /chat extracts [event:ID] references from assistant response."""
         with patch("laya.pipeline.chat.llm_call", new_callable=AsyncMock,
                    return_value=_mock_llm_response("See [event:evt_123] for details.")):
@@ -142,7 +138,7 @@ class TestChatAPI:
         data = resp.json()
         assert "evt_123" in data["referenced_events"]
 
-    async def test_chat_empty_message_rejected(self, db_m7):
+    async def test_chat_empty_message_rejected(self, db):
         """POST /chat rejects empty messages."""
         from laya.main import app
         transport = ASGITransport(app=app)
@@ -151,7 +147,7 @@ class TestChatAPI:
 
         assert resp.status_code == 400
 
-    async def test_chat_whitespace_message_rejected(self, db_m7):
+    async def test_chat_whitespace_message_rejected(self, db):
         """POST /chat rejects whitespace-only messages."""
         from laya.main import app
         transport = ASGITransport(app=app)
@@ -160,7 +156,7 @@ class TestChatAPI:
 
         assert resp.status_code == 400
 
-    async def test_chat_llm_failure_returns_error_message(self, db_m7):
+    async def test_chat_llm_failure_returns_error_message(self, db):
         """POST /chat returns graceful error message when LLM fails."""
         with patch("laya.pipeline.chat.llm_call", new_callable=AsyncMock,
                    side_effect=Exception("LLM unavailable")):
@@ -175,10 +171,10 @@ class TestChatAPI:
         data = resp.json()
         assert "error" in data["message"]["content"].lower() or "sorry" in data["message"]["content"].lower()
 
-    async def test_chat_context_retrieval_with_cards(self, db_m7):
+    async def test_chat_context_retrieval_with_cards(self, db):
         """Chat retrieves related cards when keywords match."""
-        await _insert_event(db_m7, "evt_ctx")
-        await _insert_card(db_m7, "card_ctx", "evt_ctx")
+        await insert_test_event(db, "evt_ctx")
+        await insert_test_card(db, "card_ctx", "evt_ctx")
 
         with patch("laya.pipeline.chat.llm_call", new_callable=AsyncMock,
                    return_value=_mock_llm_response("Found related card.")):
