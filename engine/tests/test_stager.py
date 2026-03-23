@@ -12,7 +12,7 @@ from laya.pipeline.stager import run_stager
 @pytest.mark.asyncio
 class TestStager:
     async def test_run_stager_returns_action_card_data(
-        self, db_full, sample_event, sample_router_output_engineer,
+        self, db, sample_event, sample_router_output_engineer,
         mock_llm_stager, sample_worker_result,
     ):
         """run_stager returns ActionCardData from LLM response."""
@@ -28,7 +28,7 @@ class TestStager:
         assert result.privacy_tier == 2
 
     async def test_run_stager_without_workers(
-        self, db_full, sample_event, sample_router_output_comms, mock_llm_stager,
+        self, db, sample_event, sample_router_output_comms, mock_llm_stager,
     ):
         """run_stager works with worker_results=None (simple path)."""
         with patch("laya.pipeline.stager.memory_search", new_callable=AsyncMock, return_value=[]):
@@ -41,22 +41,21 @@ class TestStager:
         assert result.summary != ""
 
     async def test_run_stager_handles_llm_failure(
-        self, db_full, sample_event, sample_router_output_engineer,
+        self, db, sample_event, sample_router_output_engineer,
     ):
         """run_stager returns fallback card when LLM fails."""
         with patch("laya.pipeline.stager.memory_search", new_callable=AsyncMock, return_value=[]):
-            with patch("laya.llm.client.load_settings", return_value={"models": {"stager": "test-model"}}):
-                with patch("litellm.acompletion", new_callable=AsyncMock, side_effect=Exception("LLM timeout")):
-                    result = await run_stager(
-                        sample_event, sample_router_output_engineer,
-                    )
+            with patch("laya.pipeline.stager.llm_call", new_callable=AsyncMock, side_effect=Exception("LLM timeout")):
+                result = await run_stager(
+                    sample_event, sample_router_output_engineer,
+                )
 
         assert isinstance(result, ActionCardData)
         assert "Review:" in result.header
         assert result.staged_output.type == "summary"
 
     async def test_stager_parses_suggested_actions(
-        self, db_full, sample_event, sample_router_output_engineer,
+        self, db, sample_event, sample_router_output_engineer,
         mock_llm_stager, sample_worker_result,
     ):
         """run_stager correctly parses suggested_actions with JSON string payload."""
@@ -73,7 +72,7 @@ class TestStager:
         assert "body" in result.suggested_actions[0].payload
 
     async def test_stager_uses_related_context(
-        self, db_full, sample_event, sample_router_output_engineer, mock_llm_stager,
+        self, db, sample_event, sample_router_output_engineer, mock_llm_stager,
     ):
         """run_stager passes related context from ChromaDB to the LLM."""
         mock_context = [

@@ -1,4 +1,4 @@
-"""Tests for M8 error handling: LLM retries, global handler, retryable actions."""
+"""Tests for error handling: LLM retries, global handler, retryable actions."""
 
 import json
 from datetime import datetime, timezone
@@ -10,17 +10,20 @@ import pytest_asyncio
 
 from laya.llm.client import LLMResponse, llm_call
 from laya.pipeline.executor import execute_action
+from tests.conftest import insert_test_card, insert_test_event
 
 
 @pytest.mark.asyncio
 class TestLLMRetries:
     """Tests for tenacity-based LLM retries in llm_call."""
 
-    async def test_llm_retries_on_failure_then_succeeds(self, db_m8):
+    async def test_llm_retries_on_failure_then_succeeds(self, db):
         """LLM call retries on first failure, succeeds on second attempt."""
         mock_resp = MagicMock()
         mock_resp.choices = [MagicMock()]
         mock_resp.choices[0].message.content = '{"result": "ok"}'
+        mock_resp.choices[0].message.tool_calls = None
+        mock_resp.choices[0].finish_reason = "stop"
         mock_resp.usage = MagicMock()
         mock_resp.usage.prompt_tokens = 100
         mock_resp.usage.completion_tokens = 50
@@ -36,44 +39,52 @@ class TestLLMRetries:
 
         with patch("litellm.acompletion", side_effect=_flaky_completion):
             with patch("laya.llm.client.load_settings", return_value={"models": {"router": "claude-haiku-4-5-20251001"}}):
-                result = await llm_call(
-                    role="router",
-                    messages=[{"role": "user", "content": "test"}],
-                    num_retries=3,
-                )
+                with patch("laya.pipeline.queue.get_model_timeout", return_value=30.0):
+                    with patch("laya.pipeline.queue.get_llm_retries", return_value=3):
+                        result = await llm_call(
+                            role="router",
+                            messages=[{"role": "user", "content": "test"}],
+                            num_retries=3,
+                        )
 
         assert call_count == 2
         assert result.content == '{"result": "ok"}'
 
-    async def test_llm_exhausts_retries(self, db_m8):
+    async def test_llm_exhausts_retries(self, db):
         """LLM call raises after exhausting all retry attempts."""
         async def _always_fail(**kwargs):
             raise Exception("Persistent API error")
 
         with patch("litellm.acompletion", side_effect=_always_fail):
             with patch("laya.llm.client.load_settings", return_value={"models": {"router": "claude-haiku-4-5-20251001"}}):
-                with pytest.raises(Exception, match="Persistent API error"):
-                    await llm_call(
-                        role="router",
-                        messages=[{"role": "user", "content": "test"}],
-                        num_retries=2,
-                    )
+                with patch("laya.pipeline.queue.get_model_timeout", return_value=30.0):
+                    with patch("laya.pipeline.queue.get_llm_retries", return_value=2):
+                        with pytest.raises(Exception, match="Persistent API error"):
+                            await llm_call(
+                                role="router",
+                                messages=[{"role": "user", "content": "test"}],
+                                num_retries=2,
+                            )
 
-    async def test_llm_no_retry_on_success(self, db_m8):
+    async def test_llm_no_retry_on_success(self, db):
         """LLM call does not retry when first attempt succeeds."""
         mock_resp = MagicMock()
         mock_resp.choices = [MagicMock()]
         mock_resp.choices[0].message.content = "hello"
+        mock_resp.choices[0].message.tool_calls = None
+        mock_resp.choices[0].finish_reason = "stop"
         mock_resp.usage = MagicMock()
         mock_resp.usage.prompt_tokens = 50
         mock_resp.usage.completion_tokens = 10
 
         with patch("litellm.acompletion", new_callable=AsyncMock, return_value=mock_resp) as mock_call:
             with patch("laya.llm.client.load_settings", return_value={"models": {"router": "claude-haiku-4-5-20251001"}}):
-                result = await llm_call(
-                    role="router",
-                    messages=[{"role": "user", "content": "test"}],
-                )
+                with patch("laya.pipeline.queue.get_model_timeout", return_value=30.0):
+                    with patch("laya.pipeline.queue.get_llm_retries", return_value=3):
+                        result = await llm_call(
+                            role="router",
+                            messages=[{"role": "user", "content": "test"}],
+                        )
 
         assert mock_call.call_count == 1
         assert result.content == "hello"
@@ -106,155 +117,96 @@ class TestGlobalExceptionHandler:
 class TestRetryableActions:
     """Tests for retryable action flag and retry endpoint."""
 
-    async def _seed_event(self, db, event_id="evt_retry"):
-        """Seed an event row for FK references."""
-        await db.execute(
-            "INSERT OR IGNORE INTO events (event_id, timestamp, source_platform, source_raw_event_type, "
-            "subject_type, subject_id, subject_title, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (event_id, "2026-02-22T14:30:00Z", "jira", "issue_assigned",
-             "ticket", "BUG-999", "Test ticket", "{}"),
-        )
-        await db.commit()
-
-    async def _seed_card(self, db, card_id="card_retry_test", action_id="act_retry_test", event_id="evt_retry"):
-        """Seed an event + card with a suggested action."""
-        await self._seed_event(db, event_id)
-        actions = json.dumps([
-            {
-                "action_id": action_id,
-                "label": "Post Comment",
-                "action_type": "comment",
-                "target_platform": "jira",
-                "payload": {"body": "test comment"},
-            }
-        ])
-        await db.execute(
-            "INSERT INTO action_cards (card_id, event_id, priority, persona, category, "
-            "header, summary, suggested_actions, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (card_id, event_id, "HIGH", "ENGINEER", "CODE", "Test Card", "Test",
-             actions, "approved"),
-        )
-        await db.commit()
-
-    async def test_timeout_sets_retryable(self, db_m8):
+    async def test_timeout_sets_retryable(self, db):
         """n8n timeout marks action as retryable in action_log."""
-        await self._seed_card(db_m8)
+        await insert_test_card(db, "card_retry_test", "evt_retry", status="ready")
 
-        with patch("laya.pipeline.executor.manager", MagicMock(broadcast=AsyncMock())):
-            with patch("laya.pipeline.executor.get_n8n_config", return_value={"base_url": "http://localhost:45678", "webhooks": {"jira": "jira-executor"}}):
-                # Mock httpx to raise TimeoutException
-                async def _timeout_post(url, json=None):
-                    raise httpx.TimeoutException("timed out")
+        mock_client = MagicMock()
+        mock_client.post = AsyncMock(side_effect=httpx.TimeoutException("timed out"))
 
-                mock_client = AsyncMock()
-                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-                mock_client.__aexit__ = AsyncMock(return_value=False)
-                mock_client.post = _timeout_post
-
-                with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch("laya.pipeline.executor.manager.broadcast", new_callable=AsyncMock):
+            with patch("laya.pipeline.executor.get_n8n_config", return_value={"base_url": "http://localhost:5678", "webhooks": {"jira": "jira-executor"}}):
+                with patch("laya.pipeline.executor.get_client", return_value=mock_client):
                     result = await execute_action(
                         card_id="card_retry_test",
-                        action_id="act_retry_test",
+                        action_id="act_1",
                     )
 
         assert result["status"] == "failed"
         assert "timed out" in result["error"]
 
         # Verify retryable flag in DB
-        rows = await db_m8.execute_fetchall(
+        rows = await db.execute_fetchall(
             "SELECT retryable FROM action_log WHERE action_id = ?",
-            ("act_retry_test",),
+            ("act_1",),
         )
         assert len(rows) == 1
         assert rows[0]["retryable"] == 1
 
-    async def test_connection_error_sets_retryable(self, db_m8):
+    async def test_connection_error_sets_retryable(self, db):
         """n8n connection error marks action as retryable."""
-        await self._seed_card(db_m8, card_id="card_conn", action_id="act_conn")
+        await insert_test_card(db, "card_conn", "evt_conn", status="ready")
 
-        with patch("laya.pipeline.executor.manager", MagicMock(broadcast=AsyncMock())):
-            with patch("laya.pipeline.executor.get_n8n_config", return_value={"base_url": "http://localhost:45678", "webhooks": {"jira": "jira-executor"}}):
-                async def _conn_error(url, json=None):
-                    raise httpx.ConnectError("connection refused")
+        mock_client = MagicMock()
+        mock_client.post = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
 
-                mock_client = AsyncMock()
-                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-                mock_client.__aexit__ = AsyncMock(return_value=False)
-                mock_client.post = _conn_error
-
-                with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch("laya.pipeline.executor.manager.broadcast", new_callable=AsyncMock):
+            with patch("laya.pipeline.executor.get_n8n_config", return_value={"base_url": "http://localhost:5678", "webhooks": {"jira": "jira-executor"}}):
+                with patch("laya.pipeline.executor.get_client", return_value=mock_client):
                     result = await execute_action(
                         card_id="card_conn",
-                        action_id="act_conn",
+                        action_id="act_1",
                     )
 
         assert result["status"] == "failed"
-        rows = await db_m8.execute_fetchall(
+        rows = await db.execute_fetchall(
             "SELECT retryable FROM action_log WHERE action_id = ?",
-            ("act_conn",),
+            ("act_1",),
         )
         assert rows[0]["retryable"] == 1
 
-    async def test_generic_error_not_retryable(self, db_m8):
+    async def test_generic_error_not_retryable(self, db):
         """Generic errors are NOT marked as retryable."""
-        await self._seed_card(db_m8, card_id="card_gen", action_id="act_gen")
+        await insert_test_card(db, "card_gen", "evt_gen", status="ready")
 
-        with patch("laya.pipeline.executor.manager", MagicMock(broadcast=AsyncMock())):
-            with patch("laya.pipeline.executor.get_n8n_config", return_value={"base_url": "http://localhost:45678", "webhooks": {"jira": "jira-executor"}}):
-                async def _generic_error(url, json=None):
-                    raise RuntimeError("unexpected error")
+        mock_client = MagicMock()
+        mock_client.post = AsyncMock(side_effect=RuntimeError("unexpected error"))
 
-                mock_client = AsyncMock()
-                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-                mock_client.__aexit__ = AsyncMock(return_value=False)
-                mock_client.post = _generic_error
-
-                with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch("laya.pipeline.executor.manager.broadcast", new_callable=AsyncMock):
+            with patch("laya.pipeline.executor.get_n8n_config", return_value={"base_url": "http://localhost:5678", "webhooks": {"jira": "jira-executor"}}):
+                with patch("laya.pipeline.executor.get_client", return_value=mock_client):
                     result = await execute_action(
                         card_id="card_gen",
-                        action_id="act_gen",
+                        action_id="act_1",
                     )
 
         assert result["status"] == "failed"
-        rows = await db_m8.execute_fetchall(
+        rows = await db.execute_fetchall(
             "SELECT retryable FROM action_log WHERE action_id = ?",
-            ("act_gen",),
+            ("act_1",),
         )
         assert rows[0]["retryable"] == 0
 
-    async def test_retry_endpoint_reexecutes(self, db_m8):
+    async def test_retry_endpoint_reexecutes(self, db):
         """POST /actions/{id}/retry re-executes a retryable action."""
         from httpx import ASGITransport, AsyncClient
         from laya.main import app
 
-        # Seed event + card + retryable action_log entry
-        await self._seed_event(db_m8, "evt_re")
-        actions = json.dumps([{
-            "action_id": "act_re",
-            "label": "Post Comment",
-            "action_type": "comment",
-            "target_platform": "jira",
-            "payload": {"body": "comment"},
-        }])
-        await db_m8.execute(
-            "INSERT INTO action_cards (card_id, event_id, priority, persona, category, "
-            "header, summary, suggested_actions, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("card_re", "evt_re", "HIGH", "ENGINEER", "CODE", "Test", "Test",
-             actions, "failed"),
-        )
-        await db_m8.execute(
+        # Seed card + retryable action_log entry
+        await insert_test_card(db, "card_re", "evt_re", status="failed")
+        await db.execute(
             "INSERT INTO action_log (action_id, card_id, action_type, target_platform, "
             "payload, executed_at, result_status, retryable) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             ("act_re", "card_re", "comment", "jira", '{"body":"comment"}',
              "2026-02-22T15:00:00Z", "failed", True),
         )
-        await db_m8.commit()
+        await db.commit()
 
         # Mock execute_action to succeed this time
         mock_result = {
             "card_id": "card_re",
             "action_id": "act_re",
-            "status": "completed",
+            "status": "done",
             "result_url": None,
             "error": None,
         }
@@ -266,27 +218,22 @@ class TestRetryableActions:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert data["status"] == "completed"
+        assert data["status"] == "done"
 
-    async def test_retry_endpoint_rejects_non_retryable(self, db_m8):
+    async def test_retry_endpoint_rejects_non_retryable(self, db):
         """POST /actions/{id}/retry returns 400 for non-retryable actions."""
         from httpx import ASGITransport, AsyncClient
         from laya.main import app
 
-        # Seed event + card so FK is satisfied
-        await self._seed_event(db_m8, "evt_nope")
-        await db_m8.execute(
-            "INSERT INTO action_cards (card_id, event_id, priority, persona, category, "
-            "header, summary, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            ("card_nope", "evt_nope", "LOW", "COMMS", "COMMS", "X", "X", "failed"),
-        )
-        await db_m8.execute(
+        # Seed card + non-retryable action_log entry
+        await insert_test_card(db, "card_nope", "evt_nope", status="failed")
+        await db.execute(
             "INSERT INTO action_log (action_id, card_id, action_type, target_platform, "
             "payload, executed_at, result_status, retryable) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             ("act_nope", "card_nope", "comment", "jira", '{}',
              "2026-02-22T15:00:00Z", "failed", False),
         )
-        await db_m8.commit()
+        await db.commit()
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -295,7 +242,7 @@ class TestRetryableActions:
         assert resp.status_code == 400
         assert "not retryable" in resp.json()["detail"]
 
-    async def test_retry_endpoint_404_for_missing(self, db_m8):
+    async def test_retry_endpoint_404_for_missing(self, db):
         """POST /actions/{id}/retry returns 404 for unknown action."""
         from httpx import ASGITransport, AsyncClient
         from laya.main import app

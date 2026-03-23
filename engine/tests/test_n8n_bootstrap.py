@@ -243,17 +243,22 @@ class TestImportWorkflows:
         wf_dir.mkdir()
         (wf_dir / "test-workflow.json").write_text(json.dumps({"name": "Test", "active": True}))
 
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
+        # Mock GET /api/v1/workflows to return empty list (no existing workflows)
+        mock_get_resp = MagicMock()
+        mock_get_resp.status_code = 200
+        mock_get_resp.json.return_value = {"data": []}
 
-        mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-        mock_client.post = AsyncMock(return_value=mock_resp)
+        # Mock POST to create workflow
+        mock_post_resp = MagicMock()
+        mock_post_resp.status_code = 200
+
+        mock_client = MagicMock()
+        mock_client.get = AsyncMock(return_value=mock_get_resp)
+        mock_client.post = AsyncMock(return_value=mock_post_resp)
 
         with patch("laya.integrations.n8n_bootstrap.WORKFLOWS_DIR", wf_dir):
             with patch("laya.integrations.n8n_bootstrap.get_api_key", return_value="test-key"):
-                with patch("laya.integrations.n8n_bootstrap.httpx.AsyncClient", return_value=mock_client):
+                with patch("laya.integrations.n8n_bootstrap.get_client", return_value=mock_client):
                     count = await import_workflows("http://localhost:45678")
 
         assert count == 1

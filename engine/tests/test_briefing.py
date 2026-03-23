@@ -7,6 +7,7 @@ import pytest
 
 from laya.llm.client import LLMResponse
 from laya.pipeline.briefing import generate_briefing, _build_fallback_briefing
+from tests.conftest import insert_test_card, insert_test_event
 
 
 def _mock_briefing_response() -> LLMResponse:
@@ -20,31 +21,9 @@ def _mock_briefing_response() -> LLMResponse:
     )
 
 
-async def _insert_event(db, event_id, platform="jira", hours_ago=6):
-    """Insert a recent event for briefing queries."""
-    await db.execute(
-        "INSERT INTO events (event_id, timestamp, source_platform, source_raw_event_type, "
-        "subject_type, subject_id, subject_title, raw_json, processed, filtered, actor_name) "
-        "VALUES (?, datetime('now', ?), ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (event_id, f"-{hours_ago} hours", platform, "issue_assigned",
-         "ticket", "BUG-1", f"Test Event {event_id}", "{}", True, False, "Sarah"),
-    )
-    await db.commit()
-
-
-async def _insert_pending_card(db, card_id, event_id, priority="HIGH"):
-    await db.execute(
-        "INSERT INTO action_cards (card_id, event_id, priority, persona, category, "
-        "header, summary, status, privacy_tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (card_id, event_id, priority, "ENGINEER", "CODE",
-         f"Card {card_id}", "Summary", "pending", 1),
-    )
-    await db.commit()
-
-
 @pytest.mark.asyncio
 class TestBriefingPipeline:
-    async def test_creates_briefing_card(self, db_m7):
+    async def test_creates_briefing_card(self, db):
         """generate_briefing() creates a card with briefing type."""
         mock_settings = {
             "briefing": {"enabled": True, "time": "07:00", "timezone": "UTC"},
@@ -55,22 +34,23 @@ class TestBriefingPipeline:
                        return_value=_mock_briefing_response()):
                 with patch("laya.pipeline.briefing.manager") as mock_mgr:
                     mock_mgr.broadcast = AsyncMock()
-                    card_id = await generate_briefing()
+                    with patch("laya.pipeline.emit.trigger_summary_update", new_callable=AsyncMock):
+                        card_id = await generate_briefing()
 
         assert card_id
         assert card_id.startswith("card_")
 
-        # Verify card exists in DB
-        rows = await db_m7.execute_fetchall(
+        # Verify card exists in DB with status 'ready' (emit default)
+        rows = await db.execute_fetchall(
             "SELECT card_id, status, persona FROM action_cards WHERE card_id = ?",
             (card_id,),
         )
         assert len(rows) == 1
-        assert rows[0][1] == "pending"
+        assert rows[0][1] == "ready"
 
-    async def test_queries_overnight_events(self, db_m7):
+    async def test_queries_overnight_events(self, db):
         """Briefing includes recent events in its context."""
-        await _insert_event(db_m7, "evt_overnight", hours_ago=6)
+        await insert_test_event(db, "evt_overnight", space_id=None)
 
         mock_settings = {
             "briefing": {"enabled": True, "time": "07:00", "timezone": "UTC"},
@@ -81,15 +61,18 @@ class TestBriefingPipeline:
                        return_value=_mock_briefing_response()) as mock_llm:
                 with patch("laya.pipeline.briefing.manager") as mock_mgr:
                     mock_mgr.broadcast = AsyncMock()
-                    card_id = await generate_briefing()
+                    with patch("laya.pipeline.emit.trigger_summary_update", new_callable=AsyncMock):
+                        card_id = await generate_briefing()
 
         # LLM should have been called with overnight events in context
         assert mock_llm.called
 
-    async def test_includes_pending_cards(self, db_m7):
+    async def test_includes_pending_cards(self, db):
         """Briefing includes pending action cards."""
-        await _insert_event(db_m7, "evt_pend")
-        await _insert_pending_card(db_m7, "card_pend", "evt_pend", priority="CRITICAL")
+        await insert_test_card(
+            db, "card_pend", "evt_pend", priority="CRITICAL", status="pending",
+            entity_id="jira:ticket:BUG-PEND",
+        )
 
         mock_settings = {
             "briefing": {"enabled": True, "time": "07:00", "timezone": "UTC"},
@@ -100,11 +83,12 @@ class TestBriefingPipeline:
                        return_value=_mock_briefing_response()):
                 with patch("laya.pipeline.briefing.manager") as mock_mgr:
                     mock_mgr.broadcast = AsyncMock()
-                    card_id = await generate_briefing()
+                    with patch("laya.pipeline.emit.trigger_summary_update", new_callable=AsyncMock):
+                        card_id = await generate_briefing()
 
         assert card_id
 
-    async def test_broadcasts_briefing_ready(self, db_m7):
+    async def test_broadcasts_briefing_ready(self, db):
         """Briefing broadcasts a briefing_ready WS message."""
         mock_settings = {
             "briefing": {"enabled": True, "time": "07:00", "timezone": "UTC"},
@@ -115,15 +99,20 @@ class TestBriefingPipeline:
                        return_value=_mock_briefing_response()):
                 with patch("laya.pipeline.briefing.manager") as mock_mgr:
                     mock_mgr.broadcast = AsyncMock()
-                    await generate_briefing()
+                    with patch("laya.pipeline.emit.trigger_summary_update", new_callable=AsyncMock):
+                        await generate_briefing()
 
         mock_mgr.broadcast.assert_called()
-        call_args = mock_mgr.broadcast.call_args[0][0]
-        assert call_args["type"] == "briefing_ready"
+        # The last broadcast call should be the briefing_ready message
+        # (emit also broadcasts card_created before it)
+        calls = mock_mgr.broadcast.call_args_list
+        briefing_call = [c for c in calls if c[0][0].get("type") == "briefing_ready"]
+        assert len(briefing_call) == 1
+        assert briefing_call[0][0][0]["type"] == "briefing_ready"
 
-    async def test_llm_failure_uses_fallback(self, db_m7):
+    async def test_llm_failure_uses_fallback(self, db):
         """When LLM fails, briefing uses fallback text."""
-        await _insert_event(db_m7, "evt_fb", hours_ago=3)
+        await insert_test_event(db, "evt_fb", space_id=None)
 
         mock_settings = {
             "briefing": {"enabled": True, "time": "07:00", "timezone": "UTC"},
@@ -134,16 +123,17 @@ class TestBriefingPipeline:
                        side_effect=Exception("LLM down")):
                 with patch("laya.pipeline.briefing.manager") as mock_mgr:
                     mock_mgr.broadcast = AsyncMock()
-                    card_id = await generate_briefing()
+                    with patch("laya.pipeline.emit.trigger_summary_update", new_callable=AsyncMock):
+                        card_id = await generate_briefing()
 
         # Card should still be created with fallback content
         assert card_id
-        rows = await db_m7.execute_fetchall(
+        rows = await db.execute_fetchall(
             "SELECT card_id FROM action_cards WHERE card_id = ?", (card_id,),
         )
         assert len(rows) == 1
 
-    async def test_prevents_duplicate_briefings(self, db_m7):
+    async def test_prevents_duplicate_briefings(self, db):
         """generate_briefing() returns existing card if already generated today."""
         mock_settings = {
             "briefing": {"enabled": True, "time": "07:00", "timezone": "UTC"},
@@ -154,8 +144,9 @@ class TestBriefingPipeline:
                        return_value=_mock_briefing_response()):
                 with patch("laya.pipeline.briefing.manager") as mock_mgr:
                     mock_mgr.broadcast = AsyncMock()
-                    card_id_1 = await generate_briefing()
-                    card_id_2 = await generate_briefing()
+                    with patch("laya.pipeline.emit.trigger_summary_update", new_callable=AsyncMock):
+                        card_id_1 = await generate_briefing()
+                        card_id_2 = await generate_briefing()
 
         # Second call should return the same card (or at least not create a duplicate)
         assert card_id_1 == card_id_2

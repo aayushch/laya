@@ -18,73 +18,148 @@ def agent():
 
 
 class TestParseStreamJson:
-    def test_assistant_message(self, agent):
-        """Parses assistant message type."""
-        line = json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "Looking at the code"}]}})
-        event = agent._parse_stream_json(line)
-        assert event is not None
-        assert event.event_type == WorkspaceEventType.AGENT_MESSAGE
+    """_parse_stream_json now returns a list of WorkspaceEvent."""
 
-    def test_tool_use_read(self, agent):
-        """Parses tool_use with Read tool as FILE_READ."""
-        line = json.dumps({"type": "tool_use", "name": "Read", "input": {"file_path": "/src/main.py"}})
-        event = agent._parse_stream_json(line)
-        assert event is not None
-        assert event.event_type == WorkspaceEventType.FILE_READ
+    def test_assistant_text_block(self, agent):
+        """Parses assistant message with text content block."""
+        line = json.dumps({
+            "type": "assistant",
+            "message": {
+                "id": "msg_01",
+                "content": [{"type": "text", "text": "Looking at the code"}],
+            },
+        })
+        events = agent._parse_stream_json(line)
+        assert len(events) == 1
+        assert events[0].event_type == WorkspaceEventType.AGENT_MESSAGE
 
-    def test_tool_use_write(self, agent):
-        """Parses tool_use with Write tool as FILE_WRITE."""
-        line = json.dumps({"type": "tool_use", "name": "Write", "input": {"file_path": "/src/fix.py"}})
-        event = agent._parse_stream_json(line)
-        assert event is not None
-        assert event.event_type == WorkspaceEventType.FILE_WRITE
+    def test_assistant_tool_use_read(self, agent):
+        """Parses assistant message with Read tool_use block as FILE_READ."""
+        line = json.dumps({
+            "type": "assistant",
+            "message": {
+                "id": "msg_02",
+                "content": [{"type": "tool_use", "name": "Read", "input": {"file_path": "/src/main.py"}}],
+            },
+        })
+        events = agent._parse_stream_json(line)
+        assert len(events) == 1
+        assert events[0].event_type == WorkspaceEventType.FILE_READ
 
-    def test_tool_use_edit(self, agent):
-        """Parses tool_use with Edit tool as FILE_WRITE."""
-        line = json.dumps({"type": "tool_use", "name": "Edit", "input": {"file_path": "/src/fix.py"}})
-        event = agent._parse_stream_json(line)
-        assert event is not None
-        assert event.event_type == WorkspaceEventType.FILE_WRITE
+    def test_assistant_tool_use_write(self, agent):
+        """Parses assistant message with Write tool_use block as FILE_WRITE."""
+        line = json.dumps({
+            "type": "assistant",
+            "message": {
+                "id": "msg_03",
+                "content": [{"type": "tool_use", "name": "Write", "input": {"file_path": "/src/fix.py"}}],
+            },
+        })
+        events = agent._parse_stream_json(line)
+        assert len(events) == 1
+        assert events[0].event_type == WorkspaceEventType.FILE_WRITE
 
-    def test_tool_use_other(self, agent):
-        """Parses tool_use with unknown tool as TOOL_CALL."""
-        line = json.dumps({"type": "tool_use", "name": "Bash", "input": {"command": "ls"}})
-        event = agent._parse_stream_json(line)
-        assert event is not None
-        assert event.event_type == WorkspaceEventType.TOOL_CALL
+    def test_assistant_tool_use_edit(self, agent):
+        """Parses assistant message with Edit tool_use block as FILE_WRITE."""
+        line = json.dumps({
+            "type": "assistant",
+            "message": {
+                "id": "msg_04",
+                "content": [{"type": "tool_use", "name": "Edit", "input": {"file_path": "/src/fix.py"}}],
+            },
+        })
+        events = agent._parse_stream_json(line)
+        assert len(events) == 1
+        assert events[0].event_type == WorkspaceEventType.FILE_WRITE
+
+    def test_assistant_tool_use_bash(self, agent):
+        """Parses assistant message with Bash tool_use block as TOOL_CALL."""
+        line = json.dumps({
+            "type": "assistant",
+            "message": {
+                "id": "msg_05",
+                "content": [{"type": "tool_use", "name": "Bash", "input": {"command": "ls"}}],
+            },
+        })
+        events = agent._parse_stream_json(line)
+        assert len(events) == 1
+        assert events[0].event_type == WorkspaceEventType.TOOL_CALL
+
+    def test_assistant_multiple_blocks(self, agent):
+        """Assistant message with multiple content blocks yields multiple events."""
+        line = json.dumps({
+            "type": "assistant",
+            "message": {
+                "id": "msg_06",
+                "content": [
+                    {"type": "text", "text": "Let me check"},
+                    {"type": "tool_use", "name": "Read", "input": {"file_path": "/src/a.py"}},
+                ],
+            },
+        })
+        events = agent._parse_stream_json(line)
+        assert len(events) == 2
+        assert events[0].event_type == WorkspaceEventType.AGENT_MESSAGE
+        assert events[1].event_type == WorkspaceEventType.FILE_READ
 
     def test_result_type(self, agent):
         """Parses result type as STATUS_CHANGE."""
         line = json.dumps({"type": "result", "result": "All fixed"})
-        event = agent._parse_stream_json(line)
-        assert event is not None
-        assert event.event_type == WorkspaceEventType.STATUS_CHANGE
-        assert event.content.get("status") == "result_received"
+        events = agent._parse_stream_json(line)
+        assert len(events) == 1
+        assert events[0].event_type == WorkspaceEventType.STATUS_CHANGE
+        assert events[0].content.get("status") == "result_received"
 
-    def test_invalid_json_returns_none(self, agent):
-        """Non-JSON lines return None."""
-        event = agent._parse_stream_json("this is not json")
-        assert event is None
+    def test_system_init_captures_session_id(self, agent):
+        """system.init message captures cc_session_id."""
+        line = json.dumps({
+            "type": "system",
+            "subtype": "init",
+            "session_id": "cc-uuid-1234",
+            "cwd": "/repo",
+        })
+        events = agent._parse_stream_json(line)
+        assert len(events) == 1
+        assert events[0].event_type == WorkspaceEventType.STATUS_CHANGE
+        assert agent.cc_session_id == "cc-uuid-1234"
 
-    def test_unknown_type_returns_none(self, agent):
-        """Unknown message types return None."""
-        line = json.dumps({"type": "system", "data": "loading"})
-        event = agent._parse_stream_json(line)
-        assert event is None
+    def test_invalid_json_returns_empty(self, agent):
+        """Non-JSON lines return empty list."""
+        events = agent._parse_stream_json("this is not json")
+        assert events == []
+
+    def test_unknown_type_returns_empty(self, agent):
+        """Unknown message types return empty list."""
+        line = json.dumps({"type": "rate_limit_event", "data": "loading"})
+        events = agent._parse_stream_json(line)
+        assert events == []
+
+    def test_ask_user_question(self, agent):
+        """AskUserQuestion tool_use yields APPROVAL_REQUEST with requires_input."""
+        line = json.dumps({
+            "type": "assistant",
+            "message": {
+                "id": "msg_07",
+                "content": [{
+                    "type": "tool_use",
+                    "name": "AskUserQuestion",
+                    "input": {"questions": ["Should I continue?"]},
+                }],
+            },
+        })
+        events = agent._parse_stream_json(line)
+        assert len(events) == 1
+        assert events[0].event_type == WorkspaceEventType.APPROVAL_REQUEST
+        assert events[0].requires_input is True
 
 
 class TestApprovalDetection:
-    def test_detects_yn_prompt(self, agent):
-        assert agent._is_approval_prompt("Do you want to proceed? [Y/n]")
+    """_is_approval_prompt is currently disabled (always returns False)."""
 
-    def test_detects_yes_no(self, agent):
-        assert agent._is_approval_prompt("Shall I continue? (yes/no)")
-
-    def test_detects_approve_deny(self, agent):
-        assert agent._is_approval_prompt("Do you approve this change?")
-
-    def test_normal_text_not_detected(self, agent):
+    def test_always_returns_false(self, agent):
+        """Approval detection is disabled in plan mode."""
+        assert not agent._is_approval_prompt("Do you want to proceed? [Y/n]")
+        assert not agent._is_approval_prompt("Shall I continue? (yes/no)")
+        assert not agent._is_approval_prompt("Do you approve this change?")
         assert not agent._is_approval_prompt("Looking at the PaymentService class")
-
-    def test_empty_string(self, agent):
         assert not agent._is_approval_prompt("")

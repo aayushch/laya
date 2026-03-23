@@ -64,12 +64,10 @@ class TestN8nTestEndpoint:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
 
-        mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client = MagicMock()
         mock_client.get = AsyncMock(return_value=mock_resp)
 
-        with patch("laya.api.settings_api.httpx.AsyncClient", return_value=mock_client):
+        with patch("laya.api.settings_api.get_client", return_value=mock_client):
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.post(
@@ -86,12 +84,10 @@ class TestN8nTestEndpoint:
         """Returns unreachable on ConnectError."""
         from laya.main import app
 
-        mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client = MagicMock()
         mock_client.get = AsyncMock(side_effect=httpx.ConnectError("refused"))
 
-        with patch("laya.api.settings_api.httpx.AsyncClient", return_value=mock_client):
+        with patch("laya.api.settings_api.get_client", return_value=mock_client):
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.post(
@@ -108,17 +104,13 @@ class TestN8nTestEndpoint:
 class TestExecutorUsesConfig:
     """Test that executor reads webhook config dynamically."""
 
-    async def test_executor_uses_configured_webhook(self, db_m8):
+    async def test_executor_uses_configured_webhook(self, db):
         """Executor builds webhook URL from get_n8n_config()."""
         from laya.pipeline.executor import execute_action
+        from tests.conftest import insert_test_event
 
         # Seed event + card
-        await db_m8.execute(
-            "INSERT INTO events (event_id, timestamp, source_platform, source_raw_event_type, "
-            "subject_type, subject_id, subject_title, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            ("evt_cfg", "2026-02-22T14:30:00Z", "jira", "issue_assigned",
-             "ticket", "BUG-1", "Test", "{}"),
-        )
+        await insert_test_event(db, event_id="evt_cfg")
         actions = json.dumps([{
             "action_id": "act_cfg",
             "label": "Comment",
@@ -126,13 +118,13 @@ class TestExecutorUsesConfig:
             "target_platform": "jira",
             "payload": {"body": "test"},
         }])
-        await db_m8.execute(
+        await db.execute(
             "INSERT INTO action_cards (card_id, event_id, priority, persona, category, "
             "header, summary, suggested_actions, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             ("card_cfg", "evt_cfg", "HIGH", "ENGINEER", "CODE", "Test", "Test",
              actions, "pending"),
         )
-        await db_m8.commit()
+        await db.commit()
 
         posted_url = None
 
@@ -140,14 +132,12 @@ class TestExecutorUsesConfig:
         mock_resp.json.return_value = {"success": True, "result": {}}
         mock_resp.status_code = 200
 
-        async def capture_post(url, json=None):
+        async def capture_post(url, json=None, timeout=None):
             nonlocal posted_url
             posted_url = url
             return mock_resp
 
-        mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client = MagicMock()
         mock_client.post = capture_post
 
         custom_config = {
@@ -156,22 +146,21 @@ class TestExecutorUsesConfig:
         }
 
         with patch("laya.pipeline.executor.get_n8n_config", return_value=custom_config):
-            with patch("laya.pipeline.executor.httpx.AsyncClient", return_value=mock_client):
+            with patch("laya.pipeline.executor.get_client", return_value=mock_client):
                 with patch("laya.pipeline.executor.manager", MagicMock(broadcast=AsyncMock())):
                     await execute_action("card_cfg", "act_cfg")
 
         assert posted_url == "http://my-n8n:9999/webhook/my-custom-jira"
 
-    async def test_executor_fallback_for_unknown_platform(self, db_m8):
+    async def test_executor_fallback_for_unknown_platform(self, db):
         """Unknown platform falls back to {platform}-executor."""
         from laya.pipeline.executor import execute_action
+        from tests.conftest import insert_test_event
 
-        await db_m8.execute(
-            "INSERT INTO events (event_id, timestamp, source_platform, source_raw_event_type, "
-            "subject_type, subject_id, subject_title, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            ("evt_unk", "2026-02-22T14:30:00Z", "github", "pr_opened",
-             "pr", "PR-1", "Test", "{}"),
-        )
+        await insert_test_event(db, event_id="evt_unk", platform="github",
+                                raw_event_type="pr_opened",
+                                subject_type="pr", subject_id="PR-1",
+                                subject_title="Test")
         actions = json.dumps([{
             "action_id": "act_unk",
             "label": "Merge",
@@ -179,13 +168,13 @@ class TestExecutorUsesConfig:
             "target_platform": "github",
             "payload": {},
         }])
-        await db_m8.execute(
+        await db.execute(
             "INSERT INTO action_cards (card_id, event_id, priority, persona, category, "
             "header, summary, suggested_actions, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             ("card_unk", "evt_unk", "HIGH", "ENGINEER", "CODE", "Test", "Test",
              actions, "pending"),
         )
-        await db_m8.commit()
+        await db.commit()
 
         posted_url = None
 
@@ -193,14 +182,12 @@ class TestExecutorUsesConfig:
         mock_resp.json.return_value = {"success": True, "result": {}}
         mock_resp.status_code = 200
 
-        async def capture_post(url, json=None):
+        async def capture_post(url, json=None, timeout=None):
             nonlocal posted_url
             posted_url = url
             return mock_resp
 
-        mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client = MagicMock()
         mock_client.post = capture_post
 
         # Config with no github webhook defined
@@ -210,7 +197,7 @@ class TestExecutorUsesConfig:
         }
 
         with patch("laya.pipeline.executor.get_n8n_config", return_value=config):
-            with patch("laya.pipeline.executor.httpx.AsyncClient", return_value=mock_client):
+            with patch("laya.pipeline.executor.get_client", return_value=mock_client):
                 with patch("laya.pipeline.executor.manager", MagicMock(broadcast=AsyncMock())):
                     await execute_action("card_unk", "act_unk")
 
