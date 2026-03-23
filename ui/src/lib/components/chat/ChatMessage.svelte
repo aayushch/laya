@@ -60,7 +60,8 @@
 		return replaceMarkers(marked(text) as string);
 	}
 
-	function handleClick(e: MouseEvent) {
+	function handleClick(e: MouseEvent | KeyboardEvent) {
+		if (e instanceof KeyboardEvent && e.key !== 'Enter') return;
 		const target = (e.target as HTMLElement).closest('[data-card-link]') as HTMLElement | null;
 		if (!target) return;
 		const cardId = target.dataset.cardLink;
@@ -79,7 +80,7 @@
 	>
 		{#if isUser}
 			<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-			<div class="whitespace-pre-wrap break-words" onclick={handleClick}>{@html replaceMarkers(message.content)}</div>
+			<div class="whitespace-pre-wrap break-words" role="text" onclick={handleClick} onkeydown={handleClick}>{@html replaceMarkers(message.content)}</div>
 		{:else}
 			<!-- Thinking indicator / collapsible block -->
 			{#if parsed.isThinking}
@@ -111,7 +112,7 @@
 			<!-- Main response -->
 			{#if parsed.response}
 				<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-				<div class="prose-plan break-words" onclick={handleClick}>{@html renderMarkdown(parsed.response)}{#if streaming}<span class="animate-pulse text-laya-orange">|</span>{/if}</div>
+				<div class="prose-plan break-words" role="text" onclick={handleClick} onkeydown={handleClick}>{@html renderMarkdown(parsed.response)}{#if streaming}<span class="animate-pulse text-laya-orange">|</span>{/if}</div>
 			{/if}
 		{/if}
 		{#if !streaming}

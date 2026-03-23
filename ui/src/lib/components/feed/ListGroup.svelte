@@ -238,7 +238,10 @@
 			{platformLabel[group.platform] ?? group.platform}
 		</span>
 
-		<!-- Subject (entity title) — skip actor column, use ml to match card's actor+gap -->
+		<!-- Actor spacer — matches ListRow's w-[100px] actor column for alignment -->
+		<span class="w-[100px] shrink-0 ml-2"></span>
+
+		<!-- Subject (entity title) -->
 		<span class="group/subject relative min-w-0 flex-1 ml-2"
 			onmouseenter={() => { if (subjectEl) subjectTruncated = subjectEl.scrollWidth > subjectEl.clientWidth; }}
 		>

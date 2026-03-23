@@ -21,6 +21,12 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let selectedCard = $state<ActionCard | null>(null);
+	let detailPanelOpen = $state(false);
+
+	// Auto-open detail panel when a card is selected
+	$effect(() => {
+		if (selectedCard) detailPanelOpen = true;
+	});
 
 	// Search state (ephemeral — resets on date change)
 	let searchQuery = $state('');
@@ -337,6 +343,7 @@
 
 	function closeDetail() {
 		selectedCard = null;
+		detailPanelOpen = false;
 		sessionStorage.removeItem(SELECTED_CARD_KEY);
 	}
 
@@ -952,17 +959,35 @@
 
 		<!-- Detail panel (hidden in summary view) -->
 		{#if $feedViewMode !== 'summary'}
-			<div class="w-[420px] flex-shrink-0 overflow-y-auto">
-				{#if selectedCard}
-					<CardDetail card={selectedCard} onclose={closeDetail} ongotocard={gotoCard} />
-				{:else}
-					<div class="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-surface-700 text-surface-600">
-						<svg class="mb-2 h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-						</svg>
-						<p class="text-xs">Select a card to view details</p>
+			<div class="relative flex flex-shrink-0">
+				<!-- Toggle button — always visible on the left edge of the panel area -->
+				<button
+					class="absolute -left-3 top-4 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-surface-600 bg-surface-800 text-surface-400 shadow-md transition-colors hover:bg-surface-700 hover:text-surface-200"
+					onclick={() => { if (detailPanelOpen) closeDetail(); else detailPanelOpen = true; }}
+					title={detailPanelOpen ? 'Collapse detail panel' : 'Expand detail panel'}
+				>
+					<svg class="h-3 w-3 transition-transform {detailPanelOpen ? '' : 'rotate-180'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+					</svg>
+				</button>
+
+				<!-- Sliding panel -->
+				<div
+					class="overflow-hidden transition-[width] duration-300 ease-in-out {detailPanelOpen ? 'w-[420px]' : 'w-0'}"
+				>
+					<div class="w-[420px] h-full overflow-y-auto">
+						{#if selectedCard}
+							<CardDetail card={selectedCard} onclose={closeDetail} ongotocard={gotoCard} />
+						{:else}
+							<div class="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-surface-700 text-surface-600">
+								<svg class="mb-2 h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+								</svg>
+								<p class="text-xs">Select a card to view details</p>
+							</div>
+						{/if}
 					</div>
-				{/if}
+				</div>
 			</div>
 		{/if}
 	</div>
