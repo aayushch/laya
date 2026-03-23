@@ -41,7 +41,9 @@
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
-            { "name": "state", "value": "OPEN,MERGED,DECLINED" },
+            { "name": "state", "value": "OPEN" },
+            { "name": "state", "value": "MERGED" },
+            { "name": "state", "value": "DECLINED" },
             { "name": "sort", "value": "-updated_on" },
             { "name": "pagelen", "value": "25" },
             { "name": "q", "value": "={{ 'updated_on >= \"' + $json.since.substring(0,19) + '\"' }}" }

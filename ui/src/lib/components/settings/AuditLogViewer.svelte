@@ -57,7 +57,8 @@
 	const totalPages = $derived(Math.ceil(total / limit) || 1);
 
 	function formatTime(ts: string): string {
-		return new Date(ts).toLocaleString([], {
+		const utc = ts.endsWith('Z') || ts.includes('+') ? ts : ts + 'Z';
+		return new Date(utc).toLocaleString([], {
 			month: 'short',
 			day: 'numeric',
 			hour: '2-digit',

@@ -60,6 +60,7 @@ if [ "$SKIP_ENGINE" = false ]; then
     # Clean and recreate
     rm -rf "$ENGINE_BUNDLE"
     mkdir -p "$ENGINE_BUNDLE"
+    touch "$ENGINE_BUNDLE/.gitkeep"
 
     # Copy engine Python source (the actual application code)
     cp -R "$REPO_ROOT/engine/laya" "$ENGINE_BUNDLE/laya"
