@@ -104,7 +104,7 @@ class ClaudeCodeAgent(CodingAgent):
             "stream-json",
             "--verbose",
             "--permission-mode",
-            "plan",
+            "auto",
         ]
 
         if add_dirs:
