@@ -180,8 +180,8 @@
 		e.stopPropagation();
 		reopening = true;
 		try {
-			await engineApi.reopenCard(card.card_id);
-			card.status = 'pending';
+			const result = await engineApi.reopenCard(card.card_id);
+			card.status = result.status as ActionCard['status'];
 		} finally {
 			reopening = false;
 		}
