@@ -22,7 +22,7 @@
 
 	const colorClass = $derived(colors[status] ?? 'text-surface-500');
 	const animateClass = $derived(animate[status] ?? '');
-	const sizeClass = $derived(size === 'md' ? 'h-2.5 w-2.5' : 'h-2 w-2');
+	const sizeClass = $derived(size === 'md' ? 'h-[11px] w-[11px]' : 'h-2 w-2');
 </script>
 
 <!-- Each status gets a unique shape so meaning isn't conveyed by color alone -->
