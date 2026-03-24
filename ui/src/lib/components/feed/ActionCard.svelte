@@ -572,8 +572,8 @@
 			</div>
 			<!-- Status indicator -->
 			<span class="ml-1 flex items-center gap-1 min-w-0 overflow-hidden">
-				<StatusDot status={card.status} />
-				<span class="text-[10px] text-surface-400 truncate">{statusLabel[card.status] ?? card.status}</span>
+				<StatusDot status={card.status} size="md" />
+				<span class="text-[11px] text-surface-400 truncate">{statusLabel[card.status] ?? card.status}</span>
 			</span>
 			<!-- Priority chip -->
 			<span class="ml-1 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase {priorityColors[card.priority] ?? priorityColors.MEDIUM}">
