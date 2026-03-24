@@ -237,10 +237,21 @@
 						>
 							<option value="newest">Newest</option>
 							<option value="priority">Priority</option>
+							<option value="status">Status</option>
 							<option value="persona">Persona</option>
 							<option value="category">Category</option>
 							<option value="platform">Source</option>
 						</select>
+						<!-- Sort direction toggle -->
+						<button
+							class="flex h-5 w-5 items-center justify-center rounded text-surface-400 transition-colors hover:bg-surface-700 hover:text-surface-200"
+							onclick={() => ($feedFilters.sortAsc = !$feedFilters.sortAsc)}
+							title={$feedFilters.sortAsc ? 'Ascending — click for descending' : 'Descending — click for ascending'}
+						>
+							<svg class="h-3 w-3 transition-transform {$feedFilters.sortAsc ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+							</svg>
+						</button>
 					</div>
 
 					<!-- Divider -->

@@ -158,6 +158,7 @@ async def get_grouped_cards(
     status: str | None = None,
     priority: str | None = None,
     sort: str = "newest",
+    sort_asc: bool = False,
     show_archived: bool = False,
     date: str | None = None,
     space_id: str | None = None,
@@ -276,26 +277,50 @@ async def get_grouped_cards(
             )
         )
 
+    # Default sort direction per type: False = descending (default), True = ascending
+    # sort_asc flips the default direction for each sort type.
     if sort == "oldest":
-        result.sort(key=lambda g: g.latest_at)
+        result.sort(key=lambda g: g.latest_at, reverse=sort_asc)
     elif sort == "priority":
-        result.sort(key=lambda g: _PRIORITY_ORDER.get(g.top_priority, 99))
+        result.sort(key=lambda g: _PRIORITY_ORDER.get(g.top_priority, 99), reverse=sort_asc)
         for g in result:
             g.sort_key = g.top_priority
     elif sort == "platform":
-        result.sort(key=lambda g: g.platform.lower())
+        result.sort(key=lambda g: g.platform.lower(), reverse=sort_asc)
         for g in result:
             g.sort_key = g.platform or "Unknown"
     elif sort == "persona":
-        result.sort(key=lambda g: g.cards[0].persona if g.cards else "")
+        result.sort(key=lambda g: g.cards[0].persona if g.cards else "", reverse=sort_asc)
         for g in result:
             g.sort_key = g.cards[0].persona if g.cards else "Unknown"
     elif sort == "category":
-        result.sort(key=lambda g: g.cards[0].category if g.cards else "")
+        result.sort(key=lambda g: g.cards[0].category if g.cards else "", reverse=sort_asc)
         for g in result:
             g.sort_key = g.cards[0].category if g.cards else "Unknown"
+    elif sort == "status":
+        _STATUS_ORDER = {
+            "awaiting_input": 0, "failed": 1, "requires_approval": 2,
+            "agent_running": 3, "pending": 4, "ready": 5,
+            "done": 6, "dismissed": 7, "archived": 8,
+        }
+        _STATUS_LABEL = {
+            "awaiting_input": "Input Needed", "failed": "Failed",
+            "requires_approval": "Needs Approval", "agent_running": "Agent Running",
+            "pending": "Processing", "ready": "Ready",
+            "done": "Done", "dismissed": "Dismissed", "archived": "Archived",
+        }
+        def _group_status(g):
+            """Pick the highest-priority status across all cards in the group."""
+            for s in _STATUS_ORDER:
+                if any(c.status == s for c in g.cards):
+                    return s
+            return g.cards[0].status if g.cards else "pending"
+        result.sort(key=lambda g: _STATUS_ORDER.get(_group_status(g), 99), reverse=sort_asc)
+        for g in result:
+            s = _group_status(g)
+            g.sort_key = _STATUS_LABEL.get(s, s.replace("_", " ").title())
     else:  # newest (default)
-        result.sort(key=lambda g: g.latest_at, reverse=True)
+        result.sort(key=lambda g: g.latest_at, reverse=not sort_asc)
 
     # Resolve prev/next dates for pagination
     prev_date_val: str | None = None

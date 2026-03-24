@@ -129,6 +129,7 @@ export const engineApi = {
 		status?: string;
 		priority?: string;
 		sort?: string;
+		sort_asc?: boolean;
 		show_archived?: boolean;
 		date?: string;
 		space_id?: string;
@@ -137,6 +138,7 @@ export const engineApi = {
 		if (params?.status) searchParams.set('status', params.status);
 		if (params?.priority) searchParams.set('priority', params.priority);
 		if (params?.sort) searchParams.set('sort', params.sort);
+		if (params?.sort_asc) searchParams.set('sort_asc', 'true');
 		if (params?.show_archived) searchParams.set('show_archived', 'true');
 		if (params?.date) searchParams.set('date', params.date);
 		if (params?.space_id) searchParams.set('space_id', params.space_id);

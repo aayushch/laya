@@ -139,11 +139,16 @@ html, body {
 [data-theme='light'] .border-emerald-800\/20 { border-color: oklch(0.82 0.04 162 / 30%); }
 [data-theme='light'] .hover\:border-emerald-700\/35:hover { border-color: oklch(0.72 0.06 162 / 45%); }
 
-/* Failed — soft blush */
+/* Failed — soft blush (covers both red-* and rose-* variants used in components) */
 [data-theme='light'] .bg-red-950\/60     { background-color: oklch(0.94 0.045 25); }
+[data-theme='light'] .bg-rose-950\/60    { background-color: oklch(0.94 0.045 25); }
+[data-theme='light'] .bg-rose-950\/35    { background-color: oklch(0.96 0.025 25); }
+[data-theme='light'] .hover\:bg-rose-950\/75:hover { background-color: oklch(0.92 0.055 25); }
 [data-theme='light'] .border-red-800\/35 { border-color: oklch(0.74 0.08 25 / 55%); }
-[data-theme='light'] .hover\:border-red-700\/50:hover { border-color: oklch(0.64 0.12 25 / 65%); }
 [data-theme='light'] .border-red-800\/40 { border-color: oklch(0.74 0.08 25 / 55%); }
+[data-theme='light'] .border-rose-800\/35 { border-color: oklch(0.74 0.08 25 / 55%); }
+[data-theme='light'] .hover\:border-red-700\/50:hover { border-color: oklch(0.64 0.12 25 / 65%); }
+[data-theme='light'] .hover\:border-rose-700\/50:hover { border-color: oklch(0.64 0.12 25 / 65%); }
 
 /* Dismissed — warm gray */
 [data-theme='light'] .bg-zinc-950\/60    { background-color: oklch(0.94 0.008 65); }
