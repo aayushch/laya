@@ -5,6 +5,7 @@ export interface FeedFilters {
 	statusFilters: string[];
 	priorityFilters: string[];
 	sortBy: string;
+	sortAsc: boolean;
 	showArchived: boolean;
 	spaceFilter: string | null;
 }
@@ -24,6 +25,7 @@ const defaults: FeedFilters = {
 	statusFilters: [],
 	priorityFilters: [],
 	sortBy: 'newest',
+	sortAsc: false,
 	showArchived: false,
 	spaceFilter: null
 };
@@ -48,6 +50,7 @@ export async function loadFeedFilters(): Promise<void> {
 				statusFilters: prefs.statusFilters ?? defaults.statusFilters,
 				priorityFilters: prefs.priorityFilters ?? defaults.priorityFilters,
 				sortBy: prefs.sortBy ?? defaults.sortBy,
+				sortAsc: prefs.sortAsc ?? defaults.sortAsc,
 				showArchived: prefs.showArchived ?? defaults.showArchived,
 				spaceFilter: prefs.spaceFilter ?? defaults.spaceFilter
 			});

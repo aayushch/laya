@@ -234,7 +234,7 @@
 				</button>
 
 				<!-- Source — fixed width, matches ListRow -->
-		<span class="w-[60px] shrink-0 text-[10px] font-semibold uppercase tracking-wider text-surface-500 truncate">
+		<span class="w-[60px] shrink-0 text-[11px] font-semibold uppercase tracking-wider text-surface-500 truncate">
 			{platformLabel[group.platform] ?? group.platform}
 		</span>
 

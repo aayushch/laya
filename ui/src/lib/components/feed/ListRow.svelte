@@ -2,6 +2,7 @@
 	import type { ActionCard } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
 	import { goto } from '$app/navigation';
+	import StatusDot from './StatusDot.svelte';
 
 	let {
 		card,
@@ -188,7 +189,7 @@
 		<div class="w-5 shrink-0 {indented ? 'ml-1' : ''}"></div>
 
 		<!-- Source — fixed width -->
-	<span class="w-[60px] shrink-0 text-[10px] font-semibold uppercase tracking-wider text-surface-500 truncate" title={platform}>
+	<span class="w-[60px] shrink-0 text-[11px] font-semibold uppercase tracking-wider text-surface-500 truncate" title={platform}>
 		{platform}
 	</span>
 
@@ -222,8 +223,8 @@
 
 	<!-- Status — fixed width -->
 	<span class="w-[70px] shrink-0 flex items-center gap-1 ml-2">
-		<span class="h-1.5 w-1.5 rounded-full shrink-0 {statusDot[card.status] ?? 'bg-surface-500'}"></span>
-		<span class="text-[10px] text-surface-500 whitespace-nowrap truncate">{statusLabel[card.status] ?? card.status}</span>
+		<StatusDot status={card.status} />
+		<span class="text-[11px] text-surface-500 whitespace-nowrap truncate">{statusLabel[card.status] ?? card.status}</span>
 	</span>
 
 	<!-- Action buttons — fixed width slot (visible on hover) -->

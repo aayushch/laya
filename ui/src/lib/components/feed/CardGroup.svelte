@@ -3,6 +3,7 @@
 	import { engineApi } from '$lib/api/engine';
 	import { slide } from 'svelte/transition';
 	import ActionCardComponent from './ActionCard.svelte';
+	import StatusDot from './StatusDot.svelte';
 
 	let {
 		group,
@@ -268,106 +269,61 @@
 	}
 </script>
 
-{#if !expanded}
-	<!--
-	  ── COLLAPSED: Stack view ──────────────────────────────────────────────────
-	  The main front card sits in normal flow. Ghost strips are absolutely
-	  positioned inside the container's 12px padding-bottom zone, peeking
-	  out below the front card to give the "deck of cards" illusion.
-	-->
-	<div class="relative transition-opacity {isDimmed ? 'opacity-45 hover:opacity-70' : ''}" style="padding-bottom: {ghostCount > 0 ? 12 : 0}px">
+<!-- Single persistent DOM — morphs between collapsed stack and expanded list -->
+<div
+	class="relative transition-opacity duration-200 {isDimmed ? 'opacity-45 hover:opacity-70' : ''}"
+	style="padding-bottom: {!expanded && ghostCount > 0 ? 12 : 0}px; transition: padding-bottom 200ms ease;"
+>
+	<!-- Ghost strip 2 — furthest back -->
+	{#if ghostCount >= 2}
+		<div
+			class="absolute bottom-0 rounded-b-xl border-x border-b transition-opacity duration-200 {ghostBorder} {ghostBg} {expanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
+			style="left: 16px; right: 16px; height: 8px; z-index: 1;"
+		></div>
+	{/if}
 
-		<!-- Ghost strip 2 — furthest back, most inset, sits at container bottom -->
-		{#if ghostCount >= 2}
-			<div class="absolute bottom-0 rounded-b-xl border-x border-b {ghostBorder} {ghostBg}"
-				style="left: 16px; right: 16px; height: 8px; z-index: 1;"></div>
-		{/if}
+	<!-- Ghost strip 1 — one step back -->
+	{#if ghostCount >= 1}
+		<div
+			class="absolute rounded-b-xl border-x border-b transition-opacity duration-200 {ghostBorder} {ghostBg} {expanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
+			style="bottom: 5px; left: 8px; right: 8px; height: 8px; z-index: 2;"
+		></div>
+	{/if}
 
-		<!-- Ghost strip 1 — one step back, 5px above container bottom -->
-		{#if ghostCount >= 1}
-			<div class="absolute rounded-b-xl border-x border-b {ghostBorder} {ghostBg}"
-				style="bottom: 5px; left: 8px; right: 8px; height: 8px; z-index: 2;"></div>
-		{/if}
-
-		<!-- Front card — sits above all ghosts, matches ActionCard fixed height -->
-		<button
-			class="relative flex h-[200px] w-full flex-col rounded-xl border px-4 pb-2 pt-3 text-left shadow-lg transition-colors {groupStyle}"
-			style="z-index: 3;"
-			onclick={toggle}
-		>
-			<!-- Top row: source · priority · count -->
-			<div class="mb-2 flex items-center justify-between">
-				<span class="text-[10px] font-semibold uppercase tracking-widest text-surface-500">
-					{platformLabel[group.platform] ?? group.platform}
-				</span>
-				<div class="flex items-center gap-1.5">
-					<span class="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase {priorityColors[group.top_priority] ?? priorityColors.MEDIUM}">
-						{priorityLabel[group.top_priority] ?? group.top_priority}
-					</span>
-					<span class="rounded-full border border-surface-600 bg-surface-700 px-2 py-0.5 text-[10px] font-semibold text-surface-300">
-						+{extraCount}
-					</span>
-				</div>
-			</div>
-
-			<!-- Entity title (2-line clamp) -->
-			<h3 class="mb-1.5 line-clamp-2 text-sm font-semibold leading-snug text-surface-50" title={group.entity_title}>
-				{group.entity_title}
-			</h3>
-
-			<!-- Top card preview summary (2-line clamp) -->
-			<p class="line-clamp-2 text-xs leading-relaxed text-surface-400" title={topCard.summary}>
-				{topCard.summary}
-			</p>
-
-			<!-- Status summary — fills remaining space -->
-			<div class="mt-2 flex flex-1 items-end">
-				<div class="flex items-center gap-2 shrink-0">
-					{#if topCard.space_name}
-						<span class="flex items-center gap-1 shrink-0 text-[10px] text-surface-500" title="Space: {topCard.space_name}">
-							<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {topCard.space_color ?? '#F97316'}"></span>
-							{topCard.space_name}
-						</span>
-					{/if}
-				</div>
-				<div class="ml-auto flex items-center gap-1.5 min-w-0 overflow-hidden" title={statusText}>
-					{#each statusSummary as { status, count }}
-						<span class="flex items-center gap-1 shrink-0">
-							<span class="h-1.5 w-1.5 rounded-full {statusSummaryDot[status] ?? 'bg-surface-500'}"></span>
-							<span class="text-[10px] text-surface-400 whitespace-nowrap">{count} {statusSummaryLabel[status] ?? status}</span>
-						</span>
-					{/each}
-					<span class="text-[10px] text-surface-600 shrink-0 whitespace-nowrap">
-						{group.card_count} cards
-					</span>
-				</div>
-			</div>
-		</button>
-	</div>
-
-{:else}
-	<!--
-	  ── EXPANDED: Current list view ────────────────────────────────────────────
-	-->
-	<div class="overflow-hidden rounded-xl border border-surface-600 bg-surface-900 shadow-lg">
-		<!-- Header: platform · entity title · controls -->
+	<!-- Main card / container -->
+	<div
+		class="relative overflow-hidden rounded-xl border shadow-lg transition-all duration-200
+			{expanded
+				? 'border-surface-600 bg-surface-900'
+				: allArchived
+					? 'border-dashed border-surface-700/50 bg-surface-900/60 opacity-50 hover:opacity-80'
+					: (groupStatusStyle[dominantStatus] ?? 'bg-surface-900 border-surface-600 hover:border-laya-orange/30')}"
+		style="z-index: 3;"
+	>
+		<!-- Header — shared between collapsed and expanded -->
 		<div
 			role="button"
 			tabindex="0"
-			class="flex w-full cursor-pointer flex-col gap-1.5 px-4 py-3 text-left transition-colors hover:bg-surface-800/50"
+			class="flex w-full cursor-pointer flex-col gap-1.5 px-4 pt-3 text-left transition-colors hover:bg-surface-800/30
+				{expanded ? 'pb-2' : 'pb-0'}"
 			onclick={toggle}
-			onkeydown={(e) => e.key === 'Enter' && toggle()}
+			onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}
 		>
+			<!-- Top row: source · priority · count/menu · chevron -->
 			<div class="flex items-center gap-2">
 				<span class="text-[10px] font-semibold uppercase tracking-widest text-surface-500">
 					{platformLabel[group.platform] ?? group.platform}
 				</span>
-				<div class="ml-auto flex items-center gap-2">
+				<div class="ml-auto flex items-center gap-1.5">
 					<span class="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase {priorityColors[group.top_priority] ?? priorityColors.MEDIUM}">
 						{priorityLabel[group.top_priority] ?? group.top_priority}
 					</span>
-					{#if hasAnyAction}
-						<!-- Three-dot group actions menu -->
+					<!-- Card count badge (always visible) -->
+					<span class="rounded-full border border-surface-600 bg-surface-700 px-2 py-0.5 text-[10px] font-semibold text-surface-300">
+						{expanded ? '' : '+'}{extraCount}{#if expanded} cards{/if}
+					</span>
+					{#if expanded && hasAnyAction}
+						<!-- Three-dot group actions menu (expanded only) -->
 						<div class="group-menu relative">
 							<button
 								onclick={toggleGroupMenu}
@@ -392,61 +348,37 @@
 									role="menu"
 								>
 									{#if canApproveAll}
-										<button
-											class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-violet-400"
-											role="menuitem"
-											onclick={(e) => bulkAction('approve', e)}
-										>
+										<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-violet-400" role="menuitem" onclick={(e) => bulkAction('approve', e)}>
 											<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
 											Approve All
 										</button>
 									{/if}
 									{#if canCompleteAll}
-										<button
-											class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-green-400"
-											role="menuitem"
-											onclick={(e) => bulkAction('complete', e)}
-										>
+										<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-green-400" role="menuitem" onclick={(e) => bulkAction('complete', e)}>
 											<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
 											Complete All
 										</button>
 									{/if}
 									{#if canDismissAll}
-										<button
-											class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400"
-											role="menuitem"
-											onclick={(e) => bulkAction('dismiss', e)}
-										>
+										<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400" role="menuitem" onclick={(e) => bulkAction('dismiss', e)}>
 											<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
 											Dismiss All
 										</button>
 									{/if}
 									{#if canReopenAll}
-										<button
-											class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-laya-orange"
-											role="menuitem"
-											onclick={(e) => bulkAction('reopen', e)}
-										>
+										<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-laya-orange" role="menuitem" onclick={(e) => bulkAction('reopen', e)}>
 											<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
 											Reopen All
 										</button>
 									{/if}
 									{#if canArchiveAll}
-										<button
-											class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-surface-400"
-											role="menuitem"
-											onclick={(e) => bulkAction('archive', e)}
-										>
+										<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-surface-400" role="menuitem" onclick={(e) => bulkAction('archive', e)}>
 											<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
 											Archive All
 										</button>
 									{/if}
 									{#if canUnarchiveAll}
-										<button
-											class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-laya-orange"
-											role="menuitem"
-											onclick={(e) => bulkAction('unarchive', e)}
-										>
+										<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-laya-orange" role="menuitem" onclick={(e) => bulkAction('unarchive', e)}>
 											<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4l3 3m0 0l3-3m-3 3V9" /></svg>
 											Unarchive All
 										</button>
@@ -455,22 +387,59 @@
 							{/if}
 						</div>
 					{/if}
-					<!-- Collapse chevron (pointing up = expanded) -->
-					<svg class="h-3.5 w-3.5 shrink-0 rotate-180 text-surface-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<!-- Chevron — rotates between collapsed/expanded -->
+					<svg class="h-3.5 w-3.5 shrink-0 text-surface-500 transition-transform duration-200 {expanded ? 'rotate-0' : '-rotate-90'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
 					</svg>
 				</div>
 			</div>
-			<span class="line-clamp-2 text-sm font-semibold leading-snug text-surface-100">
+
+			<!-- Entity title -->
+			<span class="line-clamp-2 text-sm font-semibold leading-snug {expanded ? 'text-surface-100' : 'text-surface-50'}">
 				{group.entity_title}
 			</span>
 		</div>
 
-		<!-- Card list -->
-		<div class="space-y-2 px-3 pb-3 pt-2" transition:slide={{ duration: 200 }}>
-			{#each group.cards as card (card.card_id)}
-				<ActionCardComponent {card} onselect={onselect} {ondelete} {selectedCardId} {hasSelection} />
-			{/each}
+		<!-- Collapsed-only content: summary + status footer (instant show/hide) -->
+		<div class="overflow-hidden {expanded ? 'hidden' : ''}">
+			<div class="px-4 pb-2">
+				<!-- Top card preview summary -->
+				<p class="mb-1.5 line-clamp-2 text-xs leading-relaxed text-surface-400" title={topCard.summary}>
+					{topCard.summary}
+				</p>
+
+				<!-- Status summary footer -->
+				<div class="flex items-center">
+					<div class="flex items-center gap-2 shrink-0">
+						{#if topCard.space_name}
+							<span class="flex items-center gap-1 shrink-0 text-[10px] text-surface-500" title="Space: {topCard.space_name}">
+								<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {topCard.space_color ?? '#F97316'}"></span>
+								{topCard.space_name}
+							</span>
+						{/if}
+					</div>
+					<div class="ml-auto flex items-center gap-1.5 min-w-0 overflow-hidden" title={statusText}>
+						{#each statusSummary as { status, count }}
+							<span class="flex items-center gap-1 shrink-0">
+								<StatusDot {status} />
+								<span class="text-[10px] text-surface-400 whitespace-nowrap">{count} {statusSummaryLabel[status] ?? status}</span>
+							</span>
+						{/each}
+						<span class="text-[10px] text-surface-600 shrink-0 whitespace-nowrap">
+							{group.card_count} cards
+						</span>
+					</div>
+				</div>
+			</div>
 		</div>
+
+		<!-- Expanded-only content: card list (slides in/out) -->
+		{#if expanded}
+			<div class="space-y-2 px-3 pb-3 pt-1" transition:slide={{ duration: 200 }}>
+				{#each group.cards as card (card.card_id)}
+					<ActionCardComponent {card} onselect={onselect} {ondelete} {selectedCardId} {hasSelection} />
+				{/each}
+			</div>
+		{/if}
 	</div>
-{/if}
+</div>

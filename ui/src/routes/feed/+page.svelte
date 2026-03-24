@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
 	import { lastMessage } from '$lib/stores/websocket';
 	import { feedFilters, feedDate, feedPrevDate, feedNextDate, localToday } from '$lib/stores/feedFilters';
@@ -23,9 +23,42 @@
 	let selectedCard = $state<ActionCard | null>(null);
 	let detailPanelOpen = $state(false);
 
+	// Track last non-summary view so we can restore it when clicking summary items
+	let lastNonSummaryView = $state<'card' | 'list'>(
+		($feedViewMode === 'card' || $feedViewMode === 'list') ? $feedViewMode : 'card'
+	);
+
+	// Update lastNonSummaryView whenever the user switches to card or list
+	$effect(() => {
+		if ($feedViewMode === 'card' || $feedViewMode === 'list') {
+			lastNonSummaryView = $feedViewMode;
+		}
+	});
+
+	// When switching views, scroll selected card into view.
+	// When coming FROM summary view, suppress FLIP since cards are rendering fresh.
+	let _prevViewMode = $state($feedViewMode);
+	$effect(() => {
+		const mode = $feedViewMode;
+		const fromSummary = _prevViewMode === 'summary';
+		_prevViewMode = mode;
+
+		if (mode === 'card' || mode === 'list') {
+			if (fromSummary) {
+				// Cards are rendering fresh — no old positions to FLIP from.
+				// Suppress ResizeObserver FLIP during initial layout.
+				panelTransitioning = true;
+				setTimeout(() => { panelTransitioning = false; }, 350);
+			}
+			if (selectedCard) {
+				tick().then(() => scrollToCard(selectedCard!.card_id));
+			}
+		}
+	});
+
 	// Auto-open detail panel when a card is selected
 	$effect(() => {
-		if (selectedCard) detailPanelOpen = true;
+		if (selectedCard) openDetailPanel();
 	});
 
 	// Search state (ephemeral — resets on date change)
@@ -63,6 +96,62 @@
 	let _fetchId = 0;
 	let _reloadTimer: ReturnType<typeof setTimeout> | null = null;
 
+	// Promise that resolves when any in-progress FLIP animation finishes
+	let _flipSettled: Promise<void> = Promise.resolve();
+
+	// Capture card positions for FLIP animation before data changes
+	function captureCardPositions(): Map<string, DOMRect> {
+		const positions = new Map<string, DOMRect>();
+		if (!containerEl) return positions;
+		containerEl.querySelectorAll('[data-entity-id]').forEach((el) => {
+			positions.set((el as HTMLElement).dataset.entityId!, el.getBoundingClientRect());
+		});
+		return positions;
+	}
+
+	// Apply FLIP animation from old positions to current positions
+	async function animateFlip(oldPositions: Map<string, DOMRect>) {
+		if (!containerEl || oldPositions.size === 0) return;
+		// Signal that a FLIP animation is in progress; resolves after animations finish
+		_flipSettled = new Promise((resolve) => setTimeout(resolve, 350));
+		await tick();
+		containerEl.querySelectorAll('[data-entity-id]').forEach((el) => {
+			const htmlEl = el as HTMLElement;
+			const id = htmlEl.dataset.entityId!;
+			const oldRect = oldPositions.get(id);
+			if (!oldRect) {
+				// New card — animate entrance
+				htmlEl.style.opacity = '0';
+				htmlEl.style.transform = 'scale(0.95)';
+				htmlEl.style.transition = 'none';
+				requestAnimationFrame(() => {
+					htmlEl.style.transition = 'opacity 250ms ease, transform 250ms ease';
+					htmlEl.style.opacity = '';
+					htmlEl.style.transform = '';
+					htmlEl.addEventListener('transitionend', () => {
+						htmlEl.style.transition = '';
+					}, { once: true });
+				});
+				return;
+			}
+
+			const newRect = el.getBoundingClientRect();
+			const dx = oldRect.left - newRect.left;
+			const dy = oldRect.top - newRect.top;
+			if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+
+			htmlEl.style.transform = `translate(${dx}px, ${dy}px)`;
+			htmlEl.style.transition = 'none';
+			requestAnimationFrame(() => {
+				htmlEl.style.transition = 'transform 300ms ease';
+				htmlEl.style.transform = '';
+				htmlEl.addEventListener('transitionend', () => {
+					htmlEl.style.transition = '';
+				}, { once: true });
+			});
+		});
+	}
+
 	async function loadGroups() {
 		const id = ++_fetchId;
 		loading = true;
@@ -73,11 +162,16 @@
 				status: f.statusFilters.length ? f.statusFilters.join(',') : undefined,
 				priority: f.priorityFilters.length ? f.priorityFilters.join(',') : undefined,
 				sort: f.sortBy,
+				sort_asc: f.sortAsc || undefined,
 				show_archived: f.showArchived || undefined,
 				date: $feedDate,
 				space_id: f.spaceFilter || undefined
 			});
 			if (id !== _fetchId) return;
+
+			// Capture positions before updating groups for FLIP animation
+			const oldPositions = captureCardPositions();
+
 			groups = data.groups;
 			totalGroups = data.total_groups;
 			$feedPrevDate = data.prev_date ?? null;
@@ -98,6 +192,9 @@
 			if (_scrollToCardId) {
 				scrollToCard(_scrollToCardId);
 			}
+
+			// FLIP animate existing cards + fade in new ones
+			animateFlip(oldPositions);
 		} catch {
 			if (id !== _fetchId) return;
 			error = 'Failed to load cards';
@@ -281,25 +378,27 @@
 
 	function scrollToCard(cardId: string) {
 		_scrollToCardId = cardId;
-		// Wait for DOM to settle (group may need to expand first via $effect)
-		const attempt = (tries: number) => {
-			requestAnimationFrame(() => {
-				const el = document.querySelector(`[data-card-id="${cardId}"]`);
-				if (el) {
-					el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-					// Brief highlight flash
-					el.classList.add('ring-2', 'ring-laya-orange/60');
-					setTimeout(() => el.classList.remove('ring-2', 'ring-laya-orange/60'), 1500);
-					_scrollToCardId = null;
-				} else if (tries > 0) {
-					// Group may still be expanding — retry next frame
-					attempt(tries - 1);
-				} else {
-					_scrollToCardId = null;
-				}
-			});
-		};
-		attempt(5);
+		// Wait for any in-progress FLIP animation to finish, then scroll
+		_flipSettled.then(() => {
+			const attempt = (tries: number) => {
+				requestAnimationFrame(() => {
+					const el = document.querySelector(`[data-card-id="${cardId}"]`);
+					if (el) {
+						el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+						// Brief highlight flash
+						el.classList.add('ring-2', 'ring-laya-orange/60');
+						setTimeout(() => el.classList.remove('ring-2', 'ring-laya-orange/60'), 1500);
+						_scrollToCardId = null;
+					} else if (tries > 0) {
+						// Group may still be expanding — retry next frame
+						attempt(tries - 1);
+					} else {
+						_scrollToCardId = null;
+					}
+				});
+			};
+			attempt(5);
+		});
 	}
 
 	// Handle card link clicks from chat — find the card and navigate to it
@@ -359,13 +458,15 @@
 	}
 
 	function handleSummaryGotoCard(cardId: string) {
-		// Switch to card view and select + scroll to the card
-		$feedViewMode = 'card';
+		// Restore the last non-summary view (card or list)
+		$feedViewMode = lastNonSummaryView;
 		// Find the card in groups
 		for (const g of groups) {
 			const found = g.cards.find((c) => c.card_id === cardId);
 			if (found) {
 				selectCard(found);
+				// scrollToCard is also triggered by the $effect on feedViewMode change,
+				// but call it explicitly to ensure it fires after selectCard
 				scrollToCard(cardId);
 				return;
 			}
@@ -491,19 +592,70 @@
 	// Responsive masonry
 	const CARD_WIDTH = 320;
 	const COL_GAP = 16;
+	const DETAIL_PANEL_WIDTH = 420;
 
 	let containerEl = $state<HTMLElement | null>(null);
 	let numColumns = $state(3);
+	let panelTransitioning = $state(false);
+
+	// FLIP helper: capture positions, update columns, animate cards to new positions
+	async function flipColumns(newCols: number) {
+		if (newCols === numColumns || !containerEl) return;
+		const oldPositions = captureCardPositions();
+		numColumns = newCols;
+		animateFlip(oldPositions);
+	}
 
 	$effect(() => {
 		if (!containerEl) return;
 		const observer = new ResizeObserver(([entry]) => {
+			// Skip intermediate reflows while detail panel is sliding
+			if (panelTransitioning) return;
+
 			const w = entry.contentRect.width;
-			numColumns = Math.max(1, Math.floor((w + COL_GAP) / (CARD_WIDTH + COL_GAP)));
+			const newCols = Math.max(1, Math.floor((w + COL_GAP) / (CARD_WIDTH + COL_GAP)));
+			flipColumns(newCols);
 		});
 		observer.observe(containerEl);
 		return () => observer.disconnect();
 	});
+
+	// Pre-calculate final column count when detail panel opens/closes
+	// so cards reflow once to the final layout before the panel animates
+	function openDetailPanel() {
+		if (detailPanelOpen || !containerEl) {
+			detailPanelOpen = true;
+			return;
+		}
+		// Panel will take DETAIL_PANEL_WIDTH + COL_GAP from the container
+		const currentWidth = containerEl.clientWidth;
+		const finalWidth = currentWidth - DETAIL_PANEL_WIDTH - COL_GAP;
+		const finalCols = Math.max(1, Math.floor((finalWidth + COL_GAP) / (CARD_WIDTH + COL_GAP)));
+
+		panelTransitioning = true;
+		flipColumns(finalCols);
+		detailPanelOpen = true;
+
+		// Allow ResizeObserver to resume after panel transition ends (300ms duration)
+		setTimeout(() => { panelTransitioning = false; }, 350);
+	}
+
+	function closeDetailPanel() {
+		if (!detailPanelOpen || !containerEl) {
+			closeDetail();
+			return;
+		}
+		// Panel will free DETAIL_PANEL_WIDTH + COL_GAP back to the container
+		const currentWidth = containerEl.clientWidth;
+		const finalWidth = currentWidth + DETAIL_PANEL_WIDTH + COL_GAP;
+		const finalCols = Math.max(1, Math.floor((finalWidth + COL_GAP) / (CARD_WIDTH + COL_GAP)));
+
+		panelTransitioning = true;
+		flipColumns(finalCols);
+		closeDetail();
+
+		setTimeout(() => { panelTransitioning = false; }, 350);
+	}
 
 	// Distribute groups into columns (round-robin)
 	function toColumns(items: CardGroup[]): CardGroup[][] {
@@ -926,7 +1078,7 @@
 								<div class="flex w-[320px] flex-col gap-4">
 									{#each col as group (group.entity_id)}
 									{@const isGroupExiting = group.cards.every((c) => exitingCardIds.has(c.card_id))}
-									<div class="card-exit-wrap {isGroupExiting ? 'card-exiting' : ''}">
+									<div data-entity-id={group.entity_id} class="card-exit-wrap {isGroupExiting ? 'card-exiting' : ''}">
 										{#if group.card_count === 1}
 											<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} />
 										{:else}
@@ -945,11 +1097,13 @@
 					{#each columns as col}
 						<div class="flex w-[320px] flex-col gap-4">
 							{#each col as group (group.entity_id)}
-								{#if group.card_count === 1}
-									<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} />
-								{:else}
-									<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} scrollToCardId={_scrollToCardId} />
-								{/if}
+								<div data-entity-id={group.entity_id}>
+									{#if group.card_count === 1}
+										<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} />
+									{:else}
+										<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} scrollToCardId={_scrollToCardId} />
+									{/if}
+								</div>
 							{/each}
 						</div>
 					{/each}
@@ -963,7 +1117,7 @@
 				<!-- Toggle button — always visible on the left edge of the panel area -->
 				<button
 					class="absolute -left-3 top-4 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-surface-600 bg-surface-800 text-surface-400 shadow-md transition-colors hover:bg-surface-700 hover:text-surface-200"
-					onclick={() => { if (detailPanelOpen) closeDetail(); else detailPanelOpen = true; }}
+					onclick={() => { if (detailPanelOpen) closeDetailPanel(); else openDetailPanel(); }}
 					title={detailPanelOpen ? 'Collapse detail panel' : 'Expand detail panel'}
 				>
 					<svg class="h-3 w-3 transition-transform {detailPanelOpen ? '' : 'rotate-180'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -977,7 +1131,7 @@
 				>
 					<div class="w-[420px] h-full overflow-y-auto">
 						{#if selectedCard}
-							<CardDetail card={selectedCard} onclose={closeDetail} ongotocard={gotoCard} />
+							<CardDetail card={selectedCard} onclose={closeDetailPanel} ongotocard={gotoCard} />
 						{:else}
 							<div class="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-surface-700 text-surface-600">
 								<svg class="mb-2 h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
