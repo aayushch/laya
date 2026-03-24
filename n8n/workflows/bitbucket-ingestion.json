@@ -73,9 +73,9 @@
           "conditions": [
             {
               "id": "skip-check",
-              "leftValue": "={{ $json._skip }}",
-              "rightValue": true,
-              "operator": { "type": "boolean", "operation": "notTrue" }
+              "leftValue": "={{ $json.event_id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
             }
           ],
           "combinator": "and"
