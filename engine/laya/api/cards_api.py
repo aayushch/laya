@@ -365,7 +365,7 @@ async def dismiss_group(entity_id: str) -> dict:
     db = await get_db()
 
     rows = await db.execute_fetchall(
-        "SELECT card_id FROM action_cards WHERE entity_id = ? AND status NOT IN ('done', 'dismissed', 'failed')",
+        "SELECT card_id, status FROM action_cards WHERE entity_id = ? AND status NOT IN ('done', 'dismissed', 'failed')",
         (entity_id,),
     )
 
@@ -373,8 +373,8 @@ async def dismiss_group(entity_id: str) -> dict:
     dismissed = 0
     for row in rows:
         await db.execute(
-            "UPDATE action_cards SET status = 'dismissed', resolved_at = ?, updated_at = ? WHERE card_id = ?",
-            (now, now, row["card_id"]),
+            "UPDATE action_cards SET status = 'dismissed', previous_status = ?, resolved_at = ?, updated_at = ? WHERE card_id = ?",
+            (row["status"], now, now, row["card_id"]),
         )
         await manager.broadcast(
             {"type": "card_updated", "card_id": row["card_id"], "payload": {"status": "dismissed"}}
@@ -409,7 +409,7 @@ async def archive_card(card_id: str) -> dict:
 
     now = datetime.now(timezone.utc).isoformat()
     await db.execute(
-        "UPDATE action_cards SET status = 'archived', pre_archive_status = ?, updated_at = ? WHERE card_id = ?",
+        "UPDATE action_cards SET status = 'archived', previous_status = ?, updated_at = ? WHERE card_id = ?",
         (current, now, card_id),
     )
     await db.commit()
@@ -441,13 +441,13 @@ async def reopen_card(card_id: str) -> dict:
     - agent_spawn / agent_execution: re-queue for agent approval (requires_approval)
     - action_execution: reset to ready so user can re-execute the action
     - pipeline / NULL: reset to pending for full reprocessing
-    - Archived cards: restore the pre-archive status (or pending if unknown)
-    - Non-failed cards (dismissed, done): always reset to pending
+    - Archived/done/dismissed cards with previous_status: restore that status
+    - Fallback: reset to pending
     """
     db = await get_db()
 
     rows = await db.execute_fetchall(
-        "SELECT status, failed_stage, agent_prompt, persona, space_id, pre_archive_status FROM action_cards WHERE card_id = ?",
+        "SELECT status, failed_stage, agent_prompt, persona, space_id, previous_status FROM action_cards WHERE card_id = ?",
         (card_id,),
     )
     if not rows:
@@ -495,11 +495,11 @@ async def reopen_card(card_id: str) -> dict:
 
         log.info("card_reopened", card_id=card_id, retry_stage=failed_stage, new_status=new_status)
 
-    elif current == "archived" and row["pre_archive_status"]:
-        # Archived card — restore the status it had before archiving
-        new_status = row["pre_archive_status"]
+    elif row["previous_status"]:
+        # Card has a saved previous_status (from done/dismissed/archived) — restore it
+        new_status = row["previous_status"]
         await db.execute(
-            "UPDATE action_cards SET status = ?, pre_archive_status = NULL, resolved_at = NULL, updated_at = ? WHERE card_id = ?",
+            "UPDATE action_cards SET status = ?, previous_status = NULL, resolved_at = NULL, updated_at = ? WHERE card_id = ?",
             (new_status, now, card_id),
         )
         await db.commit()
@@ -508,10 +508,10 @@ async def reopen_card(card_id: str) -> dict:
             {"type": "card_updated", "card_id": card_id, "payload": {"status": new_status}}
         )
 
-        log.info("card_reopened", card_id=card_id, from_archive=True, new_status=new_status)
+        log.info("card_reopened", card_id=card_id, previous_status=row["previous_status"], new_status=new_status)
 
     else:
-        # Pipeline failure, no failed_stage, or non-failed card — reset to pending
+        # No previous_status saved — reset to pending for full reprocessing
         new_status = "pending"
         await db.execute(
             "UPDATE action_cards SET status = ?, failed_stage = NULL, resolved_at = NULL, updated_at = ? WHERE card_id = ?",
@@ -585,12 +585,13 @@ async def mark_card_done(card_id: str) -> dict:
             status_code=409, detail=f"Card status '{rows[0]['status']}' cannot be marked done"
         )
 
+    current = rows[0]["status"]
     now = datetime.now(timezone.utc).isoformat()
     await db.execute(
         """UPDATE action_cards
-           SET status = 'done', resolved_at = ?, updated_at = ?
+           SET status = 'done', previous_status = ?, resolved_at = ?, updated_at = ?
            WHERE card_id = ?""",
-        (now, now, card_id),
+        (current, now, now, card_id),
     )
     await db.commit()
 
@@ -750,16 +751,17 @@ async def dismiss_card(card_id: str, body: DismissRequest | None = None) -> dict
             status_code=409, detail=f"Card status '{rows[0]['status']}' is terminal"
         )
 
+    current = rows[0]["status"]
     now = datetime.now(timezone.utc).isoformat()
     reason = body.reason if body else None
     feedback_type = body.feedback_type if body else None
 
     await db.execute(
         """UPDATE action_cards
-           SET status = 'dismissed', resolved_at = ?, user_feedback = ?,
+           SET status = 'dismissed', previous_status = ?, resolved_at = ?, user_feedback = ?,
                feedback_type = ?, updated_at = ?
            WHERE card_id = ?""",
-        (now, reason, feedback_type, now, card_id),
+        (current, now, reason, feedback_type, now, card_id),
     )
     await db.commit()
 
