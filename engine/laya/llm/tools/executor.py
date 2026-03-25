@@ -7,7 +7,7 @@ from typing import Any
 
 import structlog
 
-from laya.llm.tools import card_tools, event_tools, entity_tools, search_tools
+from laya.llm.tools import card_tools, entity_tools, event_tools, search_tools, settings_tools
 
 log = structlog.get_logger()
 
@@ -39,6 +39,14 @@ def _register_tools() -> None:
         "mark_card_done": card_tools.mark_card_done,
         "archive_card": card_tools.archive_card,
         "reopen_card": card_tools.reopen_card,
+        # Settings tools
+        "get_settings": settings_tools.get_settings,
+        "update_theme": settings_tools.update_theme,
+        "update_retention": settings_tools.update_retention,
+        "update_briefing": settings_tools.update_briefing,
+        "update_notifications": settings_tools.update_notifications,
+        "update_feed_preferences": settings_tools.update_feed_preferences,
+        "update_agent_execution_mode": settings_tools.update_agent_execution_mode,
     }
 
 

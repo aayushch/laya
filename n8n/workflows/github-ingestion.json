@@ -52,17 +52,47 @@
       "name": "Get Issues and PRs",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [900, 300]
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://api.github.com/repos/' + $json.owner + '/' + $json.repo + '/issues/comments' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "since", "value": "={{ $json.since }}" },
+            { "name": "per_page", "value": "100" }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Get Recent Comments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 420]
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "options": {}
+      },
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1120, 300]
     },
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Flatten all repos' issues/PRs into individual Laya events.\n// GitHub's /issues endpoint returns both issues and pull requests;\n// items with a 'pull_request' key are PRs, the rest are issues.\nconst allEvents = [];\nfor (const item of $input.all()) {\n  const issues = Array.isArray(item.json) ? item.json : [item.json];\n  for (const issue of issues) {\n    const repoUrl = issue.repository_url || '';\n    const m = repoUrl.match(/repos\\/([^\\/]+)\\/([^\\/]+)$/);\n    const owner = m ? m[1] : 'unknown';\n    const repo = m ? m[2] : 'unknown';\n    const isPR = !!issue.pull_request;\n    const epoch = new Date(issue.updated_at || Date.now()).getTime();\n    allEvents.push({\n      json: {\n        event_id: (isPR ? 'evt_github_pr_' : 'evt_github_issue_')\n          + owner + '_' + repo + '_' + issue.number + '_' + epoch,\n        timestamp: issue.updated_at || new Date().toISOString(),\n        source: {\n          platform: 'github',\n          connection_id: $workflow.id,\n          raw_event_type: isPR\n            ? (issue.state === 'closed' ? 'pull_request_closed' : 'pull_request_updated')\n            : (issue.state === 'closed' ? 'issue_closed' : 'issue_updated')\n        },\n        actor: {\n          name: (issue.user && issue.user.login) || 'unknown',\n          email: '',\n          platform_handle: (issue.user && issue.user.login) || ''\n        },\n        subject: {\n          type: isPR ? 'pull_request' : 'ticket',\n          id: String(issue.number),\n          title: issue.title || '',\n          url: issue.html_url || ''\n        },\n        content: {\n          body: issue.body || '',\n          attachments: [],\n          metadata: {\n            state: issue.state,\n            labels: (issue.labels || []).map(function(l) { return l.name; }),\n            repo: owner + '/' + repo,\n            is_pr: isPR\n          }\n        }\n      }\n    });\n  }\n}\nreturn allEvents;"
+        "jsCode": "// Separate raw GitHub items into issues and comments, then cross-filter:\n// if an issue was updated only because a comment was posted (no real issue\n// body/state change), skip the redundant issue_updated event — the comment\n// event already captures the activity.\n\nconst items = $input.all();\n\n// 1. Classify items: comments have 'issue_url', issues have 'repository_url'\nconst rawIssues = [];\nconst rawComments = [];\nfor (const item of items) {\n  const d = item.json;\n  if (d.issue_url) {\n    rawComments.push(d);\n  } else if (d.repository_url || d.number !== undefined) {\n    rawIssues.push(d);\n  }\n}\n\n// 2. Build a set of \"owner/repo/issueNumber\" keys that have recent comments\nconst commentedIssueKeys = new Set();\nfor (const comment of rawComments) {\n  const m = (comment.issue_url || '').match(/repos\\/([^\\/]+)\\/([^\\/]+)\\/issues\\/(\\d+)$/);\n  if (m) commentedIssueKeys.add(m[1] + '/' + m[2] + '/' + m[3]);\n}\n\n// 3. Normalize issues — skip those that only got bumped by a comment\nconst allEvents = [];\nfor (const issue of rawIssues) {\n  const repoUrl = issue.repository_url || '';\n  const rm = repoUrl.match(/repos\\/([^\\/]+)\\/([^\\/]+)$/);\n  const owner = rm ? rm[1] : 'unknown';\n  const repo = rm ? rm[2] : 'unknown';\n  const key = owner + '/' + repo + '/' + issue.number;\n\n  // If this issue has a recent comment, skip the issue event\n  if (commentedIssueKeys.has(key)) continue;\n\n  const isPR = !!issue.pull_request;\n  const epoch = new Date(issue.updated_at || Date.now()).getTime();\n  allEvents.push({\n    json: {\n      event_id: (isPR ? 'evt_github_pr_' : 'evt_github_issue_')\n        + owner + '_' + repo + '_' + issue.number + '_' + epoch,\n      timestamp: issue.updated_at || new Date().toISOString(),\n      source: {\n        platform: 'github',\n        connection_id: $workflow.id,\n        raw_event_type: isPR\n          ? (issue.state === 'closed' ? 'pull_request_closed' : 'pull_request_updated')\n          : (issue.state === 'closed' ? 'issue_closed' : 'issue_updated')\n      },\n      actor: {\n        name: (issue.user && issue.user.login) || 'unknown',\n        email: '',\n        platform_handle: (issue.user && issue.user.login) || ''\n      },\n      subject: {\n        type: isPR ? 'pull_request' : 'ticket',\n        id: String(issue.number),\n        title: issue.title || '',\n        url: issue.html_url || ''\n      },\n      content: {\n        body: issue.body || '',\n        attachments: [],\n        metadata: {\n          state: issue.state,\n          labels: (issue.labels || []).map(function(l) { return l.name; }),\n          repo: owner + '/' + repo,\n          is_pr: isPR\n        }\n      }\n    }\n  });\n}\n\n// 4. Normalize comments — always emitted\nfor (const comment of rawComments) {\n  if (!comment.id) continue;\n  const m = (comment.issue_url || '').match(/repos\\/([^\\/]+)\\/([^\\/]+)\\/issues\\/(\\d+)$/);\n  if (!m) continue;\n  const owner = m[1];\n  const repo = m[2];\n  const issueNumber = m[3];\n  const htmlUrl = comment.html_url || '';\n  const issueHtmlUrl = htmlUrl.replace(/#issuecomment-.*$/, '');\n  const epoch = new Date(comment.created_at || Date.now()).getTime();\n\n  allEvents.push({\n    json: {\n      event_id: 'evt_github_comment_' + owner + '_' + repo + '_' + comment.id + '_' + epoch,\n      timestamp: comment.created_at || new Date().toISOString(),\n      source: {\n        platform: 'github',\n        connection_id: $workflow.id,\n        raw_event_type: 'issue_comment_created'\n      },\n      actor: {\n        name: (comment.user && comment.user.login) || 'unknown',\n        email: '',\n        platform_handle: (comment.user && comment.user.login) || ''\n      },\n      subject: {\n        type: 'ticket',\n        id: issueNumber,\n        title: 'Issue #' + issueNumber,\n        url: issueHtmlUrl\n      },\n      content: {\n        body: comment.body || '',\n        attachments: [],\n        metadata: {\n          repo: owner + '/' + repo,\n          issue_number: parseInt(issueNumber, 10),\n          comment_id: comment.id,\n          comment_url: htmlUrl,\n          is_comment: true\n        }\n      }\n    }\n  });\n}\n\nreturn allEvents;"
       },
-      "name": "Normalize to Laya Events",
+      "name": "Filter & Normalize",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1120, 300]
+      "position": [1340, 300]
     },
     {
       "parameters": {
@@ -82,7 +112,7 @@
       "name": "POST to Laya Engine",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1340, 300]
+      "position": [1560, 300]
     }
   ],
   "connections": {
@@ -93,12 +123,21 @@
       "main": [[{ "node": "Build Repo Items", "type": "main", "index": 0 }]]
     },
     "Build Repo Items": {
-      "main": [[{ "node": "Get Issues and PRs", "type": "main", "index": 0 }]]
+      "main": [[
+        { "node": "Get Issues and PRs", "type": "main", "index": 0 },
+        { "node": "Get Recent Comments", "type": "main", "index": 0 }
+      ]]
     },
     "Get Issues and PRs": {
-      "main": [[{ "node": "Normalize to Laya Events", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Merge", "type": "main", "index": 0 }]]
     },
-    "Normalize to Laya Events": {
+    "Get Recent Comments": {
+      "main": [[{ "node": "Merge", "type": "main", "index": 1 }]]
+    },
+    "Merge": {
+      "main": [[{ "node": "Filter & Normalize", "type": "main", "index": 0 }]]
+    },
+    "Filter & Normalize": {
       "main": [[{ "node": "POST to Laya Engine", "type": "main", "index": 0 }]]
     }
   },

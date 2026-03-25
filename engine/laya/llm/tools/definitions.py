@@ -8,6 +8,7 @@ def get_all_tool_definitions() -> list[dict]:
     return [
         *_read_tools(),
         *_write_tools(),
+        *_settings_tools(),
     ]
 
 
@@ -336,6 +337,216 @@ def _write_tools() -> list[dict]:
                         },
                     },
                     "required": ["card_id"],
+                },
+            },
+        },
+    ]
+
+
+def _settings_tools() -> list[dict]:
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_settings",
+                "description": (
+                    "Read current app settings. Use this before making changes so you "
+                    "can report what the old value was, or when the user asks what a "
+                    "setting is currently set to."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "section": {
+                            "type": "string",
+                            "enum": [
+                                "appearance",
+                                "retention",
+                                "briefing",
+                                "notifications",
+                                "feed_preferences",
+                                "agent",
+                            ],
+                            "description": (
+                                "Settings section to retrieve. Omit to return all sections."
+                            ),
+                        },
+                    },
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "update_theme",
+                "description": (
+                    "Switch the UI between dark and light mode. "
+                    "The change takes effect immediately in any open browser tab."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "theme": {
+                            "type": "string",
+                            "enum": ["dark", "light"],
+                            "description": "The theme to apply.",
+                        },
+                    },
+                    "required": ["theme"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "update_retention",
+                "description": (
+                    "Change how long action cards and chat history are kept before "
+                    "being automatically deleted."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "card_retention_days": {
+                            "type": "integer",
+                            "description": "Days to retain action cards (1–365).",
+                            "minimum": 1,
+                            "maximum": 365,
+                        },
+                        "chat_retention_days": {
+                            "type": "integer",
+                            "description": "Days to retain chat message history (1–365).",
+                            "minimum": 1,
+                            "maximum": 365,
+                        },
+                    },
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "update_briefing",
+                "description": (
+                    "Toggle the daily briefing on or off, or change the time and "
+                    "timezone it is delivered."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Enable or disable the daily briefing.",
+                        },
+                        "time": {
+                            "type": "string",
+                            "description": "Delivery time in 24-hour HH:MM format (e.g. '07:30').",
+                        },
+                        "timezone": {
+                            "type": "string",
+                            "description": (
+                                "IANA timezone string for the delivery time "
+                                "(e.g. 'America/New_York', 'Europe/London')."
+                            ),
+                        },
+                    },
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "update_notifications",
+                "description": (
+                    "Toggle notifications on or off, or change the minimum card priority "
+                    "that triggers a notification."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Enable or disable notifications.",
+                        },
+                        "min_priority": {
+                            "type": "string",
+                            "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+                            "description": (
+                                "Only notify for cards at or above this priority level."
+                            ),
+                        },
+                    },
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "update_feed_preferences",
+                "description": (
+                    "Change the default feed view: sort order, archived card visibility, "
+                    "status/priority filters, or space filter."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "sortBy": {
+                            "type": "string",
+                            "enum": ["newest", "priority", "category", "platform"],
+                            "description": "Default sort order for the feed.",
+                        },
+                        "showArchived": {
+                            "type": "boolean",
+                            "description": "Whether to show archived cards in the feed.",
+                        },
+                        "statusFilters": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": (
+                                "List of card statuses to show. Empty list means show all."
+                            ),
+                        },
+                        "priorityFilters": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": (
+                                "List of priority levels to show. Empty list means show all."
+                            ),
+                        },
+                        "spaceFilter": {
+                            "type": "string",
+                            "description": "Space ID to filter the feed by, or null for all spaces.",
+                        },
+                    },
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "update_agent_execution_mode",
+                "description": (
+                    "Change whether the agent asks for approval before taking actions, "
+                    "or runs autonomously without confirmation."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "mode": {
+                            "type": "string",
+                            "enum": ["auto", "requires_approval"],
+                            "description": (
+                                "'auto' runs actions immediately; "
+                                "'requires_approval' pauses and asks the user first."
+                            ),
+                        },
+                    },
+                    "required": ["mode"],
                 },
             },
         },

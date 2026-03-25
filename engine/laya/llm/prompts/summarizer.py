@@ -15,7 +15,10 @@ You receive:
 
 You must produce an updated summary with these sections:
 
-- **events_and_meetings**: Important events, meetings, communications, and notable happenings. \
+- **events_and_meetings**: Calendar events, meeting invites, and requests to attend or join \
+something (a call, meeting, conference, webinar, etc.). Only items that involve a scheduled or \
+proposed date/time the user should attend belong here. PRs, messages, notifications, and general \
+communications do NOT belong here — put those in action_items or key_updates instead. \
 Each item should be a concise one-liner capturing what happened.
 - **action_items**: Tasks the user needs to act on — reviews, replies, approvals, fixes. \
 Track whether items are still pending or have been resolved.
@@ -179,7 +182,7 @@ def get_summarizer_json_schema() -> dict[str, Any]:
                 "events_and_meetings": {
                     "type": "array",
                     "items": item_schema,
-                    "description": "Important events, meetings, and communications",
+                    "description": "Calendar events, meeting invites, and requests to attend something — only items with a scheduled/proposed time the user should attend",
                 },
                 "action_items": {
                     "type": "array",

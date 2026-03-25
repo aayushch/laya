@@ -292,7 +292,7 @@
 
 	<!-- Main card / container -->
 	<div
-		class="relative overflow-hidden rounded-xl border shadow-lg transition-all duration-200
+		class="relative overflow-hidden rounded-xl border shadow-lg transition-all duration-200 {expanded ? '' : 'group/card'}
 			{expanded
 				? 'border-surface-600 bg-surface-900'
 				: allArchived
@@ -304,8 +304,8 @@
 		<div
 			role="button"
 			tabindex="0"
-			class="flex w-full cursor-pointer flex-col gap-1.5 px-4 pt-3 text-left transition-colors hover:bg-surface-800/30
-				{expanded ? 'pb-2' : 'pb-0'}"
+			class="flex w-full cursor-pointer flex-col gap-1.5 px-4 pt-3 text-left transition-colors
+				{expanded ? 'pb-2 hover:bg-surface-800/30' : 'pb-0 group-hover/card:bg-surface-800/30'}"
 			onclick={toggle}
 			onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}
 		>
@@ -401,7 +401,8 @@
 		</div>
 
 		<!-- Collapsed-only content: summary + status footer (instant show/hide) -->
-		<div class="overflow-hidden {expanded ? 'hidden' : ''}">
+		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+		<div class="overflow-hidden cursor-pointer transition-colors group-hover/card:bg-surface-800/30 {expanded ? 'hidden' : ''}" onclick={toggle}>
 			<div class="px-4 pb-2">
 				<!-- Top card preview summary -->
 				<p class="mb-1.5 line-clamp-2 text-xs leading-relaxed text-surface-400" title={topCard.summary}>
