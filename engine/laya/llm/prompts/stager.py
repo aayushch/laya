@@ -35,13 +35,14 @@ and concrete findings.
 - **suggested_actions**: 1-3 actions the user can approve. Each action specifies:
   - action_id: unique identifier (e.g., "act_comment_jira")
   - label: human-readable button text (e.g., "Post Jira Comment")
-  - action_type: "comment", "transition", "merge", "send_email", "approve", "dismiss"
-  - target_platform: "jira", "bitbucket", "slack", "gmail"
+  - action_type: "comment", "transition", "merge", "send_email", "approve", "dismiss", "close_issue"
+  - target_platform: "jira", "bitbucket", "slack", "gmail", "github"
   - payload: A JSON string with platform-specific data. Required fields by platform:
     - **gmail**: {"to": "recipient@email", "subject": "Re: ...", "body": "The full email body text", "thread_id": "optional thread ID"}
     - **slack**: {"channel": "#channel-name", "message": "The message text"}
     - **jira**: {"comment": "The comment body"} or {"transition_id": "...", "comment": "optional"}
     - **bitbucket**: {"comment": "The comment body"}
+    - **github**: {"owner": "repo-owner", "repo": "repo-name", "issue_number": 123, "comment": "optional comment body"} for comment/close_issue actions
     - **calendar**: {"title": "Event title", "description": "Details", "start": "ISO datetime", "end": "ISO datetime"}
   IMPORTANT: For gmail send_email actions, the "body" field is REQUIRED and must contain \
 the full email text. Never omit it.

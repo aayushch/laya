@@ -130,6 +130,22 @@ async def execute_action(
         if key in payload and payload[key] is None:
             payload[key] = ""
 
+    # GitHub actions: ensure "comment" exists for comment actions, coerce issue_number to int
+    if target_platform == "github":
+        if "comment" not in payload:
+            payload["comment"] = (
+                payload.pop("body", None)
+                or payload.pop("message", None)
+                or payload.pop("content", None)
+                or payload.pop("text", None)
+                or ""
+            )
+        if "issue_number" in payload:
+            try:
+                payload["issue_number"] = int(payload["issue_number"])
+            except (ValueError, TypeError):
+                pass
+
     # Gmail actions: ensure "body" exists — LLMs sometimes use alternative key names
     if target_platform == "gmail" and "body" not in payload:
         payload["body"] = (

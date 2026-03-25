@@ -67,6 +67,7 @@ DEFAULT_SETTINGS = {
             "bitbucket": "bitbucket-executor",
             "slack": "slack-executor",
             "gmail": "gmail-executor",
+            "github": "github-executor",
             "calendar": "calendar-executor",
             "outlook": "outlook-email-executor",
             "outlook_calendar": "outlook-calendar-executor",
