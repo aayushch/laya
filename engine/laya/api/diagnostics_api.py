@@ -30,6 +30,9 @@ _SECRET_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Fields containing personal data that should be stripped from team.json
+_PERSONAL_FIELDS = {"name", "email"}
+
 
 def _redact_secrets(obj: dict | list | str | int | float | bool | None) -> dict | list | str | int | float | bool | None:
     """Recursively redact values whose keys look like secrets."""
@@ -43,6 +46,28 @@ def _redact_secrets(obj: dict | list | str | int | float | bool | None) -> dict 
     return obj
 
 
+def _anonymize_team(data: dict | list | None) -> dict | list | None:
+    """Strip personal details from team data, keeping only structure and roles."""
+    if data is None:
+        return None
+    if isinstance(data, list):
+        return [_anonymize_team_member(m) if isinstance(m, dict) else m for m in data]
+    if isinstance(data, dict) and "members" in data:
+        return {**data, "members": [_anonymize_team_member(m) if isinstance(m, dict) else m for m in data["members"]]}
+    return data
+
+
+def _anonymize_team_member(member: dict) -> dict:
+    """Replace personal fields with placeholders, keep role/notes."""
+    out = {}
+    for k, v in member.items():
+        if k in _PERSONAL_FIELDS:
+            out[k] = f"***{k.upper()}***"
+        else:
+            out[k] = v
+    return out
+
+
 def _read_config_file(path: Path) -> dict | list | None:
     """Read and parse a JSON config file, returning None if missing."""
     if not path.exists():
@@ -54,7 +79,7 @@ def _read_config_file(path: Path) -> dict | list | None:
 
 
 async def _get_db_stats() -> dict:
-    """Gather table row counts and schema version."""
+    """Gather table row counts, schema version, and applied migrations."""
     db = await get_db()
     stats: dict = {"tables": {}}
 
@@ -66,9 +91,22 @@ async def _get_db_stats() -> dict:
     except Exception:
         stats["schema_version"] = None
 
-    # Row counts for each table
-    for table in ("events", "action_cards", "action_log", "audit_log",
-                  "workspace_sessions", "workspace_events", "chat_messages"):
+    # Applied migrations list
+    try:
+        async with db.execute("SELECT version, applied_at FROM schema_version ORDER BY version") as cursor:
+            rows = await cursor.fetchall()
+            stats["applied_migrations"] = [{"version": r[0], "applied_at": r[1]} for r in rows]
+    except Exception:
+        stats["applied_migrations"] = None
+
+    # Row counts for all known tables
+    for table in (
+        "events", "action_cards", "action_log", "audit_log",
+        "workspace_sessions", "workspace_events", "chat_messages",
+        "entities", "daily_summaries",
+        "spaces", "sources", "space_api_keys", "space_repos",
+        "chat_conversations",
+    ):
         try:
             async with db.execute(f"SELECT COUNT(*) FROM {table}") as cursor:  # noqa: S608
                 row = await cursor.fetchone()
@@ -79,9 +117,8 @@ async def _get_db_stats() -> dict:
     return stats
 
 
-def _read_log_tail(max_lines: int = 500) -> str:
-    """Read the last N lines from the engine log file."""
-    log_file = LAYA_LOG_DIR / "engine.log"
+def _read_log_tail(log_file: Path, max_lines: int = 500) -> str:
+    """Read the last N lines from a log file."""
     if not log_file.exists():
         return ""
     try:
@@ -89,6 +126,57 @@ def _read_log_tail(max_lines: int = 500) -> str:
         return "\n".join(lines[-max_lines:])
     except OSError:
         return ""
+
+
+def _collect_log_files(zf: zipfile.ZipFile) -> None:
+    """Add engine.log and any rotated backups to the ZIP."""
+    main_log = LAYA_LOG_DIR / "engine.log"
+    content = _read_log_tail(main_log)
+    if content:
+        zf.writestr("logs/engine.log", content)
+
+    # Rotated logs: engine.log.1 through engine.log.5
+    for i in range(1, 6):
+        rotated = LAYA_LOG_DIR / f"engine.log.{i}"
+        content = _read_log_tail(rotated, max_lines=200)
+        if content:
+            zf.writestr(f"logs/engine.log.{i}", content)
+
+
+async def _get_spaces_summary() -> list[dict] | None:
+    """Gather space config summary (no user content)."""
+    db = await get_db()
+    try:
+        async with db.execute(
+            "SELECT space_id, name, is_default, paused, router_model, stager_model, chat_model, coding_agent FROM spaces"
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [
+                {
+                    "space_id": r[0], "name": r[1], "is_default": bool(r[2]),
+                    "paused": bool(r[3]), "router_model": r[4], "stager_model": r[5],
+                    "chat_model": r[6], "coding_agent": r[7],
+                }
+                for r in rows
+            ]
+    except Exception:
+        return None
+
+
+async def _get_sources_summary() -> list[dict] | None:
+    """Gather source registration summary."""
+    db = await get_db()
+    try:
+        async with db.execute(
+            "SELECT source_id, name, platform, space_id FROM sources"
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [
+                {"source_id": r[0], "name": r[1], "platform": r[2], "space_id": r[3]}
+                for r in rows
+            ]
+    except Exception:
+        return None
 
 
 @router.get("/diagnostics/export")
@@ -109,7 +197,6 @@ async def export_diagnostics():
         # 2. Config files (redacted)
         for name, path in [
             ("settings.json", LAYA_CONFIG_FILE),
-            ("team.json", LAYA_TEAM_FILE),
             ("rules.json", LAYA_RULES_FILE),
             ("repos.json", LAYA_REPOS_FILE),
         ]:
@@ -118,10 +205,14 @@ async def export_diagnostics():
                 redacted = _redact_secrets(data)
                 zf.writestr(f"config/{name}", json.dumps(redacted, indent=2))
 
-        # 3. Log tail
-        log_content = _read_log_tail()
-        if log_content:
-            zf.writestr("logs/engine.log", log_content)
+        # Team config — anonymized (no names/emails)
+        team_data = _read_config_file(LAYA_TEAM_FILE)
+        if team_data is not None:
+            anonymized = _anonymize_team(team_data)
+            zf.writestr("config/team.json", json.dumps(anonymized, indent=2))
+
+        # 3. Log files (current + rotated backups)
+        _collect_log_files(zf)
 
         # 4. DB stats
         db_stats = await _get_db_stats()
@@ -134,6 +225,14 @@ async def export_diagnostics():
         except Exception:
             health = {"error": "health check failed"}
         zf.writestr("health.json", json.dumps(health, indent=2))
+
+        # 6. Spaces & sources summary (topology, no user content)
+        spaces = await _get_spaces_summary()
+        sources = await _get_sources_summary()
+        if spaces is not None or sources is not None:
+            zf.writestr("spaces_summary.json", json.dumps(
+                {"spaces": spaces, "sources": sources}, indent=2
+            ))
 
     buf.seek(0)
     return StreamingResponse(

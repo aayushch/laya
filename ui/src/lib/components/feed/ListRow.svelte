@@ -2,6 +2,7 @@
 	import type { ActionCard } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
 	import { goto } from '$app/navigation';
+	import { cardColors } from '$lib/stores/cardColors';
 	import StatusDot from './StatusDot.svelte';
 
 	let {
@@ -154,7 +155,7 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="flex items-center {onbulktoggle ? 'gap-1.5' : ''}">
+<div class="flex min-w-0 items-center {onbulktoggle ? 'gap-1.5' : ''}">
 	<!-- Bulk selection checkbox — outside the row -->
 	{#if onbulktoggle}
 		<div class="w-5 shrink-0 flex items-center justify-center">
@@ -177,8 +178,8 @@
 
 	<div
 		data-card-id={card.card_id}
-		class="group/row flex flex-1 items-center rounded-lg px-3 py-1.5 text-left transition-all cursor-pointer
-			border border-transparent {statusRowStyle[card.status] ?? 'hover:bg-surface-800/60'}
+		class="group/row flex flex-1 min-w-0 items-center rounded-lg px-3 py-1.5 text-left transition-all cursor-pointer
+			border border-transparent {$cardColors ? (statusRowStyle[card.status] ?? 'hover:bg-surface-800/60') : 'hover:bg-surface-800/60'}
 			{isArchived ? 'opacity-50 hover:opacity-75' : isDimmed ? 'opacity-45 hover:opacity-70' : ''}"
 		onclick={() => onselect(card)}
 		onkeydown={(e) => e.key === 'Enter' && onselect(card)}

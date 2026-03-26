@@ -3,6 +3,7 @@
 	import { engineApi } from '$lib/api/engine';
 	import { goto } from '$app/navigation';
 	import { chatOpen, chatInputPreset } from '$lib/stores/chat';
+	import { cardColors } from '$lib/stores/cardColors';
 	import StatusDot from './StatusDot.svelte';
 
 	let { card, onselect, ondelete, selectedCardId = '', hasSelection = false }: { card: ActionCard; onselect: (card: ActionCard) => void; ondelete?: (cardId: string) => void; selectedCardId?: string; hasSelection?: boolean } = $props();
@@ -102,10 +103,14 @@
 		dismissed:          'bg-surface-800/40 border-surface-700/25 hover:border-surface-600/40 opacity-50 hover:opacity-75',
 	};
 
+	const neutralCardStyle = 'bg-surface-800 border-surface-700 hover:border-surface-600';
+
 	const baseCardStyle = $derived(
 		isArchived
 			? 'bg-surface-900/60 border-dashed border-surface-700/50 opacity-50 hover:opacity-80'
-			: (statusCardStyle[card.status] ?? 'bg-surface-800 border-surface-700 hover:border-laya-orange/30')
+			: $cardColors
+				? (statusCardStyle[card.status] ?? 'bg-surface-800 border-surface-700 hover:border-laya-orange/30')
+				: neutralCardStyle
 	);
 
 	const isDimmed = $derived(!isSelected && hasSelection && !isArchived);

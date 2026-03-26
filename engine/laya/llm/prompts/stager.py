@@ -55,7 +55,44 @@ Privacy tier guidelines:
 - Tier 3: Contains PII, credentials, salary info, personal data, legal docs
 
 If worker findings are empty or missing, synthesize directly from the event and router \
-output. Always produce a useful card even with limited information."""
+output. Always produce a useful card even with limited information.
+
+## Update Events vs New Events
+
+When existing cards are listed for the same entity, you are generating an UPDATE card, \
+not a first-time investigation. Follow these rules:
+
+- **Status changes** (issue_status_changed, issue_resolved, issue_assigned, \
+issue_priority_changed, issue_reopened): Generate a brief status update card. The header \
+should reflect the change (e.g., "BUG-1234 resolved as Fixed"), not re-describe the \
+original issue. Summary should be 1-2 sentences. Intelligence report should be 1-3 \
+bullets max. Do NOT repeat research or analysis from existing cards.
+
+- **Closure/Resolution** (issue_resolved): Summarize the outcome. If a resolution \
+comment or details exist, include them. Suggest relevant follow-up actions (e.g., \
+"Close related PR", "Update documentation", "Verify fix in staging").
+
+- **Comments** (issue_commented): Focus on the new comment content and what action it \
+requires. Do not re-summarize the original ticket.
+
+- **Reopened** (issue_reopened): Note the ticket was reopened and what the new status is. \
+Suggest investigation if the reopening implies the original fix was insufficient.
+
+- **New issues** (issue_created, or no existing cards): Full investigation as normal.
+
+### Bitbucket PR lifecycle:
+- **Approvals** (pr_approved): Brief card noting who approved. 1-2 sentences max.
+- **Comments** (pr_commented): Focus on the comment content. Inline code comments \
+should reference the file and line. Do not re-summarize the PR description.
+- **Merged** (pr_merged): Concise closure card noting the merge. Include merge commit \
+if available. Suggest follow-up actions (e.g., "Delete source branch", "Deploy to staging").
+- **Declined** (pr_declined): Note the decline and reason if provided.
+- **Reopened** (pr_reopened): Note the reopen and suggest re-review if needed.
+- **New PRs** (pr_created, or no existing cards): Full investigation as normal.
+
+For update cards, the staged_output type should be "status_update" unless the update \
+contains substantive new content requiring action (e.g., a comment requesting code review \
+should still use "code_fix" or "draft_reply")."""
 
 
 def build_stager_messages(
@@ -63,6 +100,7 @@ def build_stager_messages(
     router_output: RouterOutput,
     worker_results: list[WorkerResult] | None = None,
     related_context: list[dict[str, Any]] | None = None,
+    entity_history: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, str]]:
     """Build the messages array for the Stager LLM call."""
     event_text = f"""\
@@ -129,13 +167,34 @@ Body:
                 f"{ctx.get('document', '')[:200]}\n"
             )
 
+    # Existing cards for this entity (prevents redundant research)
+    entity_text = ""
+    if entity_history:
+        entity_text = (
+            f"\n\n[EXISTING CARDS FOR THIS ENTITY]\n"
+            f"This entity already has {len(entity_history)} card(s). "
+            f"DO NOT repeat research or analysis already covered:\n"
+        )
+        for i, card in enumerate(entity_history, 1):
+            entity_text += (
+                f"  {i}. [{card.get('created_at', '?')}] "
+                f"\"{card.get('header', '?')}\" "
+                f"({card.get('status', '?')}) — "
+                f"from {card.get('source_raw_event_type', '?')}\n"
+            )
+        entity_text += (
+            "For status updates, generate a concise update card — "
+            "not a new investigation.\n"
+            "[END EXISTING CARDS]"
+        )
+
     user_message = f"""\
 Synthesize the following event and findings into a polished action card.
 
 {event_text}
 
 Router classification:
-{classification}{entities_text}{plan_text}{workers_text}{context_text}
+{classification}{entities_text}{plan_text}{workers_text}{context_text}{entity_text}
 
 Produce a JSON action card matching the required schema."""
 
@@ -171,7 +230,7 @@ def get_stager_json_schema() -> dict[str, Any]:
                     "properties": {
                         "type": {
                             "type": "string",
-                            "enum": ["draft_reply", "code_fix", "briefing", "summary"],
+                            "enum": ["draft_reply", "code_fix", "briefing", "summary", "status_update"],
                         },
                         "content": {"type": "string"},
                     },

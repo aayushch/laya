@@ -109,11 +109,18 @@ async def run_router(
     # 1. Query ChromaDB for related past events
     related_context = await _query_related_context(event)
 
-    # 1b. Query user feedback patterns for learning loop
-    from laya.pipeline.feedback import format_feedback_section, query_feedback_patterns
+    # 1b. Query user feedback patterns + classification rules/corrections for learning loop
+    from laya.pipeline.feedback import (
+        format_feedback_section,
+        query_classification_corrections,
+        query_classification_rules,
+        query_feedback_patterns,
+    )
 
     feedback_patterns = await query_feedback_patterns(event)
-    feedback_section = format_feedback_section(feedback_patterns)
+    cls_rules = await query_classification_rules(space_id)
+    cls_corrections = await query_classification_corrections(event.source.platform)
+    feedback_section = format_feedback_section(feedback_patterns, cls_rules, cls_corrections)
 
     # 2. Build prompt and call LLM
     messages = build_router_messages(

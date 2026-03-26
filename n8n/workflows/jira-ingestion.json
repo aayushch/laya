@@ -20,7 +20,8 @@
         "limit": 25,
         "options": {
           "jql": "updated >= \"-2m\" ORDER BY updated DESC",
-          "fields": "summary,description,status,priority,assignee,reporter,project,labels,updated,created,issuetype,comment"
+          "fields": "summary,description,status,priority,assignee,reporter,project,labels,updated,created,issuetype,comment",
+          "expand": "changelog"
         }
       },
       "name": "Search Recent Issues",
@@ -30,29 +31,11 @@
     },
     {
       "parameters": {
-        "mode": "manual",
-        "assignments": {
-          "assignments": [
-            { "name": "event_id", "value": "={{ 'evt_jira_' + $json.id + '_' + new Date($json.fields?.updated || Date.now()).getTime() }}", "type": "string" },
-            { "name": "timestamp", "value": "={{ $json.fields?.updated || new Date().toISOString() }}", "type": "string" },
-            { "name": "source.platform", "value": "jira", "type": "string" },
-            { "name": "source.connection_id", "value": "={{ $workflow.id }}", "type": "string" },
-            { "name": "source.raw_event_type", "value": "={{ $json.fields?.created === $json.fields?.updated ? 'issue_created' : 'issue_updated' }}", "type": "string" },
-            { "name": "actor.name", "value": "={{ (() => { const c = $json.fields?.comment?.comments; return c?.length ? c[c.length-1].author?.displayName : null; })() || $json.fields?.reporter?.displayName || $json.fields?.assignee?.displayName || 'Unknown' }}", "type": "string" },
-            { "name": "actor.email", "value": "={{ (() => { const c = $json.fields?.comment?.comments; return c?.length ? c[c.length-1].author?.emailAddress : null; })() || $json.fields?.reporter?.emailAddress || $json.fields?.assignee?.emailAddress || '' }}", "type": "string" },
-            { "name": "actor.platform_handle", "value": "={{ (() => { const c = $json.fields?.comment?.comments; return c?.length ? (c[c.length-1].author?.name || c[c.length-1].author?.accountId) : null; })() || $json.fields?.reporter?.name || $json.fields?.reporter?.accountId || '' }}", "type": "string" },
-            { "name": "subject.type", "value": "ticket", "type": "string" },
-            { "name": "subject.id", "value": "={{ $json.key || '' }}", "type": "string" },
-            { "name": "subject.title", "value": "={{ $json.fields?.summary || '' }}", "type": "string" },
-            { "name": "subject.url", "value": "={{ $json.self ? $json.self.split('/rest/')[0] + '/browse/' + $json.key : null }}", "type": "string" },
-            { "name": "content.body", "value": "={{ typeof $json.fields?.description === 'string' ? $json.fields.description : ($json.fields?.description?.content?.[0]?.content?.[0]?.text || $json.fields?.summary || '') }}", "type": "string" },
-            { "name": "content.metadata", "value": "={{ JSON.stringify({ jira_project: $json.fields?.project?.key, jira_labels: $json.fields?.labels, jira_priority: $json.fields?.priority?.name, jira_status: $json.fields?.status?.name, jira_issue_type: $json.fields?.issuetype?.name, jira_assignee: $json.fields?.assignee?.emailAddress, jira_reporter: $json.fields?.reporter?.emailAddress }) }}", "type": "string" }
-          ]
-        }
+        "jsCode": "// Classify what changed on each Jira issue using the changelog.\n// Produces granular raw_event_type and a contextual body that\n// describes the *change*, not just the full ticket description.\n\nconst TWO_MINUTES_MS = 2 * 60 * 1000;\nconst now = Date.now();\n\nconst results = [];\n\nfor (const item of $input.all()) {\n  const json = item.json;\n  const fields = json.fields || {};\n  const created = fields.created;\n  const updated = fields.updated;\n\n  // --- Determine if this is a brand-new issue ---\n  const isNew = created === updated;\n\n  // --- Parse changelog for recent changes ---\n  const changelog = json.changelog || {};\n  const histories = changelog.histories || [];\n\n  // Only look at changes from the last 2 minutes (matching our poll window)\n  const recentChanges = histories.filter(h => {\n    const changeTime = new Date(h.created).getTime();\n    return (now - changeTime) < TWO_MINUTES_MS;\n  });\n\n  // Collect changed fields from recent history\n  const changedFields = [];\n  const fieldChanges = {};  // { fieldName: { from, to } }\n  for (const history of recentChanges) {\n    for (const changeItem of (history.items || [])) {\n      const field = changeItem.field;\n      changedFields.push(field);\n      fieldChanges[field] = {\n        from: changeItem.fromString || changeItem.from || '',\n        to: changeItem.toString || changeItem.to || ''\n      };\n    }\n  }\n\n  // --- Classify the change type ---\n  let rawEventType = 'issue_updated';  // fallback\n  let body = '';\n  let changeType = 'generic_update';\n  let previousStatus = null;\n  let newStatus = null;\n  let resolution = null;\n\n  if (isNew) {\n    // Brand-new issue\n    rawEventType = 'issue_created';\n    changeType = 'created';\n    const desc = fields.description;\n    body = typeof desc === 'string'\n      ? desc\n      : (desc?.content?.[0]?.content?.[0]?.text || fields.summary || '');\n\n  } else if (fieldChanges['status']) {\n    // Status transition\n    const from = fieldChanges['status'].from;\n    const to = fieldChanges['status'].to;\n    previousStatus = from;\n    newStatus = to;\n\n    const closedStatuses = ['done', 'closed', 'resolved', 'cancelled'];\n    const toL = to.toLowerCase();\n    const fromL = from.toLowerCase();\n\n    if (closedStatuses.includes(toL) && !closedStatuses.includes(fromL)) {\n      // Ticket closed/resolved\n      rawEventType = 'issue_resolved';\n      changeType = 'resolved';\n      resolution = fields.resolution?.name || null;\n      body = `Ticket ${toL}: ${from} → ${to}.`;\n      if (resolution) body += ` Resolution: ${resolution}.`;\n      // Append latest comment if any (often contains resolution notes)\n      const comments = fields.comment?.comments;\n      if (comments?.length) {\n        const latest = comments[comments.length - 1];\n        const commentBody = typeof latest.body === 'string'\n          ? latest.body\n          : (latest.body?.content?.[0]?.content?.[0]?.text || '');\n        if (commentBody) body += `\\n\\nLatest comment (${latest.author?.displayName || 'Unknown'}): ${commentBody}`;\n      }\n\n    } else if (closedStatuses.includes(fromL) && !closedStatuses.includes(toL)) {\n      // Ticket reopened\n      rawEventType = 'issue_reopened';\n      changeType = 'reopened';\n      body = `Ticket reopened: ${from} → ${to}.`;\n\n    } else {\n      // Regular status transition (e.g., To Do → In Progress)\n      rawEventType = 'issue_status_changed';\n      changeType = 'status_changed';\n      body = `Status changed: ${from} → ${to}.`;\n    }\n\n  } else if (fieldChanges['assignee']) {\n    // Reassignment\n    rawEventType = 'issue_assigned';\n    changeType = 'assigned';\n    const from = fieldChanges['assignee'].from || 'Unassigned';\n    const to = fieldChanges['assignee'].to || 'Unassigned';\n    body = `Assignee changed: ${from} → ${to}.`;\n\n  } else if (fieldChanges['priority']) {\n    // Priority change\n    rawEventType = 'issue_priority_changed';\n    changeType = 'priority_changed';\n    body = `Priority changed: ${fieldChanges['priority'].from} → ${fieldChanges['priority'].to}.`;\n\n  } else {\n    // Check if there's a new comment (comments don't always appear in changelog)\n    const comments = fields.comment?.comments;\n    if (comments?.length) {\n      const latest = comments[comments.length - 1];\n      const commentTime = new Date(latest.created).getTime();\n      if ((now - commentTime) < TWO_MINUTES_MS) {\n        rawEventType = 'issue_commented';\n        changeType = 'commented';\n        const commentBody = typeof latest.body === 'string'\n          ? latest.body\n          : (latest.body?.content?.[0]?.content?.[0]?.text || '');\n        body = `New comment from ${latest.author?.displayName || 'Unknown'}:\\n${commentBody}`;\n      }\n    }\n\n    // Fallback: summarize what fields changed\n    if (rawEventType === 'issue_updated' && changedFields.length > 0) {\n      changeType = 'fields_updated';\n      const summaries = Object.entries(fieldChanges).map(\n        ([f, c]) => `${f}: ${c.from || '(empty)'} → ${c.to || '(empty)'}`\n      );\n      body = `Fields updated:\\n${summaries.join('\\n')}`;\n    } else if (rawEventType === 'issue_updated') {\n      // No changelog entries found — possibly a re-poll of same state\n      changeType = 'no_change_detected';\n      body = `Issue polled with no detectable changes. Current status: ${fields.status?.name || 'Unknown'}.`;\n    }\n  }\n\n  // --- Build the full description for metadata reference ---\n  const fullDescription = typeof fields.description === 'string'\n    ? fields.description\n    : (fields.description?.content?.[0]?.content?.[0]?.text || '');\n\n  // --- Pick the actor ---\n  // For commented events, use the commenter. For status changes, try the\n  // changelog author. Otherwise fall back to reporter/assignee.\n  let actorName = fields.reporter?.displayName || 'Unknown';\n  let actorEmail = fields.reporter?.emailAddress || '';\n  let actorHandle = fields.reporter?.name || fields.reporter?.accountId || '';\n\n  if (rawEventType === 'issue_commented') {\n    const comments = fields.comment?.comments;\n    if (comments?.length) {\n      const latest = comments[comments.length - 1];\n      actorName = latest.author?.displayName || actorName;\n      actorEmail = latest.author?.emailAddress || actorEmail;\n      actorHandle = latest.author?.name || latest.author?.accountId || actorHandle;\n    }\n  } else if (recentChanges.length > 0) {\n    // Use the author of the most recent changelog entry\n    const lastChange = recentChanges[recentChanges.length - 1];\n    if (lastChange.author) {\n      actorName = lastChange.author.displayName || actorName;\n      actorEmail = lastChange.author.emailAddress || actorEmail;\n      actorHandle = lastChange.author.name || lastChange.author.accountId || actorHandle;\n    }\n  }\n\n  results.push({\n    json: {\n      event_id: 'evt_jira_' + json.id + '_' + new Date(updated || Date.now()).getTime(),\n      timestamp: updated || new Date().toISOString(),\n      source: {\n        platform: 'jira',\n        connection_id: $workflow.id,\n        raw_event_type: rawEventType\n      },\n      actor: {\n        name: actorName,\n        email: actorEmail,\n        platform_handle: actorHandle\n      },\n      subject: {\n        type: 'ticket',\n        id: json.key || '',\n        title: fields.summary || '',\n        url: json.self ? json.self.split('/rest/')[0] + '/browse/' + json.key : null\n      },\n      content: {\n        body: body,\n        attachments: [],\n        metadata: {\n          jira_project: fields.project?.key,\n          jira_labels: fields.labels,\n          jira_priority: fields.priority?.name,\n          jira_status: fields.status?.name,\n          jira_issue_type: fields.issuetype?.name,\n          jira_assignee: fields.assignee?.emailAddress,\n          jira_reporter: fields.reporter?.emailAddress,\n          jira_change_type: changeType,\n          jira_previous_status: previousStatus,\n          jira_new_status: newStatus,\n          jira_resolution: resolution || fields.resolution?.name || null,\n          jira_changed_fields: changedFields,\n          jira_description: fullDescription\n        }\n      }\n    }\n  });\n}\n\nreturn results;"
       },
-      "name": "Normalize to Laya Event",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
+      "name": "Classify Change",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [750, 300]
     },
     {
@@ -67,7 +50,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ event_id: $json.event_id, timestamp: $json.timestamp, source: $json.source, actor: $json.actor, subject: $json.subject, content: { body: $json.content.body, attachments: [], metadata: JSON.parse($json.content.metadata || '{}') } }) }}",
+        "jsonBody": "={{ JSON.stringify($json) }}",
         "options": {}
       },
       "name": "POST to Laya Engine",
@@ -81,9 +64,9 @@
       "main": [[{ "node": "Search Recent Issues", "type": "main", "index": 0 }]]
     },
     "Search Recent Issues": {
-      "main": [[{ "node": "Normalize to Laya Event", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Classify Change", "type": "main", "index": 0 }]]
     },
-    "Normalize to Laya Event": {
+    "Classify Change": {
       "main": [[{ "node": "POST to Laya Engine", "type": "main", "index": 0 }]]
     }
   },

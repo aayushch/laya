@@ -4,6 +4,7 @@
 	import { slide } from 'svelte/transition';
 	import ActionCardComponent from './ActionCard.svelte';
 	import StatusDot from './StatusDot.svelte';
+	import { cardColors } from '$lib/stores/cardColors';
 
 	let {
 		group,
@@ -121,21 +122,31 @@
 		return group.cards[0]?.status ?? 'pending';
 	});
 
+	const neutralGroupStyle = 'bg-surface-800 border-surface-700 hover:border-surface-600';
+	const neutralGhostBorder = 'border-surface-700';
+	const neutralGhostBg = 'bg-surface-850';
+
 	const allArchived = $derived(group.cards.every(c => c.status === 'archived'));
 	const groupStyle = $derived(
 		allArchived
 			? 'bg-surface-900/60 border-dashed border-surface-700/50 opacity-50 hover:opacity-80'
-			: (groupStatusStyle[dominantStatus] ?? 'bg-surface-900 border-surface-600 hover:border-laya-orange/30')
+			: $cardColors
+				? (groupStatusStyle[dominantStatus] ?? 'bg-surface-900 border-surface-600 hover:border-laya-orange/30')
+				: neutralGroupStyle
 	);
 	const ghostBorder = $derived(
 		allArchived
 			? 'border-dashed border-surface-700/50'
-			: (ghostBorderStyle[dominantStatus] ?? 'border-surface-700')
+			: $cardColors
+				? (ghostBorderStyle[dominantStatus] ?? 'border-surface-700')
+				: neutralGhostBorder
 	);
 	const ghostBg = $derived(
 		allArchived
 			? 'bg-surface-900/40'
-			: (ghostBgStyle[dominantStatus] ?? 'bg-surface-950')
+			: $cardColors
+				? (ghostBgStyle[dominantStatus] ?? 'bg-surface-950')
+				: neutralGhostBg
 	);
 
 	const priorityColors: Record<string, string> = {
@@ -295,9 +306,7 @@
 		class="relative overflow-hidden rounded-xl border shadow-lg transition-all duration-200 {expanded ? '' : 'group/card'}
 			{expanded
 				? 'border-surface-600 bg-surface-900'
-				: allArchived
-					? 'border-dashed border-surface-700/50 bg-surface-900/60 opacity-50 hover:opacity-80'
-					: (groupStatusStyle[dominantStatus] ?? 'bg-surface-900 border-surface-600 hover:border-laya-orange/30')}"
+				: groupStyle}"
 		style="z-index: 3;"
 	>
 		<!-- Header — shared between collapsed and expanded -->

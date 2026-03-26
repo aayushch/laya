@@ -784,6 +784,111 @@ async def dismiss_card(card_id: str, body: DismissRequest | None = None) -> dict
     return {"status": "dismissed", "card_id": card_id}
 
 
+class UpdateClassificationRequest(BaseModel):
+    priority: str | None = None
+    persona: str | None = None
+    rule_text: str | None = None
+
+
+@router.patch("/cards/{card_id}/classification")
+async def update_classification(card_id: str, body: UpdateClassificationRequest) -> dict:
+    """Update a card's priority/persona and log corrections for the learning loop."""
+    db = await get_db()
+
+    rows = await db.execute_fetchall(
+        """SELECT ac.card_id, ac.priority, ac.persona, ac.category, ac.summary,
+                  ac.space_id, e.source_platform, e.source_raw_event_type
+           FROM action_cards ac
+           LEFT JOIN events e ON ac.event_id = e.event_id
+           WHERE ac.card_id = ?""",
+        (card_id,),
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    card = rows[0]
+    now = datetime.now(timezone.utc).isoformat()
+    valid_priorities = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
+    valid_personas = {"ENGINEER", "COMMS", "OPS"}
+
+    if body.priority and body.priority not in valid_priorities:
+        raise HTTPException(status_code=422, detail=f"Invalid priority: {body.priority}")
+    if body.persona and body.persona not in valid_personas:
+        raise HTTPException(status_code=422, detail=f"Invalid persona: {body.persona}")
+
+    # Log corrections for changed fields
+    corrections = []
+    if body.priority and body.priority != card["priority"]:
+        corrections.append(("priority", card["priority"], body.priority))
+    if body.persona and body.persona != card["persona"]:
+        corrections.append(("persona", card["persona"], body.persona))
+
+    if not corrections and not body.rule_text:
+        return {"status": "no_changes", "card_id": card_id}
+
+    # Insert correction records
+    for field, original, corrected in corrections:
+        await db.execute(
+            """INSERT INTO classification_corrections
+               (card_id, space_id, field, original_value, corrected_value,
+                card_summary, category, platform, event_type)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                card_id, card["space_id"], field, original, corrected,
+                card["summary"], card["category"],
+                card["source_platform"], card["source_raw_event_type"],
+            ),
+        )
+
+    # Update the card itself
+    update_parts = []
+    update_params: list[Any] = []
+    if body.priority and body.priority != card["priority"]:
+        update_parts.append("priority = ?")
+        update_params.append(body.priority)
+    if body.persona and body.persona != card["persona"]:
+        update_parts.append("persona = ?")
+        update_params.append(body.persona)
+
+    if update_parts:
+        update_parts.append("updated_at = ?")
+        update_params.append(now)
+        update_params.append(card_id)
+        await db.execute(
+            f"UPDATE action_cards SET {', '.join(update_parts)} WHERE card_id = ?",
+            tuple(update_params),
+        )
+
+    # Create classification rule if provided
+    if body.rule_text:
+        await db.execute(
+            """INSERT INTO classification_rules (space_id, field, rule_text, source, active, created_at, updated_at)
+               VALUES (?, ?, ?, 'manual', 1, ?, ?)""",
+            (card["space_id"], corrections[0][0] if corrections else None, body.rule_text, now, now),
+        )
+
+    await db.commit()
+
+    # Broadcast update
+    payload: dict[str, Any] = {}
+    if body.priority and body.priority != card["priority"]:
+        payload["priority"] = body.priority
+    if body.persona and body.persona != card["persona"]:
+        payload["persona"] = body.persona
+    if payload:
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": card_id, "payload": payload}
+        )
+
+    log.info(
+        "classification_updated",
+        card_id=card_id,
+        corrections=[(c[0], c[1], c[2]) for c in corrections],
+        rule_added=bool(body.rule_text),
+    )
+    return {"status": "updated", "card_id": card_id, "corrections": len(corrections)}
+
+
 @router.get("/summary")
 async def get_daily_summary(date: str | None = None) -> dict:
     """Get the daily summary for a given date (defaults to today)."""
