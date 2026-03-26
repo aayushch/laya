@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 class StagedOutput(BaseModel):
     """Primary deliverable attached to an action card."""
 
-    type: str  # "draft_reply", "code_fix", "briefing", "summary"
+    type: str  # "draft_reply", "code_fix", "briefing", "summary", "status_update"
     content: str
 
 

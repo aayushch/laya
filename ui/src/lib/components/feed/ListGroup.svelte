@@ -2,6 +2,7 @@
 	import type { CardGroup, ActionCard } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
 	import { slide } from 'svelte/transition';
+	import { cardColors } from '$lib/stores/cardColors';
 	import ListRow from './ListRow.svelte';
 
 	let {
@@ -89,7 +90,9 @@
 	const groupBgStyle = $derived(
 		allArchived
 			? 'bg-surface-900/60 opacity-50 hover:opacity-80'
-			: (groupRowStyle[dominantStatus] ?? 'hover:bg-surface-800/60')
+			: $cardColors
+				? (groupRowStyle[dominantStatus] ?? 'hover:bg-surface-800/60')
+				: 'hover:bg-surface-800/60'
 	);
 
 	const statusDisplayLabel: Record<string, string> = {
@@ -255,8 +258,8 @@
 			{/if}
 		</span>
 
-		<!-- Card count — with status summary tooltip -->
-		<div class="group/count relative shrink-0 ml-2">
+		<!-- Card count — aligned with ListRow status column (w-[70px]) -->
+		<div class="group/count relative w-[70px] shrink-0 flex items-center gap-1 ml-2">
 			<span class="rounded-full border border-surface-600 bg-surface-700 px-2 py-0.5 text-[10px] font-semibold text-surface-300 cursor-default">
 				{group.card_count}
 			</span>
@@ -265,50 +268,58 @@
 			</span>
 		</div>
 
-		<!-- Three-dot menu -->
-		{#if hasAnyAction}
-			<div class="group-menu relative shrink-0 ml-1">
-				<button
-					class="flex h-5 w-5 items-center justify-center rounded text-surface-500 hover:bg-surface-700 hover:text-surface-300 disabled:opacity-50 opacity-0 group-hover/grow:opacity-100 transition-opacity"
-					onclick={toggleGroupMenu}
-					disabled={bulkActionRunning}
-					title="Group actions"
-				>
-					{#if bulkActionRunning}
-						<svg class="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
-							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-						</svg>
-					{:else}
-						<svg class="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
-							<path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM18 10a2 2 0 11-4 0 2 2 0 014 0z" />
-						</svg>
+		<!-- Three-dot menu — aligned with ListRow action buttons column (w-[68px]) -->
+		<div class="w-[68px] shrink-0 flex items-center justify-end">
+			{#if hasAnyAction}
+				<div class="group-menu relative">
+					<button
+						class="flex h-5 w-5 items-center justify-center rounded text-surface-500 hover:bg-surface-700 hover:text-surface-300 disabled:opacity-50 opacity-0 group-hover/grow:opacity-100 transition-opacity"
+						onclick={toggleGroupMenu}
+						disabled={bulkActionRunning}
+						title="Group actions"
+					>
+						{#if bulkActionRunning}
+							<svg class="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
+								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+							</svg>
+						{:else}
+							<svg class="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+								<path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM18 10a2 2 0 11-4 0 2 2 0 014 0z" />
+							</svg>
+						{/if}
+					</button>
+					{#if groupMenuOpen}
+						<div class="absolute right-0 top-full z-50 mt-1 w-40 rounded-lg border border-surface-600 bg-surface-800 p-1 shadow-xl shadow-black/30" role="menu">
+							{#if canApproveAll}
+								<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-violet-400" role="menuitem" onclick={(e) => bulkAction('approve', e)}>Approve All</button>
+							{/if}
+							{#if canCompleteAll}
+								<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-green-400" role="menuitem" onclick={(e) => bulkAction('complete', e)}>Complete All</button>
+							{/if}
+							{#if canDismissAll}
+								<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-red-400" role="menuitem" onclick={(e) => bulkAction('dismiss', e)}>Dismiss All</button>
+							{/if}
+							{#if canReopenAll}
+								<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-laya-orange" role="menuitem" onclick={(e) => bulkAction('reopen', e)}>Reopen All</button>
+							{/if}
+							{#if canArchiveAll}
+								<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-surface-400" role="menuitem" onclick={(e) => bulkAction('archive', e)}>Archive All</button>
+							{/if}
+							{#if canUnarchiveAll}
+								<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-laya-orange" role="menuitem" onclick={(e) => bulkAction('unarchive', e)}>Unarchive All</button>
+							{/if}
+						</div>
 					{/if}
-				</button>
-				{#if groupMenuOpen}
-					<div class="absolute right-0 top-full z-50 mt-1 w-40 rounded-lg border border-surface-600 bg-surface-800 p-1 shadow-xl shadow-black/30" role="menu">
-						{#if canApproveAll}
-							<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-violet-400" role="menuitem" onclick={(e) => bulkAction('approve', e)}>Approve All</button>
-						{/if}
-						{#if canCompleteAll}
-							<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-green-400" role="menuitem" onclick={(e) => bulkAction('complete', e)}>Complete All</button>
-						{/if}
-						{#if canDismissAll}
-							<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-red-400" role="menuitem" onclick={(e) => bulkAction('dismiss', e)}>Dismiss All</button>
-						{/if}
-						{#if canReopenAll}
-							<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-laya-orange" role="menuitem" onclick={(e) => bulkAction('reopen', e)}>Reopen All</button>
-						{/if}
-						{#if canArchiveAll}
-							<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-surface-400" role="menuitem" onclick={(e) => bulkAction('archive', e)}>Archive All</button>
-						{/if}
-						{#if canUnarchiveAll}
-							<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-laya-orange" role="menuitem" onclick={(e) => bulkAction('unarchive', e)}>Unarchive All</button>
-						{/if}
-					</div>
-				{/if}
-			</div>
-		{/if}
+				</div>
+			{/if}
+		</div>
+
+		<!-- Persona spacer — matches ListRow w-[62px] -->
+		<span class="w-[62px] shrink-0 ml-1"></span>
+
+		<!-- Priority spacer — matches ListRow w-[36px] -->
+		<span class="w-[36px] shrink-0 ml-1"></span>
 
 		<!-- Space badge — fixed width, matches ListRow -->
 		<span class="w-[72px] shrink-0 flex items-center gap-1 ml-1 truncate">
@@ -335,7 +346,7 @@
 				{#if onbulktoggle}
 					<div class="w-5 shrink-0"></div>
 				{/if}
-				<div class="flex-1 rounded-b-lg border border-t-0 border-surface-600 bg-surface-900 py-1">
+				<div class="flex-1 min-w-0 rounded-b-lg border border-t-0 border-surface-600 bg-surface-900 py-1">
 					{#each group.cards as card (card.card_id)}
 						<div class="flex items-center">
 							<!-- Checkbox pulled into the gutter via negative margin -->
@@ -357,7 +368,7 @@
 									</button>
 								</div>
 							{/if}
-							<div class="flex-1">
+							<div class="flex-1 min-w-0">
 								<ListRow {card} {onselect} {ondelete} {selectedCardId} indented={true} {hasSelection} />
 							</div>
 						</div>

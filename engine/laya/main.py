@@ -18,6 +18,7 @@ from laya.agents import session_manager
 from laya.api.actions_api import router as actions_router
 from laya.api.audit_api import router as audit_router
 from laya.api.cards_api import router as cards_router
+from laya.api.classification_api import router as classification_router
 from laya.api.connections_api import router as connections_router
 from laya.api.chat_api import router as chat_router
 from laya.api.dashboard_api import router as dashboard_router
@@ -230,6 +231,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(actions_router)
 app.include_router(audit_router)
 app.include_router(cards_router)
+app.include_router(classification_router)
 app.include_router(connections_router)
 app.include_router(chat_router)
 app.include_router(dashboard_router)

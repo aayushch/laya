@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { theme, type Theme } from '$lib/stores/theme';
+	import { cardColors } from '$lib/stores/cardColors';
 </script>
 
 <div class="space-y-8">
@@ -80,5 +81,25 @@
 		</div>
 	</div>
 
+	<!-- Card colors toggle -->
+	<div class="rounded-xl border border-surface-700 bg-surface-800 p-6">
+		<div class="flex items-center justify-between">
+			<div>
+				<h3 class="mb-1 font-semibold text-surface-50">Status Colors</h3>
+				<p class="text-sm text-surface-400">Tint cards and list rows by their status. Turn off for a uniform look.</p>
+			</div>
+			<button
+				class="relative h-6 w-11 shrink-0 rounded-full transition-colors {$cardColors ? 'bg-laya-orange' : 'bg-surface-600'}"
+				onclick={() => cardColors.set(!$cardColors)}
+				role="switch"
+				aria-checked={$cardColors}
+				aria-label="Toggle status colors"
+			>
+				<span
+					class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform {$cardColors ? 'translate-x-5' : 'translate-x-0'}"
+				></span>
+			</button>
+		</div>
+	</div>
 
 </div>

@@ -91,20 +91,15 @@
 		<AuditLogViewer />
 	{/if}
 
-	<!-- Diagnostics -->
-	<div class="rounded-lg border border-surface-700 bg-surface-800 p-4">
-		<div class="flex items-center justify-between">
-			<div>
-				<h3 class="font-medium">Diagnostics</h3>
-				<p class="text-sm text-surface-400">Export system info, config, logs, and DB stats for troubleshooting</p>
-			</div>
-			<button
-				class="rounded-md bg-surface-600 px-4 py-2 text-sm font-medium text-surface-50 transition-colors hover:bg-surface-500 disabled:opacity-50"
-				onclick={exportDiagnostics}
-				disabled={exporting}
-			>
-				{exporting ? 'Exporting...' : 'Export ZIP'}
-			</button>
-		</div>
+	<!-- Diagnostics footer -->
+	<div class="flex items-center justify-between border-t border-surface-700/50 pt-4 mt-2">
+		<span class="text-xs text-surface-500">Need help troubleshooting? Export diagnostics for support.</span>
+		<button
+			class="rounded-md border border-surface-600 px-3 py-1 text-xs text-surface-400 transition-colors hover:border-surface-500 hover:text-surface-200 disabled:opacity-50"
+			onclick={exportDiagnostics}
+			disabled={exporting}
+		>
+			{exporting ? 'Exporting...' : 'Export Diagnostics'}
+		</button>
 	</div>
 </div>

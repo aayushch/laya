@@ -176,6 +176,31 @@ export const engineApi = {
 		request<{ status: string; card_id: string }>(`/cards/${cardId}`, {
 			method: 'DELETE'
 		}),
+	updateCardClassification: (cardId: string, body: import('./types').UpdateClassificationRequest) =>
+		request<{ status: string; card_id: string; corrections: number }>(`/cards/${cardId}/classification`, {
+			method: 'PATCH',
+			body: JSON.stringify(body)
+		}),
+
+	// Classification rules
+	getClassificationRules: (spaceId?: string) => {
+		const qs = spaceId ? `?space_id=${spaceId}` : '';
+		return request<import('./types').ClassificationRule[]>(`/classification/rules${qs}`);
+	},
+	createClassificationRule: (body: { rule_text: string; field?: string | null; space_id?: string | null }) =>
+		request<{ id: number; status: string }>('/classification/rules', {
+			method: 'POST',
+			body: JSON.stringify(body)
+		}),
+	updateClassificationRule: (ruleId: number, body: { rule_text?: string; field?: string | null; active?: boolean }) =>
+		request<{ id: number; status: string }>(`/classification/rules/${ruleId}`, {
+			method: 'PUT',
+			body: JSON.stringify(body)
+		}),
+	deleteClassificationRule: (ruleId: number) =>
+		request<{ id: number; status: string }>(`/classification/rules/${ruleId}`, {
+			method: 'DELETE'
+		}),
 
 	// Summary
 	getDaySummary: (date?: string) => {

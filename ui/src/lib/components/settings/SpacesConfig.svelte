@@ -41,12 +41,11 @@
 	let workflows = $state<AvailableWorkflow[]>([]);
 	let loaded = $state(false);
 
-	// Form state
-	let editingSpace = $state<Space | null>(null);
+	// Form state — used for both create (top-level) and inline edit
+	let editingSpaceId = $state<string | null>(null);
 	let showCreateForm = $state(false);
 	let formName = $state('');
 	let formDescription = $state('');
-	let formIcon = $state('📁');
 	let formColor = $state('#3B82F6');
 	let formRouterModel = $state('');
 	let formStagerModel = $state('');
@@ -57,6 +56,7 @@
 	// Source assignment state
 	let assigningSpaceId = $state<string | null>(null);
 	let selectedWorkflows = $state<Set<string>>(new Set());
+	let workflowSearch = $state('');
 
 	// Space API key state
 	let keySpaceId = $state<string | null>(null);
@@ -111,10 +111,9 @@
 	// Space CRUD
 	function startCreate() {
 		showCreateForm = true;
-		editingSpace = null;
+		editingSpaceId = null;
 		formName = '';
 		formDescription = '';
-		formIcon = '📁';
 		formColor = '#3B82F6';
 		formRouterModel = '';
 		formStagerModel = '';
@@ -124,10 +123,10 @@
 
 	function startEdit(space: Space) {
 		showCreateForm = false;
-		editingSpace = space;
+		editingSpaceId = space.space_id;
+		expandedSpaceId = space.space_id;
 		formName = space.name;
 		formDescription = space.description || '';
-		formIcon = space.icon;
 		formColor = space.color;
 		formRouterModel = space.router_model || '';
 		formStagerModel = space.stager_model || '';
@@ -137,18 +136,17 @@
 
 	function cancelForm() {
 		showCreateForm = false;
-		editingSpace = null;
+		editingSpaceId = null;
 	}
 
 	async function saveSpace() {
 		if (!formName.trim()) return;
 		saving = true;
 		try {
-			if (editingSpace) {
-				await engineApi.updateSpace(editingSpace.space_id, {
+			if (editingSpaceId) {
+				await engineApi.updateSpace(editingSpaceId, {
 					name: formName.trim(),
 					description: formDescription.trim() || undefined,
-					icon: formIcon,
 					color: formColor,
 					router_model: formRouterModel || undefined,
 					stager_model: formStagerModel || undefined,
@@ -159,7 +157,6 @@
 				await engineApi.createSpace({
 					name: formName.trim(),
 					description: formDescription.trim() || undefined,
-					icon: formIcon,
 					color: formColor,
 					router_model: formRouterModel || undefined,
 					stager_model: formStagerModel || undefined,
@@ -180,6 +177,8 @@
 		if (!confirm(`Delete "${space.name}"? Sources and cards will be moved to Default.`)) return;
 		try {
 			await engineApi.deleteSpace(space.space_id);
+			expandedSpaceId = null;
+			editingSpaceId = null;
 			await loadData();
 		} catch (e) {
 			console.error('Failed to delete space:', e);
@@ -204,16 +203,27 @@
 		}
 	}
 
+	// Filtered workflows for search
+	const filteredWorkflows = $derived.by(() => {
+		const q = workflowSearch.toLowerCase().trim();
+		if (!q) return workflows;
+		return workflows.filter(wf =>
+			wf.name.toLowerCase().includes(q) || wf.platform.toLowerCase().includes(q)
+		);
+	});
+
 	// Source assignment
 	async function startAssigning(spaceId: string) {
 		assigningSpaceId = spaceId;
 		selectedWorkflows = new Set();
+		workflowSearch = '';
 		await loadWorkflows();
 	}
 
 	function cancelAssigning() {
 		assigningSpaceId = null;
 		selectedWorkflows = new Set();
+		workflowSearch = '';
 	}
 
 	function toggleWorkflow(wfId: string) {
@@ -351,8 +361,10 @@
 	function toggleExpand(spaceId: string) {
 		if (expandedSpaceId === spaceId) {
 			expandedSpaceId = null;
+			editingSpaceId = null;
 		} else {
 			expandedSpaceId = spaceId;
+			editingSpaceId = null;
 			if (!(spaceId in spaceRepoNames)) {
 				loadSpaceRepos(spaceId);
 			}
@@ -388,7 +400,7 @@
 					Group event sources and assign specific models or API keys per space.
 				</p>
 			</div>
-			{#if !showCreateForm && !editingSpace}
+			{#if !showCreateForm}
 				<button
 					onclick={startCreate}
 					class="rounded-md bg-laya-orange/15 px-4 py-2 text-sm font-medium text-laya-orange transition-colors hover:bg-laya-orange/25"
@@ -398,170 +410,46 @@
 			{/if}
 		</div>
 
-		<!-- Create / Edit Form -->
-		{#if showCreateForm || editingSpace}
+		<!-- Create Form (top-level, only for new spaces) -->
+		{#if showCreateForm}
 			<div class="rounded-lg border border-laya-orange/30 bg-surface-800 p-5">
-				<h4 class="mb-4 font-medium">{editingSpace ? `Edit "${editingSpace.name}"` : 'New Space'}</h4>
+				<h4 class="mb-4 font-medium">New Space</h4>
 
-				<div class="space-y-4">
-					<!-- Name + Icon -->
-					<div class="flex gap-3">
-						<div class="flex-1">
-							<label for="space-name" class="mb-1 block text-sm text-surface-400">Name</label>
-							<input
-								id="space-name"
-								type="text"
-								bind:value={formName}
-								placeholder="e.g. Work, Personal"
-								maxlength="50"
-								class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
-							/>
-						</div>
-						<div class="w-20">
-							<label for="space-icon" class="mb-1 block text-sm text-surface-400">Icon</label>
-							<input
-								id="space-icon"
-								type="text"
-								bind:value={formIcon}
-								maxlength="2"
-								class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-center text-lg"
-							/>
-						</div>
-					</div>
-
-					<!-- Description -->
-					<div>
-						<label for="space-desc" class="mb-1 block text-sm text-surface-400">Description <span class="text-surface-500">(optional)</span></label>
-						<input
-							id="space-desc"
-							type="text"
-							bind:value={formDescription}
-							placeholder="What this space is for..."
-							class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
-						/>
-					</div>
-
-					<!-- Color -->
-					<div>
-						<!-- svelte-ignore a11y_label_has_associated_control -->
-						<label class="mb-2 block text-sm text-surface-400">Color</label>
-						<div class="flex gap-2">
-							{#each presetColors as color}
-								<button
-									onclick={() => (formColor = color)}
-									class="h-7 w-7 rounded-full border-2 transition-transform hover:scale-110
-										{formColor === color ? 'border-white scale-110' : 'border-transparent'}"
-									style="background-color: {color}"
-									aria-label="Select color {color}"
-								></button>
-							{/each}
-						</div>
-					</div>
-
-					<!-- Model Overrides -->
-					<div>
-						<!-- svelte-ignore a11y_label_has_associated_control -->
-						<label class="mb-2 block text-sm text-surface-400">Model Overrides</label>
-						<div class="grid grid-cols-3 gap-3">
-							<div>
-								<span class="mb-1 block text-xs text-surface-500">Router</span>
-								<ModelSelect
-									bind:value={formRouterModel}
-									providers={availableModels}
-									onchange={(v) => (formRouterModel = v)}
-									allowEmpty={true}
-									emptyLabel="Use default"
-								/>
-							</div>
-							<div>
-								<span class="mb-1 block text-xs text-surface-500">Stager</span>
-								<ModelSelect
-									bind:value={formStagerModel}
-									providers={availableModels}
-									onchange={(v) => (formStagerModel = v)}
-									allowEmpty={true}
-									emptyLabel="Use default"
-								/>
-							</div>
-							<div>
-								<span class="mb-1 block text-xs text-surface-500">Chat</span>
-								<ModelSelect
-									bind:value={formChatModel}
-									providers={availableModels}
-									onchange={(v) => (formChatModel = v)}
-									allowEmpty={true}
-									emptyLabel="Use default"
-								/>
-							</div>
-						</div>
-					</div>
-
-					<!-- Coding Agent Override -->
-					<div>
-						<label for="space-agent" class="mb-2 block text-sm text-surface-400">Coding Agent</label>
-						<select
-							id="space-agent"
-							value={formCodingAgent}
-							onchange={(e) => (formCodingAgent = (e.target as HTMLSelectElement).value)}
-							class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100"
-						>
-							{#each agentOptions as opt}
-								<option value={opt.value}>{opt.label}</option>
-							{/each}
-						</select>
-						<p class="mt-1 text-xs text-surface-500">CLI agent used for ENGINEER tasks in this space</p>
-					</div>
-
-					<!-- Actions -->
-					<div class="flex gap-2 pt-2">
-						<button
-							onclick={saveSpace}
-							disabled={!formName.trim() || saving}
-							class="rounded-md bg-laya-orange px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-laya-orange/90 disabled:opacity-50"
-						>
-							{saving ? 'Saving...' : editingSpace ? 'Update Space' : 'Create Space'}
-						</button>
-						<button
-							onclick={cancelForm}
-							class="rounded-md px-4 py-2 text-sm text-surface-400 transition-colors hover:text-surface-200"
-						>
-							Cancel
-						</button>
-					</div>
-				</div>
+				{@render spaceForm(false)}
 			</div>
 		{/if}
 
 		<!-- Spaces List -->
 		{#each spaces as space (space.space_id)}
 			{@const spaceSources = sourcesForSpace(space.space_id)}
+			{@const isEditing = editingSpaceId === space.space_id}
+			{@const isExpanded = expandedSpaceId === space.space_id}
 			<div class="rounded-lg border bg-surface-800 transition-colors
-				{space.paused ? 'border-laya-amber/30 border-dashed' : expandedSpaceId === space.space_id ? 'border-laya-orange/30' : 'border-surface-700'}">
+				{space.paused ? 'border-laya-amber/30 border-dashed' : isEditing ? 'border-laya-orange/30' : isExpanded ? 'border-laya-orange/30' : 'border-surface-700'}">
 				<!-- Space Header -->
 				<button
 					onclick={() => toggleExpand(space.space_id)}
 					class="flex w-full items-center gap-3 p-4 text-left"
 				>
-					<span class="text-xl">{space.icon}</span>
 					<div
 						class="h-3 w-3 rounded-full shrink-0"
 						style="background-color: {space.color}"
 					></div>
 					<div class="min-w-0 flex-1">
 						<div class="flex items-center gap-2">
-							<span class="font-medium">{space.name}</span>
+							<span class="text-sm font-semibold text-surface-100">{space.name}</span>
 							{#if space.is_default}
-								<span class="rounded bg-surface-600 px-1.5 py-0.5 text-[10px] text-surface-400">DEFAULT</span>
+								<span class="rounded bg-surface-600 px-1.5 py-0.5 text-[11px] font-medium text-surface-400">DEFAULT</span>
 							{/if}
 							{#if space.paused}
-								<span class="rounded bg-laya-amber/20 px-1.5 py-0.5 text-[10px] font-medium text-laya-amber">PAUSED</span>
+								<span class="rounded bg-laya-amber/20 px-1.5 py-0.5 text-[11px] font-semibold text-laya-amber">PAUSED</span>
 							{/if}
 							{#if spaceSources.length > 0}
 								<!-- svelte-ignore a11y_click_events_have_key_events -->
 								<!-- svelte-ignore a11y_no_static_element_interactions -->
 								<span
 									onclick={(e) => { e.stopPropagation(); togglePause(space); }}
-									class="rounded-md px-2 py-0.5 text-[10px] font-medium cursor-pointer transition-colors
+									class="rounded-md px-2 py-0.5 text-[11px] font-medium cursor-pointer transition-colors
 										{space.paused
 											? 'bg-laya-orange/15 text-laya-orange hover:bg-laya-orange/25'
 											: 'bg-surface-700 text-surface-400 hover:bg-surface-600 hover:text-surface-200'}
@@ -579,198 +467,204 @@
 							{/if}
 						</div>
 						{#if space.description}
-							<p class="truncate text-xs text-surface-500">{space.description}</p>
+							<p class="truncate text-sm text-surface-500">{space.description}</p>
 						{/if}
 					</div>
-					<div class="flex items-center gap-3 text-xs text-surface-400">
+					<div class="flex items-center gap-2.5 text-xs text-surface-400">
 						<span>{spaceSources.length} source{spaceSources.length !== 1 ? 's' : ''}</span>
 						{#if space.router_model || space.stager_model || space.chat_model}
-							<span class="rounded bg-surface-700 px-1.5 py-0.5">Custom models</span>
+							<span class="rounded bg-surface-700 px-1.5 py-0.5 text-[11px]">Custom models</span>
 						{/if}
 						{#if space.coding_agent}
-							<span class="rounded bg-surface-700 px-1.5 py-0.5">{agentLabel(space.coding_agent)}</span>
+							<span class="rounded bg-surface-700 px-1.5 py-0.5 text-[11px]">{agentLabel(space.coding_agent)}</span>
 						{/if}
 						{#if spaceRepoNames[space.space_id]?.length}
-							<span class="rounded bg-surface-700 px-1.5 py-0.5">{spaceRepoNames[space.space_id].length} repo{spaceRepoNames[space.space_id].length !== 1 ? 's' : ''}</span>
+							<span class="rounded bg-surface-700 px-1.5 py-0.5 text-[11px]">{spaceRepoNames[space.space_id].length} repo{spaceRepoNames[space.space_id].length !== 1 ? 's' : ''}</span>
 						{/if}
 						<svg
-							class="h-4 w-4 transition-transform {expandedSpaceId === space.space_id ? 'rotate-180' : ''}"
+							class="h-4 w-4 transition-transform {isExpanded ? 'rotate-180' : ''}"
 							fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
 						>
 							<path d="M19 9l-7 7-7-7" />
 						</svg>
 					</div>
 				</button>
-	
+
 				<!-- Expanded Detail -->
-				{#if expandedSpaceId === space.space_id}
-					<div class="border-t border-surface-700 p-4 space-y-4">
-						<!-- Sources -->
-						<div>
-							<div class="flex items-center justify-between mb-2">
-								<h5 class="text-sm font-medium text-surface-300">Sources</h5>
-								<button
-									onclick={() => startAssigning(space.space_id)}
-									class="text-xs text-laya-orange hover:text-laya-orange/80 transition-colors"
-								>
-									+ Assign workflows
-								</button>
+				{#if isExpanded}
+					<div class="border-t border-surface-700 p-4 space-y-5">
+						{#if isEditing}
+							<!-- Inline edit form -->
+							{@render spaceForm(true)}
+						{:else}
+							<!-- Read-only detail view -->
+							<!-- Sources -->
+							<div>
+								<div class="flex items-center justify-between mb-2">
+									<h5 class="text-sm font-semibold text-surface-200">Sources</h5>
+									<button
+										onclick={() => startAssigning(space.space_id)}
+										class="text-sm text-laya-orange hover:text-laya-orange/80 transition-colors"
+									>
+										+ Assign workflows
+									</button>
+								</div>
+								{#if spaceSources.length === 0}
+									<p class="text-sm text-surface-500 italic">No sources assigned. Click "Assign workflows" to add n8n ingestion workflows to this space.</p>
+								{:else}
+									<div class="space-y-1">
+										{#each spaceSources as source (source.source_id)}
+											<div class="flex items-center gap-2 rounded-md bg-surface-700/50 px-3 py-2 text-sm">
+												<span class="flex-1 truncate">{source.name}</span>
+												<span class="text-xs text-surface-500">{source.platform}</span>
+												<!-- Reassign dropdown -->
+												<select
+													value={source.space_id}
+													onchange={(e) => reassignSource(source.source_id, (e.target as HTMLSelectElement).value)}
+													class="rounded border border-surface-600 bg-surface-700 px-2 py-0.5 text-xs text-surface-300"
+												>
+													{#each spaces as s}
+														<option value={s.space_id}>{s.name}</option>
+													{/each}
+												</select>
+												<button
+													onclick={() => removeSource(source.source_id)}
+													class="text-xs text-red-400/60 hover:text-red-400 transition-colors"
+													title="Unregister source"
+												>
+													✕
+												</button>
+											</div>
+										{/each}
+									</div>
+								{/if}
 							</div>
-							{#if spaceSources.length === 0}
-								<p class="text-xs text-surface-500 italic">No sources assigned. Click "Assign workflows" to add n8n ingestion workflows to this space.</p>
-							{:else}
-								<div class="space-y-1">
-									{#each spaceSources as source (source.source_id)}
-										<div class="flex items-center gap-2 rounded-md bg-surface-700/50 px-3 py-2 text-sm">
-											<span class="flex-1 truncate">{source.name}</span>
-											<span class="text-xs text-surface-500">{source.platform}</span>
-											<!-- Reassign dropdown -->
-											<select
-												value={source.space_id}
-												onchange={(e) => reassignSource(source.source_id, (e.target as HTMLSelectElement).value)}
-												class="rounded border border-surface-600 bg-surface-700 px-2 py-0.5 text-xs text-surface-300"
-											>
-												{#each spaces as s}
-													<option value={s.space_id}>{s.icon} {s.name}</option>
-												{/each}
-											</select>
+
+							<!-- Repositories -->
+							{#if allRepos.length > 0}
+								<div>
+									<h5 class="text-sm font-semibold text-surface-200 mb-2">Repositories</h5>
+									<p class="text-sm text-surface-500 mb-2">
+										Assign repos to this space so engineer tasks pick the right codebase.
+										{#if !spaceRepoNames[space.space_id]?.length}
+											<span class="text-surface-400">No repos assigned — agent will search all repos.</span>
+										{/if}
+									</p>
+									<div class="space-y-1">
+										{#each allRepos as repo (repo.name)}
+											{@const isAssigned = (spaceRepoNames[space.space_id] || []).includes(repo.name)}
 											<button
-												onclick={() => removeSource(source.source_id)}
-												class="text-xs text-red-400/60 hover:text-red-400 transition-colors"
-												title="Unregister source"
+												onclick={() => { toggleSpaceRepo(space.space_id, repo.name); saveSpaceRepos(space.space_id); }}
+												class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors
+													{isAssigned
+														? 'bg-laya-orange/15 text-laya-orange'
+														: 'hover:bg-surface-700 text-surface-300'}"
 											>
-												✕
+												<span class="h-4 w-4 shrink-0 rounded border text-center text-xs leading-4
+													{isAssigned ? 'border-laya-orange bg-laya-orange text-white' : 'border-surface-500'}">
+													{#if isAssigned}&#10003;{/if}
+												</span>
+												<span class="flex-1 truncate">{repo.name}</span>
+												{#if repo.remote_id}
+													<span class="text-xs text-surface-500">{repo.remote_id}</span>
+												{/if}
 											</button>
-										</div>
-									{/each}
+										{/each}
+									</div>
 								</div>
 							{/if}
-						</div>
 
-						<!-- Repositories -->
-						{#if allRepos.length > 0}
+							<!-- Model overrides summary -->
 							<div>
-								<h5 class="text-sm font-medium text-surface-300 mb-2">Repositories</h5>
-								<p class="text-xs text-surface-500 mb-2">
-									Assign repos to this space so engineer tasks pick the right codebase.
-									{#if !spaceRepoNames[space.space_id]?.length}
-										<span class="text-surface-400">No repos assigned — agent will search all repos.</span>
-									{/if}
-								</p>
-								<div class="space-y-1">
-									{#each allRepos as repo (repo.name)}
-										{@const isAssigned = (spaceRepoNames[space.space_id] || []).includes(repo.name)}
-										<button
-											onclick={() => { toggleSpaceRepo(space.space_id, repo.name); saveSpaceRepos(space.space_id); }}
-											class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors
-												{isAssigned
-													? 'bg-laya-orange/15 text-laya-orange'
-													: 'hover:bg-surface-700 text-surface-300'}"
-										>
-											<span class="h-4 w-4 shrink-0 rounded border text-center text-xs leading-4
-												{isAssigned ? 'border-laya-orange bg-laya-orange text-white' : 'border-surface-500'}">
-												{#if isAssigned}&#10003;{/if}
-											</span>
-											<span class="flex-1 truncate">{repo.name}</span>
-											{#if repo.remote_id}
-												<span class="text-xs text-surface-500">{repo.remote_id}</span>
-											{/if}
-										</button>
-									{/each}
+								<h5 class="text-sm font-semibold text-surface-200 mb-2">Model & Agent Configuration</h5>
+								<div class="grid grid-cols-4 gap-2">
+									<div class="rounded-lg bg-surface-700/50 p-2.5">
+										<span class="text-xs text-surface-500">Router</span>
+										<p class="text-sm text-surface-300">{modelLabel(space.router_model)}</p>
+									</div>
+									<div class="rounded-lg bg-surface-700/50 p-2.5">
+										<span class="text-xs text-surface-500">Stager</span>
+										<p class="text-sm text-surface-300">{modelLabel(space.stager_model)}</p>
+									</div>
+									<div class="rounded-lg bg-surface-700/50 p-2.5">
+										<span class="text-xs text-surface-500">Chat</span>
+										<p class="text-sm text-surface-300">{modelLabel(space.chat_model)}</p>
+									</div>
+									<div class="rounded-lg bg-surface-700/50 p-2.5">
+										<span class="text-xs text-surface-500">Agent</span>
+										<p class="text-sm text-surface-300">{agentLabel(space.coding_agent)}</p>
+									</div>
 								</div>
+							</div>
+
+							<!-- API Keys toggle -->
+							<div>
+								<button
+									onclick={() => keySpaceId === space.space_id ? (keySpaceId = null) : openSpaceKeys(space.space_id)}
+									class="text-sm font-semibold text-surface-200 hover:text-surface-100 transition-colors"
+								>
+									{keySpaceId === space.space_id ? '▾' : '▸'} API Keys
+								</button>
+								{#if keySpaceId === space.space_id}
+									<div class="mt-2 space-y-2.5">
+										<p class="text-sm text-surface-500">Override global API keys for this space. Uses global key when not set.</p>
+										{#each providers as provider}
+											<div class="flex items-center gap-2">
+												<span class="w-20 text-sm text-surface-400">{provider.label}</span>
+												{#if spaceKeyStatus[provider.id]}
+													<span class="text-xs text-green-400">Configured</span>
+													<button
+														onclick={() => removeSpaceKey(provider.id)}
+														class="ml-auto text-xs text-red-400/60 hover:text-red-400 transition-colors"
+													>
+														Remove
+													</button>
+												{:else}
+													<input
+														type="password"
+														bind:value={spaceKeyInputs[provider.id]}
+														placeholder="Enter API key..."
+														class="flex-1 rounded border border-surface-600 bg-surface-700 px-2 py-1 text-xs text-surface-100 placeholder:text-surface-500"
+													/>
+													<button
+														onclick={() => saveSpaceKey(provider.id)}
+														disabled={!spaceKeyInputs[provider.id]?.trim() || savingSpaceKey === provider.id}
+														class="rounded bg-surface-600 px-2 py-1 text-xs text-surface-200 hover:bg-surface-500 disabled:opacity-50 transition-colors"
+													>
+														{savingSpaceKey === provider.id ? '...' : 'Save'}
+													</button>
+												{/if}
+											</div>
+										{/each}
+									</div>
+								{/if}
+							</div>
+
+							<!-- Actions -->
+							<div class="flex gap-3 pt-2 border-t border-surface-700/50">
+								{#if !space.is_default}
+									<button
+										onclick={() => startEdit(space)}
+										class="text-sm text-surface-400 hover:text-surface-200 transition-colors"
+									>
+										Edit
+									</button>
+									<button
+										onclick={() => deleteSpace(space)}
+										class="text-sm text-red-400/60 hover:text-red-400 transition-colors"
+									>
+										Delete
+									</button>
+								{:else}
+									<button
+										onclick={() => startEdit(space)}
+										class="text-sm text-surface-400 hover:text-surface-200 transition-colors"
+									>
+										Edit models
+									</button>
+								{/if}
 							</div>
 						{/if}
-
-						<!-- Model overrides summary -->
-						<div>
-							<h5 class="text-sm font-medium text-surface-300 mb-2">Model & Agent Configuration</h5>
-							<div class="grid grid-cols-4 gap-2 text-xs">
-								<div class="rounded bg-surface-700/50 p-2">
-									<span class="text-surface-500">Router</span>
-									<p class="text-surface-300">{modelLabel(space.router_model)}</p>
-								</div>
-								<div class="rounded bg-surface-700/50 p-2">
-									<span class="text-surface-500">Stager</span>
-									<p class="text-surface-300">{modelLabel(space.stager_model)}</p>
-								</div>
-								<div class="rounded bg-surface-700/50 p-2">
-									<span class="text-surface-500">Chat</span>
-									<p class="text-surface-300">{modelLabel(space.chat_model)}</p>
-								</div>
-								<div class="rounded bg-surface-700/50 p-2">
-									<span class="text-surface-500">Agent</span>
-									<p class="text-surface-300">{agentLabel(space.coding_agent)}</p>
-								</div>
-							</div>
-						</div>
-
-						<!-- API Keys toggle -->
-						<div>
-							<button
-								onclick={() => keySpaceId === space.space_id ? (keySpaceId = null) : openSpaceKeys(space.space_id)}
-								class="text-sm text-surface-400 hover:text-surface-200 transition-colors"
-							>
-								{keySpaceId === space.space_id ? '▾' : '▸'} API Keys
-							</button>
-							{#if keySpaceId === space.space_id}
-								<div class="mt-2 space-y-2">
-									<p class="text-xs text-surface-500">Override global API keys for this space. Uses global key when not set.</p>
-									{#each providers as provider}
-										<div class="flex items-center gap-2">
-											<span class="w-20 text-xs text-surface-400">{provider.label}</span>
-											{#if spaceKeyStatus[provider.id]}
-												<span class="text-xs text-green-400">Configured</span>
-												<button
-													onclick={() => removeSpaceKey(provider.id)}
-													class="ml-auto text-xs text-red-400/60 hover:text-red-400 transition-colors"
-												>
-													Remove
-												</button>
-											{:else}
-												<input
-													type="password"
-													bind:value={spaceKeyInputs[provider.id]}
-													placeholder="Enter API key..."
-													class="flex-1 rounded border border-surface-600 bg-surface-700 px-2 py-1 text-xs text-surface-100 placeholder:text-surface-500"
-												/>
-												<button
-													onclick={() => saveSpaceKey(provider.id)}
-													disabled={!spaceKeyInputs[provider.id]?.trim() || savingSpaceKey === provider.id}
-													class="rounded bg-surface-600 px-2 py-1 text-xs text-surface-200 hover:bg-surface-500 disabled:opacity-50 transition-colors"
-												>
-													{savingSpaceKey === provider.id ? '...' : 'Save'}
-												</button>
-											{/if}
-										</div>
-									{/each}
-								</div>
-							{/if}
-						</div>
-
-						<!-- Actions -->
-						<div class="flex gap-2 pt-1 border-t border-surface-700/50">
-							{#if !space.is_default}
-								<button
-									onclick={() => startEdit(space)}
-									class="text-xs text-surface-400 hover:text-surface-200 transition-colors"
-								>
-									Edit
-								</button>
-								<button
-									onclick={() => deleteSpace(space)}
-									class="text-xs text-red-400/60 hover:text-red-400 transition-colors"
-								>
-									Delete
-								</button>
-							{:else}
-								<button
-									onclick={() => startEdit(space)}
-									class="text-xs text-surface-400 hover:text-surface-200 transition-colors"
-								>
-									Edit models
-								</button>
-							{/if}
-						</div>
 					</div>
 				{/if}
 			</div>
@@ -780,20 +674,35 @@
 		{#if assigningSpaceId}
 			{@const targetSpace = spaces.find((s) => s.space_id === assigningSpaceId)}
 			<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-				<div class="mx-4 w-full max-w-lg rounded-lg border border-surface-600 bg-surface-800 p-5 shadow-xl">
-					<h4 class="mb-1 font-medium">Assign Workflows to {targetSpace?.icon} {targetSpace?.name}</h4>
-					<p class="mb-4 text-xs text-surface-500">Select n8n ingestion workflows to assign to this space.</p>
+				<div class="mx-4 w-full max-w-lg rounded-xl border border-surface-600 bg-surface-800 p-5 shadow-xl">
+					<h4 class="mb-1 text-base font-semibold text-surface-50">Assign Workflows to {targetSpace?.name}</h4>
+					<p class="mb-4 text-sm text-surface-400">Select n8n ingestion workflows to assign to this space.</p>
+
+					<!-- Search -->
+					<div class="relative mb-3">
+						<svg class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+						</svg>
+						<input
+							type="text"
+							bind:value={workflowSearch}
+							placeholder="Search workflows..."
+							class="w-full rounded-lg border border-surface-600 bg-surface-700 py-2 pl-9 pr-3 text-sm text-surface-100 placeholder:text-surface-500 focus:border-laya-orange/40 focus:outline-none"
+						/>
+					</div>
 
 					{#if workflows.length === 0}
 						<p class="py-4 text-center text-sm text-surface-400">No Laya ingestion workflows found in n8n.</p>
+					{:else if filteredWorkflows.length === 0}
+						<p class="py-4 text-center text-sm text-surface-400">No workflows matching "{workflowSearch}"</p>
 					{:else}
-						<div class="max-h-64 space-y-1 overflow-y-auto">
-							{#each workflows as wf (wf.workflow_id)}
+						<div class="max-h-72 space-y-1 overflow-y-auto">
+							{#each filteredWorkflows as wf (wf.workflow_id)}
 								{@const isOwnedByTarget = sources.find((s) => s.workflow_id === wf.workflow_id && s.space_id === assigningSpaceId)}
 								<button
 									onclick={() => toggleWorkflow(wf.workflow_id)}
 									disabled={!!isOwnedByTarget}
-									class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors
+									class="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors
 										{selectedWorkflows.has(wf.workflow_id)
 											? 'bg-laya-orange/15 text-laya-orange'
 											: isOwnedByTarget
@@ -802,7 +711,7 @@
 								>
 									<div class="min-w-0 flex-1">
 										<p class="truncate">{wf.name}</p>
-										<p class="text-xs text-surface-500">
+										<p class="mt-0.5 text-xs text-surface-500">
 											{wf.platform}
 											{#if wf.registered}
 												{@const src = sources.find((s) => s.workflow_id === wf.workflow_id)}
@@ -842,3 +751,121 @@
 		{/if}
 	</div>
 {/if}
+
+<!-- Reusable edit form snippet -->
+{#snippet spaceForm(isInline: boolean)}
+	<div class="space-y-4">
+		<!-- Name -->
+		<div>
+			<label for="space-name" class="mb-1 block text-sm text-surface-400">Name</label>
+			<input
+				id="space-name"
+				type="text"
+				bind:value={formName}
+				placeholder="e.g. Work, Personal"
+				maxlength="50"
+				class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+			/>
+		</div>
+
+		<!-- Description -->
+		<div>
+			<label for="space-desc" class="mb-1 block text-sm text-surface-400">Description <span class="text-surface-500">(optional)</span></label>
+			<input
+				id="space-desc"
+				type="text"
+				bind:value={formDescription}
+				placeholder="What this space is for..."
+				class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+			/>
+		</div>
+
+		<!-- Color -->
+		<div>
+			<!-- svelte-ignore a11y_label_has_associated_control -->
+			<label class="mb-2 block text-sm text-surface-400">Color</label>
+			<div class="flex gap-2">
+				{#each presetColors as color}
+					<button
+						onclick={() => (formColor = color)}
+						class="h-7 w-7 rounded-full border-2 transition-transform hover:scale-110
+							{formColor === color ? 'border-white scale-110' : 'border-transparent'}"
+						style="background-color: {color}"
+						aria-label="Select color {color}"
+					></button>
+				{/each}
+			</div>
+		</div>
+
+		<!-- Model Overrides -->
+		<div>
+			<!-- svelte-ignore a11y_label_has_associated_control -->
+			<label class="mb-2 block text-sm text-surface-400">Model Overrides</label>
+			<div class="grid grid-cols-3 gap-3">
+				<div>
+					<span class="mb-1 block text-xs text-surface-500">Router</span>
+					<ModelSelect
+						bind:value={formRouterModel}
+						providers={availableModels}
+						onchange={(v) => (formRouterModel = v)}
+						allowEmpty={true}
+						emptyLabel="Use default"
+					/>
+				</div>
+				<div>
+					<span class="mb-1 block text-xs text-surface-500">Stager</span>
+					<ModelSelect
+						bind:value={formStagerModel}
+						providers={availableModels}
+						onchange={(v) => (formStagerModel = v)}
+						allowEmpty={true}
+						emptyLabel="Use default"
+					/>
+				</div>
+				<div>
+					<span class="mb-1 block text-xs text-surface-500">Chat</span>
+					<ModelSelect
+						bind:value={formChatModel}
+						providers={availableModels}
+						onchange={(v) => (formChatModel = v)}
+						allowEmpty={true}
+						emptyLabel="Use default"
+					/>
+				</div>
+			</div>
+		</div>
+
+		<!-- Coding Agent Override -->
+		<div>
+			<label for="space-agent" class="mb-2 block text-sm text-surface-400">Coding Agent</label>
+			<select
+				id="space-agent"
+				value={formCodingAgent}
+				onchange={(e) => (formCodingAgent = (e.target as HTMLSelectElement).value)}
+				class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100"
+			>
+				{#each agentOptions as opt}
+					<option value={opt.value}>{opt.label}</option>
+				{/each}
+			</select>
+			<p class="mt-1 text-xs text-surface-500">CLI agent used for ENGINEER tasks in this space</p>
+		</div>
+
+		<!-- Actions -->
+		<div class="flex gap-2 pt-2">
+			<button
+				onclick={saveSpace}
+				disabled={!formName.trim() || saving}
+				class="rounded-md bg-laya-orange px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-laya-orange/90 disabled:opacity-50"
+			>
+				{saving ? 'Saving...' : isInline ? 'Update Space' : 'Create Space'}
+			</button>
+			<button
+				onclick={cancelForm}
+				class="rounded-md px-4 py-2 text-sm text-surface-400 transition-colors hover:text-surface-200"
+			>
+				Cancel
+			</button>
+		</div>
+	</div>
+{/snippet}

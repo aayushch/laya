@@ -71,6 +71,25 @@ export interface RulesConfig {
 	rules: Rule[];
 }
 
+/** A user-defined classification rule (natural language) */
+export interface ClassificationRule {
+	id: number;
+	space_id: string | null;
+	field: string | null;
+	rule_text: string;
+	source: 'manual' | 'learned';
+	active: boolean;
+	created_at: string;
+	updated_at: string;
+}
+
+/** Request to update a card's classification */
+export interface UpdateClassificationRequest {
+	priority?: string;
+	persona?: string;
+	rule_text?: string;
+}
+
 /** A configured repository */
 export interface Repo {
 	name: string;

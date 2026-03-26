@@ -47,6 +47,43 @@ Priority guidelines:
 - MEDIUM: General tickets, non-urgent mentions, FYI emails
 - LOW: Bot notifications, status changes, informational updates
 
+Jira lifecycle event guidelines:
+When the event type indicates a lifecycle transition rather than a new issue, adjust \
+your classification accordingly:
+- issue_created: Full classification as normal. Set requires_research=true for bugs, \
+feature requests, and complex tickets.
+- issue_status_changed: Usually LOW priority, requires_research=false. These are \
+informational transitions (e.g., "To Do" → "In Progress"). Exception: transitions \
+to blocked/critical states may warrant MEDIUM/HIGH.
+- issue_resolved / issue_closed: LOW priority, requires_research=false. The ticket is \
+done — no investigation needed, just a status update card.
+- issue_reopened: MEDIUM priority, requires_research=true only if the reopening suggests \
+the original fix was insufficient.
+- issue_commented: Evaluate the comment content for actionability. A comment asking for \
+code review or requesting changes is HIGH; a simple "thanks" or status note is LOW.
+- issue_assigned: LOW priority, requires_research=false. Informational only.
+- issue_priority_changed: LOW priority, requires_research=false. Unless escalated to \
+Critical/Blocker, in which case set MEDIUM or HIGH.
+- issue_updated (generic): LOW priority, requires_research=false. Field-level changes \
+that don't match the above categories are usually informational.
+
+Bitbucket PR lifecycle event guidelines:
+When the event type indicates a PR lifecycle transition rather than a new PR, adjust \
+your classification accordingly:
+- pr_created: Full classification as normal. Set requires_research=true for code \
+review, diff analysis, and understanding the changes.
+- pr_approved: LOW priority, requires_research=false. Informational — someone approved.
+- pr_commented: Evaluate the comment content for actionability. Inline code comments \
+requesting changes are HIGH; general discussion is MEDIUM; acknowledgments are LOW.
+- pr_merged: LOW priority, requires_research=false. The PR is done — generate a \
+concise status update card noting the merge.
+- pr_declined: MEDIUM priority, requires_research=false. Note the decline and any \
+reason provided.
+- pr_reopened: MEDIUM priority, requires_research=true only if it implies the \
+original review/fix was insufficient.
+- pr_updated (generic): LOW priority, requires_research=false. Field-level changes \
+(title, description, reviewers) are usually informational.
+
 Actor relationship context (from team.json):
 - manager: Higher priority for direct requests
 - teammate: Standard priority

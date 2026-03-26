@@ -3,6 +3,7 @@
 	import { engineApi } from '$lib/api/engine';
 	import { chatOpen, chatInputPreset } from '$lib/stores/chat';
 	import { marked } from 'marked';
+	import ClassificationDialog from './ClassificationDialog.svelte';
 
 	let {
 		card,
@@ -22,6 +23,7 @@
 	let executeError = $state<string | null>(null);
 	let showDeleteConfirm = $state(false);
 	let deleting = $state(false);
+	let showClassificationDialog = $state(false);
 
 	const priorityColors: Record<string, string> = {
 		CRITICAL: 'bg-red-600 text-red-50',
@@ -387,6 +389,12 @@
 					<span>Created: {new Date(card.created_at).toLocaleString()}</span>
 				{/if}
 			</div>
+			<button
+				class="mt-2 text-xs text-laya-orange/70 hover:text-laya-orange transition-colors"
+				onclick={() => (showClassificationDialog = true)}
+			>
+				Adjust classification
+			</button>
 		</div>
 	</div>
 
@@ -580,4 +588,11 @@
 			</div>
 		</div>
 	</div>
+{/if}
+
+{#if showClassificationDialog}
+	<ClassificationDialog
+		{card}
+		onclose={() => (showClassificationDialog = false)}
+	/>
 {/if}

@@ -5,6 +5,7 @@ import json
 import structlog
 
 from laya.db.chromadb_store import memory_search
+from laya.db.sqlite import get_db
 from laya.llm.client import llm_call
 from laya.llm.prompts.stager import build_stager_messages, get_stager_json_schema
 from laya.models.card import ActionCardData, StagedOutput, SuggestedAction
@@ -13,6 +14,24 @@ from laya.models.event import LayaEvent
 from laya.workers.base import WorkerResult
 
 log = structlog.get_logger()
+
+
+async def _query_entity_history(event: LayaEvent) -> list[dict]:
+    """Fetch existing cards for this entity to give the stager context about
+    what the user has already seen, preventing redundant research."""
+    entity_id = f"{event.source.platform}:{event.subject.type}:{event.subject.id}"
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        """SELECT ac.card_id, ac.header, ac.summary, ac.status, ac.created_at,
+                  e.source_raw_event_type
+           FROM action_cards ac
+           JOIN events e ON e.event_id = ac.event_id
+           WHERE ac.entity_id = ?
+           ORDER BY ac.created_at DESC
+           LIMIT 5""",
+        (entity_id,),
+    )
+    return [dict(r) for r in rows]
 
 
 async def run_stager(
@@ -35,8 +54,13 @@ async def run_stager(
     # 1. Query ChromaDB for related context
     related_context = await _query_related_context(event)
 
+    # 1b. Query existing cards for this entity (prevents redundant research)
+    entity_history = await _query_entity_history(event)
+
     # 2. Build messages and call LLM
-    messages = build_stager_messages(event, router_output, worker_results, related_context)
+    messages = build_stager_messages(
+        event, router_output, worker_results, related_context, entity_history
+    )
     schema = get_stager_json_schema()
 
     try:
