@@ -3,39 +3,103 @@
   "nodes": [
     {
       "parameters": {
-        "events": ["message"]
+        "events": [
+          "message"
+        ]
       },
       "name": "Slack Trigger",
       "type": "n8n-nodes-base.slackTrigger",
       "typeVersion": 1,
-      "position": [250, 300]
+      "position": [
+        250,
+        300
+      ]
     },
     {
       "parameters": {
         "mode": "manual",
         "assignments": {
           "assignments": [
-            { "name": "event_id", "value": "={{ 'evt_slack_' + ($json.event?.ts || Date.now()) }}", "type": "string" },
-            { "name": "timestamp", "value": "={{ $json.event?.ts ? new Date(parseFloat($json.event.ts) * 1000).toISOString() : new Date().toISOString() }}", "type": "string" },
-            { "name": "source.platform", "value": "slack", "type": "string" },
-            { "name": "source.connection_id", "value": "={{ $workflow.id }}", "type": "string" },
-            { "name": "source.raw_event_type", "value": "={{ $json.event?.thread_ts ? 'thread_reply' : ($json.event?.text?.includes('<@') ? 'mention' : 'message_received') }}", "type": "string" },
-            { "name": "actor.name", "value": "={{ $json.event?.user_profile?.real_name || $json.event?.user || 'Unknown' }}", "type": "string" },
-            { "name": "actor.email", "value": "={{ $json.event?.user_profile?.email || '' }}", "type": "string" },
-            { "name": "actor.platform_handle", "value": "={{ $json.event?.user || '' }}", "type": "string" },
-            { "name": "subject.type", "value": "thread", "type": "string" },
-            { "name": "subject.id", "value": "={{ 'thread-' + ($json.event?.channel || '') }}", "type": "string" },
-            { "name": "subject.title", "value": "={{ ($json.event?.text || '').substring(0, 80) }}", "type": "string" },
-            { "name": "subject.url", "value": null, "type": "string" },
-            { "name": "content.body", "value": "={{ $json.event?.text || '' }}", "type": "string" },
-            { "name": "content.metadata", "value": "={{ JSON.stringify({ slack_channel: $json.event?.channel, slack_channel_type: $json.event?.channel_type || 'public', slack_thread_ts: $json.event?.thread_ts, slack_is_mention: ($json.event?.text || '').includes('<@') }) }}", "type": "string" }
+            {
+              "name": "event_id",
+              "value": "={{ 'evt_slack_' + ($json.event?.ts || Date.now()) }}",
+              "type": "string"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{ $json.event?.ts ? new Date(parseFloat($json.event.ts) * 1000).toISOString() : new Date().toISOString() }}",
+              "type": "string"
+            },
+            {
+              "name": "source.platform",
+              "value": "slack",
+              "type": "string"
+            },
+            {
+              "name": "source.connection_id",
+              "value": "={{ $workflow.id }}",
+              "type": "string"
+            },
+            {
+              "name": "source.raw_event_type",
+              "value": "={{ $json.event?.thread_ts ? 'thread_reply' : ($json.event?.text?.includes('<@') ? 'mention' : 'message_received') }}",
+              "type": "string"
+            },
+            {
+              "name": "actor.name",
+              "value": "={{ $json.event?.user_profile?.real_name || $json.event?.user || 'Unknown' }}",
+              "type": "string"
+            },
+            {
+              "name": "actor.email",
+              "value": "={{ $json.event?.user_profile?.email || '' }}",
+              "type": "string"
+            },
+            {
+              "name": "actor.platform_handle",
+              "value": "={{ $json.event?.user || '' }}",
+              "type": "string"
+            },
+            {
+              "name": "subject.type",
+              "value": "thread",
+              "type": "string"
+            },
+            {
+              "name": "subject.id",
+              "value": "={{ 'thread-' + ($json.event?.channel || '') }}",
+              "type": "string"
+            },
+            {
+              "name": "subject.title",
+              "value": "={{ ($json.event?.text || '').substring(0, 80) }}",
+              "type": "string"
+            },
+            {
+              "name": "subject.url",
+              "value": null,
+              "type": "string"
+            },
+            {
+              "name": "content.body",
+              "value": "={{ $json.event?.text || '' }}",
+              "type": "string"
+            },
+            {
+              "name": "content.metadata",
+              "value": "={{ JSON.stringify({ slack_channel: $json.event?.channel, slack_channel_type: $json.event?.channel_type || 'public', slack_thread_ts: $json.event?.thread_ts, slack_is_mention: ($json.event?.text || '').includes('<@') }) }}",
+              "type": "string"
+            }
           ]
         }
       },
       "name": "Normalize to Laya Event",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [500, 300]
+      "position": [
+        500,
+        300
+      ]
     },
     {
       "parameters": {
@@ -44,7 +108,10 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
@@ -55,19 +122,41 @@
       "name": "POST to Laya Engine",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [750, 300]
+      "position": [
+        750,
+        300
+      ]
     }
   ],
   "connections": {
     "Slack Trigger": {
-      "main": [[{ "node": "Normalize to Laya Event", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Normalize to Laya Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Normalize to Laya Event": {
-      "main": [[{ "node": "POST to Laya Engine", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "POST to Laya Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
     "executionOrder": "v1"
   },
-  "active": false
+  "active": false,
+  "meta": {
+    "laya_version": "2026.03.1"
+  }
 }

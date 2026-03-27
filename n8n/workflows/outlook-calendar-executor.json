@@ -5,7 +5,10 @@
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [250, 300],
+      "position": [
+        250,
+        300
+      ],
       "parameters": {
         "path": "outlook-calendar-executor",
         "httpMethod": "POST",
@@ -16,7 +19,10 @@
       "name": "Create Event",
       "type": "n8n-nodes-base.microsoftOutlook",
       "typeVersion": 2,
-      "position": [500, 200],
+      "position": [
+        500,
+        200
+      ],
       "parameters": {
         "resource": "event",
         "operation": "create",
@@ -38,7 +44,10 @@
       "name": "Respond Success",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [750, 100],
+      "position": [
+        750,
+        100
+      ],
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ JSON.stringify({ success: true, result: { event_id: $json.id || '', url: $json.webLink || '' } }) }}"
@@ -48,26 +57,52 @@
       "name": "Respond Error",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [750, 400],
+      "position": [
+        750,
+        400
+      ],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'Outlook Calendar create failed — check credentials and workflow execution log') }) }}"
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'Outlook Calendar create failed \u2014 check credentials and workflow execution log') }) }}"
       }
     }
   ],
   "connections": {
     "Webhook": {
-      "main": [[{ "node": "Create Event", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Create Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Create Event": {
       "main": [
-        [{ "node": "Respond Success", "type": "main", "index": 0 }],
-        [{ "node": "Respond Error", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
   "settings": {
     "executionOrder": "v1"
   },
-  "active": false
+  "active": false,
+  "meta": {
+    "laya_version": "2026.03.1"
+  }
 }

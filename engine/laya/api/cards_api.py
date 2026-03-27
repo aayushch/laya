@@ -77,6 +77,7 @@ def _row_to_card(row) -> CardResponse:
         space_id=row["space_id"] if "space_id" in row.keys() else None,
         space_name=row["space_name"] if "space_name" in row.keys() else None,
         space_color=row["space_color"] if "space_color" in row.keys() else None,
+        bookmarked_at=row["bookmarked_at"] if "bookmarked_at" in row.keys() else None,
     )
 
 
@@ -132,7 +133,7 @@ async def list_cards(
                    c.status, c.privacy_tier, c.has_workspace, c.resolved_at, c.user_feedback,
                    c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at,
                    c.entity_id, c.source_ref, c.source_url, c.selected_action_id,
-                   c.space_id,
+                   c.space_id, c.bookmarked_at,
                    e.actor_name, e.actor_email,
                    s.name AS space_name, s.color AS space_color
             FROM action_cards c
@@ -163,16 +164,19 @@ async def get_grouped_cards(
     date: str | None = None,
     space_id: str | None = None,
     tz: str | None = None,
+    bookmarked: bool = False,
 ) -> GroupedCardsResponse:
     """Return cards grouped by entity_id, filtered by date and space."""
     db = await get_db()
 
     conditions: list[str] = []
     params: list[Any] = []
+    if bookmarked:
+        conditions.append("c.bookmarked_at IS NOT NULL")
     if space_id:
         conditions.append("c.space_id = ?")
         params.append(space_id)
-    if date:
+    if date and not bookmarked:
         if tz:
             try:
                 local_tz = ZoneInfo(tz)
@@ -224,7 +228,7 @@ async def get_grouped_cards(
                    c.status, c.privacy_tier, c.has_workspace, c.resolved_at, c.user_feedback,
                    c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at,
                    c.entity_id, c.source_ref, c.source_url, c.selected_action_id,
-                   c.space_id,
+                   c.space_id, c.bookmarked_at,
                    e.actor_name, e.actor_email,
                    s.name AS space_name, s.color AS space_color
             FROM action_cards c
@@ -552,7 +556,7 @@ async def get_card(card_id: str) -> CardResponse:
                   c.status, c.privacy_tier, c.has_workspace, c.resolved_at, c.user_feedback,
                   c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at,
                   c.entity_id, c.source_ref, c.source_url, c.selected_action_id,
-                  c.space_id,
+                  c.space_id, c.bookmarked_at,
                   e.actor_name, e.actor_email,
                   s.name AS space_name, s.color AS space_color
            FROM action_cards c
@@ -727,6 +731,55 @@ async def delete_card(card_id: str) -> dict:
     await manager.broadcast({"type": "card_deleted", "card_id": card_id})
     log.info("card_deleted", card_id=card_id)
     return {"status": "deleted", "card_id": card_id}
+
+
+@router.post("/cards/{card_id}/bookmark")
+async def bookmark_card(card_id: str) -> dict:
+    """Bookmark a card for later."""
+    db = await get_db()
+
+    rows = await db.execute_fetchall(
+        "SELECT card_id FROM action_cards WHERE card_id = ?", (card_id,)
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.execute(
+        "UPDATE action_cards SET bookmarked_at = ? WHERE card_id = ?",
+        (now, card_id),
+    )
+    await db.commit()
+
+    await manager.broadcast(
+        {"type": "card_updated", "card_id": card_id, "payload": {"bookmarked_at": now}}
+    )
+    log.info("card_bookmarked", card_id=card_id)
+    return {"status": "bookmarked", "card_id": card_id, "bookmarked_at": now}
+
+
+@router.post("/cards/{card_id}/unbookmark")
+async def unbookmark_card(card_id: str) -> dict:
+    """Remove bookmark from a card."""
+    db = await get_db()
+
+    rows = await db.execute_fetchall(
+        "SELECT card_id FROM action_cards WHERE card_id = ?", (card_id,)
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    await db.execute(
+        "UPDATE action_cards SET bookmarked_at = NULL WHERE card_id = ?",
+        (card_id,),
+    )
+    await db.commit()
+
+    await manager.broadcast(
+        {"type": "card_updated", "card_id": card_id, "payload": {"bookmarked_at": None}}
+    )
+    log.info("card_unbookmarked", card_id=card_id)
+    return {"status": "unbookmarked", "card_id": card_id}
 
 
 class DismissRequest(BaseModel):

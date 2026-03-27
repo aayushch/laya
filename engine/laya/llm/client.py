@@ -1,5 +1,6 @@
 """LiteLLM wrapper with model selection, retries, and audit logging."""
 
+import asyncio
 import json
 import time
 import uuid
@@ -487,6 +488,13 @@ async def llm_call(
             latency_ms=result.latency_ms,
             success=True,
         )
+
+        # Check budget limit (fire-and-forget to avoid slowing the pipeline)
+        try:
+            from laya.pipeline.budget import check_budget
+            asyncio.create_task(check_budget())
+        except Exception:
+            pass  # Never let budget check break the pipeline
 
         return result
 

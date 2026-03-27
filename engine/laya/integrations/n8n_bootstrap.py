@@ -11,7 +11,7 @@ from pathlib import Path
 import httpx
 import structlog
 
-from laya.config import get_n8n_config
+from laya.config import LAYA_DATA_DIR, get_n8n_config
 from laya.http_client import get_client
 from laya.security.keychain import get_api_key, has_api_key, store_api_key
 
@@ -181,11 +181,12 @@ async def _test_existing_api_key(base_url: str) -> bool:
         return False
 
 
-async def _get_existing_workflow_names(base_url: str, api_key: str) -> set[str] | None:
-    """Return the set of workflow names already in n8n.
+async def _get_existing_workflows(base_url: str, api_key: str) -> dict[str, dict] | None:
+    """Return a mapping of workflow name → workflow summary for all workflows in n8n.
 
-    Returns None (not empty set) when the API call fails, so callers can
-    distinguish between "API unreachable / not ready" and "genuinely empty".
+    Each value contains at least {id, name, meta}. Returns None (not empty dict)
+    when the API call fails, so callers can distinguish "API unreachable" from
+    "genuinely empty".
     """
     try:
         resp = await get_client().get(
@@ -197,7 +198,11 @@ async def _get_existing_workflow_names(base_url: str, api_key: str) -> set[str] 
         if resp.status_code == 200:
             data = resp.json()
             items = data.get("data", data) if isinstance(data, dict) else data
-            return {w["name"] for w in items if isinstance(w, dict) and "name" in w}
+            return {
+                w["name"]: w
+                for w in items
+                if isinstance(w, dict) and "name" in w
+            }
         log.warning("n8n_list_workflows_failed", status=resp.status_code)
         return None
     except Exception as e:
@@ -205,11 +210,154 @@ async def _get_existing_workflow_names(base_url: str, api_key: str) -> set[str] 
         return None
 
 
-async def import_workflows(base_url: str) -> int:
-    """Import bundled Laya workflows into n8n via REST API.
+async def _get_workflow_full(base_url: str, api_key: str, workflow_id: str) -> dict | None:
+    """Fetch the full workflow definition including node credentials."""
+    try:
+        resp = await get_client().get(
+            f"{base_url}/api/v1/workflows/{workflow_id}",
+            headers={"X-N8N-API-KEY": api_key},
+            timeout=10.0,
+        )
+        if resp.status_code == 200:
+            return resp.json()
+        return None
+    except Exception:
+        return None
 
-    Skips workflows whose name already exists to avoid duplicates.
-    Returns the number of workflows successfully imported.
+
+def _merge_credentials(old_nodes: list[dict], new_nodes: list[dict]) -> list[dict]:
+    """Copy credential bindings from old workflow nodes into new workflow nodes.
+
+    Matches by (node name, node type) first, then falls back to matching by
+    node type alone. This preserves user-configured credentials even if a node
+    is renamed in an update.
+    """
+    # Build lookup: (name, type) → credentials, and type → credentials (fallback)
+    creds_by_name_type: dict[tuple[str, str], dict] = {}
+    creds_by_type: dict[str, dict] = {}
+    for node in old_nodes:
+        node_creds = node.get("credentials")
+        if node_creds:
+            key = (node.get("name", ""), node.get("type", ""))
+            creds_by_name_type[key] = node_creds
+            creds_by_type[node.get("type", "")] = node_creds
+
+    for node in new_nodes:
+        if node.get("credentials"):
+            # New workflow already specifies credentials (e.g. placeholder) — skip
+            continue
+        key = (node.get("name", ""), node.get("type", ""))
+        merged = creds_by_name_type.get(key) or creds_by_type.get(node.get("type", ""))
+        if merged:
+            node["credentials"] = merged
+
+    return new_nodes
+
+
+# ---------------------------------------------------------------------------
+# Local version tracking — stored in ~/.laya/data/workflow_versions.json
+# ---------------------------------------------------------------------------
+_VERSIONS_FILE = LAYA_DATA_DIR / "workflow_versions.json"
+
+
+def _load_deployed_versions() -> dict[str, str]:
+    """Load the mapping of workflow name → deployed laya_version."""
+    try:
+        return json.loads(_VERSIONS_FILE.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_deployed_versions(versions: dict[str, str]) -> None:
+    """Persist the workflow name → deployed laya_version mapping."""
+    _VERSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _VERSIONS_FILE.write_text(json.dumps(versions, indent=2) + "\n")
+
+
+# Fields that n8n's PUT /api/v1/workflows/{id} accepts.
+_N8N_PUT_ALLOWED_FIELDS = {"name", "nodes", "connections", "settings", "staticData", "tags"}
+
+
+async def _update_workflow(
+    base_url: str, api_key: str, workflow_id: str, new_data: dict,
+) -> bool:
+    """Update an existing workflow in-place, preserving credentials and active state.
+
+    Returns True on success.
+    """
+    headers = {"X-N8N-API-KEY": api_key, "Content-Type": "application/json"}
+
+    # Fetch the full existing workflow to get credentials and active state
+    existing = await _get_workflow_full(base_url, api_key, workflow_id)
+    if not existing:
+        log.warning("n8n_workflow_update_fetch_failed", workflow_id=workflow_id)
+        return False
+
+    was_active = existing.get("active", False)
+
+    # Deactivate before updating (n8n requires this for active workflows)
+    if was_active:
+        try:
+            await get_client().post(
+                f"{base_url}/api/v1/workflows/{workflow_id}/deactivate",
+                headers=headers,
+                timeout=10.0,
+            )
+        except Exception:
+            pass  # Best effort — PUT may still work
+
+    # Merge credentials from old nodes into new nodes
+    old_nodes = existing.get("nodes", [])
+    new_nodes = new_data.get("nodes", [])
+    merged_nodes = _merge_credentials(old_nodes, new_nodes)
+
+    # Build PUT body with only the fields n8n accepts
+    put_body = {k: v for k, v in new_data.items() if k in _N8N_PUT_ALLOWED_FIELDS}
+    put_body["nodes"] = merged_nodes
+    # Ensure settings is present (required by n8n) — fall back to existing
+    if "settings" not in put_body:
+        put_body["settings"] = existing.get("settings", {})
+
+    resp = await get_client().put(
+        f"{base_url}/api/v1/workflows/{workflow_id}",
+        headers=headers,
+        json=put_body,
+        timeout=10.0,
+    )
+    if resp.status_code not in (200, 201):
+        log.warning("n8n_workflow_update_failed", workflow_id=workflow_id,
+                     status=resp.status_code, body=resp.text[:200])
+        return False
+
+    # Reactivate if it was active before
+    if was_active:
+        try:
+            act_resp = await get_client().post(
+                f"{base_url}/api/v1/workflows/{workflow_id}/activate",
+                headers=headers,
+                timeout=10.0,
+            )
+            if act_resp.status_code not in (200, 201):
+                log.warning("n8n_workflow_reactivate_failed", workflow_id=workflow_id,
+                             status=act_resp.status_code, body=act_resp.text[:200])
+            else:
+                log.info("n8n_workflow_reactivated", workflow_id=workflow_id)
+        except Exception as e:
+            log.warning("n8n_workflow_reactivate_failed", workflow_id=workflow_id, error=str(e))
+
+    return True
+
+
+async def import_workflows(base_url: str) -> int:
+    """Import or update bundled Laya workflows in n8n via REST API.
+
+    - New workflows are created via POST.
+    - Existing workflows are updated in-place via PUT when the bundled
+      laya_version differs from the version already in n8n, preserving
+      user-configured credentials and space associations.
+    - Workflows at the same version are skipped.
+
+    Returns the number of workflows created or updated.
     """
     api_key = get_api_key("n8n")
     if not api_key:
@@ -220,50 +368,79 @@ async def import_workflows(base_url: str) -> int:
         log.warning("n8n_workflow_import_skipped", reason="no_workflows_dir", path=str(WORKFLOWS_DIR))
         return 0
 
-    existing_names = await _get_existing_workflow_names(base_url, api_key)
-    if existing_names is None:
+    existing_workflows = await _get_existing_workflows(base_url, api_key)
+    if existing_workflows is None:
         # API not ready or key invalid — raise so sync_workflows_background retries
         raise RuntimeError("n8n workflow list unavailable; will retry")
-    imported = 0
+
+    deployed_versions = _load_deployed_versions()
+    changed = 0
     headers = {"X-N8N-API-KEY": api_key, "Content-Type": "application/json"}
 
     for workflow_file in sorted(WORKFLOWS_DIR.glob("*.json")):
         try:
             workflow_data = json.loads(workflow_file.read_text())
             workflow_name = workflow_data.get("name", workflow_file.stem)
-            if workflow_name in existing_names:
-                log.info("n8n_workflow_already_exists", name=workflow_name)
-                continue
-            # Strip read-only fields that the n8n API rejects
-            for field in ("active", "id", "createdAt", "updatedAt"):
-                workflow_data.pop(field, None)
-            resp = await get_client().post(
-                f"{base_url}/api/v1/workflows",
-                headers=headers,
-                json=workflow_data,
-                timeout=10.0,
-            )
-            if resp.status_code in (200, 201):
-                imported += 1
-                log.info("n8n_workflow_imported", name=workflow_file.stem)
+            bundled_version = (workflow_data.get("meta") or {}).get("laya_version")
+
+            existing = existing_workflows.get(workflow_name)
+            if existing:
+                # Workflow already in n8n — check local version record
+                deployed_version = deployed_versions.get(workflow_name)
+                if deployed_version == bundled_version:
+                    log.debug("n8n_workflow_up_to_date", name=workflow_name,
+                              version=bundled_version)
+                    continue
+                # Skip archived workflows — will retry after user unarchives
+                if existing.get("isArchived"):
+                    log.debug("n8n_workflow_skip_archived", name=workflow_name)
+                    continue
+                # Version differs (or not tracked yet) — update in place
+                existing_id = str(existing["id"])
+                log.info("n8n_workflow_updating", name=workflow_name,
+                         old_version=deployed_version, new_version=bundled_version)
+                if await _update_workflow(base_url, api_key, existing_id, workflow_data):
+                    changed += 1
+                    if bundled_version:
+                        deployed_versions[workflow_name] = bundled_version
+                    log.info("n8n_workflow_updated", name=workflow_name,
+                             version=bundled_version)
+                else:
+                    log.warning("n8n_workflow_update_failed", name=workflow_name)
             else:
-                log.warning(
-                    "n8n_workflow_import_failed",
-                    name=workflow_file.stem,
-                    status=resp.status_code,
+                # Brand new workflow — only send fields n8n accepts
+                create_data = {k: v for k, v in workflow_data.items()
+                               if k in _N8N_PUT_ALLOWED_FIELDS}
+                resp = await get_client().post(
+                    f"{base_url}/api/v1/workflows",
+                    headers=headers,
+                    json=create_data,
+                    timeout=10.0,
                 )
+                if resp.status_code in (200, 201):
+                    changed += 1
+                    if bundled_version:
+                        deployed_versions[workflow_name] = bundled_version
+                    log.info("n8n_workflow_imported", name=workflow_file.stem)
+                else:
+                    log.warning(
+                        "n8n_workflow_import_failed",
+                        name=workflow_file.stem,
+                        status=resp.status_code,
+                    )
         except Exception as e:
             log.warning("n8n_workflow_import_error", name=workflow_file.stem, error=str(e))
 
-    return imported
+    _save_deployed_versions(deployed_versions)
+    return changed
 
 
 async def sync_workflows_background() -> None:
-    """Background task: wait for n8n then import any missing workflows.
+    """Background task: wait for n8n then import/update workflows.
 
     Retries every 15 s for up to 10 minutes, so a slow-starting n8n
     never causes workflows to be skipped.
-    Idempotent — already-imported workflows are skipped by name.
+    Idempotent — up-to-date workflows are skipped by version.
     """
     n8n_config = get_n8n_config()
     base_url = n8n_config["base_url"].rstrip("/")
@@ -274,9 +451,9 @@ async def sync_workflows_background() -> None:
             if await _wait_for_n8n(base_url, timeout=5.0) and get_api_key("n8n"):
                 imported = await import_workflows(base_url)
                 if imported:
-                    log.info("n8n_background_workflows_imported", count=imported)
+                    log.info("n8n_background_workflows_synced", count=imported)
                 else:
-                    log.debug("n8n_background_workflows_nothing_new")
+                    log.debug("n8n_background_workflows_up_to_date")
                 return
         except Exception as e:
             log.debug("n8n_background_sync_retry", error=str(e))

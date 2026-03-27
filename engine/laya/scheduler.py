@@ -14,6 +14,7 @@ log = structlog.get_logger()
 _scheduler_task: asyncio.Task | None = None
 _last_briefing_date: str | None = None
 _last_housekeeping_date: str | None = None
+_last_budget_month: str | None = None
 
 # Statuses that are safe to auto-delete (never auto-delete active/in-progress cards)
 _HOUSEKEEPING_STATUSES = ("archived", "dismissed", "done", "failed")
@@ -82,7 +83,7 @@ async def _run_chat_housekeeping(retention_days: int) -> None:
 
 async def _scheduler_loop() -> None:
     """Main scheduler loop — runs every 60 seconds."""
-    global _last_briefing_date, _last_housekeeping_date
+    global _last_briefing_date, _last_housekeeping_date, _last_budget_month
 
     while True:
         await asyncio.sleep(60)
@@ -139,6 +140,28 @@ async def _scheduler_loop() -> None:
                     await _run_chat_housekeeping(chat_retention_days)
                 except Exception as e:
                     log.error("chat_housekeeping_failed", error=str(e))
+
+            # --- Budget month rollover (local timezone) ---
+            try:
+                tz_name = settings.get("briefing", {}).get("timezone", "America/New_York")
+                from zoneinfo import ZoneInfo
+                try:
+                    tz = ZoneInfo(tz_name)
+                except Exception:
+                    tz = ZoneInfo("UTC")
+                current_month = datetime.now(tz).strftime("%Y-%m")
+
+                if _last_budget_month is None:
+                    # First tick — just record, don't trigger rollover
+                    _last_budget_month = current_month
+                elif _last_budget_month != current_month:
+                    previous_month = _last_budget_month
+                    _last_budget_month = current_month
+                    log.info("scheduler_month_rollover", previous=previous_month, current=current_month)
+                    from laya.pipeline.budget import on_month_rollover
+                    await on_month_rollover(previous_month)
+            except Exception as e:
+                log.error("budget_month_rollover_failed", error=str(e))
 
         except asyncio.CancelledError:
             raise

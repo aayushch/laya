@@ -4,41 +4,108 @@
     {
       "parameters": {
         "pollTimes": {
-          "item": [{ "mode": "everyMinute" }]
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
         },
-        "calendarId": "primary"
+        "calendarId": "primary",
+        "triggerOn": "eventCreated"
       },
       "name": "Google Calendar Trigger",
       "type": "n8n-nodes-base.googleCalendarTrigger",
       "typeVersion": 1,
-      "position": [250, 300]
+      "position": [
+        250,
+        300
+      ]
     },
     {
       "parameters": {
         "mode": "manual",
         "assignments": {
           "assignments": [
-            { "name": "event_id", "value": "={{ 'evt_cal_' + ($json.id || Date.now()) }}", "type": "string" },
-            { "name": "timestamp", "value": "={{ new Date().toISOString() }}", "type": "string" },
-            { "name": "source.platform", "value": "calendar", "type": "string" },
-            { "name": "source.connection_id", "value": "={{ $workflow.id }}", "type": "string" },
-            { "name": "source.raw_event_type", "value": "={{ $json.status === 'cancelled' ? 'event_cancelled' : ($json.updated === $json.created ? 'event_created' : 'event_updated') }}", "type": "string" },
-            { "name": "actor.name", "value": "={{ $json.organizer?.displayName || $json.organizer?.email || 'Unknown' }}", "type": "string" },
-            { "name": "actor.email", "value": "={{ $json.organizer?.email || '' }}", "type": "string" },
-            { "name": "actor.platform_handle", "value": "", "type": "string" },
-            { "name": "subject.type", "value": "meeting", "type": "string" },
-            { "name": "subject.id", "value": "={{ $json.id || '' }}", "type": "string" },
-            { "name": "subject.title", "value": "={{ $json.summary || 'Untitled Event' }}", "type": "string" },
-            { "name": "subject.url", "value": "={{ $json.htmlLink || null }}", "type": "string" },
-            { "name": "content.body", "value": "={{ $json.description || '' }}", "type": "string" },
-            { "name": "content.metadata", "value": "={{ JSON.stringify({ cal_start_time: $json.start?.dateTime || $json.start?.date, cal_end_time: $json.end?.dateTime || $json.end?.date, cal_attendees: ($json.attendees || []).map(a => a.email), cal_location: $json.location || '', cal_recurring: !!$json.recurringEventId }) }}", "type": "string" }
+            {
+              "name": "event_id",
+              "value": "={{ 'evt_cal_' + ($json.id || Date.now()) }}",
+              "type": "string"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{ new Date().toISOString() }}",
+              "type": "string"
+            },
+            {
+              "name": "source.platform",
+              "value": "calendar",
+              "type": "string"
+            },
+            {
+              "name": "source.connection_id",
+              "value": "={{ $workflow.id }}",
+              "type": "string"
+            },
+            {
+              "name": "source.raw_event_type",
+              "value": "={{ $json.status === 'cancelled' ? 'event_cancelled' : ($json.updated === $json.created ? 'event_created' : 'event_updated') }}",
+              "type": "string"
+            },
+            {
+              "name": "actor.name",
+              "value": "={{ $json.organizer?.displayName || $json.organizer?.email || 'Unknown' }}",
+              "type": "string"
+            },
+            {
+              "name": "actor.email",
+              "value": "={{ $json.organizer?.email || '' }}",
+              "type": "string"
+            },
+            {
+              "name": "actor.platform_handle",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "name": "subject.type",
+              "value": "meeting",
+              "type": "string"
+            },
+            {
+              "name": "subject.id",
+              "value": "={{ $json.id || '' }}",
+              "type": "string"
+            },
+            {
+              "name": "subject.title",
+              "value": "={{ $json.summary || 'Untitled Event' }}",
+              "type": "string"
+            },
+            {
+              "name": "subject.url",
+              "value": "={{ $json.htmlLink || null }}",
+              "type": "string"
+            },
+            {
+              "name": "content.body",
+              "value": "={{ $json.description || '' }}",
+              "type": "string"
+            },
+            {
+              "name": "content.metadata",
+              "value": "={{ JSON.stringify({ cal_start_time: $json.start?.dateTime || $json.start?.date, cal_end_time: $json.end?.dateTime || $json.end?.date, cal_attendees: ($json.attendees || []).map(a => a.email), cal_location: $json.location || '', cal_recurring: !!$json.recurringEventId }) }}",
+              "type": "string"
+            }
           ]
         }
       },
       "name": "Normalize to Laya Event",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [500, 300]
+      "position": [
+        500,
+        300
+      ]
     },
     {
       "parameters": {
@@ -47,7 +114,10 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
@@ -58,19 +128,41 @@
       "name": "POST to Laya Engine",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [750, 300]
+      "position": [
+        750,
+        300
+      ]
     }
   ],
   "connections": {
     "Google Calendar Trigger": {
-      "main": [[{ "node": "Normalize to Laya Event", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Normalize to Laya Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Normalize to Laya Event": {
-      "main": [[{ "node": "POST to Laya Engine", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "POST to Laya Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
     "executionOrder": "v1"
   },
-  "active": false
+  "active": false,
+  "meta": {
+    "laya_version": "2026.03.2"
+  }
 }
