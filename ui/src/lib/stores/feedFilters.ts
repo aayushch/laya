@@ -7,6 +7,7 @@ export interface FeedFilters {
 	sortBy: string;
 	sortAsc: boolean;
 	showArchived: boolean;
+	showBookmarked: boolean;
 	spaceFilter: string | null;
 }
 
@@ -27,6 +28,7 @@ const defaults: FeedFilters = {
 	sortBy: 'newest',
 	sortAsc: false,
 	showArchived: false,
+	showBookmarked: false,
 	spaceFilter: null
 };
 
@@ -52,6 +54,7 @@ export async function loadFeedFilters(): Promise<void> {
 				sortBy: prefs.sortBy ?? defaults.sortBy,
 				sortAsc: prefs.sortAsc ?? defaults.sortAsc,
 				showArchived: prefs.showArchived ?? defaults.showArchived,
+				showBookmarked: prefs.showBookmarked ?? defaults.showBookmarked,
 				spaceFilter: prefs.spaceFilter ?? defaults.spaceFilter
 			});
 		}

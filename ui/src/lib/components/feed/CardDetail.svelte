@@ -24,6 +24,7 @@
 	let showDeleteConfirm = $state(false);
 	let deleting = $state(false);
 	let showClassificationDialog = $state(false);
+	let bookmarking = $state(false);
 
 	const priorityColors: Record<string, string> = {
 		CRITICAL: 'bg-red-600 text-red-50',
@@ -157,6 +158,21 @@
 		});
 	}
 
+	async function toggleBookmark() {
+		bookmarking = true;
+		try {
+			if (card.bookmarked_at) {
+				await engineApi.unbookmarkCard(card.card_id);
+				card.bookmarked_at = undefined;
+			} else {
+				const result = await engineApi.bookmarkCard(card.card_id);
+				card.bookmarked_at = result.bookmarked_at;
+			}
+		} finally {
+			bookmarking = false;
+		}
+	}
+
 	async function copyId() {
 		await navigator.clipboard.writeText(card.card_id);
 		copied = true;
@@ -246,6 +262,20 @@
 					</svg>
 				</button>
 				<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Chat about card</span>
+			</div>
+			<!-- Bookmark -->
+			<div class="group/act relative">
+				<button
+					onclick={toggleBookmark}
+					aria-label={card.bookmarked_at ? 'Remove bookmark' : 'Bookmark card'}
+					class="rounded p-1.5 transition-colors {card.bookmarked_at ? 'text-laya-orange' : 'text-surface-500 hover:text-laya-orange'}"
+					disabled={bookmarking}
+				>
+					<svg class="h-4 w-4" fill={card.bookmarked_at ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+					</svg>
+				</button>
+				<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">{card.bookmarked_at ? 'Remove Bookmark' : 'Bookmark'}</span>
 			</div>
 			<button aria-label="Close" class="rounded p-1.5 text-surface-400 transition-colors hover:text-surface-100" onclick={onclose}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

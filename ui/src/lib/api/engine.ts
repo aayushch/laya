@@ -31,7 +31,9 @@ import type {
 	AvailableModelsResponse,
 	CustomProvider,
 	CustomProviderTestResult,
-	DiscoveredModel
+	DiscoveredModel,
+	BudgetConfig,
+	MonthlyCostEntry
 } from './types';
 
 const ENGINE_URL = 'http://127.0.0.1:8420';
@@ -133,6 +135,7 @@ export const engineApi = {
 		show_archived?: boolean;
 		date?: string;
 		space_id?: string;
+		bookmarked?: boolean;
 	}) => {
 		const searchParams = new URLSearchParams();
 		if (params?.status) searchParams.set('status', params.status);
@@ -142,6 +145,7 @@ export const engineApi = {
 		if (params?.show_archived) searchParams.set('show_archived', 'true');
 		if (params?.date) searchParams.set('date', params.date);
 		if (params?.space_id) searchParams.set('space_id', params.space_id);
+		if (params?.bookmarked) searchParams.set('bookmarked', 'true');
 		searchParams.set('tz', Intl.DateTimeFormat().resolvedOptions().timeZone);
 		const qs = searchParams.toString();
 		return request<GroupedCardsResponse>(`/cards/grouped${qs ? '?' + qs : ''}`);
@@ -175,6 +179,14 @@ export const engineApi = {
 	deleteCard: (cardId: string) =>
 		request<{ status: string; card_id: string }>(`/cards/${cardId}`, {
 			method: 'DELETE'
+		}),
+	bookmarkCard: (cardId: string) =>
+		request<{ status: string; card_id: string; bookmarked_at: string }>(`/cards/${cardId}/bookmark`, {
+			method: 'POST'
+		}),
+	unbookmarkCard: (cardId: string) =>
+		request<{ status: string; card_id: string }>(`/cards/${cardId}/unbookmark`, {
+			method: 'POST'
 		}),
 	updateCardClassification: (cardId: string, body: import('./types').UpdateClassificationRequest) =>
 		request<{ status: string; card_id: string; corrections: number }>(`/cards/${cardId}/classification`, {
@@ -449,6 +461,23 @@ export const engineApi = {
 		request<{ provider_id: string; provider_name: string; models: DiscoveredModel[] }>(
 			`/settings/custom-providers/${providerId}/models`
 		),
+
+	// Budget / Cost Control
+	getBudget: () => request<BudgetConfig>('/budget'),
+
+	updateBudget: (config: { monthly_limit_usd: number | null; enabled: boolean }) =>
+		request<{ status: string; monthly_limit_usd: number | null; enabled: boolean }>('/budget', {
+			method: 'PUT',
+			body: JSON.stringify(config)
+		}),
+
+	getBudgetHistory: (months?: number) =>
+		request<{ months: MonthlyCostEntry[] }>(`/budget/history${months ? '?months=' + months : ''}`),
+
+	resumeBudget: () =>
+		request<{ status: string; resumed_count: number; errors: Array<{ workflow_id: string; error?: string; issues?: string[] }> }>('/budget/resume', {
+			method: 'POST'
+		}),
 
 	// Audit Log
 	getAuditLog: (params?: {

@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
-	import type { ProviderModels, CustomProvider, CustomProviderTestResult, DiscoveredModel, PipelineSettings } from '$lib/api/types';
+	import type { ProviderModels, CustomProvider, CustomProviderTestResult, DiscoveredModel, PipelineSettings, BudgetConfig, MonthlyCostEntry } from '$lib/api/types';
+	import { budgetPaused } from '$lib/stores/budget';
 	import ModelSelect from './ModelSelect.svelte';
 
 	const roles = [
@@ -81,6 +82,97 @@
 	let savingPipeline = $state(false);
 	let pipelineSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
+	// Budget / Cost Control state
+	let budgetEnabled = $state(false);
+	let budgetLimit = $state<number | null>(null);
+	let budgetLimitInput = $state<number | null>(null);
+	let currentMonthCost = $state(0);
+	let currentMonth = $state('');
+	let budgetByModel = $state<Record<string, number>>({});
+	let budgetIsPaused = $state(false);
+	let pausedWorkflowCount = $state(0);
+	let savingBudget = $state(false);
+	let resumingBudget = $state(false);
+	let showHistory = $state(false);
+	let budgetHistory = $state<MonthlyCostEntry[]>([]);
+	let historyLoading = $state(false);
+
+	const budgetPercent = $derived(
+		budgetLimit && budgetLimit > 0 ? Math.min((currentMonthCost / budgetLimit) * 100, 100) : 0
+	);
+	const budgetBarColor = $derived(
+		budgetPercent >= 100 ? 'bg-red-500' : budgetPercent >= 75 ? 'bg-amber-500' : 'bg-green-500'
+	);
+
+	async function loadBudget() {
+		try {
+			const data = await engineApi.getBudget();
+			budgetEnabled = data.enabled;
+			budgetLimit = data.monthly_limit_usd;
+			budgetLimitInput = data.monthly_limit_usd;
+			currentMonthCost = data.current_month_cost;
+			currentMonth = data.current_month;
+			budgetByModel = data.by_model;
+			budgetIsPaused = data.is_paused;
+			pausedWorkflowCount = data.paused_workflow_count;
+			budgetPaused.set(data.is_paused);
+		} catch (e) {
+			console.error('Failed to load budget:', e);
+		}
+	}
+
+	async function saveBudget() {
+		savingBudget = true;
+		try {
+			const limit = budgetLimitInput != null && budgetLimitInput > 0 ? budgetLimitInput : null;
+			await engineApi.updateBudget({ monthly_limit_usd: limit, enabled: budgetEnabled });
+			budgetLimit = limit;
+			// Re-fetch to confirm server state
+			await loadBudget();
+		} catch (e) {
+			console.error('Failed to save budget:', e);
+		} finally {
+			savingBudget = false;
+		}
+	}
+
+	let budgetSaveTimer: ReturnType<typeof setTimeout> | null = null;
+	function debounceSaveBudget() {
+		if (budgetSaveTimer) clearTimeout(budgetSaveTimer);
+		budgetSaveTimer = setTimeout(saveBudget, 600);
+	}
+
+	async function handleResume() {
+		resumingBudget = true;
+		try {
+			await engineApi.resumeBudget();
+			await loadBudget();
+		} catch (e) {
+			console.error('Failed to resume:', e);
+		} finally {
+			resumingBudget = false;
+		}
+	}
+
+	async function loadHistory() {
+		if (budgetHistory.length > 0) return; // already loaded
+		historyLoading = true;
+		try {
+			const data = await engineApi.getBudgetHistory();
+			budgetHistory = data.months;
+		} catch (e) {
+			console.error('Failed to load budget history:', e);
+		} finally {
+			historyLoading = false;
+		}
+	}
+
+	function formatMonth(ym: string): string {
+		const [y, m] = ym.split('-');
+		const date = new Date(parseInt(y), parseInt(m) - 1);
+		return date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+	}
+
 	onMount(async () => {
 		try {
 			const [settings, providersResp] = await Promise.all([
@@ -92,7 +184,7 @@
 			if (settings.pipeline) pipeline = { ...pipeline, ...settings.pipeline };
 			customProviders = providersResp.providers;
 			loaded = true;
-			await fetchModels();
+			await Promise.all([fetchModels(), loadBudget()]);
 		} catch (e) {
 			console.error('Failed to load settings:', e);
 		}
@@ -621,6 +713,147 @@
 			{#if saving}
 				<p class="mt-3 text-xs text-surface-400">Saving...</p>
 			{/if}
+		</div>
+
+		<!-- Cost Control -->
+		<div class="rounded-lg border border-surface-700 bg-surface-800 p-5">
+			<div class="mb-4">
+				<h3 class="mb-1 text-lg font-medium">Cost Control</h3>
+				<p class="text-xs text-surface-500">Set a monthly budget to automatically pause workflows when the limit is reached.</p>
+			</div>
+
+			<!-- Budget paused alert -->
+			{#if budgetIsPaused}
+				<div class="mb-4 flex items-center justify-between rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3">
+					<div class="flex items-center gap-2">
+						<svg class="h-4 w-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+						</svg>
+						<span class="text-sm text-red-300">
+							Budget exceeded — {pausedWorkflowCount} workflow{pausedWorkflowCount !== 1 ? 's' : ''} paused
+						</span>
+					</div>
+					<button
+						onclick={handleResume}
+						disabled={resumingBudget}
+						class="rounded-md bg-red-500/20 px-3 py-1.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/30 disabled:opacity-50"
+					>
+						{resumingBudget ? 'Resuming...' : 'Resume Workflows'}
+					</button>
+				</div>
+			{/if}
+
+			<!-- Enable toggle + limit input -->
+			<div class="space-y-4">
+				<div class="flex items-center gap-3">
+					<button
+						onclick={() => { budgetEnabled = !budgetEnabled; debounceSaveBudget(); }}
+						class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors {budgetEnabled ? 'bg-laya-orange' : 'bg-surface-600'}"
+					>
+						<span class="inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform {budgetEnabled ? 'translate-x-4' : 'translate-x-0.5'}"></span>
+					</button>
+					<span class="text-sm text-surface-300">Enable monthly budget limit</span>
+				</div>
+
+				{#if budgetEnabled}
+					<div class="grid grid-cols-[200px_1fr] items-center gap-4">
+						<div>
+							<label for="budget-limit" class="text-sm text-surface-300">Monthly Limit</label>
+							<p class="text-[10px] text-surface-500">Workflows pause when this amount is reached.</p>
+						</div>
+						<div class="flex items-center gap-2">
+							<span class="text-sm text-surface-400">$</span>
+							<input
+								id="budget-limit"
+								type="number"
+								min="0.01"
+								step="0.50"
+								placeholder="e.g. 10.00"
+								bind:value={budgetLimitInput}
+								oninput={debounceSaveBudget}
+								class="w-32 rounded-md border border-surface-600 bg-surface-700 px-3 py-1.5 text-sm text-surface-200 placeholder:text-surface-500"
+							/>
+							<span class="text-xs text-surface-500">USD / month</span>
+							{#if savingBudget}
+								<span class="text-xs text-surface-400">Saving...</span>
+							{/if}
+						</div>
+					</div>
+
+					<!-- Current month progress -->
+					<div class="rounded-lg border border-surface-700 bg-surface-900/50 p-4">
+						<div class="mb-2 flex items-center justify-between">
+							<span class="text-[13px] leading-5 text-surface-400">
+								{currentMonth ? formatMonth(currentMonth) : 'Current Month'}
+							</span>
+							<span class="text-[13px] leading-5">
+								<span class="font-semibold {budgetPercent >= 100 ? 'text-red-400' : budgetPercent >= 75 ? 'text-amber-400' : 'text-green-400'}">
+									${currentMonthCost.toFixed(2)}
+								</span>
+								{#if budgetLimit}
+									<span class="text-surface-500"> / ${budgetLimit.toFixed(2)}</span>
+								{/if}
+							</span>
+						</div>
+						<!-- Progress bar -->
+						{#if budgetLimit}
+							<div class="h-2 w-full overflow-hidden rounded-full bg-surface-700">
+								<div
+									class="h-full rounded-full transition-all duration-500 {budgetBarColor}"
+									style="width: {budgetPercent}%"
+								></div>
+							</div>
+							<div class="mt-1.5 text-right text-[10px] text-surface-500">
+								{budgetPercent.toFixed(0)}% used
+							</div>
+						{/if}
+
+						<!-- Per-model breakdown -->
+						{#if Object.keys(budgetByModel).length > 0}
+							<div class="mt-3 space-y-1">
+								{#each Object.entries(budgetByModel).sort((a, b) => b[1] - a[1]) as [model, cost]}
+									<div class="flex items-center justify-between text-[11px]">
+										<span class="truncate text-surface-400">{model}</span>
+										<span class="shrink-0 text-surface-300">${cost.toFixed(4)}</span>
+									</div>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				{/if}
+
+				<!-- History accordion -->
+				<div>
+					<button
+						onclick={() => { showHistory = !showHistory; if (showHistory) loadHistory(); }}
+						class="flex items-center gap-1.5 text-xs text-surface-400 transition-colors hover:text-surface-300"
+					>
+						<svg
+							class="h-3.5 w-3.5 transition-transform {showHistory ? 'rotate-90' : ''}"
+							fill="none" stroke="currentColor" viewBox="0 0 24 24"
+						>
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+						</svg>
+						Monthly History
+					</button>
+					{#if showHistory}
+						<div class="mt-2 space-y-1.5">
+							{#if historyLoading}
+								<p class="text-xs text-surface-500">Loading...</p>
+							{:else if budgetHistory.length === 0}
+								<p class="text-xs text-surface-500">No cost history yet. History is recorded at the end of each month.</p>
+							{:else}
+								{#each budgetHistory as entry}
+									<div class="flex items-center justify-between rounded-md border border-surface-700 bg-surface-900/30 px-3 py-2">
+										<span class="text-xs text-surface-400">{formatMonth(entry.year_month)}</span>
+										<span class="text-xs font-medium text-surface-200">${entry.total_cost_usd.toFixed(2)}</span>
+									</div>
+								{/each}
+							{/if}
+						</div>
+					{/if}
+				</div>
+			</div>
 		</div>
 
 		<!-- Advanced Pipeline Settings -->

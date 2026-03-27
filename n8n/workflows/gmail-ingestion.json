@@ -4,18 +4,27 @@
     {
       "parameters": {
         "pollTimes": {
-          "item": [{ "mode": "everyMinute" }]
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
         },
         "simple": false,
         "filters": {
           "includeSpamTrash": false,
-          "labelIds": ["INBOX"]
+          "labelIds": [
+            "INBOX"
+          ]
         }
       },
       "name": "Gmail Trigger",
       "type": "n8n-nodes-base.gmailTrigger",
       "typeVersion": 1.1,
-      "position": [250, 300]
+      "position": [
+        250,
+        300
+      ]
     },
     {
       "parameters": {
@@ -26,7 +35,10 @@
       "name": "Get Thread ID",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2,
-      "position": [450, 150],
+      "position": [
+        450,
+        150
+      ],
       "notes": "Lightweight fetch with simple:true to get reliable threadId from Gmail API (format=metadata). The trigger's simple:false uses format=raw + mailparser which can clobber threadId."
     },
     {
@@ -59,10 +71,26 @@
               "value": "={{ !!($('Gmail Trigger').item.json['in-reply-to'] || $('Gmail Trigger').item.json['references'] || $('Gmail Trigger').item.json.inReplyTo || ($('Gmail Trigger').item.json.headers && ($('Gmail Trigger').item.json.headers['in-reply-to'] || $('Gmail Trigger').item.json.headers['references']))) }}",
               "type": "boolean"
             },
-            { "name": "gmail_id", "value": "={{ $('Gmail Trigger').item.json.id }}", "type": "string" },
-            { "name": "gmail_threadId", "value": "={{ $json.threadId || $('Gmail Trigger').item.json.threadId || $('Gmail Trigger').item.json.id }}", "type": "string" },
-            { "name": "gmail_internalDate", "value": "={{ $('Gmail Trigger').item.json.internalDate || $('Gmail Trigger').item.json.date }}", "type": "string" },
-            { "name": "gmail_labelIds", "value": "={{ JSON.stringify($('Gmail Trigger').item.json.labelIds || $('Gmail Trigger').item.json.labels || []) }}", "type": "string" },
+            {
+              "name": "gmail_id",
+              "value": "={{ $('Gmail Trigger').item.json.id }}",
+              "type": "string"
+            },
+            {
+              "name": "gmail_threadId",
+              "value": "={{ $json.threadId || $('Gmail Trigger').item.json.threadId || $('Gmail Trigger').item.json.id }}",
+              "type": "string"
+            },
+            {
+              "name": "gmail_internalDate",
+              "value": "={{ $('Gmail Trigger').item.json.internalDate || $('Gmail Trigger').item.json.date }}",
+              "type": "string"
+            },
+            {
+              "name": "gmail_labelIds",
+              "value": "={{ JSON.stringify($('Gmail Trigger').item.json.labelIds || $('Gmail Trigger').item.json.labels || []) }}",
+              "type": "string"
+            },
             {
               "name": "gmail_body",
               "value": "={{ $('Gmail Trigger').item.json.text || $('Gmail Trigger').item.json.snippet || $('Gmail Trigger').item.json.html || '' }}",
@@ -74,34 +102,96 @@
       "name": "Extract Headers",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [650, 300]
+      "position": [
+        650,
+        300
+      ]
     },
     {
       "parameters": {
         "mode": "manual",
         "assignments": {
           "assignments": [
-            { "name": "event_id", "value": "={{ 'evt_gmail_' + ($json.gmail_id || Date.now()) }}", "type": "string" },
-            { "name": "timestamp", "value": "={{ (() => { const raw = $json.gmail_internalDate; if (!raw) return new Date().toISOString(); const n = Number(raw); if (!isNaN(n) && n > 0) return new Date(n > 9999999999 ? n : n * 1000).toISOString(); const d = new Date(raw); return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString(); })() }}", "type": "string" },
-            { "name": "source.platform", "value": "gmail", "type": "string" },
-            { "name": "source.connection_id", "value": "={{ $workflow.id }}", "type": "string" },
-            { "name": "source.raw_event_type", "value": "={{ $json.is_reply ? 'reply_received' : 'new_email' }}", "type": "string" },
-            { "name": "actor.name", "value": "={{ $json.raw_from_name }}", "type": "string" },
-            { "name": "actor.email", "value": "={{ $json.raw_from_email }}", "type": "string" },
-            { "name": "actor.platform_handle", "value": "", "type": "string" },
-            { "name": "subject.type", "value": "email_thread", "type": "string" },
-            { "name": "subject.id", "value": "={{ $json.gmail_threadId }}", "type": "string" },
-            { "name": "subject.title", "value": "={{ $json.raw_subject || 'No Subject' }}", "type": "string" },
-            { "name": "subject.url", "value": "={{ 'https://mail.google.com/mail/u/0/#inbox/' + ($json.gmail_id || '') }}", "type": "string" },
-            { "name": "content.body", "value": "={{ $json.gmail_body }}", "type": "string" },
-            { "name": "content.metadata", "value": "={{ JSON.stringify({ gmail_thread_id: $json.gmail_threadId, gmail_labels: JSON.parse($json.gmail_labelIds || '[]'), gmail_from: $json.raw_from_email, gmail_to: [$json.raw_to_email], gmail_cc: [], gmail_is_reply: $json.is_reply }) }}", "type": "string" }
+            {
+              "name": "event_id",
+              "value": "={{ 'evt_gmail_' + ($json.gmail_id || Date.now()) }}",
+              "type": "string"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{ (() => { const raw = $json.gmail_internalDate; if (!raw) return new Date().toISOString(); const n = Number(raw); if (!isNaN(n) && n > 0) return new Date(n > 9999999999 ? n : n * 1000).toISOString(); const d = new Date(raw); return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString(); })() }}",
+              "type": "string"
+            },
+            {
+              "name": "source.platform",
+              "value": "gmail",
+              "type": "string"
+            },
+            {
+              "name": "source.connection_id",
+              "value": "={{ $workflow.id }}",
+              "type": "string"
+            },
+            {
+              "name": "source.raw_event_type",
+              "value": "={{ $json.is_reply ? 'reply_received' : 'new_email' }}",
+              "type": "string"
+            },
+            {
+              "name": "actor.name",
+              "value": "={{ $json.raw_from_name }}",
+              "type": "string"
+            },
+            {
+              "name": "actor.email",
+              "value": "={{ $json.raw_from_email }}",
+              "type": "string"
+            },
+            {
+              "name": "actor.platform_handle",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "name": "subject.type",
+              "value": "email_thread",
+              "type": "string"
+            },
+            {
+              "name": "subject.id",
+              "value": "={{ $json.gmail_threadId }}",
+              "type": "string"
+            },
+            {
+              "name": "subject.title",
+              "value": "={{ $json.raw_subject || 'No Subject' }}",
+              "type": "string"
+            },
+            {
+              "name": "subject.url",
+              "value": "={{ 'https://mail.google.com/mail/u/0/#inbox/' + ($json.gmail_id || '') }}",
+              "type": "string"
+            },
+            {
+              "name": "content.body",
+              "value": "={{ $json.gmail_body }}",
+              "type": "string"
+            },
+            {
+              "name": "content.metadata",
+              "value": "={{ JSON.stringify({ gmail_thread_id: $json.gmail_threadId, gmail_labels: JSON.parse($json.gmail_labelIds || '[]'), gmail_from: $json.raw_from_email, gmail_to: [$json.raw_to_email], gmail_cc: [], gmail_is_reply: $json.is_reply }) }}",
+              "type": "string"
+            }
           ]
         }
       },
       "name": "Normalize to Laya Event",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [900, 300]
+      "position": [
+        900,
+        300
+      ]
     },
     {
       "parameters": {
@@ -110,7 +200,10 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
@@ -121,25 +214,63 @@
       "name": "POST to Laya Engine",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1150, 300]
+      "position": [
+        1150,
+        300
+      ]
     }
   ],
   "connections": {
     "Gmail Trigger": {
-      "main": [[{ "node": "Get Thread ID", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Get Thread ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Get Thread ID": {
-      "main": [[{ "node": "Extract Headers", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Extract Headers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Extract Headers": {
-      "main": [[{ "node": "Normalize to Laya Event", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Normalize to Laya Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Normalize to Laya Event": {
-      "main": [[{ "node": "POST to Laya Engine", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "POST to Laya Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
     "executionOrder": "v1"
   },
-  "active": false
+  "active": false,
+  "meta": {
+    "laya_version": "2026.03.1"
+  }
 }

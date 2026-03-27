@@ -4,12 +4,13 @@
 	import { goto } from '$app/navigation';
 	import HealthBadge from '$lib/components/HealthBadge.svelte';
 	import ChatSidebar from '$lib/components/chat/ChatSidebar.svelte';
-	import { initWebSocket, closeWebSocket } from '$lib/stores/websocket';
+	import { initWebSocket, closeWebSocket, lastMessage } from '$lib/stores/websocket';
 	import { startHealthPolling, stopHealthPolling, startupReady } from '$lib/stores/health';
 	import StartupScreen from '$lib/components/StartupScreen.svelte';
 	import { needsSetup, setupComplete } from '$lib/stores/setup';
 	import { chatOpen, chatListOpen } from '$lib/stores/chat';
 	import { theme } from '$lib/stores/theme';
+	import { budgetPaused, loadBudgetStatus, handleBudgetWsMessage } from '$lib/stores/budget';
 	import { feedFilters, loadFeedFilters, saveFeedFilters, filtersLoaded, feedDate, feedPrevDate, feedNextDate, localToday } from '$lib/stores/feedFilters';
 	import { spaces, loadSpaces } from '$lib/stores/spaces';
 	import { onMount } from 'svelte';
@@ -91,9 +92,18 @@
 				if (data && !data.setup_complete) goto('/setup');
 			})
 			.catch(() => {});
-		// Load spaces and feed filters once engine is available
+		// Load spaces, feed filters, and budget status once engine is available
 		loadSpaces();
 		loadFeedFilters();
+		loadBudgetStatus();
+	});
+
+	// React to budget WebSocket messages
+	$effect(() => {
+		const msg = $lastMessage;
+		if (msg && msg.type === 'budget_status') {
+			handleBudgetWsMessage(msg as any);
+		}
 	});
 
 	onMount(() => {
@@ -122,7 +132,7 @@
 
 	const activeStatusCount = $derived($feedFilters.statusFilters.length);
 	const activePriorityCount = $derived($feedFilters.priorityFilters.length);
-	const hasActiveFilters = $derived(activeStatusCount > 0 || activePriorityCount > 0 || $feedFilters.showArchived || !!$feedFilters.spaceFilter);
+	const hasActiveFilters = $derived(activeStatusCount > 0 || activePriorityCount > 0 || $feedFilters.showArchived || $feedFilters.showBookmarked || !!$feedFilters.spaceFilter);
 </script>
 
 {#if $needsSetup || !$startupReady}
@@ -131,6 +141,17 @@
 	{@render children()}
 {:else}
 	<div class="flex h-screen flex-col bg-surface-900 text-surface-50">
+		<!-- Budget paused banner -->
+		{#if $budgetPaused}
+			<div class="flex items-center justify-center gap-2 bg-red-500/15 border-b border-red-500/30 px-4 py-1.5">
+				<svg class="h-3.5 w-3.5 text-red-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+				</svg>
+				<span class="text-xs text-red-300">Monthly budget limit reached — all ingestion workflows are paused</span>
+				<a href="/settings" class="ml-1 text-xs font-medium text-red-400 underline underline-offset-2 hover:text-red-300">Manage</a>
+			</div>
+		{/if}
+
 		<!-- Header -->
 		<header bind:this={headerEl} class="relative z-50 flex items-center justify-between border-b border-surface-700 bg-surface-900/95 px-5 py-2.5 backdrop-blur-sm">
 			<!-- Left: Logo -->
@@ -141,7 +162,8 @@
 			<!-- Center: Feed controls (only on feed route) -->
 			{#if isFeedRoute}
 				<div class="flex flex-1 items-center gap-3 min-w-0">
-					<!-- Date navigation -->
+					<!-- Date navigation (hidden in bookmark mode) -->
+					{#if !$feedFilters.showBookmarked}
 					<div class="flex items-center gap-0.5">
 						<button
 							class="rounded p-1 text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-200 disabled:opacity-30 disabled:hover:bg-transparent"
@@ -176,6 +198,16 @@
 
 					<!-- Divider -->
 					<div class="h-5 w-px bg-surface-700"></div>
+					{:else}
+					<!-- Bookmark mode label -->
+					<div class="flex items-center gap-1.5">
+						<svg class="h-3.5 w-3.5 text-laya-orange" fill="currentColor" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+						</svg>
+						<span class="text-xs font-medium text-laya-orange">All Bookmarked Cards</span>
+					</div>
+					<div class="h-5 w-px bg-surface-700"></div>
+					{/if}
 
 					<!-- Space filter dropdown -->
 					{#if $spaces.length > 1}
@@ -335,19 +367,39 @@
 						{/if}
 					</div>
 
-					<!-- Archived toggle -->
-					<button
-						class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors
-							{$feedFilters.showArchived
-								? 'border-laya-orange/40 bg-laya-orange/10 text-laya-orange'
-								: 'border-surface-700 bg-surface-800/60 text-surface-400 hover:text-surface-200 hover:border-surface-600'}"
-						onclick={() => ($feedFilters.showArchived = !$feedFilters.showArchived)}
-					>
-						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-						</svg>
-						Archived
-					</button>
+					<!-- Archived toggle (icon-only) -->
+					<div class="group/tip relative">
+						<button
+							class="flex h-7 w-7 items-center justify-center rounded-lg border transition-colors
+								{$feedFilters.showArchived
+									? 'border-laya-orange/40 bg-laya-orange/10 text-laya-orange'
+									: 'border-surface-700 bg-surface-800/60 text-surface-400 hover:text-surface-200 hover:border-surface-600'}"
+							onclick={() => ($feedFilters.showArchived = !$feedFilters.showArchived)}
+							aria-label={$feedFilters.showArchived ? 'Hide archived cards' : 'Show archived cards'}
+						>
+							<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+							</svg>
+						</button>
+						<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">{$feedFilters.showArchived ? 'Hide Archived' : 'Show Archived'}</span>
+					</div>
+
+					<!-- Bookmarked toggle (icon-only) -->
+					<div class="group/tip relative">
+						<button
+							class="flex h-7 w-7 items-center justify-center rounded-lg border transition-colors
+								{$feedFilters.showBookmarked
+									? 'border-laya-orange/40 bg-laya-orange/10 text-laya-orange'
+									: 'border-surface-700 bg-surface-800/60 text-surface-400 hover:text-surface-200 hover:border-surface-600'}"
+							onclick={() => ($feedFilters.showBookmarked = !$feedFilters.showBookmarked)}
+							aria-label={$feedFilters.showBookmarked ? 'Exit bookmarks view' : 'Show bookmarked cards'}
+						>
+							<svg class="h-3.5 w-3.5" fill={$feedFilters.showBookmarked ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+							</svg>
+						</button>
+						<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">{$feedFilters.showBookmarked ? 'Exit Bookmarks' : 'Bookmarks'}</span>
+					</div>
 
 					<!-- Clear all filters -->
 					{#if hasActiveFilters}
@@ -357,6 +409,7 @@
 								$feedFilters.statusFilters = [];
 								$feedFilters.priorityFilters = [];
 								$feedFilters.showArchived = false;
+								$feedFilters.showBookmarked = false;
 								$feedFilters.spaceFilter = null;
 							}}
 						>

@@ -164,8 +164,9 @@
 				sort: f.sortBy,
 				sort_asc: f.sortAsc || undefined,
 				show_archived: f.showArchived || undefined,
-				date: $feedDate,
-				space_id: f.spaceFilter || undefined
+				date: f.showBookmarked ? undefined : $feedDate,
+				space_id: f.spaceFilter || undefined,
+				bookmarked: f.showBookmarked || undefined
 			});
 			if (id !== _fetchId) return;
 
@@ -951,9 +952,11 @@
 				</div>
 			{:else if groups.length === 0}
 				<div class="py-12 text-center text-surface-500">
-					<p class="text-lg">No cards for {formatDateLabel($feedDate)}</p>
+					<p class="text-lg">{$feedFilters.showBookmarked ? 'No bookmarked cards' : `No cards for ${formatDateLabel($feedDate)}`}</p>
 					<p class="mt-1 text-sm">
-						{#if $feedPrevDate}
+						{#if $feedFilters.showBookmarked}
+							Bookmark cards to save them for later
+						{:else if $feedPrevDate}
 							<button class="text-laya-orange hover:underline" onclick={() => { if ($feedPrevDate) $feedDate = $feedPrevDate; }}>
 								View {formatDateLabel($feedPrevDate)}
 							</button>
@@ -962,8 +965,8 @@
 						{/if}
 					</p>
 
-					<!-- First-run integrations prompt (no cards ever, viewing today) -->
-					{#if !$feedPrevDate && isToday}
+					<!-- First-run integrations prompt (no cards ever, viewing today, not in bookmark mode) -->
+					{#if !$feedPrevDate && isToday && !$feedFilters.showBookmarked}
 						<div class="mx-auto mt-8 max-w-md rounded-xl border border-surface-700 bg-surface-800 p-6 text-left">
 							<div class="flex items-start gap-3">
 								<div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-laya-orange/10">

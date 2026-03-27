@@ -69,6 +69,7 @@ class CardResponse(BaseModel):
     space_id: str | None = None
     space_name: str | None = None
     space_color: str | None = None
+    bookmarked_at: str | None = None
 
 
 class CardsListResponse(BaseModel):

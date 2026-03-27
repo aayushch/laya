@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 from laya.agents import session_manager
 from laya.api.actions_api import router as actions_router
 from laya.api.audit_api import router as audit_router
+from laya.api.budget_api import router as budget_router
 from laya.api.cards_api import router as cards_router
 from laya.api.classification_api import router as classification_router
 from laya.api.connections_api import router as connections_router
@@ -172,6 +173,32 @@ async def lifespan(app: FastAPI):
     # Start briefing scheduler
     start_scheduler()
 
+    # Startup budget month-rollover check (fallback for missed rollovers)
+    try:
+        from laya.pipeline.budget import on_month_rollover, _current_year_month_local, _user_timezone
+        tz = _user_timezone()
+        current_month = _current_year_month_local(tz)
+        # Check if previous month's costs have been snapshotted
+        async with db.execute(
+            "SELECT year_month FROM monthly_costs ORDER BY year_month DESC LIMIT 1"
+        ) as cursor:
+            last_snapshot = await cursor.fetchone()
+        if last_snapshot and last_snapshot["year_month"] < current_month:
+            pass  # snapshot_month is idempotent, safe to call
+        elif not last_snapshot:
+            pass  # No history yet, nothing to roll over
+
+        # Check if budget pause should be cleared (new month)
+        async with db.execute("SELECT paused_at FROM budget_config WHERE id = 1") as cursor:
+            cfg = await cursor.fetchone()
+        if cfg and cfg["paused_at"]:
+            paused_month = cfg["paused_at"][:7]  # 'YYYY-MM' from timestamp
+            if paused_month < current_month:
+                log.info("startup_budget_rollover", paused_month=paused_month, current_month=current_month)
+                await on_month_rollover(paused_month)
+    except Exception as e:
+        log.warning("startup_budget_check_failed", error=str(e))
+
     # Recover events orphaned by previous crash/shutdown, then start consumer
     await recover_stalled_events()
     start_consumer()
@@ -230,6 +257,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Register REST routers
 app.include_router(actions_router)
 app.include_router(audit_router)
+app.include_router(budget_router)
 app.include_router(cards_router)
 app.include_router(classification_router)
 app.include_router(connections_router)
