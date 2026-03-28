@@ -81,7 +81,7 @@
 		{#if isUser}
 			<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="whitespace-pre-wrap break-words" onclick={handleClick}>{@html replaceMarkers(message.content)}</div>
+			<div class="whitespace-pre-wrap break-words" onclick={handleClick} onkeydown={handleClick}>{@html replaceMarkers(message.content)}</div>
 		{:else}
 			<!-- Thinking indicator / collapsible block -->
 			{#if parsed.isThinking}
@@ -114,7 +114,7 @@
 			{#if parsed.response}
 				<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<div class="prose-plan break-words" onclick={handleClick}>{@html renderMarkdown(parsed.response)}{#if streaming}<span class="animate-pulse text-laya-orange">|</span>{/if}</div>
+				<div class="prose-plan break-words" onclick={handleClick} onkeydown={handleClick}>{@html renderMarkdown(parsed.response)}{#if streaming}<span class="animate-pulse text-laya-orange">|</span>{/if}</div>
 			{/if}
 		{/if}
 		{#if !streaming}

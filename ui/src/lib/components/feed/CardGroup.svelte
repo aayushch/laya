@@ -433,9 +433,10 @@
 
 		<!-- Collapsed-only content: summary + status footer (instant show/hide) -->
 		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-		<div class="overflow-hidden cursor-pointer transition-colors group-hover/card:bg-surface-800/30 {expanded ? 'hidden' : ''}" onclick={toggle}>
+		<div class="overflow-hidden cursor-pointer transition-colors group-hover/card:bg-surface-800/30 {expanded ? 'hidden' : ''}" role="button" tabindex="0" onclick={toggle}>
 			<div class="px-4 pb-2">
 				<!-- Top card preview summary -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div class="mb-1.5"
 					onmouseenter={() => showTooltipIfTruncated(summaryEl, topCard.summary, { checkHeight: true, maxWidth: 280 })}
 					onmouseleave={hideTooltip}
@@ -455,6 +456,7 @@
 							</span>
 						{/if}
 					</div>
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div class="ml-auto flex items-center gap-1.5 min-w-0"
 						onmouseenter={() => showTooltipIfTruncated(statusEl, statusText, { alignRight: true })}
 						onmouseleave={hideTooltip}
