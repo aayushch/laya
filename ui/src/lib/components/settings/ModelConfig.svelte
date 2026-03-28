@@ -747,6 +747,7 @@
 			<div class="space-y-4">
 				<div class="flex items-center gap-3">
 					<button
+						aria-label="Toggle monthly budget limit"
 						onclick={() => { budgetEnabled = !budgetEnabled; debounceSaveBudget(); }}
 						class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors {budgetEnabled ? 'bg-laya-orange' : 'bg-surface-600'}"
 					>

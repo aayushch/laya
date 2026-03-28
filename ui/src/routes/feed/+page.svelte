@@ -387,8 +387,8 @@
 					if (el) {
 						el.scrollIntoView({ behavior: 'smooth', block: 'center' });
 						// Brief highlight flash
-						el.classList.add('ring-2', 'ring-laya-orange/60');
-						setTimeout(() => el.classList.remove('ring-2', 'ring-laya-orange/60'), 1500);
+						el.classList.add('ring-1', 'ring-laya-orange/40');
+						setTimeout(() => el.classList.remove('ring-1', 'ring-laya-orange/40'), 1500);
 						_scrollToCardId = null;
 					} else if (tries > 0) {
 						// Group may still be expanding — retry next frame

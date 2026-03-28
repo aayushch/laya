@@ -650,6 +650,7 @@
 			{platform}
 		</span>
 		{#if card.source_ref}
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="group/srcref relative min-w-0 truncate"
 				onmouseenter={() => { if (srcRefEl) srcRefTruncated = srcRefEl.scrollWidth > srcRefEl.clientWidth; }}
 			>
@@ -675,6 +676,7 @@
 	</div>
 
 	<!-- Row 3: Title (2-line clamp) -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="group/header relative mb-1.5"
 		onmouseenter={() => { if (headerEl) headerTruncated = headerEl.scrollHeight > headerEl.clientHeight; }}
 	>
@@ -687,6 +689,7 @@
 	</div>
 
 	<!-- Row 4: Summary (2-line clamp) -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="group/summary relative"
 		onmouseenter={() => { if (summaryEl) summaryTruncated = summaryEl.scrollHeight > summaryEl.clientHeight; }}
 	>
@@ -713,6 +716,7 @@
 			{/if}
 		{/if}
 		{#if card.actor_name}
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<span class="group/actor relative truncate text-[10px] text-surface-500"
 				onmouseenter={() => { if (actorEl) actorTruncated = actorEl.scrollWidth > actorEl.clientWidth; }}
 			>

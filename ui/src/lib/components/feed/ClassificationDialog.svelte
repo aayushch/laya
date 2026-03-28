@@ -15,7 +15,9 @@
 	const priorities = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const;
 	const personas = ['ENGINEER', 'COMMS', 'OPS'] as const;
 
+	// svelte-ignore state_referenced_locally
 	let priority = $state(card.priority);
+	// svelte-ignore state_referenced_locally
 	let persona = $state(card.persona);
 	let ruleText = $state('');
 	let saving = $state(false);
@@ -81,8 +83,8 @@
 
 			<!-- Priority -->
 			<div>
-				<label class="mb-1.5 block text-xs font-medium text-surface-300">Priority</label>
-				<div class="flex gap-1.5">
+				<span class="mb-1.5 block text-xs font-medium text-surface-300">Priority</span>
+				<div class="flex gap-1.5" role="group" aria-label="Priority">
 					{#each priorities as p}
 						<button
 							class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors
@@ -102,8 +104,8 @@
 
 			<!-- Persona -->
 			<div>
-				<label class="mb-1.5 block text-xs font-medium text-surface-300">Persona</label>
-				<div class="flex gap-1.5">
+				<span class="mb-1.5 block text-xs font-medium text-surface-300">Persona</span>
+				<div class="flex gap-1.5" role="group" aria-label="Persona">
 					{#each personas as p}
 						<button
 							class="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors
@@ -123,10 +125,11 @@
 
 			<!-- Rule (optional) -->
 			<div>
-				<label class="mb-1.5 block text-xs font-medium text-surface-300">
+				<label class="mb-1.5 block text-xs font-medium text-surface-300" for="classification-rule">
 					Add a rule <span class="font-normal text-surface-500">(optional)</span>
 				</label>
 				<input
+					id="classification-rule"
 					bind:value={ruleText}
 					placeholder='e.g., "Always treat emails from legal@acme.com as HIGH priority"'
 					class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500"

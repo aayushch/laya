@@ -254,6 +254,7 @@
 											</select>
 										</div>
 										<button
+											aria-label="Toggle sort direction"
 											class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-surface-700 bg-surface-900/60 text-surface-400 transition-colors hover:bg-surface-700 hover:text-surface-200"
 											onclick={() => ($feedFilters.sortAsc = !$feedFilters.sortAsc)}
 										>
