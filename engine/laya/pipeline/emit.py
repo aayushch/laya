@@ -3,6 +3,7 @@
 import asyncio
 import json
 import uuid
+from datetime import datetime, timezone
 
 import structlog
 
@@ -181,12 +182,28 @@ async def run_emit(
         )
     await db.commit()
 
+    # Carry forward: update group_active_at for ALL cards in this entity group
+    now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    await db.execute(
+        "UPDATE action_cards SET group_active_at = ? WHERE entity_id = ?",
+        (now_ts, entity_id),
+    )
+    await db.commit()
+
+    # Detect if this card joined an existing entity group (carry-forward scenario)
+    _existing = await db.execute_fetchall(
+        "SELECT COUNT(*) AS cnt FROM action_cards WHERE entity_id = ? AND card_id != ?",
+        (entity_id, card_id),
+    )
+    _is_carry_forward = _existing[0]["cnt"] > 0
+
     log.info(
         "card_created",
         card_id=card_id,
         event_id=event.event_id,
         priority=router_output.priority.value,
         persona=router_output.persona.value,
+        carry_forward=_is_carry_forward,
     )
 
     # 4. Embed card in ChromaDB
@@ -251,6 +268,16 @@ async def run_emit(
             },
         }
     )
+
+    # 7b. If this card carried forward an existing group, notify the UI
+    if _is_carry_forward:
+        await manager.broadcast(
+            {
+                "type": "group_carried_forward",
+                "card_id": card_id,
+                "payload": {"entity_id": entity_id},
+            }
+        )
 
     # 8. Trigger daily summary update (async, non-blocking)
     # Resolve space name/color for summary display

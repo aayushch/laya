@@ -18,12 +18,9 @@
 	});
 </script>
 
-<div class="flex items-center gap-2">
-	<span class="relative flex h-2.5 w-2.5">
-		{#if statusColor === 'bg-green-500'}
-			<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
-		{/if}
-		<span class="relative inline-flex h-2.5 w-2.5 rounded-full {statusColor}"></span>
-	</span>
-	<span class="text-sm text-surface-300">{statusText}</span>
-</div>
+<span class="relative flex h-2.5 w-2.5">
+	{#if statusColor === 'bg-green-500'}
+		<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
+	{/if}
+	<span class="relative inline-flex h-2.5 w-2.5 rounded-full {statusColor}"></span>
+</span>

@@ -31,9 +31,16 @@ Rules:
 - When a card status changes (approved, dismissed, completed), update the relevant items \
 to reflect the new status. Mark resolved items with status "done" or "dismissed".
 - Do NOT remove items — keep them for the full day's record, but update their status.
-- Do NOT duplicate items. If a new card relates to an existing summary item, update it.
+- **CRITICAL — DEDUPLICATION**: Before adding a new item, carefully scan ALL existing items \
+in every section. If an existing item refers to the same underlying entity (same PR, same \
+ticket, same email thread, same issue, same meeting, etc.), you MUST update that existing \
+item in-place instead of adding a new one. Use the NEW card's card_id to replace the old \
+one. Two cards about "PR-34" or "TICKET-123" or the same email subject are about the same \
+entity — merge them into ONE summary item with the latest status. Never have two items \
+describing the same PR, ticket, thread, or entity even if they have different card_ids.
 - Prioritize clarity and usefulness for a busy professional scanning their day.
-- Each item MUST include the card_id it relates to for navigation.
+- Each item MUST include the card_id it relates to for navigation. When merging, use the \
+newest card_id.
 - Each item MUST include space_id, space_name, and space_color from the source card (pass through exactly).
 - Order items by priority/importance within each section."""
 
