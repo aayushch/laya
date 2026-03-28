@@ -8,7 +8,7 @@ export interface FeedFilters {
 	sortAsc: boolean;
 	showArchived: boolean;
 	showBookmarked: boolean;
-	spaceFilter: string | null;
+	spaceFilter: string[];
 }
 
 /** Local date in YYYY-MM-DD format (respects the user's timezone, unlike toISOString which is UTC). */
@@ -29,7 +29,7 @@ const defaults: FeedFilters = {
 	sortAsc: false,
 	showArchived: false,
 	showBookmarked: false,
-	spaceFilter: null
+	spaceFilter: []
 };
 
 export const feedFilters = writable<FeedFilters>({ ...defaults });
@@ -55,7 +55,7 @@ export async function loadFeedFilters(): Promise<void> {
 				sortAsc: prefs.sortAsc ?? defaults.sortAsc,
 				showArchived: prefs.showArchived ?? defaults.showArchived,
 				showBookmarked: prefs.showBookmarked ?? defaults.showBookmarked,
-				spaceFilter: prefs.spaceFilter ?? defaults.spaceFilter
+				spaceFilter: Array.isArray(prefs.spaceFilter) ? prefs.spaceFilter : prefs.spaceFilter ? [prefs.spaceFilter] : defaults.spaceFilter
 			});
 		}
 		_loaded = true;

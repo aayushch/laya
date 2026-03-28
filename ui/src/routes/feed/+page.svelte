@@ -88,8 +88,8 @@
 
 	const isToday = $derived($feedDate === localToday());
 	const filteredRecentCards = $derived(
-		$feedFilters.spaceFilter
-			? $recentCards.filter((e) => (e.space_id || 'default') === $feedFilters.spaceFilter)
+		$feedFilters.spaceFilter.length > 0
+			? $recentCards.filter((e) => $feedFilters.spaceFilter.includes(e.space_id || 'default'))
 			: $recentCards
 	);
 
@@ -165,7 +165,7 @@
 				sort_asc: f.sortAsc || undefined,
 				show_archived: f.showArchived || undefined,
 				date: f.showBookmarked ? undefined : $feedDate,
-				space_id: f.spaceFilter || undefined,
+				space_id: f.spaceFilter.length ? f.spaceFilter.join(',') : undefined,
 				bookmarked: f.showBookmarked || undefined
 			});
 			if (id !== _fetchId) return;
@@ -262,11 +262,11 @@
 			return;
 		}
 
-		if (!['card_created', 'card_deleted', 'card_updated'].includes(msg.type)) return;
+		if (!['card_created', 'card_deleted', 'card_updated', 'group_carried_forward'].includes(msg.type)) return;
 		_lastProcessedMsg = msg;
 
-		if (msg.type === 'card_created') {
-			// Only auto-reload if viewing today (new cards land on today)
+		if (msg.type === 'card_created' || msg.type === 'group_carried_forward') {
+			// Only auto-reload if viewing today (new cards / carried-forward groups land on today)
 			if (isToday) scheduleReload();
 		} else if (msg.type === 'card_deleted' && msg.card_id) {
 			if (selectedCard?.card_id === msg.card_id) {
@@ -793,18 +793,21 @@
 			<div class="flex-1"></div>
 		{/if}
 		<!-- Recent Cards toggle -->
-		<button
-			class="flex items-center justify-center rounded-lg border px-2 py-1 transition-colors
-				{$recentDrawerOpen
-					? 'border-laya-orange/40 bg-laya-orange/10 text-laya-orange'
-					: 'border-surface-700 bg-surface-800/60 text-surface-500 hover:text-surface-200 hover:border-surface-600'}"
-			onclick={() => ($recentDrawerOpen = !$recentDrawerOpen)}
-			title="Recent Cards"
-		>
-			<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-			</svg>
-		</button>
+		<div class="group/tip relative">
+			<button
+				class="flex items-center justify-center rounded-lg border px-2 py-1 transition-colors
+					{$recentDrawerOpen
+						? 'border-laya-orange/40 bg-laya-orange/10 text-laya-orange'
+						: 'border-surface-700 bg-surface-800/60 text-surface-500 hover:text-surface-200 hover:border-surface-600'}"
+				onclick={() => ($recentDrawerOpen = !$recentDrawerOpen)}
+				aria-label="Recent Cards"
+			>
+				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+				</svg>
+			</button>
+			<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">Recent Cards</span>
+		</div>
 		<!-- Search -->
 		<div class="relative">
 			<svg class="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-surface-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -830,33 +833,42 @@
 		</div>
 		<!-- View toggle -->
 		<div class="flex items-center rounded-lg border border-surface-700 bg-surface-800/60 p-0.5">
-			<button
-				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {$feedViewMode === 'card' ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-200'}"
-				onclick={() => ($feedViewMode = 'card')}
-				title="Card View"
-			>
-				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-				</svg>
-			</button>
-			<button
-				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {$feedViewMode === 'list' ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-200'}"
-				onclick={() => ($feedViewMode = 'list')}
-				title="List View"
-			>
-				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-				</svg>
-			</button>
-			<button
-				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {$feedViewMode === 'summary' ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-200'}"
-				onclick={() => ($feedViewMode = 'summary')}
-				title="Summary View"
-			>
-				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-				</svg>
-			</button>
+			<div class="group/tip relative">
+				<button
+					class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {$feedViewMode === 'card' ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-200'}"
+					onclick={() => ($feedViewMode = 'card')}
+					aria-label="Card View"
+				>
+					<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+					</svg>
+				</button>
+				<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">Card View</span>
+			</div>
+			<div class="group/tip relative">
+				<button
+					class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {$feedViewMode === 'list' ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-200'}"
+					onclick={() => ($feedViewMode = 'list')}
+					aria-label="List View"
+				>
+					<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+					</svg>
+				</button>
+				<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">List View</span>
+			</div>
+			<div class="group/tip relative">
+				<button
+					class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {$feedViewMode === 'summary' ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-200'}"
+					onclick={() => ($feedViewMode = 'summary')}
+					aria-label="Summary View"
+				>
+					<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+					</svg>
+				</button>
+				<span class="pointer-events-none absolute right-0 top-full z-50 mt-1.5 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">Summary View</span>
+			</div>
 		</div>
 	</div>
 
@@ -896,7 +908,7 @@
 							<svg class="mb-2 h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
 							</svg>
-							<p class="text-[11px]">{$feedFilters.spaceFilter ? 'No recent cards in this space' : 'No recent cards yet'}</p>
+							<p class="text-[11px]">{$feedFilters.spaceFilter.length ? 'No recent cards in selected spaces' : 'No recent cards yet'}</p>
 							<p class="mt-0.5 text-[10px] text-surface-700">Cards you view will appear here</p>
 						</div>
 					{:else}

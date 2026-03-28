@@ -23,8 +23,8 @@
 	let messagesEl: HTMLDivElement | undefined = $state();
 	let textareaEl: HTMLTextAreaElement | undefined = $state();
 
-	// Show list view when no conversation is active or explicitly requested
-	const showList = $derived($chatListOpen || !$activeConversationId);
+	// Show list view when explicitly requested (chatListOpen controls this)
+	const showList = $derived($chatListOpen);
 
 	function scrollToBottom() {
 		if (messagesEl) {

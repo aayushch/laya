@@ -19,6 +19,28 @@
 	let bulkActionRunning = $state(false);
 	let groupMenuOpen = $state(false);
 
+	// Truncation detection for conditional tooltips (fixed positioning to escape overflow-hidden)
+	let summaryEl: HTMLElement | undefined = $state();
+	let statusEl: HTMLElement | undefined = $state();
+	let hoveredTooltip: { text: string; top: number; left: number; maxWidth?: number } | null = $state(null);
+
+	function showTooltipIfTruncated(el: HTMLElement | undefined, text: string, opts?: { checkHeight?: boolean; alignRight?: boolean; maxWidth?: number }) {
+		if (!el) return;
+		const isTruncated = opts?.checkHeight
+			? el.scrollHeight > el.clientHeight
+			: el.scrollWidth > el.clientWidth;
+		if (!isTruncated) { hoveredTooltip = null; return; }
+		const rect = el.getBoundingClientRect();
+		hoveredTooltip = {
+			text,
+			top: rect.bottom + 4,
+			left: opts?.alignRight ? rect.right : rect.left,
+			maxWidth: opts?.maxWidth
+		};
+	}
+
+	function hideTooltip() { hoveredTooltip = null; }
+
 	// Auto-expand when a card in this group is targeted for scroll
 	$effect(() => {
 		if (scrollToCardId && !expanded && group.cards.some(c => c.card_id === scrollToCardId)) {
@@ -414,27 +436,37 @@
 		<div class="overflow-hidden cursor-pointer transition-colors group-hover/card:bg-surface-800/30 {expanded ? 'hidden' : ''}" onclick={toggle}>
 			<div class="px-4 pb-2">
 				<!-- Top card preview summary -->
-				<p class="mb-1.5 line-clamp-2 text-xs leading-relaxed text-surface-400" title={topCard.summary}>
-					{topCard.summary}
-				</p>
+				<div class="mb-1.5"
+					onmouseenter={() => showTooltipIfTruncated(summaryEl, topCard.summary, { checkHeight: true, maxWidth: 280 })}
+					onmouseleave={hideTooltip}
+				>
+					<p bind:this={summaryEl} class="line-clamp-2 text-xs leading-relaxed text-surface-400">
+						{topCard.summary}
+					</p>
+				</div>
 
 				<!-- Status summary footer -->
-				<div class="flex items-center">
+				<div class="flex items-center gap-2">
 					<div class="flex items-center gap-2 shrink-0">
 						{#if topCard.space_name}
-							<span class="flex items-center gap-1 shrink-0 text-[10px] text-surface-500" title="Space: {topCard.space_name}">
+							<span class="flex items-center gap-1 shrink-0 text-[10px] text-surface-500">
 								<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {topCard.space_color ?? '#F97316'}"></span>
 								{topCard.space_name}
 							</span>
 						{/if}
 					</div>
-					<div class="ml-auto flex items-center gap-1.5 min-w-0 overflow-hidden" title={statusText}>
-						{#each statusSummary as { status, count }}
-							<span class="flex items-center gap-1 shrink-0">
-								<StatusDot {status} />
-								<span class="text-[10px] text-surface-400 whitespace-nowrap">{count} {statusSummaryLabel[status] ?? status}</span>
-							</span>
-						{/each}
+					<div class="ml-auto flex items-center gap-1.5 min-w-0"
+						onmouseenter={() => showTooltipIfTruncated(statusEl, statusText, { alignRight: true })}
+						onmouseleave={hideTooltip}
+					>
+						<div bind:this={statusEl} class="flex items-center gap-1.5 min-w-0 overflow-hidden">
+							{#each statusSummary as { status, count }}
+								<span class="flex items-center gap-1 shrink-0">
+									<StatusDot {status} />
+									<span class="text-[10px] text-surface-400 whitespace-nowrap">{count} {statusSummaryLabel[status] ?? status}</span>
+								</span>
+							{/each}
+						</div>
 						<span class="text-[10px] text-surface-600 shrink-0 whitespace-nowrap">
 							{group.card_count} cards
 						</span>
@@ -453,3 +485,12 @@
 		{/if}
 	</div>
 </div>
+
+{#if hoveredTooltip}
+	<span
+		class="pointer-events-none fixed z-50 rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange shadow-lg"
+		style="top: {hoveredTooltip.top}px; left: {hoveredTooltip.left}px;{hoveredTooltip.maxWidth ? ` max-width: ${hoveredTooltip.maxWidth}px; white-space: normal;` : ' white-space: nowrap; transform: translateX(-100%);'}"
+	>
+		{hoveredTooltip.text}
+	</span>
+{/if}

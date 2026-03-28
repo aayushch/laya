@@ -51,7 +51,7 @@
         "method": "GET",
         "url": "={{ 'https://api.bitbucket.org/2.0/repositories/' + $json.workspace + '/' + $json.repo + '/pullrequests' }}",
         "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "bitbucketApi",
+        "nodeCredentialType": "bitbucketAccessTokenApi",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -139,7 +139,7 @@
         "method": "GET",
         "url": "={{ 'https://api.bitbucket.org/2.0/repositories/' + $json.repoSlug + '/pullrequests/' + $json.pr.id + '/activity' }}",
         "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "bitbucketApi",
+        "nodeCredentialType": "bitbucketAccessTokenApi",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -348,6 +348,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.03.1"
+    "laya_version": "2026.03.2"
   }
 }

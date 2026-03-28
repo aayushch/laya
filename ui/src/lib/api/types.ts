@@ -196,7 +196,7 @@ export interface FeedPreferences {
 	sortBy: string;
 	showArchived: boolean;
 	showBookmarked: boolean;
-	spaceFilter: string | null;
+	spaceFilter: string[];
 }
 
 /** Pipeline processing settings (advanced) */

@@ -174,8 +174,14 @@ async def get_grouped_cards(
     if bookmarked:
         conditions.append("c.bookmarked_at IS NOT NULL")
     if space_id:
-        conditions.append("c.space_id = ?")
-        params.append(space_id)
+        space_ids = [s.strip() for s in space_id.split(",") if s.strip()]
+        if len(space_ids) == 1:
+            conditions.append("c.space_id = ?")
+            params.append(space_ids[0])
+        elif space_ids:
+            placeholders = ",".join("?" for _ in space_ids)
+            conditions.append(f"c.space_id IN ({placeholders})")
+            params.extend(space_ids)
     if date and not bookmarked:
         if tz:
             try:
@@ -185,14 +191,14 @@ async def get_grouped_cards(
                 local_end = local_start + timedelta(days=1)
                 utc_start = local_start.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                 utc_end = local_end.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-                conditions.append("c.created_at >= ? AND c.created_at < ?")
+                conditions.append("c.group_active_at >= ? AND c.group_active_at < ?")
                 params.extend([utc_start, utc_end])
             except (KeyError, ValueError):
                 # Bad timezone — fall back to plain DATE match
-                conditions.append("DATE(c.created_at) = ?")
+                conditions.append("DATE(c.group_active_at) = ?")
                 params.append(date)
         else:
-            conditions.append("DATE(c.created_at) = ?")
+            conditions.append("DATE(c.group_active_at) = ?")
             params.append(date)
     if status:
         # Support comma-separated multi-select, e.g. "pending,approved"
@@ -330,15 +336,15 @@ async def get_grouped_cards(
     prev_date_val: str | None = None
     next_date_val: str | None = None
     if date:
-        # Build a SQLite date expression that converts UTC created_at to local date
-        date_expr = "DATE(created_at)"
+        # Build a SQLite date expression that converts UTC group_active_at to local date
+        date_expr = "DATE(group_active_at)"
         if tz:
             try:
                 local_tz = ZoneInfo(tz)
                 utc_offset_sec = int(datetime.now(local_tz).utcoffset().total_seconds())  # type: ignore[union-attr]
-                date_expr = f"DATE(created_at, '+{utc_offset_sec} seconds')" if utc_offset_sec >= 0 else f"DATE(created_at, '{utc_offset_sec} seconds')"
+                date_expr = f"DATE(group_active_at, '+{utc_offset_sec} seconds')" if utc_offset_sec >= 0 else f"DATE(group_active_at, '{utc_offset_sec} seconds')"
             except (KeyError, ValueError, AttributeError):
-                pass  # Use plain DATE(created_at)
+                pass  # Use plain DATE(group_active_at)
 
         prev_rows = await db.execute_fetchall(
             f"SELECT {date_expr} AS d FROM action_cards WHERE {date_expr} < ? GROUP BY d ORDER BY d DESC LIMIT 1",

@@ -5,12 +5,12 @@
 		summary,
 		updatedAt,
 		ongotocard,
-		spaceFilter = null
+		spaceFilter = []
 	}: {
 		summary: DaySummary | null;
 		updatedAt: string | null;
 		ongotocard: (cardId: string) => void;
-		spaceFilter?: string | null;
+		spaceFilter?: string[];
 	} = $props();
 
 	function priorityColor(priority: string): string {
@@ -49,8 +49,8 @@
 	}
 
 	function matchesSpace(item: SummaryItem): boolean {
-		if (!spaceFilter) return true;
-		return (item.space_id || 'default') === spaceFilter;
+		if (!spaceFilter.length) return true;
+		return spaceFilter.includes(item.space_id || 'default');
 	}
 
 	/** Collect unique spaces across all summary items for the legend */

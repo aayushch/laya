@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { chatOpen, chatInputPreset } from '$lib/stores/chat';
 	import { cardColors } from '$lib/stores/cardColors';
+	import { feedDate } from '$lib/stores/feedFilters';
 	import StatusDot from './StatusDot.svelte';
 
 	let { card, onselect, ondelete, selectedCardId = '', hasSelection = false }: { card: ActionCard; onselect: (card: ActionCard) => void; ondelete?: (cardId: string) => void; selectedCardId?: string; hasSelection?: boolean } = $props();
@@ -20,6 +21,16 @@
 	let deleting = $state(false);
 	let actionMenuOpen = $state(false);
 	let bookmarking = $state(false);
+
+	// Truncation detection for conditional tooltips
+	let headerEl: HTMLElement | undefined = $state();
+	let summaryEl: HTMLElement | undefined = $state();
+	let srcRefEl: HTMLElement | undefined = $state();
+	let actorEl: HTMLElement | undefined = $state();
+	let headerTruncated = $state(false);
+	let summaryTruncated = $state(false);
+	let srcRefTruncated = $state(false);
+	let actorTruncated = $state(false);
 
 	// Close action overflow menu on outside click — swallow the event so it
 	// doesn't propagate to the card and trigger a selection.
@@ -125,6 +136,17 @@
 			? (platformLabel[card.entity_id.split(':')[0]] ?? card.entity_id.split(':')[0])
 			: ''
 	);
+
+	// Show a date badge when this card was created on a different day than the feed date
+	// (i.e. it was carried forward from a previous day's entity group)
+	const carriedForwardDate = $derived.by(() => {
+		if (!card.created_at) return null;
+		const utcStr = card.created_at.endsWith('Z') || card.created_at.includes('+') ? card.created_at : card.created_at + 'Z';
+		const d = new Date(utcStr);
+		const localDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+		if (localDate === $feedDate) return null;
+		return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+	});
 
 	function timeAgo(dateStr?: string): string {
 		if (!dateStr) return '';
@@ -628,26 +650,53 @@
 			{platform}
 		</span>
 		{#if card.source_ref}
-			{#if card.source_url}
-				<a
-					href={card.source_url}
-					target="_blank"
-					rel="noopener noreferrer"
-					onclick={(e) => e.stopPropagation()}
-					class="truncate text-[10px] font-medium text-laya-orange/80 hover:text-laya-orange transition-colors"
-					title={card.source_ref}
-				>{card.source_ref}</a>
-			{:else}
-				<span class="truncate text-[10px] font-medium text-surface-400" title={card.source_ref}>{card.source_ref}</span>
-			{/if}
+			<div class="group/srcref relative min-w-0 truncate"
+				onmouseenter={() => { if (srcRefEl) srcRefTruncated = srcRefEl.scrollWidth > srcRefEl.clientWidth; }}
+			>
+				{#if card.source_url}
+					<a
+						bind:this={srcRefEl}
+						href={card.source_url}
+						target="_blank"
+						rel="noopener noreferrer"
+						onclick={(e) => e.stopPropagation()}
+						class="block truncate text-[10px] font-medium text-laya-orange/80 hover:text-laya-orange transition-colors"
+					>{card.source_ref}</a>
+				{:else}
+					<span bind:this={srcRefEl} class="block truncate text-[10px] font-medium text-surface-400">{card.source_ref}</span>
+				{/if}
+				{#if srcRefTruncated}
+					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/srcref:opacity-100">
+						{card.source_ref}
+					</span>
+				{/if}
+			</div>
 		{/if}
 	</div>
 
 	<!-- Row 3: Title (2-line clamp) -->
-	<h3 class="mb-1.5 line-clamp-2 text-sm font-semibold leading-snug text-surface-50" title={card.header}>{card.header}</h3>
+	<div class="group/header relative mb-1.5"
+		onmouseenter={() => { if (headerEl) headerTruncated = headerEl.scrollHeight > headerEl.clientHeight; }}
+	>
+		<h3 bind:this={headerEl} class="line-clamp-2 text-sm font-semibold leading-snug text-surface-50">{card.header}</h3>
+		{#if headerTruncated}
+			<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 max-w-xs whitespace-normal rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/header:opacity-100">
+				{card.header}
+			</span>
+		{/if}
+	</div>
 
 	<!-- Row 4: Summary (2-line clamp) -->
-	<p class="line-clamp-2 text-xs leading-relaxed text-surface-400" title={card.summary}>{card.summary}</p>
+	<div class="group/summary relative"
+		onmouseenter={() => { if (summaryEl) summaryTruncated = summaryEl.scrollHeight > summaryEl.clientHeight; }}
+	>
+		<p bind:this={summaryEl} class="line-clamp-2 text-xs leading-relaxed text-surface-400">{card.summary}</p>
+		{#if summaryTruncated}
+			<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 max-w-xs whitespace-normal rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/summary:opacity-100">
+				{card.summary}
+			</span>
+		{/if}
+	</div>
 
 	<!-- Spacer — absorbs leftover height so footer stays pinned to bottom -->
 	<div class="flex-1 min-h-1"></div>
@@ -655,7 +704,7 @@
 	<!-- Row 5: Footer — space · actor name (left) · persona · category · workspace · time (right) -->
 	<div class="flex items-center gap-1.5 min-w-0">
 		{#if card.space_name}
-			<span class="flex items-center gap-1 shrink-0 text-[10px] text-surface-500" title="Space: {card.space_name}">
+			<span class="flex items-center gap-1 shrink-0 text-[10px] text-surface-500">
 				<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {card.space_color ?? '#F97316'}"></span>
 				{card.space_name}
 			</span>
@@ -664,9 +713,25 @@
 			{/if}
 		{/if}
 		{#if card.actor_name}
-			<span class="truncate text-[10px] text-surface-500" title={card.actor_name}>{card.actor_name}</span>
+			<span class="group/actor relative truncate text-[10px] text-surface-500"
+				onmouseenter={() => { if (actorEl) actorTruncated = actorEl.scrollWidth > actorEl.clientWidth; }}
+			>
+				<span bind:this={actorEl} class="block truncate">
+					{card.actor_name}
+				</span>
+				{#if actorTruncated}
+					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/actor:opacity-100">
+						{card.actor_name}
+					</span>
+				{/if}
+			</span>
 		{/if}
 		<span class="ml-auto shrink-0 text-[10px] font-medium {personaColors[card.persona] ?? personaColors.ENGINEER}">{card.persona}</span>
+		{#if carriedForwardDate}
+			<span class="shrink-0 whitespace-nowrap rounded bg-surface-800/60 px-1 text-[10px] text-surface-400">
+				{carriedForwardDate}
+			</span>
+		{/if}
 		<span class="shrink-0 whitespace-nowrap text-[10px] text-surface-500">{timeAgo(card.created_at)}</span>
 	</div>
 </div>
