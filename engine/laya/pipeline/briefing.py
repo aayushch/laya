@@ -146,8 +146,8 @@ async def generate_briefing() -> str:
         """INSERT INTO events
            (event_id, timestamp, source_platform, source_raw_event_type,
             actor_name, actor_email, subject_type, subject_id, subject_title,
-            content_body, raw_json, processed)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            content_body, raw_json, processed, processing_status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             briefing_event_id,
             now.isoformat(),
@@ -161,6 +161,7 @@ async def generate_briefing() -> str:
             briefing_text,
             "{}",
             True,
+            "completed",
         ),
     )
     await db.commit()

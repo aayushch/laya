@@ -92,7 +92,10 @@ async def execute_action(
     target_platform = action["target_platform"]
 
     # Detect calendar actions that the stager tagged as "gmail" and reroute
-    if target_platform == "gmail" and payload.get("action") == "create_calendar_event":
+    if target_platform == "gmail" and (
+        payload.get("action") == "create_calendar_event"
+        or action.get("action_type") == "calendar"
+    ):
         target_platform = "google_calendar"
 
     n8n_config = get_n8n_config()
