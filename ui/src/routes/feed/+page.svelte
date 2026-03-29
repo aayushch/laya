@@ -330,14 +330,14 @@
 						card.status = payload.status as ActionCard['status'];
 						if (payload.header) card.header = payload.header;
 						if (payload.summary) card.summary = payload.summary;
-						if (payload.priority) card.priority = payload.priority as ActionCard['priority'];
-						if (payload.persona) card.persona = payload.persona as ActionCard['persona'];
 						if (payload.selected_action_id) card.selected_action_id = payload.selected_action_id;
 						group.has_pending = group.cards.some((c) => c.status === 'pending' || c.status === 'ready' || c.status === 'requires_approval');
 						if (wasAgent && payload.status !== 'agent_running') {
 							scheduleReload();
 						}
 					}
+					if (payload.priority) card.priority = payload.priority as ActionCard['priority'];
+					if (payload.persona) card.persona = payload.persona as ActionCard['persona'];
 					if (payload.has_workspace !== undefined) card.has_workspace = payload.has_workspace;
 					if (selectedCard?.card_id === msg.card_id) {
 						selectedCard = { ...selectedCard, ...card } as ActionCard;

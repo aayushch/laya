@@ -15,6 +15,7 @@ _scheduler_task: asyncio.Task | None = None
 _last_briefing_date: str | None = None
 _last_housekeeping_date: str | None = None
 _last_budget_month: str | None = None
+_last_learn_check: datetime | None = None
 
 # Statuses that are safe to auto-delete (never auto-delete active/in-progress cards)
 _HOUSEKEEPING_STATUSES = ("archived", "dismissed", "done", "failed")
@@ -83,7 +84,7 @@ async def _run_chat_housekeeping(retention_days: int) -> None:
 
 async def _scheduler_loop() -> None:
     """Main scheduler loop — runs every 60 seconds."""
-    global _last_briefing_date, _last_housekeeping_date, _last_budget_month
+    global _last_briefing_date, _last_housekeeping_date, _last_budget_month, _last_learn_check
 
     while True:
         await asyncio.sleep(60)
@@ -162,6 +163,15 @@ async def _scheduler_loop() -> None:
                     await on_month_rollover(previous_month)
             except Exception as e:
                 log.error("budget_month_rollover_failed", error=str(e))
+
+            # --- Classification learning (every 6 hours) ---
+            if _last_learn_check is None or (now_utc - _last_learn_check) >= timedelta(hours=6):
+                _last_learn_check = now_utc
+                try:
+                    from laya.pipeline.learn import run_learn_all
+                    await run_learn_all()
+                except Exception as e:
+                    log.error("learn_extraction_failed", error=str(e))
 
         except asyncio.CancelledError:
             raise
