@@ -141,6 +141,7 @@ export interface ModelSettings {
 	router: string;
 	stager: string;
 	chat: string;
+	trace: string;
 	local: string;
 }
 
