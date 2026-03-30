@@ -26,6 +26,7 @@ DEFAULT_SETTINGS = {
         "router": "claude-haiku-4-5",
         "stager": "claude-sonnet-4-6",
         "chat": "claude-sonnet-4-6",
+        "trace": "claude-sonnet-4-6",
         "local": "ollama/llama3",
     },
     "coding_agent": "claude_code",

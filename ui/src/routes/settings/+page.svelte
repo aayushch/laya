@@ -10,8 +10,31 @@
 	import AppearanceConfig from '$lib/components/settings/AppearanceConfig.svelte';
 	import DataConfig from '$lib/components/settings/DataConfig.svelte';
 	import BriefingConfig from '$lib/components/settings/BriefingConfig.svelte';
+	import { page } from '$app/state';
 
-	let activeTab = $state<'team' | 'rules' | 'models' | 'repos' | 'agent' | 'integrations' | 'spaces' | 'briefing' | 'audit' | 'appearance' | 'data'>('team');
+	type TabId = 'team' | 'rules' | 'models' | 'repos' | 'agent' | 'integrations' | 'spaces' | 'briefing' | 'audit' | 'appearance' | 'data';
+	const validTabs = new Set<string>(['team', 'rules', 'models', 'repos', 'agent', 'integrations', 'spaces', 'briefing', 'audit', 'appearance', 'data']);
+	let activeTab = $state<TabId>('team');
+
+	// React to URL query params (works for both initial load and client-side navigation)
+	$effect(() => {
+		const tab = page.url.searchParams.get('tab');
+		const section = page.url.searchParams.get('section');
+
+		if (tab && validTabs.has(tab)) {
+			activeTab = tab as TabId;
+		}
+
+		if (section) {
+			// Wait two frames: one for the tab switch to render, one for layout
+			requestAnimationFrame(() => {
+				requestAnimationFrame(() => {
+					const el = document.getElementById(section);
+					if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+				});
+			});
+		}
+	});
 	let exporting = $state(false);
 
 	async function exportDiagnostics() {

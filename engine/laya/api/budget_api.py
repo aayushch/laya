@@ -75,7 +75,11 @@ async def get_budget_history(months: int = 12) -> dict:
 @router.post("/budget/resume")
 async def manual_resume() -> dict:
     """Manually resume workflows that were paused by budget enforcement."""
-    result = await resume_from_budget()
+    try:
+        result = await resume_from_budget()
+    except Exception as e:
+        log.error("budget_resume_failed", error=str(e), error_type=type(e).__name__)
+        raise
     log.info("budget_manual_resume", **result)
     return {
         "status": "resumed",

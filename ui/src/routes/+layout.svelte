@@ -120,7 +120,7 @@
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
 				</svg>
 				<span class="text-xs text-red-300">Monthly budget limit reached — all ingestion workflows are paused</span>
-				<a href="/settings" class="ml-1 text-xs font-medium text-red-400 underline underline-offset-2 hover:text-red-300">Manage</a>
+				<a href="/settings?tab=models&section=cost-control" class="ml-1 text-xs font-medium text-red-400 underline underline-offset-2 hover:text-red-300">Manage</a>
 			</div>
 		{/if}
 
@@ -149,58 +149,58 @@
 				</nav>
 			</div>
 
-			<!-- Center: Date navigation (only on feed route) -->
+			<!-- Center: Date navigation (absolutely centered, only on feed route) -->
 			{#if isFeedRoute}
-				<div class="flex flex-1 items-center justify-center gap-3 min-w-0">
-					<div class="flex items-center justify-center shrink-0">
-						{#if $feedFilters.showBookmarked}
-							<div class="flex items-center gap-1.5">
-								<svg class="h-3.5 w-3.5 text-laya-orange" fill="currentColor" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+				<div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+					{#if $feedFilters.showBookmarked}
+						<div class="flex items-center gap-1.5">
+							<svg class="h-3.5 w-3.5 text-laya-orange" fill="currentColor" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+							</svg>
+							<span class="text-xs font-medium text-laya-orange whitespace-nowrap">Bookmarked</span>
+						</div>
+					{:else}
+						<div class="flex items-center gap-1">
+							<button
+								class="rounded-md p-1.5 text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-200 disabled:opacity-30 disabled:hover:bg-transparent"
+								disabled={!$feedPrevDate}
+								onclick={() => { if ($feedPrevDate) $feedDate = $feedPrevDate; }}
+								title="Previous day"
+							>
+								<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
 								</svg>
-								<span class="text-xs font-medium text-laya-orange whitespace-nowrap">Bookmarked</span>
-							</div>
-						{:else}
-							<div class="flex items-center gap-0.5">
+							</button>
+							<!-- Date label: clickable to jump to today when viewing a past date -->
+							{#if isToday}
+								<span class="w-[7.5rem] text-center text-xs font-medium text-surface-200 whitespace-nowrap">
+									{formatDateLabel($feedDate)}
+								</span>
+							{:else}
 								<button
-									class="rounded p-1 text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-200 disabled:opacity-30 disabled:hover:bg-transparent"
-									disabled={!$feedPrevDate}
-									onclick={() => { if ($feedPrevDate) $feedDate = $feedPrevDate; }}
-									title="Previous day"
+									class="group/today w-[7.5rem] text-center text-xs font-medium whitespace-nowrap rounded-md px-2 py-1 transition-colors text-surface-200 hover:text-laya-orange hover:bg-laya-orange/10"
+									onclick={() => ($feedDate = localToday())}
+									title="Jump to today"
 								>
-									<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-									</svg>
+									{formatDateLabel($feedDate)}
+									<span class="block text-[9px] font-normal text-surface-500 group-hover/today:text-laya-orange/70 transition-colors">click for today</span>
 								</button>
-								<!-- Fixed-width container: label + Today button always reserves the same space -->
-								<div class="w-[10rem] flex items-center justify-center gap-1">
-									<span class="text-xs font-medium text-surface-200 whitespace-nowrap">
-										{formatDateLabel($feedDate)}
-									</span>
-									{#if !isToday}
-										<button
-											class="rounded-full bg-laya-orange/15 px-2 py-0.5 text-[10px] font-medium text-laya-orange transition-colors hover:bg-laya-orange/25 whitespace-nowrap"
-											onclick={() => ($feedDate = localToday())}
-										>Today</button>
-									{/if}
-								</div>
-								<button
-									class="rounded p-1 text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-200 disabled:opacity-30 disabled:hover:bg-transparent"
-									disabled={!$feedNextDate}
-									onclick={() => { if ($feedNextDate) $feedDate = $feedNextDate; }}
-									title="Next day"
-								>
-									<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-									</svg>
-								</button>
-							</div>
-						{/if}
-					</div>
+							{/if}
+							<button
+								class="rounded-md p-1.5 text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-200 disabled:opacity-30 disabled:hover:bg-transparent"
+								disabled={!$feedNextDate}
+								onclick={() => { if ($feedNextDate) $feedDate = $feedNextDate; }}
+								title="Next day"
+							>
+								<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+								</svg>
+							</button>
+						</div>
+					{/if}
 				</div>
-			{:else}
-				<div class="flex-1"></div>
 			{/if}
+			<div class="flex-1"></div>
 
 			<!-- Right: Global utilities -->
 			<div class="flex items-center gap-1 ml-3">

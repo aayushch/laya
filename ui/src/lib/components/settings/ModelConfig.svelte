@@ -8,7 +8,8 @@
 	const roles = [
 		{ id: 'router', label: 'Router', hint: 'Classifies incoming events' },
 		{ id: 'stager', label: 'Stager', hint: 'Synthesises action cards' },
-		{ id: 'chat', label: 'Chat', hint: 'Conversational responses' }
+		{ id: 'chat', label: 'Chat', hint: 'Conversational responses' },
+		{ id: 'trace', label: 'Coherence', hint: 'Generates trace narratives' }
 	];
 
 	const cloudProviders = [
@@ -28,6 +29,7 @@
 		router: 'claude-haiku-4-5',
 		stager: 'claude-sonnet-4-6',
 		chat: 'claude-sonnet-4-6',
+		trace: 'claude-sonnet-4-6',
 		local: 'ollama/llama3'
 	});
 
@@ -716,7 +718,7 @@
 		</div>
 
 		<!-- Cost Control -->
-		<div class="rounded-lg border border-surface-700 bg-surface-800 p-5">
+		<div id="cost-control" class="rounded-lg border border-surface-700 bg-surface-800 p-5">
 			<div class="mb-4">
 				<h3 class="mb-1 text-lg font-medium">Cost Control</h3>
 				<p class="text-xs text-surface-500">Set a monthly budget to automatically pause workflows when the limit is reached.</p>

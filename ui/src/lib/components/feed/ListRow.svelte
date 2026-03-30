@@ -27,6 +27,7 @@
 
 	const isSelected = $derived(card.card_id === selectedCardId);
 
+	let bookmarking = $state(false);
 	let markingDone = $state(false);
 	let approvingAgent = $state(false);
 	let dismissing = $state(false);
@@ -146,6 +147,21 @@
 		reopening = true;
 		try { await engineApi.reopenCard(card.card_id); card.status = 'pending'; } finally { reopening = false; }
 	}
+	async function toggleBookmark(e: Event) {
+		e.stopPropagation();
+		bookmarking = true;
+		try {
+			if (card.bookmarked_at) {
+				await engineApi.unbookmarkCard(card.card_id);
+				card.bookmarked_at = undefined;
+			} else {
+				const result = await engineApi.bookmarkCard(card.card_id);
+				card.bookmarked_at = result.bookmarked_at;
+			}
+		} finally {
+			bookmarking = false;
+		}
+	}
 	function deleteCard(e: Event) {
 		e.stopPropagation();
 		showDeleteConfirm = false;
@@ -186,8 +202,17 @@
 		role="button"
 		tabindex="0"
 	>
-		<!-- Chevron spacer — aligns with group chevron -->
-		<div class="w-5 shrink-0 {indented ? 'ml-1' : ''}"></div>
+		<!-- Bookmark — replaces chevron spacer -->
+		<button
+			onclick={toggleBookmark}
+			aria-label={card.bookmarked_at ? 'Remove bookmark' : 'Bookmark card'}
+			class="w-5 shrink-0 flex items-center justify-center transition-colors {indented ? 'ml-1' : ''} {card.bookmarked_at ? 'text-laya-orange' : 'text-surface-600 hover:text-laya-orange'}"
+			disabled={bookmarking}
+		>
+			<svg class="h-3.5 w-3.5" fill={card.bookmarked_at ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+			</svg>
+		</button>
 
 		<!-- Source — fixed width -->
 	<span class="w-[60px] shrink-0 text-[11px] font-semibold uppercase tracking-wider text-surface-500 truncate" title={platform}>
