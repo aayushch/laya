@@ -15,6 +15,31 @@
 	import BulkActionsDropdown from '$lib/components/feed/BulkActionsDropdown.svelte';
 	import { recentCards, recentDrawerOpen, trackCardVisit, clearRecentCards, type RecentCardEntry } from '$lib/stores/recentCards';
 	import { pendingCardId } from '$lib/stores/chat';
+	import { spaces } from '$lib/stores/spaces';
+
+	// Filter toolbar state
+	let filterPopoverOpen = $state(false);
+	const activeStatusCount = $derived($feedFilters.statusFilters.length);
+	const activePriorityCount = $derived($feedFilters.priorityFilters.length);
+	const activeSpaceCount = $derived($feedFilters.spaceFilter.length);
+	const hasActiveFilters = $derived(activeStatusCount > 0 || activePriorityCount > 0 || $feedFilters.showArchived || $feedFilters.showBookmarked || activeSpaceCount > 0);
+
+	function toggleFilter(arr: string[], value: string): string[] {
+		return arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value];
+	}
+
+	function closeFilterDropdown(e: MouseEvent) {
+		const target = e.target as HTMLElement;
+		if (!target.isConnected) return;
+		if (!target.closest('.filter-dropdown')) {
+			filterPopoverOpen = false;
+		}
+	}
+
+	$effect(() => {
+		document.addEventListener('click', closeFilterDropdown);
+		return () => document.removeEventListener('click', closeFilterDropdown);
+	});
 
 	let groups = $state<CardGroup[]>([]);
 	let totalGroups = $state(0);
@@ -733,10 +758,10 @@
 </script>
 
 <div class="flex h-full flex-col">
-	<!-- Sticky summary bar spanning full width -->
-	<div class="flex items-center gap-2 pb-3">
+	<!-- Feed toolbar -->
+	<div class="flex items-center gap-1.5 pb-2">
+		<!-- Stats -->
 		{#if hasSelection && $feedViewMode === 'list'}
-			<!-- Bulk selection mode header -->
 			<div class="flex items-center gap-2">
 				<span class="text-xs font-medium text-laya-orange">{selectionCount} selected</span>
 				<span class="text-[10px] text-surface-600">·</span>
@@ -755,11 +780,10 @@
 				>
 					Deselect All
 				</button>
+				<div class="ml-1">
+					<BulkActionsDropdown {selectedCards} ondelete={handleDelete} />
+				</div>
 			</div>
-			<div class="ml-3">
-				<BulkActionsDropdown {selectedCards} ondelete={handleDelete} />
-			</div>
-			<div class="flex-1"></div>
 		{:else}
 			<div class="flex items-center gap-1.5">
 				<span class="text-xs text-surface-500">{totalGroups} {totalGroups === 1 ? 'group' : 'groups'}</span>
@@ -790,8 +814,191 @@
 					</span>
 				{/if}
 			</div>
-			<div class="flex-1"></div>
 		{/if}
+
+		<div class="flex-1"></div>
+
+		<!-- Filter popover -->
+		<div class="filter-dropdown relative">
+			<button
+				onclick={() => (filterPopoverOpen = !filterPopoverOpen)}
+				class="relative flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors
+					{hasActiveFilters
+						? 'border-laya-orange/30 bg-laya-orange/10 text-laya-orange'
+						: 'border-surface-700 bg-surface-800/60 text-surface-400 hover:text-surface-200 hover:border-surface-600'}"
+			>
+				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+				</svg>
+				Filters
+				{#if hasActiveFilters}
+					<span class="flex h-4 w-4 items-center justify-center rounded-full bg-laya-orange text-[9px] font-bold text-surface-900">{activeStatusCount + activePriorityCount + activeSpaceCount + ($feedFilters.showArchived ? 1 : 0) + ($feedFilters.showBookmarked ? 1 : 0)}</span>
+				{/if}
+			</button>
+
+			{#if filterPopoverOpen}
+				<div class="absolute left-0 top-full z-50 mt-1.5 w-64 rounded-xl border border-surface-600 bg-surface-800 p-3 shadow-xl shadow-black/30">
+					<!-- Sort -->
+					<div class="mb-3">
+						<div class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Sort</div>
+						<div class="flex items-center gap-1.5">
+							<div class="flex flex-1 items-center gap-1.5 rounded-lg border border-surface-700 bg-surface-900/60 px-2 py-1">
+								<svg class="h-3.5 w-3.5 text-surface-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+								</svg>
+								<select
+									bind:value={$feedFilters.sortBy}
+									class="flex-1 bg-transparent text-xs text-surface-200 outline-none cursor-pointer appearance-none pr-4"
+									style="background-image: url('data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%2712%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%23888%27 stroke-width=%272%27%3E%3Cpath d=%27M6 9l6 6 6-6%27/%3E%3C/svg%3E'); background-repeat: no-repeat; background-position: right 0 center;"
+								>
+									<option value="newest">Newest</option>
+									<option value="priority">Priority</option>
+									<option value="status">Status</option>
+									<option value="persona">Persona</option>
+									<option value="category">Category</option>
+									<option value="platform">Source</option>
+								</select>
+							</div>
+							<button
+								aria-label="Toggle sort direction"
+								class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-surface-700 bg-surface-900/60 text-surface-400 transition-colors hover:bg-surface-700 hover:text-surface-200"
+								onclick={() => ($feedFilters.sortAsc = !$feedFilters.sortAsc)}
+							>
+								<svg class="h-3 w-3 transition-transform {$feedFilters.sortAsc ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+								</svg>
+							</button>
+						</div>
+					</div>
+
+					<!-- Workspace -->
+					{#if $spaces.length > 1}
+						<div class="mb-3">
+							<div class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Workspace</div>
+							<div class="space-y-0.5">
+								{#each $spaces as space}
+									<button
+										class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors hover:bg-surface-700
+											{$feedFilters.spaceFilter.includes(space.space_id) ? 'text-laya-orange' : 'text-surface-300'}"
+										onclick={() => ($feedFilters.spaceFilter = toggleFilter($feedFilters.spaceFilter, space.space_id))}
+									>
+										<span class="flex h-4 w-4 items-center justify-center rounded border {$feedFilters.spaceFilter.includes(space.space_id) ? 'border-laya-orange bg-laya-orange/20' : 'border-surface-600'}">
+											{#if $feedFilters.spaceFilter.includes(space.space_id)}
+												<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+												</svg>
+											{/if}
+										</span>
+										<span class="h-2 w-2 rounded-full shrink-0" style="background-color: {space.color}"></span>
+										{space.name}
+									</button>
+								{/each}
+							</div>
+						</div>
+					{/if}
+
+					<!-- Status -->
+					<div class="mb-3">
+						<div class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Status</div>
+						<div class="space-y-0.5">
+							{#each [['pending', 'Processing'], ['ready', 'Ready'], ['requires_approval', 'Needs Approval'], ['agent_running', 'Running'], ['failed', 'Failed'], ['done', 'Done'], ['dismissed', 'Dismissed']] as [value, label]}
+								<button
+									class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors hover:bg-surface-700
+										{$feedFilters.statusFilters.includes(value) ? 'text-laya-orange' : 'text-surface-300'}"
+									onclick={() => ($feedFilters.statusFilters = toggleFilter($feedFilters.statusFilters, value))}
+								>
+									<span class="flex h-4 w-4 items-center justify-center rounded border {$feedFilters.statusFilters.includes(value) ? 'border-laya-orange bg-laya-orange/20' : 'border-surface-600'}">
+										{#if $feedFilters.statusFilters.includes(value)}
+											<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+											</svg>
+										{/if}
+									</span>
+									{label}
+								</button>
+							{/each}
+						</div>
+					</div>
+
+					<!-- Priority -->
+					<div class="mb-3">
+						<div class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Priority</div>
+						<div class="space-y-0.5">
+							{#each [['CRITICAL', 'Critical'], ['HIGH', 'High'], ['MEDIUM', 'Medium'], ['LOW', 'Low']] as [value, label]}
+								<button
+									class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors hover:bg-surface-700
+										{$feedFilters.priorityFilters.includes(value) ? 'text-laya-orange' : 'text-surface-300'}"
+									onclick={() => ($feedFilters.priorityFilters = toggleFilter($feedFilters.priorityFilters, value))}
+								>
+									<span class="flex h-4 w-4 items-center justify-center rounded border {$feedFilters.priorityFilters.includes(value) ? 'border-laya-orange bg-laya-orange/20' : 'border-surface-600'}">
+										{#if $feedFilters.priorityFilters.includes(value)}
+											<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+											</svg>
+										{/if}
+									</span>
+									{label}
+								</button>
+							{/each}
+						</div>
+					</div>
+
+					<!-- Toggles -->
+					<div class="mb-2 space-y-0.5">
+						<button
+							class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors hover:bg-surface-700
+								{$feedFilters.showArchived ? 'text-laya-orange' : 'text-surface-300'}"
+							onclick={() => ($feedFilters.showArchived = !$feedFilters.showArchived)}
+						>
+							<span class="flex h-4 w-4 items-center justify-center rounded border {$feedFilters.showArchived ? 'border-laya-orange bg-laya-orange/20' : 'border-surface-600'}">
+								{#if $feedFilters.showArchived}
+									<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+									</svg>
+								{/if}
+							</span>
+							Show Archived
+						</button>
+					</div>
+
+					<!-- Clear all -->
+					{#if hasActiveFilters}
+						<div class="border-t border-surface-700 pt-2">
+							<button
+								class="w-full rounded-md px-2 py-1 text-[11px] font-medium text-surface-500 transition-colors hover:text-surface-300 hover:bg-surface-700"
+								onclick={() => {
+									$feedFilters.statusFilters = [];
+									$feedFilters.priorityFilters = [];
+									$feedFilters.showArchived = false;
+									$feedFilters.showBookmarked = false;
+									$feedFilters.spaceFilter = [];
+								}}
+							>
+								Clear all filters
+							</button>
+						</div>
+					{/if}
+				</div>
+			{/if}
+		</div>
+
+		<!-- Bookmarks toggle -->
+		<button
+			onclick={() => ($feedFilters.showBookmarked = !$feedFilters.showBookmarked)}
+			class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors
+				{$feedFilters.showBookmarked
+					? 'border-laya-orange/30 bg-laya-orange/10 text-laya-orange'
+					: 'border-surface-700 bg-surface-800/60 text-surface-400 hover:text-surface-200 hover:border-surface-600'}"
+		>
+			<svg class="h-3.5 w-3.5" fill={$feedFilters.showBookmarked ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+			</svg>
+			Bookmarks
+		</button>
+
+		<!-- Separator -->
+		<div class="h-5 w-px bg-surface-700/60 mx-1"></div>
+
 		<!-- Recent Cards toggle -->
 		<div class="group/tip relative">
 			<button
@@ -807,29 +1014,6 @@
 				</svg>
 			</button>
 			<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">Recent Cards</span>
-		</div>
-		<!-- Search -->
-		<div class="relative">
-			<svg class="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-surface-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-			</svg>
-			<input
-				type="text"
-				bind:value={searchQuery}
-				placeholder="Search"
-				class="h-7 w-48 rounded-lg border border-surface-700 bg-surface-800/60 pl-7 pr-7 text-xs text-surface-200 placeholder-surface-500 outline-none transition-colors focus:border-laya-orange/50 focus:ring-1 focus:ring-laya-orange/25"
-			/>
-			{#if searchQuery}
-				<button
-					class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-surface-500 hover:text-surface-300"
-					onclick={() => (searchQuery = '')}
-					title="Clear search"
-				>
-					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-					</svg>
-				</button>
-			{/if}
 		</div>
 		<!-- View toggle -->
 		<div class="flex items-center rounded-lg border border-surface-700 bg-surface-800/60 p-0.5">
@@ -869,6 +1053,29 @@
 				</button>
 				<span class="pointer-events-none absolute right-0 top-full z-50 mt-1.5 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">Summary View</span>
 			</div>
+		</div>
+		<!-- Search -->
+		<div class="relative">
+			<svg class="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-surface-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+			</svg>
+			<input
+				type="text"
+				bind:value={searchQuery}
+				placeholder="Search"
+				class="h-7 w-48 rounded-lg border border-surface-700 bg-surface-800/60 pl-7 pr-7 text-xs text-surface-200 placeholder-surface-500 outline-none transition-colors focus:border-laya-orange/50 focus:ring-1 focus:ring-laya-orange/25"
+			/>
+			{#if searchQuery}
+				<button
+					class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-surface-500 hover:text-surface-300"
+					onclick={() => (searchQuery = '')}
+					title="Clear search"
+				>
+					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			{/if}
 		</div>
 	</div>
 

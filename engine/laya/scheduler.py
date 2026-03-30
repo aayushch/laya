@@ -82,6 +82,34 @@ async def _run_chat_housekeeping(retention_days: int) -> None:
     log.info("chat_housekeeping_complete", deleted=deleted, retention_days=retention_days)
 
 
+async def _run_trace_housekeeping(retention_days: int) -> None:
+    """Delete traces older than `retention_days` days."""
+    from laya.db.sqlite import get_db
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT trace_id FROM traces WHERE created_at < ?",
+        (cutoff,),
+    )
+
+    if not rows:
+        log.info("trace_housekeeping_nothing_to_delete", retention_days=retention_days)
+        return
+
+    deleted = 0
+    for row in rows:
+        try:
+            await db.execute("DELETE FROM traces WHERE trace_id = ?", (row["trace_id"],))
+            deleted += 1
+        except Exception as e:
+            log.warning("trace_housekeeping_delete_failed", trace_id=row["trace_id"], error=str(e))
+
+    await db.commit()
+    log.info("trace_housekeeping_complete", deleted=deleted, retention_days=retention_days)
+
+
 async def _scheduler_loop() -> None:
     """Main scheduler loop — runs every 60 seconds."""
     global _last_briefing_date, _last_housekeeping_date, _last_budget_month, _last_learn_check
@@ -141,6 +169,13 @@ async def _scheduler_loop() -> None:
                     await _run_chat_housekeeping(chat_retention_days)
                 except Exception as e:
                     log.error("chat_housekeeping_failed", error=str(e))
+
+                # Trace housekeeping
+                trace_retention_days = int(retention_cfg.get("trace_retention_days", 90))
+                try:
+                    await _run_trace_housekeeping(trace_retention_days)
+                except Exception as e:
+                    log.error("trace_housekeeping_failed", error=str(e))
 
             # --- Budget month rollover (local timezone) ---
             try:

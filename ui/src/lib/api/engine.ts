@@ -479,6 +479,36 @@ export const engineApi = {
 			method: 'POST'
 		}),
 
+	// Trace
+	runTrace: (query: string, spaceId?: string) =>
+		request<import('./types').TraceResponse>('/trace', {
+			method: 'POST',
+			body: JSON.stringify({
+				query,
+				space_id: spaceId || null,
+				include_archived: true,
+				max_results: 50
+			})
+		}),
+
+	getTraces: (limit = 20, offset = 0) =>
+		request<import('./types').TraceListItem[]>(`/traces?limit=${limit}&offset=${offset}`),
+
+	getTrace: (traceId: string) =>
+		request<import('./types').TraceResponse>(`/traces/${traceId}`),
+
+	rerunTrace: (traceId: string) =>
+		request<import('./types').TraceResponse>(`/traces/${traceId}/rerun`, { method: 'POST' }),
+
+	deleteTrace: (traceId: string) =>
+		request<{ deleted: string }>(`/traces/${traceId}`, { method: 'DELETE' }),
+
+	exportTrace: async (traceId: string): Promise<Blob> => {
+		const resp = await fetch(`${ENGINE_URL}/traces/${traceId}/export`);
+		if (!resp.ok) throw new Error(`Export failed: ${resp.status}`);
+		return resp.blob();
+	},
+
 	// Audit Log
 	getAuditLog: (params?: {
 		step?: string;

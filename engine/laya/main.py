@@ -30,6 +30,7 @@ from laya.api.rules_api import router as rules_router
 from laya.api.settings_api import router as settings_router
 from laya.api.spaces_api import router as spaces_router
 from laya.api.team import router as team_router
+from laya.api.trace_api import router as trace_router
 from laya.api.websocket import manager
 from laya.api.workspace_api import router as workspace_router
 from laya.api.ws_router import handle_ws_message
@@ -270,6 +271,7 @@ app.include_router(team_router)
 app.include_router(rules_router)
 app.include_router(settings_router)
 app.include_router(spaces_router)
+app.include_router(trace_router)
 app.include_router(workspace_router)
 
 

@@ -710,3 +710,59 @@ export interface MonthlyCostEntry {
 	total_input_tokens: number;
 	total_output_tokens: number;
 }
+
+// Trace (semantic cross-platform entity search)
+export interface TraceEntity {
+	entity_id: string;
+	title: string;
+	url?: string;
+	platform: string;
+}
+
+export interface TraceChapter {
+	label: string;
+	timestamp: string;
+	card_ids: string[];
+}
+
+export interface TraceStatusSummary {
+	current_state: string;
+	platforms_involved: string[];
+	total_cards: number;
+	date_range: { from: string; to: string };
+	pending_actions: number;
+}
+
+export interface TraceCluster {
+	cluster_id: string;
+	primary_entity: TraceEntity;
+	linked_entities: TraceEntity[];
+	narrative?: string;
+	chapters: TraceChapter[];
+	timeline: ActionCard[];
+	status_summary: TraceStatusSummary;
+}
+
+export interface TraceSearchMetadata {
+	semantic_hits: number;
+	fuzzy_hits: number;
+	entity_hits: number;
+	expansion_cards: number;
+	elapsed_ms: number;
+}
+
+export interface TraceResponse {
+	trace_id: string;
+	query: string;
+	clusters: TraceCluster[];
+	search_metadata: TraceSearchMetadata;
+	created_at: string;
+}
+
+export interface TraceListItem {
+	trace_id: string;
+	query: string;
+	created_at: string;
+	total_cards: number;
+	platforms: string[];
+}
