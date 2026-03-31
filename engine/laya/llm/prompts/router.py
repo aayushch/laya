@@ -85,6 +85,9 @@ original review/fix was insufficient.
 (title, description, reviewers) are usually informational.
 
 Actor relationship context (from team.json):
+- self: The event actor IS the Laya user themselves. Their own actions are usually \
+LOW priority (they already know what they did), unless the event is a response to \
+something they need to follow up on.
 - manager: Higher priority for direct requests
 - teammate: Standard priority
 - external: Slightly higher priority (external-facing)

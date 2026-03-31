@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from laya.egress.tools import get_egress_tool_definitions
+
 
 def get_all_tool_definitions() -> list[dict]:
     """Return all tool definitions in OpenAI function calling format."""
@@ -9,6 +11,7 @@ def get_all_tool_definitions() -> list[dict]:
         *_read_tools(),
         *_write_tools(),
         *_settings_tools(),
+        *get_egress_tool_definitions(),
     ]
 
 

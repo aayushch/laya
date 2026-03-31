@@ -28,13 +28,44 @@ use the appropriate write tool and confirm the action
 - Reference specific cards and events when relevant
 - If you're unsure about something, say so
 - Summarize findings clearly with bullet points when appropriate
-- Include relevant IDs and links to help the user navigate"""
+- Include relevant IDs and links to help the user navigate
+
+## Platform Actions (Egress)
+
+You can perform actions on external platforms (email, Jira, GitHub, Bitbucket, Slack) \
+using the egress tools. Follow these rules:
+
+1. **Always look up context first**: Before calling an egress tool, use search_cards \
+or search_events to find the relevant item and extract platform-specific identifiers \
+(ticket IDs, thread IDs, PR numbers, email addresses) from the card/event metadata. \
+Never guess identifiers.
+
+2. **Preview before execute**: Egress tools return a preview with an execute_token. \
+Show this preview to the user and ask for confirmation before calling confirm_egress. \
+Never skip confirmation for actions that send messages or modify external state.
+
+3. **Use open_compose for writing**: If the user says "reply to", "draft", "write", \
+"respond to", "help me with a response", use open_compose to open the editor pre-filled. \
+If the user gives a clear direct command ("approve PR 23", "close PROJ-123", \
+"post this comment"), use the direct action tools instead.
+
+4. **Smart resolution**: If a ticket/PR/email ID doesn't match exactly, search for \
+close matches and present options to the user. Never execute on an unverified target.
+
+5. **Cross-platform OK**: Users may ask to do multiple things in one message \
+("close the ticket and notify on Slack"). Handle each as a separate preview, \
+then confirm all together.
+
+6. **Connection awareness**: Only suggest actions for platforms that are likely connected. \
+If an action fails because credentials are missing, suggest the user connect the \
+platform in Settings > Integrations."""
 
 
 def build_chat_messages(
     user_message: str,
     chat_history: list[dict[str, str]],
     context_text: str = "",
+    user_identity: dict[str, str] | None = None,
 ) -> list[dict[str, str]]:
     """Build the messages array for the Chat LLM call.
 
@@ -42,8 +73,23 @@ def build_chat_messages(
         user_message: The user's current message.
         chat_history: Recent chat messages in OpenAI format.
         context_text: Pre-packed context string from hybrid retrieval.
+        user_identity: Optional dict with 'name' and 'email' of the Laya user.
     """
-    messages = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}]
+    system_content = CHAT_SYSTEM_PROMPT
+    if user_identity:
+        emails = user_identity.get("emails", [user_identity["email"]])
+        accounts = user_identity.get("accounts", [])
+        identity_parts = f"You are speaking with {user_identity['name']} ({', '.join(emails)})."
+        if accounts:
+            identity_parts += f" Platform accounts: {', '.join(accounts)}."
+        system_content += (
+            f"\n\n## User Identity\n"
+            f"{identity_parts} "
+            f"Address them by name when appropriate. When referencing cards or events "
+            f"involving this person (matched by any of their emails or accounts), "
+            f"use first-person framing (\"your PR\", \"you opened\")."
+        )
+    messages = [{"role": "system", "content": system_content}]
 
     # Add recent chat history for conversation continuity
     for msg in chat_history[-10:]:

@@ -21,6 +21,14 @@ Draft a clear, professional, contextually appropriate reply. Match the tone of t
 original message. If the event includes technical findings from a prior worker, \
 incorporate them naturally into the reply.
 
+## User Identity Awareness
+
+When a [USER IDENTITY] section is provided:
+- If the event actor is the user themselves, do NOT draft a reply addressed to the user \
+(no "Hi John, regarding your issue..."). Instead draft a follow-up, status note, or \
+context summary that the user might post on the thread for others to see.
+- If the event is from someone else, draft the reply normally, addressed to that person.
+
 Output the drafted reply text, the tone you chose, and a brief explanation of your approach."""
 
 
@@ -29,6 +37,7 @@ def build_comms_messages(
     router_output: RouterOutput,
     related_context: list[dict[str, Any]] | None = None,
     prior_findings: dict[str, Any] | None = None,
+    user_identity: dict[str, str] | None = None,
 ) -> list[dict[str, str]]:
     """Build the messages array for the COMMS worker LLM call."""
     event_text = f"""\
@@ -55,13 +64,29 @@ Body:
     if prior_findings:
         findings_text = f"\n\nFindings from prior ENGINEER worker:\n{_summarize_findings(prior_findings)}"
 
+    identity_text = ""
+    if user_identity:
+        emails = user_identity.get("emails", [user_identity["email"]])
+        accounts = user_identity.get("accounts", [])
+        lines = [
+            f"Name: {user_identity['name']}",
+            f"Emails: {', '.join(emails)}",
+        ]
+        if accounts:
+            lines.append(f"Platform accounts: {', '.join(accounts)}")
+        lines.append(
+            "If the event actor's email OR handle matches any of the above, "
+            "do NOT draft a reply addressed to them."
+        )
+        identity_text = "\n\n[USER IDENTITY]\n" + "\n".join(lines) + "\n[END USER IDENTITY]"
+
     user_message = f"""\
 Draft a professional reply to this communication.
 
 {event_text}
 
 Classification: {router_output.category.value} / {router_output.persona.value} / {router_output.priority.value}
-{context_text}{findings_text}
+{context_text}{findings_text}{identity_text}
 
 Respond with a drafted reply, the tone, and your reasoning."""
 

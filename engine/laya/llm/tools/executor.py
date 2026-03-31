@@ -7,6 +7,13 @@ from typing import Any
 
 import structlog
 
+from laya.egress.tool_handlers import (
+    EGRESS_TOOL_NAMES,
+    handle_confirm_egress,
+    handle_egress_tool,
+    handle_open_compose,
+)
+from laya.egress.tools import EGRESS_TOOL_NAMES as _EGRESS_NAMES
 from laya.llm.tools import card_tools, entity_tools, event_tools, search_tools, settings_tools
 
 log = structlog.get_logger()
@@ -66,6 +73,14 @@ async def execute_tool(
         JSON string result to feed back to the LLM.
     """
     _register_tools()
+
+    # Egress tools — handled by the egress module
+    if name == "open_compose":
+        return await handle_open_compose(arguments, space_id)
+    if name == "confirm_egress":
+        return await handle_confirm_egress(arguments, space_id)
+    if name in _EGRESS_NAMES:
+        return await handle_egress_tool(name, arguments, space_id)
 
     handler = _TOOL_HANDLERS.get(name)
     if not handler:

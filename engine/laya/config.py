@@ -70,8 +70,10 @@ DEFAULT_SETTINGS = {
             "gmail": "gmail-executor",
             "github": "github-executor",
             "calendar": "calendar-executor",
+            "google_calendar": "google-calendar-executor",
             "outlook": "outlook-email-executor",
             "outlook_calendar": "outlook-calendar-executor",
+            "linear": "linear-executor",
         },
     },
     "custom_providers": [],
@@ -155,6 +157,26 @@ def save_team(team: dict) -> None:
     ensure_directories()
     with open(LAYA_TEAM_FILE, "w") as f:
         json.dump(team, f, indent=2)
+
+
+def get_self_user() -> dict | None:
+    """Return the team member with role 'self', or None if not configured.
+
+    Returns a dict with keys: name, email, emails (all emails), accounts.
+    """
+    team = load_team()
+    for member in team.get("members", []):
+        if member.get("role") == "self":
+            primary = member["email"]
+            aliases = member.get("aliases", [])
+            all_emails = [primary] + [a for a in aliases if a != primary]
+            return {
+                "name": member["name"],
+                "email": primary,
+                "emails": all_emails,
+                "accounts": member.get("accounts", []),
+            }
+    return None
 
 
 def load_rules() -> dict:

@@ -196,6 +196,10 @@ async def process_event(event_id: str) -> None:
         return
 
     try:
+        # Load user identity (the person running Laya) for prompt personalization
+        from laya.config import get_self_user
+        user_identity = get_self_user()
+
         # INGEST
         actor_relationship = await run_ingest(event)
 
@@ -255,9 +259,9 @@ async def process_event(event_id: str) -> None:
 
         # WORKERS → STAGER → EMIT (inline, not background fire-and-forget)
         if router_output and router_output.requires_research:
-            await _run_workers_pipeline(event, router_output, space_id)
+            await _run_workers_pipeline(event, router_output, space_id, user_identity=user_identity)
         elif router_output:
-            await _run_simple_pipeline(event, router_output, space_id)
+            await _run_simple_pipeline(event, router_output, space_id, user_identity=user_identity)
 
         await _mark_completed(event_id)
 
@@ -275,7 +279,8 @@ async def process_event(event_id: str) -> None:
 
 
 async def _run_workers_pipeline(
-    event: LayaEvent, router_output, space_id: str | None
+    event: LayaEvent, router_output, space_id: str | None,
+    user_identity: dict | None = None,
 ) -> None:
     """Workers → Stager → Emit with pre-created card."""
     import uuid as _uuid
@@ -328,8 +333,8 @@ async def _run_workers_pipeline(
     )
 
     try:
-        results = await run_workers(event, router_output, card_id=card_id, space_id=space_id)
-        stager_output = await run_stager(event, router_output, results, space_id=space_id)
+        results = await run_workers(event, router_output, card_id=card_id, space_id=space_id, user_identity=user_identity)
+        stager_output = await run_stager(event, router_output, results, space_id=space_id, user_identity=user_identity)
         await run_emit(event, router_output, stager_output, results, card_id=card_id, space_id=space_id)
     except Exception as e:
         # Mark the provisional card as failed
@@ -346,13 +351,14 @@ async def _run_workers_pipeline(
 
 
 async def _run_simple_pipeline(
-    event: LayaEvent, router_output, space_id: str | None
+    event: LayaEvent, router_output, space_id: str | None,
+    user_identity: dict | None = None,
 ) -> None:
     """Stager → Emit for simple events."""
     from laya.pipeline.emit import run_emit
     from laya.pipeline.stager import run_stager
 
-    stager_output = await run_stager(event, router_output, worker_results=None, space_id=space_id)
+    stager_output = await run_stager(event, router_output, worker_results=None, space_id=space_id, user_identity=user_identity)
     await run_emit(event, router_output, stager_output, space_id=space_id)
 
 

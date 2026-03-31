@@ -40,6 +40,14 @@ item in-place instead of adding a new one. Use the NEW card's card_id to replace
 one. Two cards about "PR-34" or "TICKET-123" or the same email subject are about the same \
 entity — merge them into ONE summary item with the latest status. Never have two items \
 describing the same PR, ticket, thread, or entity even if they have different card_ids.
+- **INFER COMPLETION FROM CONTENT**: When a new card indicates that the underlying work \
+item has reached a terminal/resolved state, update the summary item's status to "done" — \
+even without an explicit user action. Examples of terminal events: a PR was **merged** or \
+**declined/closed**, a ticket/issue was **closed** or **resolved**, a build **succeeded**, \
+a deploy **completed**, an approval was **granted**, an invite was **accepted**. \
+Conversely, events like new comments, review requests, status updates, or reopens are NOT \
+terminal — keep those as "pending". Use the semantic meaning of the card header and summary \
+to judge whether the entity's lifecycle is complete.
 - Prioritize clarity and usefulness for a busy professional scanning their day.
 - Each item MUST include the card_id it relates to for navigation. When merging, use the \
 newest card_id.

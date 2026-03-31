@@ -35,15 +35,27 @@ and concrete findings.
 - **suggested_actions**: 1-3 actions the user can approve. Each action specifies:
   - action_id: unique identifier (e.g., "act_comment_jira")
   - label: human-readable button text (e.g., "Post Jira Comment")
-  - action_type: "comment", "transition", "merge", "send_email", "approve", "dismiss", "close_issue", "calendar"
-  - target_platform: "jira", "bitbucket", "slack", "gmail", "github", "google_calendar"
+  - action_type: one of "comment", "transition", "create_issue", "assign", "send_email", \
+"forward", "archive", "approve_pr", "request_changes", "merge_pr", "decline_pr", \
+"comment_pr", "create_pr", "send_message", "reply_thread", "close_issue", "calendar"
+  - target_platform: "jira", "bitbucket", "slack", "gmail", "github", "google_calendar", \
+"outlook", "linear"
   - payload: A JSON string with platform-specific data. Required fields by platform:
-    - **gmail**: {"to": "recipient@email", "subject": "Re: ...", "body": "The full email body text", "thread_id": "optional thread ID"}
-    - **slack**: {"channel": "#channel-name", "message": "The message text"}
-    - **jira**: {"comment": "The comment body"} or {"transition_id": "...", "comment": "optional"}
-    - **bitbucket**: {"comment": "The comment body"}
-    - **github**: {"owner": "repo-owner", "repo": "repo-name", "issue_number": 123, "comment": "optional comment body"} for comment/close_issue actions
-    - **google_calendar** (target_platform: "google_calendar", action_type: "calendar"): {"title": "Event title", "description": "Details", "start": "ISO datetime", "end": "ISO datetime"}
+    - **gmail**: {"to": "recipient@email", "subject": "Re: ...", "body": "The full email body text", "thread_id": "optional thread ID", "cc": "optional"}
+    - **outlook**: {"to": "recipient@email", "subject": "Re: ...", "body": "email text", "conversation_id": "optional"}
+    - **slack**: {"channel": "channel-name-or-id", "message": "The message text"} \
+for send_message; add "thread_ts": "timestamp" for reply_thread
+    - **jira**: {"issue_key": "PROJ-123", "comment": "The comment body"} for comment; \
+{"issue_key": "PROJ-123", "target_status": "Done"} for transition; \
+{"project": "PROJ", "summary": "Title", "description": "...", "type": "Task"} for create_issue
+    - **bitbucket**: {"workspace": "ws", "repo": "repo", "pr_id": "123", "comment": "body"} \
+for comment_pr; same without comment for approve_pr, decline_pr, merge_pr
+    - **github**: {"owner": "repo-owner", "repo": "repo-name", "issue_number": 123, "comment": "body"} \
+for comment/close_issue; {"owner": "o", "repo": "r", "pr_number": 123} for approve_pr/merge_pr/request_changes; \
+{"owner": "o", "repo": "r", "title": "...", "body": "..."} for create_issue
+    - **linear**: {"issue_id": "...", "body": "comment"} for comment; \
+{"team_id": "...", "title": "...", "description": "..."} for create_issue
+    - **google_calendar**: {"title": "Event title", "description": "Details", "start": "ISO datetime", "end": "ISO datetime"}
   IMPORTANT: For gmail send_email actions, the "body" field is REQUIRED and must contain \
 the full email text. Never omit it.
 - **privacy_tier**: 1 (public-safe), 2 (internal), 3 (confidential — PII, credentials, \
@@ -92,7 +104,28 @@ if available. Suggest follow-up actions (e.g., "Delete source branch", "Deploy t
 
 For update cards, the staged_output type should be "status_update" unless the update \
 contains substantive new content requiring action (e.g., a comment requesting code review \
-should still use "code_fix" or "draft_reply")."""
+should still use "code_fix" or "draft_reply").
+
+## User Identity Awareness
+
+When a [USER IDENTITY] section is provided, the event actor may be the same person who \
+uses Laya. Apply these rules:
+
+- **Self-initiated events**: If the event actor's email matches the user's email, this \
+is the user's own action. Use first-person framing in headers and summaries — "You opened \
+issue BUG-123", "Your PR #45 was merged", NOT "John Doe opened issue BUG-123".
+- **Pre-drafted responses**: NEVER draft a reply or message addressed to the user \
+themselves (no "Hi John, regarding your issue..."). If the event was triggered by the \
+user's own action (they opened a ticket, created a PR, sent an email), the staged_output \
+should be a brief summary or status update — not a reply to themselves.
+- **Actions from others on user's items**: If someone else acts on the user's item \
+(e.g., Jane comments on a PR the user created), frame it as "Jane commented on your \
+PR #45" and the pre-drafted response should address Jane, not the user.
+- **Actions still valid**: Do NOT remove suggested actions just because the event was \
+self-initiated. The user may still want to comment, transition, or close their own items. \
+Just ensure the payload content (e.g., comment body) is contextually appropriate and \
+not addressed to themselves.
+- **If no USER IDENTITY is provided**, fall back to the default third-person behavior."""
 
 
 def build_stager_messages(
@@ -101,6 +134,7 @@ def build_stager_messages(
     worker_results: list[WorkerResult] | None = None,
     related_context: list[dict[str, Any]] | None = None,
     entity_history: list[dict[str, Any]] | None = None,
+    user_identity: dict[str, str] | None = None,
 ) -> list[dict[str, str]]:
     """Build the messages array for the Stager LLM call."""
     event_text = f"""\
@@ -188,13 +222,30 @@ Body:
             "[END EXISTING CARDS]"
         )
 
+    # User identity context
+    identity_text = ""
+    if user_identity:
+        emails = user_identity.get("emails", [user_identity["email"]])
+        accounts = user_identity.get("accounts", [])
+        lines = [
+            f"Name: {user_identity['name']}",
+            f"Emails: {', '.join(emails)}",
+        ]
+        if accounts:
+            lines.append(f"Platform accounts: {', '.join(accounts)}")
+        lines.append(
+            "If the event actor's email OR platform handle matches any of the above, "
+            "this is the user's own action — use first-person framing."
+        )
+        identity_text = "\n\n[USER IDENTITY]\n" + "\n".join(lines) + "\n[END USER IDENTITY]"
+
     user_message = f"""\
 Synthesize the following event and findings into a polished action card.
 
 {event_text}
 
 Router classification:
-{classification}{entities_text}{plan_text}{workers_text}{context_text}{entity_text}
+{classification}{entities_text}{plan_text}{workers_text}{context_text}{entity_text}{identity_text}
 
 Produce a JSON action card matching the required schema."""
 

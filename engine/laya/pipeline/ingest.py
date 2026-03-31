@@ -11,17 +11,30 @@ log = structlog.get_logger()
 
 
 async def resolve_actor_relationship(event: LayaEvent) -> str:
-    """Look up actor.email in team.json and return the relationship role.
+    """Look up actor in team.json by email, aliases, or platform accounts.
 
-    Returns "external" if the email is not found.
+    Returns "external" if no match is found.
     """
     team_data = load_team()
     team = TeamConfig(**team_data)
 
     actor_email = event.actor.email.lower()
+    actor_handle = (event.actor.platform_handle or "").lower()
+
     for member in team.members:
+        # Match on primary email
         if member.email.lower() == actor_email:
             log.debug("actor_resolved", email=actor_email, role=member.role.value, name=member.name)
+            return member.role.value
+
+        # Match on alias emails
+        if any(alias.lower() == actor_email for alias in member.aliases):
+            log.debug("actor_resolved_alias", email=actor_email, role=member.role.value, name=member.name)
+            return member.role.value
+
+        # Match on platform account names (e.g., GitHub username "jdoe")
+        if actor_handle and any(acc.lower() == actor_handle for acc in member.accounts):
+            log.debug("actor_resolved_account", handle=actor_handle, role=member.role.value, name=member.name)
             return member.role.value
 
     log.debug("actor_unresolved", email=actor_email, defaulting_to="external")
