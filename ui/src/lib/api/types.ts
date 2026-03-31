@@ -29,8 +29,10 @@ export interface WsMessage {
 export interface TeamMember {
 	name: string;
 	email: string;
-	role: 'manager' | 'teammate' | 'external' | 'bot';
+	role: 'self' | 'manager' | 'teammate' | 'external' | 'bot';
 	notes: string;
+	aliases: string[];
+	accounts: string[];
 }
 
 /** team.json structure */
@@ -766,4 +768,113 @@ export interface TraceListItem {
 	created_at: string;
 	total_cards: number;
 	platforms: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Egress types
+// ---------------------------------------------------------------------------
+
+/** Request to execute an egress action */
+export interface EgressExecuteRequest {
+	platform: string;
+	action_type: string;
+	payload: Record<string, unknown>;
+	source_card_id?: string;
+	source_event_id?: string;
+	space_id?: string;
+}
+
+/** Response from egress execution */
+export interface EgressExecuteResponse {
+	status: string;
+	result_url?: string;
+	result_data?: Record<string, unknown>;
+}
+
+/** Response from egress preview */
+export interface EgressPreviewResponse {
+	platform: string;
+	action_type: string;
+	summary: string;
+	details: Record<string, unknown>;
+	warnings: string[];
+	estimated_impact: string;
+}
+
+/** A platform capability */
+export interface EgressCapability {
+	action_type: string;
+	label: string;
+	requires_fields: string[];
+	optional_fields: string[];
+	description: string;
+	confirmation_required: boolean;
+}
+
+/** Response from capabilities endpoint */
+export interface EgressCapabilitiesResponse {
+	platform: string;
+	capabilities: EgressCapability[];
+}
+
+/** An egress connection */
+export interface EgressConnection {
+	connection_id: string;
+	platform: string;
+	name: string;
+	status: 'connected' | 'error' | 'expired';
+	capabilities: string[];
+	space_id?: string;
+	error_message?: string;
+	last_validated_at?: string;
+	created_at: string;
+}
+
+/** Response from egress connections list */
+export interface EgressConnectionsResponse {
+	connections: EgressConnection[];
+}
+
+/** Request to create an egress connection */
+export interface EgressConnectRequest {
+	platform: string;
+	name?: string;
+	credentials: Record<string, string>;
+	space_id?: string;
+}
+
+/** Response from creating an egress connection */
+export interface EgressConnectResponse {
+	status: string;
+	connection_id?: string;
+	capabilities: string[];
+}
+
+/** Email provider detection result */
+export interface EmailProviderDetection {
+	detected: boolean;
+	provider: string;
+	method: 'oauth' | 'app_password' | 'manual';
+	redirect_platform?: string;
+	smtp_host?: string;
+	smtp_port?: number;
+	imap_host?: string;
+	imap_port?: number;
+	use_tls?: boolean;
+	note?: string;
+}
+
+/** OAuth flow start response */
+export interface OAuthStartResponse {
+	auth_url: string;
+	state: string;
+}
+
+/** WebSocket open_compose event data */
+export interface OpenComposeEvent {
+	type: 'open_compose';
+	platform: string;
+	action_type: 'reply' | 'compose' | 'comment' | 'forward';
+	prefill: Record<string, unknown>;
+	source_card_id?: string;
 }

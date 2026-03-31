@@ -94,10 +94,13 @@ async def process_chat_message(
     ]
 
     # Step 3: Generate response with tool loop
+    from laya.config import get_self_user
+    user_identity = get_self_user()
     messages = build_chat_messages(
         user_message,
         chat_history,
         context_text=context["context_text"],
+        user_identity=user_identity,
     )
 
     tools = get_all_tool_definitions()
@@ -269,10 +272,13 @@ async def process_chat_message_streaming(
         for row in reversed(history_rows)
     ]
 
+    from laya.config import get_self_user
+    user_identity = get_self_user()
     messages = build_chat_messages(
         user_message,
         chat_history,
         context_text=context["context_text"],
+        user_identity=user_identity,
     )
 
     tools = get_all_tool_definitions()

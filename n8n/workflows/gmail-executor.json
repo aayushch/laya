@@ -20,7 +20,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        400,
+        450,
         300
       ],
       "parameters": {
@@ -32,7 +32,7 @@
           },
           "conditions": [
             {
-              "leftValue": "={{ $json.body.payload.to || $json.body.event_actor_email || '' }}",
+              "leftValue": "={{ $json.body.payload.to || $json.body.payload.gmail_id || $json.body.event_actor_email || '' }}",
               "rightValue": "",
               "operator": {
                 "type": "string",
@@ -45,12 +45,133 @@
       }
     },
     {
+      "name": "Route Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        650,
+        200
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "outputKey": "send_email",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action_type }}",
+                    "rightValue": "send_email",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "forward",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action_type }}",
+                    "rightValue": "forward",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "archive",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action_type }}",
+                    "rightValue": "archive",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "star",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action_type }}",
+                    "rightValue": "star",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "mark_read",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action_type }}",
+                    "rightValue": "mark_read",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "fallbackOutput": "extra"
+      }
+    },
+    {
       "name": "Send Email",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2,
       "position": [
-        600,
-        200
+        900,
+        -50
       ],
       "parameters": {
         "operation": "send",
@@ -64,25 +185,102 @@
       "onError": "continueErrorOutput"
     },
     {
-      "name": "Respond Success",
+      "name": "Forward Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        900,
+        150
+      ],
+      "parameters": {
+        "operation": "send",
+        "sendTo": "={{ $json.body.payload.to }}",
+        "subject": "={{ $json.body.payload.subject || ('Fwd: ' + ($json.body.event_subject || '')) }}",
+        "message": "={{ '---------- Forwarded message ----------\\n' + ($json.body.payload.body || $json.body.payload.message || '') }}",
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "name": "Archive Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        350
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://www.googleapis.com/gmail/v1/users/me/messages/' + $json.body.payload.gmail_id + '/modify' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gmailOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ removeLabelIds: ['INBOX'] }) }}",
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "name": "Star Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        550
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://www.googleapis.com/gmail/v1/users/me/messages/' + $json.body.payload.gmail_id + '/modify' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gmailOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ addLabelIds: ['STARRED'] }) }}",
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "name": "Mark Read",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        750
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://www.googleapis.com/gmail/v1/users/me/messages/' + $json.body.payload.gmail_id + '/modify' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gmailOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ removeLabelIds: ['UNREAD'] }) }}",
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "name": "Respond Send Success",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        850,
-        100
+        1150,
+        -100
       ],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ success: true, result: { message_id: $json.id || '' } }) }}"
+        "responseBody": "={{ JSON.stringify({ success: true, result: { message_id: $json.id || '', action: 'sent' } }) }}"
       }
     },
     {
-      "name": "Respond Error",
+      "name": "Respond Send Error",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        850,
-        300
+        1150,
+        0
       ],
       "parameters": {
         "respondWith": "json",
@@ -90,16 +288,133 @@
       }
     },
     {
-      "name": "Respond Missing Recipient",
+      "name": "Respond Forward Success",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        600,
+        1150,
+        100
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, result: { message_id: $json.id || '', action: 'forwarded' } }) }}"
+      }
+    },
+    {
+      "name": "Respond Forward Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1150,
+        200
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'Gmail forward failed \u2014 check credentials and workflow execution log') }) }}"
+      }
+    },
+    {
+      "name": "Respond Archive Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1150,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, result: { gmail_id: $('Webhook').first().json.body.payload.gmail_id || '', action: 'archived' } }) }}"
+      }
+    },
+    {
+      "name": "Respond Archive Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1150,
         400
       ],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ success: false, error: 'No recipient email \u2014 payload.to is missing and event_actor_email is empty. Check Gmail ingestion workflow is capturing actor.email.' }) }}"
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'Gmail archive failed \u2014 check credentials and workflow execution log') }) }}"
+      }
+    },
+    {
+      "name": "Respond Star Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1150,
+        500
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, result: { gmail_id: $('Webhook').first().json.body.payload.gmail_id || '', action: 'starred' } }) }}"
+      }
+    },
+    {
+      "name": "Respond Star Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1150,
+        600
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'Gmail star failed \u2014 check credentials and workflow execution log') }) }}"
+      }
+    },
+    {
+      "name": "Respond Mark Read Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1150,
+        700
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, result: { gmail_id: $('Webhook').first().json.body.payload.gmail_id || '', action: 'marked_read' } }) }}"
+      }
+    },
+    {
+      "name": "Respond Mark Read Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1150,
+        800
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'Gmail mark read failed \u2014 check credentials and workflow execution log') }) }}"
+      }
+    },
+    {
+      "name": "Respond Missing Fields",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        650,
+        500
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: 'Missing required fields: payload must include to (for send/forward) or gmail_id (for archive/star/mark_read)' }) }}"
+      }
+    },
+    {
+      "name": "Respond Unknown Action",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        900,
+        950
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: 'Unknown action_type: ' + ($json.body.action_type || 'empty') + '. Supported: send_email, forward, archive, star, mark_read' }) }}"
       }
     }
   ],
@@ -119,6 +434,24 @@
       "main": [
         [
           {
+            "node": "Route Action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Missing Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Action": {
+      "main": [
+        [
+          {
             "node": "Send Email",
             "type": "main",
             "index": 0
@@ -126,7 +459,35 @@
         ],
         [
           {
-            "node": "Respond Missing Recipient",
+            "node": "Forward Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Archive Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Star Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Read",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Unknown Action",
             "type": "main",
             "index": 0
           }
@@ -137,14 +498,86 @@
       "main": [
         [
           {
-            "node": "Respond Success",
+            "node": "Respond Send Success",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Respond Error",
+            "node": "Respond Send Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Forward Email": {
+      "main": [
+        [
+          {
+            "node": "Respond Forward Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Forward Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Archive Message": {
+      "main": [
+        [
+          {
+            "node": "Respond Archive Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Archive Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Star Message": {
+      "main": [
+        [
+          {
+            "node": "Respond Star Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Star Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Read": {
+      "main": [
+        [
+          {
+            "node": "Respond Mark Read Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Mark Read Error",
             "type": "main",
             "index": 0
           }
@@ -157,6 +590,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.03.1"
+    "laya_version": "2026.03.2"
   }
 }

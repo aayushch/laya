@@ -62,6 +62,16 @@
 			d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20a2 2 0 002 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2z"
 		/>
 	</svg>
+{:else if platform === 'outlook' || platform === 'outlook_calendar'}
+	<!-- Microsoft Outlook -->
+	<svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+		<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10h5v-2h-5c-4.34 0-8-3.13-8-7.5S7.66 5 12 5c3.64 0 6.67 2.59 7.7 6H22c-1.1-4.95-5.55-9-10.91-9H12zm1 5v5l4.28 2.54.72-1.21-3.5-2.08V7H13z" />
+	</svg>
+{:else if platform === 'smtp' || platform === 'email'}
+	<!-- Email / SMTP -->
+	<svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+		<path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z" />
+	</svg>
 {:else}
 	<!-- Generic fallback -->
 	<svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">

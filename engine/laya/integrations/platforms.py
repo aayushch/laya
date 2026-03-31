@@ -48,7 +48,7 @@ PLATFORMS: dict[str, dict] = {
         "label": "Bitbucket",
         "category": "development",
         "icon": "bitbucket",
-        "n8n_type": "bitbucketApi",
+        "n8n_type": "bitbucketAccessTokenApi",
         "n8n_node": "n8n-nodes-base.bitbucket",
         "oauth": False,
         "fields": [
@@ -166,6 +166,25 @@ PLATFORMS: dict[str, dict] = {
         "oauth": True,
         "fields": [],
     },
+    # --- Microsoft (OAuth) ---
+    "outlook": {
+        "label": "Outlook / Microsoft 365",
+        "category": "microsoft",
+        "icon": "outlook",
+        "n8n_type": "microsoftOutlookOAuth2Api",
+        "n8n_node": "n8n-nodes-base.microsoftOutlook",
+        "oauth": True,
+        "fields": [],
+    },
+    "outlook_calendar": {
+        "label": "Outlook Calendar",
+        "category": "microsoft",
+        "icon": "calendar",
+        "n8n_type": "microsoftOutlookOAuth2Api",
+        "n8n_node": "n8n-nodes-base.microsoftOutlook",
+        "oauth": True,
+        "fields": [],
+    },
 }
 
 # Set of n8n credential types we recognize
@@ -177,10 +196,11 @@ CATEGORY_LABELS: dict[str, str] = {
     "project_management": "Project Management",
     "communication": "Communication",
     "google": "Google",
+    "microsoft": "Microsoft",
 }
 
 # Ordered category list for consistent UI rendering
-CATEGORY_ORDER: list[str] = ["development", "project_management", "communication", "google"]
+CATEGORY_ORDER: list[str] = ["development", "project_management", "communication", "google", "microsoft"]
 
 
 def get_platform_by_n8n_type(n8n_type: str) -> tuple[str, dict] | None:

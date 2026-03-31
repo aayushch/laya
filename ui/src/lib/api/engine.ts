@@ -33,7 +33,16 @@ import type {
 	CustomProviderTestResult,
 	DiscoveredModel,
 	BudgetConfig,
-	MonthlyCostEntry
+	MonthlyCostEntry,
+	EgressExecuteRequest,
+	EgressExecuteResponse,
+	EgressPreviewResponse,
+	EgressCapabilitiesResponse,
+	EgressConnectionsResponse,
+	EgressConnectRequest,
+	EgressConnectResponse,
+	EmailProviderDetection,
+	OAuthStartResponse
 } from './types';
 
 const ENGINE_URL = 'http://127.0.0.1:8420';
@@ -523,5 +532,52 @@ export const engineApi = {
 		if (params?.offset) searchParams.set('offset', String(params.offset));
 		const qs = searchParams.toString();
 		return request<AuditLogResponse>(`/audit-log${qs ? '?' + qs : ''}`);
-	}
+	},
+
+	// Egress
+	egressExecute: (data: EgressExecuteRequest) =>
+		request<EgressExecuteResponse>('/egress/execute', {
+			method: 'POST',
+			body: JSON.stringify(data)
+		}),
+
+	egressPreview: (data: EgressExecuteRequest) =>
+		request<EgressPreviewResponse>('/egress/preview', {
+			method: 'POST',
+			body: JSON.stringify(data)
+		}),
+
+	getEgressCapabilities: (platform: string) =>
+		request<EgressCapabilitiesResponse>(`/egress/capabilities/${platform}`),
+
+	listEgressConnections: () => request<EgressConnectionsResponse>('/egress/connections'),
+
+	createEgressConnection: (data: EgressConnectRequest) =>
+		request<EgressConnectResponse>('/egress/connections', {
+			method: 'POST',
+			body: JSON.stringify(data)
+		}),
+
+	deleteEgressConnection: (connectionId: string) =>
+		request<{ status: string }>(`/egress/connections/${connectionId}`, {
+			method: 'DELETE'
+		}),
+
+	testEgressConnection: (connectionId: string) =>
+		request<{ connection_id: string; valid: boolean; error?: string }>(
+			`/egress/connections/test/${connectionId}`,
+			{ method: 'POST' }
+		),
+
+	detectEmailProvider: (email: string) =>
+		request<EmailProviderDetection>(`/egress/connections/detect?email=${encodeURIComponent(email)}`),
+
+	startOAuthFlow: (platform: string) =>
+		request<OAuthStartResponse>(`/egress/connections/oauth/start?platform=${encodeURIComponent(platform)}`),
+
+	setupOAuthClient: (data: { platform: string; client_id: string; client_secret: string }) =>
+		request<{ status: string; platform: string }>('/egress/connections/oauth/setup', {
+			method: 'POST',
+			body: JSON.stringify(data)
+		})
 };

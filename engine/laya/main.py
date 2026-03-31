@@ -21,6 +21,7 @@ from laya.api.budget_api import router as budget_router
 from laya.api.cards_api import router as cards_router
 from laya.api.classification_api import router as classification_router
 from laya.api.connections_api import router as connections_router
+from laya.api.egress_api import router as egress_router
 from laya.api.chat_api import router as chat_router
 from laya.api.dashboard_api import router as dashboard_router
 from laya.api.diagnostics_api import router as diagnostics_router
@@ -204,11 +205,16 @@ async def lifespan(app: FastAPI):
     await recover_stalled_events()
     start_consumer()
 
+    # Start egress connection health monitor
+    from laya.egress.health import start_health_monitor, stop_health_monitor
+    await start_health_monitor()
+
     log.info("engine_ready")
     yield
 
     # Shutdown
     log.info("engine_stopping")
+    await stop_health_monitor()
     await stop_consumer()
     stop_scheduler()
     await session_manager.cleanup_on_shutdown()
@@ -262,6 +268,7 @@ app.include_router(budget_router)
 app.include_router(cards_router)
 app.include_router(classification_router)
 app.include_router(connections_router)
+app.include_router(egress_router)
 app.include_router(chat_router)
 app.include_router(dashboard_router)
 app.include_router(diagnostics_router)

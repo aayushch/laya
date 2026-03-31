@@ -13,6 +13,8 @@
 	import { budgetPaused, loadBudgetStatus, handleBudgetWsMessage } from '$lib/stores/budget';
 	import { feedFilters, loadFeedFilters, saveFeedFilters, filtersLoaded, feedDate, feedPrevDate, feedNextDate, localToday } from '$lib/stores/feedFilters';
 	import { spaces, loadSpaces } from '$lib/stores/spaces';
+	import { compose } from '$lib/stores/compose';
+	import ComposeModal from '$lib/components/egress/ComposeModal.svelte';
 	import { onMount } from 'svelte';
 
 	function formatDateLabel(dateStr: string): string {
@@ -83,9 +85,34 @@
 		}
 	});
 
+	// React to open_compose WebSocket events
+	$effect(() => {
+		const msg = $lastMessage;
+		if (msg && msg.type === 'open_compose') {
+			const payload = msg.payload as Record<string, unknown>;
+			compose.openCompose(
+				String(payload.platform ?? ''),
+				(payload.action_type as 'reply' | 'compose' | 'comment' | 'forward') ?? 'compose',
+				(payload.prefill as Record<string, unknown>) ?? {},
+				payload.source_card_id ? String(payload.source_card_id) : undefined
+			);
+		}
+	});
+
 	onMount(() => {
 		startHealthPolling();
 		initWebSocket();
+
+		// Keyboard shortcut: press 'c' (not in input/textarea) to open compose modal
+		function handleComposeShortcut(e: KeyboardEvent) {
+			if (e.key === 'c' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+				const tag = (e.target as HTMLElement)?.tagName;
+				if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable) return;
+				e.preventDefault();
+				compose.openCompose('gmail', 'compose', {});
+			}
+		}
+		document.addEventListener('keydown', handleComposeShortcut);
 
 		// Auto-advance feedDate at midnight so "Today"/"Yesterday" labels stay correct
 		function scheduleMidnightUpdate() {
@@ -99,6 +126,7 @@
 		let midnightTimer = scheduleMidnightUpdate();
 
 		return () => {
+			document.removeEventListener('keydown', handleComposeShortcut);
 			clearTimeout(midnightTimer);
 			stopHealthPolling();
 			closeWebSocket();
@@ -263,4 +291,5 @@
 	</div>
 
 	<ChatSidebar />
+	<ComposeModal />
 {/if}

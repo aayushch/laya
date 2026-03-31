@@ -48,7 +48,7 @@
               }
             },
             {
-              "leftValue": "={{ String($json.body.payload.issue_number || '') }}",
+              "leftValue": "={{ String($json.body.payload.issue_number || $json.body.payload.pr_number || '') }}",
               "rightValue": "",
               "operator": {
                 "type": "string",
@@ -104,6 +104,90 @@
                   {
                     "leftValue": "={{ $json.body.action_type }}",
                     "rightValue": "comment",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "approve_pr",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action_type }}",
+                    "rightValue": "approve_pr",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "request_changes",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action_type }}",
+                    "rightValue": "request_changes",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "merge_pr",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action_type }}",
+                    "rightValue": "merge_pr",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "create_issue",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action_type }}",
+                    "rightValue": "create_issue",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -208,6 +292,86 @@
       "onError": "continueErrorOutput"
     },
     {
+      "name": "Approve PR",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        500
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.github.com/repos/' + $json.body.payload.owner + '/' + $json.body.payload.repo + '/pulls/' + ($json.body.payload.pr_number || $json.body.payload.issue_number) + '/reviews' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ event: 'APPROVE', body: $json.body.payload.comment || '' }) }}",
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "name": "Request Changes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        700
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.github.com/repos/' + $json.body.payload.owner + '/' + $json.body.payload.repo + '/pulls/' + ($json.body.payload.pr_number || $json.body.payload.issue_number) + '/reviews' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ event: 'REQUEST_CHANGES', body: $json.body.payload.comment || $json.body.payload.body || '' }) }}",
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "name": "Merge PR",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        900
+      ],
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ 'https://api.github.com/repos/' + $json.body.payload.owner + '/' + $json.body.payload.repo + '/pulls/' + ($json.body.payload.pr_number || $json.body.payload.issue_number) + '/merge' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ merge_method: $json.body.payload.merge_method || 'squash' }) }}",
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "name": "Create Issue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        1100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.github.com/repos/' + $json.body.payload.owner + '/' + $json.body.payload.repo + '/issues' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ title: $json.body.payload.title || '', body: $json.body.payload.body || '' }) }}",
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
       "name": "Respond Close Success",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
@@ -260,6 +424,110 @@
       }
     },
     {
+      "name": "Respond Approve Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        500
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, result: { url: $json.html_url || '', review_id: $json.id || '', action: 'approved' } }) }}"
+      }
+    },
+    {
+      "name": "Respond Approve Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        600
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'GitHub approve PR failed \u2014 check credentials and workflow execution log') }) }}"
+      }
+    },
+    {
+      "name": "Respond Request Changes Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        700
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, result: { url: $json.html_url || '', review_id: $json.id || '', action: 'changes_requested' } }) }}"
+      }
+    },
+    {
+      "name": "Respond Request Changes Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        800
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'GitHub request changes failed \u2014 check credentials and workflow execution log') }) }}"
+      }
+    },
+    {
+      "name": "Respond Merge Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        900
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, result: { sha: $json.sha || '', merged: $json.merged || false, message: $json.message || '', action: 'merged' } }) }}"
+      }
+    },
+    {
+      "name": "Respond Merge Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        1000
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'GitHub merge PR failed \u2014 check credentials and workflow execution log') }) }}"
+      }
+    },
+    {
+      "name": "Respond Create Issue Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        1100
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, result: { url: $json.html_url || '', issue_number: $json.number || '', action: 'created' } }) }}"
+      }
+    },
+    {
+      "name": "Respond Create Issue Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        1200
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'GitHub create issue failed \u2014 check credentials and workflow execution log') }) }}"
+      }
+    },
+    {
       "name": "Respond Missing Fields",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
@@ -269,7 +537,7 @@
       ],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ success: false, error: 'Missing required fields: payload must include owner, repo, and issue_number' }) }}"
+        "responseBody": "={{ JSON.stringify({ success: false, error: 'Missing required fields: payload must include owner, repo, and issue_number or pr_number' }) }}"
       }
     },
     {
@@ -278,11 +546,11 @@
       "typeVersion": 1,
       "position": [
         900,
-        500
+        1350
       ],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ success: false, error: 'Unknown action_type: ' + ($json.body.action_type || 'empty') + '. Supported: close_issue, comment' }) }}"
+        "responseBody": "={{ JSON.stringify({ success: false, error: 'Unknown action_type: ' + ($json.body.action_type || 'empty') + '. Supported: close_issue, comment, approve_pr, request_changes, merge_pr, create_issue' }) }}"
       }
     }
   ],
@@ -328,6 +596,34 @@
         [
           {
             "node": "Comment on Issue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Approve PR",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Request Changes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge PR",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Issue",
             "type": "main",
             "index": 0
           }
@@ -412,6 +708,78 @@
           }
         ]
       ]
+    },
+    "Approve PR": {
+      "main": [
+        [
+          {
+            "node": "Respond Approve Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Approve Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request Changes": {
+      "main": [
+        [
+          {
+            "node": "Respond Request Changes Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Request Changes Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge PR": {
+      "main": [
+        [
+          {
+            "node": "Respond Merge Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Merge Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Issue": {
+      "main": [
+        [
+          {
+            "node": "Respond Create Issue Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Create Issue Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
@@ -419,6 +787,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.03.1"
+    "laya_version": "2026.03.2"
   }
 }

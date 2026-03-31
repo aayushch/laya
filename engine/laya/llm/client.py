@@ -176,6 +176,55 @@ def _get_custom_provider_meta(model: str) -> dict | None:
     }
 
 
+# ── Prompt caching ──────────────────────────────────────────────────────
+
+# Providers where caching is opt-in via cache_control annotation.
+# OpenAI caching is automatic; self-hosted engines handle KV cache internally.
+_CACHE_CONTROL_PROVIDERS = frozenset({"anthropic", "gemini", "vertex_ai"})
+
+
+def _apply_prompt_caching(model: str, messages: list[dict]) -> list[dict]:
+    """Annotate system messages with cache_control for providers that support it.
+
+    For Anthropic and Gemini, converts the system message content from a plain
+    string to a content-block list with ``cache_control: {type: ephemeral}`` so
+    LiteLLM can activate the provider's prompt caching.
+
+    For other providers (OpenAI, Ollama, LMStudio, etc.) the messages are
+    returned unchanged — caching is either automatic or engine-level.
+    """
+    provider = model.split("/")[0] if "/" in model else ""
+    if provider not in _CACHE_CONTROL_PROVIDERS:
+        return messages
+
+    out: list[dict] = []
+    for msg in messages:
+        if msg.get("role") == "system":
+            content = msg.get("content", "")
+            # Already in content-block format — just ensure cache_control is set
+            if isinstance(content, list):
+                blocks = []
+                for block in content:
+                    if isinstance(block, dict) and "cache_control" not in block:
+                        block = {**block, "cache_control": {"type": "ephemeral"}}
+                    blocks.append(block)
+                out.append({**msg, "content": blocks})
+            else:
+                out.append({
+                    **msg,
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": content,
+                            "cache_control": {"type": "ephemeral"},
+                        }
+                    ],
+                })
+        else:
+            out.append(msg)
+    return out
+
+
 async def _log_to_audit(
     event_id: str | None,
     card_id: str | None,
@@ -334,6 +383,9 @@ async def llm_call(
         else:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
+
+    # Annotate system messages for prompt caching (Anthropic, Gemini)
+    kwargs["messages"] = _apply_prompt_caching(model, kwargs["messages"])
 
     # Tenacity retry with exponential backoff
     @tenacity.retry(
@@ -592,6 +644,9 @@ async def llm_call_streaming(
         if not (custom_meta and not custom_meta.get("supports_tool_calling", True)):
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
+
+    # Annotate system messages for prompt caching (Anthropic, Gemini)
+    kwargs["messages"] = _apply_prompt_caching(model, kwargs["messages"])
 
     start = time.monotonic()
 
