@@ -1265,7 +1265,7 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
   <div class="container">
     <div class="proof-stats">
       <div class="proof-stat animate-on-scroll">
-        <div class="number">7+</div>
+        <div class="number">8+</div>
         <div class="label">Platform Integrations</div>
       </div>
       <div class="proof-stat animate-on-scroll">
@@ -1345,12 +1345,27 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
       <div class="feature-card animate-on-scroll">
         <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
         <h3>Smart Classification</h3>
-        <p>Every event is automatically categorized by persona (Engineer, Comms, Ops), priority (Critical to Low), and category — using a multi-model AI pipeline.</p>
+        <p>Every event is automatically categorized by persona (Engineer, Comms, Ops), priority (Critical to Low), and category — using a multi-model AI pipeline that learns from your corrections.</p>
       </div>
       <div class="feature-card animate-on-scroll">
         <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></div>
         <h3>Spaces</h3>
         <p>Organize your life into separate contexts — Work, Personal, side projects. Each space has its own sources, model configs, and API keys.</p>
+      </div>
+      <div class="feature-card animate-on-scroll">
+        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/><path d="M16 16l2 2" stroke="#ff9770"/></svg></div>
+        <h3>Coherence Search</h3>
+        <p>Search for any entity across all platforms and trace its full lifecycle — from Jira ticket to PR to Slack thread. AI-generated narratives tell the complete story.</p>
+      </div>
+      <div class="feature-card animate-on-scroll">
+        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div>
+        <h3>Egress Actions</h3>
+        <p>Execute actions directly from Laya — send emails, post Slack messages, comment on PRs, and more. Preview before you send, with full platform support.</p>
+      </div>
+      <div class="feature-card animate-on-scroll">
+        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div>
+        <h3>Bookmarks</h3>
+        <p>Bookmark important cards for quick access. Filter your feed to show only bookmarked items — no matter the date or status.</p>
       </div>
     </div>
   </div>
@@ -1498,6 +1513,50 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
   </div>
 </section>
 
+<!-- ═══════════════════ COHERENCE ═══════════════════ -->
+<section>
+  <div class="container">
+    <div class="feature-showcase animate-on-scroll">
+      <div class="feature-text">
+        <span class="tag">Coherence</span>
+        <h2>Trace any entity across every platform</h2>
+        <p>Coherence is Laya's cross-platform entity search. Search for a person, ticket, PR, or project and see its complete lifecycle — every event, every platform, one chronological story.</p>
+        <ul>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Semantic + fuzzy + entity search merged via Reciprocal Rank Fusion</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Auto-clustered by entity relationships</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> AI-generated narrative with chapter detection</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Export traces as markdown, save and rerun later</li>
+        </ul>
+      </div>
+      <div class="feature-image">
+        <img src="images/coherence-view.png" alt="Laya Coherence — trace entities across platforms with AI-generated narratives">
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ EGRESS ═══════════════════ -->
+<section>
+  <div class="container">
+    <div class="feature-showcase reverse animate-on-scroll">
+      <div class="feature-text">
+        <span class="tag">Egress</span>
+        <h2>Take action without leaving Laya</h2>
+        <p>Laya's egress system lets you execute outbound actions directly — send emails, reply on Slack, comment on Jira tickets, and more. Preview every action before it goes out.</p>
+        <ul>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> 8 platform backends: Gmail, Slack, Jira, GitHub, Bitbucket, Calendar, Linear, Outlook</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Compose modal with keyboard shortcut</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Preview before executing — never send by accident</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Connection health monitoring and OAuth management</li>
+        </ul>
+      </div>
+      <div class="feature-image" style="max-width: 380px; margin: 0 auto;">
+        <img src="images/egress-actions.png" alt="Laya egress — execute actions directly from the app">
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ═══════════════════ PERSONAS ═══════════════════ -->
 <section>
   <div class="container">
@@ -1540,6 +1599,7 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
       <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12.5V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h8"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/><path d="M18 15.28c.2-.4.5-.8.9-1a2.1 2.1 0 0 1 2.6.4c.3.4.5.8.5 1.3 0 1.3-2 2-2 2" /><path d="M20 21v.01"/></svg></span> Bitbucket</div>
       <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span> Calendar</div>
       <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/><line x1="2" y1="20" x2="8" y2="13"/><line x1="22" y1="20" x2="16" y2="13"/></svg></span> Outlook</div>
+      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="M7 12l3 3 7-7"/></svg></span> Linear</div>
       <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span> More via n8n</div>
     </div>
   </div>
@@ -1659,7 +1719,18 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
         <a href="#doc-feed-filters">Filters &amp; Sort</a>
         <a href="#doc-feed-actions">Card Actions</a>
         <a href="#doc-feed-statuses">Card Statuses</a>
+        <a href="#doc-feed-bookmarks">Bookmarks</a>
         <a href="#doc-daily-briefing">Daily Briefing</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Coherence</div>
+        <a href="#doc-coherence-overview">Entity Search</a>
+        <a href="#doc-coherence-traces">Traces &amp; Narratives</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Egress</div>
+        <a href="#doc-egress-overview">Outbound Actions</a>
+        <a href="#doc-egress-connections">Connections</a>
       </div>
       <div class="sidebar-section">
         <div class="sidebar-title">Configuration</div>
@@ -1962,6 +2033,15 @@ npm install --prefix ~/.laya/n8n_module n8n</code></pre>
         <tr><td><code>archived</code></td><td>Hidden from feed (can be reopened or deleted)</td><td>Dashed border</td></tr>
       </table>
 
+      <h2 id="doc-feed-bookmarks">Bookmarks</h2>
+      <p>Bookmark any card for quick access later. Bookmarked cards appear across all dates and statuses when the bookmark filter is active.</p>
+      <ul>
+        <li>Click the <strong>bookmark icon</strong> on any card (list view, card view, or card detail)</li>
+        <li>Toggle the bookmark filter in the feed header to show only bookmarked cards</li>
+        <li>Bookmarks persist across sessions and ignore date navigation</li>
+        <li>Unbookmark by clicking the icon again</li>
+      </ul>
+
       <h2 id="doc-daily-briefing">Daily Briefing</h2>
       <p>Laya generates a synthesized daily briefing at your configured time (default 7:00 AM). The briefing aggregates overnight activity into three sections:</p>
       <ul>
@@ -1970,6 +2050,70 @@ npm install --prefix ~/.laya/n8n_module n8n</code></pre>
         <li><strong>Key Updates</strong> &mdash; Important changes filtered from noise</li>
       </ul>
       <p>Access the briefing via the <strong>Summary View</strong> in the feed. Configure schedule under <strong>Settings &rarr; Briefing</strong>.</p>
+
+      <!-- ─── COHERENCE ─── -->
+      <h2 id="doc-coherence-overview">Coherence &mdash; Entity Search</h2>
+      <p>Coherence is Laya's cross-platform entity search and lifecycle tracking feature. Access it from the <strong>Coherence</strong> tab in the main navigation.</p>
+      <p>Search for any entity &mdash; a person, ticket ID, PR number, project name &mdash; and Coherence traces its complete history across all connected platforms.</p>
+
+      <h3>How It Works</h3>
+      <p>Coherence uses a three-phase search algorithm:</p>
+      <ol>
+        <li><strong>Discovery</strong> &mdash; Runs semantic search (ChromaDB), fuzzy/SQLite search, and entity table lookup in parallel, then merges results via Reciprocal Rank Fusion (RRF)</li>
+        <li><strong>Expansion</strong> &mdash; Fetches all cards for matched entities plus cross-references</li>
+        <li><strong>Clustering</strong> &mdash; Groups results by connected entities, orders chronologically, and auto-detects narrative chapters</li>
+      </ol>
+
+      <h3>Features</h3>
+      <ul>
+        <li>Supports identifier patterns like <code>PR-540</code>, <code>BUG-123</code>, or natural language queries</li>
+        <li>AI-generated narratives explain each cluster's story with chapter detection</li>
+        <li>Real-time narrative streaming via WebSocket</li>
+        <li>Remove irrelevant clusters from results, or restore them later</li>
+        <li>Export traces as markdown</li>
+        <li>Save and rerun traces as new data arrives</li>
+      </ul>
+
+      <h2 id="doc-coherence-traces">Traces &amp; Narratives</h2>
+      <p>Each search creates a <strong>trace</strong> that is saved for later reference. Traces contain:</p>
+      <ul>
+        <li><strong>Clusters</strong> &mdash; Groups of related entities with timelines</li>
+        <li><strong>Chapters</strong> &mdash; Auto-detected lifecycle phases (Created, Discussion, Code Review, Resolved, etc.)</li>
+        <li><strong>Narrative</strong> &mdash; AI-generated summary of the entity's story</li>
+        <li><strong>Search metadata</strong> &mdash; Diagnostics about which search methods contributed results</li>
+      </ul>
+      <p>Traces can be rerun to pick up new events, and exported as markdown reports.</p>
+
+      <!-- ─── EGRESS ─── -->
+      <h2 id="doc-egress-overview">Egress &mdash; Outbound Actions</h2>
+      <p>The egress system handles all outbound communication with external platforms. Instead of switching to Slack or Gmail to take action, do it directly from Laya.</p>
+
+      <h3>Supported Actions</h3>
+      <table>
+        <tr><th>Platform</th><th>Actions</th></tr>
+        <tr><td>Gmail / Outlook</td><td>Send, reply, forward emails</td></tr>
+        <tr><td>Slack</td><td>Post messages, reply in threads</td></tr>
+        <tr><td>Jira</td><td>Add comments, update tickets</td></tr>
+        <tr><td>GitHub / Bitbucket</td><td>Create PRs, add comments</td></tr>
+        <tr><td>Calendar</td><td>Create and update events</td></tr>
+        <tr><td>Linear</td><td>Create issues, add comments</td></tr>
+      </table>
+
+      <h3>How to Use</h3>
+      <ul>
+        <li><strong>From a card</strong> &mdash; Click "Execute" on a suggested action. Laya shows a preview before sending.</li>
+        <li><strong>Compose modal</strong> &mdash; Press <code>c</code> to open the compose modal and send a new message to any connected platform.</li>
+        <li><strong>Card-triggered</strong> &mdash; Approve suggested actions directly from Action Cards.</li>
+      </ul>
+
+      <h2 id="doc-egress-connections">Connections</h2>
+      <p>Manage platform connections under <strong>Settings &rarr; Connections</strong>. Each connection tracks:</p>
+      <ul>
+        <li>Connection status and health</li>
+        <li>OAuth credentials</li>
+        <li>Available capabilities per platform</li>
+      </ul>
+      <p>Use the <strong>Test Connection</strong> button to verify connectivity before sending.</p>
 
       <!-- ─── CONFIGURATION ─── -->
       <h2 id="doc-settings-models">AI Models</h2>
@@ -2094,6 +2238,14 @@ content.body         content.metadata.*</code></pre>
 
 // Always allow critical priority
 { "field": "priority", "operator": "equals", "value": "CRITICAL" } → allow</code></pre>
+
+      <h3>Classification Feedback &amp; Learned Rules</h3>
+      <p>Laya learns from your corrections. When you change a card's priority or persona, the correction is logged. After enough corrections accumulate (15+), Laya's learning pipeline extracts generalizable rules from the patterns.</p>
+      <ul>
+        <li><strong>Manual rules</strong> &mdash; Created by you in Settings &rarr; Rules</li>
+        <li><strong>Learned rules</strong> &mdash; Automatically extracted by the AI from your correction patterns</li>
+      </ul>
+      <p>Both manual and learned rules are injected into the router prompt to improve future classifications. Over time, Laya requires fewer corrections as it learns your preferences.</p>
 
       <h2 id="doc-settings-team">Team Directory</h2>
       <p>The team directory helps Laya recognize actors in events and understand organizational relationships. Configure under <strong>Settings &rarr; Team</strong>.</p>

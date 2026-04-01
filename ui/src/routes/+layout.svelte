@@ -173,7 +173,7 @@
 							{page.url.pathname.startsWith('/coherence')
 								? 'bg-laya-orange/10 text-laya-orange'
 								: 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'}"
-					>Coherence</a>
+					>Coherence<sup class="text-[8px] ml-0.5 opacity-60 tracking-wider">BETA</sup></a>
 				</nav>
 			</div>
 

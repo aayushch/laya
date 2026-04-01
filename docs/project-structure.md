@@ -18,10 +18,10 @@ laya/
 |   |   |-- scheduler.py                  # Background scheduler (briefings, housekeeping)
 |   |   |-- http_client.py                # Shared HTTP client
 |   |   |
-|   |   |-- api/                          # HTTP + WebSocket endpoints (17 routers)
+|   |   |-- api/                          # HTTP + WebSocket endpoints (21 routers)
 |   |   |   |-- __init__.py
 |   |   |   |-- events.py                 # POST /events (receives from n8n)
-|   |   |   |-- cards_api.py              # Card CRUD, grouping, archive/reopen
+|   |   |   |-- cards_api.py              # Card CRUD, grouping, archive/reopen, bookmarks
 |   |   |   |-- actions_api.py            # POST /actions/approve, /actions/dismiss
 |   |   |   |-- workspace_api.py          # Workspace/agent session endpoints
 |   |   |   |-- chat_api.py               # Chat conversations
@@ -30,6 +30,10 @@ laya/
 |   |   |   |-- spaces_api.py             # Space/source CRUD, bulk assignment
 |   |   |   |-- connections_api.py         # Integration connection status
 |   |   |   |-- rules_api.py              # Event filter rules
+|   |   |   |-- classification_api.py     # Classification rules CRUD, corrections listing
+|   |   |   |-- trace_api.py              # Coherence entity search, traces, narratives
+|   |   |   |-- egress_api.py             # Outbound action execution, preview, connections
+|   |   |   |-- budget_api.py             # Budget tracking and cost controls
 |   |   |   |-- audit_api.py              # Audit log queries
 |   |   |   |-- diagnostics_api.py        # System diagnostics
 |   |   |   |-- health.py                 # GET /health
@@ -46,6 +50,8 @@ laya/
 |   |   |   |-- stager.py                 # STAGER step: LLM card generation
 |   |   |   |-- emit.py                   # EMIT step: store card, embed in ChromaDB, push via WebSocket
 |   |   |   |-- executor.py               # Execute approved actions via n8n
+|   |   |   |-- trace.py                  # Coherence: entity search, clustering, narrative generation
+|   |   |   |-- learn.py                  # Classification learning: extract rules from corrections
 |   |   |   |-- chat.py                   # Chat assistant pipeline
 |   |   |   |-- workers.py                # Multi-persona LLM workers
 |   |   |   |-- entity_resolution.py      # Cross-platform entity linking
@@ -93,20 +99,50 @@ laya/
 |   |   |   |-- chromadb_store.py         # ChromaDB vector store (embedded PersistentClient)
 |   |   |   |-- chunking.py              # Document chunking for embeddings
 |   |   |   |-- migrate.py               # Migration runner (check version, apply pending)
-|   |   |   |-- migrations/              # 26 numbered SQL migration files
+|   |   |   |-- migrations/              # 35 numbered SQL migration files
 |   |   |       |-- 001_initial.sql       # Core tables: events, action_cards, action_log
 |   |   |       |-- 002_entities.sql      # Entity resolution: entities table
 |   |   |       |-- ...
 |   |   |       |-- 014_spaces.sql        # Spaces, sources, space_api_keys
 |   |   |       |-- ...
 |   |   |       |-- 026_chat_conversations.sql
+|   |   |       |-- 028_classification_feedback.sql  # Corrections + rules tables
+|   |   |       |-- 030_bookmarks.sql     # Card bookmarking
+|   |   |       |-- 033_traces.sql        # Coherence entity search
+|   |   |       |-- 034_egress_connections.sql  # Platform connections
+|   |   |       |-- 035_traces_fuzzy.sql  # Fuzzy search optimization
 |   |   |
 |   |   |-- models/                       # Pydantic data models
 |   |   |   |-- __init__.py
 |   |   |   |-- event.py                  # LayaEvent model
 |   |   |   |-- card.py                   # ActionCard model
 |   |   |   |-- workspace.py              # WorkspaceSession, WorkspaceEvent models
+|   |   |   |-- trace.py                  # TraceEntity, TraceCluster, TraceChapter models
 |   |   |   |-- ...                       # Additional models (action, classification, etc.)
+|   |   |
+|   |   |-- egress/                       # Outbound action execution module
+|   |   |   |-- __init__.py               # Public API: execute, preview, capabilities, connect
+|   |   |   |-- models.py                 # EgressRequest, EgressResult, Connection models
+|   |   |   |-- router.py                 # Route actions to correct platform backend
+|   |   |   |-- registry.py               # Platform capability registry
+|   |   |   |-- connections.py            # Connection management and health checks
+|   |   |   |-- tools.py                  # Egress tool definitions for chat
+|   |   |   |-- tool_handlers.py          # Tool invocation handlers
+|   |   |   |-- oauth.py                  # OAuth credential management
+|   |   |   |-- health.py                 # Connection health monitoring
+|   |   |   |-- backends/                 # Execution backends
+|   |   |   |   |-- base.py               # Backend protocol
+|   |   |   |   |-- n8n.py                # n8n webhook executor
+|   |   |   |   |-- smtp.py               # Direct SMTP executor
+|   |   |   |-- platforms/                # Platform-specific action handlers
+|   |   |       |-- gmail.py              # Gmail: send, reply, forward
+|   |   |       |-- slack.py              # Slack: post, reply in thread
+|   |   |       |-- jira.py               # Jira: comment, update ticket
+|   |   |       |-- github.py             # GitHub: create PR, comment
+|   |   |       |-- bitbucket.py          # Bitbucket: create PR, comment
+|   |   |       |-- calendar.py           # Calendar: create/update events
+|   |   |       |-- linear.py             # Linear: create issue, comment
+|   |   |       |-- outlook.py            # Outlook: send, reply
 |   |   |
 |   |   |-- integrations/                 # External service clients
 |   |   |   |-- __init__.py
@@ -149,6 +185,7 @@ laya/
 |   |   |   |   |-- recentCards.ts        # Recent card tracking
 |   |   |   |   |-- setup.ts              # First-run setup state
 |   |   |   |   |-- spaces.ts             # Space/source state
+|   |   |   |   |-- trace.ts              # Coherence trace state
 |   |   |   |   |-- theme.ts              # Theme (dark/light), persists to localStorage
 |   |   |   |   |-- websocket.ts          # WebSocket connection state
 |   |   |   |
@@ -159,6 +196,8 @@ laya/
 |   |   |   |-- components/              # Reusable UI components
 |   |   |       |-- feed/                 # ActionCard, CardGroup, CardDetail, FilterBar, etc.
 |   |   |       |-- workspace/            # AgentPanel, Timeline, Context, StagedOutput, etc.
+|   |   |       |-- trace/                # TraceCard, TraceHeader, TraceTimeline, TraceSearch, etc.
+|   |   |       |-- egress/               # ComposeModal, action preview
 |   |   |       |-- dashboard/            # StatCard, charts, analytics components
 |   |   |       |-- chat/                 # ChatPanel, ChatMessage, ChatInput
 |   |   |       |-- settings/             # SettingsLayout, ModelConfig, SpacesConfig, etc.
@@ -167,9 +206,11 @@ laya/
 |   |   |
 |   |   |-- routes/                       # SvelteKit pages
 |   |       |-- +layout.svelte            # Main layout: sidebar nav + content area + chat
-|   |       |-- +page.svelte              # Home page
+|   |       |-- +page.svelte              # Home page (redirects to /feed)
 |   |       |-- feed/
-|   |       |   |-- +page.svelte          # Action Card feed
+|   |       |   |-- +page.svelte          # Action Card feed (with bookmarks filter)
+|   |       |-- coherence/
+|   |       |   |-- +page.svelte          # Coherence: entity search & trace viewer
 |   |       |-- dashboard/
 |   |       |   |-- +page.svelte          # Analytics dashboard
 |   |       |-- workspace/

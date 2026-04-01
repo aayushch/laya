@@ -625,7 +625,7 @@
 					disabled={isAgentActive || sendingPrompt}
 				></textarea>
 				<button
-					class="rounded-lg bg-blue-700/40 px-4 py-2 text-sm font-medium text-blue-300 transition-colors hover:bg-blue-700/60 disabled:opacity-50 disabled:cursor-not-allowed"
+					class="rounded-lg bg-laya-orange px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-laya-coral disabled:opacity-50 disabled:cursor-not-allowed"
 					onclick={sendUserInput}
 					disabled={!userInput.trim() || isAgentActive || sendingPrompt}
 				>{sendingPrompt ? 'Sending...' : 'Send'}</button>

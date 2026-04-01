@@ -293,11 +293,12 @@ async def _run_workers_pipeline(
     card_id = f"card_{_uuid.uuid4().hex[:12]}"
     entity_id = f"{event.source.platform}:{event.subject.type}:{event.subject.id}"
     db = await get_db()
+    now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     await db.execute(
         """INSERT INTO action_cards
            (card_id, event_id, priority, persona, category, header, summary,
-            status, privacy_tier, has_workspace, entity_id, space_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            status, privacy_tier, has_workspace, entity_id, space_id, group_active_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             card_id,
             event.event_id,
@@ -311,6 +312,7 @@ async def _run_workers_pipeline(
             False,
             entity_id,
             space_id,
+            now_ts,
         ),
     )
     await db.commit()

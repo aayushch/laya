@@ -115,11 +115,19 @@ def load_settings() -> dict:
     if LAYA_CONFIG_FILE.exists():
         with open(LAYA_CONFIG_FILE) as f:
             user_settings = json.load(f)
-        # Merge user settings over defaults
+        # Merge user settings over defaults (two-level deep merge so that
+        # e.g. new n8n.webhooks entries added to DEFAULT_SETTINGS aren't
+        # dropped when the user's settings.json has an older copy).
         merged = {**DEFAULT_SETTINGS}
         for key, value in user_settings.items():
             if isinstance(value, dict) and key in merged and isinstance(merged[key], dict):
-                merged[key] = {**merged[key], **value}
+                inner = {**merged[key]}
+                for k2, v2 in value.items():
+                    if isinstance(v2, dict) and k2 in inner and isinstance(inner[k2], dict):
+                        inner[k2] = {**inner[k2], **v2}
+                    else:
+                        inner[k2] = v2
+                merged[key] = inner
             else:
                 merged[key] = value
         return merged

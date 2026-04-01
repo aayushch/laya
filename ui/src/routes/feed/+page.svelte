@@ -351,9 +351,11 @@
 				}
 			}
 
+			let found = false;
 			for (const group of groups) {
 				const card = group.cards.find((c) => c.card_id === msg.card_id);
 				if (card) {
+					found = true;
 					if (payload.status) {
 						// When a card transitions from agent_running to a real status,
 						// the full card data (suggested_actions, intelligence, etc.) has
@@ -378,6 +380,9 @@
 					break;
 				}
 			}
+			// Card not in current groups — may have been created while on another
+			// page or the card_created message was missed. Reload to pick it up.
+			if (!found) scheduleReload();
 		}
 	});
 

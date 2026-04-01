@@ -31,7 +31,10 @@ Your Tools (Jira, Slack, Gmail, Bitbucket, Calendar)
 - **Daily Briefing:** Morning summary of overnight activity, pending cards, and today's calendar with context
 - **Analytics Dashboard:** Track events processed, time saved, LLM costs, and approval rates
 - **Chat sidebar:** Ask Laya questions about your events, projects, and context
-- **Learning loop:** Laya improves its classification and priority based on your approval/dismiss patterns
+- **Coherence:** Cross-platform entity search traces any person, ticket, or PR across all platforms with AI-generated narratives
+- **Egress:** Execute outbound actions (emails, Slack messages, PR comments) directly from Laya with preview-before-send
+- **Bookmarks:** Pin important cards for quick access regardless of date or status
+- **Classification learning:** Laya extracts rules from your priority/persona corrections and improves classification automatically over time
 - **Privacy-aware:** Three-tier data classification with cloud/local processing options
 
 ## Tech Stack
@@ -56,12 +59,13 @@ laya/
 │   ├── laya/
 │   │   ├── main.py          # Entry point (uvicorn server on :8420)
 │   │   ├── config.py        # Settings, paths, agent detection
-│   │   ├── api/             # REST + WebSocket endpoints (17 routers)
-│   │   ├── db/              # SQLite + ChromaDB + migrations
-│   │   ├── pipeline/        # Event processing (ingest → route → stage → emit)
+│   │   ├── api/             # REST + WebSocket endpoints (21 routers)
+│   │   ├── db/              # SQLite + ChromaDB + 35 migrations
+│   │   ├── pipeline/        # Event processing (ingest → route → stage → emit → trace → learn)
 │   │   ├── llm/             # LiteLLM client, prompts, MCP tools
 │   │   ├── agents/          # Coding agent adapters (Claude, Gemini, Codex)
 │   │   ├── workers/         # Multi-persona LLM workers (engineer, comms, ops)
+│   │   ├── egress/          # Outbound action execution (8 platforms)
 │   │   ├── integrations/    # n8n bootstrap & client
 │   │   └── security/        # OS keychain integration
 │   ├── requirements.txt     # Core Python dependencies
@@ -69,7 +73,7 @@ laya/
 │
 ├── ui/                      # SvelteKit + Tauri desktop app
 │   ├── src/                 # Svelte 5 frontend (runes syntax)
-│   │   ├── routes/          # Pages (feed, dashboard, settings, workspace)
+│   │   ├── routes/          # Pages (feed, coherence, dashboard, settings, workspace)
 │   │   ├── lib/             # Components, API client, stores
 │   │   ├── app.css          # Tailwind v4 + theme system
 │   │   └── app.html
@@ -208,7 +212,7 @@ API keys (Anthropic, OpenAI, Google, etc.) are stored securely in your OS keycha
 
 | Store | Location | Purpose |
 |-------|----------|---------|
-| SQLite | `~/.laya/data/laya.db` | Events, cards, workspaces, spaces, chat |
+| SQLite | `~/.laya/data/laya.db` | Events, cards, workspaces, spaces, traces, egress, chat |
 | ChromaDB | `~/.laya/data/chroma/` | Vector embeddings for semantic search |
 | n8n | `~/.laya/n8n/` | Workflow data, credentials (encrypted) |
 | Logs | `~/.laya/logs/engine.log` | Rotating engine logs (10 MB x 5 files) |

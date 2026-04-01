@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 
 import httpx
 import structlog
@@ -13,8 +14,14 @@ from laya.db.sqlite import get_db
 from laya.egress.backends.base import EgressBackend
 from laya.egress.models import EgressRequest, EgressResult
 from laya.http_client import get_client
+from laya.security.keychain import get_api_key
 
 log = structlog.get_logger()
+
+# Cache: user-defined webhook path → (production path, timestamp).
+# Refreshed every 5 minutes.
+_webhook_path_cache: dict[str, tuple[str, float]] = {}
+_CACHE_TTL = 300
 
 
 class N8nBackend(EgressBackend):
@@ -53,10 +60,21 @@ class N8nBackend(EgressBackend):
             return False
 
     def supports(self, platform: str, action_type: str) -> bool:
-        """n8n supports any platform that has a configured webhook."""
+        """n8n supports any platform with a configured or default webhook.
+
+        Checks both user settings and the built-in defaults, so that new
+        platforms added to DEFAULT_SETTINGS aren't silently dropped when the
+        user's settings.json has an older webhooks dict.
+        """
         n8n_config = get_n8n_config()
         webhooks = n8n_config.get("webhooks", {})
-        return platform in webhooks
+        if platform in webhooks:
+            return True
+        # Fall back to built-in defaults (covers platforms missing from
+        # user's settings.json due to shallow merge)
+        from laya.config import DEFAULT_SETTINGS
+        default_webhooks = DEFAULT_SETTINGS.get("n8n", {}).get("webhooks", {})
+        return platform in default_webhooks
 
     # -----------------------------------------------------------------------
     # Internal helpers
@@ -71,6 +89,10 @@ class N8nBackend(EgressBackend):
         1. Executor source registered in the same space as the request
         2. Any executor source registered for this platform
         3. Global config from settings.json
+
+        n8n 2.x registers webhooks under ``{workflowId}/webhook/{path}``
+        rather than just ``{path}``, so we look up the workflow ID via the
+        n8n API and construct the full URL.
         """
         n8n_config = get_n8n_config()
         base_url = n8n_config["base_url"].rstrip("/")
@@ -78,12 +100,13 @@ class N8nBackend(EgressBackend):
         # Try space-specific executor from sources table
         db = await get_db()
         executor_rows = await db.execute_fetchall(
-            """SELECT webhook_path, space_id FROM sources
+            """SELECT webhook_path, space_id, workflow_id FROM sources
                WHERE source_type = 'executor' AND platform = ? AND webhook_path IS NOT NULL""",
             (platform,),
         )
 
         webhook_path: str | None = None
+        workflow_id: str | None = None
 
         if executor_rows:
             # Prefer same-space executor
@@ -93,20 +116,102 @@ class N8nBackend(EgressBackend):
                 ]
                 if same_space:
                     webhook_path = same_space[0]["webhook_path"]
+                    workflow_id = same_space[0].get("workflow_id")
 
             # Fall back to any executor for this platform
             if not webhook_path:
                 webhook_path = executor_rows[0]["webhook_path"]
+                workflow_id = executor_rows[0].get("workflow_id")
 
-        # Fall back to global config
+        # Fall back to global config, then built-in defaults
         if not webhook_path:
             webhooks = n8n_config.get("webhooks", {})
             webhook_path = webhooks.get(platform)
+        if not webhook_path:
+            from laya.config import DEFAULT_SETTINGS
+            default_webhooks = DEFAULT_SETTINGS.get("n8n", {}).get("webhooks", {})
+            webhook_path = default_webhooks.get(platform)
 
         if not webhook_path:
             return None
 
-        return f"{base_url}/webhook/{webhook_path}"
+        # n8n 2.x registers webhooks under a path that depends on how the
+        # workflow was created:
+        #   - Imported via API (no webhookId): {workflowId}/webhook/{path}
+        #   - Duplicated in UI (has webhookId): just the webhookId UUID
+        # We resolve the actual registered production path via the n8n API.
+        production_path = await self._resolve_production_webhook_path(
+            base_url, webhook_path, workflow_id
+        )
+
+        return f"{base_url}/webhook/{production_path}"
+
+    async def _resolve_production_webhook_path(
+        self, base_url: str, webhook_path: str, workflow_id: str | None
+    ) -> str:
+        """Resolve the actual production webhook path registered in n8n.
+
+        n8n 2.x uses different path formats depending on how the workflow was
+        created.  We look up the webhook node to determine the correct path:
+        - If the node has a ``webhookId``, the production path is the webhookId.
+        - Otherwise n8n registers it as ``{workflowId}/webhook/{path}``.
+
+        Results are cached for ``_CACHE_TTL`` seconds.
+        """
+        now = time.time()
+        cached = _webhook_path_cache.get(webhook_path)
+        if cached and (now - cached[1]) < _CACHE_TTL:
+            return cached[0]
+
+        # Populate cache from n8n API
+        await self._refresh_webhook_cache(base_url)
+
+        cached = _webhook_path_cache.get(webhook_path)
+        if cached:
+            return cached[0]
+
+        # Fallback: construct best-guess path
+        if workflow_id:
+            return f"{workflow_id}/webhook/{webhook_path}"
+        return webhook_path
+
+    async def _refresh_webhook_cache(self, base_url: str) -> None:
+        """Fetch all active workflows from n8n and cache their production webhook paths."""
+        api_key = get_api_key("n8n")
+        if not api_key:
+            return
+
+        try:
+            resp = await get_client().get(
+                f"{base_url}/api/v1/workflows",
+                headers={"X-N8N-API-KEY": api_key},
+                timeout=10.0,
+            )
+            if resp.status_code != 200:
+                return
+
+            now = time.time()
+            for wf in resp.json().get("data", []):
+                if not wf.get("active"):
+                    continue
+                wf_id = str(wf["id"])
+                for node in wf.get("nodes") or []:
+                    if node.get("type") != "n8n-nodes-base.webhook":
+                        continue
+                    params = node.get("parameters", {})
+                    user_path = params.get("path")
+                    if not user_path:
+                        continue
+                    webhook_id = node.get("webhookId")
+                    if webhook_id:
+                        # Duplicated/UI-created: production path is the webhookId
+                        production = webhook_id
+                    else:
+                        # API-imported: production path is {workflowId}/webhook/{path}
+                        production = f"{wf_id}/webhook/{user_path}"
+                    _webhook_path_cache[user_path] = (production, now)
+        except Exception as e:
+            log.warning("n8n_webhook_cache_refresh_failed", error=str(e))
 
     async def _build_payload(self, request: EgressRequest) -> dict:
         """Build the n8n executor payload from an EgressRequest.
