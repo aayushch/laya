@@ -78,6 +78,7 @@ def _row_to_card(row) -> CardResponse:
         space_name=row["space_name"] if "space_name" in row.keys() else None,
         space_color=row["space_color"] if "space_color" in row.keys() else None,
         bookmarked_at=row["bookmarked_at"] if "bookmarked_at" in row.keys() else None,
+        group_active_at=row["group_active_at"] if "group_active_at" in row.keys() else None,
     )
 
 
@@ -133,7 +134,7 @@ async def list_cards(
                    c.status, c.privacy_tier, c.has_workspace, c.resolved_at, c.user_feedback,
                    c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at,
                    c.entity_id, c.source_ref, c.source_url, c.selected_action_id,
-                   c.space_id, c.bookmarked_at,
+                   c.space_id, c.bookmarked_at, c.group_active_at,
                    e.actor_name, e.actor_email,
                    s.name AS space_name, s.color AS space_color
             FROM action_cards c
@@ -234,7 +235,7 @@ async def get_grouped_cards(
                    c.status, c.privacy_tier, c.has_workspace, c.resolved_at, c.user_feedback,
                    c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at,
                    c.entity_id, c.source_ref, c.source_url, c.selected_action_id,
-                   c.space_id, c.bookmarked_at,
+                   c.space_id, c.bookmarked_at, c.group_active_at,
                    e.actor_name, e.actor_email,
                    s.name AS space_name, s.color AS space_color
             FROM action_cards c
@@ -562,7 +563,7 @@ async def get_card(card_id: str) -> CardResponse:
                   c.status, c.privacy_tier, c.has_workspace, c.resolved_at, c.user_feedback,
                   c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at,
                   c.entity_id, c.source_ref, c.source_url, c.selected_action_id,
-                  c.space_id, c.bookmarked_at,
+                  c.space_id, c.bookmarked_at, c.group_active_at,
                   e.actor_name, e.actor_email,
                   s.name AS space_name, s.color AS space_color
            FROM action_cards c

@@ -28,12 +28,12 @@
 					</div>
 					<div class="flex gap-1.5 p-2">
 						<div class="flex flex-1 flex-col gap-1">
-							<div class="h-10 rounded-md border border-[oklch(0.34_0.009_52)] bg-[oklch(0.265_0.008_50)]"></div>
-							<div class="h-10 rounded-md border border-[oklch(0.34_0.009_52)] bg-[oklch(0.265_0.008_50)]"></div>
+							<div class="h-10 rounded-md border {$cardColors ? 'border-amber-800/30 bg-amber-950/55' : 'border-[oklch(0.34_0.009_52)] bg-[oklch(0.265_0.008_50)]'}"></div>
+							<div class="h-10 rounded-md border {$cardColors ? 'border-emerald-800/20 bg-emerald-950/50' : 'border-[oklch(0.34_0.009_52)] bg-[oklch(0.265_0.008_50)]'}"></div>
 						</div>
 						<div class="flex flex-1 flex-col gap-1">
-							<div class="h-14 rounded-md border border-[oklch(0.34_0.009_52)] bg-[oklch(0.265_0.008_50)]"></div>
-							<div class="h-6 rounded-md border border-[oklch(0.34_0.009_52)] bg-[oklch(0.265_0.008_50)]"></div>
+							<div class="h-14 rounded-md border {$cardColors ? 'border-violet-800/25 bg-violet-950/55' : 'border-[oklch(0.34_0.009_52)] bg-[oklch(0.265_0.008_50)]'}"></div>
+							<div class="h-6 rounded-md border {$cardColors ? 'border-rose-800/35 bg-rose-950/60' : 'border-[oklch(0.34_0.009_52)] bg-[oklch(0.265_0.008_50)]'}"></div>
 						</div>
 					</div>
 				</div>
@@ -62,12 +62,12 @@
 					</div>
 					<div class="flex gap-1.5 p-2">
 						<div class="flex flex-1 flex-col gap-1">
-							<div class="h-10 rounded-md border border-[oklch(0.88_0.006_70)] bg-[oklch(0.935_0.006_72)]"></div>
-							<div class="h-10 rounded-md border border-[oklch(0.88_0.006_70)] bg-[oklch(0.935_0.006_72)]"></div>
+							<div class="h-10 rounded-md border {$cardColors ? 'border-amber-800/30 bg-amber-950/55' : 'border-[oklch(0.88_0.006_70)] bg-[oklch(0.935_0.006_72)]'}"></div>
+							<div class="h-10 rounded-md border {$cardColors ? 'border-emerald-800/20 bg-emerald-950/50' : 'border-[oklch(0.88_0.006_70)] bg-[oklch(0.935_0.006_72)]'}"></div>
 						</div>
 						<div class="flex flex-1 flex-col gap-1">
-							<div class="h-14 rounded-md border border-[oklch(0.88_0.006_70)] bg-[oklch(0.935_0.006_72)]"></div>
-							<div class="h-6 rounded-md border border-[oklch(0.88_0.006_70)] bg-[oklch(0.935_0.006_72)]"></div>
+							<div class="h-14 rounded-md border {$cardColors ? 'border-violet-800/25 bg-violet-950/55' : 'border-[oklch(0.88_0.006_70)] bg-[oklch(0.935_0.006_72)]'}"></div>
+							<div class="h-6 rounded-md border {$cardColors ? 'border-rose-800/35 bg-rose-950/60' : 'border-[oklch(0.88_0.006_70)] bg-[oklch(0.935_0.006_72)]'}"></div>
 						</div>
 					</div>
 				</div>

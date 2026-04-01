@@ -36,18 +36,10 @@ router = APIRouter()
 
 @router.post("/trace")
 async def create_trace(request: TraceRequest) -> TraceResponse:
-    """Run a new trace: returns timeline immediately, streams narrative via WS."""
+    """Run a new trace: returns clusters immediately, narrative generated on demand."""
     log.info("trace_requested", query=request.query, space_id=request.space_id)
 
     response = await run_trace(request)
-
-    # Fire-and-forget: stream the narrative via WebSocket
-    if response.clusters:
-        asyncio.create_task(
-            stream_trace_narrative(response.trace_id, response.clusters),
-            name=f"trace_narrative_{response.trace_id}",
-        )
-
     return response
 
 
@@ -61,7 +53,7 @@ async def list_traces(limit: int = 20, offset: int = 0) -> list[TraceListItem]:
     """List past traces, most recent first."""
     db = await get_db()
     rows = await db.execute_fetchall(
-        "SELECT trace_id, query, created_at, card_ids, cluster_data "
+        "SELECT trace_id, query, created_at, card_ids, cluster_data, search_metadata "
         "FROM traces ORDER BY created_at DESC LIMIT ? OFFSET ?",
         (limit, offset),
     )
@@ -70,6 +62,7 @@ async def list_traces(limit: int = 20, offset: int = 0) -> list[TraceListItem]:
     for row in rows:
         card_ids = []
         platforms: list[str] = []
+        fuzzy_search = False
         try:
             card_ids = json.loads(row["card_ids"]) if row["card_ids"] else []
         except json.JSONDecodeError:
@@ -81,6 +74,11 @@ async def list_traces(limit: int = 20, offset: int = 0) -> list[TraceListItem]:
                 platforms.extend(summary.get("platforms_involved", []))
         except json.JSONDecodeError:
             pass
+        try:
+            search_meta = json.loads(row["search_metadata"]) if row["search_metadata"] else {}
+            fuzzy_search = search_meta.get("fuzzy_search", False)
+        except json.JSONDecodeError:
+            pass
 
         items.append(TraceListItem(
             trace_id=row["trace_id"],
@@ -88,6 +86,7 @@ async def list_traces(limit: int = 20, offset: int = 0) -> list[TraceListItem]:
             created_at=row["created_at"],
             total_cards=len(card_ids),
             platforms=sorted(set(platforms)),
+            fuzzy_search=fuzzy_search,
         ))
 
     return items
@@ -134,15 +133,97 @@ async def rerun_trace(trace_id: str) -> TraceResponse:
     # Run fresh trace
     request = TraceRequest(query=row["query"], space_id=row["space_id"])
     response = await run_trace(request)
-
-    # Stream new narrative
-    if response.clusters:
-        asyncio.create_task(
-            stream_trace_narrative(response.trace_id, response.clusters),
-            name=f"trace_narrative_{response.trace_id}",
-        )
-
     return response
+
+
+# ---------------------------------------------------------------------------
+# POST /traces/{trace_id}/clusters/{cluster_id}/narrative — generate narrative
+# ---------------------------------------------------------------------------
+
+
+@router.post("/traces/{trace_id}/clusters/{cluster_id}/narrative")
+async def generate_cluster_narrative(trace_id: str, cluster_id: str) -> dict:
+    """Manually trigger narrative generation for a specific cluster (streams via WS)."""
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT * FROM traces WHERE trace_id = ?", (trace_id,)
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Trace not found")
+
+    trace = await _reconstruct_trace(db, rows[0])
+    cluster = next((c for c in trace.clusters if c.cluster_id == cluster_id), None)
+    if not cluster:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+
+    # Fire-and-forget: stream narrative via WebSocket
+    asyncio.create_task(
+        stream_trace_narrative(trace_id, [cluster]),
+        name=f"trace_narrative_{trace_id}_{cluster_id}",
+    )
+
+    return {"status": "generating", "trace_id": trace_id, "cluster_id": cluster_id}
+
+
+# ---------------------------------------------------------------------------
+# DELETE /traces/{trace_id}/clusters/{cluster_id} — remove a cluster
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/traces/{trace_id}/clusters/{cluster_id}")
+async def remove_cluster(trace_id: str, cluster_id: str) -> dict:
+    """Mark a cluster as removed so it no longer appears in the trace."""
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT cluster_data FROM traces WHERE trace_id = ?", (trace_id,)
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Trace not found")
+
+    cluster_data = json.loads(rows[0]["cluster_data"]) if rows[0]["cluster_data"] else []
+    found = False
+    for cdata in cluster_data:
+        if cdata.get("cluster_id") == cluster_id:
+            cdata["removed"] = True
+            found = True
+            break
+
+    if not found:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+
+    await db.execute(
+        "UPDATE traces SET cluster_data = ?, updated_at = ? WHERE trace_id = ?",
+        (json.dumps(cluster_data), datetime.now(timezone.utc).isoformat(), trace_id),
+    )
+    await db.commit()
+    return {"removed": cluster_id}
+
+
+# ---------------------------------------------------------------------------
+# POST /traces/{trace_id}/clusters/restore — restore all removed clusters
+# ---------------------------------------------------------------------------
+
+
+@router.post("/traces/{trace_id}/clusters/restore")
+async def restore_clusters(trace_id: str) -> dict:
+    """Remove the 'removed' flag from all clusters in a trace."""
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT cluster_data FROM traces WHERE trace_id = ?", (trace_id,)
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Trace not found")
+
+    cluster_data = json.loads(rows[0]["cluster_data"]) if rows[0]["cluster_data"] else []
+    for cdata in cluster_data:
+        cdata.pop("removed", None)
+
+    await db.execute(
+        "UPDATE traces SET cluster_data = ?, updated_at = ? WHERE trace_id = ?",
+        (json.dumps(cluster_data), datetime.now(timezone.utc).isoformat(), trace_id),
+    )
+    await db.commit()
+    return {"restored": trace_id}
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +312,7 @@ async def _reconstruct_trace(db, row) -> TraceResponse:
                        c.status, c.privacy_tier, c.has_workspace, c.resolved_at, c.user_feedback,
                        c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at,
                        c.entity_id, c.source_ref, c.source_url, c.selected_action_id,
-                       c.space_id, c.bookmarked_at,
+                       c.space_id, c.bookmarked_at, c.group_active_at,
                        e.actor_name, e.actor_email,
                        s.name AS space_name, s.color AS space_color
                 FROM action_cards c
@@ -247,9 +328,11 @@ async def _reconstruct_trace(db, row) -> TraceResponse:
     # Rebuild ordered timeline
     timeline = [cards_by_id[cid] for cid in card_ids if cid in cards_by_id]
 
-    # Rebuild clusters
+    # Rebuild clusters (skip removed ones)
     clusters: list[TraceCluster] = []
     for cdata in cluster_data_raw:
+        if cdata.get("removed"):
+            continue
         primary = TraceEntity(**cdata["primary_entity"])
         linked = [TraceEntity(**e) for e in cdata.get("linked_entities", [])]
         summary = TraceStatusSummary(**cdata["status_summary"])
@@ -269,7 +352,7 @@ async def _reconstruct_trace(db, row) -> TraceResponse:
             cluster_id=cdata["cluster_id"],
             primary_entity=primary,
             linked_entities=linked,
-            narrative=row["narrative"],
+            narrative=cdata.get("narrative") or row["narrative"],
             chapters=cluster_chapters,
             timeline=cluster_timeline,
             status_summary=summary,

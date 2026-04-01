@@ -297,6 +297,7 @@ export interface ActionCard {
 	space_name?: string;
 	space_color?: string;
 	bookmarked_at?: string;
+	group_active_at?: string;
 }
 
 /** A group of cards sharing the same entity (e.g. one Jira ticket) */
@@ -752,6 +753,7 @@ export interface TraceSearchMetadata {
 	entity_hits: number;
 	expansion_cards: number;
 	elapsed_ms: number;
+	fuzzy_search: boolean;
 }
 
 export interface TraceResponse {
@@ -768,6 +770,7 @@ export interface TraceListItem {
 	created_at: string;
 	total_cards: number;
 	platforms: string[];
+	fuzzy_search: boolean;
 }
 
 // ---------------------------------------------------------------------------

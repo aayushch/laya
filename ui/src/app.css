@@ -199,6 +199,19 @@ html, body {
 }
 
 /* ─────────────────────────────────────────────────────────────
+   CARD HIGHLIGHT FADE — shows an orange ring that fades out,
+   used to draw attention to a card after layout changes.
+   ───────────────────────────────────────────────────────────── */
+@keyframes card-highlight-fade {
+	0%   { box-shadow: 0 0 0 1px oklch(0.75 0.18 55 / 0.5); }
+	100% { box-shadow: 0 0 0 1px oklch(0.75 0.18 55 / 0); }
+}
+
+.card-highlight-fade {
+	animation: card-highlight-fade 1.5s ease-out forwards;
+}
+
+/* ─────────────────────────────────────────────────────────────
    CARD EXIT TRANSITION
    Fast fade+shrink when a card is removed due to filter mismatch.
    ───────────────────────────────────────────────────────────── */

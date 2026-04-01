@@ -13,7 +13,11 @@ the story of what happened.
 Rules:
 - Write 3-6 sentences of professional prose. No bullet lists, no markdown headers.
 - Cover: what the entity is, key events in chronological order, which platforms \
-  were involved, current status, and anything that needs attention.
+  were involved, and anything that needs attention.
+- Derive the current state of the entity (e.g., whether a PR is merged, a ticket \
+  is resolved) from the event content and summaries — NOT from the Priority or \
+  any internal metadata fields. Priority reflects how urgent Laya considered the \
+  notification, not the importance of the entity itself.
 - Highlight cross-platform correlations (e.g., "the Jira ticket was discussed on \
   Slack and a PR was opened on GitHub").
 - Use past tense for completed events, present tense for current state.
@@ -42,7 +46,6 @@ def build_narrative_messages(clusters: list[TraceCluster]) -> list[dict[str, str
             f"to {cluster.status_summary.date_range.get('to', '?')}"
         )
         parts.append(f"Total cards: {cluster.status_summary.total_cards}")
-        parts.append(f"Pending actions: {cluster.status_summary.pending_actions}")
         parts.append("")
 
         for i, card in enumerate(cluster.timeline, 1):
@@ -56,8 +59,7 @@ def build_narrative_messages(clusters: list[TraceCluster]) -> list[dict[str, str
 
             parts.append(
                 f"{i}. [{card.created_at or '?'}] [{platform or '?'}] "
-                f"{card.header}{actor} — Status: {card.status}, "
-                f"Priority: {card.priority}"
+                f"{card.header}{actor}"
             )
             if card.summary:
                 # Truncate long summaries to keep context manageable

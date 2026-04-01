@@ -14,6 +14,7 @@ class TraceRequest(BaseModel):
     space_id: str | None = None  # None = cross-space search
     include_archived: bool = True
     max_results: int = Field(default=50, ge=1, le=200)
+    fuzzy_search: bool = False  # Enable fuzzy (LIKE) + event keyword search
 
 
 class TraceEntity(BaseModel):
@@ -63,6 +64,7 @@ class SearchMetadata(BaseModel):
     entity_hits: int = 0
     expansion_cards: int = 0
     elapsed_ms: int = 0
+    fuzzy_search: bool = False
 
 
 class TraceResponse(BaseModel):
@@ -83,3 +85,4 @@ class TraceListItem(BaseModel):
     created_at: str
     total_cards: int
     platforms: list[str]
+    fuzzy_search: bool = False

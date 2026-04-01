@@ -3,13 +3,14 @@
 	import { lastMessage } from '$lib/stores/websocket';
 	import {
 		currentTrace,
-		traceNarrativeStreaming,
-		traceNarrative,
+		traceNarrativeStreamingMap,
+		traceNarrativeMap,
 		traceHistory,
 		traceLoading,
 		traceNewEventsDetected
 	} from '$lib/stores/trace';
 	import { get } from 'svelte/store';
+	import { slide, fade } from 'svelte/transition';
 	import TraceSearch from '$lib/components/trace/TraceSearch.svelte';
 	import TraceHeader from '$lib/components/trace/TraceHeader.svelte';
 	import TraceTimeline from '$lib/components/trace/TraceTimeline.svelte';
@@ -18,12 +19,70 @@
 
 	let loading = $state(false);
 	let error = $state<string | null>(null);
-	let trace = $state<TraceResponse | null>(null);
+	let trace = $state<TraceResponse | null>(get(currentTrace));
 	let exporting = $state(false);
+	let removedClusterIds = $state<Set<string>>(new Set());
 
-	// Load trace history on mount
+	// Visible clusters = all clusters minus removed ones
+	const visibleClusters = $derived(
+		trace?.clusters.filter((c) => !removedClusterIds.has(c.cluster_id)) ?? []
+	);
+
+	// Aggregated metadata across all visible clusters
+	const allPlatforms = $derived.by(() => {
+		const platforms = new Set<string>();
+		for (const c of visibleClusters) {
+			for (const p of c.status_summary.platforms_involved) {
+				platforms.add(p);
+			}
+		}
+		return [...platforms].sort();
+	});
+
+	const dateRange = $derived.by(() => {
+		let earliest = '';
+		let latest = '';
+		for (const c of visibleClusters) {
+			const from = c.status_summary.date_range.from || '';
+			const to = c.status_summary.date_range.to || '';
+			if (from && (!earliest || from < earliest)) earliest = from;
+			if (to && (!latest || to > latest)) latest = to;
+		}
+		return { from: earliest, to: latest };
+	});
+
+	const totalCards = $derived(
+		visibleClusters.reduce((sum, c) => sum + c.status_summary.total_cards, 0)
+	);
+
+	// Tooltip state for top-level buttons
+	let tooltip = $state<{ text: string; x: number; y: number } | null>(null);
+
+	function showTooltip(e: MouseEvent, text: string) {
+		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		tooltip = { text, x: rect.left + rect.width / 2, y: rect.top - 6 };
+	}
+
+	function hideTooltip() { tooltip = null; }
+
+	// Load trace history on mount; restore narratives from persisted trace
 	$effect(() => {
 		loadHistory();
+		const restored = get(currentTrace);
+		if (restored) {
+			trace = restored;
+			const currentMap = get(traceNarrativeMap);
+			const needsRestore = Object.keys(currentMap).length === 0;
+			if (needsRestore) {
+				const narratives: Record<string, string> = {};
+				for (const c of restored.clusters) {
+					if (c.narrative) narratives[c.cluster_id] = c.narrative;
+				}
+				if (Object.keys(narratives).length > 0) {
+					traceNarrativeMap.set(narratives);
+				}
+			}
+		}
 	});
 
 	// WebSocket handler for narrative streaming and new events
@@ -36,8 +95,9 @@
 			_lastProcessedMsg = msg;
 			const raw = msg as unknown as Record<string, unknown>;
 			if (raw.trace_id === trace?.trace_id) {
-				traceNarrativeStreaming.set(true);
-				traceNarrative.set('');
+				const cid = raw.cluster_id as string;
+				traceNarrativeStreamingMap.update((m) => ({ ...m, [cid]: true }));
+				traceNarrativeMap.update((m) => ({ ...m, [cid]: '' }));
 			}
 			return;
 		}
@@ -46,7 +106,9 @@
 			_lastProcessedMsg = msg;
 			const raw = msg as unknown as Record<string, unknown>;
 			if (raw.trace_id === trace?.trace_id) {
-				traceNarrative.update((n) => n + (raw.content as string || ''));
+				const cid = raw.cluster_id as string;
+				const content = raw.content as string || '';
+				traceNarrativeMap.update((m) => ({ ...m, [cid]: (m[cid] || '') + content }));
 			}
 			return;
 		}
@@ -55,13 +117,17 @@
 			_lastProcessedMsg = msg;
 			const raw = msg as unknown as Record<string, unknown>;
 			if (raw.trace_id === trace?.trace_id) {
-				traceNarrativeStreaming.set(false);
+				const cid = raw.cluster_id as string;
 				const narrative = raw.narrative as string || '';
-				traceNarrative.set(narrative);
-				// Update the trace clusters with the narrative
-				if (trace && trace.clusters.length > 0) {
-					trace.clusters[0].narrative = narrative;
-					trace = trace; // trigger reactivity
+				traceNarrativeStreamingMap.update((m) => ({ ...m, [cid]: false }));
+				traceNarrativeMap.update((m) => ({ ...m, [cid]: narrative }));
+				// Update the cluster's cached narrative
+				if (trace) {
+					const cluster = trace.clusters.find((c) => c.cluster_id === cid);
+					if (cluster) {
+						cluster.narrative = narrative;
+						trace = trace; // trigger reactivity
+					}
 				}
 			}
 			return;
@@ -98,15 +164,16 @@
 		}
 	}
 
-	async function handleSearch(query: string) {
+	async function handleSearch(query: string, fuzzy = false) {
 		loading = true;
 		error = null;
-		traceNarrative.set('');
-		traceNarrativeStreaming.set(false);
+		removedClusterIds = new Set();
+		traceNarrativeMap.set({});
+		traceNarrativeStreamingMap.set({});
 		traceNewEventsDetected.set(false);
 
 		try {
-			const result = await engineApi.runTrace(query);
+			const result = await engineApi.runTrace(query, undefined, fuzzy);
 			trace = result;
 			currentTrace.set(result);
 
@@ -126,18 +193,21 @@
 	async function handleSelectTrace(traceId: string) {
 		loading = true;
 		error = null;
-		traceNarrative.set('');
-		traceNarrativeStreaming.set(false);
+		removedClusterIds = new Set();
+		traceNarrativeMap.set({});
+		traceNarrativeStreamingMap.set({});
 		traceNewEventsDetected.set(false);
 
 		try {
 			const result = await engineApi.getTrace(traceId);
 			trace = result;
 			currentTrace.set(result);
-			// Set narrative from cached data
-			if (result.clusters.length > 0 && result.clusters[0].narrative) {
-				traceNarrative.set(result.clusters[0].narrative);
+			// Restore per-cluster narratives from cached data
+			const narratives: Record<string, string> = {};
+			for (const c of result.clusters) {
+				if (c.narrative) narratives[c.cluster_id] = c.narrative;
 			}
+			traceNarrativeMap.set(narratives);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load trace';
 		} finally {
@@ -151,8 +221,9 @@
 
 		loading = true;
 		error = null;
-		traceNarrative.set('');
-		traceNarrativeStreaming.set(false);
+		removedClusterIds = new Set();
+		traceNarrativeMap.set({});
+		traceNarrativeStreamingMap.set({});
 		traceNewEventsDetected.set(false);
 
 		try {
@@ -198,15 +269,58 @@
 		}
 	}
 
+	async function handleRemoveCluster(clusterId: string) {
+		if (!trace) return;
+		// Immediately hide for smooth transition
+		removedClusterIds = new Set([...removedClusterIds, clusterId]);
+		// Persist removal to backend
+		try {
+			await engineApi.removeCluster(trace.trace_id, clusterId);
+		} catch (e) {
+			console.error('Remove cluster failed:', e);
+		}
+	}
+
+	async function handleRestoreClusters() {
+		if (!trace) return;
+		removedClusterIds = new Set();
+		try {
+			await engineApi.restoreClusters(trace.trace_id);
+		} catch (e) {
+			console.error('Restore clusters failed:', e);
+		}
+	}
+
+	async function handleGenerateNarrative(clusterId: string) {
+		if (!trace) return;
+		try {
+			await engineApi.generateClusterNarrative(trace.trace_id, clusterId);
+			// Narrative will stream via WebSocket
+		} catch (e) {
+			console.error('Narrative generation failed:', e);
+		}
+	}
+
 	function handleBack() {
 		trace = null;
 		currentTrace.set(null);
-		traceNarrative.set('');
-		traceNarrativeStreaming.set(false);
+		removedClusterIds = new Set();
+		traceNarrativeMap.set({});
+		traceNarrativeStreamingMap.set({});
 		traceNewEventsDetected.set(false);
 		error = null;
 	}
 </script>
+
+<!-- Fixed-position tooltip -->
+{#if tooltip}
+	<div
+		class="fixed z-50 px-2.5 py-1 rounded-md bg-surface-700 text-surface-100 text-xs font-medium shadow-lg pointer-events-none -translate-x-1/2 -translate-y-full"
+		style="left: {tooltip.x}px; top: {tooltip.y}px;"
+	>
+		{tooltip.text}
+	</div>
+{/if}
 
 <div class="min-h-screen bg-surface-900 p-6">
 	<div class="max-w-4xl mx-auto">
@@ -264,32 +378,83 @@
 		{/if}
 
 		<!-- Active trace view -->
-		{#if trace && trace.clusters.length > 0}
-			<div class="space-y-6">
-				<!-- Search metadata -->
-				<div class="flex items-center gap-4 text-xs text-surface-500">
-					<span>{trace.search_metadata.expansion_cards} cards found</span>
-					<span>in {trace.search_metadata.elapsed_ms}ms</span>
-					<span>
-						(semantic: {trace.search_metadata.semantic_hits},
-						fuzzy: {trace.search_metadata.fuzzy_hits},
-						entity: {trace.search_metadata.entity_hits})
-					</span>
+		{#if trace && visibleClusters.length > 0}
+			<div class="space-y-4">
+				<!-- Search summary bar -->
+				<div class="flex items-center justify-between rounded-lg bg-surface-800/60 border border-surface-700/50 px-4 py-2.5">
+					<div class="flex items-center gap-3 text-xs text-surface-400">
+						<span class="text-surface-200 font-medium">{totalCards} cards</span>
+						<span class="text-surface-600">|</span>
+						<span>{visibleClusters.length} {visibleClusters.length === 1 ? 'group' : 'groups'}</span>
+						<span class="text-surface-600">|</span>
+						<span>across {allPlatforms.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ')}</span>
+						{#if dateRange.from}
+							<span class="text-surface-600">|</span>
+							<span>{dateRange.from}{dateRange.to && dateRange.to !== dateRange.from ? ` — ${dateRange.to}` : ''}</span>
+						{/if}
+						<span class="text-surface-600">|</span>
+						<span class="text-surface-500">{trace.search_metadata.elapsed_ms}ms</span>
+					</div>
+
+					<button
+						onclick={handleExport}
+						onmouseenter={(e) => showTooltip(e, 'Download full coherence as Markdown')}
+						onmouseleave={hideTooltip}
+						disabled={exporting}
+						class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+						       text-surface-300 bg-surface-700/60 border border-surface-600/50
+						       hover:border-laya-orange/40 hover:text-laya-orange hover:bg-laya-orange/5
+						       disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+					>
+						<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+						</svg>
+						{exporting ? 'Downloading...' : 'Export'}
+					</button>
 				</div>
 
-				{#each trace.clusters as cluster}
-					<!-- Header card with narrative -->
-					<TraceHeader
-						{cluster}
-						onexport={handleExport}
-						onrerun={() => handleRerun()}
-					/>
+				{#each visibleClusters as cluster (cluster.cluster_id)}
+					<div transition:slide={{ duration: 300 }}>
+						<!-- Header card with narrative -->
+						<TraceHeader
+							{cluster}
+							onexport={handleExport}
+							onrerun={() => handleRerun()}
+							onremove={() => handleRemoveCluster(cluster.cluster_id)}
+							ongenerate={() => handleGenerateNarrative(cluster.cluster_id)}
+						/>
 
-					<!-- Timeline -->
-					<div class="pl-2">
-						<TraceTimeline {cluster} />
+						<!-- Timeline (collapsible) -->
+						<details class="group mt-3">
+							<summary class="flex items-center gap-2 cursor-pointer select-none px-2 py-2 rounded-lg hover:bg-surface-800/60 transition-colors">
+								<svg class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+								</svg>
+								<span class="text-sm font-medium text-surface-400">
+									{cluster.timeline.length} events
+								</span>
+								<span class="text-xs text-surface-500">
+									— {cluster.status_summary.date_range.from} to {cluster.status_summary.date_range.to}
+								</span>
+							</summary>
+							<div class="pl-2 pt-3">
+								<TraceTimeline {cluster} />
+							</div>
+						</details>
 					</div>
 				{/each}
+			</div>
+
+		<!-- All clusters removed -->
+		{:else if trace && trace.clusters.length > 0 && visibleClusters.length === 0}
+			<div class="text-center py-12 text-surface-500" in:fade={{ duration: 250, delay: 300 }}>
+				<p class="text-sm">All clusters have been removed.</p>
+				<button
+					onclick={handleRestoreClusters}
+					class="mt-3 text-xs text-laya-orange hover:text-laya-gold transition-colors"
+				>
+					Restore all clusters
+				</button>
 			</div>
 
 		<!-- Empty state with trace history -->

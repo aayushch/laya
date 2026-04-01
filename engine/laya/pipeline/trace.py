@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -17,6 +18,7 @@ from datetime import datetime, timezone
 import structlog
 
 from laya.api.cards_api import _row_to_card
+from laya.pipeline.queue import _get_semaphore
 from laya.api.websocket import manager
 from laya.db.chromadb_store import memory_search
 from laya.db.sqlite import get_db
@@ -34,6 +36,12 @@ from laya.models.trace import (
 )
 
 log = structlog.get_logger()
+
+# Regex to detect identifier patterns like "PR 540", "PR-540", "PR#540",
+# LAYA"-986", "BUG-123", "ISSUE 42", etc.
+_IDENTIFIER_RE = re.compile(
+    r"([A-Za-z]{1,10})[\s\-#]?(\d{1,6})",
+)
 
 _STOPWORDS = frozenset({
     "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
@@ -58,25 +66,38 @@ async def run_trace(request: TraceRequest) -> TraceResponse:
     trace_id = f"trace_{uuid.uuid4().hex[:12]}"
 
     # Phase 1 — Discovery
-    semantic_results, fuzzy_results, entity_results, event_results = await asyncio.gather(
+    # Always run identifier + semantic + entity searches.
+    # Fuzzy (LIKE) and event keyword searches are optional — they cast a wide
+    # net but can flood results with false positives for identifier queries.
+    coros: list = [
+        _identifier_search(request.query, request.space_id, n=30),
         _semantic_search(request.query, request.space_id, n=30),
-        _card_fuzzy_search(request.query, request.space_id, n=30, include_archived=request.include_archived),
         _entity_table_search(request.query, n=20),
-        _event_keyword_search(request.query, request.space_id, n=20),
-        return_exceptions=True,
-    )
+    ]
+    signal_labels = ["identifier", "semantic", "entity"]
 
-    # Collect successful results
+    if request.fuzzy_search:
+        coros.append(_card_fuzzy_search(
+            request.query, request.space_id, n=30,
+            include_archived=request.include_archived,
+        ))
+        coros.append(_event_keyword_search(request.query, request.space_id, n=20))
+        signal_labels.extend(["fuzzy", "event"])
+
+    results = await asyncio.gather(*coros, return_exceptions=True)
+
+    # Collect successful results.
+    # Identifier matches are guaranteed seeds — they bypass RRF to ensure
+    # precise matches (like "PR-540") aren't drowned by broader signals.
+    guaranteed_seeds: list[dict] = []
     ranked_lists: list[list[dict]] = []
-    meta = SearchMetadata()
-    for label, result in [
-        ("semantic", semantic_results),
-        ("fuzzy", fuzzy_results),
-        ("entity", entity_results),
-        ("event", event_results),
-    ]:
+    meta = SearchMetadata(fuzzy_search=request.fuzzy_search)
+    for label, result in zip(signal_labels, results):
         if isinstance(result, list):
-            ranked_lists.append(result)
+            if label == "identifier":
+                guaranteed_seeds.extend(result)
+            else:
+                ranked_lists.append(result)
             if label == "semantic":
                 meta.semantic_hits = len(result)
             elif label == "fuzzy":
@@ -86,12 +107,26 @@ async def run_trace(request: TraceRequest) -> TraceResponse:
         elif isinstance(result, Exception):
             log.warning("trace_discovery_signal_failed", signal=label, error=str(result))
 
-    # Merge via RRF
+    log.info(
+        "trace_discovery_results",
+        query=request.query,
+        identifier_hits=len(guaranteed_seeds),
+        identifier_ids=[(s.get("card_id") or s.get("entity_id") or "?")[:30] for s in guaranteed_seeds[:5]],
+        rrf_signal_count=len(ranked_lists),
+        rrf_signal_sizes=[len(rl) for rl in ranked_lists],
+    )
+
+    # Merge non-identifier signals via RRF
     fused = _reciprocal_rank_fusion(ranked_lists, k=60)
 
-    # Deduplicate seed results
+    # Build seed list: guaranteed identifier matches first, then RRF results
     seen: set[str] = set()
     seeds: list[dict] = []
+    for item in guaranteed_seeds:
+        uid = item.get("card_id") or item.get("entity_id") or item.get("id") or ""
+        if uid and uid not in seen:
+            seen.add(uid)
+            seeds.append(item)
     for item in fused:
         uid = item.get("card_id") or item.get("entity_id") or item.get("id") or ""
         if uid and uid not in seen:
@@ -100,15 +135,28 @@ async def run_trace(request: TraceRequest) -> TraceResponse:
         if len(seeds) >= 20:
             break
 
+    log.info(
+        "trace_seeds",
+        total=len(seeds),
+        seed_ids=[(s.get("card_id") or s.get("entity_id") or "?")[:30] for s in seeds[:10]],
+        seed_entity_ids=[(s.get("entity_id") or "?")[:40] for s in seeds[:10]],
+    )
+
     # Phase 2 — Expansion
     all_cards, entity_map = await _expand_seeds(seeds, request.space_id, request.include_archived)
     meta.expansion_cards = len(all_cards)
 
-    # Cap results
-    all_cards = all_cards[: request.max_results]
-
-    # Phase 3 — Clustering
+    # Phase 3 — Clustering (before capping, so small clusters aren't eliminated)
     clusters = _build_clusters(all_cards, entity_map, seeds)
+
+    # Cap cards per cluster to keep results manageable without dropping
+    # entire clusters. Distribute max_results proportionally.
+    if clusters:
+        per_cluster = max(request.max_results // len(clusters), 5)
+        for cluster in clusters:
+            if len(cluster.timeline) > per_cluster:
+                cluster.timeline = cluster.timeline[:per_cluster]
+                cluster.status_summary.total_cards = len(cluster.timeline)
 
     meta.elapsed_ms = int((time.monotonic() - t0) * 1000)
     now = datetime.now(timezone.utc).isoformat()
@@ -130,6 +178,72 @@ async def run_trace(request: TraceRequest) -> TraceResponse:
 # ---------------------------------------------------------------------------
 # Phase 1 — Discovery signals
 # ---------------------------------------------------------------------------
+
+
+async def _identifier_search(query: str, space_id: str | None, n: int) -> list[dict]:
+    """Direct identifier lookup for patterns like 'PR 540', 'LAYA-986', etc.
+
+    Generates common variants (PR-540, PR #540, PR-540, #540) and searches
+    source_ref, entity_id, and header with exact substring matching.
+    This is the highest-signal search — if it finds matches, they're almost
+    certainly what the user is looking for.
+    """
+    matches = _IDENTIFIER_RE.findall(query)
+    if not matches:
+        return []
+
+    db = await get_db()
+    all_results: list[dict] = []
+
+    for prefix, number in matches:
+        # Generate common identifier variants
+        variants = [
+            f"{prefix}-{number}",    # PR-540, LAYA-986
+            f"{prefix} #{number}",   # PR #540
+            f"{prefix}#{number}",    # PR#540
+            f"#{number}",            # #540
+            f"{prefix} {number}",    # PR 540
+        ]
+        # Also uppercase variant
+        up = prefix.upper()
+        if up != prefix:
+            variants.extend([
+                f"{up}-{number}",
+                f"{up} #{number}",
+                f"{up}#{number}",
+            ])
+
+        conditions: list[str] = []
+        params: list[str] = []
+        for v in variants:
+            conditions.append(
+                "(c.source_ref LIKE ? OR c.entity_id LIKE ? OR c.header LIKE ?)"
+            )
+            params.extend([f"%{v}%"] * 3)
+
+        where = " OR ".join(conditions)
+        extra = ""
+        if space_id:
+            extra = " AND c.space_id = ?"
+            params.append(space_id)
+        params.append(str(n))
+
+        rows = await db.execute_fetchall(
+            f"""SELECT c.card_id, c.entity_id, c.source_ref, c.header
+                FROM action_cards c
+                WHERE ({where}){extra}
+                ORDER BY c.created_at DESC LIMIT ?""",
+            params,
+        )
+        for row in rows:
+            all_results.append({
+                "id": row["card_id"],
+                "card_id": row["card_id"],
+                "entity_id": row["entity_id"] or "",
+                "source": "identifier",
+            })
+
+    return all_results[:n]
 
 
 async def _semantic_search(query: str, space_id: str | None, n: int) -> list[dict]:
@@ -157,6 +271,7 @@ async def _card_fuzzy_search(
     if not keywords:
         return []
 
+    # Each keyword must match at least one searchable field (AND across keywords)
     conditions: list[str] = []
     params: list[str] = []
     for kw in keywords[:8]:
@@ -166,7 +281,7 @@ async def _card_fuzzy_search(
         )
         params.extend([f"%{kw}%"] * 5)
 
-    where = " OR ".join(conditions)
+    where = " AND ".join(conditions)
     extra = ""
     if space_id:
         extra += " AND c.space_id = ?"
@@ -174,14 +289,25 @@ async def _card_fuzzy_search(
     if not include_archived:
         extra += " AND c.status != 'archived'"
 
-    params.append(str(n))
+    # Build exact-match boost: cards where keywords appear in header/source_ref
+    # score higher (sorted first) vs those matching only in summary/body
+    boost_parts: list[str] = []
+    boost_params: list[str] = []
+    for kw in keywords[:8]:
+        boost_parts.append("(CASE WHEN c.header LIKE ? OR c.source_ref LIKE ? THEN 1 ELSE 0 END)")
+        boost_params.extend([f"%{kw}%"] * 2)
+
+    boost_expr = " + ".join(boost_parts) if boost_parts else "0"
+
+    all_params = boost_params + params + [str(n)]
 
     rows = await db.execute_fetchall(
-        f"""SELECT c.card_id, c.entity_id, c.source_ref, c.header, c.priority
+        f"""SELECT c.card_id, c.entity_id, c.source_ref, c.header, c.priority,
+                   ({boost_expr}) AS relevance
             FROM action_cards c
             WHERE ({where}){extra}
-            ORDER BY c.created_at DESC LIMIT ?""",
-        params,
+            ORDER BY relevance DESC, c.created_at DESC LIMIT ?""",
+        all_params,
     )
     return [
         {
@@ -712,12 +838,26 @@ async def _save_trace(response: TraceResponse) -> None:
     await db.commit()
 
 
-async def update_trace_narrative(trace_id: str, narrative: str) -> None:
-    """Update a trace with the completed narrative."""
+async def _update_cluster_narrative(
+    trace_id: str, cluster_id: str, narrative: str
+) -> None:
+    """Persist a narrative for a specific cluster inside the trace's cluster_data JSON."""
     db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT cluster_data FROM traces WHERE trace_id = ?", (trace_id,)
+    )
+    if not rows:
+        return
+
+    cluster_data = json.loads(rows[0]["cluster_data"]) if rows[0]["cluster_data"] else []
+    for cdata in cluster_data:
+        if cdata.get("cluster_id") == cluster_id:
+            cdata["narrative"] = narrative
+            break
+
     await db.execute(
-        "UPDATE traces SET narrative = ?, updated_at = ? WHERE trace_id = ?",
-        (narrative, datetime.now(timezone.utc).isoformat(), trace_id),
+        "UPDATE traces SET cluster_data = ?, updated_at = ? WHERE trace_id = ?",
+        (json.dumps(cluster_data), datetime.now(timezone.utc).isoformat(), trace_id),
     )
     await db.commit()
 
@@ -727,50 +867,77 @@ async def update_trace_narrative(trace_id: str, narrative: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+async def _stream_cluster_narrative(
+    trace_id: str, cluster: TraceCluster
+) -> None:
+    """Generate and stream a narrative for a single cluster via WebSocket.
+
+    Acquires the shared pipeline semaphore so trace narratives respect
+    the same concurrency limit as feed card generation.
+    """
+    sem = _get_semaphore()
+    async with sem:
+        await _stream_cluster_narrative_inner(trace_id, cluster)
+
+
+async def _stream_cluster_narrative_inner(
+    trace_id: str, cluster: TraceCluster
+) -> None:
+    """Inner narrative generation (called under semaphore)."""
+    cluster_id = cluster.cluster_id
+    messages = build_narrative_messages([cluster])
+
+    await manager.broadcast({
+        "type": "trace_narrative_start",
+        "trace_id": trace_id,
+        "cluster_id": cluster_id,
+    })
+
+    full_narrative = ""
+    async for event in llm_call_streaming(
+        role="trace",
+        messages=messages,
+        step="trace",
+        temperature=0.3,
+        max_tokens=32000,
+    ):
+        if event.type == "chunk" and event.content:
+            full_narrative += event.content
+            await manager.broadcast({
+                "type": "trace_narrative_chunk",
+                "trace_id": trace_id,
+                "cluster_id": cluster_id,
+                "content": event.content,
+            })
+        elif event.type == "error":
+            log.error(
+                "trace_narrative_error",
+                trace_id=trace_id, cluster_id=cluster_id, error=event.content,
+            )
+            break
+
+    # Persist per-cluster narrative
+    await _update_cluster_narrative(trace_id, cluster_id, full_narrative)
+
+    await manager.broadcast({
+        "type": "trace_narrative_done",
+        "trace_id": trace_id,
+        "cluster_id": cluster_id,
+        "narrative": full_narrative,
+    })
+
+    log.info(
+        "trace_narrative_complete",
+        trace_id=trace_id, cluster_id=cluster_id, length=len(full_narrative),
+    )
+
+
 async def stream_trace_narrative(trace_id: str, clusters: list[TraceCluster]) -> None:
-    """Generate and stream a narrative summary via WebSocket, then persist."""
+    """Generate and stream narratives for each cluster independently."""
     try:
-        messages = build_narrative_messages(clusters)
-
-        await manager.broadcast({
-            "type": "trace_narrative_start",
-            "trace_id": trace_id,
-        })
-
-        full_narrative = ""
-        async for event in llm_call_streaming(
-            role="trace",
-            messages=messages,
-            step="trace",
-            temperature=0.3,
-            max_tokens=1000,
-        ):
-            if event.type == "chunk" and event.content:
-                full_narrative += event.content
-                await manager.broadcast({
-                    "type": "trace_narrative_chunk",
-                    "trace_id": trace_id,
-                    "content": event.content,
-                })
-            elif event.type == "error":
-                log.error("trace_narrative_error", trace_id=trace_id, error=event.content)
-                break
-
-        # Persist the completed narrative
-        await update_trace_narrative(trace_id, full_narrative)
-
-        await manager.broadcast({
-            "type": "trace_narrative_done",
-            "trace_id": trace_id,
-            "narrative": full_narrative,
-        })
-
-        log.info("trace_narrative_complete", trace_id=trace_id, length=len(full_narrative))
-
+        # Run narratives for all clusters concurrently
+        await asyncio.gather(
+            *(_stream_cluster_narrative(trace_id, c) for c in clusters)
+        )
     except Exception as e:
         log.error("trace_narrative_failed", trace_id=trace_id, error=str(e))
-        await manager.broadcast({
-            "type": "trace_narrative_done",
-            "trace_id": trace_id,
-            "narrative": "",
-        })

@@ -70,6 +70,7 @@ class CardResponse(BaseModel):
     space_name: str | None = None
     space_color: str | None = None
     bookmarked_at: str | None = None
+    group_active_at: str | None = None
 
 
 class CardsListResponse(BaseModel):

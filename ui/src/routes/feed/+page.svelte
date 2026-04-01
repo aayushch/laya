@@ -47,6 +47,8 @@
 	let error = $state<string | null>(null);
 	let selectedCard = $state<ActionCard | null>(null);
 	let detailPanelOpen = $state(false);
+	// Tracks the last card shown in the detail panel — survives dismiss so close can scroll back
+	let lastDetailCardId = $state<string | null>(null);
 
 	// Track last non-summary view so we can restore it when clicking summary items
 	let lastNonSummaryView = $state<'card' | 'list'>(
@@ -81,9 +83,9 @@
 		}
 	});
 
-	// Auto-open detail panel when a card is selected
+	// Auto-open detail panel when a card is selected (skip FLIP — scroll will follow)
 	$effect(() => {
-		if (selectedCard) openDetailPanel();
+		if (selectedCard) openDetailPanel(true);
 	});
 
 	// Search state (ephemeral — resets on date change)
@@ -135,8 +137,13 @@
 	}
 
 	// Apply FLIP animation from old positions to current positions
-	async function animateFlip(oldPositions: Map<string, DOMRect>) {
+	// When instant=true, skip animations (used for panel open/close to avoid jarring double transitions)
+	async function animateFlip(oldPositions: Map<string, DOMRect>, instant = false) {
 		if (!containerEl || oldPositions.size === 0) return;
+		if (instant) {
+			_flipSettled = Promise.resolve();
+			return;
+		}
 		// Signal that a FLIP animation is in progress; resolves after animations finish
 		_flipSettled = new Promise((resolve) => setTimeout(resolve, 350));
 		await tick();
@@ -383,11 +390,12 @@
 
 	function gotoCard(card: ActionCard) {
 		let cardDate: string | null = null;
-		if (card.created_at) {
-			// created_at is stored as UTC in the DB (e.g. "2026-03-13 20:00:00") without
-			// a timezone indicator. Append 'Z' so Date parses it as UTC, then extract the
-			// local date — matching the timezone-aware grouping used by feedDate.
-			const raw = card.created_at.endsWith('Z') || card.created_at.includes('+') ? card.created_at : card.created_at.replace(' ', 'T') + 'Z';
+		// Use group_active_at (carry-forward date) if available, otherwise fall back to created_at.
+		// group_active_at reflects when the card's entity group was last active, which is the
+		// date the card will actually appear on in the feed due to group carry-forward.
+		const dateSource = card.group_active_at || card.created_at;
+		if (dateSource) {
+			const raw = dateSource.endsWith('Z') || dateSource.includes('+') ? dateSource : dateSource.replace(' ', 'T') + 'Z';
 			const d = new Date(raw);
 			cardDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 		}
@@ -412,8 +420,8 @@
 					if (el) {
 						el.scrollIntoView({ behavior: 'smooth', block: 'center' });
 						// Brief highlight flash
-						el.classList.add('ring-1', 'ring-laya-orange/40');
-						setTimeout(() => el.classList.remove('ring-1', 'ring-laya-orange/40'), 1500);
+						el.classList.add('card-highlight-fade');
+						el.addEventListener('animationend', () => el.classList.remove('card-highlight-fade'), { once: true });
 						_scrollToCardId = null;
 					} else if (tries > 0) {
 						// Group may still be expanding — retry next frame
@@ -455,6 +463,7 @@
 
 	function selectCard(card: ActionCard) {
 		selectedCard = card;
+		lastDetailCardId = card.card_id;
 		sessionStorage.setItem(SELECTED_CARD_KEY, card.card_id);
 		trackCardVisit(card);
 		// Fetch full card from API to ensure suggested_actions and other fields
@@ -469,6 +478,13 @@
 	function closeDetail() {
 		selectedCard = null;
 		detailPanelOpen = false;
+		lastDetailCardId = null;
+		sessionStorage.removeItem(SELECTED_CARD_KEY);
+	}
+
+	// Dismiss the active card without closing the panel (X button in CardDetail)
+	function dismissActiveCard() {
+		selectedCard = null;
 		sessionStorage.removeItem(SELECTED_CARD_KEY);
 	}
 
@@ -625,11 +641,12 @@
 	let panelTransitioning = $state(false);
 
 	// FLIP helper: capture positions, update columns, animate cards to new positions
-	async function flipColumns(newCols: number) {
+	// When instant=true, repack without animation (used for panel open/close)
+	async function flipColumns(newCols: number, instant = false) {
 		if (newCols === numColumns || !containerEl) return;
 		const oldPositions = captureCardPositions();
 		numColumns = newCols;
-		animateFlip(oldPositions);
+		animateFlip(oldPositions, instant);
 	}
 
 	$effect(() => {
@@ -648,7 +665,9 @@
 
 	// Pre-calculate final column count when detail panel opens/closes
 	// so cards reflow once to the final layout before the panel animates
-	function openDetailPanel() {
+	// skipFlip=true when opening because a card was clicked (scroll will follow, so skip jarring FLIP)
+	// skipFlip=false (default) when user manually opens via chevron (normal FLIP animation)
+	function openDetailPanel(skipFlip = false) {
 		if (detailPanelOpen || !containerEl) {
 			detailPanelOpen = true;
 			return;
@@ -659,11 +678,38 @@
 		const finalCols = Math.max(1, Math.floor((finalWidth + COL_GAP) / (CARD_WIDTH + COL_GAP)));
 
 		panelTransitioning = true;
-		flipColumns(finalCols);
+		flipColumns(finalCols, skipFlip);
 		detailPanelOpen = true;
+
+		// Scroll the selected card into view after the panel slide finishes
+		if (skipFlip && selectedCard) {
+			setTimeout(() => scrollToCard(selectedCard!.card_id), 320);
+		}
 
 		// Allow ResizeObserver to resume after panel transition ends (300ms duration)
 		setTimeout(() => { panelTransitioning = false; }, 350);
+	}
+
+	// Scroll to a card and show a fading highlight border (used when panel closes)
+	function scrollToCardWithFade(cardId: string) {
+		_flipSettled.then(() => {
+			const attempt = (tries: number) => {
+				requestAnimationFrame(() => {
+					const el = document.querySelector(`[data-card-id="${cardId}"]`);
+					if (el) {
+						el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+						// Fading orange ring highlight via CSS animation
+						el.classList.add('card-highlight-fade');
+						el.addEventListener('animationend', () => {
+							el.classList.remove('card-highlight-fade');
+						}, { once: true });
+					} else if (tries > 0) {
+						attempt(tries - 1);
+					}
+				});
+			};
+			attempt(5);
+		});
 	}
 
 	function closeDetailPanel() {
@@ -671,14 +717,23 @@
 			closeDetail();
 			return;
 		}
+		// Use lastDetailCardId which survives dismiss (X button clears selectedCard but not this)
+		const lastCardId = lastDetailCardId;
+
 		// Panel will free DETAIL_PANEL_WIDTH + COL_GAP back to the container
 		const currentWidth = containerEl.clientWidth;
 		const finalWidth = currentWidth + DETAIL_PANEL_WIDTH + COL_GAP;
 		const finalCols = Math.max(1, Math.floor((finalWidth + COL_GAP) / (CARD_WIDTH + COL_GAP)));
 
 		panelTransitioning = true;
-		flipColumns(finalCols);
+		// Skip FLIP when scroll-back will also run (avoids jarring double transition)
+		flipColumns(finalCols, !!lastCardId);
 		closeDetail();
+
+		// After panel slide completes, scroll to the card that was selected and show fading highlight
+		if (lastCardId) {
+			setTimeout(() => scrollToCardWithFade(lastCardId), 350);
+		}
 
 		setTimeout(() => { panelTransitioning = false; }, 350);
 	}
@@ -1353,7 +1408,7 @@
 				>
 					<div class="w-[420px] h-full overflow-y-auto">
 						{#if selectedCard}
-							<CardDetail card={selectedCard} onclose={closeDetailPanel} ongotocard={gotoCard} />
+							<CardDetail card={selectedCard} onclose={closeDetailPanel} ondismiss={dismissActiveCard} ongotocard={gotoCard} />
 						{:else}
 							<div class="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-surface-700 text-surface-600">
 								<svg class="mb-2 h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
