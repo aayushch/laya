@@ -11,6 +11,7 @@
 		type SetupStep,
 	} from '$lib/stores/setup';
 	import { onMount } from 'svelte';
+	import layaIcon from '$lib/assets/laya-splash.png';
 
 	// ── Normal startup components (shown after setup is done) ──
 	interface ComponentStatus {
@@ -166,21 +167,12 @@
 		</p>
 
 	{:else}
-		<!-- Normal startup: health-based component status -->
-		<div class="w-72 space-y-3">
-			{#each components as comp}
-				<div class="flex items-center gap-3 rounded-lg border border-surface-700/50 bg-surface-800/50 px-4 py-2.5">
-					<span class="relative flex h-2.5 w-2.5 shrink-0">
-						{#if comp.state === 'loading'}
-							<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-laya-orange opacity-50"></span>
-						{/if}
-						<span class="relative inline-flex h-2.5 w-2.5 rounded-full {dotColor(comp.state)}"></span>
-					</span>
-					<span class="flex-1 text-sm text-surface-200">{comp.label}</span>
-					<span class="text-xs {stateIcon[comp.state]}">{stateLabel[comp.state]}</span>
-				</div>
-			{/each}
-		</div>
+		<!-- Normal startup: icon + progress -->
+		<img
+			src={layaIcon}
+			alt="Laya"
+			class="w-56 h-56 object-contain {allReady ? '' : 'animate-pulse'}"
+		/>
 
 		<div class="mt-6 h-1 w-72 overflow-hidden rounded-full bg-surface-700">
 			<div
@@ -188,13 +180,5 @@
 				style="width: {(readyCount / components.length) * 100}%"
 			></div>
 		</div>
-
-		<p class="mt-4 text-xs text-surface-500">
-			{#if allReady}
-				All systems ready
-			{:else}
-				Starting up... {readyCount}/{components.length} components ready
-			{/if}
-		</p>
 	{/if}
 </div>

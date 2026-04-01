@@ -1,13 +1,19 @@
-import { writable } from 'svelte/store';
+import { writable, derived } from 'svelte/store';
 import type { TraceResponse, TraceListItem } from '$lib/api/types';
 
 /** The currently loaded trace result */
 export const currentTrace = writable<TraceResponse | null>(null);
 
-/** Whether a narrative is currently being streamed */
-export const traceNarrativeStreaming = writable<boolean>(false);
+/** Per-cluster narrative streaming state: cluster_id -> boolean */
+export const traceNarrativeStreamingMap = writable<Record<string, boolean>>({});
 
-/** Accumulated narrative text from streaming */
+/** Per-cluster accumulated narrative text: cluster_id -> string */
+export const traceNarrativeMap = writable<Record<string, string>>({});
+
+// Legacy single-value aliases (kept for backward compat if needed)
+/** @deprecated Use traceNarrativeStreamingMap */
+export const traceNarrativeStreaming = writable<boolean>(false);
+/** @deprecated Use traceNarrativeMap */
 export const traceNarrative = writable<string>('');
 
 /** Trace history list */

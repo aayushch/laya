@@ -489,14 +489,15 @@ export const engineApi = {
 		}),
 
 	// Trace
-	runTrace: (query: string, spaceId?: string) =>
+	runTrace: (query: string, spaceId?: string, fuzzySearch = false) =>
 		request<import('./types').TraceResponse>('/trace', {
 			method: 'POST',
 			body: JSON.stringify({
 				query,
 				space_id: spaceId || null,
 				include_archived: true,
-				max_results: 50
+				max_results: 50,
+				fuzzy_search: fuzzySearch
 			})
 		}),
 
@@ -511,6 +512,21 @@ export const engineApi = {
 
 	deleteTrace: (traceId: string) =>
 		request<{ deleted: string }>(`/traces/${traceId}`, { method: 'DELETE' }),
+
+	generateClusterNarrative: (traceId: string, clusterId: string) =>
+		request<{ status: string }>(`/traces/${traceId}/clusters/${clusterId}/narrative`, {
+			method: 'POST'
+		}),
+
+	removeCluster: (traceId: string, clusterId: string) =>
+		request<{ removed: string }>(`/traces/${traceId}/clusters/${clusterId}`, {
+			method: 'DELETE'
+		}),
+
+	restoreClusters: (traceId: string) =>
+		request<{ restored: string }>(`/traces/${traceId}/clusters/restore`, {
+			method: 'POST'
+		}),
 
 	exportTrace: async (traceId: string): Promise<Blob> => {
 		const resp = await fetch(`${ENGINE_URL}/traces/${traceId}/export`);

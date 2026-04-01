@@ -311,7 +311,7 @@
 	{#if ghostCount >= 2}
 		<div
 			class="absolute bottom-0 rounded-b-xl border-x border-b transition-opacity duration-200 {ghostBorder} {ghostBg} {expanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
-			style="left: 16px; right: 16px; height: 8px; z-index: 1;"
+			style="left: 16px; right: 16px; height: 5px; z-index: 1;"
 		></div>
 	{/if}
 
@@ -351,7 +351,7 @@
 					</span>
 					<!-- Card count badge (always visible) -->
 					<span class="rounded-full border border-surface-600 bg-surface-700 px-2 py-0.5 text-[10px] font-semibold text-surface-300">
-						{expanded ? '' : '+'}{extraCount}{#if expanded} cards{/if}
+						{expanded ? `${group.card_count} cards` : `+${extraCount}`}
 					</span>
 					{#if expanded && hasAnyAction}
 						<!-- Three-dot group actions menu (expanded only) -->
