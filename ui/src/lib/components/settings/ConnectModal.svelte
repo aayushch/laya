@@ -168,11 +168,12 @@
 
 <!-- Overlay -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onclick={onClose}>
+<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onclick={onClose} onkeydown={(e) => { if (e.key === 'Escape') onClose(); }}>
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="w-full max-w-md rounded-xl border border-surface-700 bg-surface-900 shadow-2xl"
 		onclick={(e) => e.stopPropagation()}
+		onkeydown={(e) => e.stopPropagation()}
 	>
 		<!-- Header -->
 		<div class="flex items-center gap-3 border-b border-surface-700 px-6 py-4">
@@ -192,6 +193,7 @@
 				</p>
 			</div>
 			<button
+				aria-label="Close"
 				onclick={() => { stopPolling(); onClose(); }}
 				class="ml-auto text-surface-500 hover:text-surface-200 transition-colors"
 			>
@@ -221,8 +223,9 @@
 							To connect {platformLabel}, first configure your OAuth application credentials.
 						</p>
 						<div>
-							<label class="mb-1 block text-xs font-medium text-surface-400">Client ID</label>
+							<label for="oauth-client-id" class="mb-1 block text-xs font-medium text-surface-400">Client ID</label>
 							<input
+								id="oauth-client-id"
 								type="text"
 								bind:value={oauthClientId}
 								placeholder="Your OAuth client ID"
@@ -230,8 +233,9 @@
 							/>
 						</div>
 						<div>
-							<label class="mb-1 block text-xs font-medium text-surface-400">Client Secret</label>
+							<label for="oauth-client-secret" class="mb-1 block text-xs font-medium text-surface-400">Client Secret</label>
 							<input
+								id="oauth-client-secret"
 								type="password"
 								bind:value={oauthClientSecret}
 								placeholder="Your OAuth client secret"
@@ -282,9 +286,10 @@
 				<div class="space-y-4">
 					{#each fields as field}
 						<div>
-							<label class="mb-1 block text-xs font-medium text-surface-400">{field.label}</label>
+							<label for="field-{field.key}" class="mb-1 block text-xs font-medium text-surface-400">{field.label}</label>
 							{#if field.type === 'password'}
 								<input
+									id="field-{field.key}"
 									type="password"
 									bind:value={fieldValues[field.key]}
 									placeholder={field.placeholder ?? ''}
@@ -292,6 +297,7 @@
 								/>
 							{:else}
 								<input
+									id="field-{field.key}"
 									type="text"
 									bind:value={fieldValues[field.key]}
 									placeholder={field.placeholder ?? ''}

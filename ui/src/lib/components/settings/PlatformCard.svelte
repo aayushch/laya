@@ -60,6 +60,7 @@
 	}
 </script>
 
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
 	class="group relative rounded-lg border p-4 transition-colors
 		{isConnected
