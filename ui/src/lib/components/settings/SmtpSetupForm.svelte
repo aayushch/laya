@@ -72,8 +72,9 @@
 <div class="space-y-4">
 	<!-- Email input with auto-detect -->
 	<div>
-		<label class="mb-1 block text-xs font-medium text-surface-400">Email Address</label>
+		<label for="smtp-email" class="mb-1 block text-xs font-medium text-surface-400">Email Address</label>
 		<input
+			id="smtp-email"
 			type="email"
 			bind:value={email}
 			onblur={detectProvider}
@@ -108,8 +109,9 @@
 
 		<!-- Password / App Password -->
 		<div>
-			<label class="mb-1 block text-xs font-medium text-surface-400">Password / App Password</label>
+			<label for="smtp-password" class="mb-1 block text-xs font-medium text-surface-400">Password / App Password</label>
 			<input
+				id="smtp-password"
 				type="password"
 				bind:value={password}
 				placeholder="App password or account password"
@@ -120,8 +122,9 @@
 		<!-- SMTP settings -->
 		<div class="grid grid-cols-3 gap-3">
 			<div class="col-span-2">
-				<label class="mb-1 block text-xs font-medium text-surface-400">SMTP Server</label>
+				<label for="smtp-host" class="mb-1 block text-xs font-medium text-surface-400">SMTP Server</label>
 				<input
+					id="smtp-host"
 					type="text"
 					bind:value={smtpHost}
 					placeholder="smtp.example.com"
@@ -129,8 +132,9 @@
 				/>
 			</div>
 			<div>
-				<label class="mb-1 block text-xs font-medium text-surface-400">Port</label>
+				<label for="smtp-port" class="mb-1 block text-xs font-medium text-surface-400">Port</label>
 				<input
+					id="smtp-port"
 					type="text"
 					bind:value={smtpPort}
 					placeholder="587"
@@ -142,8 +146,9 @@
 		<!-- IMAP settings -->
 		<div class="grid grid-cols-3 gap-3">
 			<div class="col-span-2">
-				<label class="mb-1 block text-xs font-medium text-surface-400">IMAP Server</label>
+				<label for="imap-host" class="mb-1 block text-xs font-medium text-surface-400">IMAP Server</label>
 				<input
+					id="imap-host"
 					type="text"
 					bind:value={imapHost}
 					placeholder="imap.example.com"
@@ -151,8 +156,9 @@
 				/>
 			</div>
 			<div>
-				<label class="mb-1 block text-xs font-medium text-surface-400">Port</label>
+				<label for="imap-port" class="mb-1 block text-xs font-medium text-surface-400">Port</label>
 				<input
+					id="imap-port"
 					type="text"
 					bind:value={imapPort}
 					placeholder="993"

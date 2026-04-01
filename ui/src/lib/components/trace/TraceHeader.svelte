@@ -190,12 +190,13 @@
 		<!-- Action buttons on hover -->
 		<span class="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 shrink-0 ml-2">
 			{#if hasNarrative}
-				<span class="text-[10px] text-laya-orange"
+				<span class="text-[10px] text-laya-orange" role="img" aria-label="Has narrative"
 					onmouseenter={(e) => showTooltip(e, 'Has narrative')}
 					onmouseleave={hideTooltip}
 				>✦</span>
 			{:else if ongenerate}
 				<button
+					aria-label="Generate narrative"
 					onclick={(e) => { e.stopPropagation(); ongenerate?.(); }}
 					onmouseenter={(e) => showTooltip(e, 'Generate narrative')}
 					onmouseleave={hideTooltip}
@@ -212,6 +213,7 @@
 					href={cluster.primary_entity.url}
 					target="_blank"
 					rel="noopener noreferrer"
+					aria-label="Open in platform"
 					onmouseenter={(e) => showTooltip(e, 'Open in platform')}
 					onmouseleave={hideTooltip}
 					class="p-1 rounded text-surface-500 hover:text-laya-orange hover:bg-surface-700/50 transition-colors"
@@ -224,6 +226,7 @@
 
 			{#if latestCardId}
 				<button
+					aria-label="View in feed"
 					onclick={(e) => { e.stopPropagation(); viewInFeed(); }}
 					onmouseenter={(e) => showTooltip(e, 'View in feed')}
 					onmouseleave={hideTooltip}
@@ -237,6 +240,7 @@
 
 			{#if onremove}
 				<button
+					aria-label="Remove cluster"
 					onclick={(e) => { e.stopPropagation(); onremove?.(); }}
 					onmouseenter={(e) => showTooltip(e, 'Remove cluster')}
 					onmouseleave={hideTooltip}
