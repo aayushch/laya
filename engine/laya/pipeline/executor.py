@@ -91,16 +91,22 @@ async def execute_action(
 
     # 5. Resolve target platform (handle calendar detection)
     target_platform = action["target_platform"]
+    action_type = action["action_type"]
     if target_platform == "gmail" and (
         payload.get("action") == "create_calendar_event"
-        or action.get("action_type") == "calendar"
+        or action_type == "calendar"
     ):
         target_platform = "google_calendar"
+
+    # Remap LLM mistakes: send_message is Slack-only, Gmail uses send_email
+    if target_platform in ("gmail", "outlook") and action_type == "send_message":
+        log.warning("action_type_remapped", original="send_message", corrected="send_email", platform=target_platform)
+        action_type = "send_email"
 
     # 6. Delegate to egress module
     request = EgressRequest(
         platform=target_platform,
-        action_type=action["action_type"],
+        action_type=action_type,
         payload=payload,
         source_card_id=card_id,
         source_event_id=card_row["event_id"],

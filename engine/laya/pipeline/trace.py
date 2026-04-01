@@ -885,46 +885,52 @@ async def _stream_cluster_narrative_inner(
 ) -> None:
     """Inner narrative generation (called under semaphore)."""
     cluster_id = cluster.cluster_id
-    messages = build_narrative_messages([cluster])
-
-    await manager.broadcast({
-        "type": "trace_narrative_start",
-        "trace_id": trace_id,
-        "cluster_id": cluster_id,
-    })
-
     full_narrative = ""
-    async for event in llm_call_streaming(
-        role="trace",
-        messages=messages,
-        step="trace",
-        temperature=0.3,
-        max_tokens=32000,
-    ):
-        if event.type == "chunk" and event.content:
-            full_narrative += event.content
-            await manager.broadcast({
-                "type": "trace_narrative_chunk",
-                "trace_id": trace_id,
-                "cluster_id": cluster_id,
-                "content": event.content,
-            })
-        elif event.type == "error":
-            log.error(
-                "trace_narrative_error",
-                trace_id=trace_id, cluster_id=cluster_id, error=event.content,
-            )
-            break
+    try:
+        messages = build_narrative_messages([cluster])
 
-    # Persist per-cluster narrative
-    await _update_cluster_narrative(trace_id, cluster_id, full_narrative)
+        await manager.broadcast({
+            "type": "trace_narrative_start",
+            "trace_id": trace_id,
+            "cluster_id": cluster_id,
+        })
 
-    await manager.broadcast({
-        "type": "trace_narrative_done",
-        "trace_id": trace_id,
-        "cluster_id": cluster_id,
-        "narrative": full_narrative,
-    })
+        async for event in llm_call_streaming(
+            role="trace",
+            messages=messages,
+            step="trace",
+            temperature=0.3,
+            max_tokens=32000,
+        ):
+            if event.type == "chunk" and event.content:
+                full_narrative += event.content
+                await manager.broadcast({
+                    "type": "trace_narrative_chunk",
+                    "trace_id": trace_id,
+                    "cluster_id": cluster_id,
+                    "content": event.content,
+                })
+            elif event.type == "error":
+                log.error(
+                    "trace_narrative_error",
+                    trace_id=trace_id, cluster_id=cluster_id, error=event.content,
+                )
+                break
+
+        # Persist per-cluster narrative
+        await _update_cluster_narrative(trace_id, cluster_id, full_narrative)
+    except Exception as e:
+        log.error(
+            "trace_narrative_inner_error",
+            trace_id=trace_id, cluster_id=cluster_id, error=str(e),
+        )
+    finally:
+        await manager.broadcast({
+            "type": "trace_narrative_done",
+            "trace_id": trace_id,
+            "cluster_id": cluster_id,
+            "narrative": full_narrative,
+        })
 
     log.info(
         "trace_narrative_complete",

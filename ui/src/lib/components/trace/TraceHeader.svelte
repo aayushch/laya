@@ -3,20 +3,22 @@
 	import { traceNarrativeMap, traceNarrativeStreamingMap } from '$lib/stores/trace';
 	import { pendingCardId } from '$lib/stores/chat';
 	import { goto } from '$app/navigation';
+	import { slide } from 'svelte/transition';
+	import TraceTimeline from './TraceTimeline.svelte';
 
 	let {
 		cluster,
-		onexport,
-		onrerun,
 		onremove,
-		ongenerate
+		ongenerate,
+		isLast = false
 	}: {
 		cluster: TraceCluster;
-		onexport?: () => void;
-		onrerun?: () => void;
 		onremove?: () => void;
 		ongenerate?: () => void;
+		isLast?: boolean;
 	} = $props();
+
+	let expanded = $state(false);
 
 	// Tooltip state
 	let tooltip = $state<{ text: string; x: number; y: number } | null>(null);
@@ -28,11 +30,8 @@
 
 	function hideTooltip() { tooltip = null; }
 
-	// Parse <think>...</think> blocks from narrative text
 	function parseNarrative(content: string, streaming: boolean) {
 		if (!content) return { thinking: null, response: content, isThinking: false };
-
-		// Complete thinking block
 		const match = content.match(/<think>([\s\S]*?)<\/think>/);
 		if (match) {
 			return {
@@ -41,19 +40,12 @@
 				isThinking: false
 			};
 		}
-
-		// Open <think> tag with no closing — still thinking
 		if (content.includes('<think>')) {
 			if (streaming) {
-				return {
-					thinking: content.replace('<think>', '').trim(),
-					response: '',
-					isThinking: true
-				};
+				return { thinking: content.replace('<think>', '').trim(), response: '', isThinking: true };
 			}
 			return { thinking: null, response: content.replace('<think>', ''), isThinking: false };
 		}
-
 		return { thinking: null, response: content, isThinking: false };
 	}
 
@@ -63,7 +55,6 @@
 	const parsed = $derived(parseNarrative(narrativeText, isStreaming));
 	const hasNarrative = $derived(!!narrativeText || isStreaming);
 
-	// Latest card ID for "View in feed" link (timeline is chronological, last = most recent)
 	const latestCardId = $derived(cluster.timeline.length > 0 ? cluster.timeline[cluster.timeline.length - 1].card_id : null);
 
 	function viewInFeed() {
@@ -73,17 +64,57 @@
 		}
 	}
 
-	const platformColors: Record<string, string> = {
-		jira: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-		github: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-		bitbucket: 'bg-sky-500/20 text-sky-400 border-sky-500/30',
-		slack: 'bg-green-500/20 text-green-400 border-green-500/30',
-		gmail: 'bg-red-500/20 text-red-400 border-red-500/30',
-		calendar: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+	const platformBadgeColors: Record<string, string> = {
+		jira: 'bg-blue-500/15 text-blue-400 border-blue-500/25',
+		github: 'bg-purple-500/15 text-purple-400 border-purple-500/25',
+		bitbucket: 'bg-sky-500/15 text-sky-400 border-sky-500/25',
+		slack: 'bg-green-500/15 text-green-400 border-green-500/25',
+		gmail: 'bg-red-500/15 text-red-400 border-red-500/25',
+		calendar: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/25'
 	};
+
+	function formatDate(iso: string): string {
+		if (!iso) return '';
+		const d = new Date(iso + 'T00:00:00');
+		const day = d.getDate();
+		const month = d.toLocaleString(undefined, { month: 'short' });
+		const year = d.getFullYear();
+		const suffix = [11, 12, 13].includes(day % 100)
+			? 'th'
+			: ['th', 'st', 'nd', 'rd'][day % 10] ?? 'th';
+		return `${day}${suffix} ${month} ${year}`;
+	}
+
+	const dateRangeText = $derived.by(() => {
+		const from = cluster.status_summary.date_range.from;
+		const to = cluster.status_summary.date_range.to;
+		if (!from) return '';
+		const f = formatDate(from);
+		if (!to || to === from) return f;
+		// If same year + month, abbreviate: "24th — 30th Mar 2026"
+		const fd = new Date(from + 'T00:00:00');
+		const td = new Date(to + 'T00:00:00');
+		const t = formatDate(to);
+		if (fd.getFullYear() === td.getFullYear() && fd.getMonth() === td.getMonth()) {
+			const fDay = fd.getDate();
+			const fSuffix = [11, 12, 13].includes(fDay % 100)
+				? 'th'
+				: ['th', 'st', 'nd', 'rd'][fDay % 10] ?? 'th';
+			return `${fDay}${fSuffix} — ${t}`;
+		}
+		if (fd.getFullYear() === td.getFullYear()) {
+			// Same year: "24th Mar — 2nd Apr 2026"
+			const fDay = fd.getDate();
+			const fSuffix = [11, 12, 13].includes(fDay % 100)
+				? 'th'
+				: ['th', 'st', 'nd', 'rd'][fDay % 10] ?? 'th';
+			const fMonth = fd.toLocaleString(undefined, { month: 'short' });
+			return `${fDay}${fSuffix} ${fMonth} — ${t}`;
+		}
+		return `${f} — ${t}`;
+	});
 </script>
 
-<!-- Fixed-position tooltip -->
 {#if tooltip}
 	<div
 		class="fixed z-50 px-2.5 py-1 rounded-md bg-surface-700 text-surface-100 text-xs font-medium shadow-lg pointer-events-none -translate-x-1/2 -translate-y-full"
@@ -93,168 +124,240 @@
 	</div>
 {/if}
 
-<div class="rounded-xl border border-surface-700 bg-surface-800/80 px-4 py-3">
-	<!-- Entity title and source link -->
-	<div class="flex items-center justify-between gap-3 mb-2">
-		<div class="flex-1 min-w-0">
-			{#if cluster.primary_entity.url}
-				<a
-					href={cluster.primary_entity.url}
-					target="_blank"
-					rel="noopener noreferrer"
-					class="text-base font-semibold text-surface-50 hover:text-laya-orange transition-colors"
-				>
-					{cluster.primary_entity.title}
-					<svg class="inline w-3.5 h-3.5 ml-1 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-4.5-6H18m0 0v4.5m0-4.5L10.5 13.5" />
-					</svg>
-				</a>
-			{:else}
-				<h2 class="text-base font-semibold text-surface-50">{cluster.primary_entity.title}</h2>
-			{/if}
-		</div>
+<div class="relative pl-7">
+	<!-- Vertical trunk segment (non-last: full height; last: to row center only) -->
+	{#if !isLast}
+		<div class="absolute left-[11px] top-0 bottom-0 w-px bg-surface-700"></div>
+	{:else}
+		<div class="absolute left-[11px] top-0 w-px bg-surface-700" style="height: 11px"></div>
+	{/if}
 
-		<!-- Action buttons -->
-		<div class="flex items-center gap-1 shrink-0">
-			{#if onrerun}
-				<button
-					onclick={onrerun}
-					onmouseenter={(e) => showTooltip(e, 'Re-run trace')}
-					onmouseleave={hideTooltip}
-					aria-label="Re-run trace"
-					class="p-2 rounded-lg text-surface-400 hover:text-surface-200 hover:bg-surface-700 transition-colors"
-				>
-					<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
-					</svg>
-				</button>
-			{/if}
-			{#if onexport}
-				<button
-					onclick={onexport}
-					onmouseenter={(e) => showTooltip(e, 'Export cluster')}
-					onmouseleave={hideTooltip}
-					aria-label="Export cluster"
-					class="p-2 rounded-lg text-surface-400 hover:text-surface-200 hover:bg-surface-700 transition-colors"
-				>
-					<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-					</svg>
-				</button>
-			{/if}
-			{#if onremove}
-				<button
-					onclick={onremove}
-					onmouseenter={(e) => showTooltip(e, 'Remove cluster')}
-					onmouseleave={hideTooltip}
-					aria-label="Remove cluster"
-					class="p-2 rounded-lg text-surface-400 hover:text-red-400 hover:bg-surface-700 transition-colors"
-				>
-					<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-					</svg>
-				</button>
-			{/if}
-		</div>
-	</div>
+	<!-- Horizontal branch: from trunk through [+] box to content -->
+	<div class="absolute left-[11px] top-[11px] w-[17px] h-px bg-surface-700"></div>
 
-	<!-- Platform badges and stats -->
-	<div class="flex flex-wrap items-center gap-2 mb-3">
-		{#each cluster.status_summary.platforms_involved as platform}
-			<span class="inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium capitalize {platformColors[platform] || 'bg-surface-700 text-surface-300 border-surface-600'}">
-				{platform}
-			</span>
-		{/each}
+	<!-- [+] box sits on the horizontal line -->
+	<button
+		onclick={() => (expanded = !expanded)}
+		class="absolute left-[5px] top-[4px] w-[13px] h-[13px] flex items-center justify-center
+		       border border-surface-600 bg-surface-800 hover:border-surface-500
+		       text-surface-400 hover:text-surface-200 transition-colors cursor-pointer
+		       text-[9px] leading-none z-10"
+	>
+		{expanded ? '−' : '+'}
+	</button>
 
-		<span class="text-surface-500 text-xs mx-1">|</span>
-
-		<span class="text-surface-400 text-xs">
-			{cluster.status_summary.date_range.from} — {cluster.status_summary.date_range.to}
+	<!-- CLUSTER ROW -->
+	<div class="h-[22px] flex items-center group -mx-2 px-2 rounded hover:bg-surface-700/30">
+		<!-- Platform badges -->
+		<span class="flex items-center gap-1 shrink-0 mr-2">
+			{#each cluster.status_summary.platforms_involved as platform}
+				<span class="inline-flex items-center px-1.5 py-0 rounded border text-[9px] font-medium capitalize leading-[16px] {platformBadgeColors[platform] || 'bg-surface-700/50 text-surface-400 border-surface-600/50'}">
+					{platform}
+				</span>
+			{/each}
 		</span>
 
-		<span class="text-surface-500 text-xs mx-1">|</span>
+		<!-- Title (click to expand) -->
+		<button
+			onclick={() => (expanded = !expanded)}
+			class="text-[13px] font-medium text-surface-100 hover:text-laya-orange transition-colors truncate text-left cursor-pointer min-w-0"
+		>
+			{cluster.primary_entity.title}
+		</button>
 
-		<span class="text-surface-400 text-xs">
-			{cluster.status_summary.total_cards} events
+		<!-- Stats with proper spacing -->
+		<span class="text-[11px] text-surface-500 shrink-0 tabular-nums ml-2">
+			{cluster.status_summary.total_cards} cards
 		</span>
 
 		{#if cluster.status_summary.pending_actions > 0}
-			<span class="text-surface-500 text-xs mx-1">|</span>
-			<span class="text-laya-orange text-xs font-medium">
+			<span class="text-[11px] text-laya-orange font-medium shrink-0 tabular-nums ml-2">
 				{cluster.status_summary.pending_actions} pending
 			</span>
 		{/if}
 
 		{#if cluster.linked_entities.length > 0}
-			<span class="text-surface-500 text-xs mx-1">|</span>
-			<span class="text-surface-400 text-xs">
-				+ {cluster.linked_entities.length} linked {cluster.linked_entities.length === 1 ? 'entity' : 'entities'}
+			<span class="text-[11px] text-surface-500 shrink-0 ml-2">
+				+{cluster.linked_entities.length} linked
 			</span>
 		{/if}
+
+		<!-- Date range (right-aligned) -->
+		<span class="text-[10px] text-surface-500 shrink-0 ml-auto pl-3">
+			{dateRangeText}
+		</span>
+
+		<!-- Action buttons on hover -->
+		<span class="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 shrink-0 ml-2">
+			{#if hasNarrative}
+				<span class="text-[10px] text-laya-orange"
+					onmouseenter={(e) => showTooltip(e, 'Has narrative')}
+					onmouseleave={hideTooltip}
+				>✦</span>
+			{:else if ongenerate}
+				<button
+					onclick={(e) => { e.stopPropagation(); ongenerate?.(); }}
+					onmouseenter={(e) => showTooltip(e, 'Generate narrative')}
+					onmouseleave={hideTooltip}
+					class="p-1 rounded text-surface-500 hover:text-laya-orange hover:bg-surface-700/50 transition-colors cursor-pointer"
+				>
+					<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+					</svg>
+				</button>
+			{/if}
+
+			{#if cluster.primary_entity.url}
+				<a
+					href={cluster.primary_entity.url}
+					target="_blank"
+					rel="noopener noreferrer"
+					onmouseenter={(e) => showTooltip(e, 'Open in platform')}
+					onmouseleave={hideTooltip}
+					class="p-1 rounded text-surface-500 hover:text-laya-orange hover:bg-surface-700/50 transition-colors"
+				>
+					<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-4.5-6H18m0 0v4.5m0-4.5L10.5 13.5" />
+					</svg>
+				</a>
+			{/if}
+
+			{#if latestCardId}
+				<button
+					onclick={(e) => { e.stopPropagation(); viewInFeed(); }}
+					onmouseenter={(e) => showTooltip(e, 'View in feed')}
+					onmouseleave={hideTooltip}
+					class="p-1 rounded text-surface-500 hover:text-laya-orange hover:bg-surface-700/50 transition-colors cursor-pointer"
+				>
+					<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+					</svg>
+				</button>
+			{/if}
+
+			{#if onremove}
+				<button
+					onclick={(e) => { e.stopPropagation(); onremove?.(); }}
+					onmouseenter={(e) => showTooltip(e, 'Remove cluster')}
+					onmouseleave={hideTooltip}
+					class="p-1 rounded text-surface-500 hover:text-red-400 hover:bg-surface-700/50 transition-colors cursor-pointer"
+				>
+					<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			{/if}
+		</span>
 	</div>
 
-	<!-- Narrative -->
-	{#if hasNarrative}
-		<div class="rounded-lg bg-surface-900/60 border border-surface-700/50 px-3.5 py-3">
-			<!-- Thinking: collapsed or streaming indicator -->
-			{#if parsed.isThinking}
-				<div class="flex items-center gap-1.5 text-[11px] font-medium text-surface-400">
-					<svg class="h-3 w-3 animate-spin text-surface-500" fill="none" viewBox="0 0 24 24">
-						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-					</svg>
-					Generating narrative...
-				</div>
-			{:else if parsed.thinking}
-				<details class="mb-3">
-					<summary class="cursor-pointer text-[11px] font-medium text-surface-500 hover:text-surface-300 select-none">
-						Thought process
-					</summary>
-					<div class="mt-1.5 border-l-2 border-surface-600 pl-2.5 text-[11px] leading-relaxed text-surface-500 whitespace-pre-wrap">
-						{parsed.thinking}
+	<!-- EXPANDED CHILDREN -->
+	{#if expanded}
+		<div transition:slide={{ duration: 200 }}>
+			<!--
+			  Sub-tree children. Each child uses pl-5 (20px indent).
+			  DOT: w-1.5 h-1.5 (6px). Horizontal branch ends at dot center.
+			  For a row centered at Y: line at Y, dot at Y-3, branch w-[13px].
+			  Single-line rows (h-[22px]): Y = 11. Multi-line: Y = pad + 11.
+			-->
+			<div class="relative pl-4 space-y-px">
+				<!-- Narrative -->
+				{#if hasNarrative}
+					<!-- py-1 = 4px top. First line h-[22px] center = 4+11 = 15. -->
+					<div class="relative pl-5 py-1">
+						<div class="absolute left-0 top-0 h-[15px] w-px bg-surface-700/40"></div>
+						<div class="absolute left-0 top-[15px] w-[13px] h-px bg-surface-700/40"></div>
+						<div class="absolute left-[10px] top-[12px] w-1.5 h-1.5 rounded-full bg-surface-600"></div>
+						<div class="absolute left-0 top-[15px] bottom-0 w-px bg-surface-700/40"></div>
+
+						{#if parsed.isThinking}
+							<div class="flex items-center gap-1 h-[22px] text-[11px] text-surface-500">
+								<svg class="h-2.5 w-2.5 animate-spin text-surface-500 shrink-0" fill="none" viewBox="0 0 24 24">
+									<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+									<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+								</svg>
+								Generating...
+							</div>
+						{:else}
+							{#if parsed.thinking}
+								<details>
+									<summary class="cursor-pointer text-[11px] text-surface-500 hover:text-surface-300 select-none list-none flex items-center gap-1 h-[22px]">
+										<svg class="w-2.5 h-2.5 shrink-0 transition-transform [[open]>&]:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+											<path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+										</svg>
+										thought process
+									</summary>
+									<div class="mt-1 ml-4 border-l border-surface-700/50 pl-2.5 text-[10px] leading-relaxed text-surface-500 whitespace-pre-wrap">
+										{parsed.thinking}
+									</div>
+								</details>
+							{/if}
+							{#if parsed.response}
+								<p class="text-[12px] text-surface-300 leading-relaxed pr-2 {parsed.thinking ? 'mt-1.5 ml-4' : ''}">
+									{parsed.response}{#if isStreaming && !parsed.isThinking}<span class="inline-block w-1 h-3 bg-laya-orange/70 animate-pulse ml-0.5 align-middle"></span>{/if}
+								</p>
+							{/if}
+						{/if}
 					</div>
-				</details>
-			{/if}
+				{:else if ongenerate}
+					<!-- min-h-[22px] row, Y=11 -->
+					<div class="relative pl-5 min-h-[22px] flex items-center">
+						<div class="absolute left-0 top-0 h-[11px] w-px bg-surface-700/40"></div>
+						<div class="absolute left-0 top-[11px] w-[13px] h-px bg-surface-700/40"></div>
+						<div class="absolute left-[10px] top-[8px] w-1.5 h-1.5 rounded-full bg-surface-600"></div>
+						<div class="absolute left-0 top-[11px] bottom-0 w-px bg-surface-700/40"></div>
+						<button
+							onclick={ongenerate}
+							class="flex items-center gap-1 text-[11px] text-surface-500 hover:text-laya-orange transition-colors cursor-pointer"
+						>
+							<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+							</svg>
+							generate narrative
+						</button>
+					</div>
+				{/if}
 
-			<!-- Main narrative response -->
-			{#if parsed.response}
-				<p class="text-surface-200 text-sm leading-relaxed">
-					{parsed.response}{#if isStreaming && !parsed.isThinking}<span class="inline-block w-1.5 h-4 bg-laya-orange/70 animate-pulse ml-0.5 align-middle"></span>{/if}
-				</p>
-			{:else if isStreaming && !parsed.isThinking}
-				<!-- Streaming but no response text yet (and not in thinking mode) -->
-				<div class="flex items-center gap-2 text-surface-500 text-sm">
-					<span class="inline-block w-1.5 h-4 bg-laya-orange/70 animate-pulse"></span>
+				<!-- Linked entities -->
+				{#if cluster.linked_entities.length > 0}
+					<!-- min-h-[22px], py-0.5=2px top, Y=2+11=13 -->
+					<div class="relative pl-5 min-h-[22px] flex items-center py-0.5">
+						<div class="absolute left-0 top-0 h-[13px] w-px bg-surface-700/40"></div>
+						<div class="absolute left-0 top-[13px] w-[13px] h-px bg-surface-700/40"></div>
+						<div class="absolute left-[10px] top-[10px] w-1.5 h-1.5 rounded-full bg-surface-600"></div>
+						<div class="absolute left-0 top-[13px] bottom-0 w-px bg-surface-700/40"></div>
+						<div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+							<span class="text-surface-600">linked:</span>
+							{#each cluster.linked_entities as entity}
+								{#if entity.url}
+									<a href={entity.url} target="_blank" rel="noopener noreferrer"
+										class="text-surface-400 hover:text-laya-orange transition-colors">
+										{entity.title}
+									</a>
+								{:else}
+									<span class="text-surface-400">{entity.title}</span>
+								{/if}
+							{/each}
+						</div>
+					</div>
+				{/if}
+
+				<!-- Timeline cards -->
+				<div class="relative">
+					<div class="absolute left-0 top-0 bottom-0 w-px bg-surface-700/40"></div>
+					<TraceTimeline {cluster} compact />
 				</div>
-			{/if}
-		</div>
-	{:else}
-		<!-- No narrative yet — show generate button -->
-		<button
-			onclick={ongenerate}
-			class="w-full rounded-lg border border-dashed border-surface-600 bg-surface-900/40 px-4 py-3
-			       flex items-center justify-center gap-2 text-sm text-surface-400
-			       hover:border-laya-orange/40 hover:text-laya-orange hover:bg-laya-orange/5 transition-colors cursor-pointer"
-		>
-			<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
-			</svg>
-			Generate Narrative
-		</button>
-	{/if}
 
-	<!-- View in feed link -->
-	{#if latestCardId}
-		<div class="mt-3 flex justify-end">
-			<button
-				onclick={viewInFeed}
-				class="inline-flex items-center gap-1.5 text-xs text-laya-orange hover:text-laya-gold transition-colors"
-			>
-				View in feed
-				<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-				</svg>
-			</button>
+				<!-- Status footer (last child — no line below) -->
+				<!-- min-h-[22px], py-0.5=2px top, Y=13 -->
+				<div class="relative pl-5 min-h-[22px] flex items-center py-0.5 mb-1">
+					<div class="absolute left-0 top-0 h-[13px] w-px bg-surface-700/40"></div>
+					<div class="absolute left-0 top-[13px] w-[13px] h-px bg-surface-700/40"></div>
+					<div class="absolute left-[10px] top-[10px] w-1.5 h-1.5 rounded-full bg-surface-500"></div>
+					<span class="text-[10px] text-surface-600 italic">
+						{cluster.status_summary.current_state}
+					</span>
+				</div>
+			</div>
 		</div>
 	{/if}
 </div>

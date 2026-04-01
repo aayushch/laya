@@ -35,9 +35,15 @@ and concrete findings.
 - **suggested_actions**: 1-3 actions the user can approve. Each action specifies:
   - action_id: unique identifier (e.g., "act_comment_jira")
   - label: human-readable button text (e.g., "Post Jira Comment")
-  - action_type: one of "comment", "transition", "create_issue", "assign", "send_email", \
-"forward", "archive", "approve_pr", "request_changes", "merge_pr", "decline_pr", \
-"comment_pr", "create_pr", "send_message", "reply_thread", "close_issue", "calendar"
+  - action_type: must match the target_platform. Valid combinations:
+    - **gmail/outlook**: "send_email", "forward", "archive"
+    - **slack**: "send_message", "reply_thread"
+    - **jira/linear**: "comment", "transition", "create_issue", "assign"
+    - **bitbucket**: "comment_pr", "approve_pr", "request_changes", "merge_pr", "decline_pr", "create_pr"
+    - **github**: "comment", "close_issue", "approve_pr", "merge_pr", "request_changes", "create_issue"
+    - **google_calendar**: "calendar"
+    IMPORTANT: For email replies on gmail/outlook, always use "send_email" — NOT "send_message". \
+"send_message" is ONLY for Slack.
   - target_platform: "jira", "bitbucket", "slack", "gmail", "github", "google_calendar", \
 "outlook", "linear"
   - payload: A JSON string with platform-specific data. Required fields by platform:
@@ -309,7 +315,7 @@ def get_stager_json_schema() -> dict[str, Any]:
                         "additionalProperties": False,
                     },
                 },
-                "privacy_tier": {"type": "integer"},
+                "privacy_tier": {"type": "integer", "minimum": 1, "maximum": 3},
             },
             "required": [
                 "header",

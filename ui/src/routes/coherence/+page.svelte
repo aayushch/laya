@@ -13,7 +13,6 @@
 	import { slide, fade } from 'svelte/transition';
 	import TraceSearch from '$lib/components/trace/TraceSearch.svelte';
 	import TraceHeader from '$lib/components/trace/TraceHeader.svelte';
-	import TraceTimeline from '$lib/components/trace/TraceTimeline.svelte';
 	import TraceHistory from '$lib/components/trace/TraceHistory.svelte';
 	import type { TraceResponse } from '$lib/api/types';
 
@@ -39,6 +38,18 @@
 		return [...platforms].sort();
 	});
 
+	function formatDate(iso: string): string {
+		if (!iso) return '';
+		const d = new Date(iso + 'T00:00:00');
+		const day = d.getDate();
+		const month = d.toLocaleString(undefined, { month: 'short' });
+		const year = d.getFullYear();
+		const suffix = [11, 12, 13].includes(day % 100)
+			? 'th'
+			: ['th', 'st', 'nd', 'rd'][day % 10] ?? 'th';
+		return `${day}${suffix} ${month} ${year}`;
+	}
+
 	const dateRange = $derived.by(() => {
 		let earliest = '';
 		let latest = '';
@@ -51,19 +62,34 @@
 		return { from: earliest, to: latest };
 	});
 
+	const dateRangeText = $derived.by(() => {
+		if (!dateRange.from) return '';
+		const f = formatDate(dateRange.from);
+		if (!dateRange.to || dateRange.to === dateRange.from) return f;
+		const fd = new Date(dateRange.from + 'T00:00:00');
+		const td = new Date(dateRange.to + 'T00:00:00');
+		const t = formatDate(dateRange.to);
+		if (fd.getFullYear() === td.getFullYear() && fd.getMonth() === td.getMonth()) {
+			const fDay = fd.getDate();
+			const fSuffix = [11, 12, 13].includes(fDay % 100)
+				? 'th'
+				: ['th', 'st', 'nd', 'rd'][fDay % 10] ?? 'th';
+			return `${fDay}${fSuffix} — ${t}`;
+		}
+		if (fd.getFullYear() === td.getFullYear()) {
+			const fDay = fd.getDate();
+			const fSuffix = [11, 12, 13].includes(fDay % 100)
+				? 'th'
+				: ['th', 'st', 'nd', 'rd'][fDay % 10] ?? 'th';
+			const fMonth = fd.toLocaleString(undefined, { month: 'short' });
+			return `${fDay}${fSuffix} ${fMonth} — ${t}`;
+		}
+		return `${f} — ${t}`;
+	});
+
 	const totalCards = $derived(
 		visibleClusters.reduce((sum, c) => sum + c.status_summary.total_cards, 0)
 	);
-
-	// Tooltip state for top-level buttons
-	let tooltip = $state<{ text: string; x: number; y: number } | null>(null);
-
-	function showTooltip(e: MouseEvent, text: string) {
-		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-		tooltip = { text, x: rect.left + rect.width / 2, y: rect.top - 6 };
-	}
-
-	function hideTooltip() { tooltip = null; }
 
 	// Load trace history on mount; restore narratives from persisted trace
 	$effect(() => {
@@ -121,19 +147,17 @@
 				const narrative = raw.narrative as string || '';
 				traceNarrativeStreamingMap.update((m) => ({ ...m, [cid]: false }));
 				traceNarrativeMap.update((m) => ({ ...m, [cid]: narrative }));
-				// Update the cluster's cached narrative
 				if (trace) {
 					const cluster = trace.clusters.find((c) => c.cluster_id === cid);
 					if (cluster) {
 						cluster.narrative = narrative;
-						trace = trace; // trigger reactivity
+						trace = trace;
 					}
 				}
 			}
 			return;
 		}
 
-		// Detect new events for traced entities
 		if (trace && (msg.type === 'card_created' || msg.type === 'card_updated')) {
 			_lastProcessedMsg = msg;
 			const raw = msg as unknown as Record<string, unknown>;
@@ -181,7 +205,6 @@
 				error = 'No results found. Try a different search term.';
 			}
 
-			// Refresh history
 			loadHistory();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Search failed';
@@ -202,7 +225,6 @@
 			const result = await engineApi.getTrace(traceId);
 			trace = result;
 			currentTrace.set(result);
-			// Restore per-cluster narratives from cached data
 			const narratives: Record<string, string> = {};
 			for (const c of result.clusters) {
 				if (c.narrative) narratives[c.cluster_id] = c.narrative;
@@ -271,11 +293,12 @@
 
 	async function handleRemoveCluster(clusterId: string) {
 		if (!trace) return;
-		// Immediately hide for smooth transition
 		removedClusterIds = new Set([...removedClusterIds, clusterId]);
-		// Persist removal to backend
 		try {
 			await engineApi.removeCluster(trace.trace_id, clusterId);
+			// Persist removal in the store so navigating away/back doesn't restore it
+			const updated = { ...trace, clusters: trace.clusters.filter(c => c.cluster_id !== clusterId) };
+			currentTrace.set(updated);
 		} catch (e) {
 			console.error('Remove cluster failed:', e);
 		}
@@ -286,6 +309,10 @@
 		removedClusterIds = new Set();
 		try {
 			await engineApi.restoreClusters(trace.trace_id);
+			// Re-fetch the full trace so restored clusters are back in the store
+			const result = await engineApi.getTrace(trace.trace_id);
+			trace = result;
+			currentTrace.set(result);
 		} catch (e) {
 			console.error('Restore clusters failed:', e);
 		}
@@ -295,7 +322,6 @@
 		if (!trace) return;
 		try {
 			await engineApi.generateClusterNarrative(trace.trace_id, clusterId);
-			// Narrative will stream via WebSocket
 		} catch (e) {
 			console.error('Narrative generation failed:', e);
 		}
@@ -312,34 +338,24 @@
 	}
 </script>
 
-<!-- Fixed-position tooltip -->
-{#if tooltip}
-	<div
-		class="fixed z-50 px-2.5 py-1 rounded-md bg-surface-700 text-surface-100 text-xs font-medium shadow-lg pointer-events-none -translate-x-1/2 -translate-y-full"
-		style="left: {tooltip.x}px; top: {tooltip.y}px;"
-	>
-		{tooltip.text}
-	</div>
-{/if}
-
 <div class="min-h-screen bg-surface-900 p-6">
-	<div class="max-w-4xl mx-auto">
+	<div class="max-w-5xl mx-auto">
 
 		<!-- Header -->
-		<div class="flex items-center justify-between mb-8">
+		<div class="flex items-center justify-between mb-6">
 			<div>
-				<h1 class="text-2xl font-bold text-surface-50">Laya <span class="text-laya-orange">Coherence</span></h1>
-				<p class="text-sm text-surface-500">
+				<h1 class="text-xl font-bold text-surface-50">Laya <span class="text-laya-orange">Coherence</span><sup class="text-[9px] ml-1 text-surface-500 tracking-wider font-medium">BETA</sup></h1>
+				<p class="text-xs text-surface-500 mt-0.5">
 					{trace ? `"${trace.query}"` : 'Connect the dots across every platform'}
 				</p>
 			</div>
 			{#if trace}
 				<button
 					onclick={handleBack}
-					class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-surface-400 hover:text-surface-200 hover:bg-surface-800 transition-colors"
+					class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs text-surface-400 hover:text-surface-200 hover:bg-surface-800 transition-colors"
 					aria-label="Back to search"
 				>
-					<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 						<path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
 					</svg>
 					Back
@@ -348,7 +364,7 @@
 		</div>
 
 		<!-- Search bar -->
-		<div class="mb-8">
+		<div class="mb-6">
 			<TraceSearch
 				onsubmit={handleSearch}
 				{loading}
@@ -358,8 +374,8 @@
 
 		<!-- Error -->
 		{#if error}
-			<div class="rounded-lg border border-red-500/30 bg-red-500/10 p-4 mb-6">
-				<p class="text-sm text-red-400">{error}</p>
+			<div class="rounded-md border border-red-500/30 bg-red-500/10 p-3 mb-4">
+				<p class="text-xs text-red-400">{error}</p>
 			</div>
 		{/if}
 
@@ -367,100 +383,109 @@
 		{#if $traceNewEventsDetected && trace}
 			<button
 				onclick={() => handleRerun()}
-				class="w-full rounded-lg border border-laya-orange/30 bg-laya-orange/10 p-3 mb-6
-				       flex items-center justify-center gap-2 hover:bg-laya-orange/20 transition-colors cursor-pointer"
+				class="w-full rounded-md border border-laya-orange/30 bg-laya-orange/10 p-2 mb-4
+				       flex items-center justify-center gap-1.5 hover:bg-laya-orange/20 transition-colors cursor-pointer"
 			>
-				<svg class="w-4 h-4 text-laya-orange" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+				<svg class="w-3.5 h-3.5 text-laya-orange" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 					<path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
 				</svg>
-				<span class="text-sm text-laya-orange font-medium">New events detected for this entity — Click to refresh</span>
+				<span class="text-xs text-laya-orange font-medium">New events detected — Click to refresh</span>
 			</button>
 		{/if}
 
-		<!-- Active trace view -->
+		<!-- Active trace: tree view -->
 		{#if trace && visibleClusters.length > 0}
-			<div class="space-y-4">
-				<!-- Search summary bar -->
-				<div class="flex items-center justify-between rounded-lg bg-surface-800/60 border border-surface-700/50 px-4 py-2.5">
-					<div class="flex items-center gap-3 text-xs text-surface-400">
-						<span class="text-surface-200 font-medium">{totalCards} cards</span>
-						<span class="text-surface-600">|</span>
-						<span>{visibleClusters.length} {visibleClusters.length === 1 ? 'group' : 'groups'}</span>
-						<span class="text-surface-600">|</span>
-						<span>across {allPlatforms.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ')}</span>
-						{#if dateRange.from}
-							<span class="text-surface-600">|</span>
-							<span>{dateRange.from}{dateRange.to && dateRange.to !== dateRange.from ? ` — ${dateRange.to}` : ''}</span>
-						{/if}
-						<span class="text-surface-600">|</span>
-						<span class="text-surface-500">{trace.search_metadata.elapsed_ms}ms</span>
-					</div>
+			<!-- Summary bar -->
+			<div class="flex items-center justify-between rounded-md bg-surface-800/60 border border-surface-700/50 px-3 py-2 mb-4">
+				<div class="flex items-center gap-2 text-[11px] text-surface-400">
+					<span class="text-surface-200 font-medium">{totalCards} cards</span>
+					<span class="text-surface-600">·</span>
+					<span>{visibleClusters.length} {visibleClusters.length === 1 ? 'cluster' : 'clusters'}</span>
+					<span class="text-surface-600">·</span>
+					<span>{allPlatforms.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ')}</span>
+					{#if dateRangeText}
+						<span class="text-surface-600">·</span>
+						<span>{dateRangeText}</span>
+					{/if}
+					<span class="text-surface-600">·</span>
+					<span class="text-surface-500 tabular-nums">{trace.search_metadata.elapsed_ms}ms</span>
+				</div>
 
+				<div class="flex items-center gap-1.5">
+					{#if removedClusterIds.size > 0}
+						<button
+							onclick={handleRestoreClusters}
+							class="text-[11px] text-surface-500 hover:text-laya-orange transition-colors"
+						>
+							restore {removedClusterIds.size}
+						</button>
+						<span class="text-surface-600">·</span>
+					{/if}
+					<button
+						onclick={() => handleRerun()}
+						class="p-1 rounded text-surface-400 hover:text-surface-200 hover:bg-surface-700 transition-colors"
+						title="Re-run trace"
+					>
+						<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
+						</svg>
+					</button>
 					<button
 						onclick={handleExport}
-						onmouseenter={(e) => showTooltip(e, 'Download full coherence as Markdown')}
-						onmouseleave={hideTooltip}
 						disabled={exporting}
-						class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+						class="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium
 						       text-surface-300 bg-surface-700/60 border border-surface-600/50
 						       hover:border-laya-orange/40 hover:text-laya-orange hover:bg-laya-orange/5
 						       disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
 					>
-						<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
 						</svg>
-						{exporting ? 'Downloading...' : 'Export'}
+						{exporting ? '...' : 'Export'}
 					</button>
 				</div>
+			</div>
 
-				{#each visibleClusters as cluster (cluster.cluster_id)}
-					<div transition:slide={{ duration: 300 }}>
-						<!-- Header card with narrative -->
-						<TraceHeader
-							{cluster}
-							onexport={handleExport}
-							onrerun={() => handleRerun()}
-							onremove={() => handleRemoveCluster(cluster.cluster_id)}
-							ongenerate={() => handleGenerateNarrative(cluster.cluster_id)}
-						/>
+			<!-- Tree structure -->
+			<div class="rounded-md border border-surface-700/50 bg-surface-800/30 px-4 py-2.5 overflow-hidden">
+				<!-- Root node -->
+				<div class="flex items-center gap-1.5 pb-2 mb-1 border-b border-surface-700/30">
+					<span class="text-laya-orange text-[13px]">◆</span>
+					<span class="text-[13px] font-medium text-surface-200">{trace.query}</span>
+					<span class="text-[11px] text-surface-500 ml-1">{visibleClusters.length} clusters</span>
+				</div>
 
-						<!-- Timeline (collapsible) -->
-						<details class="group mt-3">
-							<summary class="flex items-center gap-2 cursor-pointer select-none px-2 py-2 rounded-lg hover:bg-surface-800/60 transition-colors">
-								<svg class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-									<path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-								</svg>
-								<span class="text-sm font-medium text-surface-400">
-									{cluster.timeline.length} events
-								</span>
-								<span class="text-xs text-surface-500">
-									— {cluster.status_summary.date_range.from} to {cluster.status_summary.date_range.to}
-								</span>
-							</summary>
-							<div class="pl-2 pt-3">
-								<TraceTimeline {cluster} />
-							</div>
-						</details>
-					</div>
-				{/each}
+				<!-- Cluster nodes -->
+				<div class="relative">
+					{#each visibleClusters as cluster, idx (cluster.cluster_id)}
+						<div transition:slide={{ duration: 200 }}>
+							<TraceHeader
+								{cluster}
+								onremove={() => handleRemoveCluster(cluster.cluster_id)}
+								ongenerate={() => handleGenerateNarrative(cluster.cluster_id)}
+								isLast={idx === visibleClusters.length - 1}
+							/>
+						</div>
+					{/each}
+				</div>
 			</div>
 
 		<!-- All clusters removed -->
 		{:else if trace && trace.clusters.length > 0 && visibleClusters.length === 0}
-			<div class="text-center py-12 text-surface-500" in:fade={{ duration: 250, delay: 300 }}>
-				<p class="text-sm">All clusters have been removed.</p>
+			<div class="text-center py-10 text-surface-500" in:fade={{ duration: 250, delay: 300 }}>
+				<p class="text-xs">All clusters removed.</p>
 				<button
 					onclick={handleRestoreClusters}
-					class="mt-3 text-xs text-laya-orange hover:text-laya-gold transition-colors"
+					class="mt-2 text-xs text-laya-orange hover:text-laya-gold transition-colors"
 				>
-					Restore all clusters
+					Restore all
 				</button>
 			</div>
 
 		<!-- Empty state with trace history -->
 		{:else if !trace && !loading}
 			<div class="mt-4">
-				<h2 class="text-sm font-medium text-surface-400 uppercase tracking-wider mb-4">
+				<h2 class="text-xs font-medium text-surface-400 uppercase tracking-wider mb-3">
 					Recent Searches
 				</h2>
 				<TraceHistory
@@ -474,13 +499,11 @@
 
 		<!-- Loading skeleton -->
 		{#if loading && !trace}
-			<div class="space-y-4 animate-pulse mt-4">
-				<div class="rounded-xl border border-surface-700 bg-surface-800/40 p-5 h-40"></div>
-				<div class="space-y-3">
-					{#each Array(4) as _}
-						<div class="ml-6 rounded-lg border border-surface-700/40 bg-surface-800/30 p-3 h-20"></div>
-					{/each}
-				</div>
+			<div class="space-y-2 animate-pulse mt-4">
+				<div class="rounded-md border border-surface-700 bg-surface-800/40 p-3 h-8"></div>
+				{#each Array(5) as _}
+					<div class="ml-6 rounded-md border border-surface-700/40 bg-surface-800/30 p-2 h-6"></div>
+				{/each}
 			</div>
 		{/if}
 

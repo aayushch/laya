@@ -139,7 +139,7 @@ def _parse_stager_response(data: dict, event: LayaEvent) -> ActionCardData:
             content=staged.get("content", ""),
         ),
         suggested_actions=actions,
-        privacy_tier=data.get("privacy_tier", 2),
+        privacy_tier=max(1, min(3, int(data.get("privacy_tier", 2)))),
     )
 
 

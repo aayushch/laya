@@ -66,14 +66,20 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |  |  | Stats,      |    | Action Cards    |  | Conversational |  |  |  |
 |  |  |  | Analytics,  |    | sorted by       |  | interface to   |  |  |  |
 |  |  |  | Time saved, |    | priority/time   |  | query context  |  |  |  |
-|  |  |  | LLM costs   |    |                 |  |                |  |  |  |
+|  |  |  | LLM costs   |    | Bookmarks       |  |                |  |  |  |
 |  |  |  +-------------+    | Simple: approve |  +----------------+  |  |  |
 |  |  |                     |  from feed      |                      |  |  |
-|  |  |  +- Workspace ----+ |                 |  +- Settings -----+  |  |  |
-|  |  |  | Timeline,      | | Complex: open   |  | Models, keys,  |  |  |  |
-|  |  |  | Live Agent,    | |  workspace      |  | repos, team,   |  |  |  |
-|  |  |  | Context,       | |                 |  | rules, privacy |  |  |  |
-|  |  |  | Staged Outputs | +-----------------+  +----------------+  |  |  |
+|  |  |  +- Workspace ----+ |                 |  +- Coherence ---+   |  |  |
+|  |  |  | Timeline,      | | Complex: open   |  | Entity search |   |  |  |
+|  |  |  | Live Agent,    | |  workspace      |  | Trace history |   |  |  |
+|  |  |  | Context,       | |                 |  | AI narratives |   |  |  |
+|  |  |  | Staged Outputs | +-----------------+  +---------------+   |  |  |
+|  |  |                                                              |  |  |
+|  |  |  +- Settings -----+                                         |  |  |
+|  |  |  | Models, keys,  |                                         |  |  |
+|  |  |  | repos, team,   |                                         |  |  |
+|  |  |  | rules, privacy |                                         |  |  |
+|  |  |  +----------------+                                         |  |  |
 |  |  |  +----------------+                                          |  |  |
 |  |  +----------------------------+---------------------------------+  |  |
 |  |                               | WebSocket (bidirectional)          |  |
@@ -88,6 +94,9 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |  |  POST /actions/approve (receives from UI)                  |  |    |
 |  |  |  GET  /cards           (UI fetches feed)                   |  |    |
 |  |  |  GET  /dashboard       (UI fetches stats)                  |  |    |
+|  |  |  POST /trace           (Coherence entity search)           |  |    |
+|  |  |  POST /egress/execute  (outbound actions)                  |  |    |
+|  |  |  CRUD /classification  (rules & corrections)               |  |    |
 |  |  |  WS   /ws              (real-time bidirectional)           |  |    |
 |  |  |  GET  /health          (health check)                      |  |    |
 |  |  |  CRUD /settings        (configuration)                     |  |    |
@@ -116,8 +125,15 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |  |  team_lookup   | card_history | feedback_query             |  |    |
 |  |  +------------------------------------------------------------+  |    |
 |  |                                                                  |    |
+|  |  +- Egress Module --------------------------------------------+  |    |
+|  |  |  Outbound action execution for 8 platforms                 |  |    |
+|  |  |  Gmail | Slack | Jira | GitHub | Bitbucket | Calendar      |  |    |
+|  |  |  Linear | Outlook | Connection broker | OAuth mgmt         |  |    |
+|  |  +------------------------------------------------------------+  |    |
+|  |                                                                  |    |
 |  |  +- Scheduled Jobs -------------------------------------------+  |    |
 |  |  |  Daily Briefing (cron) | Memory cleanup (weekly)           |  |    |
+|  |  |  Classification learning (periodic rule extraction)        |  |    |
 |  |  +------------------------------------------------------------+  |    |
 |  +------------------------------------------------------------------+    |
 |          |                  |                    |                       |
@@ -131,8 +147,10 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |   Jira          |   | action_log    |   | collection        |         |
 |  |   Bitbucket     |   | entities      |   |                   |         |
 |  |   Slack         |   | workspace_*   |   | nomic-embed       |         |
-|  |   Gmail         |   | audit_log     |   | (local)           |         |
-|  |   Calendar      |   |               |   |                   |         |
+|  |   Gmail         |   | traces        |   | (local)           |         |
+|  |   Calendar      |   | egress_conn   |   |                   |         |
+|  |   GitHub        |   | classif_*     |   |                   |         |
+|  |   Linear        |   | audit_log     |   |                   |         |
 |  |                 |   +---------------+   +-------------------+         |
 |  | Execution:      |                                                     |
 |  |   Create PR     |   +---------------+    +------------------+         |
@@ -301,6 +319,76 @@ RESPOND (strong LLM)
        v
 WebSocket --> UI chat panel
 ```
+
+### Coherence Pipeline (Entity Search)
+
+```
+User searches for entity (e.g., "BUG-1234" or "Sarah")
+       |
+       v
+DISCOVERY (parallel)
+  - Semantic search (ChromaDB)
+  - Fuzzy/SQLite search
+  - Entity table lookup
+  - Merge via Reciprocal Rank Fusion (RRF)
+       |
+       v
+EXPANSION
+  - Fetch all cards for matched entities
+  - Resolve cross-references
+       |
+       v
+CLUSTERING
+  - Group by connected entities
+  - Order chronologically
+  - Auto-detect narrative chapters
+       |
+       v
+NARRATIVE (LLM)
+  - Generate AI summary of each cluster
+  - Stream via WebSocket
+       |
+       v
+Store trace in SQLite for reuse
+```
+
+### Egress System (Outbound Actions)
+
+The egress module owns all outbound communication with external platforms. It provides a unified API for executing actions without the engine needing to know platform-specific details.
+
+```
+Action trigger (card approval, compose modal, chat)
+       |
+       v
+EGRESS ROUTER
+  - Resolve platform & action type
+  - Validate payload against platform schema
+       |
+       v
+PREVIEW (optional)
+  - Generate preview for user confirmation
+       |
+       v
+EXECUTE
+  - Route to platform backend (n8n webhook or SMTP)
+  - Track result in action_log
+       |
+       v
+CONNECTION BROKER
+  - Manage OAuth credentials
+  - Health check connections
+  - 8 platforms: Gmail, Slack, Jira, GitHub,
+    Bitbucket, Calendar, Linear, Outlook
+```
+
+### Classification Learning
+
+Laya learns from user corrections to improve future card classification:
+
+1. **Correction logging:** When a user changes a card's priority or persona, the correction is stored in `classification_corrections`
+2. **Pattern extraction:** After 15+ unprocessed corrections accumulate, the learning pipeline calls the LLM to extract generalizable rules
+3. **Rule injection:** Both manual and learned rules are injected into the router prompt for future classifications
+4. **Continuous improvement:** Rules are per-space and improve over time as more corrections are processed
 
 ### Pipeline State
 

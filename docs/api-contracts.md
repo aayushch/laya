@@ -447,6 +447,215 @@ Alternative to WebSocket for chat (for simple request/response).
 }
 ```
 
+### `POST /cards/:card_id/bookmark`
+
+Bookmark a card for quick access.
+
+**Response (200):**
+```json
+{
+  "card_id": "card_001",
+  "bookmarked_at": "2026-03-15T10:00:00Z"
+}
+```
+
+### `DELETE /cards/:card_id/bookmark`
+
+Remove bookmark from a card.
+
+**Response (200):**
+```json
+{
+  "card_id": "card_001",
+  "bookmarked_at": null
+}
+```
+
+### `POST /trace`
+
+Run a Coherence entity search.
+
+**Request:**
+```json
+{
+  "query": "BUG-1234",
+  "space_id": null,
+  "fuzzy": false
+}
+```
+
+**Response (200):**
+```json
+{
+  "trace_id": "trace_001",
+  "query": "BUG-1234",
+  "clusters": [
+    {
+      "cluster_id": "cluster_001",
+      "entities": [
+        {"type": "ticket", "id": "BUG-1234", "name": "NPE in PaymentService"}
+      ],
+      "cards": ["card_001", "card_005"],
+      "chapters": [
+        {"title": "Created", "start": "2026-02-20T10:00:00Z"},
+        {"title": "Code Review", "start": "2026-02-21T14:00:00Z"}
+      ],
+      "narrative": null
+    }
+  ],
+  "search_metadata": {
+    "semantic_hits": 5,
+    "fuzzy_hits": 2,
+    "entity_hits": 1,
+    "total_cards": 6
+  }
+}
+```
+
+### `GET /traces`
+
+List saved traces.
+
+**Response (200):**
+```json
+{
+  "traces": [
+    {
+      "trace_id": "trace_001",
+      "query": "BUG-1234",
+      "created_at": "2026-03-15T10:00:00Z",
+      "cluster_count": 2,
+      "card_count": 6
+    }
+  ]
+}
+```
+
+### `POST /traces/:trace_id/clusters/:cluster_id/narrative`
+
+Generate an AI narrative for a trace cluster. Streams via WebSocket (`trace_narrative_start`, `trace_narrative_chunk`, `trace_narrative_done`).
+
+**Response (200):**
+```json
+{
+  "narrative": "BUG-1234 was reported on Feb 20 when the payment service began throwing NPEs..."
+}
+```
+
+### `GET /traces/:trace_id/export`
+
+Export a trace as markdown.
+
+**Response (200):**
+```
+Content-Type: text/markdown
+```
+
+### `POST /egress/execute`
+
+Execute an outbound action via the egress system.
+
+**Request:**
+```json
+{
+  "platform": "gmail",
+  "action_type": "reply",
+  "payload": {
+    "thread_id": "thread_abc",
+    "body": "Thanks for the update, I'll review the PR this afternoon."
+  }
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "result": {
+    "message_id": "msg_xyz",
+    "url": "https://mail.google.com/..."
+  }
+}
+```
+
+### `POST /egress/preview`
+
+Preview an action before executing.
+
+**Request:** Same as `/egress/execute`.
+
+**Response (200):**
+```json
+{
+  "preview": {
+    "platform": "gmail",
+    "action_type": "reply",
+    "summary": "Reply to thread 'Re: PaymentService NPE' with 1 paragraph",
+    "payload": {}
+  }
+}
+```
+
+### `GET /classification/rules`
+
+List classification rules (manual and learned).
+
+**Query Parameters:**
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `space_id` | string | `null` | Filter by space |
+| `field` | string | `null` | Filter by field: `priority`, `persona` |
+
+**Response (200):**
+```json
+{
+  "rules": [
+    {
+      "rule_id": "rule_001",
+      "field": "priority",
+      "source": "learned",
+      "condition_text": "Jira tickets from CI bot with label 'flaky-test'",
+      "target_value": "LOW",
+      "enabled": true
+    }
+  ]
+}
+```
+
+### `POST /classification/rules`
+
+Create a manual classification rule.
+
+**Request:**
+```json
+{
+  "field": "priority",
+  "condition_text": "Calendar events with 'standup' in title",
+  "target_value": "LOW",
+  "space_id": "default"
+}
+```
+
+### `GET /classification/corrections`
+
+List recent classification corrections.
+
+**Response (200):**
+```json
+{
+  "corrections": [
+    {
+      "card_id": "card_042",
+      "field": "priority",
+      "original_value": "HIGH",
+      "corrected_value": "LOW",
+      "card_summary": "CI bot: flaky test in payments-service",
+      "created_at": "2026-03-14T16:00:00Z"
+    }
+  ]
+}
+```
+
 ## 4. Laya Engine <-> Tauri UI (WebSocket)
 
 ### Connection
@@ -549,6 +758,36 @@ The WebSocket connection is established when the Tauri app launches and maintain
     "n8n": "healthy",
     "overall": "healthy"
   }
+}
+```
+
+**`trace_narrative_start`** -- Coherence narrative generation started.
+```json
+{
+  "type": "trace_narrative_start",
+  "trace_id": "trace_001",
+  "cluster_id": "cluster_001"
+}
+```
+
+**`trace_narrative_chunk`** -- Streaming narrative content.
+```json
+{
+  "type": "trace_narrative_chunk",
+  "trace_id": "trace_001",
+  "cluster_id": "cluster_001",
+  "payload": {
+    "text": "BUG-1234 was reported on Feb 20..."
+  }
+}
+```
+
+**`trace_narrative_done`** -- Narrative generation complete.
+```json
+{
+  "type": "trace_narrative_done",
+  "trace_id": "trace_001",
+  "cluster_id": "cluster_001"
 }
 ```
 

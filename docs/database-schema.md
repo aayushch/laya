@@ -265,9 +265,84 @@ results = collection.query(
 )
 ```
 
+### classification_corrections
+
+Logs user corrections to card priority/persona for the learning system.
+
+```sql
+CREATE TABLE classification_corrections (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    card_id         TEXT NOT NULL,
+    space_id        TEXT,
+    field           TEXT NOT NULL,      -- "priority" | "persona"
+    original_value  TEXT NOT NULL,
+    corrected_value TEXT NOT NULL,
+    card_summary    TEXT,
+    category        TEXT,
+    platform        TEXT,
+    event_type      TEXT,
+    processed       BOOLEAN DEFAULT 0,  -- 1 after rule extraction
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### classification_rules
+
+Both manual and AI-learned classification rules.
+
+```sql
+CREATE TABLE classification_rules (
+    rule_id         TEXT PRIMARY KEY,
+    space_id        TEXT,
+    field           TEXT NOT NULL,      -- "priority" | "persona"
+    source          TEXT NOT NULL,      -- "manual" | "learned"
+    condition_text  TEXT NOT NULL,      -- human-readable condition
+    target_value    TEXT NOT NULL,      -- value to assign
+    enabled         BOOLEAN DEFAULT 1,
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### traces
+
+Coherence entity search results.
+
+```sql
+CREATE TABLE traces (
+    trace_id        TEXT PRIMARY KEY,
+    query           TEXT NOT NULL,
+    narrative       TEXT,
+    chapters        TEXT,               -- JSON array
+    clusters        TEXT,               -- JSON array of cluster data
+    card_ids        TEXT,               -- JSON array of card IDs
+    search_metadata TEXT,               -- JSON diagnostics
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_traces_created_at ON traces(created_at);
+CREATE INDEX idx_traces_query ON traces(query);
+```
+
+### egress_connections
+
+Configured platform connections for outbound actions.
+
+```sql
+CREATE TABLE egress_connections (
+    connection_id   TEXT PRIMARY KEY,
+    platform        TEXT NOT NULL,
+    display_name    TEXT,
+    credentials     TEXT,               -- encrypted JSON
+    status          TEXT DEFAULT 'active',
+    health          TEXT,               -- JSON: last check result
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
 ## Migration Files
 
-Migrations are numbered SQL files in `engine/laya/db/migrations/`. There are currently 26 migrations (001 through 026), covering:
+Migrations are numbered SQL files in `engine/laya/db/migrations/`. There are currently 35 migrations (001 through 035), covering:
 
 | Range | Description |
 |---|---|
@@ -277,5 +352,14 @@ Migrations are numbered SQL files in `engine/laya/db/migrations/`. There are cur
 | `012`-`013` | Selections, summaries |
 | `014` | **Spaces**: spaces, sources, space_api_keys tables; space_id added to events and action_cards |
 | `015`-`026` | Executors, repos, session management, event queuing, status lifecycle, chat conversations |
+| `027` | Previous status tracking for card state transitions |
+| `028` | **Classification feedback**: classification_corrections and classification_rules tables |
+| `029` | Budget tracking and cost controls |
+| `030` | **Bookmarks**: bookmarked_at column on action_cards |
+| `031` | Group carry-forward: active timestamp for grouping logic |
+| `032` | Corrections processed flag for rule extraction tracking |
+| `033` | **Traces**: Coherence entity search storage |
+| `034` | **Egress connections**: platform connection management |
+| `035` | Fuzzy search optimization for traces |
 
 The migration runner (`engine/laya/db/migrate.py`) checks `schema_version` on startup and applies any migrations with version > current version.
