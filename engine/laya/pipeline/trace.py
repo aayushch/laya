@@ -100,6 +100,9 @@ async def run_trace(request: TraceRequest) -> TraceResponse:
                 ranked_lists.append(result)
             if label == "semantic":
                 meta.semantic_hits = len(result)
+                distances = [r.get("distance", 1.0) for r in result if "distance" in r]
+                if distances:
+                    meta.avg_semantic_distance = round(sum(distances) / len(distances), 4)
             elif label == "fuzzy":
                 meta.fuzzy_hits = len(result)
             elif label == "entity":
@@ -249,7 +252,7 @@ async def _identifier_search(query: str, space_id: str | None, n: int) -> list[d
 async def _semantic_search(query: str, space_id: str | None, n: int) -> list[dict]:
     """ChromaDB semantic search on card embeddings."""
     where = {"space_id": space_id} if space_id else None
-    results = await memory_search(query, n_results=n, where=where)
+    results = await memory_search(query, n_results=n, where=where, max_distance=0.65)
     return [
         {
             "id": r["metadata"].get("card_id", r["id"]),

@@ -65,6 +65,7 @@ class SearchMetadata(BaseModel):
     expansion_cards: int = 0
     elapsed_ms: int = 0
     fuzzy_search: bool = False
+    avg_semantic_distance: float | None = None
 
 
 class TraceResponse(BaseModel):

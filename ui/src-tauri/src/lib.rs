@@ -41,18 +41,18 @@ fn parse_remote_url(url: &str) -> Option<(String, String)> {
 }
 
 #[tauri::command]
-fn pick_repo_folder() -> Result<RepoDetection, String> {
-    let output = std::process::Command::new("osascript")
-        .args(["-e", "tell application \"System Events\" to activate\nPOSIX path of (choose folder with prompt \"Select a git repository\")"])
-        .output()
-        .map_err(|e| format!("osascript error: {e}"))?;
-
-    if !output.status.success() {
-        return Err("cancelled".to_string());
-    }
-
-    let path = String::from_utf8_lossy(&output.stdout)
-        .trim()
+async fn pick_repo_folder(app: tauri::AppHandle) -> Result<RepoDetection, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let file_path = app
+        .dialog()
+        .file()
+        .set_title("Select a git repository")
+        .blocking_pick_folder()
+        .ok_or_else(|| "cancelled".to_string())?;
+    let path = file_path
+        .as_path()
+        .ok_or_else(|| "cancelled".to_string())?
+        .to_string_lossy()
         .trim_end_matches('/')
         .to_string();
     if path.is_empty() {
@@ -334,6 +334,7 @@ fn kill_process_on_port(port: u16) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             {
                 use tauri_plugin_log::{Target, TargetKind};

@@ -130,27 +130,52 @@ async def _create_owner(base_url: str, email: str, password: str) -> dict | None
         return None
 
 
+async def _fetch_api_key_scopes(base_url: str, cookies: dict) -> list[str] | None:
+    """Fetch the valid API key scopes for the current user's role (n8n 2.x+)."""
+    try:
+        resp = await get_client().get(
+            f"{base_url}/rest/api-keys/scopes",
+            cookies=cookies,
+            timeout=10.0,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            scopes = data.get("data", data) if isinstance(data, dict) else data
+            if isinstance(scopes, list) and scopes:
+                log.info("n8n_api_key_scopes_fetched", count=len(scopes))
+                return scopes
+    except Exception as e:
+        log.debug("n8n_api_key_scopes_fetch_error", error=str(e))
+    return None
+
+
 async def _create_api_key(base_url: str, cookies: dict) -> str | None:
-    """Create an n8n API key using session authentication."""
+    """Create an n8n API key using session authentication.
+
+    Fetches valid scopes from n8n first (2.x+), falls back to hardcoded scopes
+    for older versions.
+    """
+    # First, ask n8n what scopes are valid for this user's role
+    scopes = await _fetch_api_key_scopes(base_url, cookies)
+
+    if scopes is None:
+        # Fallback for older n8n that doesn't have GET /scopes
+        scopes = [
+            "workflow:create", "workflow:read", "workflow:update",
+            "workflow:delete", "workflow:list", "workflow:execute",
+            "credential:create", "credential:read",
+            "credential:delete", "credential:list",
+        ]
+
     try:
         resp = await get_client().post(
-            f"{base_url}/rest/api-keys/",
-            json={
-                "label": "laya-engine",
-                "scopes": [
-                    "workflow:create", "workflow:read", "workflow:update",
-                    "workflow:delete", "workflow:list", "workflow:execute",
-                    "credential:create", "credential:read",
-                    "credential:delete", "credential:list",
-                ],
-                "expiresAt": None,
-            },
+            f"{base_url}/rest/api-keys",
+            json={"label": "laya-engine", "scopes": scopes, "expiresAt": 4102444800},
             cookies=cookies,
             timeout=10.0,
         )
         if resp.status_code in (200, 201):
             body = resp.json()
-            # Response may wrap in {"data": {...}} or return directly
             data = body.get("data", body) if isinstance(body, dict) else body
             raw_key = data.get("rawApiKey") or data.get("apiKey", "")
             if raw_key:
@@ -158,7 +183,8 @@ async def _create_api_key(base_url: str, cookies: dict) -> str | None:
                 return raw_key
             log.warning("n8n_api_key_empty_response", data=str(data)[:200])
         else:
-            log.warning("n8n_api_key_create_failed", status=resp.status_code, body=resp.text[:200])
+            log.warning("n8n_api_key_create_failed", status=resp.status_code,
+                        body=resp.text[:300])
         return None
     except Exception as e:
         log.error("n8n_api_key_create_error", error=str(e))

@@ -207,8 +207,15 @@ async def run_emit(
     )
 
     # 4. Embed card in ChromaDB
-    embed_text = f"{stager_output.header}\n{stager_output.summary}"
     entity_refs = ",".join(e.value for e in router_output.entities)
+    # Build prose-like text for richer, more distinctive embeddings
+    embed_parts = [f"{stager_output.header}. {stager_output.summary}"]
+    if entity_refs:
+        embed_parts.append(f"Related entities: {entity_refs}.")
+    if router_output.category:
+        embed_parts.append(f"Category: {router_output.category.value}.")
+    embed_parts.append(f"Source: {event.source.platform}.")
+    embed_text = "\n".join(embed_parts)
     try:
         await embed_document(
             doc_id=card_id,
@@ -222,6 +229,7 @@ async def run_emit(
                 "persona": router_output.persona.value,
                 "priority": router_output.priority.value,
                 "timestamp": event.timestamp.isoformat(),
+                "space_id": space_id or "",
             },
         )
     except Exception as e:

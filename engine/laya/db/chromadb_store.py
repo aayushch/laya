@@ -125,7 +125,12 @@ def connect_chromadb() -> Collection:
 
     kwargs: dict[str, Any] = {
         "name": COLLECTION_NAME,
-        "metadata": {"hnsw:space": "cosine"},
+        "metadata": {
+            "hnsw:space": "cosine",
+            "hnsw:construction_ef": 200,
+            "hnsw:M": 32,
+            "hnsw:search_ef": 150,
+        },
     }
     if embedding_fn is not None:
         kwargs["embedding_function"] = embedding_fn
@@ -229,11 +234,20 @@ async def memory_search(
     query: str,
     n_results: int = 3,
     where: dict[str, Any] | None = None,
+    max_distance: float | None = None,
 ) -> list[dict[str, Any]]:
     """Semantic similarity search on past events/content.
 
     When using nomic embeddings, applies query prefix for better retrieval.
     When using ChromaDB default, passes the query as-is (ChromaDB handles embedding).
+
+    Args:
+        query: Search query text.
+        n_results: Maximum results to return from ChromaDB.
+        where: Optional metadata filter dict.
+        max_distance: Optional cosine distance threshold. Results with distance
+            above this value are filtered out (lower = more similar).
+
     Returns list of dicts with keys: id, document, metadata, distance.
     """
     collection = get_collection()
@@ -261,12 +275,15 @@ async def memory_search(
     docs: list[dict[str, Any]] = []
     if results and results["ids"] and results["ids"][0]:
         for i, doc_id in enumerate(results["ids"][0]):
+            distance = results["distances"][0][i] if results["distances"] else 0.0
+            if max_distance is not None and distance > max_distance:
+                continue
             docs.append(
                 {
                     "id": doc_id,
                     "document": results["documents"][0][i] if results["documents"] else "",
                     "metadata": results["metadatas"][0][i] if results["metadatas"] else {},
-                    "distance": results["distances"][0][i] if results["distances"] else 0.0,
+                    "distance": distance,
                 }
             )
 

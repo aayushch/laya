@@ -436,9 +436,9 @@ fn run_npm_install<F: FnMut(&str)>(
     let prefix = module_dir.to_string_lossy();
 
     if ignore_scripts {
-        cmd.args(["install", "--prefix", &prefix, "--ignore-scripts", "n8n"]);
+        cmd.args(["install", "--prefix", &prefix, "--ignore-scripts", "n8n@2.15.0"]);
     } else {
-        cmd.args(["install", "--prefix", &prefix, "n8n"]);
+        cmd.args(["install", "--prefix", &prefix, "n8n@2.15.0"]);
     }
 
     cmd.env("PATH", path);

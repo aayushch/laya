@@ -4,10 +4,12 @@
 
 	let {
 		cluster,
-		compact = false
+		compact = false,
+		expandAll = null
 	}: {
 		cluster: TraceCluster;
 		compact?: boolean;
+		expandAll?: boolean | null;
 	} = $props();
 
 	let cardsById = $derived(
@@ -53,7 +55,7 @@
 						{/if}
 						{#each chapter.card_ids as cardId, idx}
 							{#if cardsById[cardId]}
-								<TraceCard card={cardsById[cardId]} compact isLast={idx === chapter.card_ids.length - 1} />
+								<TraceCard card={cardsById[cardId]} compact isLast={idx === chapter.card_ids.length - 1} {expandAll} />
 							{/if}
 						{/each}
 					</div>
@@ -64,7 +66,7 @@
 		<!-- Flat: all cards directly -->
 		<div class="relative">
 			{#each cluster.timeline as card, idx}
-				<TraceCard {card} compact isLast={idx === cluster.timeline.length - 1} />
+				<TraceCard {card} compact isLast={idx === cluster.timeline.length - 1} {expandAll} />
 			{/each}
 		</div>
 	{/if}
