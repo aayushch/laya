@@ -493,7 +493,7 @@ async def _retrieve_context(
 async def _semantic_search(query: str, space_id: str | None, n: int) -> list[dict]:
     """ChromaDB semantic search."""
     where = {"space_id": space_id} if space_id else None
-    results = await memory_search(query, n_results=n, where=where)
+    results = await memory_search(query, n_results=n, where=where, max_distance=0.60)
     return [
         {
             "id": r["metadata"].get("card_id", r["metadata"].get("event_id", r["id"])),

@@ -43,7 +43,7 @@ echo ""
 echo "Installing n8n into ~/.laya/n8n_module/..."
 mkdir -p ~/.laya/n8n_module ~/.laya/n8n
 # Point node-gyp at the engine venv Python (has setuptools for distutils shim)
-npm_config_python="$REPO_ROOT/engine/.venv/bin/python" npm install --prefix ~/.laya/n8n_module n8n
+npm_config_python="$REPO_ROOT/engine/.venv/bin/python" npm install --prefix ~/.laya/n8n_module n8n@2.15.0
 echo "  n8n installed"
 
 # Create ~/.laya directories

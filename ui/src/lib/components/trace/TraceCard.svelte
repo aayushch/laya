@@ -5,14 +5,23 @@
 	let {
 		card,
 		compact = false,
-		isLast = false
+		isLast = false,
+		expandAll = null
 	}: {
 		card: ActionCard;
 		compact?: boolean;
 		isLast?: boolean;
+		expandAll?: boolean | null;
 	} = $props();
 
 	let expanded = $state(false);
+
+	// React to expand all / collapse all signal
+	$effect(() => {
+		if (expandAll !== null && expandAll !== undefined) {
+			expanded = expandAll;
+		}
+	});
 
 	const platformColors: Record<string, string> = {
 		jira: 'bg-blue-500',

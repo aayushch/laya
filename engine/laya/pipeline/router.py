@@ -5,7 +5,7 @@ import uuid
 
 import structlog
 
-from laya.db.chromadb_store import embed_document, memory_search
+from laya.db.chromadb_store import memory_search
 from laya.db.sqlite import get_db
 from laya.llm.client import llm_call
 from laya.llm.prompts.router import build_router_messages, get_router_json_schema
@@ -71,26 +71,6 @@ async def _store_entities(event_id: str, router_output: RouterOutput) -> None:
     await db.commit()
     log.debug("entities_stored", count=len(router_output.entities), event_id=event_id)
 
-
-async def _embed_event(event: LayaEvent, router_output: RouterOutput) -> None:
-    """Embed the event content in ChromaDB for future semantic search."""
-    embed_text = f"{event.subject.title}\n{event.content.body}"
-
-    metadata = {
-        "source_event_id": event.event_id,
-        "source_platform": event.source.platform,
-        "entity_refs": ",".join(e.value for e in router_output.entities),
-        "persona": router_output.persona.value,
-        "timestamp": event.timestamp.isoformat(),
-        "content_type": "event",
-    }
-
-    await embed_document(
-        doc_id=f"evt_{event.event_id}",
-        text=embed_text,
-        metadata=metadata,
-    )
-    log.debug("event_embedded", event_id=event.event_id)
 
 
 async def run_router(
@@ -168,9 +148,6 @@ async def run_router(
 
     # 5. Store extracted entities
     await _store_entities(event.event_id, router_output)
-
-    # 6. Embed event content in ChromaDB
-    await _embed_event(event, router_output)
 
     log.info(
         "router_complete",

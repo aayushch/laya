@@ -19,6 +19,7 @@
 	} = $props();
 
 	let expanded = $state(false);
+	let allCardsExpanded = $state<boolean | null>(null);
 
 	// Tooltip state
 	let tooltip = $state<{ text: string; x: number; y: number } | null>(null);
@@ -117,7 +118,7 @@
 
 {#if tooltip}
 	<div
-		class="fixed z-50 px-2.5 py-1 rounded-md bg-surface-700 text-surface-100 text-xs font-medium shadow-lg pointer-events-none -translate-x-1/2 -translate-y-full"
+		class="fixed z-50 px-2.5 py-1.5 rounded-md bg-surface-700 text-surface-100 text-xs font-medium shadow-lg pointer-events-none -translate-x-1/2 -translate-y-full max-w-[400px] break-words"
 		style="left: {tooltip.x}px; top: {tooltip.y}px;"
 	>
 		{tooltip.text}
@@ -147,9 +148,9 @@
 	</button>
 
 	<!-- CLUSTER ROW -->
-	<div class="h-[22px] flex items-center group -mx-2 px-2 rounded hover:bg-surface-700/30">
-		<!-- Platform badges -->
-		<span class="flex items-center gap-1 shrink-0 mr-2">
+	<div class="h-[22px] flex items-center group -mx-2 px-2 rounded hover:bg-surface-700/30 relative">
+		<!-- Platform badges (fixed) -->
+		<span class="flex items-center gap-1 shrink-0 w-[80px]">
 			{#each cluster.status_summary.platforms_involved as platform}
 				<span class="inline-flex items-center px-1.5 py-0 rounded border text-[9px] font-medium capitalize leading-[16px] {platformBadgeColors[platform] || 'bg-surface-700/50 text-surface-400 border-surface-600/50'}">
 					{platform}
@@ -157,38 +158,37 @@
 			{/each}
 		</span>
 
-		<!-- Title (click to expand) -->
+		<!-- Title (fills remaining space, truncates) — tooltip shows full title on hover -->
 		<button
 			onclick={() => (expanded = !expanded)}
-			class="text-[13px] font-medium text-surface-100 hover:text-laya-orange transition-colors truncate text-left cursor-pointer min-w-0"
+			onmouseenter={(e) => showTooltip(e, cluster.primary_entity.title)}
+			onmouseleave={hideTooltip}
+			class="text-[13px] font-medium text-surface-100 hover:text-laya-orange transition-colors truncate text-left cursor-pointer flex-1 min-w-0"
 		>
 			{cluster.primary_entity.title}
 		</button>
 
-		<!-- Stats with proper spacing -->
-		<span class="text-[11px] text-surface-500 shrink-0 tabular-nums ml-2">
+		<!-- Stats (fixed widths for alignment) -->
+		<span class="text-[11px] text-surface-500 shrink-0 tabular-nums ml-2 w-[56px] text-right">
 			{cluster.status_summary.total_cards} cards
 		</span>
 
-		{#if cluster.status_summary.pending_actions > 0}
-			<span class="text-[11px] text-laya-orange font-medium shrink-0 tabular-nums ml-2">
-				{cluster.status_summary.pending_actions} pending
-			</span>
-		{/if}
+		<span class="shrink-0 tabular-nums ml-2 w-[76px] text-right">
+			{#if cluster.status_summary.pending_actions > 0}
+				<span class="text-[11px] text-laya-orange font-medium">
+					{cluster.status_summary.pending_actions} pending
+				</span>
+			{/if}
+		</span>
 
-		{#if cluster.linked_entities.length > 0}
-			<span class="text-[11px] text-surface-500 shrink-0 ml-2">
-				+{cluster.linked_entities.length} linked
-			</span>
-		{/if}
-
-		<!-- Date range (right-aligned) -->
-		<span class="text-[10px] text-surface-500 shrink-0 ml-auto pl-3">
+		<!-- Date range (fixed width, right end) -->
+		<span class="text-[10px] text-surface-500 shrink-0 ml-2 w-[100px] text-right">
 			{dateRangeText}
 		</span>
 
-		<!-- Action buttons on hover -->
-		<span class="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 shrink-0 ml-2">
+		<!-- Action buttons — absolutely positioned, overlays date on hover -->
+		<span class="absolute right-0 top-0 h-full items-center gap-1 pr-2 pl-1
+		             hidden group-hover:flex z-10 bg-surface-800 rounded-r">
 			{#if hasNarrative}
 				<span class="text-[10px] text-laya-orange" role="img" aria-label="Has narrative"
 					onmouseenter={(e) => showTooltip(e, 'Has narrative')}
@@ -264,42 +264,48 @@
 			  Single-line rows (h-[22px]): Y = 11. Multi-line: Y = pad + 11.
 			-->
 			<div class="relative pl-4 space-y-px">
-				<!-- Narrative -->
+				<!-- Narrative — callout pill -->
 				{#if hasNarrative}
-					<!-- py-1 = 4px top. First line h-[22px] center = 4+11 = 15. -->
 					<div class="relative pl-5 py-1">
 						<div class="absolute left-0 top-0 h-[15px] w-px bg-surface-700/40"></div>
 						<div class="absolute left-0 top-[15px] w-[13px] h-px bg-surface-700/40"></div>
-						<div class="absolute left-[10px] top-[12px] w-1.5 h-1.5 rounded-full bg-surface-600"></div>
+						<div class="absolute left-[10px] top-[12px] w-1.5 h-1.5 rounded-full bg-laya-orange/50"></div>
 						<div class="absolute left-0 top-[15px] bottom-0 w-px bg-surface-700/40"></div>
 
 						{#if parsed.isThinking}
-							<div class="flex items-center gap-1 h-[22px] text-[11px] text-surface-500">
-								<svg class="h-2.5 w-2.5 animate-spin text-surface-500 shrink-0" fill="none" viewBox="0 0 24 24">
-									<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-									<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-								</svg>
-								Generating...
+							<div class="rounded-md bg-laya-orange/5 border border-laya-orange/15 px-3 py-2">
+								<div class="flex items-center gap-1.5 text-[11px] text-surface-400">
+									<svg class="h-2.5 w-2.5 animate-spin text-laya-orange/60 shrink-0" fill="none" viewBox="0 0 24 24">
+										<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+										<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+									</svg>
+									Generating narrative...
+								</div>
 							</div>
 						{:else}
-							{#if parsed.thinking}
-								<details>
-									<summary class="cursor-pointer text-[11px] text-surface-500 hover:text-surface-300 select-none list-none flex items-center gap-1 h-[22px]">
-										<svg class="w-2.5 h-2.5 shrink-0 transition-transform [[open]>&]:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-											<path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-										</svg>
-										thought process
-									</summary>
-									<div class="mt-1 ml-4 border-l border-surface-700/50 pl-2.5 text-[10px] leading-relaxed text-surface-500 whitespace-pre-wrap">
-										{parsed.thinking}
-									</div>
-								</details>
-							{/if}
-							{#if parsed.response}
-								<p class="text-[12px] text-surface-300 leading-relaxed pr-2 {parsed.thinking ? 'mt-1.5 ml-4' : ''}">
-									{parsed.response}{#if isStreaming && !parsed.isThinking}<span class="inline-block w-1 h-3 bg-laya-orange/70 animate-pulse ml-0.5 align-middle"></span>{/if}
-								</p>
-							{/if}
+							<div class="rounded-md bg-laya-orange/5 border border-laya-orange/15 px-3 py-2">
+								<div class="flex items-center gap-1.5 mb-1">
+									<span class="text-[9px] font-medium uppercase tracking-wider text-laya-orange/70">✦ narrative</span>
+								</div>
+								{#if parsed.thinking}
+									<details>
+										<summary class="cursor-pointer text-[10px] text-surface-500 hover:text-surface-300 select-none list-none flex items-center gap-1 mb-1">
+											<svg class="w-2.5 h-2.5 shrink-0 transition-transform [[open]>&]:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+												<path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+											</svg>
+											thought process
+										</summary>
+										<div class="ml-3.5 border-l border-laya-orange/10 pl-2 text-[10px] leading-relaxed text-surface-500 whitespace-pre-wrap mb-1.5">
+											{parsed.thinking}
+										</div>
+									</details>
+								{/if}
+								{#if parsed.response}
+									<p class="text-[12px] text-surface-200 leading-relaxed italic">
+										{parsed.response}{#if isStreaming && !parsed.isThinking}<span class="inline-block w-1 h-3 bg-laya-orange/70 animate-pulse ml-0.5 align-middle"></span>{/if}
+									</p>
+								{/if}
+							</div>
 						{/if}
 					</div>
 				{:else if ongenerate}
@@ -345,10 +351,28 @@
 					</div>
 				{/if}
 
+				<!-- Expand/collapse all control -->
+				{#if cluster.timeline.length > 1}
+					<div class="relative pl-5 h-[22px] flex items-center">
+						<div class="absolute left-0 top-0 bottom-0 w-px bg-surface-700/40"></div>
+						<div class="flex items-center gap-2 text-[10px] text-surface-500">
+							<button
+								onclick={() => { allCardsExpanded = true; }}
+								class="hover:text-laya-orange transition-colors cursor-pointer"
+							>expand all</button>
+							<span class="text-surface-700">|</span>
+							<button
+								onclick={() => { allCardsExpanded = false; }}
+								class="hover:text-laya-orange transition-colors cursor-pointer"
+							>collapse all</button>
+						</div>
+					</div>
+				{/if}
+
 				<!-- Timeline cards -->
 				<div class="relative">
 					<div class="absolute left-0 top-0 bottom-0 w-px bg-surface-700/40"></div>
-					<TraceTimeline {cluster} compact />
+					<TraceTimeline {cluster} compact expandAll={allCardsExpanded} />
 				</div>
 
 				<!-- Status footer (last child — no line below) -->
