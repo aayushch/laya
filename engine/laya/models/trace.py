@@ -66,6 +66,9 @@ class SearchMetadata(BaseModel):
     elapsed_ms: int = 0
     fuzzy_search: bool = False
     avg_semantic_distance: float | None = None
+    seeds_filtered: int = 0
+    feedback_excluded: int = 0
+    feedback_demoted: int = 0
 
 
 class TraceResponse(BaseModel):
