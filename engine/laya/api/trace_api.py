@@ -172,20 +172,23 @@ async def generate_cluster_narrative(trace_id: str, cluster_id: str) -> dict:
 
 @router.delete("/traces/{trace_id}/clusters/{cluster_id}")
 async def remove_cluster(trace_id: str, cluster_id: str) -> dict:
-    """Mark a cluster as removed so it no longer appears in the trace."""
+    """Mark a cluster as removed and persist feedback for future learning."""
     db = await get_db()
     rows = await db.execute_fetchall(
-        "SELECT cluster_data FROM traces WHERE trace_id = ?", (trace_id,)
+        "SELECT cluster_data, query FROM traces WHERE trace_id = ?", (trace_id,)
     )
     if not rows:
         raise HTTPException(status_code=404, detail="Trace not found")
 
     cluster_data = json.loads(rows[0]["cluster_data"]) if rows[0]["cluster_data"] else []
+    trace_query = rows[0]["query"] or ""
     found = False
+    removed_cdata = None
     for cdata in cluster_data:
         if cdata.get("cluster_id") == cluster_id:
             cdata["removed"] = True
             found = True
+            removed_cdata = cdata
             break
 
     if not found:
@@ -195,6 +198,23 @@ async def remove_cluster(trace_id: str, cluster_id: str) -> dict:
         "UPDATE traces SET cluster_data = ?, updated_at = ? WHERE trace_id = ?",
         (json.dumps(cluster_data), datetime.now(timezone.utc).isoformat(), trace_id),
     )
+
+    # Persist removal feedback for learning
+    if removed_cdata:
+        primary = removed_cdata.get("primary_entity", {})
+        all_entities = [primary] + removed_cdata.get("linked_entities", [])
+        for entity in all_entities:
+            eid = entity.get("entity_id", "")
+            if not eid:
+                continue
+            await db.execute(
+                """INSERT INTO trace_feedback
+                   (trace_id, query, entity_id, entity_title, platform, action)
+                   VALUES (?, ?, ?, ?, ?, 'removed')""",
+                (trace_id, trace_query, eid,
+                 entity.get("title", ""), entity.get("platform", "")),
+            )
+
     await db.commit()
     return {"removed": cluster_id}
 
@@ -206,16 +226,33 @@ async def remove_cluster(trace_id: str, cluster_id: str) -> dict:
 
 @router.post("/traces/{trace_id}/clusters/restore")
 async def restore_clusters(trace_id: str) -> dict:
-    """Remove the 'removed' flag from all clusters in a trace."""
+    """Remove the 'removed' flag from all clusters and record restoration feedback."""
     db = await get_db()
     rows = await db.execute_fetchall(
-        "SELECT cluster_data FROM traces WHERE trace_id = ?", (trace_id,)
+        "SELECT cluster_data, query FROM traces WHERE trace_id = ?", (trace_id,)
     )
     if not rows:
         raise HTTPException(status_code=404, detail="Trace not found")
 
     cluster_data = json.loads(rows[0]["cluster_data"]) if rows[0]["cluster_data"] else []
+    trace_query = rows[0]["query"] or ""
+
+    # Record restoration feedback for previously-removed clusters
     for cdata in cluster_data:
+        if cdata.get("removed"):
+            primary = cdata.get("primary_entity", {})
+            all_entities = [primary] + cdata.get("linked_entities", [])
+            for entity in all_entities:
+                eid = entity.get("entity_id", "")
+                if not eid:
+                    continue
+                await db.execute(
+                    """INSERT INTO trace_feedback
+                       (trace_id, query, entity_id, entity_title, platform, action)
+                       VALUES (?, ?, ?, ?, ?, 'restored')""",
+                    (trace_id, trace_query, eid,
+                     entity.get("title", ""), entity.get("platform", "")),
+                )
         cdata.pop("removed", None)
 
     await db.execute(

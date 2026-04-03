@@ -22,8 +22,12 @@ from laya.pipeline.queue import _get_semaphore
 from laya.api.websocket import manager
 from laya.db.chromadb_store import memory_search
 from laya.db.sqlite import get_db
-from laya.llm.client import llm_call_streaming
+from laya.llm.client import llm_call, llm_call_streaming
 from laya.llm.prompts.trace import build_narrative_messages
+from laya.llm.prompts.trace_filter import (
+    RELEVANCE_FILTER_SCHEMA,
+    build_relevance_filter_messages,
+)
 from laya.models.card import CardResponse
 from laya.models.trace import (
     SearchMetadata,
@@ -54,6 +58,129 @@ _STOPWORDS = frozenset({
     "with", "about", "from", "up", "out", "into", "over", "after",
     "all", "any", "some", "just", "also", "than", "very", "too",
 })
+
+# ---------------------------------------------------------------------------
+# Pre-retrieval feedback & post-retrieval relevance filter
+# ---------------------------------------------------------------------------
+
+
+async def _query_trace_feedback(query: str) -> dict:
+    """Query past cluster-removal feedback to exclude/demote entities.
+
+    Returns:
+        {"exact_exclude": set[str], "global_demote": set[str]}
+    """
+    db = await get_db()
+    exact_exclude: set[str] = set()
+    global_demote: set[str] = set()
+
+    # Exact: entities net-removed for this specific query
+    rows = await db.execute_fetchall(
+        """SELECT entity_id
+           FROM trace_feedback WHERE query = ?
+           GROUP BY entity_id
+           HAVING SUM(CASE WHEN action = 'removed' THEN 1 ELSE -1 END) > 0""",
+        (query,),
+    )
+    for row in rows:
+        exact_exclude.add(row["entity_id"])
+
+    # Global: entities removed across 3+ different queries
+    rows = await db.execute_fetchall(
+        """SELECT entity_id
+           FROM trace_feedback WHERE action = 'removed'
+           GROUP BY entity_id
+           HAVING COUNT(DISTINCT query) >= 3""",
+    )
+    for row in rows:
+        global_demote.add(row["entity_id"])
+
+    return {"exact_exclude": exact_exclude, "global_demote": global_demote}
+
+
+async def _llm_relevance_filter(
+    query: str,
+    seeds: list[dict],
+    all_cards: list[CardResponse],
+) -> tuple[list[dict], int]:
+    """Batch LLM call to judge whether each non-identifier seed is relevant.
+
+    Returns (filtered_seeds, count_removed). Fails open on error.
+    """
+    # Identifier matches are always kept — they're exact and reliable
+    id_seeds = [s for s in seeds if s.get("source") == "identifier"]
+    other_seeds = [s for s in seeds if s.get("source") != "identifier"]
+
+    if not other_seeds:
+        return seeds, 0
+
+    # Build card lookup for quick access
+    card_by_id: dict[str, CardResponse] = {}
+    for c in all_cards:
+        card_by_id[c.card_id] = c
+
+    # Build candidates with content for LLM
+    candidates: list[dict] = []
+    seed_index_map: dict[int, dict] = {}  # seed_index -> seed dict
+    for i, seed in enumerate(other_seeds):
+        card_id = seed.get("card_id") or seed.get("id")
+        card = card_by_id.get(card_id) if card_id else None
+        # If no card found by card_id, try matching via entity_id
+        if not card and seed.get("entity_id"):
+            for c in all_cards:
+                if c.entity_id == seed["entity_id"]:
+                    card = c
+                    break
+        candidates.append({
+            "seed_index": i,
+            "header": card.header if card else seed.get("id", "unknown"),
+            "summary": card.summary if card else "",
+        })
+        seed_index_map[i] = seed
+
+    try:
+        messages = build_relevance_filter_messages(query, candidates)
+        response = await llm_call(
+            role="router",
+            messages=messages,
+            response_schema=RELEVANCE_FILTER_SCHEMA,
+            step="trace_filter",
+            temperature=0.0,
+            max_tokens=2000,
+        )
+
+        if not response.parsed or "judgments" not in response.parsed:
+            log.warning("trace_filter_no_judgments")
+            return seeds, 0
+
+        # Collect relevant seed indices
+        relevant_indices: set[int] = set()
+        for j in response.parsed["judgments"]:
+            if j.get("relevant"):
+                relevant_indices.add(j["seed_index"])
+            else:
+                log.debug(
+                    "trace_filter_removed",
+                    seed_index=j["seed_index"],
+                    reason=j.get("reason", ""),
+                    header=candidates[j["seed_index"]]["header"][:60]
+                    if j["seed_index"] < len(candidates) else "?",
+                )
+
+        # Build filtered list: all identifier seeds + relevant non-identifier seeds
+        filtered = list(id_seeds)
+        for i, seed in enumerate(other_seeds):
+            if i in relevant_indices:
+                filtered.append(seed)
+
+        removed = len(seeds) - len(filtered)
+        log.info("trace_filter_complete", kept=len(filtered), removed=removed)
+        return filtered, removed
+
+    except Exception as e:
+        log.warning("trace_filter_failed", error=str(e))
+        return seeds, 0
+
 
 # ---------------------------------------------------------------------------
 # Main entry point
@@ -145,9 +272,55 @@ async def run_trace(request: TraceRequest) -> TraceResponse:
         seed_entity_ids=[(s.get("entity_id") or "?")[:40] for s in seeds[:10]],
     )
 
+    # Phase 1.5 — Apply trace feedback (exclude/demote previously-rejected entities)
+    feedback = await _query_trace_feedback(request.query)
+    if feedback["exact_exclude"]:
+        before = len(seeds)
+        seeds = [
+            s for s in seeds
+            if s.get("entity_id") not in feedback["exact_exclude"]
+            or s.get("source") == "identifier"
+        ]
+        meta.feedback_excluded = before - len(seeds)
+    if feedback["global_demote"]:
+        priority = [s for s in seeds if s.get("entity_id") not in feedback["global_demote"]]
+        demoted = [s for s in seeds if s.get("entity_id") in feedback["global_demote"]]
+        meta.feedback_demoted = len(demoted)
+        seeds = (priority + demoted)[:20]
+
     # Phase 2 — Expansion
     all_cards, entity_map = await _expand_seeds(seeds, request.space_id, request.include_archived)
     meta.expansion_cards = len(all_cards)
+
+    # Phase 2.5 — LLM relevance filter (remove false positives before clustering)
+    seeds, removed_count = await _llm_relevance_filter(request.query, seeds, all_cards)
+    meta.seeds_filtered = removed_count
+
+    if removed_count > 0:
+        # Remove cards whose entities are no longer backed by surviving seeds
+        surviving_eids: set[str] = set()
+        for s in seeds:
+            eid = s.get("entity_id")
+            if eid:
+                surviving_eids.add(eid)
+            cid = s.get("card_id")
+            if cid:
+                for c in all_cards:
+                    if c.card_id == cid and c.entity_id:
+                        surviving_eids.add(c.entity_id)
+                        break
+        # Keep cross-referenced entities (same subject_id)
+        keep_subjects: set[str] = set()
+        for eid in surviving_eids:
+            parts = eid.split(":", 2)
+            if len(parts) >= 3:
+                keep_subjects.add(parts[2].lower())
+        for c in all_cards:
+            if c.entity_id:
+                parts = c.entity_id.split(":", 2)
+                if len(parts) >= 3 and parts[2].lower() in keep_subjects:
+                    surviving_eids.add(c.entity_id)
+        all_cards = [c for c in all_cards if c.entity_id in surviving_eids]
 
     # Phase 3 — Clustering (before capping, so small clusters aren't eliminated)
     clusters = _build_clusters(all_cards, entity_map, seeds)
