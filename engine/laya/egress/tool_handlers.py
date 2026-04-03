@@ -78,10 +78,12 @@ async def handle_open_compose(
 
     await manager.broadcast({
         "type": "open_compose",
-        "platform": arguments["platform"],
-        "action_type": arguments["action_type"],
-        "prefill": arguments.get("prefill", {}),
-        "source_card_id": arguments.get("source_card_id"),
+        "payload": {
+            "platform": arguments["platform"],
+            "action_type": arguments["action_type"],
+            "prefill": arguments.get("prefill", {}),
+            "source_card_id": arguments.get("source_card_id"),
+        },
     })
 
     platform = arguments["platform"]

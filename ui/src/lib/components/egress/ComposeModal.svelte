@@ -5,9 +5,11 @@
 
 	let connections = $state<EgressConnection[]>([]);
 	let connectionsLoaded = $state(false);
+	let selectedConnectionId = $state<string>('');
 
 	// Form state
 	let sending = $state(false);
+	let aiAssisting = $state(false);
 	let success = $state(false);
 	let resultUrl = $state<string | null>(null);
 	let error = $state<string | null>(null);
@@ -51,6 +53,10 @@
 			: platformTabs
 	);
 
+	const platformConnections = $derived(
+		connections.filter((c) => c.platform === activePlatform && c.status === 'connected')
+	);
+
 	let activePlatform = $state('');
 
 	// Sync activePlatform from compose store
@@ -59,6 +65,13 @@
 			activePlatform = $compose.platform || connectedPlatforms[0]?.id || 'gmail';
 			prefillFields();
 			loadConnections();
+		}
+	});
+
+	// Auto-select first connection when platform connections change
+	$effect(() => {
+		if (platformConnections.length > 0 && !platformConnections.find((c) => c.connection_id === selectedConnectionId)) {
+			selectedConnectionId = platformConnections[0].connection_id;
 		}
 	});
 
@@ -135,18 +148,51 @@
 	}
 
 	function actionType(): string {
+		const storeAction = $compose.actionType;
 		switch (activePlatform) {
-			case 'gmail': return $compose.actionType || 'compose';
-			case 'slack': return slackThreadReply ? 'reply' : 'compose';
+			case 'gmail':
+				if (storeAction === 'reply') return 'reply';
+				if (storeAction === 'forward') return 'forward';
+				return 'send_email';
+			case 'slack':
+				return slackThreadReply ? 'reply_thread' : 'send_message';
 			case 'jira': return 'create_issue';
 			case 'github': return 'create_issue';
-			default: return 'compose';
+			default: return storeAction || 'send_email';
 		}
 	}
 
 	const submitLabel = $derived(
 		activePlatform === 'jira' || activePlatform === 'github' ? 'Create' : 'Send'
 	);
+
+	async function aiAssist() {
+		aiAssisting = true;
+		error = null;
+		try {
+			const result = await engineApi.egressAiAssist({
+				platform: activePlatform,
+				action_type: actionType(),
+				context: buildPayload()
+			});
+			const draft = result.draft;
+			// Apply drafted fields back to the form
+			if (activePlatform === 'gmail') {
+				if (draft.body) emailBody = draft.body;
+				if (draft.subject && !emailSubject) emailSubject = draft.subject;
+			} else if (activePlatform === 'slack') {
+				if (draft.message) slackMessage = draft.message;
+			} else if (activePlatform === 'jira') {
+				if (draft.description) jiraDescription = draft.description;
+			} else if (activePlatform === 'github') {
+				if (draft.body) ghBody = draft.body;
+			}
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'AI assist failed';
+		} finally {
+			aiAssisting = false;
+		}
+	}
 
 	async function submit() {
 		sending = true;
@@ -156,6 +202,7 @@
 				platform: activePlatform,
 				action_type: actionType(),
 				payload: buildPayload(),
+				connection_id: selectedConnectionId || undefined,
 				source_card_id: $compose.sourceCardId ?? undefined
 			});
 			success = true;
@@ -176,6 +223,8 @@
 		resultUrl = null;
 		error = null;
 		sending = false;
+		aiAssisting = false;
+		selectedConnectionId = '';
 		emailTo = '';
 		emailCc = '';
 		emailSubject = '';
@@ -279,6 +328,22 @@
 					</div>
 				{:else if activePlatform === 'gmail'}
 					<!-- Email form -->
+					<div>
+						<label class={labelClass} for="compose-from">From</label>
+						{#if platformConnections.length > 1}
+							<select id="compose-from" bind:value={selectedConnectionId} class="{selectClass} w-full">
+								{#each platformConnections as conn}
+									<option value={conn.connection_id}>{conn.name}</option>
+								{/each}
+							</select>
+						{:else if platformConnections.length === 1}
+							<p class="text-sm text-surface-300 px-3 py-2">{platformConnections[0].name}</p>
+						{:else}
+							<p class="text-sm text-surface-500 italic px-3 py-2">
+								{connectionsLoaded ? 'No email accounts connected' : 'Loading accounts...'}
+							</p>
+						{/if}
+					</div>
 					<div>
 						<label class={labelClass} for="compose-to">To</label>
 						<input id="compose-to" type="email" bind:value={emailTo} class={inputClass} placeholder="recipient@example.com" />
@@ -384,14 +449,24 @@
 			{#if !success}
 				<div class="flex items-center justify-between border-t border-surface-700 px-5 py-3">
 					<button
-						class="inline-flex items-center gap-1.5 rounded-md bg-surface-800 px-3 py-1.5 text-xs font-medium text-surface-500 cursor-not-allowed opacity-50"
-						disabled
-						title="AI Assist (coming soon)"
+						class="inline-flex items-center gap-1.5 rounded-md bg-surface-800 px-3 py-1.5 text-xs font-medium transition-colors
+							{aiAssisting ? 'text-laya-orange cursor-wait' : 'text-surface-400 hover:text-laya-orange hover:bg-surface-700'}"
+						onclick={aiAssist}
+						disabled={aiAssisting || sending}
+						title="Generate a draft with AI"
 					>
-						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-						</svg>
-						AI Assist
+						{#if aiAssisting}
+							<svg class="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+							</svg>
+							Drafting...
+						{:else}
+							<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+							</svg>
+							AI Assist
+						{/if}
 					</button>
 					<div class="flex items-center gap-2">
 						<button

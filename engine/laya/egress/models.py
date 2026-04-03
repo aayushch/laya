@@ -19,6 +19,9 @@ class EgressRequest:
     payload: dict
     """Platform-specific action data (body, to, issue_key, channel, etc.)."""
 
+    connection_id: str | None = None
+    """Specific connection to use (when user picks a From account)."""
+
     source_card_id: str | None = None
     """Card that triggered this action (for context and logging)."""
 

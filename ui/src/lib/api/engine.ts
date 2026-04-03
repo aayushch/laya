@@ -41,6 +41,8 @@ import type {
 	EgressConnectionsResponse,
 	EgressConnectRequest,
 	EgressConnectResponse,
+	EgressAiAssistRequest,
+	EgressAiAssistResponse,
 	EmailProviderDetection,
 	OAuthStartResponse
 } from './types';
@@ -567,6 +569,12 @@ export const engineApi = {
 		request<EgressCapabilitiesResponse>(`/egress/capabilities/${platform}`),
 
 	listEgressConnections: () => request<EgressConnectionsResponse>('/egress/connections'),
+
+	egressAiAssist: (data: EgressAiAssistRequest) =>
+		request<EgressAiAssistResponse>('/egress/ai-assist', {
+			method: 'POST',
+			body: JSON.stringify(data)
+		}),
 
 	createEgressConnection: (data: EgressConnectRequest) =>
 		request<EgressConnectResponse>('/egress/connections', {

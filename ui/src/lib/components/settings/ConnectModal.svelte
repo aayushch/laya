@@ -78,8 +78,15 @@
 		oauthError = null;
 		try {
 			const result = await engineApi.startOAuthFlow(platform);
-			// Open OAuth URL in new window
-			window.open(result.auth_url, '_blank', 'width=600,height=700');
+			// Open in system browser (works in Tauri and dev).
+			// Tauri's shell plugin opens the default browser; in dev/web
+			// we fall back to window.open.
+			try {
+				const { open } = await import('@tauri-apps/plugin-shell');
+				await open(result.auth_url);
+			} catch {
+				window.open(result.auth_url, '_blank', 'width=600,height=700');
+			}
 			// Start polling for completion
 			oauthPolling = true;
 			pollForOAuthCompletion();
@@ -277,6 +284,12 @@
 						>
 							<PlatformIcon platform={platform} size={16} />
 							Connect {platformLabel}
+						</button>
+						<button
+							onclick={() => { showOAuthSetup = true; oauthError = null; }}
+							class="text-xs text-surface-500 hover:text-surface-300 transition-colors"
+						>
+							Change OAuth credentials
 						</button>
 					</div>
 				{/if}

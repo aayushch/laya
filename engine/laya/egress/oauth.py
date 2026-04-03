@@ -59,6 +59,9 @@ OAUTH_PROVIDERS: dict[str, dict] = {
         "auth_url": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
         "token_url": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
         "scopes": [
+            "openid",
+            "profile",
+            "email",
             "https://graph.microsoft.com/Mail.ReadWrite",
             "https://graph.microsoft.com/Mail.Send",
             "offline_access",
@@ -69,6 +72,9 @@ OAUTH_PROVIDERS: dict[str, dict] = {
         "auth_url": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
         "token_url": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
         "scopes": [
+            "openid",
+            "profile",
+            "email",
             "https://graph.microsoft.com/Calendars.ReadWrite",
             "offline_access",
         ],
@@ -244,12 +250,17 @@ async def handle_callback(
         platform, provider["n8n_type"], client_id, client_secret, token_data
     )
 
+    # Assign credential to n8n workflows and activate them
+    if n8n_cred_id:
+        await _setup_n8n_workflows(platform, provider["n8n_type"], n8n_cred_id)
+
     # Record in DB
     capabilities = [c.action_type for c in get_capabilities(platform)]
     now = datetime.now(timezone.utc).isoformat()
 
     db = await get_db()
-    display_name = f"Laya - {platform.title()}"
+    user_email = _decode_user_email_from_token(token_data)
+    display_name = f"{user_email or platform.title()}"
     await db.execute(
         """INSERT INTO egress_connections
            (connection_id, platform, name, n8n_credential_id, space_id,
@@ -352,6 +363,25 @@ async def refresh_access_token(connection_id: str, platform: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _decode_user_email_from_token(token_data: dict) -> str:
+    """Try to extract the user's email from an OAuth id_token (JWT) or token response."""
+    import base64
+
+    # Try id_token first (contains user claims)
+    id_token = token_data.get("id_token", "")
+    if id_token:
+        try:
+            # Decode JWT payload (2nd segment) without verification — we just need the email
+            payload = id_token.split(".")[1]
+            # Fix padding
+            payload += "=" * (4 - len(payload) % 4)
+            claims = json.loads(base64.urlsafe_b64decode(payload))
+            return claims.get("email") or claims.get("preferred_username") or claims.get("upn", "")
+        except Exception:
+            pass
+    return ""
+
+
 async def _provision_oauth_to_n8n(
     platform: str,
     n8n_type: str,
@@ -363,18 +393,30 @@ async def _provision_oauth_to_n8n(
     try:
         from laya.integrations.n8n_client import create_credential
 
+        oauth_token_data = {
+            "access_token": token_data.get("access_token"),
+            "refresh_token": token_data.get("refresh_token"),
+            "expires_in": token_data.get("expires_in", 3600),
+            "token_type": token_data.get("token_type", "Bearer"),
+            "scope": token_data.get("scope", ""),
+        }
+
         # n8n expects OAuth credentials with specific structure
-        cred_data = {
+        cred_data: dict = {
             "clientId": client_id,
             "clientSecret": client_secret,
-            "oauthTokenData": {
-                "access_token": token_data.get("access_token"),
-                "refresh_token": token_data.get("refresh_token"),
-                "expires_in": token_data.get("expires_in", 3600),
-                "token_type": token_data.get("token_type", "Bearer"),
-                "scope": token_data.get("scope", ""),
-            },
+            "oauthTokenData": oauth_token_data,
         }
+
+        # Microsoft Outlook/Calendar credentials require additional fields
+        if n8n_type == "microsoftOutlookOAuth2Api":
+            user_email = _decode_user_email_from_token(token_data)
+            cred_data.update({
+                "serverUrl": "https://graph.microsoft.com",
+                "userPrincipalName": user_email,
+                "sendAdditionalBodyProperties": False,
+                "additionalBodyProperties": "",
+            })
 
         # Determine n8n node type
         node_type_map = {
@@ -426,6 +468,182 @@ async def _update_n8n_oauth_token(n8n_credential_id: str, new_access_token: str)
         )
     except Exception as e:
         log.warning("n8n_token_update_failed", cred_id=n8n_credential_id, error=str(e))
+
+
+# ---------------------------------------------------------------------------
+# n8n workflow setup — assign credentials and activate
+# ---------------------------------------------------------------------------
+
+
+# Default parameters for skeleton executor nodes that haven't been configured.
+# These use n8n expressions to pull values from the incoming webhook payload.
+_NODE_PARAM_TEMPLATES: dict[str, dict] = {
+    "n8n-nodes-base.microsoftOutlook": {
+        "resource": "message",
+        "operation": "send",
+        "toRecipients": '={{ $json.body.payload.to || $json.body.event_actor_email }}',
+        "subject": '={{ $json.body.payload.subject || (($json.body.event_subject || "").toLowerCase().startsWith("re:") ? $json.body.event_subject : "Re: " + ($json.body.event_subject || "")) }}',
+        "bodyContent": '={{ $json.body.payload.body || $json.body.payload.message || "" }}',
+        "additionalFields": {"bodyContentType": "Text"},
+    },
+}
+
+# Maps OAuth platform to n8n node types that need the credential.
+_PLATFORM_NODE_TYPES: dict[str, list[str]] = {
+    "gmail": [
+        "n8n-nodes-base.gmail",
+        "n8n-nodes-base.gmailTrigger",
+    ],
+    "calendar": [
+        "n8n-nodes-base.googleCalendar",
+        "n8n-nodes-base.googleCalendarTrigger",
+    ],
+    "outlook": [
+        "n8n-nodes-base.microsoftOutlook",
+        "n8n-nodes-base.microsoftOutlookTrigger",
+    ],
+    "outlook_calendar": [
+        "n8n-nodes-base.microsoftOutlook",
+        "n8n-nodes-base.microsoftOutlookTrigger",
+    ],
+}
+
+
+async def _setup_n8n_workflows(
+    platform: str, n8n_cred_type: str, n8n_cred_id: str
+) -> None:
+    """Find n8n workflows for a platform, assign the credential, and activate them.
+
+    After OAuth provisioning creates a credential in n8n, this function:
+    1. Finds all Laya workflows related to the platform (ingestion + executor)
+    2. Unarchives them if needed
+    3. Assigns the new credential to nodes that need it
+    4. Activates the workflows
+    """
+    try:
+        from laya.integrations.n8n_client import (
+            activate_workflow,
+            get_workflow,
+            list_workflows,
+            unarchive_workflow,
+            update_workflow,
+        )
+
+        target_node_types = set(_PLATFORM_NODE_TYPES.get(platform, []))
+        if not target_node_types:
+            return
+
+        workflows = await list_workflows()
+
+        # Find workflows matching this platform by name convention (Laya - Outlook ...)
+        # Skip IMAP workflows — the Graph API workflows (Outlook Email) handle
+        # everything; IMAP is a legacy fallback.
+        platform_keywords = {
+            "gmail": ["gmail"],
+            "calendar": ["google calendar", "calendar"],
+            "outlook": ["outlook email"],
+            "outlook_calendar": ["outlook calendar"],
+        }
+        keywords = platform_keywords.get(platform, [platform])
+
+        for wf in workflows:
+            wf_name = (wf.get("name") or "").lower()
+            if not any(kw in wf_name for kw in keywords):
+                continue
+            if "laya" not in wf_name:
+                continue
+
+            wf_id = str(wf["id"])
+
+            # Unarchive if needed
+            if wf.get("isArchived"):
+                try:
+                    await unarchive_workflow(wf_id)
+                    log.info("n8n_workflow_unarchived", workflow=wf_name)
+                except Exception as e:
+                    log.warning("n8n_workflow_unarchive_failed",
+                                workflow=wf_name, error=str(e))
+                    continue
+
+            full_wf = await get_workflow(wf_id)
+            nodes = full_wf.get("nodes", [])
+            connections = full_wf.get("connections", {})
+            modified = False
+
+            for node in nodes:
+                node_type = node.get("type", "")
+                if node_type not in target_node_types:
+                    continue
+
+                # Assign the credential to this node
+                if "credentials" not in node:
+                    node["credentials"] = {}
+                node["credentials"][n8n_cred_type] = {
+                    "id": n8n_cred_id,
+                    "name": f"Laya - {platform.title()} (OAuth)",
+                }
+
+                # Fill in skeleton node parameters if missing
+                params = node.get("parameters", {})
+                template = _NODE_PARAM_TEMPLATES.get(node_type)
+                if template and not params.get("operation") and not params.get("sendTo") and not params.get("toRecipients"):
+                    node["parameters"] = {**template, **{k: v for k, v in params.items() if v}}
+
+                modified = True
+
+            if modified:
+                await update_workflow(wf_id, {
+                    "name": full_wf["name"],
+                    "nodes": nodes,
+                    "connections": connections,
+                    "settings": full_wf.get("settings", {}),
+                })
+                log.info("n8n_workflow_credentials_assigned",
+                         workflow=wf_name, credential_id=n8n_cred_id)
+
+            # Activate the workflow
+            if not wf.get("active"):
+                try:
+                    await activate_workflow(wf_id, active=True)
+                    log.info("n8n_workflow_activated", workflow=wf_name)
+                except Exception as e:
+                    log.warning("n8n_workflow_activate_failed",
+                                workflow=wf_name, error=str(e))
+
+            # Register/update as a source with correct platform and type
+            is_executor = "executor" in wf_name
+            source_type = "executor" if is_executor else "ingestion"
+            webhook_path = None
+            if is_executor:
+                for node in nodes:
+                    if node.get("type") == "n8n-nodes-base.webhook":
+                        webhook_path = node.get("parameters", {}).get("path")
+                        break
+
+            db = await get_db()
+            existing = await db.execute_fetchall(
+                "SELECT source_id, platform FROM sources WHERE workflow_id = ?",
+                (wf_id,),
+            )
+            if existing:
+                # Update platform if it was auto-discovered as 'unknown'
+                await db.execute(
+                    """UPDATE sources SET platform = ?, source_type = ?, webhook_path = ?, name = ?
+                       WHERE workflow_id = ?""",
+                    (platform, source_type, webhook_path, full_wf["name"], wf_id),
+                )
+            else:
+                import uuid
+                source_id = f"src_{uuid.uuid4().hex[:12]}"
+                await db.execute(
+                    """INSERT INTO sources (source_id, name, platform, workflow_id, space_id, source_type, webhook_path)
+                       VALUES (?, ?, ?, ?, 'default', ?, ?)""",
+                    (source_id, full_wf["name"], platform, wf_id, source_type, webhook_path),
+                )
+            await db.commit()
+
+    except Exception as e:
+        log.error("n8n_workflow_setup_failed", platform=platform, error=str(e))
 
 
 # ---------------------------------------------------------------------------

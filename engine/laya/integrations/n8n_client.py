@@ -152,6 +152,40 @@ async def check_workflow_readiness(workflow_id: str) -> dict:
     return {"ready": len(issues) == 0, "issues": issues}
 
 
+_ALLOWED_SETTINGS_KEYS = {"executionOrder", "callerPolicy", "errorWorkflow", "timezone", "saveManualExecutions", "saveExecutionProgress"}
+
+
+async def update_workflow(workflow_id: str, payload: dict) -> dict:
+    """PUT /api/v1/workflows/{id} — update a workflow's nodes, settings, etc."""
+    # Strip settings keys that the n8n API rejects as unknown
+    if "settings" in payload and isinstance(payload["settings"], dict):
+        payload["settings"] = {
+            k: v for k, v in payload["settings"].items()
+            if k in _ALLOWED_SETTINGS_KEYS
+        }
+    resp = await get_client().put(
+        f"{_base_url()}/api/v1/workflows/{workflow_id}",
+        headers=_get_headers(),
+        json=payload,
+        timeout=10.0,
+    )
+    if resp.status_code not in (200, 201):
+        raise N8nApiError(resp.status_code, resp.text)
+    return resp.json()
+
+
+async def unarchive_workflow(workflow_id: str) -> dict:
+    """POST /api/v1/workflows/{id}/unarchive — unarchive a workflow."""
+    resp = await get_client().post(
+        f"{_base_url()}/api/v1/workflows/{workflow_id}/unarchive",
+        headers=_get_headers(),
+        timeout=10.0,
+    )
+    if resp.status_code not in (200, 201):
+        raise N8nApiError(resp.status_code, resp.text)
+    return resp.json()
+
+
 async def activate_workflow(workflow_id: str, active: bool) -> dict:
     """Activate or deactivate an n8n workflow.
 
