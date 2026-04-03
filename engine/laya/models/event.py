@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class EventSource(BaseModel):
-    platform: str = Field(..., pattern=r"^(jira|bitbucket|slack|gmail|calendar|github|laya)$")
+    platform: str = Field(..., min_length=1, max_length=64)
     connection_id: str | None = None
     raw_event_type: str
 

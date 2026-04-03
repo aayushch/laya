@@ -97,6 +97,10 @@ async def run_emit(
         source_ref = event.subject.title or _subj_id
     elif _platform == "slack":
         source_ref = event.subject.title or _subj_id
+    elif _platform == "outlook":
+        source_ref = event.subject.title or _subj_id
+        if not source_url and _subj_id:
+            source_url = f"https://outlook.office365.com/mail/inbox/id/{_subj_id}"
     else:
         source_ref = _subj_id or None
 

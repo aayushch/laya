@@ -267,7 +267,7 @@
 	role="button"
 	tabindex="0"
 	data-card-id={card.card_id}
-	class="group/card flex h-[200px] w-full cursor-pointer flex-col rounded-xl border px-4 pb-2 pt-3 text-left transition-colors {cardStyle}"
+	class="group/card flex min-h-0 w-full cursor-pointer flex-col rounded-xl border px-4 pb-2 pt-3 text-left transition-colors {cardStyle}"
 	onclick={() => onselect(card)}
 	onkeydown={(e) => e.key === 'Enter' && onselect(card)}
 >
@@ -701,11 +701,8 @@
 		{/if}
 	</div>
 
-	<!-- Spacer — absorbs leftover height so footer stays pinned to bottom -->
-	<div class="flex-1 min-h-1"></div>
-
 	<!-- Row 5: Footer — space · actor name (left) · persona · category · workspace · time (right) -->
-	<div class="flex items-center gap-1.5 min-w-0">
+	<div class="flex items-center gap-1.5 min-w-0 mt-3">
 		{#if card.space_name}
 			<span class="flex items-center gap-1 shrink-0 text-[10px] text-surface-500">
 				<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {card.space_color ?? '#F97316'}"></span>

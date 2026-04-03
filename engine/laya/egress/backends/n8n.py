@@ -151,12 +151,12 @@ class N8nBackend(EgressBackend):
     ) -> str:
         """Resolve the actual production webhook path registered in n8n.
 
-        n8n 2.x uses different path formats depending on how the workflow was
-        created.  We look up the webhook node to determine the correct path:
-        - If the node has a ``webhookId``, the production path is the webhookId.
-        - Otherwise n8n registers it as ``{workflowId}/webhook/{path}``.
+        n8n serves production webhooks at the user-defined ``path`` from
+        the webhook node parameters (i.e. ``/webhook/{path}``).  The
+        ``webhookId`` field is an internal identifier, not a URL component.
 
-        Results are cached for ``_CACHE_TTL`` seconds.
+        We verify the workflow is active via the n8n API and cache the
+        result for ``_CACHE_TTL`` seconds.
         """
         now = time.time()
         cached = _webhook_path_cache.get(webhook_path)
@@ -170,9 +170,7 @@ class N8nBackend(EgressBackend):
         if cached:
             return cached[0]
 
-        # Fallback: construct best-guess path
-        if workflow_id:
-            return f"{workflow_id}/webhook/{webhook_path}"
+        # Fallback: use the path as-is
         return webhook_path
 
     async def _refresh_webhook_cache(self, base_url: str) -> None:
@@ -194,7 +192,6 @@ class N8nBackend(EgressBackend):
             for wf in resp.json().get("data", []):
                 if not wf.get("active"):
                     continue
-                wf_id = str(wf["id"])
                 for node in wf.get("nodes") or []:
                     if node.get("type") != "n8n-nodes-base.webhook":
                         continue
@@ -202,14 +199,8 @@ class N8nBackend(EgressBackend):
                     user_path = params.get("path")
                     if not user_path:
                         continue
-                    webhook_id = node.get("webhookId")
-                    if webhook_id:
-                        # Duplicated/UI-created: production path is the webhookId
-                        production = webhook_id
-                    else:
-                        # API-imported: production path is {workflowId}/webhook/{path}
-                        production = f"{wf_id}/webhook/{user_path}"
-                    _webhook_path_cache[user_path] = (production, now)
+                    # n8n production webhooks are served at the user-defined path
+                    _webhook_path_cache[user_path] = (user_path, now)
         except Exception as e:
             log.warning("n8n_webhook_cache_refresh_failed", error=str(e))
 
@@ -235,12 +226,24 @@ class N8nBackend(EgressBackend):
         # Fetch event context for richer executor payloads
         event_ctx = await self._fetch_event_context(request.source_event_id)
 
+        # For email replies triggered from a card (has source_event_id),
+        # ensure "to" is the original sender — the stager LLM sometimes
+        # sets it to the user's own email instead.  We trust event_actor_email
+        # as the correct reply target when one exists.
+        if (
+            request.platform in ("gmail", "outlook", "smtp")
+            and request.action_type in ("send_email", "reply")
+            and request.source_event_id
+            and event_ctx.get("actor_email")
+        ):
+            payload["to"] = event_ctx["actor_email"]
+
         return {
             "action_id": f"egr_{request.source_card_id or 'direct'}",
             "source_event_id": request.source_event_id,
             "target": {
                 "platform": request.platform,
-                "connection_id": None,
+                "connection_id": request.connection_id,
             },
             "action_type": request.action_type,
             "payload": payload,

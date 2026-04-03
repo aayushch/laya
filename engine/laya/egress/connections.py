@@ -108,6 +108,15 @@ async def create_connection(
 
 async def remove_connection(connection_id: str) -> None:
     """Remove a platform connection — clean up keychain, n8n, and SQLite."""
+    # Virtual executor-source connections — remove the source row
+    if connection_id.startswith("exec_"):
+        source_id = connection_id.removeprefix("exec_")
+        db = await get_db()
+        await db.execute("DELETE FROM sources WHERE source_id = ?", (source_id,))
+        await db.commit()
+        log.info("executor_source_removed", source_id=source_id)
+        return
+
     db = await get_db()
 
     rows = await db.execute_fetchall(
@@ -144,9 +153,18 @@ async def remove_connection(connection_id: str) -> None:
 
 
 async def list_all_connections() -> list[Connection]:
-    """List all configured platform connections."""
+    """List all configured platform connections.
+
+    Includes both explicit egress_connections AND executor sources from
+    the sources table.  Executor sources are n8n workflows that can send
+    emails / messages on behalf of the user but were never registered
+    through the connection-broker flow.
+    """
     db = await get_db()
 
+    connections: list[Connection] = []
+
+    # 1. Explicit egress connections
     rows = await db.execute_fetchall(
         """SELECT connection_id, platform, name, n8n_credential_id, space_id,
                   status, capabilities, error_message, last_validated_at,
@@ -155,22 +173,54 @@ async def list_all_connections() -> list[Connection]:
            ORDER BY created_at DESC""",
     )
 
-    return [
-        Connection(
-            connection_id=r["connection_id"],
-            platform=r["platform"],
-            name=r["name"],
-            status=r["status"],
-            capabilities=json.loads(r["capabilities"] or "[]"),
-            n8n_credential_id=r["n8n_credential_id"],
-            space_id=r["space_id"],
-            error_message=r["error_message"],
-            last_validated_at=r["last_validated_at"],
-            created_at=r["created_at"],
-            updated_at=r["updated_at"],
+    seen_platforms: set[str] = set()
+    for r in rows:
+        connections.append(
+            Connection(
+                connection_id=r["connection_id"],
+                platform=r["platform"],
+                name=r["name"],
+                status=r["status"],
+                capabilities=json.loads(r["capabilities"] or "[]"),
+                n8n_credential_id=r["n8n_credential_id"],
+                space_id=r["space_id"],
+                error_message=r["error_message"],
+                last_validated_at=r["last_validated_at"],
+                created_at=r["created_at"],
+                updated_at=r["updated_at"],
+            )
         )
-        for r in rows
-    ]
+        seen_platforms.add(r["platform"])
+
+    # 2. Executor sources registered in the sources table (source_type =
+    #    'executor' with a webhook_path, OR name containing "Executor" for
+    #    auto-discovered entries that weren't tagged correctly).
+    executor_rows = await db.execute_fetchall(
+        """SELECT source_id, name, platform, workflow_id, space_id, created_at
+           FROM sources
+           WHERE (source_type = 'executor' AND webhook_path IS NOT NULL)
+              OR (name LIKE '%Executor%')
+           ORDER BY created_at DESC""",
+    )
+
+    for r in executor_rows:
+        platform = r["platform"]
+        caps = [c.action_type for c in get_capabilities(platform)]
+        connections.append(
+            Connection(
+                connection_id=f"exec_{r['source_id']}",
+                platform=platform,
+                name=r["name"],
+                status="connected",
+                capabilities=caps,
+                n8n_credential_id=None,
+                space_id=r["space_id"],
+                created_at=r["created_at"] or "",
+            )
+        )
+        seen_platforms.add(platform)
+
+    return connections
 
 
 async def test_connection(connection_id: str) -> tuple[bool, str | None]:
@@ -397,14 +447,19 @@ async def _validate_smtp(creds: dict) -> tuple[bool, str | None]:
     try:
         import aiosmtplib
 
+        port = int(creds.get("smtp_port", 587))
+        use_tls = creds.get("use_tls", True)
+
+        # Port 465 = implicit TLS (use_tls=True, no STARTTLS needed)
+        # Port 587 = STARTTLS (start_tls=True handles the upgrade automatically)
+        # Port 25  = plain (no TLS)
         smtp = aiosmtplib.SMTP(
             hostname=creds.get("smtp_host", ""),
-            port=int(creds.get("smtp_port", 587)),
-            use_tls=creds.get("use_tls", True),
+            port=port,
+            use_tls=(use_tls and port == 465),
+            start_tls=(use_tls and port != 465),
         )
         await smtp.connect()
-        if creds.get("use_tls", True):
-            await smtp.starttls()
         await smtp.login(creds.get("username", ""), creds.get("password", ""))
         await smtp.quit()
         return True, None

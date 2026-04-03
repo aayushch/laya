@@ -782,9 +782,22 @@ export interface EgressExecuteRequest {
 	platform: string;
 	action_type: string;
 	payload: Record<string, unknown>;
+	connection_id?: string;
 	source_card_id?: string;
 	source_event_id?: string;
 	space_id?: string;
+}
+
+/** Request for AI-assisted draft generation */
+export interface EgressAiAssistRequest {
+	platform: string;
+	action_type: string;
+	context: Record<string, unknown>;
+}
+
+/** Response from AI-assisted draft generation */
+export interface EgressAiAssistResponse {
+	draft: Record<string, string>;
 }
 
 /** Response from egress execution */
