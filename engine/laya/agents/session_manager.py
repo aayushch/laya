@@ -321,6 +321,12 @@ async def resume_conversation(
             cc_agent._cc_session_id = agent_session_id
             cc_agent._repo_path = repo_path
             agent = cc_agent
+        elif agent_type == AgentType.CODEX_CLI:
+            codex_agent = CodexCliAgent()
+            codex_agent._session_id = session_id
+            codex_agent._thread_id = agent_session_id
+            codex_agent._repo_path = repo_path
+            agent = codex_agent
         else:
             raise ValueError(f"Agent type {agent_type.value} does not support session resumption")
 
