@@ -69,17 +69,18 @@ async def create_connection(
             provision_error = f"Failed to create n8n credential for {platform}"
             log.warning("n8n_provision_failed", platform=platform, name=display_name)
 
-    # Step 4: Auto-activate matching n8n workflows
+    # Step 4: Clone and activate workflows for this connection
     workflow_errors: list[str] = []
     if n8n_credential_id:
         try:
-            activated, workflow_errors = await _activate_platform_workflows(
-                platform, n8n_credential_id
+            activated, workflow_errors = await _clone_workflows_for_connection(
+                platform, connection_id, display_name, n8n_credential_id
             )
-            log.info("workflows_auto_activated", platform=platform, count=activated)
+            log.info("workflows_cloned", platform=platform, count=activated,
+                     connection_id=connection_id)
         except Exception as e:
             workflow_errors = [str(e)]
-            log.warning("workflow_auto_activation_failed", platform=platform, error=str(e))
+            log.warning("workflow_clone_failed", platform=platform, error=str(e))
 
     # Determine final status
     all_errors = []
@@ -158,8 +159,8 @@ async def remove_connection(connection_id: str) -> None:
     # Remove from keychain
     _remove_from_keychain(connection_id, platform)
 
-    # Deactivate n8n workflows for this platform
-    await _deactivate_platform_workflows(platform)
+    # Deactivate and delete cloned workflows for this connection
+    await _remove_connection_workflows(connection_id)
 
     # Remove n8n credential
     if n8n_cred_id:
@@ -223,11 +224,13 @@ async def list_all_connections() -> list[Connection]:
     # 2. Executor sources registered in the sources table (source_type =
     #    'executor' with a webhook_path, OR name containing "Executor" for
     #    auto-discovered entries that weren't tagged correctly).
+    #    Exclude sources owned by a connection (those are managed by egress_connections).
     executor_rows = await db.execute_fetchall(
         """SELECT source_id, name, platform, workflow_id, space_id, created_at
            FROM sources
-           WHERE (source_type = 'executor' AND webhook_path IS NOT NULL)
-              OR (name LIKE '%Executor%')
+           WHERE connection_id IS NULL
+             AND ((source_type = 'executor' AND webhook_path IS NOT NULL)
+                  OR (name LIKE '%Executor%'))
            ORDER BY created_at DESC""",
     )
 
@@ -574,123 +577,219 @@ async def _provision_to_n8n(
         return None
 
 
-async def _activate_platform_workflows(
-    platform: str, n8n_credential_id: str
+async def _clone_workflows_for_connection(
+    platform: str,
+    connection_id: str,
+    connection_name: str,
+    n8n_credential_id: str,
 ) -> tuple[int, list[str]]:
-    """Find and activate n8n workflows for this platform after connection creation.
+    """Clone bundled workflow templates for a specific connection.
 
-    Uses the `workflows` list from PLATFORMS config to know exactly which
-    n8n workflows belong to each platform — no string matching needed.
-
-    Steps:
-    1. Look up workflow names from PLATFORMS[platform]["workflows"]
-    2. List n8n workflows and match by name
-    3. Assign the new credential to their nodes
-    4. Check readiness and activate
+    For each template workflow (e.g., "Laya - Gmail Ingestion"):
+    1. Read the bundled JSON template
+    2. Rename to include connection display name
+    3. Update webhook paths to be connection-specific
+    4. Inject the connection's n8n credential into matching nodes
+    5. Create as a new workflow in n8n via POST
+    6. Register as a source with connection_id
+    7. Activate the workflow
 
     Returns (activated_count, error_messages).
     """
-    from laya.integrations.n8n_client import (
-        activate_workflow,
-        check_workflow_readiness,
-        get_workflow,
-        list_workflows,
-        update_workflow,
-    )
+    import copy
+
+    from laya.integrations.n8n_bootstrap import WORKFLOWS_DIR, _load_deployed_versions, _save_deployed_versions
+    from laya.integrations.n8n_client import activate_workflow
 
     platform_config = PLATFORMS.get(platform, {})
-    target_names = set(platform_config.get("workflows", []))
-    if not target_names:
+    template_names = platform_config.get("workflows", [])
+    if not template_names:
         return 0, []
 
     n8n_type = platform_config.get("n8n_type", "")
-    workflows = await list_workflows()
+    n8n_node = platform_config.get("n8n_node", "")
     activated = 0
     errors: list[str] = []
 
-    for wf in workflows:
-        wf_name = wf.get("name", "")
-        wf_id = str(wf.get("id", ""))
-        if wf_name not in target_names or not wf_id:
-            continue
-        if wf.get("active"):
-            log.debug("workflow_already_active", name=wf_name, id=wf_id)
-            activated += 1
+    # Build a map of template name → JSON file
+    template_files: dict[str, dict] = {}
+    if WORKFLOWS_DIR.exists():
+        for wf_file in WORKFLOWS_DIR.glob("*.json"):
+            try:
+                data = json.loads(wf_file.read_text())
+                template_files[data.get("name", "")] = data
+            except Exception:
+                continue
+
+    api_key = None
+    try:
+        from laya.security.keychain import get_api_key
+        api_key = get_api_key("n8n")
+    except Exception:
+        pass
+
+    if not api_key:
+        return 0, ["n8n API key not configured"]
+
+    from laya.config import get_n8n_config
+    from laya.http_client import get_client
+    base_url = get_n8n_config()["base_url"].rstrip("/")
+    headers = {"X-N8N-API-KEY": api_key, "Content-Type": "application/json"}
+
+    short_id = connection_id.replace("conn_", "")
+    platform_label = platform_config.get("label", platform.title())
+
+    for template_name in template_names:
+        template_data = template_files.get(template_name)
+        if not template_data:
+            errors.append(f"Template \"{template_name}\" not found in bundled workflows")
             continue
 
-        # Fetch full workflow to update credential references on nodes
-        full_wf = await get_workflow(wf_id)
-        if not full_wf:
-            continue
+        wf_data = copy.deepcopy(template_data)
 
-        # Assign the new credential to any node that expects this platform's credential type
-        n8n_node = platform_config.get("n8n_node", "")
-        nodes_updated = False
-        for node in full_wf.get("nodes", []):
+        # 1. Build workflow name: "Laya Gmail - Personal (Ingestion)"
+        wf_type = "Executor" if "executor" in template_name.lower() else "Ingestion"
+        if connection_name:
+            wf_data["name"] = f"Laya {platform_label} - {connection_name} ({wf_type})"
+        else:
+            wf_data["name"] = f"Laya {platform_label} - {short_id} ({wf_type})"
+
+        # 2. Update webhook paths and inject credentials
+        for node in wf_data.get("nodes", []):
+            # Update primary webhook path to be connection-specific
+            if (node.get("type") == "n8n-nodes-base.webhook"
+                    and node.get("parameters", {}).get("httpMethod")):
+                old_path = node["parameters"].get("path", "")
+                if old_path:
+                    node["parameters"]["path"] = f"{old_path}-{short_id}"
+
+            # Inject credential into matching nodes
             node_creds = node.get("credentials", {})
             params = node.get("parameters", {})
-            # Match: (1) nodes that already reference this cred type,
-            #        (2) native platform nodes, or
-            #        (3) httpRequest nodes using predefinedCredentialType for this platform
+            node_type = node.get("type", "")
             is_match = (
                 n8n_type in node_creds
-                or node.get("type") == n8n_node
+                or node_type == n8n_node
+                or node_type.startswith(n8n_node)  # matches gmailTrigger, googleCalendarTrigger, etc.
                 or params.get("nodeCredentialType") == n8n_type
             )
             if is_match:
                 if "credentials" not in node:
                     node["credentials"] = {}
-                node["credentials"][n8n_type] = {"id": n8n_credential_id, "name": ""}
-                nodes_updated = True
+                node["credentials"][n8n_type] = {
+                    "id": n8n_credential_id,
+                    "name": connection_name,
+                }
 
-        if nodes_updated:
-            await update_workflow(wf_id, {
-                "name": full_wf["name"],
-                "nodes": full_wf["nodes"],
-                "connections": full_wf.get("connections", {}),
-                "settings": full_wf.get("settings", {}),
-            })
+        # 3. Create workflow in n8n
+        create_fields = {"name", "nodes", "connections", "settings", "staticData", "tags"}
+        create_data = {k: v for k, v in wf_data.items() if k in create_fields}
+        try:
+            resp = await get_client().post(
+                f"{base_url}/api/v1/workflows",
+                headers=headers,
+                json=create_data,
+                timeout=10.0,
+            )
+            if resp.status_code not in (200, 201):
+                errors.append(f"Failed to create \"{wf_data['name']}\": HTTP {resp.status_code}")
+                continue
+            created_wf = resp.json()
+            wf_id = str(created_wf.get("id", ""))
+        except Exception as e:
+            errors.append(f"Failed to create \"{wf_data['name']}\": {e}")
+            continue
 
-        # Check readiness and activate
-        readiness = await check_workflow_readiness(wf_id)
-        if readiness.get("ready"):
+        # 4. Activate
+        try:
             await activate_workflow(wf_id, active=True)
             activated += 1
-            log.info("workflow_activated", name=wf_name, id=wf_id)
-        else:
-            issues = readiness.get("issues", [])
-            errors.append(f"Workflow \"{wf_name}\" not ready: {'; '.join(issues)}")
-            log.warning(
-                "workflow_not_ready",
-                name=wf_name,
-                id=wf_id,
-                issues=issues,
-            )
+            log.info("workflow_cloned_and_activated",
+                     name=wf_data["name"], id=wf_id, connection_id=connection_id)
+        except Exception as e:
+            errors.append(f"Failed to activate \"{wf_data['name']}\": {e}")
+            log.warning("workflow_clone_activate_failed",
+                        name=wf_data["name"], error=str(e))
+
+        # 5. Register as source with connection_id
+        is_executor = "executor" in template_name.lower()
+        source_type = "executor" if is_executor else "ingestion"
+        webhook_path = None
+        if is_executor:
+            for node in wf_data.get("nodes", []):
+                if (node.get("type") == "n8n-nodes-base.webhook"
+                        and node.get("parameters", {}).get("httpMethod")):
+                    webhook_path = node["parameters"].get("path")
+                    break
+
+        db = await get_db()
+        source_id = f"src_{uuid.uuid4().hex[:12]}"
+        await db.execute(
+            """INSERT INTO sources
+               (source_id, name, platform, workflow_id, space_id,
+                source_type, webhook_path, connection_id)
+               VALUES (?, ?, ?, ?, 'default', ?, ?, ?)""",
+            (source_id, wf_data["name"], platform, wf_id,
+             source_type, webhook_path, connection_id),
+        )
+        await db.commit()
+
+        # Track deployed version for this template
+        bundled_version = (template_data.get("meta") or {}).get("laya_version")
+        if bundled_version:
+            deployed_versions = _load_deployed_versions()
+            deployed_versions[template_name] = bundled_version
+            _save_deployed_versions(deployed_versions)
 
     return activated, errors
 
 
-async def _deactivate_platform_workflows(platform: str) -> None:
-    """Deactivate all n8n workflows associated with a platform."""
-    from laya.integrations.n8n_client import activate_workflow, list_workflows
+async def _remove_connection_workflows(connection_id: str) -> None:
+    """Deactivate and delete all cloned n8n workflows owned by a connection."""
+    from laya.integrations.n8n_client import activate_workflow
 
-    platform_config = PLATFORMS.get(platform, {})
-    target_names = set(platform_config.get("workflows", []))
-    if not target_names:
+    from laya.config import get_n8n_config
+    from laya.http_client import get_client
+    from laya.security.keychain import get_api_key
+
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT workflow_id FROM sources WHERE connection_id = ?",
+        (connection_id,),
+    )
+    if not rows:
         return
 
-    workflows = await list_workflows()
+    api_key = get_api_key("n8n")
+    if not api_key:
+        return
+    base_url = get_n8n_config()["base_url"].rstrip("/")
+    headers = {"X-N8N-API-KEY": api_key}
 
-    for wf in workflows:
-        wf_name = wf.get("name", "")
-        wf_id = str(wf.get("id", ""))
-        if wf_name not in target_names or not wf_id:
+    for row in rows:
+        wf_id = row["workflow_id"]
+        if not wf_id:
             continue
-        if not wf.get("active"):
-            continue
-
+        # Deactivate then delete
         try:
             await activate_workflow(wf_id, active=False)
-            log.info("workflow_deactivated", name=wf_name, id=wf_id)
+        except Exception:
+            pass
+        try:
+            await get_client().delete(
+                f"{base_url}/api/v1/workflows/{wf_id}",
+                headers=headers,
+                timeout=10.0,
+            )
+            log.info("workflow_clone_deleted", workflow_id=wf_id,
+                     connection_id=connection_id)
         except Exception as e:
-            log.warning("workflow_deactivate_failed", name=wf_name, error=str(e))
+            log.warning("workflow_clone_delete_failed",
+                        workflow_id=wf_id, error=str(e))
+
+    # Remove source rows
+    await db.execute(
+        "DELETE FROM sources WHERE connection_id = ?",
+        (connection_id,),
+    )
+    await db.commit()

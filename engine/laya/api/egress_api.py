@@ -314,6 +314,18 @@ async def create_connection(body: ConnectRequest) -> dict:
     }
 
 
+@router.get("/egress/connections/names/{platform}")
+async def get_connection_names(platform: str) -> dict:
+    """Get existing connection names for a platform (for uniqueness check)."""
+    from laya.db.sqlite import get_db
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT name FROM egress_connections WHERE platform = ?",
+        (platform,),
+    )
+    return {"names": [r["name"] for r in rows]}
+
+
 @router.delete("/egress/connections/{connection_id}")
 async def delete_connection(connection_id: str) -> dict:
     """Remove a platform connection."""
@@ -474,7 +486,7 @@ async def detect_email_provider(email: str) -> dict:
 
 
 @router.get("/egress/connections/oauth/start")
-async def oauth_start(platform: str) -> dict:
+async def oauth_start(platform: str, connection_name: str | None = None) -> dict:
     """Start an OAuth flow for a platform (Gmail, Google Calendar, Outlook).
 
     Returns the authorization URL to redirect the user's browser to.
@@ -483,7 +495,7 @@ async def oauth_start(platform: str) -> dict:
     from laya.egress.oauth import build_auth_url
 
     redirect_uri = "http://localhost:8420/egress/connections/oauth/callback"
-    result = build_auth_url(platform, redirect_uri)
+    result = build_auth_url(platform, redirect_uri, connection_name=connection_name)
 
     if "error" in result:
         status_code = 422 if result.get("needs_setup") else 400

@@ -139,7 +139,7 @@ def _generate_pkce() -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 
 
-def build_auth_url(platform: str, redirect_uri: str) -> dict:
+def build_auth_url(platform: str, redirect_uri: str, connection_name: str | None = None) -> dict:
     """Build the OAuth authorization URL for a platform.
 
     Returns:
@@ -169,6 +169,7 @@ def build_auth_url(platform: str, redirect_uri: str) -> dict:
         "platform": platform,
         "timestamp": time.time(),
         "code_verifier": code_verifier,
+        "connection_name": connection_name,
     }
     _cleanup_expired_states()
 
@@ -208,6 +209,7 @@ async def handle_callback(
 
     platform = state_data["platform"]
     code_verifier = state_data.get("code_verifier")
+    connection_name = state_data.get("connection_name")
     provider = OAUTH_PROVIDERS.get(platform)
     if not provider:
         return {"error": f"Unknown OAuth platform: {platform}"}
@@ -274,10 +276,14 @@ async def handle_callback(
     if not n8n_cred_id:
         all_errors.append(f"Failed to create n8n credential for {platform}")
 
-    # Assign credential to n8n workflows and activate them
+    # Clone and activate workflows for this connection
+    user_email = _decode_user_email_from_token(token_data)
+    display_name = connection_name or user_email or platform.title()
+
     if n8n_cred_id:
-        workflow_errors = await _setup_n8n_workflows(
-            platform, provider["n8n_type"], n8n_cred_id
+        from laya.egress.connections import _clone_workflows_for_connection
+        activated, workflow_errors = await _clone_workflows_for_connection(
+            platform, connection_id, display_name, n8n_cred_id
         )
         all_errors.extend(workflow_errors)
 
@@ -290,8 +296,6 @@ async def handle_callback(
     now = datetime.now(timezone.utc).isoformat()
 
     db = await get_db()
-    user_email = _decode_user_email_from_token(token_data)
-    display_name = f"{user_email or platform.title()}"
     await db.execute(
         """INSERT INTO egress_connections
            (connection_id, platform, name, n8n_credential_id, space_id,

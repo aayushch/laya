@@ -37,7 +37,7 @@ class N8nBackend(EgressBackend):
     ) -> EgressResult:
         """Execute an action by POSTing to the platform's n8n executor webhook."""
         webhook_url = await self._resolve_webhook_url(
-            request.platform, request.space_id
+            request.platform, request.space_id, request.connection_id
         )
         if not webhook_url:
             return EgressResult(
@@ -81,14 +81,16 @@ class N8nBackend(EgressBackend):
     # -----------------------------------------------------------------------
 
     async def _resolve_webhook_url(
-        self, platform: str, space_id: str | None
+        self, platform: str, space_id: str | None,
+        connection_id: str | None = None,
     ) -> str | None:
         """Resolve the best executor webhook URL for a platform.
 
         Priority:
-        1. Executor source registered in the same space as the request
-        2. Any executor source registered for this platform
-        3. Global config from settings.json
+        1. Executor source matching the specific connection_id
+        2. Executor source registered in the same space as the request
+        3. Any executor source registered for this platform
+        4. Global config from settings.json
 
         n8n 2.x registers webhooks under ``{workflowId}/webhook/{path}``
         rather than just ``{path}``, so we look up the workflow ID via the
@@ -97,10 +99,10 @@ class N8nBackend(EgressBackend):
         n8n_config = get_n8n_config()
         base_url = n8n_config["base_url"].rstrip("/")
 
-        # Try space-specific executor from sources table
+        # Try connection/space-specific executor from sources table
         db = await get_db()
         executor_rows = await db.execute_fetchall(
-            """SELECT webhook_path, space_id, workflow_id FROM sources
+            """SELECT webhook_path, space_id, workflow_id, connection_id FROM sources
                WHERE source_type = 'executor' AND platform = ? AND webhook_path IS NOT NULL""",
             (platform,),
         )
@@ -109,8 +111,17 @@ class N8nBackend(EgressBackend):
         workflow_id: str | None = None
 
         if executor_rows:
-            # Prefer same-space executor
-            if space_id:
+            # Prefer exact connection match
+            if connection_id:
+                conn_match = [
+                    r for r in executor_rows if r["connection_id"] == connection_id
+                ]
+                if conn_match:
+                    webhook_path = conn_match[0]["webhook_path"]
+                    workflow_id = conn_match[0].get("workflow_id")
+
+            # Then try same-space executor
+            if not webhook_path and space_id:
                 same_space = [
                     r for r in executor_rows if r["space_id"] == space_id
                 ]
