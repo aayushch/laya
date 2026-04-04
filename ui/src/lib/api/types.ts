@@ -617,6 +617,7 @@ export interface AvailableWorkflow {
 	source_type: string;
 	active: boolean;
 	registered: boolean;
+	connection_id?: string;
 }
 
 /** Response from GET /spaces */

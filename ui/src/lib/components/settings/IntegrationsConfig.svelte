@@ -54,21 +54,21 @@
 	}
 
 	// Merge platforms with connection status, grouped by category
-	interface PlatformWithConnection {
+	interface PlatformWithConnections {
 		key: string;
 		config: PlatformConfig;
-		connection: EgressConnection | null;
+		connections: EgressConnection[];
 	}
 
 	const categorizedPlatforms = $derived.by(() => {
-		const groups: { category: string; label: string; items: PlatformWithConnection[] }[] = [];
+		const groups: { category: string; label: string; items: PlatformWithConnections[] }[] = [];
 
 		for (const cat of CATEGORY_ORDER) {
-			const items: PlatformWithConnection[] = [];
+			const items: PlatformWithConnections[] = [];
 
 			if (cat === 'email') {
 				// Add SMTP as a virtual platform
-				const smtpConn = connections.find((c) => c.platform === 'smtp') ?? null;
+				const smtpConns = connections.filter((c) => c.platform === 'smtp');
 				items.push({
 					key: 'smtp',
 					config: {
@@ -80,13 +80,13 @@
 						oauth: false,
 						fields: []
 					},
-					connection: smtpConn
+					connections: smtpConns
 				});
 			} else {
 				for (const [key, config] of Object.entries(platforms)) {
 					if (config.category === cat) {
-						const conn = connections.find((c) => c.platform === key) ?? null;
-						items.push({ key, config, connection: conn });
+						const conns = connections.filter((c) => c.platform === key);
+						items.push({ key, config, connections: conns });
 					}
 				}
 			}
@@ -167,7 +167,7 @@
 							label={p.config.label}
 							category={p.config.category}
 							isOAuth={p.config.oauth}
-							connection={p.connection}
+							connections={p.connections}
 							onConnect={openConnectModal}
 							onRefresh={loadData}
 						/>
@@ -212,6 +212,7 @@
 		platformLabel={connectingLabel}
 		isOAuth={connectingIsOAuth}
 		fields={connectingFields}
+		hasExistingConnections={connections.some(c => c.platform === connectingPlatform)}
 		onClose={closeConnectModal}
 		onConnected={handleConnected}
 	/>

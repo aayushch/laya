@@ -54,12 +54,10 @@
       ],
       "parameters": {
         "operation": "send",
-        "additionalFields": {
-          "toRecipients": "={{ $json.body.payload.to || $json.body.event_actor_email }}",
-          "subject": "={{ $json.body.payload.subject || (($json.body.event_subject || '').toLowerCase().startsWith('re:') ? $json.body.event_subject : 'Re: ' + ($json.body.event_subject || '')) }}",
-          "bodyContent": "={{ $json.body.payload.body || $json.body.payload.message || '' }}",
-          "bodyContentType": "text"
-        }
+        "toRecipients": "={{ $json.body.payload.to || $json.body.event_actor_email }}",
+        "subject": "={{ $json.body.payload.subject || (($json.body.event_subject || '').toLowerCase().startsWith('re:') ? $json.body.event_subject : 'Re: ' + ($json.body.event_subject || '')) }}",
+        "bodyContent": "={{ $json.body.payload.body || $json.body.payload.message || '' }}",
+        "additionalFields": {}
       },
       "onError": "continueErrorOutput"
     },

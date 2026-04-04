@@ -5,8 +5,8 @@
 	const agents = [
 		{ value: 'none', label: 'None', description: 'No coding agent — handle code tasks manually' },
 		{ value: 'claude_code', label: 'Claude Code', description: 'Anthropic CLI — structured JSON streaming, approval prompts' },
-		{ value: 'gemini_cli', label: 'Gemini CLI', description: 'Google CLI — raw line-by-line output' },
-		{ value: 'codex_cli', label: 'Codex CLI', description: 'OpenAI CLI — raw line-by-line output' }
+		{ value: 'gemini_cli', label: 'Gemini CLI', description: 'Google CLI — structured JSON output' },
+		{ value: 'codex_cli', label: 'Codex CLI', description: 'OpenAI CLI — structured JSON output' }
 	];
 
 	let selected = $state('claude_code');

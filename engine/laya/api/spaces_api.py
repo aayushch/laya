@@ -427,14 +427,27 @@ async def get_available_workflows() -> dict:
 
     # Check which are already registered
     db = await get_db()
-    registered = await db.execute_fetchall("SELECT workflow_id FROM sources")
-    registered_ids = {r["workflow_id"] for r in registered}
+    source_rows = await db.execute_fetchall(
+        "SELECT workflow_id, connection_id FROM sources"
+    )
+    registered_ids = {r["workflow_id"] for r in source_rows}
+    wf_connection: dict[str, str | None] = {
+        r["workflow_id"]: r["connection_id"] for r in source_rows
+    }
+
+    # Skip template workflows (only clones are user-facing)
+    from laya.integrations.platforms import PLATFORMS
+    template_names = set()
+    for config in PLATFORMS.values():
+        template_names.update(config.get("workflows", []))
 
     result = []
     for w in workflows:
         wf_id = str(w.get("id", ""))
-        # Parse platform and type from workflow name (e.g., "Laya - GitHub Ingestion" → "github")
         name = w.get("name", "")
+        if name in template_names:
+            continue
+
         platform = _parse_platform_from_name(name)
         source_type = _parse_source_type_from_name(name)
         result.append({
@@ -444,6 +457,7 @@ async def get_available_workflows() -> dict:
             "source_type": source_type,
             "active": w.get("active", False),
             "registered": wf_id in registered_ids,
+            "connection_id": wf_connection.get(wf_id),
         })
 
     return {"workflows": result}

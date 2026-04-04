@@ -9,6 +9,7 @@
 		platformLabel,
 		isOAuth = false,
 		fields = [],
+		hasExistingConnections = false,
 		onClose,
 		onConnected
 	}: {
@@ -16,14 +17,29 @@
 		platformLabel: string;
 		isOAuth?: boolean;
 		fields?: FieldDef[];
+		hasExistingConnections?: boolean;
 		onClose: () => void;
 		onConnected: () => void;
 	} = $props();
+
+	// Connection name (for additional accounts)
+	let connectionName = $state('');
+	let existingNames = $state<string[]>([]);
+	let nameError = $state<string | null>(null);
 
 	// API-key form state
 	let fieldValues = $state<Record<string, string>>({});
 	let submitting = $state(false);
 	let error = $state<string | null>(null);
+
+	// Load existing names when adding another account
+	$effect(() => {
+		if (hasExistingConnections) {
+			engineApi.getConnectionNames(platform).then(r => {
+				existingNames = r.names;
+			}).catch(() => {});
+		}
+	});
 
 	// OAuth state
 	let oauthPolling = $state(false);
@@ -42,11 +58,21 @@
 	});
 
 	async function handleApiKeySubmit() {
+		if (hasExistingConnections && !connectionName.trim()) {
+			nameError = 'Please provide a name for this account';
+			return;
+		}
+		if (connectionName && existingNames.includes(connectionName.trim())) {
+			nameError = 'This name is already in use';
+			return;
+		}
+		nameError = null;
 		submitting = true;
 		error = null;
 		try {
 			await engineApi.createEgressConnection({
 				platform,
+				name: connectionName.trim() || undefined,
 				credentials: fieldValues
 			});
 			onConnected();
@@ -75,9 +101,18 @@
 	}
 
 	async function handleOAuthConnect() {
+		if (hasExistingConnections && !connectionName.trim()) {
+			nameError = 'Please provide a name for this account';
+			return;
+		}
+		if (connectionName && existingNames.includes(connectionName.trim())) {
+			nameError = 'This name is already in use';
+			return;
+		}
+		nameError = null;
 		oauthError = null;
 		try {
-			const result = await engineApi.startOAuthFlow(platform);
+			const result = await engineApi.startOAuthFlow(platform, connectionName.trim() || undefined);
 			// Open in system browser (works in Tauri and dev).
 			// Tauri's shell plugin opens the default browser; in dev/web
 			// we fall back to window.open.
@@ -87,6 +122,11 @@
 			} catch {
 				window.open(result.auth_url, '_blank', 'width=600,height=700');
 			}
+			// Capture current connection count before polling
+			try {
+				const current = await engineApi.listEgressConnections();
+				initialConnectionCount = current.connections.filter(c => c.platform === platform).length;
+			} catch { initialConnectionCount = 0; }
 			// Start polling for completion
 			oauthPolling = true;
 			pollForOAuthCompletion();
@@ -103,6 +143,7 @@
 
 	let pollInterval: ReturnType<typeof setInterval> | null = null;
 	let pollCount = 0;
+	let initialConnectionCount = 0;
 
 	function pollForOAuthCompletion() {
 		pollCount = 0;
@@ -117,10 +158,9 @@
 			}
 			try {
 				const conns = await engineApi.listEgressConnections();
-				const found = conns.connections.find(
-					(c) => c.platform === platform && c.status === 'connected'
-				);
-				if (found) {
+				const platformConns = conns.connections.filter((c) => c.platform === platform);
+				// Detect a new connection (count increased) rather than matching an existing one
+				if (platformConns.length > initialConnectionCount) {
 					stopPolling();
 					oauthPolling = false;
 					onConnected();
@@ -215,6 +255,27 @@
 			{#if error}
 				<div class="mb-4 rounded-md border border-red-800/50 bg-red-900/20 px-3 py-2 text-xs text-red-300">
 					{error}
+				</div>
+			{/if}
+
+			<!-- Account name input (when adding another account) -->
+			{#if hasExistingConnections}
+				<div class="mb-4">
+					<label for="connection-name" class="mb-1 block text-xs font-medium text-surface-400">Account Name</label>
+					<input
+						id="connection-name"
+						type="text"
+						bind:value={connectionName}
+						placeholder="e.g., Personal, Work"
+						class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+					/>
+					{#if nameError}
+						<p class="mt-1 text-[11px] text-red-400">{nameError}</p>
+					{:else if connectionName && existingNames.includes(connectionName.trim())}
+						<p class="mt-1 text-[11px] text-red-400">This name is already in use</p>
+					{:else}
+						<p class="mt-1 text-[11px] text-surface-500">A label to identify this account</p>
+					{/if}
 				</div>
 			{/if}
 

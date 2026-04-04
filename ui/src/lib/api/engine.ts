@@ -576,6 +576,9 @@ export const engineApi = {
 			body: JSON.stringify(data)
 		}),
 
+	getConnectionNames: (platform: string) =>
+		request<{ names: string[] }>(`/egress/connections/names/${platform}`),
+
 	createEgressConnection: (data: EgressConnectRequest) =>
 		request<EgressConnectResponse>('/egress/connections', {
 			method: 'POST',
@@ -596,8 +599,11 @@ export const engineApi = {
 	detectEmailProvider: (email: string) =>
 		request<EmailProviderDetection>(`/egress/connections/detect?email=${encodeURIComponent(email)}`),
 
-	startOAuthFlow: (platform: string) =>
-		request<OAuthStartResponse>(`/egress/connections/oauth/start?platform=${encodeURIComponent(platform)}`),
+	startOAuthFlow: (platform: string, connectionName?: string) => {
+		const params = new URLSearchParams({ platform });
+		if (connectionName) params.set('connection_name', connectionName);
+		return request<OAuthStartResponse>(`/egress/connections/oauth/start?${params}`);
+	},
 
 	setupOAuthClient: (data: { platform: string; client_id: string; client_secret: string }) =>
 		request<{ status: string; platform: string }>('/egress/connections/oauth/setup', {

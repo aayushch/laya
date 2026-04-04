@@ -204,14 +204,35 @@
 	}
 
 	// Filtered workflows for search
+	// Group workflows by connection_id — show one entry per integration
 	const filteredWorkflows = $derived.by(() => {
 		const q = workflowSearch.toLowerCase().trim();
-		const filtered = q
+		const all = q
 			? workflows.filter(wf =>
 				wf.name.toLowerCase().includes(q) || wf.platform.toLowerCase().includes(q)
 			)
 			: [...workflows];
-		return filtered.sort((a, b) => a.name.localeCompare(b.name));
+
+		// Group by connection_id: merge ingestion+executor into one entry
+		const seenConnections = new Set<string>();
+		const grouped: (typeof workflows[0] & { workflow_ids: string[] })[] = [];
+
+		for (const wf of all) {
+			const connId = wf.connection_id;
+			if (connId) {
+				if (seenConnections.has(connId)) continue;
+				seenConnections.add(connId);
+				// Collect all workflow IDs for this connection
+				const pairIds = all.filter(w => w.connection_id === connId).map(w => w.workflow_id);
+				// Clean display name (remove Ingestion/Executor suffix)
+				const displayName = wf.name.replace(/ \((Ingestion|Executor)\)$/, '');
+				grouped.push({ ...wf, name: displayName, workflow_ids: pairIds });
+			} else {
+				grouped.push({ ...wf, workflow_ids: [wf.workflow_id] });
+			}
+		}
+
+		return grouped.sort((a, b) => a.name.localeCompare(b.name));
 	});
 
 	// Source assignment
@@ -228,10 +249,14 @@
 		workflowSearch = '';
 	}
 
-	function toggleWorkflow(wfId: string) {
+	function toggleWorkflow(allIds: string[]) {
 		const next = new Set(selectedWorkflows);
-		if (next.has(wfId)) next.delete(wfId);
-		else next.add(wfId);
+		const primary = allIds[0];
+		if (next.has(primary)) {
+			for (const id of allIds) next.delete(id);
+		} else {
+			for (const id of allIds) next.add(id);
+		}
 		selectedWorkflows = next;
 	}
 
@@ -677,8 +702,8 @@
 			{@const targetSpace = spaces.find((s) => s.space_id === assigningSpaceId)}
 			<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
 				<div class="mx-4 w-full max-w-lg rounded-xl border border-surface-600 bg-surface-800 p-5 shadow-xl">
-					<h4 class="mb-1 text-base font-semibold text-surface-50">Assign Workflows to {targetSpace?.name}</h4>
-					<p class="mb-4 text-sm text-surface-400">Select n8n ingestion workflows to assign to this space.</p>
+					<h4 class="mb-1 text-base font-semibold text-surface-50">Assign Integrations to {targetSpace?.name}</h4>
+					<p class="mb-4 text-sm text-surface-400">Select integrations to assign to this space.</p>
 
 					<!-- Search -->
 					<div class="relative mb-3">
@@ -688,7 +713,7 @@
 						<input
 							type="text"
 							bind:value={workflowSearch}
-							placeholder="Search workflows..."
+							placeholder="Search integrations..."
 							class="w-full rounded-lg border border-surface-600 bg-surface-700 py-2 pl-9 pr-3 text-sm text-surface-100 placeholder:text-surface-500 focus:border-laya-orange/40 focus:outline-none"
 						/>
 					</div>
@@ -700,12 +725,13 @@
 					{:else}
 						<div class="max-h-72 space-y-1 overflow-y-auto">
 							{#each filteredWorkflows as wf (wf.workflow_id)}
-								{@const isOwnedByTarget = sources.find((s) => s.workflow_id === wf.workflow_id && s.space_id === assigningSpaceId)}
+								{@const isOwnedByTarget = wf.workflow_ids.some((id: string) => sources.find((s) => s.workflow_id === id && s.space_id === assigningSpaceId))}
+								{@const currentSpace = sources.find((s) => wf.workflow_ids.includes(s.workflow_id))}
 								<button
-									onclick={() => toggleWorkflow(wf.workflow_id)}
+									onclick={() => toggleWorkflow(wf.workflow_ids)}
 									disabled={!!isOwnedByTarget}
 									class="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors
-										{selectedWorkflows.has(wf.workflow_id)
+										{selectedWorkflows.has(wf.workflow_ids[0])
 											? 'bg-laya-orange/15 text-laya-orange'
 											: isOwnedByTarget
 												? 'bg-surface-700/30 text-surface-500'
@@ -715,15 +741,12 @@
 										<p class="truncate">{wf.name}</p>
 										<p class="mt-0.5 text-xs text-surface-500">
 											{wf.platform}
-											{#if wf.registered}
-												{@const src = sources.find((s) => s.workflow_id === wf.workflow_id)}
-												{#if src}
-													<span class="text-surface-600">· in {src.space_name || 'Default'}</span>
-												{/if}
+											{#if currentSpace}
+												<span class="text-surface-600">· in {currentSpace.space_name || 'Default'}</span>
 											{/if}
 										</p>
 									</div>
-									{#if selectedWorkflows.has(wf.workflow_id)}
+									{#if selectedWorkflows.has(wf.workflow_ids[0])}
 										<span class="text-laya-orange">✓</span>
 									{:else if isOwnedByTarget}
 										<span class="text-xs text-surface-500">Already here</span>
@@ -745,7 +768,7 @@
 							disabled={selectedWorkflows.size === 0 || saving}
 							class="rounded-md bg-laya-orange px-4 py-2 text-sm font-medium text-white hover:bg-laya-orange/90 disabled:opacity-50 transition-colors"
 						>
-							{saving ? 'Assigning...' : `Assign ${selectedWorkflows.size} workflow${selectedWorkflows.size !== 1 ? 's' : ''}`}
+							{saving ? 'Assigning...' : `Assign ${filteredWorkflows.filter(w => selectedWorkflows.has(w.workflow_id)).length} integration${filteredWorkflows.filter(w => selectedWorkflows.has(w.workflow_id)).length !== 1 ? 's' : ''}`}
 						</button>
 					</div>
 				</div>

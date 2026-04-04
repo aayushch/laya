@@ -375,15 +375,18 @@ async def _update_workflow(
 
 
 async def import_workflows(base_url: str) -> int:
-    """Import or update bundled Laya workflows in n8n via REST API.
+    """Check bundled workflow versions and propagate updates to cloned instances.
 
-    - New workflows are created via POST.
-    - Existing workflows are updated in-place via PUT when the bundled
-      laya_version differs from the version already in n8n, preserving
-      user-configured credentials and space associations.
-    - Workflows at the same version are skipped.
+    Workflows are NOT auto-created as templates in n8n. They are only created
+    as connection-scoped clones when users connect via Settings > Integrations.
 
-    Returns the number of workflows created or updated.
+    On each startup, this function:
+    1. Compares bundled template versions against deployed version records
+    2. If any template has a newer version, propagates updates to all clones
+       of that template, preserving credentials and webhook paths
+    3. Updates the deployed version records
+
+    Returns the number of clones updated.
     """
     api_key = get_api_key("n8n")
     if not api_key:
@@ -394,14 +397,8 @@ async def import_workflows(base_url: str) -> int:
         log.warning("n8n_workflow_import_skipped", reason="no_workflows_dir", path=str(WORKFLOWS_DIR))
         return 0
 
-    existing_workflows = await _get_existing_workflows(base_url, api_key)
-    if existing_workflows is None:
-        # API not ready or key invalid — raise so sync_workflows_background retries
-        raise RuntimeError("n8n workflow list unavailable; will retry")
-
     deployed_versions = _load_deployed_versions()
-    changed = 0
-    headers = {"X-N8N-API-KEY": api_key, "Content-Type": "application/json"}
+    templates_needing_update: list[str] = []
 
     for workflow_file in sorted(WORKFLOWS_DIR.glob("*.json")):
         try:
@@ -409,56 +406,107 @@ async def import_workflows(base_url: str) -> int:
             workflow_name = workflow_data.get("name", workflow_file.stem)
             bundled_version = (workflow_data.get("meta") or {}).get("laya_version")
 
-            existing = existing_workflows.get(workflow_name)
-            if existing:
-                # Workflow already in n8n — check local version record
-                deployed_version = deployed_versions.get(workflow_name)
-                if deployed_version == bundled_version:
-                    log.debug("n8n_workflow_up_to_date", name=workflow_name,
-                              version=bundled_version)
-                    continue
-                # Skip archived workflows — will retry after user unarchives
-                if existing.get("isArchived"):
-                    log.debug("n8n_workflow_skip_archived", name=workflow_name)
-                    continue
-                # Version differs (or not tracked yet) — update in place
-                existing_id = str(existing["id"])
-                log.info("n8n_workflow_updating", name=workflow_name,
-                         old_version=deployed_version, new_version=bundled_version)
-                if await _update_workflow(base_url, api_key, existing_id, workflow_data):
-                    changed += 1
-                    if bundled_version:
-                        deployed_versions[workflow_name] = bundled_version
-                    log.info("n8n_workflow_updated", name=workflow_name,
-                             version=bundled_version)
-                else:
-                    log.warning("n8n_workflow_update_failed", name=workflow_name)
-            else:
-                # Brand new workflow — only send fields n8n accepts
-                create_data = {k: v for k, v in workflow_data.items()
-                               if k in _N8N_PUT_ALLOWED_FIELDS}
-                resp = await get_client().post(
-                    f"{base_url}/api/v1/workflows",
-                    headers=headers,
-                    json=create_data,
-                    timeout=10.0,
-                )
-                if resp.status_code in (200, 201):
-                    changed += 1
-                    if bundled_version:
-                        deployed_versions[workflow_name] = bundled_version
-                    log.info("n8n_workflow_imported", name=workflow_file.stem)
-                else:
-                    log.warning(
-                        "n8n_workflow_import_failed",
-                        name=workflow_file.stem,
-                        status=resp.status_code,
-                    )
+            deployed_version = deployed_versions.get(workflow_name)
+            if deployed_version == bundled_version:
+                log.debug("n8n_template_up_to_date", name=workflow_name,
+                          version=bundled_version)
+                continue
+
+            log.info("n8n_template_version_changed", name=workflow_name,
+                     old_version=deployed_version, new_version=bundled_version)
+            templates_needing_update.append(workflow_name)
+
+            # Update the deployed version record
+            if bundled_version:
+                deployed_versions[workflow_name] = bundled_version
         except Exception as e:
-            log.warning("n8n_workflow_import_error", name=workflow_file.stem, error=str(e))
+            log.warning("n8n_workflow_version_check_error", name=workflow_file.stem, error=str(e))
+
+    # Propagate template updates to any cloned workflow instances
+    changed = 0
+    if templates_needing_update:
+        try:
+            changed = await _propagate_to_clones(base_url, api_key)
+            if changed:
+                log.info("n8n_clones_updated", count=changed)
+        except Exception as e:
+            log.warning("n8n_clone_propagation_failed", error=str(e))
 
     _save_deployed_versions(deployed_versions)
     return changed
+
+
+async def _propagate_to_clones(base_url: str, api_key: str) -> int:
+    """Propagate template workflow updates to all cloned instances.
+
+    Clones are identified by having a connection_id in the sources table.
+    For each clone, we find its template (by matching platform + source_type
+    to a template workflow name), then apply the template's structural changes
+    while preserving the clone's credentials, webhook paths, and name.
+    """
+    from laya.db.sqlite import get_db
+    from laya.integrations.platforms import PLATFORMS
+
+    db = await get_db()
+    clone_rows = await db.execute_fetchall(
+        """SELECT source_id, name, platform, workflow_id, source_type, webhook_path, connection_id
+           FROM sources WHERE connection_id IS NOT NULL AND workflow_id IS NOT NULL""",
+    )
+    if not clone_rows:
+        return 0
+
+    # Build template name → workflow data map from bundled JSON
+    template_data_map: dict[str, dict] = {}
+    if WORKFLOWS_DIR.exists():
+        for wf_file in WORKFLOWS_DIR.glob("*.json"):
+            try:
+                data = json.loads(wf_file.read_text())
+                template_data_map[data.get("name", "")] = data
+            except Exception:
+                continue
+
+    # Build platform+source_type → template name mapping
+    type_to_template: dict[tuple[str, str], str] = {}
+    for platform_key, config in PLATFORMS.items():
+        for wf_name in config.get("workflows", []):
+            source_type = "executor" if "executor" in wf_name.lower() else "ingestion"
+            type_to_template[(platform_key, source_type)] = wf_name
+
+    updated = 0
+    for row in clone_rows:
+        platform = row["platform"]
+        source_type = row["source_type"]
+        wf_id = row["workflow_id"]
+        clone_name = row["name"]
+
+        template_name = type_to_template.get((platform, source_type))
+        if not template_name or template_name not in template_data_map:
+            continue
+
+        template = template_data_map[template_name]
+
+        # Build update data from template but preserve clone's name
+        import copy
+        update_data = copy.deepcopy(template)
+        update_data["name"] = clone_name
+
+        # Preserve clone's webhook paths in the update data
+        clone_webhook_path = row.get("webhook_path")
+        if clone_webhook_path:
+            for node in update_data.get("nodes", []):
+                if (node.get("type") == "n8n-nodes-base.webhook"
+                        and node.get("parameters", {}).get("httpMethod")):
+                    node["parameters"]["path"] = clone_webhook_path
+                    break
+
+        # _update_workflow handles credential merging automatically
+        if await _update_workflow(base_url, api_key, wf_id, update_data):
+            updated += 1
+            log.info("n8n_clone_updated", name=clone_name, workflow_id=wf_id)
+        else:
+            log.warning("n8n_clone_update_failed", name=clone_name, workflow_id=wf_id)
+
+    return updated
 
 
 async def sync_workflows_background() -> None:
@@ -480,12 +528,64 @@ async def sync_workflows_background() -> None:
                     log.info("n8n_background_workflows_synced", count=imported)
                 else:
                     log.debug("n8n_background_workflows_up_to_date")
+                # Migrate pre-existing connections to clone model
+                await _backfill_connection_workflows()
                 return
         except Exception as e:
             log.debug("n8n_background_sync_retry", error=str(e))
         await asyncio.sleep(15.0)
 
     log.warning("n8n_background_workflow_sync_timeout")
+
+
+async def _backfill_connection_workflows() -> None:
+    """One-time migration: create cloned workflows for existing connections.
+
+    Existing connections created before multi-connection support used shared
+    template workflows. This function creates connection-scoped clones for
+    any connection that doesn't yet have source rows with its connection_id.
+    """
+    try:
+        from laya.db.sqlite import get_db
+        from laya.egress.connections import _clone_workflows_for_connection
+
+        db = await get_db()
+        # Find connections that have no sources linked to them
+        rows = await db.execute_fetchall(
+            """SELECT ec.connection_id, ec.platform, ec.name, ec.n8n_credential_id
+               FROM egress_connections ec
+               WHERE ec.n8n_credential_id IS NOT NULL
+                 AND ec.connection_id NOT IN (
+                     SELECT DISTINCT connection_id FROM sources
+                     WHERE connection_id IS NOT NULL
+                 )""",
+        )
+        if not rows:
+            return
+
+        for row in rows:
+            conn_id = row["connection_id"]
+            platform = row["platform"]
+            name = row["name"]
+            cred_id = row["n8n_credential_id"]
+
+            log.info("backfilling_connection_workflows",
+                     connection_id=conn_id, platform=platform)
+            try:
+                activated, errors = await _clone_workflows_for_connection(
+                    platform, conn_id, name, cred_id
+                )
+                if errors:
+                    log.warning("backfill_partial",
+                                connection_id=conn_id, errors=errors)
+                else:
+                    log.info("backfill_complete",
+                             connection_id=conn_id, activated=activated)
+            except Exception as e:
+                log.warning("backfill_failed",
+                            connection_id=conn_id, error=str(e))
+    except Exception as e:
+        log.warning("backfill_connection_workflows_failed", error=str(e))
 
 
 async def ensure_n8n_ready() -> dict:
