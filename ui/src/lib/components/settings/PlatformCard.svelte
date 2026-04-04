@@ -24,6 +24,8 @@
 	let testing = $state(false);
 	let testResult = $state<{ valid: boolean; error?: string } | null>(null);
 	let disconnecting = $state(false);
+	let showDisconnectConfirm = $state(false);
+	let showFullError = $state(false);
 
 	const isConnected = $derived(connection?.status === 'connected');
 	const isError = $derived(connection?.status === 'error' || connection?.status === 'expired');
@@ -46,8 +48,14 @@
 		}
 	}
 
-	async function handleDisconnect() {
-		if (!connection || !confirm(`Disconnect ${label}? This will remove the stored credentials.`)) return;
+	function handleDisconnect() {
+		if (!connection) return;
+		showDisconnectConfirm = true;
+	}
+
+	async function confirmDisconnect() {
+		if (!connection) return;
+		showDisconnectConfirm = false;
 		disconnecting = true;
 		try {
 			await engineApi.deleteEgressConnection(connection.connection_id);
@@ -95,7 +103,12 @@
 					{/if}
 				</div>
 			{:else if isError}
-				<div class="text-xs text-red-400/80 truncate" title={connection?.error_message ?? ''}>
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div
+					class="text-xs text-red-400/80 {showFullError ? 'whitespace-pre-wrap select-text' : 'truncate'} cursor-pointer"
+					onclick={(e) => { e.stopPropagation(); showFullError = !showFullError; }}
+				>
 					{connection?.error_message || 'Connection error'}
 				</div>
 			{:else}
@@ -137,6 +150,34 @@
 			>
 				{disconnecting ? '...' : 'Disconnect'}
 			</button>
+		</div>
+	{/if}
+
+	<!-- Disconnect confirmation popover -->
+	{#if showDisconnectConfirm}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-surface-900/95 backdrop-blur-sm"
+			onkeydown={(e) => { if (e.key === 'Escape') showDisconnectConfirm = false; }}
+		>
+			<div class="px-4 py-3 text-center">
+				<p class="text-xs font-medium text-surface-200 mb-1">Disconnect {label}?</p>
+				<p class="text-[11px] text-surface-400 mb-3">This will remove all stored credentials and revoke access.</p>
+				<div class="flex items-center justify-center gap-2">
+					<button
+						onclick={() => showDisconnectConfirm = false}
+						class="rounded px-3 py-1 text-xs text-surface-300 bg-surface-700 hover:bg-surface-600 transition-colors"
+					>
+						Cancel
+					</button>
+					<button
+						onclick={confirmDisconnect}
+						class="rounded px-3 py-1 text-xs text-white bg-red-600 hover:bg-red-500 transition-colors"
+					>
+						Disconnect
+					</button>
+				</div>
+			</div>
 		</div>
 	{/if}
 </div>

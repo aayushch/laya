@@ -62,13 +62,35 @@ async def create_connection(
 
     # Step 3: Provision to n8n (skip for SMTP — handled by SMTP backend directly)
     n8n_credential_id = None
+    provision_error = None
     if platform != "smtp":
         n8n_credential_id = await _provision_to_n8n(platform, display_name, credentials)
         if n8n_credential_id is None:
+            provision_error = f"Failed to create n8n credential for {platform}"
             log.warning("n8n_provision_failed", platform=platform, name=display_name)
-            # Non-fatal: credentials are in keychain, n8n can be retried
 
-    # Step 4: Record in SQLite
+    # Step 4: Auto-activate matching n8n workflows
+    workflow_errors: list[str] = []
+    if n8n_credential_id:
+        try:
+            activated, workflow_errors = await _activate_platform_workflows(
+                platform, n8n_credential_id
+            )
+            log.info("workflows_auto_activated", platform=platform, count=activated)
+        except Exception as e:
+            workflow_errors = [str(e)]
+            log.warning("workflow_auto_activation_failed", platform=platform, error=str(e))
+
+    # Determine final status
+    all_errors = []
+    if provision_error:
+        all_errors.append(provision_error)
+    all_errors.extend(workflow_errors)
+
+    status = "error" if all_errors else "connected"
+    error_message = "; ".join(all_errors) if all_errors else None
+
+    # Step 5: Record in SQLite
     capabilities = [c.action_type for c in get_capabilities(platform)]
     now = datetime.now(timezone.utc).isoformat()
 
@@ -76,16 +98,17 @@ async def create_connection(
     await db.execute(
         """INSERT INTO egress_connections
            (connection_id, platform, name, n8n_credential_id, space_id,
-            status, capabilities, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            status, capabilities, error_message, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             connection_id,
             platform,
             display_name,
             n8n_credential_id,
             space_id,
-            "connected",
+            status,
             json.dumps(capabilities),
+            error_message,
             now,
             now,
         ),
@@ -97,12 +120,14 @@ async def create_connection(
         connection_id=connection_id,
         platform=platform,
         n8n_credential_id=n8n_credential_id,
+        status=status,
     )
 
     return ConnectionResult(
-        status="connected",
+        status=status,
         connection_id=connection_id,
         capabilities=capabilities,
+        error=error_message,
     )
 
 
@@ -133,7 +158,10 @@ async def remove_connection(connection_id: str) -> None:
     # Remove from keychain
     _remove_from_keychain(connection_id, platform)
 
-    # Remove from n8n
+    # Deactivate n8n workflows for this platform
+    await _deactivate_platform_workflows(platform)
+
+    # Remove n8n credential
     if n8n_cred_id:
         try:
             from laya.integrations.n8n_client import delete_credential
@@ -293,14 +321,19 @@ async def _validate_credentials(platform: str, credentials: dict) -> tuple[bool,
 
 async def _validate_jira(creds: dict) -> tuple[bool, str | None]:
     """Validate Jira credentials by calling GET /rest/api/3/myself."""
-    domain = creds.get("domain", "").rstrip("/")
-    email = creds.get("email", "")
+    domain = creds.get("domain", "").strip().rstrip("/")
+    email = creds.get("email", "").strip()
     token = creds.get("apiToken", "")
 
     if not all([domain, email, token]):
         return False, "Missing required fields: domain, email, apiToken"
 
-    url = f"https://{domain}/rest/api/3/myself"
+    domain = domain.rstrip("/")
+
+    if not domain.startswith(("http://", "https://")):
+        return False, "Domain must start with https:// (e.g. https://your-company.atlassian.net)"
+
+    url = f"{domain}/rest/api/3/myself"
     async with httpx.AsyncClient() as client:
         resp = await client.get(url, auth=(email, token), timeout=10.0)
 
@@ -337,15 +370,15 @@ async def _validate_github(creds: dict) -> tuple[bool, str | None]:
 
 async def _validate_bitbucket(creds: dict) -> tuple[bool, str | None]:
     """Validate Bitbucket app password by calling GET /2.0/user."""
-    username = creds.get("username", "")
-    password = creds.get("appPassword", "")
-    if not all([username, password]):
-        return False, "Missing username or appPassword"
+    email = creds.get("email", "")
+    token = creds.get("accessToken", "")
+    if not all([email, token]):
+        return False, "Missing email or app password"
 
     async with httpx.AsyncClient() as client:
         resp = await client.get(
             "https://api.bitbucket.org/2.0/user",
-            auth=(username, password),
+            auth=(email, token),
             timeout=10.0,
         )
 
@@ -526,13 +559,138 @@ async def _provision_to_n8n(
     try:
         from laya.integrations.n8n_client import create_credential
 
+        # Merge any n8n-specific defaults (e.g. server URL)
+        cred_data = {**platform_config.get("n8n_defaults", {}), **credentials}
+
         result = await create_credential(
             name=name,
             n8n_type=platform_config["n8n_type"],
-            data=credentials,
+            data=cred_data,
             node_type=platform_config["n8n_node"],
         )
         return str(result.get("id", ""))
     except Exception as e:
         log.error("n8n_provision_failed", platform=platform, error=str(e))
         return None
+
+
+async def _activate_platform_workflows(
+    platform: str, n8n_credential_id: str
+) -> tuple[int, list[str]]:
+    """Find and activate n8n workflows for this platform after connection creation.
+
+    Uses the `workflows` list from PLATFORMS config to know exactly which
+    n8n workflows belong to each platform — no string matching needed.
+
+    Steps:
+    1. Look up workflow names from PLATFORMS[platform]["workflows"]
+    2. List n8n workflows and match by name
+    3. Assign the new credential to their nodes
+    4. Check readiness and activate
+
+    Returns (activated_count, error_messages).
+    """
+    from laya.integrations.n8n_client import (
+        activate_workflow,
+        check_workflow_readiness,
+        get_workflow,
+        list_workflows,
+        update_workflow,
+    )
+
+    platform_config = PLATFORMS.get(platform, {})
+    target_names = set(platform_config.get("workflows", []))
+    if not target_names:
+        return 0, []
+
+    n8n_type = platform_config.get("n8n_type", "")
+    workflows = await list_workflows()
+    activated = 0
+    errors: list[str] = []
+
+    for wf in workflows:
+        wf_name = wf.get("name", "")
+        wf_id = str(wf.get("id", ""))
+        if wf_name not in target_names or not wf_id:
+            continue
+        if wf.get("active"):
+            log.debug("workflow_already_active", name=wf_name, id=wf_id)
+            activated += 1
+            continue
+
+        # Fetch full workflow to update credential references on nodes
+        full_wf = await get_workflow(wf_id)
+        if not full_wf:
+            continue
+
+        # Assign the new credential to any node that expects this platform's credential type
+        n8n_node = platform_config.get("n8n_node", "")
+        nodes_updated = False
+        for node in full_wf.get("nodes", []):
+            node_creds = node.get("credentials", {})
+            params = node.get("parameters", {})
+            # Match: (1) nodes that already reference this cred type,
+            #        (2) native platform nodes, or
+            #        (3) httpRequest nodes using predefinedCredentialType for this platform
+            is_match = (
+                n8n_type in node_creds
+                or node.get("type") == n8n_node
+                or params.get("nodeCredentialType") == n8n_type
+            )
+            if is_match:
+                if "credentials" not in node:
+                    node["credentials"] = {}
+                node["credentials"][n8n_type] = {"id": n8n_credential_id, "name": ""}
+                nodes_updated = True
+
+        if nodes_updated:
+            await update_workflow(wf_id, {
+                "name": full_wf["name"],
+                "nodes": full_wf["nodes"],
+                "connections": full_wf.get("connections", {}),
+                "settings": full_wf.get("settings", {}),
+            })
+
+        # Check readiness and activate
+        readiness = await check_workflow_readiness(wf_id)
+        if readiness.get("ready"):
+            await activate_workflow(wf_id, active=True)
+            activated += 1
+            log.info("workflow_activated", name=wf_name, id=wf_id)
+        else:
+            issues = readiness.get("issues", [])
+            errors.append(f"Workflow \"{wf_name}\" not ready: {'; '.join(issues)}")
+            log.warning(
+                "workflow_not_ready",
+                name=wf_name,
+                id=wf_id,
+                issues=issues,
+            )
+
+    return activated, errors
+
+
+async def _deactivate_platform_workflows(platform: str) -> None:
+    """Deactivate all n8n workflows associated with a platform."""
+    from laya.integrations.n8n_client import activate_workflow, list_workflows
+
+    platform_config = PLATFORMS.get(platform, {})
+    target_names = set(platform_config.get("workflows", []))
+    if not target_names:
+        return
+
+    workflows = await list_workflows()
+
+    for wf in workflows:
+        wf_name = wf.get("name", "")
+        wf_id = str(wf.get("id", ""))
+        if wf_name not in target_names or not wf_id:
+            continue
+        if not wf.get("active"):
+            continue
+
+        try:
+            await activate_workflow(wf_id, active=False)
+            log.info("workflow_deactivated", name=wf_name, id=wf_id)
+        except Exception as e:
+            log.warning("workflow_deactivate_failed", name=wf_name, error=str(e))

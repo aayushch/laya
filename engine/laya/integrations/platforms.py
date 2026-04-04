@@ -11,7 +11,14 @@ PLATFORMS: dict[str, dict] = {
         "n8n_type": "githubApi",
         "n8n_node": "n8n-nodes-base.github",
         "oauth": False,
+        "workflows": ["Laya - GitHub Ingestion", "Laya - GitHub Executor"],
         "fields": [
+            {
+                "key": "user",
+                "label": "GitHub Username",
+                "type": "text",
+                "placeholder": "your-username",
+            },
             {
                 "key": "accessToken",
                 "label": "Personal Access Token",
@@ -20,6 +27,7 @@ PLATFORMS: dict[str, dict] = {
                 "help": "Generate at github.com/settings/tokens (classic or fine-grained)",
             },
         ],
+        "n8n_defaults": {"server": "https://api.github.com"},
     },
     "gitlab": {
         "label": "GitLab",
@@ -28,6 +36,7 @@ PLATFORMS: dict[str, dict] = {
         "n8n_type": "gitlabApi",
         "n8n_node": "n8n-nodes-base.gitlab",
         "oauth": False,
+        "workflows": [],
         "fields": [
             {
                 "key": "accessToken",
@@ -36,13 +45,14 @@ PLATFORMS: dict[str, dict] = {
                 "help": "Generate at gitlab.com/-/user_settings/personal_access_tokens",
             },
             {
-                "key": "baseUrl",
+                "key": "server",
                 "label": "GitLab URL",
                 "type": "text",
                 "placeholder": "https://gitlab.com",
                 "help": "Your GitLab instance URL (default: gitlab.com)",
             },
         ],
+        "n8n_defaults": {"server": "https://gitlab.com"},
     },
     "bitbucket": {
         "label": "Bitbucket",
@@ -51,10 +61,11 @@ PLATFORMS: dict[str, dict] = {
         "n8n_type": "bitbucketAccessTokenApi",
         "n8n_node": "n8n-nodes-base.bitbucket",
         "oauth": False,
+        "workflows": ["Laya - Bitbucket Ingestion", "Laya - Bitbucket Executor"],
         "fields": [
-            {"key": "username", "label": "Username", "type": "text"},
+            {"key": "email", "label": "Atlassian Email", "type": "text", "placeholder": "you@company.com"},
             {
-                "key": "appPassword",
+                "key": "accessToken",
                 "label": "App Password",
                 "type": "password",
                 "help": "Generate at bitbucket.org/account/settings/app-passwords",
@@ -68,6 +79,7 @@ PLATFORMS: dict[str, dict] = {
         "n8n_type": "linearApi",
         "n8n_node": "n8n-nodes-base.linear",
         "oauth": False,
+        "workflows": ["Laya - Linear Ingestion", "Laya - Linear Executor"],
         "fields": [
             {
                 "key": "apiKey",
@@ -85,6 +97,7 @@ PLATFORMS: dict[str, dict] = {
         "n8n_type": "jiraSoftwareCloudApi",
         "n8n_node": "n8n-nodes-base.jira",
         "oauth": False,
+        "workflows": ["Laya - Jira Ingestion", "Laya - Jira Executor"],
         "fields": [
             {"key": "email", "label": "Atlassian Email", "type": "text", "placeholder": "you@company.com"},
             {
@@ -93,7 +106,7 @@ PLATFORMS: dict[str, dict] = {
                 "type": "password",
                 "help": "Generate at id.atlassian.com/manage-profile/security/api-tokens",
             },
-            {"key": "domain", "label": "Jira Domain", "type": "text", "placeholder": "your-company.atlassian.net"},
+            {"key": "domain", "label": "Jira Domain", "type": "text", "placeholder": "https://your-company.atlassian.net"},
         ],
     },
     "notion": {
@@ -103,6 +116,7 @@ PLATFORMS: dict[str, dict] = {
         "n8n_type": "notionApi",
         "n8n_node": "n8n-nodes-base.notion",
         "oauth": False,
+        "workflows": [],
         "fields": [
             {
                 "key": "apiKey",
@@ -121,6 +135,7 @@ PLATFORMS: dict[str, dict] = {
         "n8n_type": "slackApi",
         "n8n_node": "n8n-nodes-base.slack",
         "oauth": False,
+        "workflows": ["Laya - Slack Ingestion", "Laya - Slack Executor"],
         "fields": [
             {
                 "key": "accessToken",
@@ -138,6 +153,7 @@ PLATFORMS: dict[str, dict] = {
         "n8n_type": "discordApi",
         "n8n_node": "n8n-nodes-base.discord",
         "oauth": False,
+        "workflows": [],
         "fields": [
             {
                 "key": "botToken",
@@ -152,9 +168,10 @@ PLATFORMS: dict[str, dict] = {
         "label": "Gmail",
         "category": "google",
         "icon": "gmail",
-        "n8n_type": "gmailOAuth2Api",
+        "n8n_type": "gmailOAuth2",
         "n8n_node": "n8n-nodes-base.gmail",
         "oauth": True,
+        "workflows": ["Laya - Gmail Ingestion", "Laya - Gmail Executor"],
         "fields": [],
     },
     "calendar": {
@@ -164,6 +181,7 @@ PLATFORMS: dict[str, dict] = {
         "n8n_type": "googleCalendarOAuth2Api",
         "n8n_node": "n8n-nodes-base.googleCalendar",
         "oauth": True,
+        "workflows": ["Laya - Google Calendar Ingestion", "Laya - Google Calendar Executor"],
         "fields": [],
     },
     # --- Microsoft (OAuth) ---
@@ -174,6 +192,9 @@ PLATFORMS: dict[str, dict] = {
         "n8n_type": "microsoftOutlookOAuth2Api",
         "n8n_node": "n8n-nodes-base.microsoftOutlook",
         "oauth": True,
+        "workflows": [
+            "Laya - Outlook Email Ingestion", "Laya - Outlook Email Executor",
+        ],
         "fields": [],
     },
     "outlook_calendar": {
@@ -183,6 +204,7 @@ PLATFORMS: dict[str, dict] = {
         "n8n_type": "microsoftOutlookOAuth2Api",
         "n8n_node": "n8n-nodes-base.microsoftOutlook",
         "oauth": True,
+        "workflows": ["Laya - Outlook Calendar Ingestion", "Laya - Outlook Calendar Executor"],
         "fields": [],
     },
 }

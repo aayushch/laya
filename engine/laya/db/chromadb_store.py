@@ -19,11 +19,52 @@ COLLECTION_NAME = "laya_memory"
 _client: chromadb.ClientAPI | None = None
 _collection: Collection | None = None
 _embedding_model: Any = None  # Lazy-loaded SentenceTransformer (or None if unavailable)
-_embedding_backend: str = "unknown"  # "nomic" or "chromadb_default"
+_embedding_backend: str = "unknown"  # "nomic", "mpnet", "minilm", or "chromadb_default"
 
-# Task prefixes for nomic-embed-text (improves retrieval quality)
-_DOC_PREFIX = "search_document: "
-_QUERY_PREFIX = "search_query: "
+# Supported embedding models for benchmarking.
+# Changing model requires a fresh ChromaDB collection (delete ~/.laya/data/chromadb/).
+EMBEDDING_MODELS = {
+    "nomic": {
+        "name": "nomic-ai/nomic-embed-text-v1.5",
+        "dimensions": 768,
+        "trust_remote_code": True,
+        # Nomic uses asymmetric task prefixes for retrieval
+        "doc_prefix": "search_document: ",
+        "query_prefix": "search_query: ",
+    },
+    "mpnet": {
+        "name": "sentence-transformers/all-mpnet-base-v2",
+        "dimensions": 768,
+        "trust_remote_code": False,
+        # STS models don't use task prefixes — symmetric similarity
+        "doc_prefix": "",
+        "query_prefix": "",
+    },
+    "minilm": {
+        "name": "sentence-transformers/all-MiniLM-L6-v2",
+        "dimensions": 384,
+        "trust_remote_code": False,
+        "doc_prefix": "",
+        "query_prefix": "",
+    },
+}
+
+# Active model config — set by _choose_embedding_function()
+_active_model_config: dict | None = None
+
+
+def _get_configured_model_key() -> str:
+    """Read embedding model selection from settings.json, default to 'nomic'."""
+    try:
+        from laya.config import load_settings
+        settings = load_settings()
+        key = settings.get("embedding_model", "nomic")
+        if key in EMBEDDING_MODELS:
+            return key
+        log.warning("unknown_embedding_model", model=key, fallback="nomic")
+    except Exception:
+        pass
+    return "nomic"
 
 
 def _has_sentence_transformers() -> bool:
@@ -36,22 +77,26 @@ def _has_sentence_transformers() -> bool:
 
 
 class LayaDocumentEmbeddingFunction(EmbeddingFunction[Documents]):
-    """Embedding function for indexing documents (uses document prefix)."""
+    """Embedding function for indexing documents."""
 
     def __call__(self, input: Documents) -> Embeddings:
         model = _get_embedding_model()
-        prefixed = [f"{_DOC_PREFIX}{doc}" for doc in input]
-        embeddings = model.encode(prefixed).tolist()
+        prefix = _active_model_config["doc_prefix"] if _active_model_config else ""
+        if prefix:
+            input = [f"{prefix}{doc}" for doc in input]
+        embeddings = model.encode(input).tolist()
         return embeddings
 
 
 class LayaQueryEmbeddingFunction(EmbeddingFunction[Documents]):
-    """Embedding function for search queries (uses query prefix)."""
+    """Embedding function for search queries."""
 
     def __call__(self, input: Documents) -> Embeddings:
         model = _get_embedding_model()
-        prefixed = [f"{_QUERY_PREFIX}{doc}" for doc in input]
-        embeddings = model.encode(prefixed).tolist()
+        prefix = _active_model_config["query_prefix"] if _active_model_config else ""
+        if prefix:
+            input = [f"{prefix}{doc}" for doc in input]
+        embeddings = model.encode(input).tolist()
         return embeddings
 
 
@@ -61,42 +106,53 @@ def _get_embedding_model() -> Any:
     if _embedding_model is None:
         from sentence_transformers import SentenceTransformer
 
-        _embedding_model = SentenceTransformer("nomic-ai/nomic-embed-text-v1.5", trust_remote_code=True)
-        log.info("embedding_model_loaded", model="nomic-embed-text-v1.5")
+        config = _active_model_config or EMBEDDING_MODELS["nomic"]
+        kwargs: dict[str, Any] = {}
+        if config.get("trust_remote_code"):
+            kwargs["trust_remote_code"] = True
+        _embedding_model = SentenceTransformer(config["name"], **kwargs)
+        log.info("embedding_model_loaded", model=config["name"])
     return _embedding_model
 
 
 def _choose_embedding_function() -> EmbeddingFunction[Documents] | None:
     """Select the best available embedding function.
 
-    Returns a Laya custom function (nomic via sentence-transformers) if available,
-    otherwise None to let ChromaDB use its built-in default (all-MiniLM-L6-v2 via onnxruntime).
+    Reads model choice from settings.json ("embedding_model": "nomic"|"mpnet"|"minilm").
+    Falls back to ChromaDB built-in default if sentence-transformers is unavailable.
     """
-    global _embedding_backend
+    global _embedding_backend, _active_model_config
 
     if _has_sentence_transformers():
-        _embedding_backend = "nomic"
-        log.info("embedding_backend_selected", backend="nomic", model="nomic-embed-text-v1.5")
+        model_key = _get_configured_model_key()
+        _active_model_config = EMBEDDING_MODELS[model_key]
+        _embedding_backend = model_key
+        log.info(
+            "embedding_backend_selected",
+            backend=model_key,
+            model=_active_model_config["name"],
+            dimensions=_active_model_config["dimensions"],
+        )
         return LayaDocumentEmbeddingFunction()
     else:
         _embedding_backend = "chromadb_default"
+        _active_model_config = None
         log.info(
             "embedding_backend_selected",
             backend="chromadb_default",
             model="all-MiniLM-L6-v2",
             reason="sentence-transformers not available, using ChromaDB built-in",
         )
-        # Return None → ChromaDB uses its built-in DefaultEmbeddingFunction
         return None
 
 
 def get_embedding_info() -> dict[str, str]:
     """Return info about the active embedding backend (for health/status endpoints)."""
-    if _embedding_backend == "nomic":
+    if _active_model_config:
         return {
-            "backend": "nomic",
-            "model": "nomic-embed-text-v1.5",
-            "dimensions": "768",
+            "backend": _embedding_backend,
+            "model": _active_model_config["name"],
+            "dimensions": str(_active_model_config["dimensions"]),
             "status": "active",
         }
     elif _embedding_backend == "chromadb_default":
@@ -256,8 +312,8 @@ async def memory_search(
     if where:
         kwargs["where"] = where
 
-    if _embedding_backend == "nomic":
-        # Use query-prefixed embeddings for better retrieval quality
+    if _active_model_config is not None:
+        # Use our model (with appropriate prefix handling) for query embedding
         query_fn = LayaQueryEmbeddingFunction()
         query_embeddings = query_fn([query])
         kwargs["query_embeddings"] = query_embeddings
