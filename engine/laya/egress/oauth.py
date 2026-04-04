@@ -6,6 +6,7 @@ Flow: Laya Settings → auth URL → provider consent → callback → token exc
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import secrets
@@ -44,7 +45,7 @@ OAUTH_PROVIDERS: dict[str, dict] = {
             "https://www.googleapis.com/auth/gmail.send",
             "https://www.googleapis.com/auth/gmail.readonly",
         ],
-        "n8n_type": "gmailOAuth2Api",
+        "n8n_type": "gmailOAuth2",
     },
     "calendar": {
         "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
@@ -125,6 +126,14 @@ def store_oauth_client(platform: str, client_id: str, client_secret: str) -> boo
         return False
 
 
+def _generate_pkce() -> tuple[str, str]:
+    """Generate PKCE code_verifier and S256 code_challenge (RFC 7636)."""
+    code_verifier = secrets.token_urlsafe(96)[:128]
+    digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
+    code_challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    return code_verifier, code_challenge
+
+
 # ---------------------------------------------------------------------------
 # OAuth flow
 # ---------------------------------------------------------------------------
@@ -153,9 +162,14 @@ def build_auth_url(platform: str, redirect_uri: str) -> dict:
 
     client_id, _ = client
 
-    # Generate CSRF state token
+    # Generate CSRF state token + PKCE
     state = secrets.token_urlsafe(32)
-    _oauth_states[state] = {"platform": platform, "timestamp": time.time()}
+    code_verifier, code_challenge = _generate_pkce()
+    _oauth_states[state] = {
+        "platform": platform,
+        "timestamp": time.time(),
+        "code_verifier": code_verifier,
+    }
     _cleanup_expired_states()
 
     params = {
@@ -166,6 +180,8 @@ def build_auth_url(platform: str, redirect_uri: str) -> dict:
         "state": state,
         "access_type": "offline",  # Google: request refresh token
         "prompt": "consent",       # Google: always show consent to get refresh token
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
     }
 
     auth_url = f"{provider['auth_url']}?{urlencode(params)}"
@@ -191,6 +207,7 @@ async def handle_callback(
         return {"error": "State token expired. Please try again."}
 
     platform = state_data["platform"]
+    code_verifier = state_data.get("code_verifier")
     provider = OAUTH_PROVIDERS.get(platform)
     if not provider:
         return {"error": f"Unknown OAuth platform: {platform}"}
@@ -203,16 +220,20 @@ async def handle_callback(
 
     # Exchange code for tokens
     try:
+        token_request_data = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "redirect_uri": redirect_uri,
+        }
+        if code_verifier:
+            token_request_data["code_verifier"] = code_verifier
+
         async with httpx.AsyncClient() as http:
             resp = await http.post(
                 provider["token_url"],
-                data={
-                    "grant_type": "authorization_code",
-                    "code": code,
-                    "client_id": client_id,
-                    "client_secret": client_secret,
-                    "redirect_uri": redirect_uri,
-                },
+                data=token_request_data,
                 timeout=15.0,
             )
 
@@ -246,13 +267,23 @@ async def handle_callback(
     _store_in_keychain(connection_id, platform, token_store)
 
     # Provision to n8n as OAuth credential
+    all_errors: list[str] = []
     n8n_cred_id = await _provision_oauth_to_n8n(
         platform, provider["n8n_type"], client_id, client_secret, token_data
     )
+    if not n8n_cred_id:
+        all_errors.append(f"Failed to create n8n credential for {platform}")
 
     # Assign credential to n8n workflows and activate them
     if n8n_cred_id:
-        await _setup_n8n_workflows(platform, provider["n8n_type"], n8n_cred_id)
+        workflow_errors = await _setup_n8n_workflows(
+            platform, provider["n8n_type"], n8n_cred_id
+        )
+        all_errors.extend(workflow_errors)
+
+    # Determine final status
+    status = "error" if all_errors else "connected"
+    error_message = "; ".join(all_errors) if all_errors else None
 
     # Record in DB
     capabilities = [c.action_type for c in get_capabilities(platform)]
@@ -264,22 +295,24 @@ async def handle_callback(
     await db.execute(
         """INSERT INTO egress_connections
            (connection_id, platform, name, n8n_credential_id, space_id,
-            status, capabilities, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            status, capabilities, error_message, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             connection_id, platform, display_name, n8n_cred_id, None,
-            "connected", json.dumps(capabilities), now, now,
+            status, json.dumps(capabilities), error_message, now, now,
         ),
     )
     await db.commit()
 
-    log.info("oauth_connection_created", platform=platform, connection_id=connection_id)
+    log.info("oauth_connection_created", platform=platform,
+             connection_id=connection_id, status=status)
 
     return {
-        "status": "connected",
+        "status": status,
         "connection_id": connection_id,
         "platform": platform,
         "capabilities": capabilities,
+        "error_message": error_message,
     }
 
 
@@ -402,10 +435,14 @@ async def _provision_oauth_to_n8n(
         }
 
         # n8n expects OAuth credentials with specific structure
+        # Base oAuth2Api schema requires serverUrl + additionalBody fields
         cred_data: dict = {
             "clientId": client_id,
             "clientSecret": client_secret,
             "oauthTokenData": oauth_token_data,
+            "serverUrl": "",
+            "sendAdditionalBodyProperties": False,
+            "additionalBodyProperties": "",
         }
 
         # Microsoft Outlook/Calendar credentials require additional fields
@@ -414,13 +451,11 @@ async def _provision_oauth_to_n8n(
             cred_data.update({
                 "serverUrl": "https://graph.microsoft.com",
                 "userPrincipalName": user_email,
-                "sendAdditionalBodyProperties": False,
-                "additionalBodyProperties": "",
             })
 
         # Determine n8n node type
         node_type_map = {
-            "gmailOAuth2Api": "n8n-nodes-base.gmail",
+            "gmailOAuth2": "n8n-nodes-base.gmail",
             "googleCalendarOAuth2Api": "n8n-nodes-base.googleCalendar",
             "microsoftOutlookOAuth2Api": "n8n-nodes-base.microsoftOutlook",
         }
@@ -484,7 +519,7 @@ _NODE_PARAM_TEMPLATES: dict[str, dict] = {
         "toRecipients": '={{ $json.body.payload.to || $json.body.event_actor_email }}',
         "subject": '={{ $json.body.payload.subject || (($json.body.event_subject || "").toLowerCase().startsWith("re:") ? $json.body.event_subject : "Re: " + ($json.body.event_subject || "")) }}',
         "bodyContent": '={{ $json.body.payload.body || $json.body.payload.message || "" }}',
-        "additionalFields": {"bodyContentType": "Text"},
+        "additionalFields": {},
     },
 }
 
@@ -511,7 +546,7 @@ _PLATFORM_NODE_TYPES: dict[str, list[str]] = {
 
 async def _setup_n8n_workflows(
     platform: str, n8n_cred_type: str, n8n_cred_id: str
-) -> None:
+) -> list[str]:
     """Find n8n workflows for a platform, assign the credential, and activate them.
 
     After OAuth provisioning creates a credential in n8n, this function:
@@ -519,7 +554,10 @@ async def _setup_n8n_workflows(
     2. Unarchives them if needed
     3. Assigns the new credential to nodes that need it
     4. Activates the workflows
+
+    Returns list of error messages (empty on full success).
     """
+    errors: list[str] = []
     try:
         from laya.integrations.n8n_client import (
             activate_workflow,
@@ -531,26 +569,18 @@ async def _setup_n8n_workflows(
 
         target_node_types = set(_PLATFORM_NODE_TYPES.get(platform, []))
         if not target_node_types:
-            return
+            return []
 
         workflows = await list_workflows()
 
-        # Find workflows matching this platform by name convention (Laya - Outlook ...)
-        # Skip IMAP workflows — the Graph API workflows (Outlook Email) handle
-        # everything; IMAP is a legacy fallback.
-        platform_keywords = {
-            "gmail": ["gmail"],
-            "calendar": ["google calendar", "calendar"],
-            "outlook": ["outlook email"],
-            "outlook_calendar": ["outlook calendar"],
-        }
-        keywords = platform_keywords.get(platform, [platform])
+        # Use explicit workflow names from PLATFORMS config
+        from laya.integrations.platforms import PLATFORMS
+        platform_config = PLATFORMS.get(platform, {})
+        target_names = {n.lower() for n in platform_config.get("workflows", [])}
 
         for wf in workflows:
-            wf_name = (wf.get("name") or "").lower()
-            if not any(kw in wf_name for kw in keywords):
-                continue
-            if "laya" not in wf_name:
+            wf_name = (wf.get("name") or "")
+            if wf_name.lower() not in target_names:
                 continue
 
             wf_id = str(wf["id"])
@@ -589,6 +619,14 @@ async def _setup_n8n_workflows(
                 if template and not params.get("operation") and not params.get("sendTo") and not params.get("toRecipients"):
                     node["parameters"] = {**template, **{k: v for k, v in params.items() if v}}
 
+                # Migrate v1 → v2: move fields from additionalFields to top level
+                additional = params.get("additionalFields", {})
+                for field in ("toRecipients", "subject", "bodyContent"):
+                    if field not in params and field in additional:
+                        params[field] = additional.pop(field)
+                if "bodyContentType" in additional:
+                    additional.pop("bodyContentType")  # not a valid v2 field
+
                 modified = True
 
             if modified:
@@ -607,6 +645,7 @@ async def _setup_n8n_workflows(
                     await activate_workflow(wf_id, active=True)
                     log.info("n8n_workflow_activated", workflow=wf_name)
                 except Exception as e:
+                    errors.append(f"Failed to activate \"{wf_name}\": {e}")
                     log.warning("n8n_workflow_activate_failed",
                                 workflow=wf_name, error=str(e))
 
@@ -643,7 +682,9 @@ async def _setup_n8n_workflows(
             await db.commit()
 
     except Exception as e:
+        errors.append(f"Workflow setup failed: {e}")
         log.error("n8n_workflow_setup_failed", platform=platform, error=str(e))
+    return errors
 
 
 # ---------------------------------------------------------------------------

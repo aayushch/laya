@@ -20,6 +20,44 @@ from laya.workers.base import WorkerResult
 
 log = structlog.get_logger()
 
+# Human-readable subject type labels for embedding text
+_SUBJECT_LABELS = {
+    "ticket": "issue",
+    "pull_request": "pull request",
+    "build": "build",
+    "thread": "discussion",
+    "email_thread": "email thread",
+    "meeting": "meeting",
+    "briefing": "briefing",
+}
+
+
+def _build_embedding_text(
+    *,
+    platform: str,
+    header: str,
+    summary: str,
+    actor_name: str,
+    subject_type: str,
+    category: str,
+    entity_refs: str,
+) -> str:
+    """Build a canonical embedding template for ChromaDB.
+
+    Produces structured, platform-normalized text that maximizes cross-platform
+    entity linking. Each field is explicitly labeled so the embedding model can
+    weight it properly.  See notification-linking-semantic-search.md §3.1.
+    """
+    type_label = _SUBJECT_LABELS.get(subject_type, subject_type)
+    parts = [f"{platform} notification about {header}."]
+    parts.append(summary)
+    if actor_name:
+        parts.append(f"People: {actor_name}.")
+    parts.append(f"Action: {category}, {type_label}.")
+    if entity_refs:
+        parts.append(f"Identifiers: {entity_refs}.")
+    return " ".join(parts)
+
 
 async def run_emit(
     event: LayaEvent,
@@ -212,14 +250,18 @@ async def run_emit(
 
     # 4. Embed card in ChromaDB
     entity_refs = ",".join(e.value for e in router_output.entities)
-    # Build prose-like text for richer, more distinctive embeddings
-    embed_parts = [f"{stager_output.header}. {stager_output.summary}"]
-    if entity_refs:
-        embed_parts.append(f"Related entities: {entity_refs}.")
-    if router_output.category:
-        embed_parts.append(f"Category: {router_output.category.value}.")
-    embed_parts.append(f"Source: {event.source.platform}.")
-    embed_text = "\n".join(embed_parts)
+    # Canonical embedding template: structured, normalized text that maximizes
+    # semantic signal for cross-platform entity linking. Each field is explicitly
+    # labeled so the model weights it appropriately.
+    embed_text = _build_embedding_text(
+        platform=event.source.platform,
+        header=stager_output.header,
+        summary=stager_output.summary,
+        actor_name=event.actor.name,
+        subject_type=event.subject.type,
+        category=router_output.category.value,
+        entity_refs=entity_refs,
+    )
     try:
         await embed_document(
             doc_id=card_id,

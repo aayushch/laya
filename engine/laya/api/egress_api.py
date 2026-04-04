@@ -303,13 +303,14 @@ async def create_connection(body: ConnectRequest) -> dict:
         space_id=body.space_id,
     )
 
-    if result.status != "connected":
+    if result.status == "failed":
         raise HTTPException(status_code=400, detail=result.error or "Connection failed")
 
     return {
         "status": result.status,
         "connection_id": result.connection_id,
         "capabilities": result.capabilities,
+        "error_message": result.error,
     }
 
 
@@ -515,6 +516,22 @@ async def oauth_callback(code: str, state: str):
 <script>
 // If opened as popup, close after a delay so the parent's polling picks up the state
 if (window.opener) setTimeout(() => window.close(), 4000);
+</script>
+</body></html>""")
+
+    error_message = result.get("error_message")
+    if error_message:
+        safe_msg = error_message.replace("'", "\\'").replace('"', '&quot;')
+        return HTMLResponse(f"""<!DOCTYPE html><html><head><title>Connected with issues</title></head>
+<body style="background:#1a1a1a;color:#eee;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+<div style="text-align:center;max-width:480px">
+<h2 style="color:#fbbf24">Connected with issues</h2>
+<p style="color:#aaa;font-size:14px">Authentication succeeded but workflow setup had errors:</p>
+<p style="color:#f87171;font-size:13px;margin-top:8px">{safe_msg}</p>
+<p style="color:#888;font-size:13px;margin-top:16px">Check Settings &gt; Integrations for details.</p>
+</div>
+<script>
+if (window.opener) setTimeout(() => window.close(), 5000);
 </script>
 </body></html>""")
 

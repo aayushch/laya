@@ -206,10 +206,12 @@
 	// Filtered workflows for search
 	const filteredWorkflows = $derived.by(() => {
 		const q = workflowSearch.toLowerCase().trim();
-		if (!q) return workflows;
-		return workflows.filter(wf =>
-			wf.name.toLowerCase().includes(q) || wf.platform.toLowerCase().includes(q)
-		);
+		const filtered = q
+			? workflows.filter(wf =>
+				wf.name.toLowerCase().includes(q) || wf.platform.toLowerCase().includes(q)
+			)
+			: [...workflows];
+		return filtered.sort((a, b) => a.name.localeCompare(b.name));
 	});
 
 	// Source assignment
