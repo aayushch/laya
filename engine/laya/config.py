@@ -78,10 +78,10 @@ DEFAULT_SETTINGS = {
     },
     "custom_providers": [],
     "pipeline": {
-        "model_timeout": 120,
+        "model_timeout": 480,
         "llm_retries": 3,
-        "max_retry_attempts": 5,
-        "max_concurrent_events": 5,
+        "max_retry_attempts": 3,
+        "max_concurrent_events": 4,
         "queue_poll_interval": 2,
     },
 }

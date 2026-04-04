@@ -29,10 +29,10 @@ def _get_pipeline_settings() -> dict:
     settings = load_settings()
     pipeline = settings.get("pipeline", {})
     return {
-        "max_concurrent_events": int(pipeline.get("max_concurrent_events", 5)),
-        "max_retry_attempts": int(pipeline.get("max_retry_attempts", 5)),
+        "max_concurrent_events": int(pipeline.get("max_concurrent_events", 4)),
+        "max_retry_attempts": int(pipeline.get("max_retry_attempts", 3)),
         "queue_poll_interval": float(pipeline.get("queue_poll_interval", 2.0)),
-        "model_timeout": float(pipeline.get("model_timeout", 120)),
+        "model_timeout": float(pipeline.get("model_timeout", 480)),
     }
 
 
