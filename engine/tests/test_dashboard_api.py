@@ -1,11 +1,16 @@
 """Tests for the Dashboard REST API."""
 
 import json
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from tests.conftest import insert_test_card, insert_test_event
+
+# Use current time so test data always falls within the dashboard's date window
+_NOW = datetime.now(timezone.utc).isoformat()
 
 
 async def _insert_event(db, event_id, platform="jira", event_type="issue_assigned",
@@ -17,7 +22,7 @@ async def _insert_event(db, event_id, platform="jira", event_type="issue_assigne
             subject_type, subject_id, subject_title, actor_name, actor_email,
             content_body, raw_json, processed, filtered, space_id)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (event_id, "2026-02-22T14:30:00Z", platform, event_type,
+        (event_id, _NOW, platform, event_type,
          "ticket", "BUG-1", "Test", "Tester", "test@co.com",
          "Test body", "{}", processed, filtered, None),
     )
@@ -31,12 +36,12 @@ async def _insert_card(db, card_id, event_id, status="pending", persona="ENGINEE
         """INSERT INTO action_cards
            (card_id, event_id, priority, persona, category, header, summary,
             status, privacy_tier, user_feedback, resolved_at,
-            entity_id, space_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            entity_id, space_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (card_id, event_id, priority, persona, "CODE", "Header", "Summary",
          status, 1, user_feedback,
-         "2026-02-22T15:00:00Z" if status in ("done", "ready", "dismissed") else None,
-         f"jira:ticket:BUG-1", None),
+         _NOW if status in ("done", "ready", "dismissed") else None,
+         f"jira:ticket:BUG-1", None, _NOW),
     )
     await db.commit()
 
@@ -45,8 +50,8 @@ async def _insert_audit_entry(db, log_id, step="route", model="anthropic/claude-
                               input_tokens=500, output_tokens=200, latency_ms=450, success=True):
     await db.execute(
         "INSERT INTO audit_log (log_id, step, model_used, input_tokens, output_tokens, "
-        "latency_ms, success) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (log_id, step, model, input_tokens, output_tokens, latency_ms, success),
+        "latency_ms, success, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (log_id, step, model, input_tokens, output_tokens, latency_ms, success, _NOW),
     )
     await db.commit()
 
@@ -54,20 +59,30 @@ async def _insert_audit_entry(db, log_id, step="route", model="anthropic/claude-
 async def _insert_action_log(db, action_id, card_id, action_type="comment", result_status="done"):
     await db.execute(
         "INSERT INTO action_log (action_id, card_id, action_type, target_platform, "
-        "payload, result_status) VALUES (?, ?, ?, ?, ?, ?)",
-        (action_id, card_id, action_type, "jira", "{}", result_status),
+        "payload, result_status, executed_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (action_id, card_id, action_type, "jira", "{}", result_status, _NOW),
     )
     await db.commit()
+
+
+async def _dashboard_get(db, path="/dashboard"):
+    """Helper: GET the dashboard endpoint with the test DB patched in."""
+    from laya.main import app
+
+    async def _mock_get_db():
+        return db
+
+    with patch("laya.api.dashboard_api.get_db", _mock_get_db):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.get(path)
 
 
 @pytest.mark.asyncio
 class TestDashboardAPI:
     async def test_empty_dashboard(self, db):
         """GET /dashboard returns zeros when no data exists."""
-        from laya.main import app
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/dashboard")
+        resp = await _dashboard_get(db)
 
         assert resp.status_code == 200
         data = resp.json()
@@ -84,10 +99,7 @@ class TestDashboardAPI:
         await _insert_event(db, "evt_2", processed=True, filtered=True)
         await _insert_event(db, "evt_3", processed=True, filtered=False)
 
-        from laya.main import app
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/dashboard")
+        resp = await _dashboard_get(db)
 
         data = resp.json()
         assert data["stats"]["events_processed"] == 3
@@ -102,10 +114,7 @@ class TestDashboardAPI:
         await _insert_card(db, "card_2", "evt_cs_2", status="done")
         await _insert_card(db, "card_3", "evt_cs_3", status="dismissed")
 
-        from laya.main import app
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/dashboard")
+        resp = await _dashboard_get(db)
 
         data = resp.json()
         assert data["stats"]["cards_generated"] == 3
@@ -121,10 +130,7 @@ class TestDashboardAPI:
             input_tokens=1_000_000, output_tokens=500_000,
         )
 
-        from laya.main import app
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/dashboard")
+        resp = await _dashboard_get(db)
 
         data = resp.json()
         assert data["llm_costs"]["total_input_tokens"] == 1_000_000
@@ -138,10 +144,7 @@ class TestDashboardAPI:
         await _insert_event(db, "evt_s2", platform="jira")
         await _insert_event(db, "evt_s3", platform="github")
 
-        from laya.main import app
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/dashboard")
+        resp = await _dashboard_get(db)
 
         data = resp.json()
         sources = {s["source"]: s["count"] for s in data["events_by_source"]}
@@ -159,10 +162,7 @@ class TestDashboardAPI:
         await _insert_card(db, "card_p2", "evt_p2", persona="ENGINEER", status="dismissed")
         await _insert_card(db, "card_p3", "evt_p3", persona="COMMS", status="done")
 
-        from laya.main import app
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/dashboard")
+        resp = await _dashboard_get(db)
 
         data = resp.json()
         # NOTE: The approval_by_persona SQL currently filters for
@@ -181,10 +181,7 @@ class TestDashboardAPI:
                 db, f"audit_rt_{i}", step="route", latency_ms=latency,
             )
 
-        from laya.main import app
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/dashboard")
+        resp = await _dashboard_get(db)
 
         data = resp.json()
         assert data["response_time"]["avg_ms"] == 300.0
@@ -198,10 +195,7 @@ class TestDashboardAPI:
         await _insert_action_log(db, "alog_1", "card_ts", action_type="comment", result_status="done")
         await _insert_action_log(db, "alog_2", "card_ts", action_type="code_fix", result_status="done")
 
-        from laya.main import app
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/dashboard")
+        resp = await _dashboard_get(db)
 
         data = resp.json()
         # comment=3min + code_fix=15min = 18min
@@ -211,10 +205,7 @@ class TestDashboardAPI:
 
     async def test_days_parameter(self, db):
         """Dashboard accepts custom days parameter."""
-        from laya.main import app
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/dashboard?days=7")
+        resp = await _dashboard_get(db, "/dashboard?days=7")
 
         assert resp.status_code == 200
         assert resp.json()["period_days"] == 7
@@ -226,10 +217,7 @@ class TestDashboardAPI:
             input_tokens=1000, output_tokens=500,
         )
 
-        from laya.main import app
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/dashboard")
+        resp = await _dashboard_get(db)
 
         data = resp.json()
         assert data["llm_costs"]["total_cost_usd"] > 0

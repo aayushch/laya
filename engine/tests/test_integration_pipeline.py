@@ -116,10 +116,9 @@ class TestPipelineIntegration:
         # Mock all router dependencies
         mock_router_resp = _mock_llm_response(MOCK_ROUTER_RESULT)
         with patch("laya.pipeline.router.llm_call", new_callable=AsyncMock, return_value=mock_router_resp):
-            with patch("laya.pipeline.router.embed_document", new_callable=AsyncMock):
-                with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]):
-                    with patch("laya.pipeline.feedback.query_feedback_patterns", new_callable=AsyncMock, return_value=[]):
-                        router_output = await run_router(event, relationship)
+            with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]):
+                with patch("laya.pipeline.feedback.query_feedback_patterns", new_callable=AsyncMock, return_value=[]):
+                    router_output = await run_router(event, relationship)
 
         assert router_output.persona == "ENGINEER"
         assert router_output.category == "CODE"
@@ -178,8 +177,7 @@ class TestPipelineIntegration:
             raise Exception("LLM down")
 
         with patch("laya.pipeline.router.llm_call", side_effect=_llm_fail):
-            with patch("laya.pipeline.router.embed_document", new_callable=AsyncMock):
-                with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]):
+            with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]):
                     with patch("laya.pipeline.feedback.query_feedback_patterns", new_callable=AsyncMock, return_value=[]):
                         with pytest.raises(Exception, match="LLM down"):
                             await run_router(event, relationship)
@@ -198,10 +196,9 @@ class TestPipelineIntegration:
                 relationship = await run_ingest(event)
 
         with patch("laya.pipeline.router.llm_call", new_callable=AsyncMock, return_value=mock_router_resp):
-            with patch("laya.pipeline.router.embed_document", new_callable=AsyncMock):
-                with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]):
-                    with patch("laya.pipeline.feedback.query_feedback_patterns", new_callable=AsyncMock, return_value=[]):
-                        router_output = await run_router(event, relationship)
+            with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]):
+                with patch("laya.pipeline.feedback.query_feedback_patterns", new_callable=AsyncMock, return_value=[]):
+                    router_output = await run_router(event, relationship)
 
         assert not router_output.requires_research
 
@@ -235,10 +232,9 @@ class TestPipelineIntegration:
                 relationship = await run_ingest(event)
 
         with patch("laya.pipeline.router.llm_call", new_callable=AsyncMock, return_value=mock_router_resp):
-            with patch("laya.pipeline.router.embed_document", new_callable=AsyncMock):
-                with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]):
-                    with patch("laya.pipeline.feedback.query_feedback_patterns", new_callable=AsyncMock, return_value=[]):
-                        router_output = await run_router(event, relationship)
+            with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]):
+                with patch("laya.pipeline.feedback.query_feedback_patterns", new_callable=AsyncMock, return_value=[]):
+                    router_output = await run_router(event, relationship)
 
         assert router_output.requires_research
 

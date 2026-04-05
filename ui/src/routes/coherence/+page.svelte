@@ -7,7 +7,8 @@
 		traceNarrativeMap,
 		traceHistory,
 		traceLoading,
-		traceNewEventsDetected
+		traceNewEventsDetected,
+		traceProgress
 	} from '$lib/stores/trace';
 	import { get } from 'svelte/store';
 	import { slide, fade } from 'svelte/transition';
@@ -21,6 +22,7 @@
 	let trace = $state<TraceResponse | null>(get(currentTrace));
 	let exporting = $state(false);
 	let removedClusterIds = $state<Set<string>>(new Set());
+	let _activeTraceId = $state<string | null>(null);
 
 	// Visible clusters = all clusters minus removed ones
 	const visibleClusters = $derived(
@@ -117,6 +119,26 @@
 		const msg = $lastMessage;
 		if (!msg || msg === _lastProcessedMsg) return;
 
+		if (msg.type === 'trace_progress') {
+			_lastProcessedMsg = msg;
+			const raw = msg as unknown as Record<string, unknown>;
+			const incomingId = raw.trace_id as string;
+			// Defensive: trace_id is generated server-side so the frontend doesn't
+			// know it upfront. We latch onto the first progress message's trace_id
+			// and ignore messages from any other trace. This prevents a stale/concurrent
+			// trace's progress from overwriting the UI when multiple searches overlap
+			// (e.g. rapid re-runs before the previous one finishes).
+			if (!_activeTraceId) _activeTraceId = incomingId;
+			if (incomingId !== _activeTraceId) return;
+			traceProgress.set({
+				stage: raw.stage as string,
+				step: raw.step as number,
+				total: raw.total as number,
+				query: raw.query as string,
+			});
+			return;
+		}
+
 		if (msg.type === 'trace_narrative_start') {
 			_lastProcessedMsg = msg;
 			const raw = msg as unknown as Record<string, unknown>;
@@ -195,6 +217,8 @@
 		traceNarrativeMap.set({});
 		traceNarrativeStreamingMap.set({});
 		traceNewEventsDetected.set(false);
+		_activeTraceId = null;
+		traceProgress.set({ stage: 'Initializing', step: 0, total: 6, query });
 
 		try {
 			const result = await engineApi.runTrace(query, undefined, fuzzy);
@@ -210,6 +234,7 @@
 			error = e instanceof Error ? e.message : 'Search failed';
 		} finally {
 			loading = false;
+			traceProgress.set(null);
 		}
 	}
 
@@ -220,6 +245,7 @@
 		traceNarrativeMap.set({});
 		traceNarrativeStreamingMap.set({});
 		traceNewEventsDetected.set(false);
+		traceProgress.set(null);
 
 		try {
 			const result = await engineApi.getTrace(traceId);
@@ -247,6 +273,8 @@
 		traceNarrativeMap.set({});
 		traceNarrativeStreamingMap.set({});
 		traceNewEventsDetected.set(false);
+		_activeTraceId = null;
+		traceProgress.set({ stage: 'Initializing', step: 0, total: 6, query: trace?.query ?? '' });
 
 		try {
 			const result = await engineApi.rerunTrace(id);
@@ -257,6 +285,7 @@
 			error = e instanceof Error ? e.message : 'Rerun failed';
 		} finally {
 			loading = false;
+			traceProgress.set(null);
 		}
 	}
 
@@ -327,6 +356,15 @@
 		}
 	}
 
+	const coherenceStages = [
+		'Searching',
+		'Ranking results',
+		'Applying feedback',
+		'Expanding results',
+		'Analyzing connections',
+		'Building clusters',
+	];
+
 	function handleBack() {
 		trace = null;
 		currentTrace.set(null);
@@ -334,6 +372,7 @@
 		traceNarrativeMap.set({});
 		traceNarrativeStreamingMap.set({});
 		traceNewEventsDetected.set(false);
+		traceProgress.set(null);
 		error = null;
 	}
 </script>
@@ -497,13 +536,35 @@
 			</div>
 		{/if}
 
-		<!-- Loading skeleton -->
+		<!-- Loading progress -->
 		{#if loading && !trace}
-			<div class="space-y-2 animate-pulse mt-4">
-				<div class="rounded-md border border-surface-700 bg-surface-800/40 p-3 h-8"></div>
-				{#each Array(5) as _}
-					<div class="ml-6 rounded-md border border-surface-700/40 bg-surface-800/30 p-2 h-6"></div>
-				{/each}
+			<div class="mt-6 rounded-xl border border-surface-700/50 bg-surface-800/40 p-6" in:fade={{ duration: 200 }}>
+				<!-- Query title -->
+				<div class="flex items-center gap-2 mb-5">
+					<span class="text-laya-orange text-sm">◆</span>
+					<span class="text-sm font-medium text-surface-200">{$traceProgress?.query || 'Searching...'}</span>
+				</div>
+
+				<!-- Progress bar -->
+				<div class="mb-4">
+					<div class="h-1.5 w-full rounded-full bg-surface-700/60 overflow-hidden">
+						<div
+							class="h-full rounded-full bg-gradient-to-r from-laya-orange to-laya-gold transition-all duration-500 ease-out"
+							style="width: {$traceProgress ? Math.max(($traceProgress.step / $traceProgress.total) * 100, 8) : 8}%"
+						></div>
+					</div>
+				</div>
+
+				<!-- Current stage -->
+				<div class="flex items-center gap-2 text-xs text-surface-400">
+					<svg class="w-3.5 h-3.5 animate-spin shrink-0 text-laya-orange" fill="none" viewBox="0 0 24 24">
+						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle>
+						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+					</svg>
+					<span class="font-medium transition-all duration-300">{($traceProgress?.step ?? 0) > 0 && ($traceProgress?.step ?? 0) <= coherenceStages.length ? coherenceStages[($traceProgress?.step ?? 1) - 1] : 'Preparing'}</span>
+					<span class="text-surface-600">&middot;</span>
+					<span class="text-surface-500">{$traceProgress?.step ?? 0} / {$traceProgress?.total ?? coherenceStages.length}</span>
+				</div>
 			</div>
 		{/if}
 

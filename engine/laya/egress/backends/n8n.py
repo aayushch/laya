@@ -118,7 +118,7 @@ class N8nBackend(EgressBackend):
                 ]
                 if conn_match:
                     webhook_path = conn_match[0]["webhook_path"]
-                    workflow_id = conn_match[0].get("workflow_id")
+                    workflow_id = conn_match[0]["workflow_id"]
 
             # Then try same-space executor
             if not webhook_path and space_id:
@@ -127,12 +127,12 @@ class N8nBackend(EgressBackend):
                 ]
                 if same_space:
                     webhook_path = same_space[0]["webhook_path"]
-                    workflow_id = same_space[0].get("workflow_id")
+                    workflow_id = same_space[0]["workflow_id"]
 
             # Fall back to any executor for this platform
             if not webhook_path:
                 webhook_path = executor_rows[0]["webhook_path"]
-                workflow_id = executor_rows[0].get("workflow_id")
+                workflow_id = executor_rows[0]["workflow_id"]
 
         # Fall back to global config, then built-in defaults
         if not webhook_path:

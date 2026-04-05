@@ -192,10 +192,22 @@ async def run_trace(request: TraceRequest) -> TraceResponse:
     t0 = time.monotonic()
     trace_id = f"trace_{uuid.uuid4().hex[:12]}"
 
+    async def _progress(stage: str, step: int, total: int) -> None:
+        await manager.broadcast({
+            "type": "trace_progress",
+            "trace_id": trace_id,
+            "query": request.query,
+            "stage": stage,
+            "step": step,
+            "total": total,
+        })
+
     # Phase 1 — Discovery
     # Always run identifier + semantic + entity searches.
     # Fuzzy (LIKE) and event keyword searches are optional — they cast a wide
     # net but can flood results with false positives for identifier queries.
+    total_steps = 6
+    await _progress("Searching", 1, total_steps)
     coros: list = [
         _identifier_search(request.query, request.space_id, n=30),
         _semantic_search(request.query, request.space_id, n=30),
@@ -247,6 +259,7 @@ async def run_trace(request: TraceRequest) -> TraceResponse:
     )
 
     # Merge non-identifier signals via RRF
+    await _progress("Ranking results", 2, total_steps)
     fused = _reciprocal_rank_fusion(ranked_lists, k=60)
 
     # Build seed list: guaranteed identifier matches first, then RRF results
@@ -273,6 +286,7 @@ async def run_trace(request: TraceRequest) -> TraceResponse:
     )
 
     # Phase 1.5 — Apply trace feedback (exclude/demote previously-rejected entities)
+    await _progress("Applying feedback", 3, total_steps)
     feedback = await _query_trace_feedback(request.query)
     if feedback["exact_exclude"]:
         before = len(seeds)
@@ -289,10 +303,12 @@ async def run_trace(request: TraceRequest) -> TraceResponse:
         seeds = (priority + demoted)[:20]
 
     # Phase 2 — Expansion
+    await _progress("Expanding results", 4, total_steps)
     all_cards, entity_map = await _expand_seeds(seeds, request.space_id, request.include_archived)
     meta.expansion_cards = len(all_cards)
 
     # Phase 2.5 — LLM relevance filter (remove false positives before clustering)
+    await _progress("Analyzing connections", 5, total_steps)
     seeds, removed_count = await _llm_relevance_filter(request.query, seeds, all_cards)
     meta.seeds_filtered = removed_count
 
@@ -323,6 +339,7 @@ async def run_trace(request: TraceRequest) -> TraceResponse:
         all_cards = [c for c in all_cards if c.entity_id in surviving_eids]
 
     # Phase 3 — Clustering (before capping, so small clusters aren't eliminated)
+    await _progress("Building clusters", 6, total_steps)
     clusters = _build_clusters(all_cards, entity_map, seeds)
 
     # Cap cards per cluster to keep results manageable without dropping

@@ -24,3 +24,6 @@ export const traceLoading = writable<boolean>(false);
 
 /** Whether new events were detected for the current trace */
 export const traceNewEventsDetected = writable<boolean>(false);
+
+/** Progress state during trace search */
+export const traceProgress = writable<{ stage: string; step: number; total: number; query: string } | null>(null);

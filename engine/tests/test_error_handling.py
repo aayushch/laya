@@ -119,18 +119,22 @@ class TestRetryableActions:
 
     async def test_timeout_sets_retryable(self, db):
         """n8n timeout marks action as retryable in action_log."""
+        from laya.egress.models import EgressResult
+
         await insert_test_card(db, "card_retry_test", "evt_retry", status="ready")
 
-        mock_client = MagicMock()
-        mock_client.post = AsyncMock(side_effect=httpx.TimeoutException("timed out"))
+        mock_egress_result = EgressResult(
+            success=False,
+            error="n8n request timed out",
+            retryable=True,
+        )
 
         with patch("laya.pipeline.executor.manager.broadcast", new_callable=AsyncMock):
-            with patch("laya.pipeline.executor.get_n8n_config", return_value={"base_url": "http://localhost:5678", "webhooks": {"jira": "jira-executor"}}):
-                with patch("laya.pipeline.executor.get_client", return_value=mock_client):
-                    result = await execute_action(
-                        card_id="card_retry_test",
-                        action_id="act_1",
-                    )
+            with patch("laya.egress.route_and_execute", new_callable=AsyncMock, return_value=mock_egress_result):
+                result = await execute_action(
+                    card_id="card_retry_test",
+                    action_id="act_1",
+                )
 
         assert result["status"] == "failed"
         assert "timed out" in result["error"]
@@ -145,18 +149,22 @@ class TestRetryableActions:
 
     async def test_connection_error_sets_retryable(self, db):
         """n8n connection error marks action as retryable."""
+        from laya.egress.models import EgressResult
+
         await insert_test_card(db, "card_conn", "evt_conn", status="ready")
 
-        mock_client = MagicMock()
-        mock_client.post = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
+        mock_egress_result = EgressResult(
+            success=False,
+            error="n8n unreachable (connection refused)",
+            retryable=True,
+        )
 
         with patch("laya.pipeline.executor.manager.broadcast", new_callable=AsyncMock):
-            with patch("laya.pipeline.executor.get_n8n_config", return_value={"base_url": "http://localhost:5678", "webhooks": {"jira": "jira-executor"}}):
-                with patch("laya.pipeline.executor.get_client", return_value=mock_client):
-                    result = await execute_action(
-                        card_id="card_conn",
-                        action_id="act_1",
-                    )
+            with patch("laya.egress.route_and_execute", new_callable=AsyncMock, return_value=mock_egress_result):
+                result = await execute_action(
+                    card_id="card_conn",
+                    action_id="act_1",
+                )
 
         assert result["status"] == "failed"
         rows = await db.execute_fetchall(
@@ -167,18 +175,22 @@ class TestRetryableActions:
 
     async def test_generic_error_not_retryable(self, db):
         """Generic errors are NOT marked as retryable."""
+        from laya.egress.models import EgressResult
+
         await insert_test_card(db, "card_gen", "evt_gen", status="ready")
 
-        mock_client = MagicMock()
-        mock_client.post = AsyncMock(side_effect=RuntimeError("unexpected error"))
+        mock_egress_result = EgressResult(
+            success=False,
+            error="unexpected error",
+            retryable=False,
+        )
 
         with patch("laya.pipeline.executor.manager.broadcast", new_callable=AsyncMock):
-            with patch("laya.pipeline.executor.get_n8n_config", return_value={"base_url": "http://localhost:5678", "webhooks": {"jira": "jira-executor"}}):
-                with patch("laya.pipeline.executor.get_client", return_value=mock_client):
-                    result = await execute_action(
-                        card_id="card_gen",
-                        action_id="act_1",
-                    )
+            with patch("laya.egress.route_and_execute", new_callable=AsyncMock, return_value=mock_egress_result):
+                result = await execute_action(
+                    card_id="card_gen",
+                    action_id="act_1",
+                )
 
         assert result["status"] == "failed"
         rows = await db.execute_fetchall(

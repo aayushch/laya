@@ -137,8 +137,8 @@ class TestWebhookResolution:
         with patch("laya.egress.backends.n8n.get_db") as mock_get_db:
             mock_db = AsyncMock()
             mock_db.execute_fetchall = AsyncMock(return_value=[
-                {"webhook_path": "jira-exec-space-a", "space_id": "space_a"},
-                {"webhook_path": "jira-exec-default", "space_id": "default"},
+                {"webhook_path": "jira-exec-space-a", "space_id": "space_a", "workflow_id": "wf1", "connection_id": None},
+                {"webhook_path": "jira-exec-default", "space_id": "default", "workflow_id": "wf2", "connection_id": None},
             ])
             mock_get_db.return_value = mock_db
 

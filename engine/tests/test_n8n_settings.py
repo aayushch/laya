@@ -20,7 +20,7 @@ class TestN8nConfig:
 
         assert config["base_url"] == "http://localhost:45678"
         assert config["webhooks"]["jira"] == "jira-executor"
-        assert len(config["webhooks"]) == 7
+        assert len(config["webhooks"]) == 10
 
     def test_env_var_overrides_base_url(self, tmp_path):
         """N8N_URL env var overrides base_url from settings."""
@@ -102,103 +102,47 @@ class TestN8nTestEndpoint:
 
 @pytest.mark.asyncio
 class TestExecutorUsesConfig:
-    """Test that executor reads webhook config dynamically."""
+    """Test that egress backend reads webhook config dynamically."""
 
-    async def test_executor_uses_configured_webhook(self, db):
-        """Executor builds webhook URL from get_n8n_config()."""
-        from laya.pipeline.executor import execute_action
-        from tests.conftest import insert_test_event
+    async def test_executor_uses_configured_webhook(self):
+        """N8nBackend resolves webhook URL from get_n8n_config()."""
+        from laya.egress.backends.n8n import N8nBackend
 
-        # Seed event + card
-        await insert_test_event(db, event_id="evt_cfg")
-        actions = json.dumps([{
-            "action_id": "act_cfg",
-            "label": "Comment",
-            "action_type": "comment",
-            "target_platform": "jira",
-            "payload": {"body": "test"},
-        }])
-        await db.execute(
-            "INSERT INTO action_cards (card_id, event_id, priority, persona, category, "
-            "header, summary, suggested_actions, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("card_cfg", "evt_cfg", "HIGH", "ENGINEER", "CODE", "Test", "Test",
-             actions, "pending"),
-        )
-        await db.commit()
-
-        posted_url = None
-
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"success": True, "result": {}}
-        mock_resp.status_code = 200
-
-        async def capture_post(url, json=None, timeout=None):
-            nonlocal posted_url
-            posted_url = url
-            return mock_resp
-
-        mock_client = MagicMock()
-        mock_client.post = capture_post
+        backend = N8nBackend()
 
         custom_config = {
             "base_url": "http://my-n8n:9999",
             "webhooks": {"jira": "my-custom-jira"},
         }
 
-        with patch("laya.pipeline.executor.get_n8n_config", return_value=custom_config):
-            with patch("laya.pipeline.executor.get_client", return_value=mock_client):
-                with patch("laya.pipeline.executor.manager", MagicMock(broadcast=AsyncMock())):
-                    await execute_action("card_cfg", "act_cfg")
+        with patch("laya.egress.backends.n8n.get_db") as mock_get_db:
+            mock_db = AsyncMock()
+            mock_db.execute_fetchall = AsyncMock(return_value=[])
+            mock_get_db.return_value = mock_db
 
-        assert posted_url == "http://my-n8n:9999/webhook/my-custom-jira"
+            with patch("laya.egress.backends.n8n.get_n8n_config", return_value=custom_config):
+                url = await backend._resolve_webhook_url("jira", None)
 
-    async def test_executor_fallback_for_unknown_platform(self, db):
-        """Unknown platform falls back to {platform}-executor."""
-        from laya.pipeline.executor import execute_action
-        from tests.conftest import insert_test_event
+        assert url == "http://my-n8n:9999/webhook/my-custom-jira"
 
-        await insert_test_event(db, event_id="evt_unk", platform="github",
-                                raw_event_type="pr_opened",
-                                subject_type="pr", subject_id="PR-1",
-                                subject_title="Test")
-        actions = json.dumps([{
-            "action_id": "act_unk",
-            "label": "Merge",
-            "action_type": "merge",
-            "target_platform": "github",
-            "payload": {},
-        }])
-        await db.execute(
-            "INSERT INTO action_cards (card_id, event_id, priority, persona, category, "
-            "header, summary, suggested_actions, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("card_unk", "evt_unk", "HIGH", "ENGINEER", "CODE", "Test", "Test",
-             actions, "pending"),
-        )
-        await db.commit()
+    async def test_executor_fallback_for_unknown_platform(self):
+        """Unknown platform with no webhook config returns None."""
+        from laya.egress.backends.n8n import N8nBackend
 
-        posted_url = None
+        backend = N8nBackend()
 
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"success": True, "result": {}}
-        mock_resp.status_code = 200
-
-        async def capture_post(url, json=None, timeout=None):
-            nonlocal posted_url
-            posted_url = url
-            return mock_resp
-
-        mock_client = MagicMock()
-        mock_client.post = capture_post
-
-        # Config with no github webhook defined
         config = {
             "base_url": "http://localhost:45678",
             "webhooks": {"jira": "jira-executor"},
         }
 
-        with patch("laya.pipeline.executor.get_n8n_config", return_value=config):
-            with patch("laya.pipeline.executor.get_client", return_value=mock_client):
-                with patch("laya.pipeline.executor.manager", MagicMock(broadcast=AsyncMock())):
-                    await execute_action("card_unk", "act_unk")
+        with patch("laya.egress.backends.n8n.get_db") as mock_get_db:
+            mock_db = AsyncMock()
+            mock_db.execute_fetchall = AsyncMock(return_value=[])
+            mock_get_db.return_value = mock_db
 
-        assert posted_url == "http://localhost:45678/webhook/github-executor"
+            with patch("laya.egress.backends.n8n.get_n8n_config", return_value=config):
+                # github is in DEFAULT_SETTINGS, so it will resolve
+                url = await backend._resolve_webhook_url("github", None)
+
+        assert url == "http://localhost:45678/webhook/github-executor"

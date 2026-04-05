@@ -241,27 +241,30 @@ class TestImportWorkflows:
     async def test_imports_workflow_files(self, tmp_path):
         wf_dir = tmp_path / "workflows"
         wf_dir.mkdir()
-        (wf_dir / "test-workflow.json").write_text(json.dumps({"name": "Test", "active": True}))
+        (wf_dir / "test-workflow.json").write_text(json.dumps({
+            "name": "Test", "active": True, "meta": {"laya_version": "2026.04.1"},
+        }))
 
         # Mock GET /api/v1/workflows to return empty list (no existing workflows)
         mock_get_resp = MagicMock()
         mock_get_resp.status_code = 200
         mock_get_resp.json.return_value = {"data": []}
 
-        # Mock POST to create workflow
-        mock_post_resp = MagicMock()
-        mock_post_resp.status_code = 200
-
         mock_client = MagicMock()
         mock_client.get = AsyncMock(return_value=mock_get_resp)
-        mock_client.post = AsyncMock(return_value=mock_post_resp)
+
+        versions_file = tmp_path / "versions.json"
 
         with patch("laya.integrations.n8n_bootstrap.WORKFLOWS_DIR", wf_dir):
-            with patch("laya.integrations.n8n_bootstrap.get_api_key", return_value="test-key"):
-                with patch("laya.integrations.n8n_bootstrap.get_client", return_value=mock_client):
-                    count = await import_workflows("http://localhost:45678")
+            with patch("laya.integrations.n8n_bootstrap._VERSIONS_FILE", versions_file):
+                with patch("laya.integrations.n8n_bootstrap.get_api_key", return_value="test-key"):
+                    with patch("laya.integrations.n8n_bootstrap.get_client", return_value=mock_client):
+                        count = await import_workflows("http://localhost:45678")
 
-        assert count == 1
+        # No clones to update, so count is 0, but version should be tracked
+        assert count == 0
+        saved = json.loads(versions_file.read_text())
+        assert saved["Test"] == "2026.04.1"
 
     async def test_skips_when_no_api_key(self):
         with patch("laya.integrations.n8n_bootstrap.get_api_key", return_value=None):

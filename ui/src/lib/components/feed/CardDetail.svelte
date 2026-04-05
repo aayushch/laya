@@ -349,9 +349,31 @@
 		{#if card.suggested_actions && card.suggested_actions.length > 0}
 			<div class="mb-5">
 				<h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-surface-400">Suggested Actions</h3>
-				<div class="flex flex-wrap gap-2">
-					{#each card.suggested_actions as action}
-						{@const isSelected = card.selected_action_id === action.action_id}
+				{#each card.suggested_actions as action}
+					{@const isSelected = card.selected_action_id === action.action_id}
+					{@const payload = action.payload}
+					{@const hasBody = payload && typeof payload.body === 'string' && payload.body.length > 0}
+
+					<!-- Action payload preview -->
+					{#if hasBody}
+						<div class="mb-2 rounded-lg border border-surface-700 bg-surface-900/50 p-3">
+							{#if payload.to}
+								<div class="mb-1.5 flex items-center gap-1.5 text-[11px]">
+									<span class="font-medium text-surface-500">To:</span>
+									<span class="text-surface-300">{payload.to}</span>
+								</div>
+							{/if}
+							{#if payload.subject}
+								<div class="mb-1.5 flex items-center gap-1.5 text-[11px]">
+									<span class="font-medium text-surface-500">Subject:</span>
+									<span class="text-surface-300">{payload.subject}</span>
+								</div>
+							{/if}
+							<div class="max-h-48 overflow-y-auto whitespace-pre-wrap text-sm text-surface-200">{payload.body}</div>
+						</div>
+					{/if}
+
+					<div class="mb-2 flex flex-wrap gap-2">
 						<button
 							class="rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed
 								{isSelected
@@ -373,8 +395,8 @@
 								<span class="ml-1 {isSelected ? 'text-laya-orange/60' : 'text-surface-500'}">({action.target_platform})</span>
 							{/if}
 						</button>
-					{/each}
-				</div>
+					</div>
+				{/each}
 				{#if executeError}
 					<p class="mt-2 text-xs text-red-400">{executeError}</p>
 				{/if}
