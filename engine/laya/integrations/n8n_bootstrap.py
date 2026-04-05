@@ -536,10 +536,14 @@ async def sync_workflows_background() -> None:
     log.warning("n8n_background_workflow_sync_timeout")
 
 
-async def ensure_n8n_ready() -> dict:
+async def ensure_n8n_ready(*, _retries: int = 3, _backoff: float = 10.0) -> dict:
     """Ensure n8n is fully provisioned with owner account + API key.
 
     Idempotent — safe to call on every startup. Skips steps already done.
+
+    On first launch n8n's REST API may still be initialising when the engine
+    starts (the Tauri shell waits, but there's no hard guarantee).  If n8n is
+    unreachable we retry with exponential backoff before giving up.
 
     Returns dict with:
         status: "ready" | "already_configured" | "unreachable" | "error"
@@ -549,9 +553,18 @@ async def ensure_n8n_ready() -> dict:
     n8n_config = get_n8n_config()
     base_url = n8n_config["base_url"].rstrip("/")
 
-    # Step 1: Wait for n8n to be healthy
-    if not await _wait_for_n8n(base_url, timeout=10.0):
-        log.info("n8n_unreachable", base_url=base_url)
+    # Step 1: Wait for n8n to be healthy, with retries.
+    # First attempt uses a short timeout; subsequent retries use longer
+    # backoff periods to give n8n time to finish DB initialisation.
+    for attempt in range(_retries):
+        timeout = 10.0 + (_backoff * attempt)
+        if await _wait_for_n8n(base_url, timeout=timeout):
+            break
+        if attempt < _retries - 1:
+            log.info("n8n_not_ready_retrying", attempt=attempt + 1, next_timeout=timeout + _backoff)
+            await asyncio.sleep(_backoff)
+    else:
+        log.info("n8n_unreachable", base_url=base_url, retries=_retries)
         return {
             "status": "unreachable",
             "message": "n8n is not running or unreachable",
