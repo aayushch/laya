@@ -585,6 +585,8 @@ async def _clone_workflows_for_connection(
 ) -> tuple[int, list[str]]:
     """Clone bundled workflow templates for a specific connection.
 
+    Idempotent — skips if sources already exist for this connection_id.
+
     For each template workflow (e.g., "Laya - Gmail Ingestion"):
     1. Read the bundled JSON template
     2. Rename to include connection display name
@@ -600,6 +602,16 @@ async def _clone_workflows_for_connection(
 
     from laya.integrations.n8n_bootstrap import WORKFLOWS_DIR, _load_deployed_versions, _save_deployed_versions
     from laya.integrations.n8n_client import activate_workflow
+
+    # Idempotency: skip if sources already exist for this connection
+    db = await get_db()
+    existing = await db.execute_fetchall(
+        "SELECT source_id FROM sources WHERE connection_id = ?",
+        (connection_id,),
+    )
+    if existing:
+        log.debug("clone_already_exists", connection_id=connection_id, count=len(existing))
+        return len(existing), []
 
     platform_config = PLATFORMS.get(platform, {})
     template_names = platform_config.get("workflows", [])

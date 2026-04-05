@@ -491,7 +491,7 @@ async def _propagate_to_clones(base_url: str, api_key: str) -> int:
         update_data["name"] = clone_name
 
         # Preserve clone's webhook paths in the update data
-        clone_webhook_path = row.get("webhook_path")
+        clone_webhook_path = row["webhook_path"]
         if clone_webhook_path:
             for node in update_data.get("nodes", []):
                 if (node.get("type") == "n8n-nodes-base.webhook"
@@ -528,64 +528,12 @@ async def sync_workflows_background() -> None:
                     log.info("n8n_background_workflows_synced", count=imported)
                 else:
                     log.debug("n8n_background_workflows_up_to_date")
-                # Migrate pre-existing connections to clone model
-                await _backfill_connection_workflows()
                 return
         except Exception as e:
             log.debug("n8n_background_sync_retry", error=str(e))
         await asyncio.sleep(15.0)
 
     log.warning("n8n_background_workflow_sync_timeout")
-
-
-async def _backfill_connection_workflows() -> None:
-    """One-time migration: create cloned workflows for existing connections.
-
-    Existing connections created before multi-connection support used shared
-    template workflows. This function creates connection-scoped clones for
-    any connection that doesn't yet have source rows with its connection_id.
-    """
-    try:
-        from laya.db.sqlite import get_db
-        from laya.egress.connections import _clone_workflows_for_connection
-
-        db = await get_db()
-        # Find connections that have no sources linked to them
-        rows = await db.execute_fetchall(
-            """SELECT ec.connection_id, ec.platform, ec.name, ec.n8n_credential_id
-               FROM egress_connections ec
-               WHERE ec.n8n_credential_id IS NOT NULL
-                 AND ec.connection_id NOT IN (
-                     SELECT DISTINCT connection_id FROM sources
-                     WHERE connection_id IS NOT NULL
-                 )""",
-        )
-        if not rows:
-            return
-
-        for row in rows:
-            conn_id = row["connection_id"]
-            platform = row["platform"]
-            name = row["name"]
-            cred_id = row["n8n_credential_id"]
-
-            log.info("backfilling_connection_workflows",
-                     connection_id=conn_id, platform=platform)
-            try:
-                activated, errors = await _clone_workflows_for_connection(
-                    platform, conn_id, name, cred_id
-                )
-                if errors:
-                    log.warning("backfill_partial",
-                                connection_id=conn_id, errors=errors)
-                else:
-                    log.info("backfill_complete",
-                             connection_id=conn_id, activated=activated)
-            except Exception as e:
-                log.warning("backfill_failed",
-                            connection_id=conn_id, error=str(e))
-    except Exception as e:
-        log.warning("backfill_connection_workflows_failed", error=str(e))
 
 
 async def ensure_n8n_ready() -> dict:

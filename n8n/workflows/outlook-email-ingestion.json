@@ -10,7 +10,12 @@
             }
           ]
         },
-        "simple": false
+        "simple": false,
+        "filters": {
+          "foldersToWatch": [
+            "inbox"
+          ]
+        }
       },
       "name": "Outlook Trigger",
       "type": "n8n-nodes-base.microsoftOutlookTrigger",
@@ -239,6 +244,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.03.1"
+    "laya_version": "2026.04.1"
   }
 }

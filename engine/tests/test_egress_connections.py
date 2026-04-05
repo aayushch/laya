@@ -29,7 +29,7 @@ class TestValidateCredentials:
             mock_client_cls.return_value = mock_client
 
             valid, error = await _validate_credentials("jira", {
-                "domain": "company.atlassian.net",
+                "domain": "https://company.atlassian.net",
                 "email": "user@co.com",
                 "apiToken": "token123",
             })
@@ -48,7 +48,7 @@ class TestValidateCredentials:
             mock_client_cls.return_value = mock_client
 
             valid, error = await _validate_credentials("jira", {
-                "domain": "company.atlassian.net",
+                "domain": "https://company.atlassian.net",
                 "email": "user@co.com",
                 "apiToken": "bad_token",
             })
@@ -116,8 +116,8 @@ class TestValidateCredentials:
             mock_client_cls.return_value = mock_client
 
             valid, error = await _validate_credentials("bitbucket", {
-                "username": "user",
-                "appPassword": "pw",
+                "email": "user@co.com",
+                "accessToken": "pw",
             })
             assert valid is True
 

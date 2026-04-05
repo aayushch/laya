@@ -183,7 +183,7 @@ MOCK_COMMS_RESPONSE = {
 @pytest.fixture
 def mock_chromadb():
     """Patch ChromaDB embed and search functions."""
-    with patch("laya.pipeline.router.embed_document", new_callable=AsyncMock) as mock_embed:
+    with patch("laya.pipeline.emit.embed_document", new_callable=AsyncMock) as mock_embed:
         with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]) as mock_search:
             yield {"embed_document": mock_embed, "memory_search": mock_search}
 

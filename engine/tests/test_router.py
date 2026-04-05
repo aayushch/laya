@@ -99,21 +99,6 @@ async def test_router_handles_malformed_json(db, sample_event, mock_chromadb):
 
 
 @pytest.mark.asyncio
-async def test_router_embeds_event_in_chromadb(db, sample_event, mock_llm_router, mock_chromadb):
-    """Router calls embed_document after classification."""
-    await insert_test_event(db, event_id=sample_event.event_id)
-
-    with patch("laya.pipeline.feedback.query_feedback_patterns", new_callable=AsyncMock, return_value=[]):
-        await run_router(sample_event, "teammate")
-
-    mock_chromadb["embed_document"].assert_called_once()
-    call_args = mock_chromadb["embed_document"].call_args
-    assert f"evt_{sample_event.event_id}" == call_args.kwargs["doc_id"]
-    assert "event" == call_args.kwargs["metadata"]["content_type"]
-    assert "jira" == call_args.kwargs["metadata"]["source_platform"]
-
-
-@pytest.mark.asyncio
 async def test_router_queries_related_context(db, sample_event, mock_llm_router, mock_chromadb):
     """Router calls memory_search for related past events."""
     await insert_test_event(db, event_id=sample_event.event_id)

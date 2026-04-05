@@ -72,6 +72,7 @@ Event Sources → n8n (port 45678) → Engine (port 8420) → UI (Tauri + Svelte
 - **Test fixtures**: `engine/tests/conftest.py` provides `db` (in-memory SQLite with all migrations), `sample_event`, `bot_event`, `slack_event`, `sample_team`. All test fixtures are async (`@pytest_asyncio.fixture`).
 - **Theme system**: CSS custom properties in `ui/src/app.css` with `--color-laya-*` brand tokens. Dark/light mode via `data-theme` attribute on `<html>`.
 - **Feed layout**: 3-column flex layout with round-robin card distribution (not CSS columns — intentional, see memory for rationale).
+- **Comment workarounds and defensive fixes**: Any time a workaround, defensive fix, or non-obvious hack is applied, leave a comment in the code explaining *why* the fix exists and what breaks without it. Future readers (and Claude Code) should understand the reasoning without having to rediscover the problem.
 
 ## Ports
 

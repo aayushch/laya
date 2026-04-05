@@ -324,8 +324,12 @@
 	{/if}
 
 	<!-- Main card / container -->
+	<!-- overflow-clip instead of overflow-hidden: hidden creates a scroll container,
+		 so scrollIntoView on a selected card can internally scroll this div, pushing
+		 the header out of view and leaving empty space at the bottom. clip visually
+		 clips the same way but does NOT create a scroll container. -->
 	<div
-		class="relative overflow-hidden rounded-xl border shadow-lg transition-all duration-200 {expanded ? '' : 'group/card'}
+		class="relative overflow-clip rounded-xl border shadow-lg transition-all duration-200 {expanded ? '' : 'group/card'}
 			{expanded
 				? 'border-surface-600 bg-surface-900'
 				: groupStyle}"
