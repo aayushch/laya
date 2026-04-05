@@ -141,7 +141,7 @@ fn setup_environment(app: tauri::AppHandle) {
                 emit("preflight", "done", &format!("Python and Node.js {} found", ver));
             }
             Err(e) => {
-                emit("preflight", "error", &format!("Node.js 18+ is required. {}", e));
+                emit("preflight", "error", &format!("Node.js 22+ is required. {}", e));
                 return;
             }
         };
@@ -210,11 +210,19 @@ fn setup_environment(app: tauri::AppHandle) {
         // Start n8n
         emit("automation", "running", "Starting n8n...");
         match n8n::startup_n8n() {
-            n8n::N8nStartResult::Started => {
-                emit("automation", "done", "n8n running");
-            }
-            n8n::N8nStartResult::AlreadyRunning => {
-                emit("automation", "done", "n8n already running");
+            n8n::N8nStartResult::Started | n8n::N8nStartResult::AlreadyRunning => {
+                // Wait for the full REST API, not just /healthz.
+                // On a fresh install n8n can take 15-30s to initialise its DB
+                // before /rest/settings responds.  Without this the engine's
+                // ensure_n8n_ready() races and skips provisioning.
+                emit("automation", "running", "Waiting for n8n API...");
+                if n8n::wait_for_n8n_api(std::time::Duration::from_secs(60)) {
+                    emit("automation", "done", "n8n running");
+                } else {
+                    // Non-fatal: engine has its own retry logic, but warn the user.
+                    log::warn!("n8n REST API did not become ready in time — engine will retry");
+                    emit("automation", "done", "n8n started (API still loading)");
+                }
             }
             other => {
                 log::warn!("n8n startup: {:?}", other);
@@ -376,6 +384,18 @@ pub fn run() {
                     );
                     let image = NSImage::initWithData_(NSImage::alloc(nil), data);
                     ns_app.setApplicationIconImage_(image);
+                }
+            }
+
+            // Set the window icon on Linux (GTK doesn't auto-derive it
+            // from the bundle like macOS/Windows do).
+            #[cfg(target_os = "linux")]
+            {
+                if let Some(window) = app.get_webview_window("main") {
+                    let icon_bytes = include_bytes!("../icons/icon.png");
+                    if let Ok(icon) = tauri::image::Image::from_bytes(icon_bytes) {
+                        let _ = window.set_icon(icon);
+                    }
                 }
             }
 

@@ -95,21 +95,28 @@ fn which(name: &str) -> Option<PathBuf> {
         .map(|o| PathBuf::from(String::from_utf8_lossy(&o.stdout).trim()))
 }
 
-/// Find a Node.js 18+ installation.
+/// Find a Node.js 22+ installation, preferring the highest version.
 /// Returns (absolute_path, version_string).
+///
+/// When multiple Node.js installations exist (e.g. distro `/usr/bin/node`
+/// v20 and user-installed `/usr/local/bin/node` v24), the old logic
+/// returned whichever came first in the candidate list. Now we probe
+/// all candidates and pick the newest one that meets the minimum version.
 pub fn find_node() -> Result<(String, String), String> {
-    // Build candidate list: bare name first (works from terminal),
-    // then absolute paths in well-known directories.
     let mut candidates: Vec<PathBuf> = vec![PathBuf::from("node")];
     if !cfg!(target_os = "windows") {
         for dir in NODE_SEARCH_DIRS {
             candidates.push(PathBuf::from(dir).join("node"));
         }
+        // Also check `n` install location (PREFIX defaults to /usr/local)
+        let n_node = PathBuf::from("/usr/local/bin/node");
+        if !candidates.iter().any(|c| c == &n_node) && n_node.exists() {
+            candidates.push(n_node);
+        }
         // Also check nvm default if it exists
         if let Some(home) = home_dir() {
             let nvm_node = home.join(".nvm/versions/node");
             if nvm_node.is_dir() {
-                // Find the latest installed nvm version
                 if let Ok(entries) = std::fs::read_dir(&nvm_node) {
                     let mut versions: Vec<PathBuf> = entries
                         .filter_map(|e| e.ok())
@@ -125,22 +132,28 @@ pub fn find_node() -> Result<(String, String), String> {
         }
     }
 
+    // Probe all candidates and collect (abs_path, version_display, major, minor).
+    let mut found: Vec<(String, String, u32, u32)> = Vec::new();
+
     for candidate in &candidates {
         let name = candidate.to_string_lossy();
-        if let Ok(output) = Command::new(candidate)
-            .arg("--version")
+        let mut cmd = Command::new(candidate);
+        cmd.arg("--version")
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-        {
+            .stderr(Stdio::null());
+        // AppImage may set LD_LIBRARY_PATH / PATH that cause the wrong
+        // node to be resolved or linked against stale libs.
+        sanitize_node_cmd(&mut cmd);
+
+        if let Ok(output) = cmd.output() {
             if output.status.success() {
                 let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 if let Some(ver) = version.strip_prefix('v') {
                     let parts: Vec<&str> = ver.split('.').collect();
                     if parts.len() >= 2 {
                         let major: u32 = parts[0].parse().unwrap_or(0);
-                        if major >= 18 {
-                            // Resolve to absolute path
+                        let minor: u32 = parts[1].parse().unwrap_or(0);
+                        if major >= 22 {
                             let abs_path = if candidate.is_absolute() && candidate.exists() {
                                 candidate.to_string_lossy().to_string()
                             } else {
@@ -148,7 +161,10 @@ pub fn find_node() -> Result<(String, String), String> {
                                     .map(|p| p.to_string_lossy().to_string())
                                     .unwrap_or_else(|| name.to_string())
                             };
-                            return Ok((abs_path, version));
+                            // De-duplicate by resolved path
+                            if !found.iter().any(|(p, _, _, _)| p == &abs_path) {
+                                found.push((abs_path, version, major, minor));
+                            }
                         }
                     }
                 }
@@ -156,7 +172,29 @@ pub fn find_node() -> Result<(String, String), String> {
         }
     }
 
-    Err("Node.js 18+ not found. Please install Node.js from https://nodejs.org".to_string())
+    // Pick the highest version
+    found.sort_by(|a, b| (a.2, a.3).cmp(&(b.2, b.3)));
+    if let Some((path, version, _, _)) = found.pop() {
+        return Ok((path, version));
+    }
+
+    Err("Node.js 22+ not found. Please install Node.js LTS from https://nodejs.org".to_string())
+}
+
+/// Strip AppImage-injected environment variables before invoking system
+/// Node.js, same rationale as `sanitize_python_cmd` in sidecar.rs.
+fn sanitize_node_cmd(cmd: &mut Command) {
+    if let Ok(ld) = std::env::var("LD_LIBRARY_PATH") {
+        let cleaned: Vec<&str> = ld
+            .split(':')
+            .filter(|p| !p.starts_with("/tmp/.mount_"))
+            .collect();
+        if cleaned.is_empty() {
+            cmd.env_remove("LD_LIBRARY_PATH");
+        } else {
+            cmd.env("LD_LIBRARY_PATH", cleaned.join(":"));
+        }
+    }
 }
 
 /// Get the directory containing the node binary (for augmenting PATH).
@@ -170,35 +208,43 @@ fn node_bin_dir() -> Option<String> {
         })
 }
 
-/// Build an augmented PATH that includes the node binary directory and
-/// other well-known locations. This is critical for macOS .app bundles
-/// where PATH is minimal (/usr/bin:/bin:/usr/sbin:/sbin).
+/// Build a PATH with the correct node directory *first*, so that
+/// `#!/usr/bin/env node` (used by the n8n binary) resolves to the
+/// version we selected in `find_node()`.
 ///
-/// Both `npm` (which invokes `node` internally) and the n8n binary
-/// (which uses `#!/usr/bin/env node`) need `node` on PATH.
+/// The old logic only added missing directories. That failed when the
+/// desired dir (e.g. `/usr/local/bin`) was already in PATH but came
+/// *after* a dir with an older node (e.g. `/usr/bin`).  Now we always
+/// put the selected node's directory at the front, and strip AppImage-
+/// injected paths from LD_LIBRARY_PATH (handled by sanitize_node_cmd).
 fn augmented_path() -> String {
     let current = std::env::var("PATH").unwrap_or_default();
-    let mut extra_dirs: Vec<String> = Vec::new();
+    let mut front: Vec<String> = Vec::new();
 
-    // Add the directory where we found node
+    // The directory containing the node binary we chose MUST come first
+    // so that `#!/usr/bin/env node` picks it up.
     if let Some(dir) = node_bin_dir() {
-        if !current.contains(&dir) {
-            extra_dirs.push(dir);
-        }
+        front.push(dir);
     }
 
-    // Also add well-known dirs that might contain npm/npx/node
+    // Also add well-known dirs that might contain npm/npx
     for dir in NODE_SEARCH_DIRS {
-        if !current.contains(dir) && std::path::Path::new(dir).is_dir() {
-            extra_dirs.push(dir.to_string());
+        let d = dir.to_string();
+        if !front.contains(&d) && std::path::Path::new(dir).is_dir() {
+            front.push(d);
         }
     }
 
-    if extra_dirs.is_empty() {
-        current
-    } else {
-        format!("{}:{}", extra_dirs.join(":"), current)
-    }
+    // Remove the front dirs from their current position to avoid duplicates,
+    // then prepend them.
+    let remaining: Vec<&str> = current
+        .split(':')
+        .filter(|p| !front.iter().any(|f| f == p))
+        .collect();
+
+    let mut parts = front;
+    parts.extend(remaining.into_iter().map(String::from));
+    parts.join(":")
 }
 
 /// Resolve the npm binary from the same directory as the node binary.
@@ -398,6 +444,7 @@ fn rebuild_native_addon<F: FnMut(&str)>(
     log::info!("Rebuilding native addon: {}", package);
 
     let mut cmd = Command::new(npm);
+    sanitize_node_cmd(&mut cmd);
     cmd.args(["rebuild", package])
         .current_dir(module_dir)
         .env("PATH", path);
@@ -442,6 +489,7 @@ fn run_npm_install<F: FnMut(&str)>(
     }
 
     cmd.env("PATH", path);
+    sanitize_node_cmd(&mut cmd);
 
     if let Some(ref py) = gyp_python {
         cmd.env("npm_config_python", py);
@@ -523,7 +571,7 @@ pub fn startup_n8n() -> N8nStartResult {
     // 2. Node.js available?
     if find_node().is_err() {
         return N8nStartResult::NodeNotFound(
-            "Node.js is not installed. Install Node.js 18+ from https://nodejs.org to enable n8n integrations.".to_string(),
+            "Node.js is not installed. Install Node.js 22+ from https://nodejs.org to enable n8n integrations.".to_string(),
         );
     }
 
@@ -571,6 +619,9 @@ fn spawn_n8n() -> Result<Child, String> {
     log::info!("Spawning n8n: {} start (port {}, PATH: {})", bin.display(), N8N_PORT, path);
 
     let mut cmd = Command::new(&bin);
+    // Strip AppImage-injected LD_LIBRARY_PATH so n8n uses the correct
+    // system libraries (see sanitize_node_cmd).
+    sanitize_node_cmd(&mut cmd);
     cmd.arg("start")
         .env("PATH", &path)
         .env("N8N_USER_FOLDER", data_dir.to_string_lossy().as_ref())
@@ -607,6 +658,32 @@ pub fn is_n8n_running() -> bool {
         .send()
         .map(|r| r.status().is_success())
         .unwrap_or(false)
+}
+
+/// Wait for n8n's full REST API to be ready (not just /healthz).
+///
+/// n8n's /healthz endpoint comes up before the Express REST API is loaded.
+/// On a fresh install the REST API can take 15-30+ seconds to initialise its
+/// database.  If we spawn the engine before /rest/settings responds, the
+/// engine's `ensure_n8n_ready()` will time out and skip provisioning.
+pub fn wait_for_n8n_api(timeout: Duration) -> bool {
+    let start = std::time::Instant::now();
+    let client = shared_client();
+    let url = format!("http://127.0.0.1:{}/rest/settings", N8N_PORT);
+
+    while start.elapsed() < timeout {
+        match client.get(&url).send() {
+            Ok(resp) if resp.status().is_success() => {
+                log::info!("n8n REST API is ready (waited {:?})", start.elapsed());
+                return true;
+            }
+            _ => {
+                std::thread::sleep(Duration::from_secs(1));
+            }
+        }
+    }
+    log::warn!("n8n REST API not ready after {:?}", timeout);
+    false
 }
 
 /// Gracefully shut down the n8n process.

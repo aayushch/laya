@@ -54,14 +54,23 @@ fn engine_source_dir() -> PathBuf {
             .unwrap_or_default();
         // macOS .app bundle: Contents/MacOS/ -> Contents/Resources/resources/engine
         // (Tauri nests bundle resources under a "resources" subdirectory)
-        let resources = exe_dir
+        let mac_resources = exe_dir
             .parent()                   // Contents/
             .map(|p| p.join("Resources").join("resources").join("engine"))
             .unwrap_or_else(|| exe_dir.join("engine"));
-        if resources.exists() {
-            return resources;
+        if mac_resources.exists() {
+            return mac_resources;
         }
-        // Linux / other: next to executable
+        // Linux AppImage / .deb: exe is at usr/bin/, resources at
+        // usr/lib/<productName>/resources/engine/
+        let linux_resources = exe_dir
+            .parent()                   // usr/
+            .map(|p| p.join("lib").join("Laya").join("resources").join("engine"))
+            .unwrap_or_else(|| exe_dir.join("engine"));
+        if linux_resources.exists() {
+            return linux_resources;
+        }
+        // Fallback: next to executable
         exe_dir.join("engine")
     }
 }
@@ -95,7 +104,7 @@ pub struct EnvStatus {
     pub deps_installed: bool,
     /// Whether the engine source is available
     pub engine_source_found: bool,
-    /// Whether Node.js 18+ is available on the system
+    /// Whether Node.js 22+ is available on the system
     pub node_found: bool,
     /// Whether n8n is installed in ~/.laya/n8n_module/
     pub n8n_installed: bool,
@@ -122,6 +131,32 @@ pub fn check_environment() -> EnvStatus {
         engine_source_found,
         node_found,
         n8n_installed,
+    }
+}
+
+// ── AppImage environment sanitization ───────────────────────────────────
+
+/// When running inside an AppImage, the runtime sets PYTHONHOME, PYTHONPATH,
+/// and LD_LIBRARY_PATH which confuse the *system* Python (it can't find its
+/// own stdlib — notably `encodings`). Strip these before calling out to the
+/// host Python. Without this fix, `python -m venv` fails with:
+///   "ModuleNotFoundError: No module named 'encodings'"
+fn sanitize_python_cmd(cmd: &mut Command) {
+    cmd.env_remove("PYTHONHOME")
+        .env_remove("PYTHONPATH");
+
+    // LD_LIBRARY_PATH: remove AppImage-injected paths (anything under /tmp/.mount_*)
+    // but keep the rest so system libraries still resolve.
+    if let Ok(ld) = std::env::var("LD_LIBRARY_PATH") {
+        let cleaned: Vec<&str> = ld
+            .split(':')
+            .filter(|p| !p.starts_with("/tmp/.mount_"))
+            .collect();
+        if cleaned.is_empty() {
+            cmd.env_remove("LD_LIBRARY_PATH");
+        } else {
+            cmd.env("LD_LIBRARY_PATH", cleaned.join(":"));
+        }
     }
 }
 
@@ -159,7 +194,10 @@ pub fn find_python() -> Result<(PathBuf, String), String> {
     // Second pass: accept any 3.10+
     for strict in [true, false] {
         for name in &candidates {
-            if let Ok(output) = Command::new(name).args(["--version"]).output() {
+            let mut cmd = Command::new(name);
+            cmd.args(["--version"]);
+            sanitize_python_cmd(&mut cmd);
+            if let Ok(output) = cmd.output() {
                 if output.status.success() {
                     let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
                     if let Some(ver) = version.strip_prefix("Python ") {
@@ -209,9 +247,13 @@ pub fn create_venv(python: &PathBuf) -> Result<(), String> {
     std::fs::create_dir_all(laya_home())
         .map_err(|e| format!("Failed to create ~/.laya: {e}"))?;
 
-    let output = Command::new(python)
-        .args(["-m", "venv", &venv.to_string_lossy()])
-        .output()
+    let mut cmd = Command::new(python);
+    cmd.args(["-m", "venv", &venv.to_string_lossy()]);
+    // AppImage sets PYTHONHOME/PYTHONPATH/LD_LIBRARY_PATH which break the
+    // system Python's stdlib resolution (see sanitize_python_cmd).
+    sanitize_python_cmd(&mut cmd);
+
+    let output = cmd.output()
         .map_err(|e| format!("Failed to run python -m venv: {e}"))?;
 
     if !output.status.success() {
@@ -284,16 +326,19 @@ fn pip_install<F: FnMut(&str)>(
 
     log::info!("Installing from {} (log: {})", req.display(), log_path.display());
 
-    let mut child = Command::new(&python)
-        .args([
+    let mut cmd = Command::new(&python);
+    cmd.args([
             "-m", "pip",
             "install", "-r", &req.to_string_lossy(),
             "--progress-bar", "off",
             "--log", &log_path.to_string_lossy(),
         ])
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
+        .stderr(Stdio::piped());
+    // AppImage env vars break even the venv Python (see sanitize_python_cmd).
+    sanitize_python_cmd(&mut cmd);
+
+    let mut child = cmd.spawn()
         .map_err(|e| format!("Failed to start pip: {e}"))?;
 
     let mut output_lines: Vec<String> = Vec::new();
@@ -446,6 +491,8 @@ fn spawn_prod_engine() -> Result<Child, String> {
         // Prevent Python from writing __pycache__/*.pyc into the signed .app bundle,
         // which would invalidate the code signature.
         .env("PYTHONDONTWRITEBYTECODE", "1");
+    // AppImage env vars break even the venv Python (see sanitize_python_cmd).
+    sanitize_python_cmd(&mut cmd);
 
     #[cfg(unix)]
     unsafe {
