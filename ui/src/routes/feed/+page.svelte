@@ -929,6 +929,7 @@
 									<option value="persona">Persona</option>
 									<option value="category">Category</option>
 									<option value="platform">Source</option>
+									<option value="actor">Actor</option>
 								</select>
 							</div>
 							<button
