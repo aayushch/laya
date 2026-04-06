@@ -42,7 +42,7 @@ from laya.db.chromadb_store import connect_chromadb, disconnect_chromadb
 from laya.db.migrate import run_migrations
 from laya.db.sqlite import connect, disconnect
 from laya.logging_setup import setup_logging
-from laya.pipeline.queue import recover_stalled_events, start_consumer, stop_consumer
+from laya.pipeline.queue import recover_stalled_cards, recover_stalled_events, start_consumer, stop_consumer
 from laya.scheduler import start_scheduler, stop_scheduler
 from laya.security.keychain import load_all_keys_to_env
 
@@ -201,8 +201,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         log.warning("startup_budget_check_failed", error=str(e))
 
-    # Recover events orphaned by previous crash/shutdown, then start consumer
+    # Recover events and cards orphaned by previous crash/shutdown, then start consumer
     await recover_stalled_events()
+    await recover_stalled_cards()
     start_consumer()
 
     # Start egress connection health monitor

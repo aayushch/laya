@@ -389,6 +389,92 @@ async def recover_stalled_events() -> int:
     return count
 
 
+async def recover_stalled_cards() -> int:
+    """Reset cards stuck in transient states after a crash or forced shutdown.
+
+    Called on startup alongside recover_stalled_events(). Handles:
+    - 'pending' cards whose event will be retried → delete (fresh card will
+      be created when the event is reprocessed).
+    - 'pending' cards whose event is terminal (dead/completed) → mark failed
+      since no retry is coming.
+    - 'agent_running' cards → revert to requires_approval so user can
+      re-approve (agent session is dead after restart).
+    - 'executing' cards → mark failed since we can't know if the external
+      action completed.
+    """
+    db = await get_db()
+    total = 0
+
+    # -- pending cards with retryable events: delete silently --
+    cursor = await db.execute(
+        """DELETE FROM action_cards
+           WHERE status = 'pending'
+             AND event_id IN (
+                 SELECT event_id FROM events
+                 WHERE processing_status IN ('queued', 'retrying', 'processing')
+             )"""
+    )
+    deleted = cursor.rowcount
+    total += deleted
+    if deleted:
+        log.warning("stalled_pending_cards_deleted", count=deleted,
+                    reason="event will be retried, fresh card will be created")
+
+    # -- pending cards with terminal events: mark failed --
+    cursor = await db.execute(
+        """UPDATE action_cards
+           SET status = 'failed',
+               failed_stage = 'pipeline',
+               updated_at = CURRENT_TIMESTAMP
+           WHERE status = 'pending'
+             AND event_id IN (
+                 SELECT event_id FROM events
+                 WHERE processing_status IN ('dead', 'completed')
+             )"""
+    )
+    failed_pending = cursor.rowcount
+    total += failed_pending
+    if failed_pending:
+        log.warning("stalled_pending_cards_failed", count=failed_pending,
+                    reason="event is terminal, no retry coming")
+
+    # -- agent_running → requires_approval --
+    cursor = await db.execute(
+        """UPDATE action_cards
+           SET status = 'requires_approval',
+               previous_status = 'agent_running',
+               updated_at = CURRENT_TIMESTAMP
+           WHERE status = 'agent_running'"""
+    )
+    agent_reset = cursor.rowcount
+    total += agent_reset
+    if agent_reset:
+        log.warning("stalled_agent_cards_reset", count=agent_reset,
+                    reason="agent session dead after restart, reverted to requires_approval")
+
+    # -- executing → failed --
+    cursor = await db.execute(
+        """UPDATE action_cards
+           SET status = 'failed',
+               failed_stage = 'action_execution',
+               updated_at = CURRENT_TIMESTAMP
+           WHERE status = 'executing'"""
+    )
+    exec_failed = cursor.rowcount
+    total += exec_failed
+    if exec_failed:
+        log.warning("stalled_executing_cards_failed", count=exec_failed,
+                    reason="action execution interrupted, cannot verify completion")
+
+    await db.commit()
+
+    if total:
+        log.warning("stalled_cards_recovered", total=total,
+                    deleted_pending=deleted, failed_pending=failed_pending,
+                    agent_reset=agent_reset, exec_failed=exec_failed)
+    return total
+
+
 async def _reap_stale_events() -> int:
     """Find events stuck in 'processing' longer than 2× model_timeout.
 
