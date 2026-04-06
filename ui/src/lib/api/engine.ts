@@ -174,6 +174,19 @@ export const engineApi = {
 		request<{ status: string; card_id: string }>(`/cards/${cardId}/approve-agent`, {
 			method: 'POST'
 		}),
+	runAgent: (data: {
+		prompt: string;
+		directory: string;
+		add_dirs?: string[];
+		agent_type?: string;
+		mode?: string;
+		space_id?: string;
+		images?: string[];
+	}) =>
+		request<{ status: string; card_id: string }>('/cards/run-agent', {
+			method: 'POST',
+			body: JSON.stringify(data)
+		}),
 	dismissCard: (cardId: string, reason?: string, feedbackType?: string) =>
 		request<{ status: string; card_id: string }>(`/cards/${cardId}/dismiss`, {
 			method: 'POST',
@@ -240,6 +253,12 @@ export const engineApi = {
 				action_id: actionId,
 				modifications: modifications ?? null
 			})
+		}),
+
+	updateActionPayload: (cardId: string, actionId: string, payload: Record<string, string>) =>
+		request<{ status: string }>(`/cards/${cardId}/action-payload`, {
+			method: 'POST',
+			body: JSON.stringify({ action_id: actionId, payload })
 		}),
 
 	// Workspace
@@ -491,7 +510,11 @@ export const engineApi = {
 		}),
 
 	// Trace
-	runTrace: (query: string, spaceId?: string, fuzzySearch = false) =>
+	runTrace: (query: string, spaceId?: string, fuzzySearch = false, opts?: {
+		enableSemantic?: boolean;
+		enableText?: boolean;
+		enableLlmFilter?: boolean;
+	}) =>
 		request<import('./types').TraceResponse>('/trace', {
 			method: 'POST',
 			body: JSON.stringify({
@@ -499,12 +522,18 @@ export const engineApi = {
 				space_id: spaceId || null,
 				include_archived: true,
 				max_results: 50,
-				fuzzy_search: fuzzySearch
+				fuzzy_search: fuzzySearch,
+				...(opts?.enableSemantic !== undefined && { enable_semantic: opts.enableSemantic }),
+				...(opts?.enableText !== undefined && { enable_text: opts.enableText }),
+				...(opts?.enableLlmFilter !== undefined && { enable_llm_filter: opts.enableLlmFilter }),
 			})
 		}),
 
 	getTraces: (limit = 20, offset = 0) =>
 		request<import('./types').TraceListItem[]>(`/traces?limit=${limit}&offset=${offset}`),
+
+	cancelTrace: () =>
+		request<{ cancelled: string[] }>('/trace/cancel', { method: 'POST' }),
 
 	getTrace: (traceId: string) =>
 		request<import('./types').TraceResponse>(`/traces/${traceId}`),
@@ -517,6 +546,11 @@ export const engineApi = {
 
 	generateClusterNarrative: (traceId: string, clusterId: string) =>
 		request<{ status: string }>(`/traces/${traceId}/clusters/${clusterId}/narrative`, {
+			method: 'POST'
+		}),
+
+	generateTraceSummary: (traceId: string) =>
+		request<{ status: string }>(`/traces/${traceId}/summary`, {
 			method: 'POST'
 		}),
 

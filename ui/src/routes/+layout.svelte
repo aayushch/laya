@@ -10,11 +10,13 @@
 	import { needsSetup, setupComplete } from '$lib/stores/setup';
 	import { chatOpen, chatListOpen } from '$lib/stores/chat';
 	import { theme } from '$lib/stores/theme';
-	import { budgetPaused, loadBudgetStatus, handleBudgetWsMessage } from '$lib/stores/budget';
+	import { budgetPaused, loadBudgetStatus, handleBudgetWsMessage, costAmount, budgetLabel, budgetRatio } from '$lib/stores/budget';
 	import { feedFilters, loadFeedFilters, saveFeedFilters, filtersLoaded, feedDate, feedPrevDate, feedNextDate, localToday } from '$lib/stores/feedFilters';
 	import { spaces, loadSpaces } from '$lib/stores/spaces';
 	import { compose } from '$lib/stores/compose';
 	import ComposeModal from '$lib/components/egress/ComposeModal.svelte';
+	import { agentDialog } from '$lib/stores/agentDialog';
+	import RunAgentModal from '$lib/components/agent/RunAgentModal.svelte';
 	import { onMount } from 'svelte';
 
 	function formatDateLabel(dateStr: string): string {
@@ -85,6 +87,14 @@
 		}
 	});
 
+	// Refresh cost data when pipeline produces new cards (implies LLM usage)
+	$effect(() => {
+		const msg = $lastMessage;
+		if (msg && (msg.type === 'card_created' || msg.type === 'card_updated')) {
+			loadBudgetStatus();
+		}
+	});
+
 	// React to open_compose WebSocket events
 	$effect(() => {
 		const msg = $lastMessage;
@@ -114,6 +124,17 @@
 		}
 		document.addEventListener('keydown', handleComposeShortcut);
 
+		// Keyboard shortcut: press 'a' (not in input/textarea) to open run agent dialog
+		function handleAgentShortcut(e: KeyboardEvent) {
+			if (e.key === 'a' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+				const tag = (e.target as HTMLElement)?.tagName;
+				if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable) return;
+				e.preventDefault();
+				agentDialog.open();
+			}
+		}
+		document.addEventListener('keydown', handleAgentShortcut);
+
 		// Auto-advance feedDate at midnight so "Today"/"Yesterday" labels stay correct
 		function scheduleMidnightUpdate() {
 			const now = Date.now();
@@ -127,6 +148,7 @@
 
 		return () => {
 			document.removeEventListener('keydown', handleComposeShortcut);
+			document.removeEventListener('keydown', handleAgentShortcut);
 			clearTimeout(midnightTimer);
 			stopHealthPolling();
 			closeWebSocket();
@@ -288,8 +310,52 @@
 		<main class="flex-1 overflow-auto p-4 transition-[padding] duration-250 {$chatOpen ? 'pr-[476px]' : ''}">
 			{@render children()}
 		</main>
+
+		<!-- Footer -->
+		<footer class="flex items-center justify-between border-t border-surface-700/60 bg-surface-900/95 px-5 py-1.5 text-[11px] text-surface-500 backdrop-blur-sm {$chatOpen ? 'pr-[476px]' : ''} transition-[padding] duration-250">
+			<!-- Left: Date widget -->
+			<div class="flex items-center gap-2 text-surface-600">
+				<span class="tabular-nums">{new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+				<span class="text-surface-700">|</span>
+				<a href="/legal" class="text-surface-600 transition-colors hover:text-surface-300">Terms &amp; License</a>
+			</div>
+			<!-- Right: Cost widget -->
+			<div class="flex items-center gap-4">
+				{#if $costAmount}
+					<div class="flex items-center gap-0.5">
+						<!-- Cost amount → status page breakdown -->
+						<a
+							href="/status"
+							class="rounded-md px-1.5 py-0.5 font-medium tabular-nums transition-colors hover:bg-surface-800 {$budgetPaused ? 'text-red-400 hover:text-red-300' : $budgetRatio != null && $budgetRatio >= 0.75 ? 'text-amber-400 hover:text-amber-300' : 'text-surface-400 hover:text-surface-200'}"
+							title="LLM cost this month — click for breakdown"
+						>
+							{$costAmount}
+						</a>
+						<!-- Budget limit + bar → settings cost control -->
+						{#if $budgetLabel}
+							<a
+								href="/settings?tab=models&section=cost-control"
+								class="flex items-center gap-1.5 rounded-md px-1.5 py-0.5 font-medium tabular-nums text-surface-500 transition-colors hover:bg-surface-800 hover:text-surface-300"
+								title="Monthly budget — click to manage"
+							>
+								{$budgetLabel}
+								{#if $budgetRatio != null}
+									<div class="h-1 w-10 rounded-full bg-surface-700 overflow-hidden">
+										<div
+											class="h-full rounded-full transition-all duration-300 {$budgetRatio >= 1 ? 'bg-red-400' : $budgetRatio >= 0.75 ? 'bg-amber-400' : 'bg-emerald-400'}"
+											style="width: {$budgetRatio * 100}%"
+										></div>
+									</div>
+								{/if}
+							</a>
+						{/if}
+					</div>
+				{/if}
+			</div>
+		</footer>
 	</div>
 
 	<ChatSidebar />
 	<ComposeModal />
+	<RunAgentModal />
 {/if}

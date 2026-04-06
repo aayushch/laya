@@ -10,16 +10,26 @@
 		cluster,
 		onremove,
 		ongenerate,
-		isLast = false
+		isLast = false,
+		expandAll = null
 	}: {
 		cluster: TraceCluster;
 		onremove?: () => void;
 		ongenerate?: () => void;
 		isLast?: boolean;
+		expandAll?: boolean | null;
 	} = $props();
 
 	let expanded = $state(false);
+
+	// React to expand all / collapse all signal from parent
+	$effect(() => {
+		if (expandAll !== null && expandAll !== undefined) {
+			expanded = expandAll;
+		}
+	});
 	let allCardsExpanded = $state<boolean | null>(null);
+	let cardsExpanded = $state(false);
 
 	// Tooltip state
 	let tooltip = $state<{ text: string; x: number; y: number } | null>(null);
@@ -356,15 +366,17 @@
 					<div class="relative pl-5 h-[22px] flex items-center">
 						<div class="absolute left-0 top-0 bottom-0 w-px bg-surface-700/40"></div>
 						<div class="flex items-center gap-2 text-[10px] text-surface-500">
-							<button
-								onclick={() => { allCardsExpanded = true; }}
-								class="hover:text-laya-orange transition-colors cursor-pointer"
-							>expand all</button>
-							<span class="text-surface-700">|</span>
-							<button
-								onclick={() => { allCardsExpanded = false; }}
-								class="hover:text-laya-orange transition-colors cursor-pointer"
-							>collapse all</button>
+							{#if cardsExpanded}
+								<button
+									onclick={() => { allCardsExpanded = false; cardsExpanded = false; }}
+									class="hover:text-laya-orange transition-colors cursor-pointer"
+								>collapse all</button>
+							{:else}
+								<button
+									onclick={() => { allCardsExpanded = true; cardsExpanded = true; }}
+									class="hover:text-laya-orange transition-colors cursor-pointer"
+								>expand all</button>
+							{/if}
 						</div>
 					</div>
 				{/if}

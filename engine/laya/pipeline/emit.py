@@ -15,7 +15,7 @@ from laya.models.card import ActionCardData
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 from laya.pipeline.entity_resolution import resolve_semantic_entities
-from laya.pipeline.summarize import trigger_summary_update
+from laya.pipeline.summarize import trigger_summary_status_update, trigger_summary_update
 from laya.workers.base import WorkerResult
 
 log = structlog.get_logger()
@@ -247,6 +247,44 @@ async def run_emit(
         persona=router_output.persona.value,
         carry_forward=_is_carry_forward,
     )
+
+    # 3b. Auto-resolve older cards in the entity group when a terminal event arrives.
+    # Terminal events indicate the underlying work item has completed (PR merged/declined,
+    # issue closed/resolved, etc.), so pending sibling cards are no longer actionable.
+    _TERMINAL_EVENT_TYPES = {
+        "pr_merged", "pr_declined", "pr_closed",
+        "issue_closed", "issue_resolved", "ticket_closed", "ticket_resolved",
+        "build_succeeded", "deploy_completed",
+    }
+    if _is_carry_forward and event.source.raw_event_type in _TERMINAL_EVENT_TYPES:
+        sibling_rows = await db.execute_fetchall(
+            """SELECT card_id, header, status FROM action_cards
+               WHERE entity_id = ? AND card_id != ?
+               AND status NOT IN ('done', 'dismissed', 'failed', 'archived')""",
+            (entity_id, card_id),
+        )
+        if sibling_rows:
+            for sib in sibling_rows:
+                await db.execute(
+                    """UPDATE action_cards SET status = 'done', previous_status = ?,
+                       resolved_at = ?, updated_at = ? WHERE card_id = ?""",
+                    (sib["status"], now_ts, now_ts, sib["card_id"]),
+                )
+                await manager.broadcast(
+                    {"type": "card_updated", "card_id": sib["card_id"],
+                     "payload": {"status": "done"}}
+                )
+                asyncio.create_task(
+                    trigger_summary_status_update(sib["card_id"], sib["header"], "done"),
+                    name=f"summary_status_{sib['card_id']}",
+                )
+            await db.commit()
+            log.info(
+                "auto_resolved_siblings",
+                entity_id=entity_id,
+                trigger_event=event.source.raw_event_type,
+                resolved_count=len(sibling_rows),
+            )
 
     # 4. Embed card in ChromaDB
     entity_refs = ",".join(e.value for e in router_output.entities)

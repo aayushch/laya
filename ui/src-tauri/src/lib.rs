@@ -81,6 +81,30 @@ async fn pick_repo_folder(app: tauri::AppHandle) -> Result<RepoDetection, String
     Ok(RepoDetection { path, name, platform, remote_id })
 }
 
+/// Generic folder picker — returns the selected path as a string.
+/// Unlike pick_repo_folder, does not require git or detect remotes.
+#[tauri::command]
+async fn pick_folder(app: tauri::AppHandle, title: Option<String>) -> Result<String, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let dlg_title = title.unwrap_or_else(|| "Select a folder".to_string());
+    let file_path = app
+        .dialog()
+        .file()
+        .set_title(&dlg_title)
+        .blocking_pick_folder()
+        .ok_or_else(|| "cancelled".to_string())?;
+    let path = file_path
+        .as_path()
+        .ok_or_else(|| "cancelled".to_string())?
+        .to_string_lossy()
+        .trim_end_matches('/')
+        .to_string();
+    if path.is_empty() {
+        return Err("cancelled".to_string());
+    }
+    Ok(path)
+}
+
 // ── Setup commands ──────────────────────────────────────────────────────
 
 /// Check if the Python environment is ready.
@@ -404,8 +428,14 @@ pub fn run() {
                 MenuItem::with_id(app, "dashboard", "Dashboard", true, None::<&str>)?;
             let separator = PredefinedMenuItem::separator(app)?;
             let show = MenuItem::with_id(app, "show", "Show Laya", true, None::<&str>)?;
+            let legal =
+                MenuItem::with_id(app, "legal", "Terms & License", true, None::<&str>)?;
+            let separator2 = PredefinedMenuItem::separator(app)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&dashboard, &separator, &show, &quit])?;
+            let menu = Menu::with_items(
+                app,
+                &[&dashboard, &separator, &show, &legal, &separator2, &quit],
+            )?;
 
             let tray_icon = {
                 let bytes = include_bytes!("../icons/trayTemplate@2x.png");
@@ -429,6 +459,13 @@ pub fn run() {
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
                             let _ = window.set_focus();
+                        }
+                    }
+                    "legal" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                            let _ = window.eval("window.location.href='/legal'");
                         }
                     }
                     "quit" => {
@@ -495,6 +532,7 @@ pub fn run() {
             n8n::start_n8n,
             n8n::stop_n8n,
             pick_repo_folder,
+            pick_folder,
             check_environment,
             setup_environment,
         ])

@@ -104,7 +104,7 @@
 
 <div class="flex h-screen w-full flex-col items-center justify-center bg-surface-900">
 	<!-- Logo -->
-	<h1 class="mb-2 text-4xl font-bold tracking-wide text-laya-orange">Laya</h1>
+	<h1 class="mb-2 text-8xl font-bold tracking-wide text-laya-orange">Laya</h1>
 
 	{#if $needsSetup === null}
 		<!-- Still checking environment -->
@@ -171,14 +171,8 @@
 		<img
 			src={layaIcon}
 			alt="Laya"
-			class="w-80 h-80 object-contain {allReady ? '' : 'animate-pulse'}"
+			class="w-56 h-56 object-contain {allReady ? '' : 'animate-pulse'}"
 		/>
 
-		<div class="mt-4 h-1 w-72 overflow-hidden rounded-full bg-surface-700">
-			<div
-				class="h-full rounded-full bg-laya-orange transition-all duration-500"
-				style="width: {(readyCount / components.length) * 100}%"
-			></div>
-		</div>
 	{/if}
 </div>

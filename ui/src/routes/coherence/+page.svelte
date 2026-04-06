@@ -18,11 +18,14 @@
 	import type { TraceResponse } from '$lib/api/types';
 
 	let loading = $state(false);
+	let cancelling = $state(false);
 	let error = $state<string | null>(null);
 	let trace = $state<TraceResponse | null>(get(currentTrace));
 	let exporting = $state(false);
 	let removedClusterIds = $state<Set<string>>(new Set());
 	let _activeTraceId = $state<string | null>(null);
+	let expandAllClusters = $state<boolean | null>(null);
+	let clustersExpanded = $state(false);
 
 	// Visible clusters = all clusters minus removed ones
 	const visibleClusters = $derived(
@@ -210,7 +213,11 @@
 		}
 	}
 
-	async function handleSearch(query: string, fuzzy = false) {
+	async function handleSearch(query: string, fuzzy = false, opts?: {
+		enableSemantic?: boolean;
+		enableText?: boolean;
+		enableLlmFilter?: boolean;
+	}) {
 		loading = true;
 		error = null;
 		removedClusterIds = new Set();
@@ -221,7 +228,7 @@
 		traceProgress.set({ stage: 'Initializing', step: 0, total: 6, query });
 
 		try {
-			const result = await engineApi.runTrace(query, undefined, fuzzy);
+			const result = await engineApi.runTrace(query, undefined, fuzzy, opts);
 			trace = result;
 			currentTrace.set(result);
 
@@ -231,10 +238,24 @@
 
 			loadHistory();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Search failed';
+			const msg = e instanceof Error ? e.message : 'Search failed';
+			// Don't show error for cancellation
+			if (!msg.includes('cancelled') && !msg.includes('abort')) {
+				error = msg;
+			}
 		} finally {
 			loading = false;
+			cancelling = false;
 			traceProgress.set(null);
+		}
+	}
+
+	async function handleCancelSearch() {
+		cancelling = true;
+		try {
+			await engineApi.cancelTrace();
+		} catch {
+			// Best-effort — the search may already have completed
 		}
 	}
 
@@ -356,6 +377,42 @@
 		}
 	}
 
+	// Overall summary state — uses __summary__ as a virtual cluster_id in the narrative maps
+	const SUMMARY_ID = '__summary__';
+	const summaryText = $derived($traceNarrativeMap[SUMMARY_ID] ?? '');
+	const summaryStreaming = $derived($traceNarrativeStreamingMap[SUMMARY_ID] ?? false);
+	const hasSummary = $derived(!!summaryText || summaryStreaming);
+
+	function parseLlmContent(content: string, streaming: boolean) {
+		if (!content) return { thinking: null, response: content, isThinking: false };
+		const match = content.match(/<think>([\s\S]*?)<\/think>/);
+		if (match) {
+			return {
+				thinking: match[1].trim(),
+				response: content.slice(match.index! + match[0].length).trim(),
+				isThinking: false
+			};
+		}
+		if (content.includes('<think>')) {
+			if (streaming) {
+				return { thinking: content.replace('<think>', '').trim(), response: '', isThinking: true };
+			}
+			return { thinking: null, response: content.replace('<think>', ''), isThinking: false };
+		}
+		return { thinking: null, response: content, isThinking: false };
+	}
+
+	const parsedSummary = $derived(parseLlmContent(summaryText, summaryStreaming));
+
+	async function handleGenerateSummary() {
+		if (!trace) return;
+		try {
+			await engineApi.generateTraceSummary(trace.trace_id);
+		} catch (e) {
+			console.error('Summary generation failed:', e);
+		}
+	}
+
 	const coherenceStages = [
 		'Searching',
 		'Ranking results',
@@ -451,15 +508,27 @@
 				</div>
 
 				<div class="flex items-center gap-1.5">
+					{#if clustersExpanded}
+						<button
+							onclick={() => { expandAllClusters = false; clustersExpanded = false; setTimeout(() => expandAllClusters = null, 50); }}
+							class="text-[11px] text-surface-500 hover:text-laya-orange transition-colors"
+						>collapse all</button>
+					{:else}
+						<button
+							onclick={() => { expandAllClusters = true; clustersExpanded = true; setTimeout(() => expandAllClusters = null, 50); }}
+							class="text-[11px] text-surface-500 hover:text-laya-orange transition-colors"
+						>expand all</button>
+					{/if}
 					{#if removedClusterIds.size > 0}
+						<span class="text-surface-600">·</span>
 						<button
 							onclick={handleRestoreClusters}
 							class="text-[11px] text-surface-500 hover:text-laya-orange transition-colors"
 						>
 							restore {removedClusterIds.size}
 						</button>
-						<span class="text-surface-600">·</span>
 					{/if}
+					<span class="text-surface-600">·</span>
 					<button
 						onclick={() => handleRerun()}
 						class="p-1 rounded text-surface-400 hover:text-surface-200 hover:bg-surface-700 transition-colors"
@@ -468,6 +537,19 @@
 						<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
 						</svg>
+					</button>
+					<button
+						onclick={handleGenerateSummary}
+						disabled={summaryStreaming}
+						class="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium
+						       text-surface-300 bg-surface-700/60 border border-surface-600/50
+						       hover:border-laya-orange/40 hover:text-laya-orange hover:bg-laya-orange/5
+						       disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+					>
+						<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+						</svg>
+						{summaryStreaming ? 'Summarizing...' : hasSummary ? 'Re-summarize' : 'Summarize'}
 					</button>
 					<button
 						onclick={handleExport}
@@ -484,6 +566,49 @@
 					</button>
 				</div>
 			</div>
+
+			<!-- Overall summary -->
+			{#if hasSummary}
+				<div class="mb-4 rounded-lg border border-laya-orange/20 bg-laya-orange/5 px-4 py-3">
+					{#if parsedSummary.isThinking}
+						<div class="flex items-center gap-1.5 text-[11px] text-surface-400">
+							<svg class="h-2.5 w-2.5 animate-spin text-laya-orange/60 shrink-0" fill="none" viewBox="0 0 24 24">
+								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+							</svg>
+							Generating summary...
+						</div>
+					{:else}
+						<div class="flex items-center gap-1.5 mb-1.5">
+							<span class="text-[9px] font-semibold uppercase tracking-wider text-laya-orange/70">✦ Summary</span>
+							{#if summaryStreaming}
+								<svg class="h-2.5 w-2.5 animate-spin text-laya-orange/60 shrink-0" fill="none" viewBox="0 0 24 24">
+									<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+									<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+								</svg>
+							{/if}
+						</div>
+						{#if parsedSummary.thinking}
+							<details class="mb-1.5">
+								<summary class="cursor-pointer text-[10px] text-surface-500 hover:text-surface-300 select-none list-none flex items-center gap-1">
+									<svg class="w-2.5 h-2.5 shrink-0 transition-transform [[open]>&]:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+										<path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+									</svg>
+									thought process
+								</summary>
+								<div class="ml-3.5 border-l border-laya-orange/10 pl-2 text-[10px] leading-relaxed text-surface-500 whitespace-pre-wrap mt-1">
+									{parsedSummary.thinking}
+								</div>
+							</details>
+						{/if}
+						{#if parsedSummary.response}
+							<p class="text-[12px] text-surface-200 leading-relaxed">
+								{parsedSummary.response}{#if summaryStreaming && !parsedSummary.isThinking}<span class="inline-block w-1 h-3 bg-laya-orange/70 animate-pulse ml-0.5 align-middle"></span>{/if}
+							</p>
+						{/if}
+					{/if}
+				</div>
+			{/if}
 
 			<!-- Tree structure -->
 			<div class="rounded-md border border-surface-700/50 bg-surface-800/30 px-4 py-2.5 overflow-hidden">
@@ -503,6 +628,7 @@
 								onremove={() => handleRemoveCluster(cluster.cluster_id)}
 								ongenerate={() => handleGenerateNarrative(cluster.cluster_id)}
 								isLast={idx === visibleClusters.length - 1}
+								expandAll={expandAllClusters}
 							/>
 						</div>
 					{/each}
@@ -555,15 +681,24 @@
 					</div>
 				</div>
 
-				<!-- Current stage -->
-				<div class="flex items-center gap-2 text-xs text-surface-400">
-					<svg class="w-3.5 h-3.5 animate-spin shrink-0 text-laya-orange" fill="none" viewBox="0 0 24 24">
-						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle>
-						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-					</svg>
-					<span class="font-medium transition-all duration-300">{($traceProgress?.step ?? 0) > 0 && ($traceProgress?.step ?? 0) <= coherenceStages.length ? coherenceStages[($traceProgress?.step ?? 1) - 1] : 'Preparing'}</span>
-					<span class="text-surface-600">&middot;</span>
-					<span class="text-surface-500">{$traceProgress?.step ?? 0} / {$traceProgress?.total ?? coherenceStages.length}</span>
+				<!-- Current stage + cancel -->
+				<div class="flex items-center justify-between">
+					<div class="flex items-center gap-2 text-xs text-surface-400">
+						<svg class="w-3.5 h-3.5 animate-spin shrink-0 text-laya-orange" fill="none" viewBox="0 0 24 24">
+							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle>
+							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+						</svg>
+						<span class="font-medium transition-all duration-300">{($traceProgress?.step ?? 0) > 0 && ($traceProgress?.step ?? 0) <= coherenceStages.length ? coherenceStages[($traceProgress?.step ?? 1) - 1] : 'Preparing'}</span>
+						<span class="text-surface-600">&middot;</span>
+						<span class="text-surface-500">{$traceProgress?.step ?? 0} / {$traceProgress?.total ?? coherenceStages.length}</span>
+					</div>
+					<button
+						onclick={handleCancelSearch}
+						disabled={cancelling}
+						class="text-xs transition-colors {cancelling ? 'text-surface-600 cursor-not-allowed' : 'text-surface-500 hover:text-red-400'}"
+					>
+						{cancelling ? 'Cancelling...' : 'Cancel'}
+					</button>
 				</div>
 			</div>
 		{/if}

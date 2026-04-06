@@ -12,8 +12,9 @@
 		ondelete,
 		selectedCardId = '',
 		hasSelection = false,
+		lastViewedCardId = '',
 		scrollToCardId = null
-	}: { group: CardGroup; onselect: (card: ActionCard) => void; ondelete?: (cardId: string) => void; selectedCardId?: string; hasSelection?: boolean; scrollToCardId?: string | null } = $props();
+	}: { group: CardGroup; onselect: (card: ActionCard) => void; ondelete?: (cardId: string) => void; selectedCardId?: string; hasSelection?: boolean; lastViewedCardId?: string; scrollToCardId?: string | null } = $props();
 
 	let expanded = $state(false);
 	let bulkActionRunning = $state(false);
@@ -485,7 +486,7 @@
 		{#if expanded}
 			<div class="space-y-2 px-3 pb-3 pt-1" transition:slide={{ duration: 200 }}>
 				{#each group.cards as card (card.card_id)}
-					<ActionCardComponent {card} onselect={onselect} {ondelete} {selectedCardId} {hasSelection} />
+					<ActionCardComponent {card} onselect={onselect} {ondelete} {selectedCardId} {hasSelection} {lastViewedCardId} />
 				{/each}
 			</div>
 		{/if}

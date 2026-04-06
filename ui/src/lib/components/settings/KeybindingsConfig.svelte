@@ -1,6 +1,9 @@
 <script lang="ts">
 	const keybindings = [
 		{ key: 'C', description: 'Open compose modal', scope: 'Global', note: 'Only when not focused on an input field' },
+		{ key: 'A', description: 'Open run agent dialog', scope: 'Global', note: 'Only when not focused on an input field' },
+		{ key: 'Esc', description: 'Close run agent dialog', scope: 'Run agent modal' },
+		{ key: 'Cmd+Enter', description: 'Submit agent prompt', scope: 'Run agent modal' },
 		{ key: 'Esc', description: 'Close compose modal', scope: 'Compose modal' },
 		{ key: 'Esc', description: 'Close connection dialog', scope: 'Connection modal' },
 		{ key: 'Esc', description: 'Close classification dialog', scope: 'Classification dialog' },

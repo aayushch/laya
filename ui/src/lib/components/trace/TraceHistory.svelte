@@ -14,20 +14,11 @@
 		onrerun?: (traceId: string) => void;
 	} = $props();
 
-	// Track which items are being deleted (for exit animation before parent removes them)
-	let deletingIds = $state<Set<string>>(new Set());
-
 	function handleDelete(e: MouseEvent, traceId: string) {
 		e.stopPropagation();
-		deletingIds = new Set([...deletingIds, traceId]);
-		// Delay the actual delete call so the slide-out animation plays
-		setTimeout(() => {
-			ondelete?.(traceId);
-			deletingIds = new Set([...deletingIds].filter(id => id !== traceId));
-		}, 300);
+		tooltip = null; // Clear tooltip before element is removed
+		ondelete?.(traceId);
 	}
-
-	const visibleTraces = $derived(traces.filter(t => !deletingIds.has(t.trace_id)));
 
 	// Tooltip state
 	let tooltip = $state<{ text: string; x: number; y: number } | null>(null);
@@ -59,7 +50,7 @@
 	</div>
 {/if}
 
-{#if visibleTraces.length === 0 && deletingIds.size === 0}
+{#if traces.length === 0}
 	<div class="text-center py-12 text-surface-500">
 		<svg class="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
 			<path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
@@ -68,10 +59,10 @@
 	</div>
 {:else}
 	<div class="space-y-2">
-		{#each visibleTraces as trace (trace.trace_id)}
+		{#each traces as trace (trace.trace_id)}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
-				transition:slide={{ duration: 280 }}
+				out:slide={{ duration: 250 }}
 				class="w-full text-left rounded-lg border border-surface-700/60 bg-surface-800/60
 				       hover:border-surface-600 hover:bg-surface-800 p-4 transition-colors group cursor-pointer"
 				onclick={() => onselect(trace.trace_id)}

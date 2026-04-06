@@ -36,7 +36,7 @@ and concrete findings.
   - action_id: unique identifier (e.g., "act_comment_jira")
   - label: human-readable button text (e.g., "Post Jira Comment")
   - action_type: must match the target_platform. Valid combinations:
-    - **gmail/outlook**: "send_email", "forward", "archive"
+    - **gmail/outlook**: "send_email", "forward", "archive", "mark_read"
     - **slack**: "send_message", "reply_thread"
     - **jira/linear**: "comment", "transition", "create_issue", "assign"
     - **bitbucket**: "comment_pr", "approve_pr", "request_changes", "merge_pr", "decline_pr", "create_pr"
@@ -48,7 +48,8 @@ and concrete findings.
 "outlook", "linear"
   - payload: A JSON string with platform-specific data. Required fields by platform:
     - **gmail**: {"to": "sender@email (the person who SENT the original email, i.e. the actor — NOT the user's own email)", "subject": "Re: ...", "body": "The full email body text", "thread_id": "optional thread ID", "cc": "optional"}
-    - **outlook**: {"to": "sender@email (the original sender/actor — NOT the user)", "subject": "Re: ...", "body": "email text", "conversation_id": "optional"}
+    - **outlook**: {"to": "sender@email (the original sender/actor — NOT the user)", "subject": "Re: ...", "body": "email text", "conversation_id": "optional"} \
+for send_email/forward; {"outlook_id": "the outlook message ID from the event"} for archive/mark_read
     - **slack**: {"channel": "channel-name-or-id", "message": "The message text"} \
 for send_message; add "thread_ts": "timestamp" for reply_thread
     - **jira**: {"issue_key": "PROJ-123", "comment": "The comment body"} for comment; \

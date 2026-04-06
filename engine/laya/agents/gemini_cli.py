@@ -53,6 +53,7 @@ class GeminiCliAgent(CodingAgent):
 
     async def start_session(
         self, session_id: str, prompt: str, repo_path: str, add_dirs: list[str] | None = None,
+        mode: str | None = None,
     ) -> None:
         self._session_id = session_id
         self._repo_path = repo_path

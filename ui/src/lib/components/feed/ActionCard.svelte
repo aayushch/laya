@@ -7,9 +7,11 @@
 	import { feedDate } from '$lib/stores/feedFilters';
 	import StatusDot from './StatusDot.svelte';
 
-	let { card, onselect, ondelete, selectedCardId = '', hasSelection = false }: { card: ActionCard; onselect: (card: ActionCard) => void; ondelete?: (cardId: string) => void; selectedCardId?: string; hasSelection?: boolean } = $props();
+	let { card, onselect, ondelete, selectedCardId = '', hasSelection = false, lastViewedCardId = '' }: { card: ActionCard; onselect: (card: ActionCard) => void; ondelete?: (cardId: string) => void; selectedCardId?: string; hasSelection?: boolean; lastViewedCardId?: string } = $props();
 
 	const isSelected = $derived(card.card_id === selectedCardId);
+	// Show a persistent left accent bar on the last-viewed card after the detail panel closes
+	const isLastViewed = $derived(!isSelected && !hasSelection && card.card_id === lastViewedCardId);
 
 	let markingDone = $state(false);
 	let approvingAgent = $state(false);
@@ -128,7 +130,7 @@
 	const isDimmed = $derived(!isSelected && hasSelection && !isArchived);
 
 	const cardStyle = $derived(
-		`${baseCardStyle}${isDimmed ? ' opacity-45 hover:opacity-70' : ''}`
+		`${baseCardStyle}${isDimmed ? ' opacity-45 hover:opacity-70' : ''}${isLastViewed ? ' card-last-viewed' : ''}`
 	);
 
 	const platform = $derived(

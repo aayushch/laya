@@ -14,7 +14,15 @@ class TraceRequest(BaseModel):
     space_id: str | None = None  # None = cross-space search
     include_archived: bool = True
     max_results: int = Field(default=50, ge=1, le=200)
-    fuzzy_search: bool = False  # Enable fuzzy (LIKE) + event keyword search
+    fuzzy_search: bool = False  # Broad keyword-split LIKE search (noisy, off by default)
+
+    # Advanced search toggles — all default True for backward compatibility.
+    # When disabled, the corresponding pipeline stage is skipped entirely.
+    enable_semantic: bool = True     # ChromaDB vector similarity search
+    enable_text: bool = True         # SQLite phrase-match on card content (header, summary, etc.)
+    enable_identifier: bool = True   # Regex pattern matching (PR-540, LAYA-986, etc.) — always cheap
+    enable_entity: bool = True       # Entity table lookup by canonical_name
+    enable_llm_filter: bool = True   # LLM-based relevance filtering after expansion
 
 
 class TraceEntity(BaseModel):

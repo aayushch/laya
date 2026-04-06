@@ -17,9 +17,16 @@
 		onClose: () => void;
 	} = $props();
 
-	let body = $state(String(prefill.body ?? prefill.comment ?? ''));
-	let to = $state(String(prefill.to ?? ''));
-	let subject = $state(String(prefill.subject ?? ''));
+	let body = $state('');
+	let to = $state('');
+	let subject = $state('');
+
+	// Initialize from prefill props — runs once on mount and whenever prefill changes
+	$effect(() => {
+		body = String(prefill.body ?? prefill.comment ?? '');
+		to = String(prefill.to ?? '');
+		subject = String(prefill.subject ?? '');
+	});
 
 	let sending = $state(false);
 	let success = $state(false);
