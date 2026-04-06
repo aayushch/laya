@@ -308,6 +308,13 @@ async def get_grouped_cards(
         result.sort(key=lambda g: g.cards[0].category if g.cards else "", reverse=sort_asc)
         for g in result:
             g.sort_key = g.cards[0].category if g.cards else "Unknown"
+    elif sort == "actor":
+        result.sort(
+            key=lambda g: (g.cards[0].actor_name or "").lower() if g.cards else "",
+            reverse=sort_asc,
+        )
+        for g in result:
+            g.sort_key = (g.cards[0].actor_name if g.cards and g.cards[0].actor_name else "Unknown")
     elif sort == "status":
         _STATUS_ORDER = {
             "awaiting_input": 0, "failed": 1, "requires_approval": 2,

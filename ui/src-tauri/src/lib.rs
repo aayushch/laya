@@ -407,8 +407,14 @@ pub fn run() {
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&dashboard, &separator, &show, &quit])?;
 
+            let tray_icon = {
+                let bytes = include_bytes!("../icons/trayTemplate@2x.png");
+                tauri::image::Image::from_bytes(bytes).expect("failed to load tray icon")
+            };
+
             let tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(tray_icon)
+                .icon_as_template(true)
                 .menu(&menu)
                 .tooltip("Laya")
                 .on_menu_event(|app, event| match event.id.as_ref() {
