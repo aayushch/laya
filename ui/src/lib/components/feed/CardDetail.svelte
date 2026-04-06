@@ -22,6 +22,9 @@
 	let showDismissInput = $state(false);
 	let executingActionId = $state<string | null>(null);
 	let executeError = $state<string | null>(null);
+	let editingActionId = $state<string | null>(null);
+	let editedPayload = $state<Record<string, string>>({});
+	let savingPayload = $state(false);
 	let showDeleteConfirm = $state(false);
 	let deleting = $state(false);
 	let showClassificationDialog = $state(false);
@@ -90,12 +93,42 @@
 		card.selected_action_id = actionId;
 		executeError = null;
 		try {
-			const result = await engineApi.executeAction(card.card_id, actionId);
+			const mods = editingActionId === actionId && Object.keys(editedPayload).length > 0
+				? editedPayload
+				: undefined;
+			const result = await engineApi.executeAction(card.card_id, actionId, mods);
 			card.status = result.status as ActionCard['status'];
+			editingActionId = null;
+			editedPayload = {};
 		} catch (err) {
 			executeError = err instanceof Error ? err.message : 'Execution failed';
 		} finally {
 			executingActionId = null;
+		}
+	}
+
+	function startEditing(action: { action_id: string; payload: Record<string, unknown> }) {
+		editingActionId = action.action_id;
+		const p = action.payload;
+		editedPayload = {
+			...(typeof p.to === 'string' ? { to: p.to } : {}),
+			...(typeof p.subject === 'string' ? { subject: p.subject } : {}),
+			...(typeof p.body === 'string' ? { body: p.body } : {})
+		};
+	}
+
+	async function savePayload(action: { action_id: string; payload: Record<string, unknown> }) {
+		savingPayload = true;
+		try {
+			await engineApi.updateActionPayload(card.card_id, action.action_id, editedPayload);
+			// Update the local action payload so the read-only view reflects saved changes
+			Object.assign(action.payload, editedPayload);
+			editingActionId = null;
+			editedPayload = {};
+		} catch (err) {
+			executeError = err instanceof Error ? err.message : 'Failed to save draft';
+		} finally {
+			savingPayload = false;
 		}
 	}
 
@@ -356,20 +389,79 @@
 
 					<!-- Action payload preview -->
 					{#if hasBody}
+						{@const isEditing = editingActionId === action.action_id}
 						<div class="mb-2 rounded-lg border border-surface-700 bg-surface-900/50 p-3">
-							{#if payload.to}
-								<div class="mb-1.5 flex items-center gap-1.5 text-[11px]">
-									<span class="font-medium text-surface-500">To:</span>
-									<span class="text-surface-300">{payload.to}</span>
+							{#if !isEditing}
+								<!-- Read-only view -->
+								{#if payload.to}
+									<div class="mb-1.5 flex items-center gap-1.5 text-[11px]">
+										<span class="font-medium text-surface-500">To:</span>
+										<span class="text-surface-300">{payload.to}</span>
+									</div>
+								{/if}
+								{#if payload.subject}
+									<div class="mb-1.5 flex items-center gap-1.5 text-[11px]">
+										<span class="font-medium text-surface-500">Subject:</span>
+										<span class="text-surface-300">{payload.subject}</span>
+									</div>
+								{/if}
+								<div class="max-h-48 overflow-y-auto whitespace-pre-wrap text-sm text-surface-200">{payload.body}</div>
+							{:else}
+								<!-- Edit mode -->
+								{#if payload.to}
+									<div class="mb-1.5 flex items-center gap-1.5 text-[11px]">
+										<span class="shrink-0 font-medium text-surface-500">To:</span>
+										<input
+											type="text"
+											class="w-full rounded border border-surface-600 bg-surface-800 px-1.5 py-0.5 text-[11px] text-surface-200 outline-none focus:border-laya-orange/50"
+											bind:value={editedPayload.to}
+										/>
+									</div>
+								{/if}
+								{#if payload.subject}
+									<div class="mb-1.5 flex items-center gap-1.5 text-[11px]">
+										<span class="shrink-0 font-medium text-surface-500">Subject:</span>
+										<input
+											type="text"
+											class="w-full rounded border border-surface-600 bg-surface-800 px-1.5 py-0.5 text-[11px] text-surface-200 outline-none focus:border-laya-orange/50"
+											bind:value={editedPayload.subject}
+										/>
+									</div>
+								{/if}
+								<textarea
+									class="w-full resize-y rounded border border-surface-600 bg-surface-800 p-2 text-sm text-surface-200 outline-none focus:border-laya-orange/50"
+									rows="6"
+									bind:value={editedPayload.body}
+								></textarea>
+							{/if}
+							<!-- Edit / Save / Cancel controls -->
+							{#if !isTerminal && !isSelected}
+								<div class="mt-2 flex justify-end gap-3">
+									{#if !isEditing}
+										<button
+											class="text-[11px] text-surface-400 hover:text-laya-orange transition-colors"
+											onclick={() => startEditing(action)}
+										>
+											Edit draft
+										</button>
+									{:else}
+										<button
+											class="text-[11px] text-surface-400 hover:text-surface-200 transition-colors"
+											onclick={() => { editingActionId = null; editedPayload = {}; }}
+											disabled={savingPayload}
+										>
+											Cancel
+										</button>
+										<button
+											class="text-[11px] font-medium text-laya-orange hover:text-laya-gold transition-colors disabled:opacity-50"
+											onclick={() => savePayload(action)}
+											disabled={savingPayload}
+										>
+											{savingPayload ? 'Saving...' : 'Save'}
+										</button>
+									{/if}
 								</div>
 							{/if}
-							{#if payload.subject}
-								<div class="mb-1.5 flex items-center gap-1.5 text-[11px]">
-									<span class="font-medium text-surface-500">Subject:</span>
-									<span class="text-surface-300">{payload.subject}</span>
-								</div>
-							{/if}
-							<div class="max-h-48 overflow-y-auto whitespace-pre-wrap text-sm text-surface-200">{payload.body}</div>
 						</div>
 					{/if}
 

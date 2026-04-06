@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
 	import type { ProviderModels, CustomProvider, CustomProviderTestResult, DiscoveredModel, PipelineSettings, BudgetConfig, MonthlyCostEntry } from '$lib/api/types';
-	import { budgetPaused } from '$lib/stores/budget';
+	import { budgetPaused, loadBudgetStatus } from '$lib/stores/budget';
 	import ModelSelect from './ModelSelect.svelte';
 
 	const roles = [
@@ -131,6 +131,8 @@
 			budgetLimit = limit;
 			// Re-fetch to confirm server state
 			await loadBudget();
+			// Update the global budget store so the footer cost widget refreshes
+			loadBudgetStatus();
 		} catch (e) {
 			console.error('Failed to save budget:', e);
 		} finally {

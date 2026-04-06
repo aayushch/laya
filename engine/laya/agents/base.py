@@ -22,11 +22,13 @@ class CodingAgent(abc.ABC):
         prompt: str,
         repo_path: str,
         add_dirs: list[str] | None = None,
+        mode: str | None = None,
     ) -> None:
         """Spawn the agent subprocess in the target repo directory.
 
         Args:
             add_dirs: Additional directory paths to include via --add-dir / --include-directories.
+            mode: Agent-specific permission/sandbox mode override.
         """
         ...
 

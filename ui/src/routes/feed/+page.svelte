@@ -50,6 +50,8 @@
 	let showIntegrationsPopup = $state(false);
 	// Tracks the last card shown in the detail panel — survives dismiss so close can scroll back
 	let lastDetailCardId = $state<string | null>(null);
+	// Persists after panel close so the card keeps a visual accent bar
+	let lastViewedCardId = $state<string | null>(null);
 
 	// Track last non-summary view so we can restore it when clicking summary items
 	let lastNonSummaryView = $state<'card' | 'list'>(
@@ -333,6 +335,7 @@
 				has_workspace?: boolean;
 				session_id?: string;
 				selected_action_id?: string;
+				bookmarked_at?: string | null;
 			};
 
 			// Check if the new status is excluded by active filters
@@ -385,6 +388,7 @@
 					if (payload.priority) card.priority = payload.priority as ActionCard['priority'];
 					if (payload.persona) card.persona = payload.persona as ActionCard['persona'];
 					if (payload.has_workspace !== undefined) card.has_workspace = payload.has_workspace;
+					if ('bookmarked_at' in payload) card.bookmarked_at = payload.bookmarked_at ?? undefined;
 					if (selectedCard?.card_id === msg.card_id) {
 						selectedCard = { ...selectedCard, ...card } as ActionCard;
 					}
@@ -481,6 +485,7 @@
 	function selectCard(card: ActionCard) {
 		selectedCard = card;
 		lastDetailCardId = card.card_id;
+		lastViewedCardId = card.card_id;
 		sessionStorage.setItem(SELECTED_CARD_KEY, card.card_id);
 		trackCardVisit(card);
 		// Fetch full card from API to ensure suggested_actions and other fields
@@ -1337,9 +1342,9 @@
 									{@const isGroupExiting = group.cards.every((c) => exitingCardIds.has(c.card_id))}
 									<div data-entity-id={group.entity_id} class="card-exit-wrap {isGroupExiting ? 'card-exiting' : ''}">
 										{#if group.card_count === 1}
-											<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} />
+											<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
 										{:else}
-											<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} scrollToCardId={_scrollToCardId} />
+											<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} scrollToCardId={_scrollToCardId} />
 										{/if}
 									</div>
 								{/each}
@@ -1356,9 +1361,9 @@
 							{#each col as group (group.entity_id)}
 								<div data-entity-id={group.entity_id}>
 									{#if group.card_count === 1}
-										<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} />
+										<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
 									{:else}
-										<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} scrollToCardId={_scrollToCardId} />
+										<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} scrollToCardId={_scrollToCardId} />
 									{/if}
 								</div>
 							{/each}

@@ -23,7 +23,7 @@ from laya.api.websocket import manager
 from laya.db.chromadb_store import memory_search
 from laya.db.sqlite import get_db
 from laya.llm.client import llm_call, llm_call_streaming
-from laya.llm.prompts.trace import build_narrative_messages
+from laya.llm.prompts.trace import build_narrative_messages, build_summary_messages
 from laya.llm.prompts.trace_filter import (
     RELEVANCE_FILTER_SCHEMA,
     build_relevance_filter_messages,
@@ -40,6 +40,62 @@ from laya.models.trace import (
 )
 
 log = structlog.get_logger()
+
+# ---------------------------------------------------------------------------
+# Cancellation support — per-trace asyncio.Event signals
+# ---------------------------------------------------------------------------
+_cancel_events: dict[str, asyncio.Event] = {}
+
+
+class TraceCancelled(Exception):
+    """Raised when a trace is cancelled mid-execution."""
+
+
+def request_cancel(trace_id: str) -> bool:
+    """Signal a running trace to abort. Returns True if there was a trace to cancel."""
+    ev = _cancel_events.get(trace_id)
+    if ev:
+        ev.set()
+        return True
+    return False
+
+
+def _check_cancelled(trace_id: str) -> None:
+    """Raise TraceCancelled if the trace has been cancelled."""
+    ev = _cancel_events.get(trace_id)
+    if ev and ev.is_set():
+        raise TraceCancelled(f"Trace {trace_id} cancelled")
+
+
+async def _cancellable(coro, trace_id: str):
+    """Run a coroutine but abort immediately if the trace is cancelled.
+
+    Wraps the coroutine in a task and races it against the cancel event.
+    If cancelled, the underlying task is cancelled too (aborting the HTTP
+    request to the LLM provider).
+    """
+    ev = _cancel_events.get(trace_id)
+    if not ev:
+        return await coro
+
+    task = asyncio.ensure_future(coro)
+    cancel_waiter = asyncio.ensure_future(ev.wait())
+
+    done, pending = await asyncio.wait(
+        {task, cancel_waiter}, return_when=asyncio.FIRST_COMPLETED
+    )
+
+    for p in pending:
+        p.cancel()
+        try:
+            await p
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    if cancel_waiter in done:
+        raise TraceCancelled(f"Trace {trace_id} cancelled")
+
+    return task.result()
 
 # Regex to detect identifier patterns like "PR 540", "PR-540", "PR#540",
 # LAYA"-986", "BUG-123", "ISSUE 42", etc.
@@ -102,6 +158,7 @@ async def _llm_relevance_filter(
     query: str,
     seeds: list[dict],
     all_cards: list[CardResponse],
+    trace_id: str | None = None,
 ) -> tuple[list[dict], int]:
     """Batch LLM call to judge whether each non-identifier seed is relevant.
 
@@ -140,7 +197,7 @@ async def _llm_relevance_filter(
 
     try:
         messages = build_relevance_filter_messages(query, candidates)
-        response = await llm_call(
+        llm_coro = llm_call(
             role="router",
             messages=messages,
             response_schema=RELEVANCE_FILTER_SCHEMA,
@@ -148,6 +205,8 @@ async def _llm_relevance_filter(
             temperature=0.0,
             max_tokens=2000,
         )
+        # Race the LLM call against the cancel event so abort is near-instant
+        response = await (_cancellable(llm_coro, trace_id) if trace_id else llm_coro)
 
         if not response.parsed or "judgments" not in response.parsed:
             log.warning("trace_filter_no_judgments")
@@ -192,7 +251,12 @@ async def run_trace(request: TraceRequest) -> TraceResponse:
     t0 = time.monotonic()
     trace_id = f"trace_{uuid.uuid4().hex[:12]}"
 
+    # Register cancellation event for this trace
+    cancel_event = asyncio.Event()
+    _cancel_events[trace_id] = cancel_event
+
     async def _progress(stage: str, step: int, total: int) -> None:
+        _check_cancelled(trace_id)  # Check before each stage
         await manager.broadcast({
             "type": "trace_progress",
             "trace_id": trace_id,
@@ -202,19 +266,53 @@ async def run_trace(request: TraceRequest) -> TraceResponse:
             "total": total,
         })
 
+    try:
+        return await _run_trace_inner(request, trace_id, _progress, t0)
+    except TraceCancelled:
+        log.info("trace_cancelled", trace_id=trace_id)
+        await manager.broadcast({
+            "type": "trace_cancelled",
+            "trace_id": trace_id,
+        })
+        raise
+    finally:
+        _cancel_events.pop(trace_id, None)
+
+
+async def _run_trace_inner(
+    request: TraceRequest,
+    trace_id: str,
+    _progress,
+    t0: float,
+) -> TraceResponse:
+    """Inner trace execution — separated so run_trace can handle cancellation."""
     # Phase 1 — Discovery
-    # Always run identifier + semantic + entity searches.
-    # Fuzzy (LIKE) and event keyword searches are optional — they cast a wide
-    # net but can flood results with false positives for identifier queries.
+    # Build search signals based on request flags. All default to enabled
+    # for backward compat. Advanced settings let users disable stages.
     total_steps = 6
     await _progress("Searching", 1, total_steps)
-    coros: list = [
-        _identifier_search(request.query, request.space_id, n=30),
-        _semantic_search(request.query, request.space_id, n=30),
-        _entity_table_search(request.query, n=20),
-    ]
-    signal_labels = ["identifier", "semantic", "entity"]
+    coros: list = []
+    signal_labels: list[str] = []
 
+    if request.enable_identifier:
+        coros.append(_identifier_search(request.query, request.space_id, n=30))
+        signal_labels.append("identifier")
+    if request.enable_semantic:
+        coros.append(_semantic_search(request.query, request.space_id, n=30))
+        signal_labels.append("semantic")
+    if request.enable_entity:
+        coros.append(_entity_table_search(request.query, n=20))
+        signal_labels.append("entity")
+
+    # Text search: strict phrase-match LIKE on card content only.
+    if request.enable_text:
+        coros.append(_card_text_search(
+            request.query, request.space_id, n=30,
+            include_archived=request.include_archived,
+        ))
+        signal_labels.append("text")
+
+    # Fuzzy search: keyword-split LIKE on cards + events — broader but noisier.
     if request.fuzzy_search:
         coros.append(_card_fuzzy_search(
             request.query, request.space_id, n=30,
@@ -223,7 +321,9 @@ async def run_trace(request: TraceRequest) -> TraceResponse:
         coros.append(_event_keyword_search(request.query, request.space_id, n=20))
         signal_labels.extend(["fuzzy", "event"])
 
-    results = await asyncio.gather(*coros, return_exceptions=True)
+    results = await _cancellable(
+        asyncio.gather(*coros, return_exceptions=True), trace_id
+    )
 
     # Collect successful results.
     # Identifier matches are guaranteed seeds — they bypass RRF to ensure
@@ -309,8 +409,11 @@ async def run_trace(request: TraceRequest) -> TraceResponse:
 
     # Phase 2.5 — LLM relevance filter (remove false positives before clustering)
     await _progress("Analyzing connections", 5, total_steps)
-    seeds, removed_count = await _llm_relevance_filter(request.query, seeds, all_cards)
-    meta.seeds_filtered = removed_count
+    if request.enable_llm_filter:
+        seeds, removed_count = await _llm_relevance_filter(request.query, seeds, all_cards, trace_id=trace_id)
+        meta.seeds_filtered = removed_count
+    else:
+        removed_count = 0
 
     if removed_count > 0:
         # Remove cards whose entities are no longer backed by surviving seeds
@@ -455,10 +558,55 @@ async def _semantic_search(query: str, space_id: str | None, n: int) -> list[dic
     ]
 
 
+async def _card_text_search(
+    query: str, space_id: str | None, n: int, include_archived: bool = True
+) -> list[dict]:
+    """SQLite phrase-match search — matches the full query as a substring."""
+    db = await get_db()
+    phrase = query.strip()
+    if len(phrase) < 2:
+        return []
+
+    fields = ["c.header", "c.summary", "c.source_ref", "c.entity_id", "c.source_url"]
+    condition = " OR ".join(f"{f} LIKE ?" for f in fields)
+    params: list[str] = [f"%{phrase}%"] * len(fields)
+
+    extra = ""
+    if space_id:
+        extra += " AND c.space_id = ?"
+        params.append(space_id)
+    if not include_archived:
+        extra += " AND c.status != 'archived'"
+
+    # Boost: phrase in header/source_ref ranks higher
+    boost = "(CASE WHEN c.header LIKE ? OR c.source_ref LIKE ? THEN 1 ELSE 0 END)"
+    boost_params = [f"%{phrase}%"] * 2
+
+    all_params = boost_params + params + [str(n)]
+
+    rows = await db.execute_fetchall(
+        f"""SELECT c.card_id, c.entity_id, c.source_ref, c.header, c.priority,
+                   ({boost}) AS relevance
+            FROM action_cards c
+            WHERE ({condition}){extra}
+            ORDER BY relevance DESC, c.created_at DESC LIMIT ?""",
+        all_params,
+    )
+    return [
+        {
+            "id": row["card_id"],
+            "card_id": row["card_id"],
+            "entity_id": row["entity_id"] or "",
+            "source": "text",
+        }
+        for row in rows
+    ]
+
+
 async def _card_fuzzy_search(
     query: str, space_id: str | None, n: int, include_archived: bool = True
 ) -> list[dict]:
-    """SQLite LIKE search on card fields."""
+    """SQLite keyword-split search — each keyword must appear somewhere (broad matching)."""
     db = await get_db()
     keywords = [w for w in query.split() if len(w) >= 2 and w.lower() not in _STOPWORDS]
     if not keywords:
@@ -1140,3 +1288,60 @@ async def stream_trace_narrative(trace_id: str, clusters: list[TraceCluster]) ->
         )
     except Exception as e:
         log.error("trace_narrative_failed", trace_id=trace_id, error=str(e))
+
+
+async def stream_trace_summary(
+    trace_id: str, query: str, clusters: list[TraceCluster]
+) -> None:
+    """Generate and stream an overall summary across all clusters via WebSocket."""
+    sem = _get_semaphore()
+    async with sem:
+        full_text = ""
+        summary_id = "__summary__"
+        try:
+            messages = build_summary_messages(query, clusters)
+
+            await manager.broadcast({
+                "type": "trace_narrative_start",
+                "trace_id": trace_id,
+                "cluster_id": summary_id,
+            })
+
+            async for event in llm_call_streaming(
+                role="trace",
+                messages=messages,
+                step="trace_summary",
+                temperature=0.3,
+                max_tokens=32000,
+            ):
+                if event.type == "chunk" and event.content:
+                    full_text += event.content
+                    await manager.broadcast({
+                        "type": "trace_narrative_chunk",
+                        "trace_id": trace_id,
+                        "cluster_id": summary_id,
+                        "content": event.content,
+                    })
+                elif event.type == "error":
+                    log.error("trace_summary_error", trace_id=trace_id, error=event.content)
+                    break
+
+            # Persist summary to the trace record
+            db = await get_db()
+            await db.execute(
+                "UPDATE traces SET summary = ? WHERE trace_id = ?",
+                (full_text, trace_id),
+            )
+            await db.commit()
+
+        except Exception as e:
+            log.error("trace_summary_failed", trace_id=trace_id, error=str(e))
+        finally:
+            await manager.broadcast({
+                "type": "trace_narrative_done",
+                "trace_id": trace_id,
+                "cluster_id": summary_id,
+                "narrative": full_text,
+            })
+
+        log.info("trace_summary_complete", trace_id=trace_id, length=len(full_text))

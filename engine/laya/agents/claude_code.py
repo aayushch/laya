@@ -56,10 +56,14 @@ class ClaudeCodeAgent(CodingAgent):
 
     async def start_session(
         self, session_id: str, prompt: str, repo_path: str, add_dirs: list[str] | None = None,
+        mode: str | None = None,
     ) -> None:
         self._session_id = session_id
         self._repo_path = repo_path
         self._status = SessionStatus.STARTING
+
+        # Default to "plan" if no mode specified
+        permission_mode = mode or "plan"
 
         args = [
             self._binary,
@@ -69,7 +73,7 @@ class ClaudeCodeAgent(CodingAgent):
             "stream-json",
             "--verbose",
             "--permission-mode",
-            "plan",
+            permission_mode,
         ]
 
         if add_dirs:

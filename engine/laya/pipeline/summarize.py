@@ -272,51 +272,39 @@ async def _run_summary_update(
             )
             continue
 
-    # Process status changes
+    # Process status changes — programmatic find-and-replace by card_id.
+    # This is deterministic and doesn't need an LLM call; previous LLM-based
+    # approach was unreliable (model would sometimes miss matching the card_id
+    # or alter other items).
     for change in status_changes:
         if not current_summary:
             break  # No summary to update
 
-        messages = build_status_change_messages(
-            current_summary=current_summary,
-            card_id=change["card_id"],
-            card_header=change["card_header"],
-            new_status=change["new_status"],
-        )
+        cid = change["card_id"]
+        new_status = change["new_status"]
+        matched = False
 
-        try:
-            response = await llm_call(
-                role="stager",
-                messages=messages,
-                response_schema=schema,
-                card_id=change["card_id"],
-                step="summarize_status",
-                temperature=0.1,
-                max_tokens=_SUMMARY_MAX_TOKENS,
-            )
+        for section in ("events_and_meetings", "action_items", "key_updates"):
+            for item in current_summary.get(section, []):
+                if item.get("card_id") == cid:
+                    item["status"] = new_status
+                    matched = True
 
-            if not response.parsed:
-                truncation_hint = " (response was truncated)" if response.truncated else ""
-                raise ValueError(
-                    f"LLM returned malformed JSON for status update summary{truncation_hint} "
-                    f"(output_tokens={response.output_tokens}, model={response.model})"
-                )
-            current_summary = _fix_space_fields(response.parsed)
-
+        if matched:
             log.info(
                 "summary_status_updated",
-                card_id=change["card_id"],
-                new_status=change["new_status"],
+                card_id=cid,
+                new_status=new_status,
                 date=today,
             )
-
-        except Exception as e:
-            log.error(
-                "summary_status_llm_failed",
-                card_id=change["card_id"],
-                error=str(e),
+        else:
+            log.warning(
+                "summary_status_card_not_found",
+                card_id=cid,
+                card_header=change["card_header"],
+                new_status=new_status,
+                date=today,
             )
-            continue
 
     # Upsert summary into DB
     if current_summary:

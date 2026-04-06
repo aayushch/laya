@@ -199,6 +199,17 @@ html, body {
 }
 
 /* ─────────────────────────────────────────────────────────────
+   CARD LAST-VIEWED — persistent left accent bar + subtle shadow
+   on the card that was most recently viewed in the detail panel.
+   Theme-resilient: uses the brand orange which has good contrast
+   on both dark and light backgrounds.
+   ───────────────────────────────────────────────────────────── */
+.card-last-viewed {
+	border-left: 3px solid oklch(0.75 0.18 55 / 0.7);
+	box-shadow: 0 2px 8px 0 oklch(0.75 0.18 55 / 0.12);
+}
+
+/* ─────────────────────────────────────────────────────────────
    CARD HIGHLIGHT FADE — shows an orange ring that fades out,
    used to draw attention to a card after layout changes.
    ───────────────────────────────────────────────────────────── */

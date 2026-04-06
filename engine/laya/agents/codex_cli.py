@@ -51,17 +51,21 @@ class CodexCliAgent(CodingAgent):
 
     async def start_session(
         self, session_id: str, prompt: str, repo_path: str, add_dirs: list[str] | None = None,
+        mode: str | None = None,
     ) -> None:
         self._session_id = session_id
         self._repo_path = repo_path
         self._status = SessionStatus.STARTING
+
+        # Default to "read-only" if no mode specified
+        sandbox_mode = mode or "read-only"
 
         args = [
             self._binary,
             "exec",
             "--json",
             "--sandbox",
-            "read-only",
+            sandbox_mode,
             prompt,
         ]
 

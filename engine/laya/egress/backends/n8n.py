@@ -9,10 +9,11 @@ import httpx
 import structlog
 import tenacity
 
-from laya.config import get_n8n_config
+from laya.config import get_n8n_config, load_team
 from laya.db.sqlite import get_db
 from laya.egress.backends.base import EgressBackend
 from laya.egress.models import EgressRequest, EgressResult
+from laya.models.team import TeamConfig, TeamRole
 from laya.http_client import get_client
 from laya.security.keychain import get_api_key
 
@@ -241,13 +242,31 @@ class N8nBackend(EgressBackend):
         # ensure "to" is the original sender — the stager LLM sometimes
         # sets it to the user's own email instead.  We trust event_actor_email
         # as the correct reply target when one exists.
+        # Guard: skip override if actor_email is the user's own email (self role
+        # in team.json) — the ingestion workflow may have captured the wrong
+        # sender in some Outlook configurations.
         if (
             request.platform in ("gmail", "outlook", "smtp")
             and request.action_type in ("send_email", "reply")
             and request.source_event_id
             and event_ctx.get("actor_email")
         ):
-            payload["to"] = event_ctx["actor_email"]
+            actor = event_ctx["actor_email"].lower()
+            self_emails = self._get_self_emails()
+            if actor not in self_emails:
+                payload["to"] = event_ctx["actor_email"]
+
+        # For Outlook archive/mark_read, enrich outlook_id from event metadata
+        # so the executor workflow can target the correct message.
+        if (
+            request.platform == "outlook"
+            and request.action_type in ("archive", "mark_read")
+            and not payload.get("outlook_id")
+            and request.source_event_id
+        ):
+            # Event ID format is "evt_outlook_<raw_outlook_id>"
+            if request.source_event_id.startswith("evt_outlook_"):
+                payload["outlook_id"] = request.source_event_id[len("evt_outlook_"):]
 
         return {
             "action_id": f"egr_{request.source_card_id or 'direct'}",
@@ -290,7 +309,7 @@ class N8nBackend(EgressBackend):
                     except (ValueError, TypeError):
                         pass
 
-        elif platform == "gmail":
+        elif platform in ("gmail", "outlook"):
             # Ensure "body" exists — LLMs use various key names
             if "body" not in payload:
                 payload["body"] = (
@@ -314,6 +333,19 @@ class N8nBackend(EgressBackend):
 
         return payload
 
+    def _get_self_emails(self) -> set[str]:
+        """Return the set of emails (primary + aliases) for the 'self' team member."""
+        try:
+            team = TeamConfig(**load_team())
+            for m in team.members:
+                if m.role == TeamRole.self_:
+                    emails = {m.email.lower()}
+                    emails.update(a.lower() for a in m.aliases)
+                    return emails
+        except Exception:
+            pass
+        return set()
+
     async def _fetch_event_context(self, event_id: str | None) -> dict:
         """Fetch original event context for enriching executor payloads."""
         if not event_id:
@@ -335,7 +367,7 @@ class N8nBackend(EgressBackend):
         if not ctx.get("actor_email"):
             try:
                 meta = json.loads(ctx.get("content_metadata") or "{}")
-                ctx["actor_email"] = meta.get("gmail_from") or meta.get("from") or ""
+                ctx["actor_email"] = meta.get("gmail_from") or meta.get("outlook_from") or meta.get("from") or ""
             except (json.JSONDecodeError, AttributeError):
                 pass
 

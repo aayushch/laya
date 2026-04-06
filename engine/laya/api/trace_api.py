@@ -23,7 +23,7 @@ from laya.models.trace import (
     TraceResponse,
     TraceStatusSummary,
 )
-from laya.pipeline.trace import run_trace, stream_trace_narrative
+from laya.pipeline.trace import run_trace, stream_trace_narrative, stream_trace_summary, request_cancel, TraceCancelled
 
 log = structlog.get_logger()
 router = APIRouter()
@@ -39,8 +39,22 @@ async def create_trace(request: TraceRequest) -> TraceResponse:
     """Run a new trace: returns clusters immediately, narrative generated on demand."""
     log.info("trace_requested", query=request.query, space_id=request.space_id)
 
-    response = await run_trace(request)
+    try:
+        response = await run_trace(request)
+    except TraceCancelled:
+        raise HTTPException(status_code=499, detail="Trace cancelled")
     return response
+
+
+@router.post("/trace/cancel")
+async def cancel_trace() -> dict:
+    """Cancel any currently running trace."""
+    from laya.pipeline.trace import _cancel_events  # noqa: avoid circular at module level
+    cancelled = []
+    for tid in list(_cancel_events.keys()):
+        if request_cancel(tid):
+            cancelled.append(tid)
+    return {"cancelled": cancelled}
 
 
 # ---------------------------------------------------------------------------
@@ -163,6 +177,28 @@ async def generate_cluster_narrative(trace_id: str, cluster_id: str) -> dict:
     )
 
     return {"status": "generating", "trace_id": trace_id, "cluster_id": cluster_id}
+
+
+@router.post("/traces/{trace_id}/summary")
+async def generate_trace_summary(trace_id: str) -> dict:
+    """Generate an overall summary across all clusters in a trace (streams via WS)."""
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT * FROM traces WHERE trace_id = ?", (trace_id,)
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Trace not found")
+
+    trace = await _reconstruct_trace(db, rows[0])
+    if not trace.clusters:
+        raise HTTPException(status_code=400, detail="No clusters to summarize")
+
+    asyncio.create_task(
+        stream_trace_summary(trace_id, trace.query, trace.clusters),
+        name=f"trace_summary_{trace_id}",
+    )
+
+    return {"status": "generating", "trace_id": trace_id}
 
 
 # ---------------------------------------------------------------------------

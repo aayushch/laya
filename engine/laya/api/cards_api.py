@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 
 from laya.agents.session_manager import cancel_sessions_for_card
@@ -400,6 +400,18 @@ async def dismiss_group(entity_id: str) -> dict:
         dismissed += 1
 
     await db.commit()
+
+    # Update summary for each dismissed card so items get strikethrough
+    header_rows = await db.execute_fetchall(
+        "SELECT card_id, header FROM action_cards WHERE entity_id = ? AND status = 'dismissed'",
+        (entity_id,),
+    )
+    for hr in header_rows:
+        asyncio.create_task(
+            trigger_summary_status_update(hr["card_id"], hr["header"], "dismissed"),
+            name=f"summary_status_{hr['card_id']}",
+        )
+
     log.info("group_dismissed", entity_id=entity_id, count=dismissed)
     return {"dismissed": dismissed, "entity_id": entity_id}
 
@@ -851,6 +863,43 @@ async def dismiss_card(card_id: str, body: DismissRequest | None = None) -> dict
     return {"status": "dismissed", "card_id": card_id}
 
 
+class UpdateActionPayloadRequest(BaseModel):
+    action_id: str
+    payload: dict[str, Any]
+
+
+@router.post("/cards/{card_id}/action-payload")
+async def update_action_payload(card_id: str, body: UpdateActionPayloadRequest) -> dict:
+    """Update a suggested action's payload (e.g. user edits an email draft)."""
+    db = await get_db()
+
+    rows = await db.execute_fetchall(
+        "SELECT suggested_actions FROM action_cards WHERE card_id = ?", (card_id,)
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    row = rows[0]
+    actions = json.loads(row["suggested_actions"]) if row["suggested_actions"] else []
+    found = False
+    for action in actions:
+        if action.get("action_id") == body.action_id:
+            action["payload"].update(body.payload)
+            found = True
+            break
+
+    if not found:
+        raise HTTPException(status_code=404, detail="Action not found")
+
+    await db.execute(
+        "UPDATE action_cards SET suggested_actions = ? WHERE card_id = ?",
+        (json.dumps(actions), card_id),
+    )
+    await db.commit()
+
+    return {"status": "updated", "card_id": card_id, "action_id": body.action_id}
+
+
 class UpdateClassificationRequest(BaseModel):
     priority: str | None = None
     persona: str | None = None
@@ -989,3 +1038,315 @@ async def get_daily_summary(date: str | None = None) -> dict:
         "card_ids": card_ids,
         "updated_at": rows[0]["updated_at"],
     }
+
+
+class RunAgentRequest(BaseModel):
+    prompt: str
+    directory: str
+    add_dirs: list[str] | None = None
+    agent_type: str | None = None  # claude_code, gemini_cli, codex_cli
+    mode: str | None = None  # e.g. plan, acceptEdits (claude), read-only, full-auto (codex)
+    space_id: str | None = None
+    images: list[str] | None = None  # Absolute paths to uploaded images
+
+
+@router.post("/upload-agent-image")
+async def upload_agent_image(file: UploadFile = File(...)) -> dict:
+    """Upload an image for use with an agent run.
+
+    Saves the file to ~/.laya/tmp/agent-images/<uuid>.<ext> and returns the
+    absolute path so the frontend can collect paths before submitting the
+    run-agent request.
+    """
+    from laya.config import LAYA_HOME
+
+    images_dir = LAYA_HOME / "tmp" / "agent-images"
+    images_dir.mkdir(parents=True, exist_ok=True)
+
+    # Determine extension from filename or content type
+    ext = "png"
+    if file.filename:
+        parts = file.filename.rsplit(".", 1)
+        if len(parts) == 2 and parts[1].lower() in ("png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"):
+            ext = parts[1].lower()
+    elif file.content_type:
+        ct_map = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}
+        ext = ct_map.get(file.content_type, "png")
+
+    import uuid as _uuid
+    filename = f"{_uuid.uuid4().hex[:12]}.{ext}"
+    filepath = images_dir / filename
+
+    content = await file.read()
+    filepath.write_bytes(content)
+
+    log.info("agent_image_uploaded", path=str(filepath), size=len(content))
+    return {"path": str(filepath), "filename": filename, "size": len(content)}
+
+
+@router.post("/cards/run-agent")
+async def run_agent(body: RunAgentRequest) -> dict:
+    """Create an ENGINEER card and spawn a coding agent directly.
+
+    User-initiated agent run (triggered from the 'a' keyboard shortcut).
+    Creates a card with source=laya, persona=ENGINEER, and immediately
+    spawns the agent subprocess. The card then follows the normal workspace flow.
+    """
+    from laya.agents import session_manager
+    from laya.models.workspace import AgentType
+
+    # Resolve agent type
+    if body.agent_type:
+        try:
+            agent_type = AgentType(body.agent_type)
+        except ValueError:
+            raise HTTPException(status_code=422, detail=f"Unknown agent type: {body.agent_type}")
+    else:
+        agent_type = session_manager.get_configured_agent_type()
+
+    # Build the effective prompt — append image references so the agent
+    # can read them via its Read/file tool (agents don't have --image flags)
+    effective_prompt = body.prompt
+    if body.images:
+        image_lines = "\n".join(f"- {p}" for p in body.images)
+        effective_prompt += (
+            f"\n\nAttached reference images (use your Read/file tool to view them):\n{image_lines}"
+        )
+
+    # Create synthetic event + card
+    import uuid
+    event_id = f"evt_{uuid.uuid4().hex[:12]}"
+    card_id = f"card_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc).isoformat()
+    header = body.prompt[:120] + ("..." if len(body.prompt) > 120 else "")
+    entity_id = f"laya:agent_run:{card_id}"
+
+    db = await get_db()
+
+    # Synthetic event so the FK constraint is satisfied
+    await db.execute(
+        """INSERT INTO events
+           (event_id, timestamp, source_platform, source_raw_event_type,
+            subject_type, subject_id, subject_title, content_body, raw_json, processed)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            event_id,
+            now,
+            "laya",
+            "agent_run",
+            "agent_task",
+            card_id,
+            header,
+            body.prompt,
+            json.dumps({"source": "laya", "type": "agent_run", "prompt": body.prompt}),
+            True,
+        ),
+    )
+
+    await db.execute(
+        """INSERT INTO action_cards
+           (card_id, event_id, priority, persona, category, header, summary,
+            intelligence, staged_output, suggested_actions, status,
+            privacy_tier, has_workspace, confidence, entity_id, source_ref,
+            space_id, agent_prompt)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            card_id,
+            event_id,
+            "MEDIUM",
+            "ENGINEER",
+            "CODE",
+            header,
+            body.prompt,  # summary shows the original prompt (without image paths)
+            json.dumps({}),
+            json.dumps({}),
+            json.dumps([]),
+            "agent_running",
+            "internal",
+            True,
+            1.0,
+            entity_id,
+            "Agent Run",
+            body.space_id or "default",
+            effective_prompt,  # agent_prompt includes image references
+        ),
+    )
+    await db.commit()
+
+    # Broadcast card creation
+    await manager.broadcast(
+        {
+            "type": "card_created",
+            "card_id": card_id,
+            "payload": {
+                "header": header,
+                "summary": body.prompt,
+                "priority": "MEDIUM",
+                "persona": "ENGINEER",
+                "category": "CODE",
+                "status": "agent_running",
+                "has_workspace": True,
+                "privacy_tier": "internal",
+            },
+        }
+    )
+
+    # Spawn agent in background
+    async def _run_agent_task() -> None:
+        """Background task: spawn agent, stream events, update card status."""
+        try:
+            session_id, agent = await session_manager.start_session(
+                card_id=card_id,
+                prompt=effective_prompt,
+                repo_path=body.directory,
+                agent_type=agent_type,
+                space_id=body.space_id,
+                add_dirs=body.add_dirs,
+                mode=body.mode,
+            )
+        except Exception as e:
+            log.error("run_agent_spawn_failed", card_id=card_id, error=str(e))
+            db2 = await get_db()
+            await db2.execute(
+                "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_spawn', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+                (card_id,),
+            )
+            await db2.commit()
+            await manager.broadcast(
+                {"type": "card_updated", "card_id": card_id, "payload": {"status": "failed"}}
+            )
+            return
+
+        # Broadcast workspace availability
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": card_id, "payload": {"has_workspace": True, "session_id": session_id}}
+        )
+
+        # Stream events (same pattern as run_engineer_from_prompt)
+        findings: dict[str, Any] = {}
+        cc_session_id_stored = False
+
+        try:
+            async for ws_event in agent.stream_events():
+                inserted = await session_manager.store_workspace_event(ws_event)
+                if not inserted:
+                    continue
+
+                if not cc_session_id_stored and hasattr(agent, "cc_session_id") and agent.cc_session_id:
+                    await session_manager.store_cc_session_id(session_id, agent.cc_session_id)
+                    cc_session_id_stored = True
+
+                if ws_event.event_type.value == "approval_request":
+                    if ws_event.content.get("ask_user_question"):
+                        db3 = await get_db()
+                        await db3.execute(
+                            "UPDATE action_cards SET status = 'awaiting_input', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+                            (card_id,),
+                        )
+                        await db3.commit()
+                        await manager.broadcast(
+                            {"type": "card_updated", "card_id": card_id, "payload": {"status": "awaiting_input"}}
+                        )
+                    await manager.broadcast(
+                        {"type": "approval_request", "card_id": card_id, "session_id": session_id, "payload": ws_event.content}
+                    )
+                elif ws_event.event_type.value == "error":
+                    findings["last_error"] = ws_event.content.get("error", "")
+                    await manager.broadcast(
+                        {"type": "agent_error", "card_id": card_id, "session_id": session_id, "payload": ws_event.content}
+                    )
+
+                if ws_event.event_type.value == "agent_message" and ws_event.content.get("is_plan"):
+                    findings["agent_plan"] = ws_event.content.get("text", "")
+                if ws_event.event_type.value == "status_change":
+                    if ws_event.content.get("status") == "result_received":
+                        findings["agent_result"] = ws_event.content.get("result", "")
+
+        except Exception as e:
+            log.error("run_agent_stream_error", session_id=session_id, error=str(e))
+            await session_manager.complete_session(session_id, error=str(e))
+            db4 = await get_db()
+            await db4.execute(
+                "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_execution', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+                (card_id,),
+            )
+            await db4.commit()
+            await manager.broadcast(
+                {"type": "card_updated", "card_id": card_id, "payload": {"status": "failed"}}
+            )
+            return
+
+        # Complete session and update card status
+        from laya.models.workspace import SessionStatus
+
+        final_status = agent.get_status()
+        db5 = await get_db()
+
+        if final_status == SessionStatus.COMPLETED:
+            await session_manager.complete_session(session_id, findings=findings)
+
+            agent_plan = findings.get("agent_plan", "")
+            agent_result = findings.get("agent_result", "")
+            staged_content = agent_plan or agent_result
+            if staged_content:
+                staged_type = "agent_plan" if agent_plan else "agent_result"
+                await db5.execute(
+                    "UPDATE action_cards SET staged_output = ?, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+                    (json.dumps({"type": staged_type, "content": staged_content}), card_id),
+                )
+
+            has_unanswered = await session_manager.has_unanswered_questions(session_id)
+            card_status = "awaiting_input" if has_unanswered else "ready"
+
+            await db5.execute(
+                "UPDATE action_cards SET status = ?, failed_stage = NULL, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+                (card_status, card_id),
+            )
+            await db5.commit()
+            await manager.broadcast(
+                {"type": "card_updated", "card_id": card_id, "payload": {"status": card_status}}
+            )
+            await manager.broadcast(
+                {"type": "agent_completed", "card_id": card_id, "session_id": session_id, "payload": {"findings": findings}}
+            )
+        elif final_status == SessionStatus.CANCELLED:
+            await session_manager.complete_session(session_id, error="Cancelled by user")
+            await db5.execute(
+                "UPDATE action_cards SET status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+                (card_id,),
+            )
+            await db5.commit()
+            await manager.broadcast(
+                {"type": "card_updated", "card_id": card_id, "payload": {"status": "ready"}}
+            )
+        else:
+            last_error = findings.get("last_error", "")
+            error_msg = f"Agent ended with status: {final_status.value}"
+            if last_error:
+                error_msg += f" — {last_error}"
+            log.error("run_agent_failed", session_id=session_id, error=error_msg)
+            await session_manager.complete_session(session_id, error=error_msg)
+            await db5.execute(
+                "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_execution', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+                (card_id,),
+            )
+            await db5.commit()
+            await manager.broadcast(
+                {"type": "card_updated", "card_id": card_id, "payload": {"status": "failed"}}
+            )
+
+        # Clean up uploaded images after agent finishes (regardless of outcome)
+        if body.images:
+            for img_path in body.images:
+                try:
+                    from pathlib import Path
+                    p = Path(img_path)
+                    if p.exists() and p.is_file():
+                        p.unlink()
+                except Exception as e:
+                    log.debug("agent_image_cleanup_failed", path=img_path, error=str(e))
+
+    asyncio.create_task(_run_agent_task(), name=f"run_agent_{card_id}")
+
+    log.info("run_agent_initiated", card_id=card_id, agent_type=agent_type.value)
+    return {"status": "agent_running", "card_id": card_id}
