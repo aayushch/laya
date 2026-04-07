@@ -291,7 +291,7 @@
 				<div class="space-y-4" class:opacity-40={!omniEnabled}>
 					<!-- Density -->
 					<div class="flex flex-col gap-1.5">
-						<label class="text-xs font-medium text-surface-300">Summary density</label>
+						<span class="text-xs font-medium text-surface-300">Summary density</span>
 						<div class="flex rounded-lg border border-surface-600 overflow-hidden w-fit">
 							{#each ['compact', 'standard', 'detailed'] as opt}
 								<button
