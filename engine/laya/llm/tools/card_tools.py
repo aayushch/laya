@@ -266,7 +266,8 @@ async def approve_card(card_id: str) -> dict[str, Any]:
         "SELECT space_id FROM action_cards WHERE card_id = ?", (card_id,),
     )
     space_id = space_rows[0]["space_id"] if space_rows else None
-    asyncio.create_task(run_engineer_from_prompt(card_id, card["agent_prompt"], space_id=space_id))
+    from laya.tasks import create_task as create_tracked_task
+    create_tracked_task(run_engineer_from_prompt(card_id, card["agent_prompt"], space_id=space_id))
 
     return {
         "card_id": card_id,

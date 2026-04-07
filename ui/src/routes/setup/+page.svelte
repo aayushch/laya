@@ -35,9 +35,9 @@
 
 	// Provider-to-model defaults: small model for router, large model for stager/chat/trace
 	const providerModelDefaults: Record<string, Record<string, string>> = {
-		anthropic: { router: 'claude-haiku-4-5', stager: 'claude-sonnet-4-6', chat: 'claude-sonnet-4-6', trace: 'claude-sonnet-4-6' },
-		openai: { router: 'gpt-4o-mini', stager: 'gpt-4o', chat: 'gpt-4o', trace: 'gpt-4o' },
-		google: { router: 'gemini-2.0-flash', stager: 'gemini-2.5-pro', chat: 'gemini-2.5-pro', trace: 'gemini-2.5-pro' }
+		anthropic: { router: 'claude-haiku-4-5', stager: 'claude-sonnet-4-6', chat: 'claude-sonnet-4-6', trace: 'claude-sonnet-4-6', omni: 'claude-sonnet-4-6' },
+		openai: { router: 'gpt-4o-mini', stager: 'gpt-4o', chat: 'gpt-4o', trace: 'gpt-4o', omni: 'gpt-4o' },
+		google: { router: 'gemini-2.0-flash', stager: 'gemini-2.5-pro', chat: 'gemini-2.5-pro', trace: 'gemini-2.5-pro', omni: 'gemini-2.5-pro' }
 	};
 
 	// Step 2: Model defaults
@@ -56,7 +56,7 @@
 	let selfHostedTestOk = $state<boolean | null>(null);
 	let selfHostedModels = $state<DiscoveredModel[]>([]);
 	let selfHostedModelsLoading = $state(false);
-	let selfHostedModelSelections = $state<Record<string, string>>({ router: '', stager: '', chat: '', trace: '' });
+	let selfHostedModelSelections = $state<Record<string, string>>({ router: '', stager: '', chat: '', trace: '', omni: '' });
 
 	const selfHostedProviderTypes = [
 		{ id: 'lmstudio', label: 'LM Studio', defaultUrl: 'http://localhost:1234' },
@@ -68,7 +68,8 @@
 		{ id: 'router', label: 'Router', hint: 'Classifies incoming events (use a fast/cheap model)' },
 		{ id: 'stager', label: 'Stager', hint: 'Synthesises action cards (use a capable model)' },
 		{ id: 'chat', label: 'Chat', hint: 'Conversational responses' },
-		{ id: 'trace', label: 'Coherence', hint: 'Generates trace narratives' }
+		{ id: 'trace', label: 'Coherence', hint: 'Generates trace narratives' },
+		{ id: 'omni', label: 'Omni', hint: 'Resynthesises rolling summaries' }
 	];
 
 	// Derived: whether step 2 needs to show provider picker
@@ -85,7 +86,8 @@
 		selfHostedModelSelections.router !== '' &&
 		selfHostedModelSelections.stager !== '' &&
 		selfHostedModelSelections.chat !== '' &&
-		selfHostedModelSelections.trace !== ''
+		selfHostedModelSelections.trace !== '' &&
+		selfHostedModelSelections.omni !== ''
 	);
 
 	// Whether step 2 can proceed
@@ -161,7 +163,8 @@
 					router: selfHostedModelSelections.router,
 					stager: selfHostedModelSelections.stager,
 					chat: selfHostedModelSelections.chat,
-					trace: selfHostedModelSelections.trace
+					trace: selfHostedModelSelections.trace,
+					omni: selfHostedModelSelections.omni
 				}
 			} as any);
 		} catch (e) {

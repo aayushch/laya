@@ -544,7 +544,8 @@ async def llm_call(
         # Check budget limit (fire-and-forget to avoid slowing the pipeline)
         try:
             from laya.pipeline.budget import check_budget
-            asyncio.create_task(check_budget())
+            from laya.tasks import create_task as create_tracked_task
+            create_tracked_task(check_budget())
         except Exception:
             pass  # Never let budget check break the pipeline
 

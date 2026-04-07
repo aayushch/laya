@@ -476,7 +476,7 @@ fn spawn_prod_engine() -> Result<Child, String> {
     std::fs::create_dir_all(&log_dir)
         .map_err(|e| format!("Failed to create log dir: {e}"))?;
 
-    let log_file = std::fs::File::create(log_dir.join("engine.log"))
+    let log_file = std::fs::File::create(log_dir.join("engine-stdout.log"))
         .map_err(|e| format!("Failed to create engine log: {e}"))?;
     let stderr_file = log_file
         .try_clone()

@@ -65,7 +65,8 @@ async def trigger_summary_update(
         _pending_cards.append(card_data)
         if _debounce_task and not _debounce_task.done():
             _debounce_task.cancel()
-        _debounce_task = asyncio.create_task(_debounced_run())
+        from laya.tasks import create_task as create_tracked_task
+        _debounce_task = create_tracked_task(_debounced_run())
 
 
 async def trigger_summary_status_update(
@@ -86,7 +87,8 @@ async def trigger_summary_status_update(
         _pending_status_changes.append(change_data)
         if _debounce_task and not _debounce_task.done():
             _debounce_task.cancel()
-        _debounce_task = asyncio.create_task(_debounced_run())
+        from laya.tasks import create_task as create_tracked_task
+        _debounce_task = create_tracked_task(_debounced_run())
 
 
 async def _debounced_run() -> None:

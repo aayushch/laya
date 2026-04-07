@@ -168,7 +168,8 @@ async def lifespan(app: FastAPI):
 
     # Import any new bundled workflows in the background — retries for up to
     # 10 min so a slow-starting n8n is handled gracefully.
-    _workflow_sync_task = asyncio.create_task(sync_workflows_background())  # noqa: F841
+    from laya.tasks import create_task as create_tracked_task
+    _workflow_sync_task = create_tracked_task(sync_workflows_background())  # noqa: F841
 
     # Connect ChromaDB vector store
     connect_chromadb()
@@ -229,21 +230,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         log.warning("http_client_close_error", error=str(e))
 
-    # Cancel remaining background tasks (summarizer, omni, agents, chat,
-    # budget checks, etc.) so their in-flight LLM HTTP requests are aborted.
-    # Without this, fire-and-forget tasks created via asyncio.create_task()
-    # keep running after the consumer and scheduler stop, blocking shutdown
-    # until Tauri's 5-second grace period expires and SIGKILL terminates us.
-    current_task = asyncio.current_task()
-    remaining = [
-        t for t in asyncio.all_tasks()
-        if t is not current_task and not t.done()
-    ]
-    if remaining:
-        log.info("cancelling_background_tasks", count=len(remaining))
-        for t in remaining:
-            t.cancel()
-        await asyncio.gather(*remaining, return_exceptions=True)
+    # Cancel fire-and-forget application tasks (summarizer, omni, agents,
+    # chat, budget checks, etc.) so their in-flight LLM HTTP requests are
+    # aborted.  Only tasks created via laya.tasks.create_task are cancelled —
+    # uvicorn/starlette internals are left alone so the ASGI shutdown
+    # handshake completes without CancelledError tracebacks.
+    from laya.tasks import cancel_all as cancel_tracked_tasks
+    await cancel_tracked_tasks()
 
     disconnect_chromadb()
     await disconnect()

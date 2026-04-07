@@ -171,7 +171,8 @@ async def generate_cluster_narrative(trace_id: str, cluster_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Cluster not found")
 
     # Fire-and-forget: stream narrative via WebSocket
-    asyncio.create_task(
+    from laya.tasks import create_task as create_tracked_task
+    create_tracked_task(
         stream_trace_narrative(trace_id, [cluster]),
         name=f"trace_narrative_{trace_id}_{cluster_id}",
     )
@@ -193,7 +194,8 @@ async def generate_trace_summary(trace_id: str) -> dict:
     if not trace.clusters:
         raise HTTPException(status_code=400, detail="No clusters to summarize")
 
-    asyncio.create_task(
+    from laya.tasks import create_task as create_tracked_task
+    create_tracked_task(
         stream_trace_summary(trace_id, trace.query, trace.clusters),
         name=f"trace_summary_{trace_id}",
     )

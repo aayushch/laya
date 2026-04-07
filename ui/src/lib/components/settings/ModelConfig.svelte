@@ -9,7 +9,8 @@
 		{ id: 'router', label: 'Router', hint: 'Classifies incoming events' },
 		{ id: 'stager', label: 'Stager', hint: 'Synthesises action cards' },
 		{ id: 'chat', label: 'Chat', hint: 'Conversational responses' },
-		{ id: 'trace', label: 'Coherence', hint: 'Generates trace narratives' }
+		{ id: 'trace', label: 'Coherence', hint: 'Generates trace narratives' },
+		{ id: 'omni', label: 'Omni', hint: 'Resynthesises rolling summaries' }
 	];
 
 	const cloudProviders = [
@@ -30,6 +31,7 @@
 		stager: 'claude-sonnet-4-6',
 		chat: 'claude-sonnet-4-6',
 		trace: 'claude-sonnet-4-6',
+		omni: 'claude-sonnet-4-6',
 		local: 'ollama/llama3'
 	});
 

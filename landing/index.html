@@ -2296,9 +2296,24 @@ npm install --prefix ~/.laya/n8n_module n8n</code></pre>
       <h3>Hybrid Generation</h3>
       <p>Omni uses two generation strategies to balance cost and freshness:</p>
       <ul>
-        <li><strong>Incremental updates</strong> &mdash; When new cards arrive, they are appended to the Recent layer as structured items. No LLM call needed.</li>
-        <li><strong>Full resynthesis</strong> &mdash; Runs daily at a configurable time (default 5:00 PM). The LLM compresses all layers, folds older items, and produces a clean snapshot.</li>
+        <li><strong>Incremental updates</strong> &mdash; When new cards arrive, they are appended to the Recent layer as structured items. No LLM call needed; updates are debounced in 10-second batches.</li>
+        <li><strong>Full resynthesis</strong> &mdash; The LLM compresses all layers, folds older items, and produces a clean versioned snapshot. Three triggers can fire resynthesis:
+          <ul>
+            <li><strong>Scheduled (EOD)</strong> &mdash; Runs once daily at a configurable time (default 5:00 PM in your timezone).</li>
+            <li><strong>Rolling interval</strong> &mdash; Triggers every N hours (default 4). Set to 0 to disable.</li>
+            <li><strong>Event threshold</strong> &mdash; Triggers after N new events since the last resynthesis (default 50). Set to 0 to disable.</li>
+          </ul>
+        </li>
       </ul>
+
+      <h3>Density Modes</h3>
+      <p>Control how much detail each Omni snapshot contains under <strong>Settings</strong>:</p>
+      <table>
+        <tr><th>Mode</th><th>Items per Section</th><th>Words per Item</th><th>Best for</th></tr>
+        <tr><td><strong>Compact</strong> (default)</td><td>3</td><td>~25</td><td>One-screen glance</td></tr>
+        <tr><td><strong>Standard</strong></td><td>5</td><td>~40</td><td>Balanced detail</td></tr>
+        <tr><td><strong>Detailed</strong></td><td>8</td><td>~50</td><td>Comprehensive overview</td></tr>
+      </table>
 
       <h2 id="doc-omni-pins">Pins &amp; Time Travel</h2>
       <p><strong>Pins</strong> let you mark items that must survive compression. Pinned items appear in every resynthesized snapshot exactly as written, placed in the appropriate temporal layer.</p>
@@ -2310,6 +2325,16 @@ npm install --prefix ~/.laya/n8n_module n8n</code></pre>
       <h3>Space Awareness</h3>
       <p>Each space maintains its own independent Omni summary. Switch between spaces using the tabs at the top of the Omni page.</p>
 
+      <h3>Omni Settings</h3>
+      <p>Configure under <strong>Settings</strong>:</p>
+      <table>
+        <tr><th>Setting</th><th>Default</th><th>Description</th></tr>
+        <tr><td>Resynthesis Time</td><td>17:00</td><td>Daily scheduled resynthesis time (HH:MM, local timezone)</td></tr>
+        <tr><td>Density</td><td>compact</td><td>Summary detail level: <code>compact</code>, <code>standard</code>, or <code>detailed</code></td></tr>
+        <tr><td>Rolling Interval</td><td>4 hours</td><td>Trigger resynthesis every N hours (0 to disable)</td></tr>
+        <tr><td>Event Threshold</td><td>50</td><td>Trigger resynthesis after N new events (0 to disable)</td></tr>
+      </table>
+
       <!-- ─── CONFIGURATION ─── -->
       <h2 id="doc-settings-models">AI Models</h2>
       <p>Laya uses multiple AI models for different pipeline stages. Configure under <strong>Settings &rarr; Models</strong>.</p>
@@ -2318,10 +2343,9 @@ npm install --prefix ~/.laya/n8n_module n8n</code></pre>
       <table>
         <tr><th>Role</th><th>Purpose</th><th>Recommendation</th></tr>
         <tr><td><strong>Router</strong></td><td>Fast classification (priority, category, persona)</td><td>Use a fast, cheap model</td></tr>
-        <tr><td><strong>Stager</strong></td><td>Synthesize polished action cards &amp; intelligence reports</td><td>Use a capable model</td></tr>
+        <tr><td><strong>Stager</strong></td><td>Synthesize action cards, intelligence reports, and Omni summaries</td><td>Use a capable model</td></tr>
         <tr><td><strong>Chat</strong></td><td>Conversational responses in chat interface</td><td>Use a conversational model</td></tr>
         <tr><td><strong>Coherence</strong></td><td>Cross-platform entity search and narrative generation</td><td>Use a capable model</td></tr>
-        <tr><td><strong>Omni</strong></td><td>Cross-platform rolling summary resynthesis</td><td>Use a capable model</td></tr>
       </table>
 
       <h3>Supported Cloud Providers</h3>
@@ -2485,6 +2509,8 @@ content.body         content.metadata.*</code></pre>
         <tr><th>Setting</th><th>Default</th><th>Applies to</th></tr>
         <tr><td>Card Retention</td><td>90 days</td><td>Cards in terminal states: archived, dismissed, done, failed</td></tr>
         <tr><td>Chat Retention</td><td>90 days</td><td>Idle chat conversations</td></tr>
+        <tr><td>Audit Retention</td><td>90 days</td><td>Audit log entries</td></tr>
+        <tr><td>Omni Retention</td><td>30 days</td><td>Omni snapshots (latest per space is always preserved)</td></tr>
       </table>
       <p>A housekeeping task runs daily at ~00:00 UTC to remove expired data. Active cards and recent conversations are never auto-deleted.</p>
 

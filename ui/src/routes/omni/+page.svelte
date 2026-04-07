@@ -10,6 +10,7 @@
 	import { get } from 'svelte/store';
 	import type { Unsubscriber } from 'svelte/store';
 	import { omniSpace } from '$lib/stores/omniSpace';
+	import { resynthesizingSpaces, markResynthesizing, clearResynthesizing } from '$lib/stores/omniResynthesis';
 
 	let snapshot = $state<OmniSnapshot | null>(null);
 	let history = $state<OmniHistoryEntry[]>([]);
@@ -21,6 +22,7 @@
 	// Use store.subscribe instead of $effect to avoid Svelte 5 tracking
 	// the state writes inside loadOmni/loadHistory, which causes infinite loops.
 	let unsubWs: Unsubscriber;
+	let unsubResynth: Unsubscriber;
 
 	onMount(async () => {
 		await loadSpaces();
@@ -29,14 +31,22 @@
 
 		unsubWs = lastMessage.subscribe((msg) => {
 			if (msg?.type === 'omni_updated') {
+				// Resynthesis completed — clear the flag and reload
+				clearResynthesizing(activeSpaceId);
 				loadOmni();
 				loadHistory();
 			}
+		});
+
+		// Track resynthesis state from store so it survives navigation
+		unsubResynth = resynthesizingSpaces.subscribe((set) => {
+			resynthesizing = set.has(activeSpaceId);
 		});
 	});
 
 	onDestroy(() => {
 		unsubWs?.();
+		unsubResynth?.();
 	});
 
 	async function loadOmni(version?: number) {
@@ -61,13 +71,20 @@
 	}
 
 	async function handleResynthesis() {
-		resynthesizing = true;
+		markResynthesizing(activeSpaceId);
 		try {
 			await engineApi.triggerOmniResynthesis(activeSpaceId);
+			// On success, reload immediately — the omni_updated WS event
+			// will also clear the flag, but this handles the non-WS path.
+			clearResynthesizing(activeSpaceId);
+			loadOmni();
+			loadHistory();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Resynthesis failed';
-		} finally {
-			resynthesizing = false;
+			const msg = e instanceof Error ? e.message : 'Resynthesis failed';
+			// 409 = already in progress — keep the flag set, don't show error
+			if (msg.includes('already in progress')) return;
+			clearResynthesizing(activeSpaceId);
+			error = msg;
 		}
 	}
 
@@ -125,7 +142,8 @@
 	<title>Omni - Laya</title>
 </svelte:head>
 
-<div class="relative mx-auto max-w-5xl px-6 py-6">
+<div class="relative min-h-screen bg-surface-900 p-6">
+<div class="max-w-5xl mx-auto">
 	<!-- Loading overlay -->
 	{#if loading && !snapshot}
 		<div class="absolute inset-0 z-10 flex items-start justify-center pt-20">
@@ -194,4 +212,5 @@
 			</div>
 		{/if}
 	{/if}
+</div>
 </div>
