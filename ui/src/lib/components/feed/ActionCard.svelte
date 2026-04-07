@@ -273,6 +273,7 @@
 	onclick={() => onselect(card)}
 	onkeydown={(e) => e.key === 'Enter' && onselect(card)}
 >
+	{#if isLastViewed}<div class="card-corner-bottom"></div>{/if}
 	<!-- Row 1: Action icons (left) + utility icons (right) -->
 	<div class="mb-2 flex items-center justify-between">
 		<!-- Action icons -->

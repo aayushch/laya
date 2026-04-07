@@ -1,6 +1,11 @@
 <script lang="ts">
 	import { theme, type Theme } from '$lib/stores/theme';
 	import { cardColors } from '$lib/stores/cardColors';
+	import { fontScale, type FontScale } from '$lib/stores/fontScale';
+
+	const fontSteps: FontScale[] = [12, 13, 14, 15];
+	const fontLabels: Record<FontScale, string> = { 12: 'Compact', 13: 'Default', 14: 'Relaxed', 15: 'Large' };
+	let stepIndex = $derived(fontSteps.indexOf($fontScale));
 </script>
 
 <div class="space-y-8">
@@ -99,6 +104,37 @@
 					class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform {$cardColors ? 'translate-x-5' : 'translate-x-0'}"
 				></span>
 			</button>
+		</div>
+	</div>
+
+	<!-- Font scale -->
+	<div class="rounded-xl border border-surface-700 bg-surface-800 p-6">
+		<h3 class="mb-1 font-semibold text-surface-50">Text Size</h3>
+		<p class="mb-5 text-sm text-surface-400">Adjust the base font size for chat messages and card content.</p>
+
+		<div class="space-y-3">
+			<!-- Step buttons -->
+			<div class="flex gap-2">
+				{#each fontSteps as step, i}
+					<button
+						class="flex-1 rounded-lg border-2 px-3 py-2 text-center transition-all
+							{$fontScale === step
+								? 'border-laya-orange bg-laya-orange/10 text-surface-100'
+								: 'border-surface-600 bg-surface-900 text-surface-400 hover:border-surface-500'}"
+						onclick={() => fontScale.set(step)}
+					>
+						<span class="block text-xs font-medium">{fontLabels[step]}</span>
+						<span class="block text-[10px] text-surface-500">{step}px</span>
+					</button>
+				{/each}
+			</div>
+
+			<!-- Preview -->
+			<div class="rounded-lg border border-surface-700 bg-surface-900/50 px-4 py-3">
+				<p class="text-surface-300" style="font-size: {$fontScale}px; line-height: 1.5;">
+					The quick brown fox jumps over the lazy dog.
+				</p>
+			</div>
 		</div>
 	</div>
 

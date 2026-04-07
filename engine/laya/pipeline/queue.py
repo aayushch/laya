@@ -386,6 +386,13 @@ async def recover_stalled_events() -> int:
     count = cursor.rowcount
     if count:
         log.warning("stalled_events_recovered", count=count)
+        from laya.llm.client import log_to_audit
+        await log_to_audit(
+            event_id=None, card_id=None, step="recovery",
+            model="n/a", input_tokens=0, output_tokens=0, latency_ms=0,
+            success=True,
+            metadata={"action": "stalled_events_reset", "count": count},
+        )
     return count
 
 
@@ -472,6 +479,19 @@ async def recover_stalled_cards() -> int:
         log.warning("stalled_cards_recovered", total=total,
                     deleted_pending=deleted, failed_pending=failed_pending,
                     agent_reset=agent_reset, exec_failed=exec_failed)
+        from laya.llm.client import log_to_audit
+        await log_to_audit(
+            event_id=None, card_id=None, step="recovery",
+            model="n/a", input_tokens=0, output_tokens=0, latency_ms=0,
+            success=True,
+            metadata={
+                "action": "stalled_cards_recovered",
+                "deleted_pending": deleted,
+                "failed_pending": failed_pending,
+                "agent_reset": agent_reset,
+                "exec_failed": exec_failed,
+            },
+        )
     return total
 
 
@@ -503,6 +523,14 @@ async def _reap_stale_events() -> int:
     count = cursor.rowcount
     if count:
         log.warning("stale_events_reaped", count=count, threshold_seconds=stale_threshold)
+        from laya.llm.client import log_to_audit
+        await log_to_audit(
+            event_id=None, card_id=None, step="recovery",
+            model="n/a", input_tokens=0, output_tokens=0, latency_ms=0,
+            success=True,
+            metadata={"action": "stale_events_reaped", "count": count,
+                      "threshold_seconds": stale_threshold},
+        )
     return count
 
 

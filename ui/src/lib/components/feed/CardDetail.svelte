@@ -341,7 +341,7 @@
 
 		<!-- Header + summary -->
 		<h2 class="mb-2 text-lg font-semibold text-surface-50">{card.header}</h2>
-		<p class="mb-5 text-sm text-surface-300">{card.summary}</p>
+		<p class="mb-5 text-laya-base text-surface-300">{card.summary}</p>
 
 		<!-- Intelligence report -->
 		{#if card.intelligence && card.intelligence.length > 0}
@@ -349,7 +349,7 @@
 				<h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-surface-400">Intelligence Report</h3>
 				<ul class="space-y-1.5">
 					{#each card.intelligence as point}
-						<li class="flex items-start gap-2 text-sm text-surface-300">
+						<li class="flex items-start gap-2 text-laya-base text-surface-300">
 							<span class="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-surface-500"></span>
 							{point}
 						</li>
@@ -367,11 +367,11 @@
 				{#if card.staged_output.type === 'code_fix'}
 					<pre class="overflow-x-auto rounded-lg bg-surface-900 p-3 text-xs text-surface-200">{card.staged_output.content}</pre>
 				{:else if card.staged_output.type === 'agent_plan'}
-					<div class="prose-plan max-h-96 overflow-y-auto rounded-lg border border-surface-700 bg-surface-900/50 p-4 text-sm text-surface-200">
+					<div class="prose-plan max-h-96 overflow-y-auto rounded-lg border border-surface-700 bg-surface-900/50 p-4 text-laya-base text-surface-200">
 						{@html marked(card.staged_output.content)}
 					</div>
 				{:else}
-					<div class="prose-plan max-h-96 overflow-y-auto overflow-x-auto rounded-lg border border-surface-700 bg-surface-900/50 p-4 text-sm text-surface-200">
+					<div class="prose-plan max-h-96 overflow-y-auto overflow-x-auto rounded-lg border border-surface-700 bg-surface-900/50 p-4 text-laya-base text-surface-200">
 						{@html marked(card.staged_output.content)}
 					</div>
 				{/if}
@@ -405,7 +405,7 @@
 										<span class="text-surface-300">{payload.subject}</span>
 									</div>
 								{/if}
-								<div class="max-h-48 overflow-y-auto whitespace-pre-wrap text-sm text-surface-200">{payload.body}</div>
+								<div class="max-h-48 overflow-y-auto whitespace-pre-wrap text-laya-base text-surface-200">{payload.body}</div>
 							{:else}
 								<!-- Edit mode -->
 								{#if payload.to}

@@ -225,7 +225,7 @@ def _apply_prompt_caching(model: str, messages: list[dict]) -> list[dict]:
     return out
 
 
-async def _log_to_audit(
+async def log_to_audit(
     event_id: str | None,
     card_id: str | None,
     step: str,
@@ -530,7 +530,7 @@ async def llm_call(
         )
 
         # Log successful call to audit
-        await _log_to_audit(
+        await log_to_audit(
             event_id=event_id,
             card_id=card_id,
             step=step,
@@ -554,7 +554,7 @@ async def llm_call(
         elapsed_ms = int((time.monotonic() - start) * 1000)
         log.error("llm_call_failed", role=role, model=model, error=str(e))
 
-        await _log_to_audit(
+        await log_to_audit(
             event_id=event_id,
             card_id=card_id,
             step=step,
@@ -741,7 +741,7 @@ async def llm_call_streaming(
         )
 
         # Audit log
-        await _log_to_audit(
+        await log_to_audit(
             event_id=None,
             card_id=None,
             step=step,
@@ -756,7 +756,7 @@ async def llm_call_streaming(
         elapsed_ms = int((time.monotonic() - start) * 1000)
         log.error("llm_stream_failed", role=role, model=model, error=str(e))
         yield StreamEvent(type="error", content=str(e), model=model, latency_ms=elapsed_ms)
-        await _log_to_audit(
+        await log_to_audit(
             event_id=None,
             card_id=None,
             step=step,

@@ -9,6 +9,7 @@ from laya.api.websocket import manager
 from laya.db.sqlite import get_db
 from laya.egress import execute as egress_execute
 from laya.egress.models import EgressRequest
+from laya.llm.client import log_to_audit
 
 log = structlog.get_logger()
 
@@ -183,6 +184,16 @@ async def execute_action(
         result_status=result_status,
         result_url=result.result_url,
         error=result.error,
+    )
+
+    await log_to_audit(
+        event_id=card_row["event_id"], card_id=card_id, step="execute",
+        model="n/a", input_tokens=0, output_tokens=0, latency_ms=0,
+        success=result.success,
+        error=result.error,
+        metadata={"action_id": action_id, "action_type": action["action_type"],
+                  "target_platform": target_platform,
+                  "result_url": result.result_url},
     )
 
     return {

@@ -431,13 +431,29 @@
 		}
 	}
 
+	// Find a DOM element for a card — checks direct card elements first, then
+	// falls back to finding the group that contains this card (collapsed groups
+	// only expose data-card-id for their top card).
+	function findCardElement(cardId: string): Element | null {
+		const direct = document.querySelector(`[data-card-id="${cardId}"]`);
+		if (direct) return direct;
+		// Card might be inside a collapsed group — find its entity_id and look up the group
+		for (const g of groups) {
+			if (g.cards.some((c) => c.card_id === cardId)) {
+				const groupEl = document.querySelector(`[data-group-entity="${g.entity_id}"]`);
+				if (groupEl) return groupEl;
+			}
+		}
+		return null;
+	}
+
 	function scrollToCard(cardId: string) {
 		_scrollToCardId = cardId;
 		// Wait for any in-progress FLIP animation to finish, then scroll
 		_flipSettled.then(() => {
 			const attempt = (tries: number) => {
 				requestAnimationFrame(() => {
-					const el = document.querySelector(`[data-card-id="${cardId}"]`);
+					const el = findCardElement(cardId);
 					if (el) {
 						el.scrollIntoView({ behavior: 'smooth', block: 'center' });
 						// Brief highlight flash
@@ -583,6 +599,7 @@
 
 	// Search filtering
 	function cardMatchesSearch(card: ActionCard, terms: string[]): boolean {
+		const privacyLabel = card.privacy_tier === 3 ? 'confidential' : card.privacy_tier === 2 ? 'internal' : card.privacy_tier === 1 ? 'public' : '';
 		const searchable = [
 			card.header,
 			card.summary,
@@ -592,6 +609,10 @@
 			card.actor_name,
 			card.actor_email,
 			card.space_name,
+			card.persona,
+			card.priority,
+			card.status,
+			privacyLabel,
 			...(card.intelligence ?? []),
 			card.staged_output?.content,
 			...(card.suggested_actions?.map((a) => a.label) ?? [])
@@ -717,7 +738,7 @@
 		_flipSettled.then(() => {
 			const attempt = (tries: number) => {
 				requestAnimationFrame(() => {
-					const el = document.querySelector(`[data-card-id="${cardId}"]`);
+					const el = findCardElement(cardId);
 					if (el) {
 						el.scrollIntoView({ behavior: 'smooth', block: 'center' });
 						// Fading orange ring highlight via CSS animation
@@ -725,8 +746,11 @@
 						el.addEventListener('animationend', () => {
 							el.classList.remove('card-highlight-fade');
 						}, { once: true });
+						_scrollToCardId = null;
 					} else if (tries > 0) {
 						attempt(tries - 1);
+					} else {
+						_scrollToCardId = null;
 					}
 				});
 			};
@@ -1297,7 +1321,7 @@
 									{#if group.card_count === 1}
 										<ListRow card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} bulkSelected={$feedSelection.has(group.cards[0].card_id)} onbulktoggle={handleBulkToggle} hasSelection={!!selectedCard} />
 									{:else}
-										<ListGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} scrollToCardId={_scrollToCardId} bulkSelectedIds={$feedSelection} onbulktoggle={handleBulkToggle} onbulktogglegroup={handleBulkToggleGroup} hasSelection={!!selectedCard} />
+										<ListGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} scrollToCardId={_scrollToCardId} bulkSelectedIds={$feedSelection} onbulktoggle={handleBulkToggle} onbulktogglegroup={handleBulkToggleGroup} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
 									{/if}
 								{/each}
 							</div>
@@ -1310,7 +1334,7 @@
 							{#if group.card_count === 1}
 								<ListRow card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} bulkSelected={$feedSelection.has(group.cards[0].card_id)} onbulktoggle={handleBulkToggle} hasSelection={!!selectedCard} />
 							{:else}
-								<ListGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} scrollToCardId={_scrollToCardId} bulkSelectedIds={$feedSelection} onbulktoggle={handleBulkToggle} onbulktogglegroup={handleBulkToggleGroup} hasSelection={!!selectedCard} />
+								<ListGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} scrollToCardId={_scrollToCardId} bulkSelectedIds={$feedSelection} onbulktoggle={handleBulkToggle} onbulktogglegroup={handleBulkToggleGroup} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
 							{/if}
 						{/each}
 					</div>

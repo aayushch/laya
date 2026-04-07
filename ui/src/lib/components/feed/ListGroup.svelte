@@ -14,7 +14,8 @@
 		bulkSelectedIds,
 		onbulktoggle,
 		onbulktogglegroup,
-		hasSelection = false
+		hasSelection = false,
+		lastViewedCardId = ''
 	}: {
 		group: CardGroup;
 		onselect: (card: ActionCard) => void;
@@ -25,13 +26,16 @@
 		onbulktoggle?: (cardId: string, event: MouseEvent) => void;
 		onbulktogglegroup?: (cardIds: string[], selected: boolean) => void;
 		hasSelection?: boolean;
+		lastViewedCardId?: string;
 	} = $props();
 
 	let expanded = $state(false);
 	let groupMenuOpen = $state(false);
 	let bulkActionRunning = $state(false);
 
+	const hasBookmark = $derived(group.cards.some((c) => c.bookmarked_at));
 	const isGroupSelected = $derived(group.cards.some((c) => c.card_id === selectedCardId));
+	const isGroupLastViewed = $derived(!expanded && !isGroupSelected && !hasSelection && !!lastViewedCardId && group.cards.some(c => c.card_id === lastViewedCardId));
 	const isDimmed = $derived(hasSelection && !isGroupSelected);
 
 	// Auto-expand when a card in this group is targeted for scroll
@@ -40,6 +44,7 @@
 			expanded = true;
 		}
 	});
+
 
 	// Close group menu on outside click
 	$effect(() => {
@@ -219,7 +224,8 @@
 			</div>
 		{/if}
 
-		<div class="flex-1 min-w-0 border {expanded ? 'rounded-t-lg border-surface-600 border-b-0 bg-surface-900' : 'rounded-lg border-surface-700/40 ' + groupBgStyle} transition-colors">
+		<div class="flex-1 min-w-0 border {expanded ? 'rounded-t-lg border-surface-600 border-b-0 bg-surface-900' : 'rounded-lg border-surface-700/40 ' + groupBgStyle} {isGroupLastViewed ? 'card-last-viewed' : ''} transition-colors" style="{isGroupLastViewed ? '--corner-radius: 0.5rem' : ''}">
+			{#if isGroupLastViewed}<div class="card-corner-bottom"></div>{/if}
 			<!-- Group header row -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
@@ -260,6 +266,11 @@
 
 		<!-- Card count — aligned with ListRow status column (w-[70px]) -->
 		<div class="group/count relative w-[70px] shrink-0 flex items-center gap-1 ml-2">
+			{#if hasBookmark}
+				<svg class="h-3 w-3 shrink-0 text-laya-orange/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke-dasharray="3 2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+				</svg>
+			{/if}
 			<span class="rounded-full border border-surface-600 bg-surface-700 px-2 py-0.5 text-[10px] font-semibold text-surface-300 cursor-default">
 				{group.card_count}
 			</span>
