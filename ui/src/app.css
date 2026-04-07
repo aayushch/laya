@@ -270,6 +270,12 @@ html, body {
 	border-bottom-right-radius: var(--corner-radius, 0.75rem);
 }
 
+/* Compact variant for list rows / list groups — shorter brackets */
+.card-last-viewed--compact::before,
+.card-last-viewed--compact::after { width: 10px; height: 10px; }
+.card-last-viewed--compact > .card-corner-bottom::before,
+.card-last-viewed--compact > .card-corner-bottom::after { width: 10px; height: 10px; }
+
 /* ─────────────────────────────────────────────────────────────
    CARD HIGHLIGHT FADE — shows an orange ring that fades out,
    used to draw attention to a card after layout changes.

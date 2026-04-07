@@ -97,7 +97,20 @@ Every architectural and design decision made during the planning phase, with rat
 | 49 | **SQLite + ChromaDB embedded** | All data stored locally in `~/.laya/`. No external database servers. SQLite for structured data, ChromaDB (embedded mode) for vector search. Zero-config persistence. |
 | 50 | **pytest + Vitest + Playwright for testing** | pytest + pytest-asyncio for Python engine. Vitest + Svelte Testing Library for frontend components. Playwright for end-to-end browser tests through Tauri's webview. |
 
-## Phase 10: Deployment
+## Phase 10: Omni (Rolling Summary)
+
+| # | Decision | Rationale |
+|---|---|---|
+| 58 | **Progressive summarization with four temporal layers** | Attention/Recent/Period/Milestone provides natural information hierarchy. Older items compress into aggregates, keeping the summary dense and one-screen without token truncation. |
+| 59 | **Hybrid generation: incremental + scheduled resynthesis** | Incremental updates (structured append to Recent) are free — no LLM call. Full resynthesis (daily LLM call) compresses all layers. Balances freshness against cost. |
+| 60 | **Structural density constraints, not token truncation** | Prompt enforces N sections, M items, X words per item. This preserves JSON integrity and produces consistent output, unlike hard token limits which can break structured output mid-field. |
+| 61 | **Cross-cutting synthesis, never platform-siloed** | Platform tags exist on underlying data but presentation unifies across platforms. Organizing by platform would defeat the purpose of a unified summary. |
+| 62 | **Pinned items survive compression exactly as written** | Users need to anchor important context that the AI might otherwise compress away. Pins are injected into the resynthesis prompt and must appear verbatim in output. |
+| 63 | **Versioned snapshots with time-travel slider** | Each resynthesis creates a new version. Users can browse how their summary evolved over time, which is useful for retrospectives and tracking what changed. |
+| 64 | **Debounced incremental updates (10-second window)** | Avoids a flood of individual updates when many cards arrive in quick succession. Batches items into a single append operation. |
+| 65 | **User-acted cards receive higher weight** | Cards the user approved, dismissed, or interacted with are more likely to be important. They receive higher prominence in the resynthesis prompt and survive compression longer. |
+
+## Phase 11: Deployment
 
 | # | Decision | Rationale |
 |---|---|---|

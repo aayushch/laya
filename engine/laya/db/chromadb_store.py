@@ -26,6 +26,9 @@ _embedding_backend: str = "unknown"  # "nomic", "mpnet", "minilm", or "chromadb_
 EMBEDDING_MODELS = {
     "nomic": {
         "name": "nomic-ai/nomic-embed-text-v1.5",
+        # Pin to exact HuggingFace revision to prevent silent weight changes
+        # that would break existing ChromaDB vectors.
+        "revision": "e5cf08aadaa33385f5990def41f7a23405aec398",
         "dimensions": 768,
         "trust_remote_code": True,
         # Nomic uses asymmetric task prefixes for retrieval
@@ -34,6 +37,7 @@ EMBEDDING_MODELS = {
     },
     "mpnet": {
         "name": "sentence-transformers/all-mpnet-base-v2",
+        "revision": "e8c3b32edf5434bc2275fc9bab85f82640a19130",
         "dimensions": 768,
         "trust_remote_code": False,
         # STS models don't use task prefixes — symmetric similarity
@@ -42,6 +46,7 @@ EMBEDDING_MODELS = {
     },
     "minilm": {
         "name": "sentence-transformers/all-MiniLM-L6-v2",
+        "revision": "c9745ed1d9f207416be6d2e6f8de32d1f16199bf",
         "dimensions": 384,
         "trust_remote_code": False,
         "doc_prefix": "",
@@ -110,6 +115,8 @@ def _get_embedding_model() -> Any:
         kwargs: dict[str, Any] = {}
         if config.get("trust_remote_code"):
             kwargs["trust_remote_code"] = True
+        if config.get("revision"):
+            kwargs["revision"] = config["revision"]
         _embedding_model = SentenceTransformer(config["name"], **kwargs)
         log.info("embedding_model_loaded", model=config["name"])
     return _embedding_model

@@ -44,7 +44,11 @@ import type {
 	EgressAiAssistRequest,
 	EgressAiAssistResponse,
 	EmailProviderDetection,
-	OAuthStartResponse
+	OAuthStartResponse,
+	OmniSnapshot,
+	OmniHistoryResponse,
+	OmniPinsResponse,
+	OmniPin
 } from './types';
 
 const ENGINE_URL = 'http://127.0.0.1:8420';
@@ -295,10 +299,14 @@ export const engineApi = {
 		const qs = params.toString();
 		return request<ChatMessage[]>(`/chat/history${qs ? '?' + qs : ''}`);
 	},
-	sendChat: (message: string, conversationId?: string) =>
+	sendChat: (message: string, conversationId?: string, cardContext?: string) =>
 		request<ChatResponse>('/chat', {
 			method: 'POST',
-			body: JSON.stringify({ message, conversation_id: conversationId ?? null })
+			body: JSON.stringify({
+				message,
+				conversation_id: conversationId ?? null,
+				...(cardContext ? { card_context: cardContext } : {})
+			})
 		}),
 
 	// Chat Conversations
@@ -643,5 +651,34 @@ export const engineApi = {
 		request<{ status: string; platform: string }>('/egress/connections/oauth/setup', {
 			method: 'POST',
 			body: JSON.stringify(data)
+		}),
+
+	// Omni — rolling cross-platform summary
+	getOmni: (spaceId = 'default', version?: number) => {
+		const params = new URLSearchParams({ space_id: spaceId });
+		if (version !== undefined) params.set('version', String(version));
+		return request<OmniSnapshot>(`/omni?${params}`);
+	},
+
+	getOmniHistory: (spaceId = 'default', limit = 30) =>
+		request<OmniHistoryResponse>(`/omni/history?space_id=${encodeURIComponent(spaceId)}&limit=${limit}`),
+
+	triggerOmniResynthesis: (spaceId = 'default') =>
+		request<{ status: string; snapshot_ids: string[]; space_id: string }>(`/omni/resynthesis?space_id=${encodeURIComponent(spaceId)}`, {
+			method: 'POST'
+		}),
+
+	getOmniPins: (spaceId = 'default') =>
+		request<OmniPinsResponse>(`/omni/pins?space_id=${encodeURIComponent(spaceId)}`),
+
+	pinOmniItem: (data: { space_id: string; text: string; source_cards: string[]; platforms: string[] }) =>
+		request<OmniPin>('/omni/pin', {
+			method: 'POST',
+			body: JSON.stringify(data)
+		}),
+
+	unpinOmniItem: (pinId: string) =>
+		request<{ status: string; pin_id: string }>(`/omni/pin/${encodeURIComponent(pinId)}`, {
+			method: 'DELETE'
 		})
 };

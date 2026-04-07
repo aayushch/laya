@@ -33,6 +33,7 @@ Your Tools (Jira, Slack, Gmail, Bitbucket, Calendar)
 - **Chat sidebar:** Ask Laya questions about your events, projects, and context
 - **Coherence:** Cross-platform entity search traces any person, ticket, or PR across all platforms with AI-generated narratives
 - **Egress:** Execute outbound actions (emails, Slack messages, PR comments) directly from Laya with preview-before-send
+- **Omni:** Rolling cross-platform summary that answers "where am I right now?" with four temporal layers (Attention, Recent, Period, Milestone) and progressive AI compression
 - **Bookmarks:** Pin important cards for quick access regardless of date or status
 - **Classification learning:** Laya extracts rules from your priority/persona corrections and improves classification automatically over time
 - **Privacy-aware:** Three-tier data classification with cloud/local processing options
@@ -60,8 +61,8 @@ laya/
 │   │   ├── main.py          # Entry point (uvicorn server on :8420)
 │   │   ├── config.py        # Settings, paths, agent detection
 │   │   ├── api/             # REST + WebSocket endpoints (21 routers)
-│   │   ├── db/              # SQLite + ChromaDB + 35 migrations
-│   │   ├── pipeline/        # Event processing (ingest → route → stage → emit → trace → learn)
+│   │   ├── db/              # SQLite + ChromaDB + 39 migrations
+│   │   ├── pipeline/        # Event processing (ingest → route → stage → emit → trace → learn → omni)
 │   │   ├── llm/             # LiteLLM client, prompts, MCP tools
 │   │   ├── agents/          # Coding agent adapters (Claude, Gemini, Codex)
 │   │   ├── workers/         # Multi-persona LLM workers (engineer, comms, ops)
@@ -73,7 +74,7 @@ laya/
 │
 ├── ui/                      # SvelteKit + Tauri desktop app
 │   ├── src/                 # Svelte 5 frontend (runes syntax)
-│   │   ├── routes/          # Pages (feed, coherence, dashboard, settings, workspace)
+│   │   ├── routes/          # Pages (feed, coherence, dashboard, settings, workspace, omni)
 │   │   ├── lib/             # Components, API client, stores
 │   │   ├── app.css          # Tailwind v4 + theme system
 │   │   └── app.html

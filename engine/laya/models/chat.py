@@ -19,6 +19,7 @@ class ChatRequest(BaseModel):
     message: str
     space_id: str | None = None
     conversation_id: str | None = None
+    card_context: str | None = None  # Optional card context injected into system prompt (used by Omni card view)
 
 
 class ChatResponse(BaseModel):

@@ -656,6 +656,169 @@ List recent classification corrections.
 }
 ```
 
+### `GET /omni`
+
+Fetch the latest (or a specific version) Omni rolling summary snapshot.
+
+**Query Parameters:**
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `space_id` | string | `default` | Space to fetch summary for |
+| `version` | int | `null` | Specific snapshot version (latest if omitted) |
+
+**Response (200):**
+```json
+{
+  "snapshot_id": "omni_001",
+  "space_id": "default",
+  "version": 12,
+  "generated_at": "2026-04-07T17:00:00Z",
+  "snapshot_type": "scheduled",
+  "sections": [
+    {
+      "type": "attention",
+      "label": "Needs Attention",
+      "items": [
+        {
+          "text": "PR #892 has been open for 3 days with no reviewer assigned",
+          "source_cards": ["card_042"],
+          "platforms": ["bitbucket"],
+          "priority": "HIGH",
+          "pinned": false
+        }
+      ]
+    },
+    {
+      "type": "recent",
+      "label": "Recent",
+      "items": []
+    },
+    {
+      "type": "period",
+      "label": "This Week",
+      "items": []
+    },
+    {
+      "type": "milestone",
+      "label": "Milestones",
+      "items": []
+    }
+  ],
+  "stats": {
+    "events_processed": 47,
+    "cards_acted_on": 12,
+    "compression_ratio": 0.65
+  },
+  "card_ids": ["card_042", "card_043"]
+}
+```
+
+### `GET /omni/history`
+
+List snapshot versions for time-slider navigation.
+
+**Query Parameters:**
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `space_id` | string | `default` | Space to list history for |
+| `limit` | int | `30` | Max snapshots to return |
+
+**Response (200):**
+```json
+{
+  "snapshots": [
+    {
+      "snapshot_id": "omni_001",
+      "version": 12,
+      "generated_at": "2026-04-07T17:00:00Z",
+      "snapshot_type": "scheduled",
+      "events_processed": 47
+    }
+  ]
+}
+```
+
+### `POST /omni/resynthesis`
+
+Manually trigger a full Omni resynthesis.
+
+**Query Parameters:**
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `space_id` | string | `default` | Space to resynthesis |
+
+**Response (200):**
+```json
+{
+  "status": "started"
+}
+```
+
+### `GET /omni/pins`
+
+List all pinned items for a space.
+
+**Query Parameters:**
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `space_id` | string | `default` | Space to list pins for |
+
+**Response (200):**
+```json
+{
+  "pins": [
+    {
+      "pin_id": "pin_001",
+      "space_id": "default",
+      "item_text": "PR #892 has been open for 3 days",
+      "source_card_ids": ["card_042"],
+      "platforms": ["bitbucket"],
+      "pinned_at": "2026-04-07T10:00:00Z"
+    }
+  ]
+}
+```
+
+### `POST /omni/pin`
+
+Pin an Omni item so it survives compression.
+
+**Request:**
+```json
+{
+  "space_id": "default",
+  "item_text": "PR #892 has been open for 3 days",
+  "source_card_ids": ["card_042"],
+  "platforms": ["bitbucket"]
+}
+```
+
+**Response (200):**
+```json
+{
+  "pin_id": "pin_001",
+  "status": "pinned"
+}
+```
+
+### `DELETE /omni/pin/:pin_id`
+
+Remove a pin.
+
+**Response (200):**
+```json
+{
+  "status": "unpinned"
+}
+```
+
+**Error Response (404):**
+```json
+{
+  "detail": "Pin not found"
+}
+```
+
 ## 4. Laya Engine <-> Tauri UI (WebSocket)
 
 ### Connection
@@ -757,6 +920,18 @@ The WebSocket connection is established when the Tauri app launches and maintain
     "engine": "healthy",
     "n8n": "healthy",
     "overall": "healthy"
+  }
+}
+```
+
+**`omni_updated`** -- Omni summary resynthesized (new snapshot available).
+```json
+{
+  "type": "omni_updated",
+  "payload": {
+    "space_id": "default",
+    "version": 13,
+    "snapshot_type": "scheduled"
   }
 }
 ```

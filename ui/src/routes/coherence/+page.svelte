@@ -220,6 +220,10 @@
 	}) {
 		loading = true;
 		error = null;
+		// Clear the active trace so the progress bar shows immediately
+		// instead of staying on stale results while the new search runs.
+		trace = null;
+		currentTrace.set(null);
 		removedClusterIds = new Set();
 		traceNarrativeMap.set({});
 		traceNarrativeStreamingMap.set({});
@@ -288,14 +292,17 @@
 		const id = traceId || trace?.trace_id;
 		if (!id) return;
 
+		const rerunQuery = trace?.query ?? '';
 		loading = true;
 		error = null;
+		trace = null;
+		currentTrace.set(null);
 		removedClusterIds = new Set();
 		traceNarrativeMap.set({});
 		traceNarrativeStreamingMap.set({});
 		traceNewEventsDetected.set(false);
 		_activeTraceId = null;
-		traceProgress.set({ stage: 'Initializing', step: 0, total: 6, query: trace?.query ?? '' });
+		traceProgress.set({ stage: 'Initializing', step: 0, total: 6, query: rerunQuery });
 
 		try {
 			const result = await engineApi.rerunTrace(id);
@@ -505,6 +512,21 @@
 					{/if}
 					<span class="text-surface-600">·</span>
 					<span class="text-surface-500 tabular-nums">{trace.search_metadata.elapsed_ms}ms</span>
+					<span class="text-surface-600">·</span>
+					<span class="flex items-center gap-1">
+						{#if trace.search_metadata.enable_semantic !== false}
+							<span class="px-1.5 py-0.5 rounded bg-laya-orange/10 text-laya-orange text-[9px] font-medium">Semantic</span>
+						{/if}
+						{#if trace.search_metadata.enable_text !== false}
+							<span class="px-1.5 py-0.5 rounded bg-laya-gold/10 text-laya-gold text-[9px] font-medium">Text</span>
+						{/if}
+						{#if trace.search_metadata.enable_llm_filter !== false}
+							<span class="px-1.5 py-0.5 rounded bg-laya-peach/10 text-laya-peach text-[9px] font-medium">AI Filter</span>
+						{/if}
+						{#if trace.search_metadata.fuzzy_search}
+							<span class="px-1.5 py-0.5 rounded bg-laya-coral/10 text-laya-coral text-[9px] font-medium">Fuzzy</span>
+						{/if}
+					</span>
 				</div>
 
 				<div class="flex items-center gap-1.5">

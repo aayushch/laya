@@ -18,7 +18,7 @@ laya/
 |   |   |-- scheduler.py                  # Background scheduler (briefings, housekeeping)
 |   |   |-- http_client.py                # Shared HTTP client
 |   |   |
-|   |   |-- api/                          # HTTP + WebSocket endpoints (21 routers)
+|   |   |-- api/                          # HTTP + WebSocket endpoints (22 routers)
 |   |   |   |-- __init__.py
 |   |   |   |-- events.py                 # POST /events (receives from n8n)
 |   |   |   |-- cards_api.py              # Card CRUD, grouping, archive/reopen, bookmarks
@@ -33,6 +33,7 @@ laya/
 |   |   |   |-- classification_api.py     # Classification rules CRUD, corrections listing
 |   |   |   |-- trace_api.py              # Coherence entity search, traces, narratives
 |   |   |   |-- egress_api.py             # Outbound action execution, preview, connections
+|   |   |   |-- omni_api.py              # Omni rolling summary: snapshots, pins, resynthesis
 |   |   |   |-- budget_api.py             # Budget tracking and cost controls
 |   |   |   |-- audit_api.py              # Audit log queries
 |   |   |   |-- diagnostics_api.py        # System diagnostics
@@ -52,6 +53,7 @@ laya/
 |   |   |   |-- executor.py               # Execute approved actions via n8n
 |   |   |   |-- trace.py                  # Coherence: entity search, clustering, narrative generation
 |   |   |   |-- learn.py                  # Classification learning: extract rules from corrections
+|   |   |   |-- omni.py                   # Omni: rolling summary, incremental updates, resynthesis
 |   |   |   |-- chat.py                   # Chat assistant pipeline
 |   |   |   |-- workers.py                # Multi-persona LLM workers
 |   |   |   |-- entity_resolution.py      # Cross-platform entity linking
@@ -79,7 +81,7 @@ laya/
 |   |   |   |-- __init__.py
 |   |   |   |-- client.py                 # LiteLLM wrapper with model selection, retries, space overrides
 |   |   |   |-- providers.py              # Custom model provider management
-|   |   |   |-- prompts/                  # Prompt templates (router, stager, engineer, comms, ops, etc.)
+|   |   |   |-- prompts/                  # Prompt templates (router, stager, engineer, comms, ops, omni, etc.)
 |   |   |   |-- tools/                    # MCP tool definitions
 |   |   |       |-- definitions.py        # Tool schemas
 |   |   |       |-- card_tools.py         # Card query tools
@@ -99,7 +101,7 @@ laya/
 |   |   |   |-- chromadb_store.py         # ChromaDB vector store (embedded PersistentClient)
 |   |   |   |-- chunking.py              # Document chunking for embeddings
 |   |   |   |-- migrate.py               # Migration runner (check version, apply pending)
-|   |   |   |-- migrations/              # 35 numbered SQL migration files
+|   |   |   |-- migrations/              # 39 numbered SQL migration files
 |   |   |       |-- 001_initial.sql       # Core tables: events, action_cards, action_log
 |   |   |       |-- 002_entities.sql      # Entity resolution: entities table
 |   |   |       |-- ...
@@ -118,6 +120,7 @@ laya/
 |   |   |   |-- card.py                   # ActionCard model
 |   |   |   |-- workspace.py              # WorkspaceSession, WorkspaceEvent models
 |   |   |   |-- trace.py                  # TraceEntity, TraceCluster, TraceChapter models
+|   |   |   |-- omni.py                   # OmniItem, OmniSection, OmniSnapshot, OmniPin, OmniStats
 |   |   |   |-- ...                       # Additional models (action, classification, etc.)
 |   |   |
 |   |   |-- egress/                       # Outbound action execution module
@@ -197,6 +200,7 @@ laya/
 |   |   |       |-- feed/                 # ActionCard, CardGroup, CardDetail, FilterBar, etc.
 |   |   |       |-- workspace/            # AgentPanel, Timeline, Context, StagedOutput, etc.
 |   |   |       |-- trace/                # TraceCard, TraceHeader, TraceTimeline, TraceSearch, etc.
+|   |   |       |-- omni/                # OmniView, OmniHeader, OmniItem
 |   |   |       |-- egress/               # ComposeModal, action preview
 |   |   |       |-- dashboard/            # StatCard, charts, analytics components
 |   |   |       |-- chat/                 # ChatPanel, ChatMessage, ChatInput
@@ -209,6 +213,10 @@ laya/
 |   |       |-- +page.svelte              # Home page (redirects to /feed)
 |   |       |-- feed/
 |   |       |   |-- +page.svelte          # Action Card feed (with bookmarks filter)
+|   |       |-- omni/
+|   |       |   |-- +page.svelte          # Omni rolling summary (with space selector)
+|   |       |   |-- insight/
+|   |       |       |-- +page.svelte      # Omni drill-down: card panels + contextual chat
 |   |       |-- coherence/
 |   |       |   |-- +page.svelte          # Coherence: entity search & trace viewer
 |   |       |-- dashboard/

@@ -308,6 +308,48 @@ Full end-to-end: Jira ticket created -> n8n fires -> Engine classifies -> Worker
 
 ---
 
+## Milestone 9: Omni — Rolling Cross-Platform Summary
+
+**Goal:** Provide a single unified view that answers "where am I right now?" across all platforms and spaces.
+
+### Deliverables
+
+- [x] **Database schema** (`039_omni.sql`): `omni_snapshots` and `omni_pins` tables with space isolation and version indexing
+- [x] **Pydantic models** (`models/omni.py`): OmniItem, OmniSection, OmniSnapshot, OmniPin, OmniStats
+- [x] **LLM prompts** (`llm/prompts/omni.py`): System prompt for cross-cutting synthesis, density presets (compact/standard/detailed), JSON schema for structured output, resynthesis message builder
+- [x] **Pipeline** (`pipeline/omni.py`):
+  - `trigger_omni_update()`: Debounced (10s) incremental append to Recent layer — no LLM cost
+  - `run_omni_resynthesis()`: Full LLM resynthesis compressing all four temporal layers
+  - User-acted cards receive higher weight during compression
+  - Pinned items preserved exactly as written
+- [x] **Pipeline integration**: `emit.py` calls `trigger_omni_update()` at step 9 of card creation
+- [x] **Scheduler integration**: Daily resynthesis at configurable time (default 17:00, timezone-aware)
+- [x] **API** (`api/omni_api.py`):
+  - `GET /omni` — Latest or specific version snapshot
+  - `GET /omni/history` — Version list for time-slider
+  - `POST /omni/resynthesis` — Manual trigger
+  - `GET /omni/pins`, `POST /omni/pin`, `DELETE /omni/pin/:pin_id` — Pin CRUD
+- [x] **WebSocket**: `omni_updated` message broadcast after resynthesis
+- [x] **UI Components** (`components/omni/`):
+  - `OmniView.svelte` — Four sections with icons, item counts, empty states
+  - `OmniHeader.svelte` — Title, version slider, refresh button, stats bar
+  - `OmniItem.svelte` — Priority dot, text, platform badges, card links, pin toggle
+- [x] **UI Routes**:
+  - `/omni` — Main page with space selector, loading states, WebSocket auto-reload
+  - `/omni/insight` — Drill-down: card content panels + resizable contextual chat
+- [x] **Tests** (`tests/test_omni_api.py`): 8 tests covering snapshots, pins, space isolation, version retrieval
+
+### Test Criteria
+
+1. New cards arrive -> incremental items appear in Recent layer without LLM call
+2. Manual resynthesis compresses layers and produces a versioned snapshot
+3. Pinned items survive resynthesis exactly as written
+4. Version slider navigates between historical snapshots
+5. Drill-down opens source cards in the Insight view with contextual chat
+6. Different spaces maintain independent summaries
+
+---
+
 ## Post-v0.1 Roadmap
 
 ### v0.2 (Planned)

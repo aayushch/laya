@@ -26,6 +26,7 @@ from laya.api.chat_api import router as chat_router
 from laya.api.dashboard_api import router as dashboard_router
 from laya.api.diagnostics_api import router as diagnostics_router
 from laya.api.events import router as events_router
+from laya.api.omni_api import router as omni_router
 from laya.api.health import router as health_router
 from laya.api.rules_api import router as rules_router
 from laya.api.settings_api import router as settings_router
@@ -219,7 +220,31 @@ async def lifespan(app: FastAPI):
     await stop_consumer()
     stop_scheduler()
     await session_manager.cleanup_on_shutdown()
-    await close_http_client()
+
+    # Close the HTTP client before cancelling background tasks, while the
+    # event loop is still healthy. Closing after aggressive task cancellation
+    # caused CancelledError inside httpx's aclose() → anyio sleep(0).
+    try:
+        await close_http_client()
+    except Exception as e:
+        log.warning("http_client_close_error", error=str(e))
+
+    # Cancel remaining background tasks (summarizer, omni, agents, chat,
+    # budget checks, etc.) so their in-flight LLM HTTP requests are aborted.
+    # Without this, fire-and-forget tasks created via asyncio.create_task()
+    # keep running after the consumer and scheduler stop, blocking shutdown
+    # until Tauri's 5-second grace period expires and SIGKILL terminates us.
+    current_task = asyncio.current_task()
+    remaining = [
+        t for t in asyncio.all_tasks()
+        if t is not current_task and not t.done()
+    ]
+    if remaining:
+        log.info("cancelling_background_tasks", count=len(remaining))
+        for t in remaining:
+            t.cancel()
+        await asyncio.gather(*remaining, return_exceptions=True)
+
     disconnect_chromadb()
     await disconnect()
 
@@ -275,6 +300,7 @@ app.include_router(dashboard_router)
 app.include_router(diagnostics_router)
 app.include_router(events_router)
 app.include_router(health_router)
+app.include_router(omni_router)
 app.include_router(team_router)
 app.include_router(rules_router)
 app.include_router(settings_router)

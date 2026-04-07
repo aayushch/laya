@@ -209,6 +209,42 @@ CREATE TABLE schema_version (
 );
 ```
 
+### omni_snapshots
+
+Versioned Omni rolling summary snapshots.
+
+```sql
+CREATE TABLE omni_snapshots (
+    snapshot_id     TEXT PRIMARY KEY,
+    space_id        TEXT NOT NULL DEFAULT 'default',
+    version         INTEGER NOT NULL,
+    generated_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    snapshot_type   TEXT NOT NULL,       -- incremental | scheduled | manual
+    content         TEXT NOT NULL,       -- JSON: array of OmniSection objects
+    card_ids        TEXT,                -- JSON: array of card IDs included
+    stats           TEXT,                -- JSON: {events_processed, cards_acted_on, compression_ratio}
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_omni_snapshots_space_id ON omni_snapshots(space_id);
+CREATE INDEX idx_omni_snapshots_version ON omni_snapshots(space_id, version);
+```
+
+### omni_pins
+
+User-pinned items that survive compression across resyntheses.
+
+```sql
+CREATE TABLE omni_pins (
+    pin_id          TEXT PRIMARY KEY,
+    space_id        TEXT NOT NULL DEFAULT 'default',
+    item_text       TEXT NOT NULL,
+    source_card_ids TEXT,                -- JSON: array of card IDs
+    platforms       TEXT,                -- JSON: array of platform strings
+    pinned_at       DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
 ## ChromaDB Collection
 
 ### laya_memory
@@ -342,7 +378,7 @@ CREATE TABLE egress_connections (
 
 ## Migration Files
 
-Migrations are numbered SQL files in `engine/laya/db/migrations/`. There are currently 35 migrations (001 through 035), covering:
+Migrations are numbered SQL files in `engine/laya/db/migrations/`. There are currently 39 migrations (001 through 039), covering:
 
 | Range | Description |
 |---|---|
@@ -361,5 +397,7 @@ Migrations are numbered SQL files in `engine/laya/db/migrations/`. There are cur
 | `033` | **Traces**: Coherence entity search storage |
 | `034` | **Egress connections**: platform connection management |
 | `035` | Fuzzy search optimization for traces |
+| `036`-`038` | Chat, scheduling, and pipeline improvements |
+| `039` | **Omni**: omni_snapshots and omni_pins tables for rolling cross-platform summaries |
 
 The migration runner (`engine/laya/db/migrate.py`) checks `schema_version` on startup and applies any migrations with version > current version.

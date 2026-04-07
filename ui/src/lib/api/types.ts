@@ -234,6 +234,16 @@ export interface Settings {
 	retention?: {
 		card_retention_days: number;
 		chat_retention_days: number;
+		audit_retention_days: number;
+		omni_retention_days: number;
+	};
+	omni?: {
+		enabled: boolean;
+		resynthesis_time: string;
+		density: string;
+		timezone: string;
+		rolling_interval_hours: number;
+		event_threshold: number;
 	};
 	n8n?: N8nSettings;
 	feed_preferences?: FeedPreferences;
@@ -756,6 +766,9 @@ export interface TraceSearchMetadata {
 	expansion_cards: number;
 	elapsed_ms: number;
 	fuzzy_search: boolean;
+	enable_semantic?: boolean;
+	enable_text?: boolean;
+	enable_llm_filter?: boolean;
 }
 
 export interface TraceResponse {
@@ -886,6 +899,69 @@ export interface EmailProviderDetection {
 export interface OAuthStartResponse {
 	auth_url: string;
 	state: string;
+}
+
+// ---------------------------------------------------------------------------
+// Omni — rolling cross-platform summary
+// ---------------------------------------------------------------------------
+
+export interface OmniItem {
+	text: string;
+	source_cards: string[];
+	platforms: string[];
+	priority: string;
+	pinned: boolean;
+	space_id?: string;
+}
+
+export interface OmniSection {
+	type: 'attention' | 'recent' | 'period' | 'milestone';
+	label: string | null;
+	items: OmniItem[];
+}
+
+export interface OmniStats {
+	events_processed: number;
+	cards_acted_on: number;
+	compression_ratio: number;
+}
+
+export interface OmniSnapshot {
+	snapshot_id: string | null;
+	space_id: string;
+	version: number;
+	generated_at: string | null;
+	snapshot_type: string | null;
+	sections: OmniSection[];
+	stats: OmniStats;
+	card_ids: string[];
+}
+
+export interface OmniHistoryEntry {
+	snapshot_id: string;
+	version: number;
+	generated_at: string;
+	snapshot_type: string;
+	events_processed: number;
+}
+
+export interface OmniHistoryResponse {
+	space_id: string;
+	snapshots: OmniHistoryEntry[];
+}
+
+export interface OmniPin {
+	pin_id: string;
+	space_id: string;
+	item_text: string;
+	source_card_ids: string[];
+	platforms: string[];
+	pinned_at: string;
+}
+
+export interface OmniPinsResponse {
+	space_id: string;
+	pins: OmniPin[];
 }
 
 /** WebSocket open_compose event data */
