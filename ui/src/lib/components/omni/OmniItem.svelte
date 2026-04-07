@@ -55,6 +55,7 @@
 		<button
 			onclick={() => item.pinned ? onUnpin?.(item) : onPin?.(item)}
 			class="text-surface-500 hover:text-laya-orange {item.pinned ? 'text-laya-orange' : ''}"
+			aria-label={item.pinned ? 'Unpin item' : 'Pin to preserve'}
 		>
 			<svg class="h-5 w-5" viewBox="0 0 24 24" fill={item.pinned ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 				<path d="M9 4v6l-2 4h4v6l1 2 1-2v-6h4l-2-4V4" />

@@ -178,7 +178,7 @@
 				{@const isSynthesis = entry.snapshot_type === 'scheduled' || entry.snapshot_type === 'rolling' || entry.snapshot_type === 'manual'}
 				{@const isLatest = i === displayEntries.length - 1}
 				{@const pct = displayEntries.length > 1 ? (i / (displayEntries.length - 1)) * 100 : 50}
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
 				<div
 					class="absolute -translate-x-1/2 flex flex-col items-center cursor-pointer group/tick"
 					style="left: {pct}%"
