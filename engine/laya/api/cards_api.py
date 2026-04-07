@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from laya.agents.session_manager import cancel_sessions_for_card
 from laya.api.websocket import manager
 from laya.db.sqlite import get_db
+from laya.llm.client import log_to_audit
 from laya.models.card import CardGroup, CardResponse, CardsListResponse, GroupedCardsResponse, StagedOutput, SuggestedAction
 from laya.pipeline.summarize import trigger_summary_status_update
 
@@ -450,6 +451,13 @@ async def archive_card(card_id: str) -> dict:
 
     log.info("card_archived", card_id=card_id)
 
+    await log_to_audit(
+        event_id=None, card_id=card_id, step="lifecycle",
+        model="n/a", input_tokens=0, output_tokens=0, latency_ms=0,
+        success=True,
+        metadata={"action": "archive", "previous_status": current},
+    )
+
     # Update daily summary with status change
     header_rows = await db.execute_fetchall(
         "SELECT header FROM action_cards WHERE card_id = ?", (card_id,)
@@ -564,6 +572,14 @@ async def reopen_card(card_id: str) -> dict:
             trigger_summary_status_update(card_id, header_rows[0]["header"], new_status),
             name=f"summary_status_{card_id}",
         )
+
+    await log_to_audit(
+        event_id=None, card_id=card_id, step="lifecycle",
+        model="n/a", input_tokens=0, output_tokens=0, latency_ms=0,
+        success=True,
+        metadata={"action": "reopen", "previous_status": current,
+                  "new_status": new_status, "failed_stage": failed_stage},
+    )
 
     return {"status": new_status, "card_id": card_id}
 
@@ -697,6 +713,14 @@ async def approve_agent(card_id: str) -> dict:
     )
 
     log.info("agent_approved", card_id=card_id)
+
+    await log_to_audit(
+        event_id=row["event_id"], card_id=card_id, step="lifecycle",
+        model="n/a", input_tokens=0, output_tokens=0, latency_ms=0,
+        success=True,
+        metadata={"action": "approve_agent", "persona": row["persona"]},
+    )
+
     return {"status": "agent_running", "card_id": card_id}
 
 
@@ -849,6 +873,14 @@ async def dismiss_card(card_id: str, body: DismissRequest | None = None) -> dict
     )
 
     log.info("card_dismissed", card_id=card_id, feedback_type=feedback_type)
+
+    await log_to_audit(
+        event_id=None, card_id=card_id, step="lifecycle",
+        model="n/a", input_tokens=0, output_tokens=0, latency_ms=0,
+        success=True,
+        metadata={"action": "dismiss", "previous_status": current,
+                  "feedback_type": feedback_type},
+    )
 
     # Update daily summary with status change
     header_rows = await db.execute_fetchall(

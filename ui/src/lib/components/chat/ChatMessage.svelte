@@ -74,7 +74,7 @@
 
 <div class="flex {isUser ? 'justify-end' : 'justify-start'}">
 	<div
-		class="max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm {isUser
+		class="max-w-[95%] rounded-xl px-3.5 py-2.5 text-laya-base {isUser
 			? 'bg-laya-orange/20 text-surface-100 ring-1 ring-laya-orange/30'
 			: 'bg-surface-700 text-surface-200'}"
 	>
@@ -86,7 +86,7 @@
 			<!-- Thinking indicator / collapsible block -->
 			{#if parsed.isThinking}
 				<div class="chat-thinking mb-2">
-					<div class="flex items-center gap-1.5 text-[11px] font-medium text-surface-400">
+					<div class="flex items-center gap-1.5 text-laya-micro font-medium text-surface-400">
 						<svg class="h-3 w-3 animate-spin text-surface-500" fill="none" viewBox="0 0 24 24">
 							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
@@ -94,17 +94,17 @@
 						Thinking...
 					</div>
 					{#if parsed.thinking}
-						<div class="mt-1.5 border-l-2 border-surface-600 pl-2.5 text-[11px] leading-relaxed text-surface-500 whitespace-pre-wrap">
+						<div class="mt-1.5 border-l-2 border-surface-600 pl-2.5 text-laya-micro leading-relaxed text-surface-500 whitespace-pre-wrap">
 							{parsed.thinking}<span class="animate-pulse text-laya-orange">|</span>
 						</div>
 					{/if}
 				</div>
 			{:else if parsed.thinking}
 				<details class="chat-thinking mb-2">
-					<summary class="cursor-pointer text-[11px] font-medium text-surface-500 hover:text-surface-300 select-none">
+					<summary class="cursor-pointer text-laya-micro font-medium text-surface-500 hover:text-surface-300 select-none">
 						Thought process
 					</summary>
-					<div class="mt-1.5 border-l-2 border-surface-600 pl-2.5 text-[11px] leading-relaxed text-surface-500 whitespace-pre-wrap">
+					<div class="mt-1.5 border-l-2 border-surface-600 pl-2.5 text-laya-micro leading-relaxed text-surface-500 whitespace-pre-wrap">
 						{parsed.thinking}
 					</div>
 				</details>

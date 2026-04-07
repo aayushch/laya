@@ -110,6 +110,28 @@ async def _run_trace_housekeeping(retention_days: int) -> None:
     log.info("trace_housekeeping_complete", deleted=deleted, retention_days=retention_days)
 
 
+async def _run_audit_housekeeping(retention_days: int) -> None:
+    """Delete audit_log entries older than `retention_days` days.
+
+    This catches orphaned entries (no card_id, or card already deleted)
+    and keeps the table bounded regardless of card lifecycle.
+    """
+    from laya.db.sqlite import get_db
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+
+    db = await get_db()
+    cursor = await db.execute(
+        "DELETE FROM audit_log WHERE timestamp < ?", (cutoff,)
+    )
+    await db.commit()
+    deleted = cursor.rowcount
+    if deleted:
+        log.info("audit_housekeeping_complete", deleted=deleted, retention_days=retention_days)
+    else:
+        log.info("audit_housekeeping_nothing_to_delete", retention_days=retention_days)
+
+
 async def _scheduler_loop() -> None:
     """Main scheduler loop — runs every 60 seconds."""
     global _last_briefing_date, _last_housekeeping_date, _last_budget_month, _last_learn_check
@@ -176,6 +198,13 @@ async def _scheduler_loop() -> None:
                     await _run_trace_housekeeping(trace_retention_days)
                 except Exception as e:
                     log.error("trace_housekeeping_failed", error=str(e))
+
+                # Audit log housekeeping
+                audit_retention_days = int(retention_cfg.get("audit_retention_days", 90))
+                try:
+                    await _run_audit_housekeeping(audit_retention_days)
+                except Exception as e:
+                    log.error("audit_housekeeping_failed", error=str(e))
 
             # --- Budget month rollover (local timezone) ---
             try:

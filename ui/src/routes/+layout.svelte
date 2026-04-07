@@ -10,6 +10,7 @@
 	import { needsSetup, setupComplete } from '$lib/stores/setup';
 	import { chatOpen, chatListOpen } from '$lib/stores/chat';
 	import { theme } from '$lib/stores/theme';
+	import { fontScale } from '$lib/stores/fontScale';
 	import { budgetPaused, loadBudgetStatus, handleBudgetWsMessage, costAmount, budgetLabel, budgetRatio } from '$lib/stores/budget';
 	import { feedFilters, loadFeedFilters, saveFeedFilters, filtersLoaded, feedDate, feedPrevDate, feedNextDate, localToday } from '$lib/stores/feedFilters';
 	import { spaces, loadSpaces } from '$lib/stores/spaces';
@@ -54,6 +55,11 @@
 	// Apply theme to <html> so CSS [data-theme] selectors work globally
 	$effect(() => {
 		document.documentElement.setAttribute('data-theme', $theme);
+	});
+
+	// Apply font scale as CSS custom property on <html>
+	$effect(() => {
+		document.documentElement.style.setProperty('--laya-font-base', `${$fontScale}px`);
 	});
 
 	// Persist when filters change (only after initial load to avoid overwriting saved prefs with defaults)

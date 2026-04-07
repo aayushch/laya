@@ -115,7 +115,7 @@
 	let showManualRepo = $state(false);
 
 	// Step 5: Team
-	let members = $state<Array<{ name: string; email: string; role: string }>>([
+	let members = $state<Array<{ name: string; email: string; role: 'self' | 'manager' | 'teammate' | 'external' | 'bot' }>>([
 		{ name: '', email: '', role: 'teammate' }
 	]);
 
@@ -349,18 +349,15 @@
 					name: m.name.trim(),
 					email: m.email.trim(),
 					role: m.role,
-					notes: ''
+					notes: '',
+					aliases: [],
+					accounts: []
 				}))
 			});
 		}
 
 		// Step 6: Save filter rules
-		const rules: Array<{
-			name: string;
-			enabled: boolean;
-			condition: Record<string, unknown>;
-			action: string;
-		}> = [];
+		const rules: Array<import('$lib/api/types').Rule> = [];
 		if (ignoreBots) {
 			rules.push({
 				name: 'Ignore bot messages',

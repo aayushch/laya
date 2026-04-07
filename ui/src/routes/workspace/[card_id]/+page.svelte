@@ -16,7 +16,7 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
-	const cardId = $derived($page.params.card_id);
+	const cardId = $derived($page.params.card_id ?? '');
 
 	const POLL_INTERVAL_MS = 5000;
 	let pollTimer: ReturnType<typeof setInterval> | null = null;

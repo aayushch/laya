@@ -10,7 +10,7 @@ import structlog
 from laya.api.websocket import manager
 from laya.db.chromadb_store import embed_document
 from laya.db.sqlite import get_db
-from laya.llm.client import _log_to_audit
+from laya.llm.client import log_to_audit
 from laya.models.card import ActionCardData
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
@@ -328,7 +328,7 @@ async def run_emit(
             log.warning("entity_resolution_failed", card_id=card_id, error=str(e))
 
     # 6. Audit log
-    await _log_to_audit(
+    await log_to_audit(
         event_id=event.event_id,
         card_id=card_id,
         step="emit",

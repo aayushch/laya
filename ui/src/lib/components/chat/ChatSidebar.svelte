@@ -304,7 +304,7 @@
 				<!-- Waiting indicator (before stream starts) -->
 				{#if sending && !$streamingMessageId && $activeTools.length === 0}
 					<div class="flex justify-start">
-						<div class="rounded-xl bg-surface-700 px-3.5 py-2.5 text-sm text-surface-400">
+						<div class="rounded-xl bg-surface-700 px-3.5 py-2.5 text-laya-base text-surface-400">
 							<span class="inline-flex gap-1">
 								<span class="animate-bounce">.</span>
 								<span class="animate-bounce" style="animation-delay: 0.1s">.</span>
@@ -325,7 +325,7 @@
 						placeholder="Ask something..."
 						rows={3}
 						style="min-height: 4.5rem; overflow-y: auto;"
-						class="w-full resize-none rounded-lg border border-surface-600 bg-surface-800 py-2 pl-3 pr-10 text-sm text-surface-200 placeholder-surface-500 focus:border-laya-orange/50 focus:outline-none"
+						class="w-full resize-none rounded-lg border border-surface-600 bg-surface-800 py-2 pl-3 pr-10 text-laya-base text-surface-200 placeholder-surface-500 focus:border-laya-orange/50 focus:outline-none"
 					></textarea>
 					<button
 						onclick={send}

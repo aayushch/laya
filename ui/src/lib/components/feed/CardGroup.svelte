@@ -49,6 +49,7 @@
 		}
 	});
 
+
 	// Close group menu on outside click
 	$effect(() => {
 		if (!groupMenuOpen) return;
@@ -230,7 +231,10 @@
 		return `${Math.floor(hours / 24)}d ago`;
 	}
 
+	const hasBookmark = $derived(group.cards.some((c) => c.bookmarked_at));
 	const isGroupSelected = $derived(group.cards.some((c) => c.card_id === selectedCardId));
+	// Show last-viewed accent on the group header when collapsed and it contains the last-viewed card
+	const isGroupLastViewed = $derived(!expanded && !isGroupSelected && !hasSelection && !!lastViewedCardId && group.cards.some(c => c.card_id === lastViewedCardId));
 	const isDimmed = $derived(hasSelection && !isGroupSelected);
 
 	// Bulk action menu visibility — only show actions that apply to at least one card
@@ -307,6 +311,8 @@
 <div
 	class="relative transition-opacity duration-200 {isDimmed ? 'opacity-45 hover:opacity-70' : ''}"
 	style="padding-bottom: {!expanded && ghostCount > 0 ? 12 : 0}px; transition: padding-bottom 200ms ease;"
+	data-card-id={topCard.card_id}
+	data-group-entity={group.entity_id}
 >
 	<!-- Ghost strip 2 — furthest back -->
 	{#if ghostCount >= 2}
@@ -330,12 +336,14 @@
 		 the header out of view and leaving empty space at the bottom. clip visually
 		 clips the same way but does NOT create a scroll container. -->
 	<div
-		class="relative overflow-clip rounded-xl border shadow-lg transition-all duration-200 {expanded ? '' : 'group/card'}
+		class="relative rounded-xl border shadow-lg transition-all duration-200 {expanded ? '' : 'overflow-clip group/card'}
 			{expanded
 				? 'border-surface-600 bg-surface-900'
-				: groupStyle}"
+				: groupStyle}
+			{isGroupLastViewed ? 'card-last-viewed' : ''}"
 		style="z-index: 3;"
 	>
+		{#if isGroupLastViewed}<div class="card-corner-bottom"></div>{/if}
 		<!-- Header — shared between collapsed and expanded -->
 		<div
 			role="button"
@@ -351,6 +359,11 @@
 					{platformLabel[group.platform] ?? group.platform}
 				</span>
 				<div class="ml-auto flex items-center gap-1.5">
+					{#if hasBookmark}
+						<svg class="h-3 w-3 text-laya-orange/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke-dasharray="3 2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+						</svg>
+					{/if}
 					<span class="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase {priorityColors[group.top_priority] ?? priorityColors.MEDIUM}">
 						{priorityLabel[group.top_priority] ?? group.top_priority}
 					</span>

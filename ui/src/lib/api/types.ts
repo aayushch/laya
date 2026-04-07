@@ -238,6 +238,7 @@ export interface Settings {
 	n8n?: N8nSettings;
 	feed_preferences?: FeedPreferences;
 	pipeline?: PipelineSettings;
+	setup_complete?: boolean;
 }
 
 /** Staged output attached to an action card */

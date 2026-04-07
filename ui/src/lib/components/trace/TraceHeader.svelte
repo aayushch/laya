@@ -128,7 +128,7 @@
 
 {#if tooltip}
 	<div
-		class="fixed z-50 px-2.5 py-1.5 rounded-md bg-surface-700 text-surface-100 text-xs font-medium shadow-lg pointer-events-none -translate-x-1/2 -translate-y-full max-w-[400px] break-words"
+		class="fixed z-50 px-2 py-1 rounded-md border border-laya-orange/20 bg-surface-800 text-[10px] font-medium text-laya-orange shadow-lg pointer-events-none -translate-x-1/2 -translate-y-full max-w-[400px] break-words"
 		style="left: {tooltip.x}px; top: {tooltip.y}px;"
 	>
 		{tooltip.text}
