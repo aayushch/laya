@@ -275,7 +275,8 @@ async def run_emit(
                     {"type": "card_updated", "card_id": sib["card_id"],
                      "payload": {"status": "done"}}
                 )
-                asyncio.create_task(
+                from laya.tasks import create_task as create_tracked_task
+                create_tracked_task(
                     trigger_summary_status_update(sib["card_id"], sib["header"], "done"),
                     name=f"summary_status_{sib['card_id']}",
                 )
@@ -384,7 +385,8 @@ async def run_emit(
             _space_name = _space_row[0]["name"]
             _space_color = _space_row[0]["color"]
 
-    asyncio.create_task(
+    from laya.tasks import create_task as create_tracked_task
+    create_tracked_task(
         trigger_summary_update(
             card_id=card_id,
             card_header=stager_output.header,
@@ -403,7 +405,7 @@ async def run_emit(
     )
 
     # 9. Trigger Omni rolling summary update (async, non-blocking)
-    asyncio.create_task(
+    create_tracked_task(
         trigger_omni_update(
             card_id=card_id,
             card_header=stager_output.header,

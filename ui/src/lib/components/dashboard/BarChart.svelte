@@ -26,14 +26,18 @@
 		<div class="space-y-2">
 			{#each data as item, i}
 				{@const pct = (item.value / maxValue) * 100}
-				<div class="flex items-center gap-3">
-					<span class="w-[45%] min-w-0 truncate text-xs text-surface-300" title={item.label}>{item.label}</span>
-					<div class="flex-1">
+				<div class="group relative flex items-center gap-3">
+					<span class="w-[45%] min-w-0 truncate text-xs text-surface-300">{item.label}</span>
+					<div class="relative flex-1">
 						<div class="h-2 overflow-hidden rounded-full bg-surface-700">
 							<div
 								class="h-full rounded-full {barColors[i % barColors.length]}"
 								style="width: {pct}%"
 							></div>
+						</div>
+						<!-- Instant tooltip on row hover, positioned above the bar -->
+						<div class="pointer-events-none absolute -top-8 left-1/2 z-10 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover:block group-hover:opacity-100">
+							{item.label}: {item.value}
 						</div>
 					</div>
 					<span class="w-12 text-right text-xs tabular-nums text-surface-400">{item.value}</span>

@@ -27,6 +27,7 @@ DEFAULT_SETTINGS = {
         "stager": "claude-sonnet-4-6",
         "chat": "claude-sonnet-4-6",
         "trace": "claude-sonnet-4-6",
+        "omni": "claude-sonnet-4-6",
         "local": "ollama/llama3",
     },
     "coding_agent": "claude_code",

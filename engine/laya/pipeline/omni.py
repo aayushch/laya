@@ -67,7 +67,8 @@ async def trigger_omni_update(
         _pending_cards.append(card_data)
         if _debounce_task and not _debounce_task.done():
             _debounce_task.cancel()
-        _debounce_task = asyncio.create_task(_debounced_run())
+        from laya.tasks import create_task as create_tracked_task
+        _debounce_task = create_tracked_task(_debounced_run())
 
 
 async def _debounced_run() -> None:
@@ -357,7 +358,7 @@ async def _resynthesize_space(db, space_id: str, density: str, snapshot_type: st
     # 6. Call LLM
     try:
         response = await llm_call(
-            role="stager",
+            role="omni",
             messages=messages,
             response_schema=schema,
             step="omni_resynthesis",

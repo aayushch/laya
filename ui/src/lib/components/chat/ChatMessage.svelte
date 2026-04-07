@@ -6,6 +6,18 @@
 
 	let { message, streaming = false }: { message: ChatMessage; streaming?: boolean } = $props();
 
+	let copied = $state(false);
+
+	function copyResponse() {
+		// Copy raw markdown content (strip thinking blocks)
+		const content = parsed.response;
+		if (!content) return;
+		navigator.clipboard.writeText(content).then(() => {
+			copied = true;
+			setTimeout(() => (copied = false), 2000);
+		});
+	}
+
 	const isUser = $derived(message.role === 'user');
 	const time = $derived(
 		new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -74,7 +86,7 @@
 
 <div class="flex {isUser ? 'justify-end' : 'justify-start'}">
 	<div
-		class="max-w-[95%] rounded-xl px-3.5 py-2.5 text-laya-base {isUser
+		class="group max-w-[95%] rounded-xl px-3.5 py-2.5 text-laya-base {isUser
 			? 'bg-laya-orange/20 text-surface-100 ring-1 ring-laya-orange/30'
 			: 'bg-surface-700 text-surface-200'}"
 	>
@@ -118,10 +130,25 @@
 			{/if}
 		{/if}
 		{#if !streaming}
-			<div
-				class="mt-1 text-[10px] {isUser ? 'text-laya-orange/60' : 'text-surface-500'}"
-			>
-				{time}
+			<div class="mt-1 flex items-center gap-2 text-[10px] {isUser ? 'text-laya-orange/60' : 'text-surface-500'}">
+				<span>{time}</span>
+				{#if !isUser && parsed.response}
+					<span class="relative group/copy">
+						<button
+							onclick={copyResponse}
+							class="opacity-0 group-hover:opacity-100 transition-opacity text-surface-500 hover:text-surface-300"
+						>
+							{#if copied}
+								<svg class="h-3.5 w-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+							{:else}
+								<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+							{/if}
+						</button>
+						<span class="pointer-events-none absolute left-1/2 bottom-full z-10 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/copy:opacity-100">
+							{copied ? 'Copied!' : 'Copy response'}
+						</span>
+					</span>
+				{/if}
 			</div>
 		{/if}
 	</div>

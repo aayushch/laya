@@ -348,14 +348,17 @@
 				</div>
 			{/if}
 
-			<div class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-				{#if approvalData.length > 0}
-					<BarChart data={approvalData} title="Approval Rate by Persona (%)" />
-				{/if}
-				{#if costByModel.length > 0}
+			{#if costByModel.length > 0}
+				<div class="mt-3">
 					<BarChart data={costByModel} title="LLM Cost by Model ($)" />
-				{/if}
-			</div>
+				</div>
+			{/if}
+
+			{#if approvalData.length > 0}
+				<div class="mt-3">
+					<BarChart data={approvalData} title="Approval Rate by Persona (%)" />
+				</div>
+			{/if}
 		{/if}
 	</section>
 </div>

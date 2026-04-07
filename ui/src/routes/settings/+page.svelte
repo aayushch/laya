@@ -36,25 +36,19 @@
 			});
 		}
 	});
-	const tabSections = [
-		[
-			{ id: 'team',    label: 'Team' },
-			{ id: 'rules',   label: 'Rules' },
-			{ id: 'models',  label: 'Models' },
-			{ id: 'repos',   label: 'Repos' },
-			{ id: 'agent',   label: 'Agent' }
-		],
-		[
-			{ id: 'integrations', label: 'Integrations' },
-			{ id: 'spaces',       label: 'Spaces' }
-		],
-		[
-			{ id: 'briefing',     label: 'Briefing' },
-			{ id: 'audit',        label: 'Audit' },
-			{ id: 'appearance',   label: 'Appearance' },
-			{ id: 'keybindings',  label: 'Keys' },
-			{ id: 'data',         label: 'Data' }
-		]
+	const tabs = [
+		{ id: 'team',    label: 'Team' },
+		{ id: 'rules',   label: 'Rules' },
+		{ id: 'models',  label: 'Models' },
+		{ id: 'repos',   label: 'Repos' },
+		{ id: 'agent',   label: 'Agent' },
+		{ id: 'integrations', label: 'Integrations' },
+		{ id: 'spaces',       label: 'Spaces' },
+		{ id: 'briefing',     label: 'Briefing' },
+		{ id: 'audit',        label: 'Audit' },
+		{ id: 'appearance',   label: 'Appearance' },
+		{ id: 'keybindings',  label: 'Keys' },
+		{ id: 'data',         label: 'Data' }
 	];
 
 	let exporting = $state(false);
@@ -86,24 +80,17 @@
 	</div>
 
 	<!-- Tab bar -->
-	<div class="flex items-center justify-between rounded-lg border border-surface-700 bg-surface-800 p-1">
-		{#each tabSections as section, si}
-			{#if si > 0}
-				<div class="h-5 w-px bg-surface-600/50"></div>
-			{/if}
-			<div class="flex items-center gap-0.5">
-				{#each section as tab}
-					<button
-						class="rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors
-							{activeTab === tab.id
-								? 'bg-laya-orange/15 text-laya-orange'
-								: 'text-surface-400 hover:text-surface-200'}"
-						onclick={() => (activeTab = tab.id as typeof activeTab)}
-					>
-						{tab.label}
-					</button>
-				{/each}
-			</div>
+	<div class="flex justify-between rounded-lg border border-surface-700 bg-surface-800 p-1">
+		{#each tabs as tab}
+			<button
+				class="rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors
+					{activeTab === tab.id
+						? 'bg-laya-orange/15 text-laya-orange'
+						: 'text-surface-400 hover:text-surface-200'}"
+				onclick={() => (activeTab = tab.id as typeof activeTab)}
+			>
+				{tab.label}
+			</button>
 		{/each}
 	</div>
 

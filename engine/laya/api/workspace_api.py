@@ -210,7 +210,8 @@ async def answer_agent_question(session_id: str, body: AnswerQuestionRequest) ->
     })
 
     # Resume the agent conversation in the background
-    asyncio.create_task(_run_resumed_session(session_id, card_id, answer_text, add_dirs=body.add_dirs))
+    from laya.tasks import create_task as create_tracked_task
+    create_tracked_task(_run_resumed_session(session_id, card_id, answer_text, add_dirs=body.add_dirs))
 
     return {"status": "resumed", "session_id": session_id}
 
@@ -414,7 +415,8 @@ async def resume_session_with_prompt(session_id: str, body: ResumePromptRequest)
     })
 
     # Resume the agent conversation in the background
-    asyncio.create_task(_run_resumed_session(session_id, card_id, prompt, add_dirs=body.add_dirs, is_freeform=True))
+    from laya.tasks import create_task as create_tracked_task
+    create_tracked_task(_run_resumed_session(session_id, card_id, prompt, add_dirs=body.add_dirs, is_freeform=True))
 
     return {"status": "resumed", "session_id": session_id}
 

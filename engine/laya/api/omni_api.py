@@ -15,6 +15,9 @@ from laya.db.sqlite import get_db
 log = structlog.get_logger()
 router = APIRouter()
 
+# Track in-flight resynthesis per space to prevent concurrent runs
+_resynthesis_in_progress: set[str] = set()
+
 
 # ---------------------------------------------------------------------------
 # Request/response models
@@ -123,6 +126,13 @@ async def trigger_resynthesis(space_id: str = "default"):
     """Manually trigger a full Omni resynthesis."""
     from laya.pipeline.omni import run_omni_resynthesis
 
+    if space_id in _resynthesis_in_progress:
+        raise HTTPException(
+            status_code=409,
+            detail="Resynthesis already in progress for this space",
+        )
+
+    _resynthesis_in_progress.add(space_id)
     try:
         snapshot_ids = await run_omni_resynthesis(space_id=space_id)
         return {
@@ -133,6 +143,8 @@ async def trigger_resynthesis(space_id: str = "default"):
     except Exception as e:
         log.error("omni_resynthesis_api_failed", space_id=space_id, error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        _resynthesis_in_progress.discard(space_id)
 
 
 # ---------------------------------------------------------------------------
