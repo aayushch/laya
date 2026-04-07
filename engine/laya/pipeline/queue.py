@@ -21,6 +21,9 @@ log = structlog.get_logger()
 _consumer_task: asyncio.Task | None = None
 _semaphore: asyncio.Semaphore | None = None
 _shutdown_event: asyncio.Event = asyncio.Event()
+# Track in-flight processing tasks so we can cancel them on shutdown,
+# aborting pending LLM HTTP requests instead of blocking until they complete.
+_inflight_tasks: set[asyncio.Task] = set()
 
 # ── settings helpers ──────────────────────────────────────────────────────
 
@@ -591,6 +594,8 @@ async def _consumer_loop() -> None:
                     name=f"queue_{eid}",
                 )
                 tasks.append(task)
+                _inflight_tasks.add(task)
+                task.add_done_callback(_inflight_tasks.discard)
 
             # Wait for this batch (or until shutdown)
             done, pending = await asyncio.wait(
@@ -620,12 +625,25 @@ def start_consumer() -> None:
 
 
 async def stop_consumer() -> None:
-    """Gracefully stop the queue consumer. Call during app shutdown."""
+    """Gracefully stop the queue consumer. Call during app shutdown.
+
+    Cancels all in-flight event processing tasks so pending LLM HTTP
+    requests are aborted immediately instead of blocking shutdown.
+    """
     global _consumer_task
     _shutdown_event.set()
+
+    # Cancel in-flight processing tasks (aborts pending LLM calls)
+    for task in list(_inflight_tasks):
+        task.cancel()
+    # Give cancelled tasks a moment to handle CancelledError and mark events
+    if _inflight_tasks:
+        await asyncio.gather(*list(_inflight_tasks), return_exceptions=True)
+    _inflight_tasks.clear()
+
     if _consumer_task and not _consumer_task.done():
         try:
-            await asyncio.wait_for(_consumer_task, timeout=10)
+            await asyncio.wait_for(_consumer_task, timeout=5)
         except asyncio.TimeoutError:
             _consumer_task.cancel()
     _consumer_task = None

@@ -886,7 +886,7 @@
 				</div>
 			</div>
 		{:else}
-			<div class="flex items-center gap-1.5">
+			<div class="flex items-center gap-1.5 flex-wrap whitespace-nowrap">
 				<span class="text-xs text-surface-500">{totalGroups} {totalGroups === 1 ? 'group' : 'groups'}</span>
 				<span class="text-[10px] text-surface-600">·</span>
 				<span class="text-xs text-surface-500">{totalCards} cards</span>
@@ -1319,7 +1319,7 @@
 							<div class="flex flex-col gap-1 mb-2">
 								{#each sectionGroups as group (group.entity_id)}
 									{#if group.card_count === 1}
-										<ListRow card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} bulkSelected={$feedSelection.has(group.cards[0].card_id)} onbulktoggle={handleBulkToggle} hasSelection={!!selectedCard} />
+										<ListRow card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} bulkSelected={$feedSelection.has(group.cards[0].card_id)} onbulktoggle={handleBulkToggle} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
 									{:else}
 										<ListGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} scrollToCardId={_scrollToCardId} bulkSelectedIds={$feedSelection} onbulktoggle={handleBulkToggle} onbulktogglegroup={handleBulkToggleGroup} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
 									{/if}
@@ -1332,7 +1332,7 @@
 					<div class="flex flex-col gap-1">
 						{#each filteredGroups as group (group.entity_id)}
 							{#if group.card_count === 1}
-								<ListRow card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} bulkSelected={$feedSelection.has(group.cards[0].card_id)} onbulktoggle={handleBulkToggle} hasSelection={!!selectedCard} />
+								<ListRow card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} bulkSelected={$feedSelection.has(group.cards[0].card_id)} onbulktoggle={handleBulkToggle} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
 							{:else}
 								<ListGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} scrollToCardId={_scrollToCardId} bulkSelectedIds={$feedSelection} onbulktoggle={handleBulkToggle} onbulktogglegroup={handleBulkToggleGroup} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
 							{/if}

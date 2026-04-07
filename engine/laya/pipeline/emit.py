@@ -15,6 +15,7 @@ from laya.models.card import ActionCardData
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 from laya.pipeline.entity_resolution import resolve_semantic_entities
+from laya.pipeline.omni import trigger_omni_update
 from laya.pipeline.summarize import trigger_summary_status_update, trigger_summary_update
 from laya.workers.base import WorkerResult
 
@@ -399,6 +400,19 @@ async def run_emit(
             space_color=_space_color,
         ),
         name=f"summary_{card_id}",
+    )
+
+    # 9. Trigger Omni rolling summary update (async, non-blocking)
+    asyncio.create_task(
+        trigger_omni_update(
+            card_id=card_id,
+            card_header=stager_output.header,
+            card_summary=stager_output.summary,
+            card_priority=router_output.priority.value,
+            source_platform=event.source.platform,
+            space_id=space_id,
+        ),
+        name=f"omni_{card_id}",
     )
 
     return card_id

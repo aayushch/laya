@@ -73,6 +73,9 @@ class SearchMetadata(BaseModel):
     expansion_cards: int = 0
     elapsed_ms: int = 0
     fuzzy_search: bool = False
+    enable_semantic: bool = True
+    enable_text: bool = True
+    enable_llm_filter: bool = True
     avg_semantic_distance: float | None = None
     seeds_filtered: int = 0
     feedback_excluded: int = 0

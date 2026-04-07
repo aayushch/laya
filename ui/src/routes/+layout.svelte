@@ -39,6 +39,7 @@
 	let { children } = $props();
 	let isSetupRoute = $derived(page.url.pathname.startsWith('/setup'));
 	let isFeedRoute = $derived(page.url.pathname === '/feed' || page.url.pathname === '/');
+	let isOmniInsight = $derived(page.url.pathname.startsWith('/omni/insight'));
 
 	let headerEl = $state<HTMLElement | null>(null);
 
@@ -194,7 +195,14 @@
 							{isFeedRoute
 								? 'bg-laya-orange/10 text-laya-orange'
 								: 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'}"
-					>Feed</a>
+					>Pulse</a>
+					<a
+						href="/omni"
+						class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors
+							{page.url.pathname.startsWith('/omni')
+								? 'bg-laya-orange/10 text-laya-orange'
+								: 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'}"
+					>Omni</a>
 					<a
 						href="/coherence"
 						class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors
@@ -260,7 +268,8 @@
 
 			<!-- Right: Global utilities -->
 			<div class="flex items-center gap-1 ml-3">
-				<!-- Chat -->
+				<!-- Chat (hidden on Omni insight view which has its own inline chat) -->
+				{#if !isOmniInsight}
 				<div class="group/tip relative">
 					<button
 						onclick={() => {
@@ -283,6 +292,7 @@
 					</button>
 					<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">Chat</span>
 				</div>
+				{/if}
 
 				<!-- Settings -->
 				<div class="group/tip relative">

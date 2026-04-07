@@ -26,6 +26,7 @@ async def connect() -> aiosqlite.Connection:
     _db.row_factory = aiosqlite.Row
     await _db.execute("PRAGMA journal_mode=WAL")
     await _db.execute("PRAGMA foreign_keys=ON")
+    await _db.execute("PRAGMA busy_timeout=5000")
     log.info("sqlite_connected", path=str(DB_PATH))
     return _db
 

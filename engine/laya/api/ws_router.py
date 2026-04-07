@@ -174,11 +174,12 @@ async def _handle_chat_message(msg: dict) -> None:
     except Exception as e:
         log.error("ws_chat_failed", error=str(e))
         # Send error as a complete response so UI can recover
+        from datetime import datetime, timezone
         await manager.broadcast({
             "type": "chat_stream_done",
             "message": {
                 "message_id": f"err_{uuid.uuid4().hex[:12]}",
-                "timestamp": "",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "role": "assistant",
                 "content": "I'm sorry, I encountered an error. Please try again.",
                 "referenced_cards": [],

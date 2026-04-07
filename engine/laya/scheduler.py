@@ -13,6 +13,8 @@ log = structlog.get_logger()
 
 _scheduler_task: asyncio.Task | None = None
 _last_briefing_date: str | None = None
+_last_omni_date: str | None = None
+_last_omni_rolling: datetime | None = None
 _last_housekeeping_date: str | None = None
 _last_budget_month: str | None = None
 _last_learn_check: datetime | None = None
@@ -132,9 +134,51 @@ async def _run_audit_housekeeping(retention_days: int) -> None:
         log.info("audit_housekeeping_nothing_to_delete", retention_days=retention_days)
 
 
+async def _run_omni_housekeeping(retention_days: int) -> None:
+    """Delete omni snapshots older than `retention_days` days.
+
+    Always preserves the latest snapshot per space regardless of age
+    so the user never sees an empty Omni page.
+    """
+    from laya.db.sqlite import get_db
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+
+    db = await get_db()
+
+    # Find the latest snapshot_id per space (these are preserved even if old)
+    latest_rows = await db.execute_fetchall(
+        """SELECT snapshot_id FROM omni_snapshots
+           WHERE (space_id, version) IN (
+               SELECT space_id, MAX(version) FROM omni_snapshots GROUP BY space_id
+           )"""
+    )
+    protected_ids = {row["snapshot_id"] for row in latest_rows}
+
+    # Find candidates for deletion
+    rows = await db.execute_fetchall(
+        "SELECT snapshot_id FROM omni_snapshots WHERE created_at < ?",
+        (cutoff,),
+    )
+
+    to_delete = [row["snapshot_id"] for row in rows if row["snapshot_id"] not in protected_ids]
+
+    if not to_delete:
+        log.info("omni_housekeeping_nothing_to_delete", retention_days=retention_days)
+        return
+
+    placeholders = ",".join("?" for _ in to_delete)
+    await db.execute(
+        f"DELETE FROM omni_snapshots WHERE snapshot_id IN ({placeholders})",
+        to_delete,
+    )
+    await db.commit()
+    log.info("omni_housekeeping_complete", deleted=len(to_delete), retention_days=retention_days)
+
+
 async def _scheduler_loop() -> None:
     """Main scheduler loop — runs every 60 seconds."""
-    global _last_briefing_date, _last_housekeeping_date, _last_budget_month, _last_learn_check
+    global _last_briefing_date, _last_housekeeping_date, _last_budget_month, _last_learn_check, _last_omni_rolling
 
     while True:
         await asyncio.sleep(60)
@@ -174,6 +218,84 @@ async def _scheduler_loop() -> None:
                     except Exception as e:
                         log.error("scheduler_briefing_failed", error=str(e))
 
+            # --- Omni resynthesis ---
+            omni_cfg = settings.get("omni", {})
+            if omni_cfg.get("enabled", False):
+                omni_tz_name = omni_cfg.get("timezone", "America/New_York")
+                try:
+                    from zoneinfo import ZoneInfo
+                    omni_tz = ZoneInfo(omni_tz_name)
+                except Exception:
+                    from zoneinfo import ZoneInfo
+                    omni_tz = ZoneInfo("UTC")
+
+                omni_now = datetime.now(omni_tz)
+                omni_target = omni_cfg.get("resynthesis_time", "17:00")
+                omni_h, omni_m = map(int, omni_target.split(":"))
+                omni_today = omni_now.strftime("%Y-%m-%d")
+
+                # (1) EOD resynthesis — fixed time of day
+                if (
+                    omni_now.hour == omni_h
+                    and omni_now.minute == omni_m
+                    and _last_omni_date != omni_today
+                ):
+                    _last_omni_date = omni_today
+                    _last_omni_rolling = now_utc
+                    log.info("scheduler_omni_resynthesis_triggered", trigger="eod", date=omni_today)
+                    from laya.pipeline.omni import run_omni_resynthesis
+                    try:
+                        snapshot_ids = await run_omni_resynthesis()
+                        log.info("scheduler_omni_resynthesis_complete", trigger="eod", snapshots=len(snapshot_ids))
+                    except Exception as e:
+                        log.error("scheduler_omni_resynthesis_failed", trigger="eod", error=str(e))
+                else:
+                    # (2) Rolling interval — every N hours
+                    # (3) Event threshold — after N new events since last resynthesis
+                    rolling_hours = int(omni_cfg.get("rolling_interval_hours", 4))
+                    event_threshold = int(omni_cfg.get("event_threshold", 50))
+                    should_roll = False
+                    trigger_reason = ""
+
+                    if rolling_hours > 0:
+                        if _last_omni_rolling is None:
+                            _last_omni_rolling = now_utc  # First tick — record, don't trigger
+                        elif (now_utc - _last_omni_rolling) >= timedelta(hours=rolling_hours):
+                            should_roll = True
+                            trigger_reason = f"interval_{rolling_hours}h"
+
+                    if not should_roll and event_threshold > 0:
+                        # Count cards since last resynthesis (any type)
+                        try:
+                            from laya.db.sqlite import get_db
+                            _db = await get_db()
+                            _last_synth = await _db.execute_fetchall(
+                                """SELECT generated_at FROM omni_snapshots
+                                   WHERE snapshot_type IN ('scheduled', 'rolling', 'manual')
+                                   ORDER BY version DESC LIMIT 1"""
+                            )
+                            _since = _last_synth[0]["generated_at"] if _last_synth else "2000-01-01T00:00:00"
+                            _count_rows = await _db.execute_fetchall(
+                                "SELECT COUNT(*) AS cnt FROM action_cards WHERE created_at > ?",
+                                (_since,),
+                            )
+                            _new_count = _count_rows[0]["cnt"] if _count_rows else 0
+                            if _new_count >= event_threshold:
+                                should_roll = True
+                                trigger_reason = f"threshold_{_new_count}_events"
+                        except Exception as e:
+                            log.warning("omni_event_threshold_check_failed", error=str(e))
+
+                    if should_roll:
+                        _last_omni_rolling = now_utc
+                        log.info("scheduler_omni_resynthesis_triggered", trigger=trigger_reason)
+                        from laya.pipeline.omni import run_omni_resynthesis
+                        try:
+                            snapshot_ids = await run_omni_resynthesis(snapshot_type="rolling")
+                            log.info("scheduler_omni_resynthesis_complete", trigger=trigger_reason, snapshots=len(snapshot_ids))
+                        except Exception as e:
+                            log.error("scheduler_omni_resynthesis_failed", trigger=trigger_reason, error=str(e))
+
             # --- Housekeeping (once per day at ~00:00 UTC) ---
             if _last_housekeeping_date != today_str:
                 _last_housekeeping_date = today_str
@@ -205,6 +327,13 @@ async def _scheduler_loop() -> None:
                     await _run_audit_housekeeping(audit_retention_days)
                 except Exception as e:
                     log.error("audit_housekeeping_failed", error=str(e))
+
+                # Omni snapshot housekeeping
+                omni_retention_days = int(retention_cfg.get("omni_retention_days", 30))
+                try:
+                    await _run_omni_housekeeping(omni_retention_days)
+                except Exception as e:
+                    log.error("omni_housekeeping_failed", error=str(e))
 
             # --- Budget month rollover (local timezone) ---
             try:

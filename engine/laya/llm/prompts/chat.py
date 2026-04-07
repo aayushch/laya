@@ -66,6 +66,7 @@ def build_chat_messages(
     chat_history: list[dict[str, str]],
     context_text: str = "",
     user_identity: dict[str, str] | None = None,
+    card_context: str | None = None,
 ) -> list[dict[str, str]]:
     """Build the messages array for the Chat LLM call.
 
@@ -74,8 +75,21 @@ def build_chat_messages(
         chat_history: Recent chat messages in OpenAI format.
         context_text: Pre-packed context string from hybrid retrieval.
         user_identity: Optional dict with 'name' and 'email' of the Laya user.
+        card_context: Optional card context injected as system prompt (used by Omni card view).
     """
     system_content = CHAT_SYSTEM_PROMPT
+
+    # Inject card context into system prompt so the LLM has full awareness
+    # of the card being discussed without the user needing to re-state it.
+    if card_context:
+        system_content += (
+            f"\n\n## Active Card Context\n"
+            f"The user is viewing and asking about a specific action card. "
+            f"Use this context to inform your answers. The user does NOT see "
+            f"this context in their input — it is injected behind the scenes.\n\n"
+            f"{card_context}"
+        )
+
     if user_identity:
         emails = user_identity.get("emails", [user_identity["email"]])
         accounts = user_identity.get("accounts", [])

@@ -201,11 +201,11 @@
 					</span>
 				</div>
 
-				<h4 class="text-sm font-medium text-surface-100 leading-snug">
+				<h4 class="text-laya-base font-medium text-surface-100 leading-snug">
 					{card.header}
 				</h4>
 
-				<p class="text-xs text-surface-400 mt-1 {expanded ? '' : 'line-clamp-2'}">
+				<p class="text-laya-secondary text-surface-400 mt-1 {expanded ? '' : 'line-clamp-2'}">
 					{card.summary}
 				</p>
 
@@ -223,7 +223,7 @@
 							<h5 class="text-xs font-medium text-surface-400 uppercase tracking-wider mb-1">Intelligence</h5>
 							<ul class="space-y-0.5">
 								{#each card.intelligence as item}
-									<li class="text-xs text-surface-300 flex gap-1.5">
+									<li class="text-laya-secondary text-surface-300 flex gap-1.5">
 										<span class="text-laya-orange shrink-0">-</span>
 										<span>{item}</span>
 									</li>

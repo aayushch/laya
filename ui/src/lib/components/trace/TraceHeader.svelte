@@ -311,7 +311,7 @@
 									</details>
 								{/if}
 								{#if parsed.response}
-									<p class="text-[12px] text-surface-200 leading-relaxed italic">
+									<p class="text-laya-secondary text-surface-200 leading-relaxed italic">
 										{parsed.response}{#if isStreaming && !parsed.isThinking}<span class="inline-block w-1 h-3 bg-laya-orange/70 animate-pulse ml-0.5 align-middle"></span>{/if}
 									</p>
 								{/if}

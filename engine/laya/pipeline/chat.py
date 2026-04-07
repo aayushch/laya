@@ -64,6 +64,7 @@ async def process_chat_message(
     user_message: str,
     space_id: str | None = None,
     conversation_id: str | None = None,
+    card_context: str | None = None,
 ) -> ChatResponse:
     """Process a user chat message through the enhanced pipeline.
 
@@ -101,6 +102,7 @@ async def process_chat_message(
         chat_history,
         context_text=context["context_text"],
         user_identity=user_identity,
+        card_context=card_context,
     )
 
     tools = get_all_tool_definitions()
@@ -243,6 +245,7 @@ async def process_chat_message_streaming(
     user_message: str,
     space_id: str | None = None,
     conversation_id: str | None = None,
+    card_context: str | None = None,
 ):
     """Streaming version of process_chat_message.
 
@@ -279,6 +282,7 @@ async def process_chat_message_streaming(
         chat_history,
         context_text=context["context_text"],
         user_identity=user_identity,
+        card_context=card_context,
     )
 
     tools = get_all_tool_definitions()

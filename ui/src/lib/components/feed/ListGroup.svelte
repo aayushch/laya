@@ -224,7 +224,7 @@
 			</div>
 		{/if}
 
-		<div class="flex-1 min-w-0 border {expanded ? 'rounded-t-lg border-surface-600 border-b-0 bg-surface-900' : 'rounded-lg border-surface-700/40 ' + groupBgStyle} {isGroupLastViewed ? 'card-last-viewed' : ''} transition-colors" style="{isGroupLastViewed ? '--corner-radius: 0.5rem' : ''}">
+		<div class="flex-1 min-w-0 border {expanded ? 'rounded-t-lg border-surface-600 border-b-0 bg-surface-900' : 'rounded-lg border-surface-700/40 ' + groupBgStyle} {isGroupLastViewed ? 'card-last-viewed card-last-viewed--compact' : ''} transition-colors" style="{isGroupLastViewed ? '--corner-radius: 0.5rem' : ''}">
 			{#if isGroupLastViewed}<div class="card-corner-bottom"></div>{/if}
 			<!-- Group header row -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->

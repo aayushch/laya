@@ -75,6 +75,13 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |  |  | Context,       | |                 |  | AI narratives |   |  |  |
 |  |  |  | Staged Outputs | +-----------------+  +---------------+   |  |  |
 |  |  |                                                              |  |  |
+|  |  |  +- Omni ---------+                                         |  |  |
+|  |  |  | Rolling cross-  |                                         |  |  |
+|  |  |  | platform        |                                         |  |  |
+|  |  |  | summary, pins,  |                                         |  |  |
+|  |  |  | time-travel     |                                         |  |  |
+|  |  |  +----------------+                                         |  |  |
+|  |  |                                                              |  |  |
 |  |  |  +- Settings -----+                                         |  |  |
 |  |  |  | Models, keys,  |                                         |  |  |
 |  |  |  | repos, team,   |                                         |  |  |
@@ -100,6 +107,7 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |  |  WS   /ws              (real-time bidirectional)           |  |    |
 |  |  |  GET  /health          (health check)                      |  |    |
 |  |  |  CRUD /settings        (configuration)                     |  |    |
+|  |  |  GET  /omni            (rolling cross-platform summary)    |  |    |
 |  |  +------------------------------------------------------------+  |    |
 |  |                                                                  |    |
 |  |  +- Asyncio Pipeline -----------------------------------------+  |    |
@@ -134,6 +142,7 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |  +- Scheduled Jobs -------------------------------------------+  |    |
 |  |  |  Daily Briefing (cron) | Memory cleanup (weekly)           |  |    |
 |  |  |  Classification learning (periodic rule extraction)        |  |    |
+|  |  |  Omni resynthesis (daily, configurable time)               |  |    |
 |  |  +------------------------------------------------------------+  |    |
 |  +------------------------------------------------------------------+    |
 |          |                  |                    |                       |
@@ -150,7 +159,8 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |   Gmail         |   | traces        |   | (local)           |         |
 |  |   Calendar      |   | egress_conn   |   |                   |         |
 |  |   GitHub        |   | classif_*     |   |                   |         |
-|  |   Linear        |   | audit_log     |   |                   |         |
+|  |   Linear        |   | omni_*        |   |                   |         |
+|  |                 |   | audit_log     |   |                   |         |
 |  |                 |   +---------------+   +-------------------+         |
 |  | Execution:      |                                                     |
 |  |   Create PR     |   +---------------+    +------------------+         |
@@ -379,6 +389,37 @@ CONNECTION BROKER
   - Health check connections
   - 8 platforms: Gmail, Slack, Jira, GitHub,
     Bitbucket, Calendar, Linear, Outlook
+```
+
+### Omni Pipeline (Rolling Summary)
+
+```
+Card emitted (EMIT step)
+       |
+       v
+TRIGGER OMNI UPDATE (debounced, 10s window)
+  - Append structured item to Recent layer
+  - No LLM call (cheap incremental update)
+       |
+       v
+Scheduled daily resynthesis (configurable time)
+       |
+       v
+RESYNTHESIS (LLM call)
+  - Load latest snapshot + pinned items
+  - Collect cards since last resynthesis
+  - Separate user-acted cards (higher weight)
+  - LLM compresses all four temporal layers:
+    Attention | Recent | Period | Milestone
+  - Enforce density constraints (N items, M words)
+  - Create new versioned snapshot in SQLite
+  - Broadcast omni_updated via WebSocket
+       |
+       v
+UI displays updated Omni view
+  - Version slider for time-travel
+  - Pin/unpin items
+  - Drill-down to source cards (Insight view)
 ```
 
 ### Classification Learning

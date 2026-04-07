@@ -32,17 +32,17 @@
           "assignments": [
             {
               "name": "raw_from_email",
-              "value": "={{ $json.from?.emailAddress?.address || '' }}",
+              "value": "={{ $json.from?.emailAddress?.address || (typeof $json.from === 'string' ? $json.from : '') }}",
               "type": "string"
             },
             {
               "name": "raw_from_name",
-              "value": "={{ $json.from?.emailAddress?.name || '' }}",
+              "value": "={{ $json.from?.emailAddress?.name || (typeof $json.sender === 'object' ? $json.sender?.emailAddress?.name : '') }}",
               "type": "string"
             },
             {
               "name": "raw_to_email",
-              "value": "={{ ($json.toRecipients && $json.toRecipients[0]) ? $json.toRecipients[0].emailAddress?.address : '' }}",
+              "value": "={{ ($json.toRecipients && $json.toRecipients[0]) ? ($json.toRecipients[0].emailAddress?.address || (typeof $json.toRecipients[0] === 'string' ? $json.toRecipients[0] : '')) : (($json.to && $json.to[0]) ? (typeof $json.to[0] === 'string' ? $json.to[0] : ($json.to[0].emailAddress?.address || '')) : '') }}",
               "type": "string"
             },
             {
@@ -244,6 +244,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.04.1"
+    "laya_version": "2026.04.2"
   }
 }

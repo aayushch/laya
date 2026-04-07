@@ -80,7 +80,7 @@
 				<div class="relative flex items-center gap-3 mb-4 {i > 0 ? 'mt-6' : ''}">
 					<div class="w-3 h-3 rounded-full bg-laya-orange/30 border-2 border-laya-orange z-10"></div>
 					<div class="flex items-center gap-2">
-						<span class="text-sm font-semibold text-surface-200">{chapter.label}</span>
+						<span class="text-laya-base font-semibold text-surface-200">{chapter.label}</span>
 						{#if chapter.timestamp}
 							<span class="text-xs text-surface-500">
 								{new Date(chapter.timestamp).toLocaleDateString(undefined, {

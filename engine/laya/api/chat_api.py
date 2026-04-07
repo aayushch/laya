@@ -39,6 +39,7 @@ async def send_chat_message(body: ChatRequest) -> ChatResponse:
             body.message.strip(),
             space_id=body.space_id,
             conversation_id=body.conversation_id,
+            card_context=body.card_context,
         )
         return response
     except Exception as e:

@@ -100,7 +100,7 @@
 			placeholder="Trace an entity across your tools — tickets, PRs, threads, deploys..."
 			disabled={loading}
 			class="w-full pl-12 pr-28 py-4 rounded-xl bg-surface-800 border border-surface-700
-			       text-surface-50 placeholder-surface-500 text-sm
+			       text-surface-50 placeholder-surface-500 text-laya-base
 			       focus:outline-none focus:border-laya-orange/50 focus:ring-1 focus:ring-laya-orange/30
 			       disabled:opacity-50 transition-colors"
 		/>

@@ -330,7 +330,12 @@ async def _run_trace_inner(
     # precise matches (like "PR-540") aren't drowned by broader signals.
     guaranteed_seeds: list[dict] = []
     ranked_lists: list[list[dict]] = []
-    meta = SearchMetadata(fuzzy_search=request.fuzzy_search)
+    meta = SearchMetadata(
+        fuzzy_search=request.fuzzy_search,
+        enable_semantic=request.enable_semantic,
+        enable_text=request.enable_text,
+        enable_llm_filter=request.enable_llm_filter,
+    )
     for label, result in zip(signal_labels, results):
         if isinstance(result, list):
             if label == "identifier":

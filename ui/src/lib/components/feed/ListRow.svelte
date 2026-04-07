@@ -13,7 +13,8 @@
 		indented = false,
 		bulkSelected = false,
 		onbulktoggle,
-		hasSelection = false
+		hasSelection = false,
+		lastViewedCardId = ''
 	}: {
 		card: ActionCard;
 		onselect: (card: ActionCard) => void;
@@ -23,9 +24,11 @@
 		bulkSelected?: boolean;
 		onbulktoggle?: (cardId: string, event: MouseEvent) => void;
 		hasSelection?: boolean;
+		lastViewedCardId?: string;
 	} = $props();
 
 	const isSelected = $derived(card.card_id === selectedCardId);
+	const isLastViewed = $derived(!isSelected && !hasSelection && card.card_id === lastViewedCardId);
 
 	let bookmarking = $state(false);
 	let markingDone = $state(false);
@@ -196,12 +199,15 @@
 		data-card-id={card.card_id}
 		class="group/row flex flex-1 min-w-0 items-center rounded-lg px-3 py-1.5 text-left transition-all cursor-pointer
 			border border-transparent {$cardColors ? (statusRowStyle[card.status] ?? 'hover:bg-surface-800/60') : 'hover:bg-surface-800/60'}
-			{isArchived ? 'opacity-50 hover:opacity-75' : isDimmed ? 'opacity-45 hover:opacity-70' : ''}"
+			{isArchived ? 'opacity-50 hover:opacity-75' : isDimmed ? 'opacity-45 hover:opacity-70' : ''}
+			{isLastViewed ? 'card-last-viewed card-last-viewed--compact' : ''}"
+		style="{isLastViewed ? '--corner-radius: 0.5rem' : ''}"
 		onclick={() => onselect(card)}
 		onkeydown={(e) => e.key === 'Enter' && onselect(card)}
 		role="button"
 		tabindex="0"
 	>
+		{#if isLastViewed}<div class="card-corner-bottom"></div>{/if}
 		<!-- Bookmark — replaces chevron spacer -->
 		<button
 			onclick={toggleBookmark}

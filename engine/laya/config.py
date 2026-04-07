@@ -53,6 +53,7 @@ DEFAULT_SETTINGS = {
         "card_retention_days": 90,
         "chat_retention_days": 90,
         "audit_retention_days": 90,
+        "omni_retention_days": 30,
     },
     "feed_preferences": {
         "statusFilters": [],
@@ -78,6 +79,14 @@ DEFAULT_SETTINGS = {
         },
     },
     "custom_providers": [],
+    "omni": {
+        "enabled": True,
+        "resynthesis_time": "17:00",
+        "density": "compact",  # "compact" | "standard" | "detailed"
+        "timezone": "America/New_York",
+        "rolling_interval_hours": 4,  # 0 = disabled; triggers resynthesis every N hours
+        "event_threshold": 50,  # 0 = disabled; triggers resynthesis after N new events
+    },
     "pipeline": {
         "model_timeout": 480,
         "llm_retries": 3,
