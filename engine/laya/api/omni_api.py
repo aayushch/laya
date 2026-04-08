@@ -44,29 +44,19 @@ class BookmarkRequest(BaseModel):
 
 @router.get("/omni")
 async def get_omni(space_id: str = "default", version: int | None = None):
-    """Get the latest (or specific version) Omni snapshot."""
+    """Get the latest (or specific version) Omni snapshot.
+
+    Handles delta reconstruction transparently — callers always receive
+    the full snapshot regardless of how it's stored.
+    """
+    from laya.pipeline.omni import _load_full_snapshot
+
     db = await get_db()
 
-    if version is not None:
-        rows = await db.execute_fetchall(
-            """SELECT snapshot_id, space_id, version, generated_at, snapshot_type,
-                      content_json, card_ids, events_processed, created_at
-               FROM omni_snapshots
-               WHERE space_id = ? AND version = ?""",
-            (space_id, version),
-        )
-    else:
-        rows = await db.execute_fetchall(
-            """SELECT snapshot_id, space_id, version, generated_at, snapshot_type,
-                      content_json, card_ids, events_processed, created_at
-               FROM omni_snapshots
-               WHERE space_id = ?
-               ORDER BY version DESC LIMIT 1""",
-            (space_id,),
-        )
+    # Reconstruct full state (handles delta chains automatically)
+    content, ver, card_ids, meta = await _load_full_snapshot(db, space_id, version)
 
-    if not rows:
-        # Return empty snapshot rather than 404 — the UI needs something to render
+    if content is None:
         return {
             "snapshot_id": None,
             "space_id": space_id,
@@ -78,18 +68,15 @@ async def get_omni(space_id: str = "default", version: int | None = None):
             "card_ids": [],
         }
 
-    row = rows[0]
-    content = json.loads(row["content_json"])
-
     return {
-        "snapshot_id": row["snapshot_id"],
-        "space_id": row["space_id"],
-        "version": row["version"],
-        "generated_at": row["generated_at"],
-        "snapshot_type": row["snapshot_type"],
+        "snapshot_id": meta.get("snapshot_id"),
+        "space_id": space_id,
+        "version": ver,
+        "generated_at": meta.get("generated_at"),
+        "snapshot_type": meta.get("snapshot_type"),
         "sections": content.get("sections", []),
         "stats": content.get("stats", {}),
-        "card_ids": json.loads(row["card_ids"]),
+        "card_ids": card_ids,
     }
 
 
@@ -208,7 +195,7 @@ async def get_omni_timeline(space_id: str = "default"):
             },
             {
                 "tier": "today",
-                "label": "Today",
+                "label": "Recent",
                 "range_start": today_start,
                 "range_end": now_iso,
                 "entries": [_row_to_entry(r) for r in today_rows],
@@ -355,12 +342,14 @@ async def toggle_bookmark(req: BookmarkRequest):
     """Toggle bookmark on an item in the latest snapshot.
 
     Bookmarks live inside the snapshot JSON — they die when the item is
-    distilled away during resynthesis.
+    distilled away during resynthesis. Handles both full and delta rows.
     """
+    from laya.pipeline.omni import _latest_cache
+
     db = await get_db()
 
     rows = await db.execute_fetchall(
-        """SELECT snapshot_id, content_json
+        """SELECT snapshot_id, content_json, is_delta
            FROM omni_snapshots
            WHERE space_id = ?
            ORDER BY version DESC
@@ -371,30 +360,45 @@ async def toggle_bookmark(req: BookmarkRequest):
         raise HTTPException(status_code=404, detail="No snapshot found")
 
     snapshot_id = rows[0]["snapshot_id"]
-    content = json.loads(rows[0]["content_json"])
-    sections = content.get("sections", [])
+    is_delta = rows[0]["is_delta"]
 
-    # Find the item by its first source_card ID and toggle bookmark
-    found = False
-    for section in sections:
-        for item in section.get("items", []):
-            cards = item.get("source_cards", [])
-            if cards and cards[0] == req.source_card_id:
-                item["bookmarked"] = req.bookmarked
-                found = True
+    if is_delta:
+        # Delta row — store bookmark override in the delta JSON
+        delta = json.loads(rows[0]["content_json"])
+        delta.setdefault("bookmark_overrides", {})[req.source_card_id] = req.bookmarked
+        await db.execute(
+            "UPDATE omni_snapshots SET content_json = ? WHERE snapshot_id = ?",
+            (json.dumps(delta), snapshot_id),
+        )
+    else:
+        # Full snapshot — walk sections and flip the boolean directly
+        content = json.loads(rows[0]["content_json"])
+        sections = content.get("sections", [])
+
+        found = False
+        for section in sections:
+            for item in section.get("items", []):
+                cards = item.get("source_cards", [])
+                if cards and cards[0] == req.source_card_id:
+                    item["bookmarked"] = req.bookmarked
+                    found = True
+                    break
+            if found:
                 break
-        if found:
-            break
 
-    if not found:
-        raise HTTPException(status_code=404, detail="Item not found in snapshot")
+        if not found:
+            raise HTTPException(status_code=404, detail="Item not found in snapshot")
 
-    content["sections"] = sections
-    await db.execute(
-        "UPDATE omni_snapshots SET content_json = ? WHERE snapshot_id = ?",
-        (json.dumps(content), snapshot_id),
-    )
+        content["sections"] = sections
+        await db.execute(
+            "UPDATE omni_snapshots SET content_json = ? WHERE snapshot_id = ?",
+            (json.dumps(content), snapshot_id),
+        )
+
     await db.commit()
+
+    # Invalidate cache so next read reconstructs with the bookmark change
+    _latest_cache.pop(req.space_id, None)
 
     log.info(
         "omni_item_bookmark_toggled",

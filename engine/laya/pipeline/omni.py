@@ -2,11 +2,16 @@
 
 Incremental updates append to the "recent" section without LLM calls.
 Scheduled resynthesis uses the LLM to compress layers progressively.
+
+Delta storage: incremental snapshots store only the diff (added/fused items
++ new card_ids). Resynthesis snapshots store the full structure and serve as
+base checkpoints. Reconstruction chains deltas from the nearest base.
 """
 
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import uuid
 from datetime import datetime, timezone
@@ -24,6 +29,217 @@ from laya.llm.prompts.omni import (
 from laya.models.omni import OmniItem, OmniSection, OmniSnapshot, OmniStats
 
 log = structlog.get_logger()
+
+# ---------------------------------------------------------------------------
+# In-memory cache for the latest reconstructed snapshot per space.
+# Populated on every write, avoids delta chain reconstruction on hot reads.
+# ---------------------------------------------------------------------------
+_latest_cache: dict[str, dict] = {}
+
+
+# ---------------------------------------------------------------------------
+# Delta helpers
+# ---------------------------------------------------------------------------
+
+
+def _compute_delta(
+    old_items: list[dict],
+    new_items: list[dict],
+) -> dict:
+    """Compute the delta between old and new recent section items.
+
+    Returns a dict with:
+      - added_items: items that are entirely new (no entity match in old)
+      - fused_updates: items that existed but were modified (keyed by entity_id)
+    """
+    old_by_entity: dict[str, dict] = {}
+    old_card_set: set[str] = set()
+    for item in old_items:
+        eid = item.get("entity_id")
+        if eid:
+            old_by_entity[eid] = item
+        for cid in item.get("source_cards", []):
+            old_card_set.add(cid)
+
+    added_items: list[dict] = []
+    fused_updates: dict[str, dict] = {}
+
+    for item in new_items:
+        eid = item.get("entity_id")
+        if eid and eid in old_by_entity:
+            old = old_by_entity[eid]
+            # Check if anything changed
+            if (
+                item.get("text") != old.get("text")
+                or item.get("source_cards") != old.get("source_cards")
+                or item.get("platforms") != old.get("platforms")
+                or item.get("priority") != old.get("priority")
+            ):
+                fused_updates[eid] = {
+                    "text": item["text"],
+                    "source_cards": item.get("source_cards", []),
+                    "platforms": item.get("platforms", []),
+                    "priority": item.get("priority", "MEDIUM"),
+                }
+        else:
+            # Check it's genuinely new (not already present in old by card ID)
+            item_cards = set(item.get("source_cards", []))
+            if not item_cards.issubset(old_card_set):
+                added_items.append(item)
+
+    return {
+        "added_items": added_items,
+        "fused_updates": fused_updates,
+    }
+
+
+def _apply_delta(content: dict, delta: dict) -> dict:
+    """Apply a delta to a full content snapshot, mutating in place."""
+    sections = content.get("sections", [])
+
+    # Find the "recent" section
+    recent_section = None
+    for section in sections:
+        if section.get("type") == "recent":
+            recent_section = section
+            break
+
+    if recent_section is None:
+        recent_section = {"type": "recent", "label": None, "items": []}
+        sections.append(recent_section)
+
+    # Apply fused_updates — match by entity_id, update fields
+    for entity_id, updates in delta.get("fused_updates", {}).items():
+        for item in recent_section.get("items", []):
+            if item.get("entity_id") == entity_id:
+                item.update(updates)
+                break
+
+    # Append added_items
+    recent_section.setdefault("items", []).extend(delta.get("added_items", []))
+
+    # Apply bookmark overrides
+    for source_card_id, bookmarked in delta.get("bookmark_overrides", {}).items():
+        for section in sections:
+            for item in section.get("items", []):
+                cards = item.get("source_cards", [])
+                if cards and cards[0] == source_card_id:
+                    item["bookmarked"] = bookmarked
+
+    content["sections"] = sections
+    return content
+
+
+async def _find_base_version(db, space_id: str, current_version: int) -> int | None:
+    """Find the version of the nearest base (non-delta) snapshot."""
+    rows = await db.execute_fetchall(
+        """SELECT version FROM omni_snapshots
+           WHERE space_id = ? AND is_delta = 0 AND version <= ?
+           ORDER BY version DESC LIMIT 1""",
+        (space_id, current_version),
+    )
+    return rows[0]["version"] if rows else None
+
+
+async def _load_full_snapshot(
+    db, space_id: str, version: int | None = None
+) -> tuple[dict | None, int, list[str], dict]:
+    """Load a fully reconstructed snapshot, handling delta chains.
+
+    For the latest version (version=None), checks the in-memory cache first.
+
+    Returns (content_dict, version_number, card_ids_list, metadata_dict).
+    metadata_dict contains snapshot_id, generated_at, snapshot_type.
+    """
+    # Cache hit for latest
+    if version is None and space_id in _latest_cache:
+        c = _latest_cache[space_id]
+        return c["content"], c["version"], c["card_ids"], c.get("meta", {})
+
+    # Load the target row
+    if version is not None:
+        rows = await db.execute_fetchall(
+            """SELECT snapshot_id, version, generated_at, snapshot_type,
+                      content_json, card_ids, is_delta, base_version
+               FROM omni_snapshots
+               WHERE space_id = ? AND version = ?""",
+            (space_id, version),
+        )
+    else:
+        rows = await db.execute_fetchall(
+            """SELECT snapshot_id, version, generated_at, snapshot_type,
+                      content_json, card_ids, is_delta, base_version
+               FROM omni_snapshots
+               WHERE space_id = ?
+               ORDER BY version DESC LIMIT 1""",
+            (space_id,),
+        )
+
+    if not rows:
+        return None, 0, [], {}
+
+    row = rows[0]
+    meta = {
+        "snapshot_id": row["snapshot_id"],
+        "generated_at": row["generated_at"],
+        "snapshot_type": row["snapshot_type"],
+    }
+
+    if not row["is_delta"]:
+        # Full snapshot — return directly
+        content = json.loads(row["content_json"])
+        card_ids = json.loads(row["card_ids"])
+        return content, row["version"], card_ids, meta
+
+    # Delta snapshot — reconstruct from base
+    target_version = row["version"]
+    base_version = row["base_version"]
+
+    if base_version is None:
+        base_version = await _find_base_version(db, space_id, target_version)
+
+    if base_version is None:
+        log.warning("omni_delta_no_base", space_id=space_id, version=target_version)
+        return None, 0, [], {}
+
+    # Load base snapshot
+    base_rows = await db.execute_fetchall(
+        """SELECT content_json, card_ids FROM omni_snapshots
+           WHERE space_id = ? AND version = ? AND is_delta = 0""",
+        (space_id, base_version),
+    )
+
+    if not base_rows:
+        base_rows = await db.execute_fetchall(
+            """SELECT content_json, card_ids, version FROM omni_snapshots
+               WHERE space_id = ? AND is_delta = 0 AND version < ?
+               ORDER BY version DESC LIMIT 1""",
+            (space_id, target_version),
+        )
+        if not base_rows:
+            log.warning("omni_delta_base_missing", space_id=space_id, base=base_version)
+            return None, 0, [], {}
+        base_version = base_rows[0]["version"]
+
+    content = json.loads(base_rows[0]["content_json"])
+    card_ids = json.loads(base_rows[0]["card_ids"])
+
+    # Load all deltas from base+1 to target, in order
+    delta_rows = await db.execute_fetchall(
+        """SELECT version, content_json, card_ids FROM omni_snapshots
+           WHERE space_id = ? AND is_delta = 1
+             AND version > ? AND version <= ?
+           ORDER BY version ASC""",
+        (space_id, base_version, target_version),
+    )
+
+    for delta_row in delta_rows:
+        delta = json.loads(delta_row["content_json"])
+        delta_card_ids = json.loads(delta_row["card_ids"])
+        content = _apply_delta(content, delta)
+        card_ids = card_ids + [cid for cid in delta_card_ids if cid not in card_ids]
+
+    return content, target_version, card_ids, meta
 
 # ---------------------------------------------------------------------------
 # Debounce state for incremental updates (same pattern as summarizer)
@@ -107,23 +323,12 @@ async def _append_to_recent(cards: list[dict]) -> None:
         by_space.setdefault(sid, []).append(card)
 
     for space_id, space_cards in by_space.items():
-        # Load latest snapshot for this space
-        rows = await db.execute_fetchall(
-            """SELECT snapshot_id, version, content_json, card_ids
-               FROM omni_snapshots
-               WHERE space_id = ?
-               ORDER BY version DESC LIMIT 1""",
-            (space_id,),
-        )
+        # Load latest snapshot (reconstructed if delta chain)
+        content, version, existing_card_ids, _meta = await _load_full_snapshot(db, space_id)
 
-        if rows:
-            snapshot_id = rows[0]["snapshot_id"]
-            version = rows[0]["version"]
-            content = json.loads(rows[0]["content_json"])
-            existing_card_ids = json.loads(rows[0]["card_ids"])
-        else:
-            # First snapshot for this space — create skeleton
-            snapshot_id = f"omni_{uuid.uuid4().hex[:12]}"
+        is_first = content is None
+        if is_first:
+            # First snapshot for this space — create skeleton as full base
             version = 0
             content = {
                 "sections": [
@@ -145,6 +350,9 @@ async def _append_to_recent(cards: list[dict]) -> None:
         if recent_section is None:
             recent_section = {"type": "recent", "label": None, "items": []}
             content.setdefault("sections", []).append(recent_section)
+
+        # Snapshot old items for delta computation
+        old_recent_items = copy.deepcopy(recent_section.get("items", []))
 
         # Build an index of existing recent items by entity_id for fusion.
         # entity_id is stored on each item so we can match incoming cards
@@ -216,24 +424,51 @@ async def _append_to_recent(cards: list[dict]) -> None:
         new_snapshot_id = f"omni_{uuid.uuid4().hex[:12]}"
         new_version = version + 1
 
-        await db.execute(
-            """INSERT INTO omni_snapshots
-               (snapshot_id, space_id, version, generated_at, snapshot_type,
-                content_json, card_ids, events_processed, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                new_snapshot_id,
-                space_id,
-                new_version,
-                now,
-                "incremental",
-                json.dumps(content),
-                json.dumps(all_card_ids),
-                len(all_card_ids),
-                now,
-            ),
-        )
+        if is_first:
+            # First snapshot ever — store as full base (no delta possible)
+            await db.execute(
+                """INSERT INTO omni_snapshots
+                   (snapshot_id, space_id, version, generated_at, snapshot_type,
+                    content_json, card_ids, events_processed, created_at,
+                    is_delta, base_version)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    new_snapshot_id, space_id, new_version, now, "incremental",
+                    json.dumps(content), json.dumps(all_card_ids),
+                    len(all_card_ids), now, 0, None,
+                ),
+            )
+        else:
+            # Compute delta from old state and store only the diff
+            delta = _compute_delta(old_recent_items, recent_section.get("items", []))
+            base_ver = await _find_base_version(db, space_id, version)
+
+            await db.execute(
+                """INSERT INTO omni_snapshots
+                   (snapshot_id, space_id, version, generated_at, snapshot_type,
+                    content_json, card_ids, events_processed, created_at,
+                    is_delta, base_version)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    new_snapshot_id, space_id, new_version, now, "incremental",
+                    json.dumps(delta), json.dumps(new_card_ids),
+                    len(all_card_ids), now, 1, base_ver,
+                ),
+            )
+
         await db.commit()
+
+        # Update in-memory cache with full reconstructed state
+        _latest_cache[space_id] = {
+            "content": content,
+            "version": new_version,
+            "card_ids": all_card_ids,
+            "meta": {
+                "snapshot_id": new_snapshot_id,
+                "generated_at": now,
+                "snapshot_type": "incremental",
+            },
+        }
 
         # Broadcast update
         await manager.broadcast({
@@ -308,26 +543,8 @@ async def run_omni_resynthesis(
 async def _resynthesize_space(db, space_id: str, density: str, snapshot_type: str = "scheduled") -> str | None:
     """Resynthesize Omni for a single space."""
 
-    # 1. Load latest snapshot
-    rows = await db.execute_fetchall(
-        """SELECT snapshot_id, version, content_json, card_ids
-           FROM omni_snapshots
-           WHERE space_id = ?
-           ORDER BY version DESC LIMIT 1""",
-        (space_id,),
-    )
-
-    current_snapshot = None
-    current_version = 0
-    existing_card_ids: list[str] = []
-
-    if rows:
-        current_version = rows[0]["version"]
-        try:
-            current_snapshot = json.loads(rows[0]["content_json"])
-            existing_card_ids = json.loads(rows[0]["card_ids"])
-        except json.JSONDecodeError:
-            log.warning("omni_snapshot_corrupted", space_id=space_id)
+    # 1. Load latest snapshot (reconstructed if delta chain)
+    current_snapshot, current_version, existing_card_ids, _meta = await _load_full_snapshot(db, space_id)
 
     # 2. Load pinned items
     pin_rows = await db.execute_fetchall(
@@ -458,8 +675,9 @@ async def _resynthesize_space(db, space_id: str, density: str, snapshot_type: st
     await db.execute(
         """INSERT INTO omni_snapshots
            (snapshot_id, space_id, version, generated_at, snapshot_type,
-            content_json, card_ids, events_processed, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            content_json, card_ids, events_processed, created_at,
+            is_delta, base_version)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             snapshot_id,
             space_id,
@@ -470,9 +688,23 @@ async def _resynthesize_space(db, space_id: str, density: str, snapshot_type: st
             json.dumps(all_card_ids),
             len(all_card_ids),
             now,
+            0,     # Full base snapshot, not a delta
+            None,
         ),
     )
     await db.commit()
+
+    # Update cache with full state
+    _latest_cache[space_id] = {
+        "content": content,
+        "version": new_version,
+        "card_ids": all_card_ids,
+        "meta": {
+            "snapshot_id": snapshot_id,
+            "generated_at": now,
+            "snapshot_type": snapshot_type,
+        },
+    }
 
     # 10. Broadcast
     await manager.broadcast({

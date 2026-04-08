@@ -61,9 +61,11 @@
 	const activeEntry = $derived(findEntry(previewVersion ?? version));
 	const activeLabel = $derived(activeEntry ? formatDate(activeEntry.generated_at) : formatTimestamp(generatedAt));
 	const activeType = $derived(activeEntry?.snapshot_type ?? snapshotType);
+	const latestVersion = $derived(allEntries.length > 0 ? Math.max(...allEntries.map(e => e.version)) : version);
+	const isViewingOlder = $derived(version < latestVersion);
 
 	// Compute proportional segment widths (min 12% each for non-empty, 0 for empty)
-	const segmentWidths = $derived(() => {
+	const segmentWidths = $derived.by(() => {
 		const nonEmpty = segments.filter(s => s.entries.length > 0);
 		if (nonEmpty.length === 0) return segments.map(() => 0);
 
@@ -90,6 +92,154 @@
 	function isSynthesis(type: string): boolean {
 		return type === 'scheduled' || type === 'rolling' || type === 'manual';
 	}
+
+	// --- Fisheye lens distortion (Time Machine style) ---
+	// The SCALE itself stretches near the cursor, spreading tick marks apart.
+	let timelineEl: HTMLDivElement | undefined = $state();
+	let mouseRatio = $state<number | null>(null); // 0-1 across the timeline
+	let rafId: number | null = null;
+
+	function handleTimelineMove(e: MouseEvent) {
+		if (!timelineEl) return;
+		// Throttle to one update per animation frame for smooth motion
+		if (rafId !== null) return;
+		rafId = requestAnimationFrame(() => {
+			rafId = null;
+			if (!timelineEl) return;
+			const rect = timelineEl.getBoundingClientRect();
+			mouseRatio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+		});
+	}
+
+	function handleTimelineLeave() {
+		if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+		mouseRatio = null;
+	}
+
+	/**
+	 * d3-fisheye 1D distortion: stretches positions near `focus`, compresses far away.
+	 * Maps [0,1] → [0,1] preserving endpoints.
+	 * factor = magnification strength (e.g. 4 → 5x zoom near cursor).
+	 */
+	function fisheye(x: number, focus: number, factor: number): number {
+		const dx = x - focus;
+		const sign = dx < 0 ? -1 : 1;
+		const ad = Math.abs(dx);
+		const maxD = sign > 0 ? 1 - focus : focus;
+		if (maxD <= 0 || ad <= 0) return x;
+		const nd = ad / maxD;
+		const distorted = ((factor + 1) * nd) / (factor * nd + 1);
+		return focus + sign * distorted * maxD;
+	}
+
+	/** Compute the global position (0-1) of a dot across the full timeline. */
+	function toGlobal(segIndex: number, localPct: number): number {
+		const w = segmentWidths;
+		let offset = 0;
+		for (let i = 0; i < segIndex; i++) offset += w[i];
+		return (offset + (localPct / 100) * w[segIndex]) / 100;
+	}
+
+	/** Compute the distorted CSS left% for a dot, applying fisheye when hovering. */
+	function distortedPct(segIndex: number, localPct: number): number {
+		const globalPos = toGlobal(segIndex, localPct);
+		if (mouseRatio === null) return globalPos * 100;
+		return fisheye(globalPos, mouseRatio, 10) * 100;
+	}
+
+	// Precompute segment divider positions (cumulative width boundaries)
+	// Left/right edges of each segment in global % coordinates
+	const segmentEdges = $derived.by(() => {
+		const w = segmentWidths;
+		let acc = 0;
+		return segments.map((_, i) => {
+			const left = acc;
+			acc += w[i];
+			return { left, right: acc };
+		});
+	});
+
+	// Cumulative width boundaries where segment dividers appear
+	const dividerPositions = $derived.by(() => {
+		const w = segmentWidths;
+		const positions: number[] = [];
+		let acc = 0;
+		const nonEmptyIndices = segments.map((s, i) => s.entries.length > 0 ? i : -1).filter(i => i >= 0);
+		for (let ni = 0; ni < nonEmptyIndices.length; ni++) {
+			const si = nonEmptyIndices[ni];
+			acc += w[si];
+			// Add divider after each non-empty segment except the last
+			if (ni < nonEmptyIndices.length - 1) {
+				positions.push(acc);
+			}
+		}
+		return positions;
+	});
+
+	// Hour ticks for the "Today" segment — shows time markers so users see busy periods
+	interface HourTick {
+		hour: number;       // 0-23
+		label: string;      // e.g. "9am", "2pm"
+		globalPct: number;  // position in global timeline %
+	}
+
+	const todayHourTicks = $derived.by((): HourTick[] => {
+		const todaySeg = segments.find(s => s.tier === 'today');
+		const todayIdx = segments.findIndex(s => s.tier === 'today');
+		if (!todaySeg || todaySeg.entries.length === 0 || todayIdx < 0) return [];
+
+		const segStart = todaySeg.range_start ? new Date(todaySeg.range_start).getTime() : Date.now() - 86400000;
+		const segEnd = todaySeg.range_end ? new Date(todaySeg.range_end).getTime() : Date.now();
+		const range = segEnd - segStart;
+		if (range <= 0) return [];
+
+		const ticks: HourTick[] = [];
+		// Walk through each hour boundary within the segment's range
+		const startDate = new Date(segStart);
+		const firstHour = new Date(startDate);
+		firstHour.setMinutes(0, 0, 0);
+		if (firstHour.getTime() < segStart) firstHour.setHours(firstHour.getHours() + 1);
+
+		const w = segmentWidths;
+		let segOffset = 0;
+		for (let i = 0; i < todayIdx; i++) segOffset += w[i];
+
+		for (let t = firstHour.getTime(); t < segEnd; t += 3600000) {
+			const localPct = ((t - segStart) / range) * 100;
+			const clampedPct = Math.max(2, Math.min(98, localPct));
+			const globalPct = (segOffset + (clampedPct / 100) * w[todayIdx]);
+			const hour = new Date(t).getHours();
+			const label = `${hour.toString().padStart(2, '0')}:00`;
+			ticks.push({ hour, label, globalPct });
+		}
+		return ticks;
+	});
+
+	// Build flat list of all dots with global positions for the single-container rendering
+	interface FlatDot {
+		entry: TimelineEntry;
+		segIndex: number;
+		localPct: number;
+		isSynth: boolean;
+	}
+
+	const flatDots = $derived.by((): FlatDot[] => {
+		const dots: FlatDot[] = [];
+		for (let si = 0; si < segments.length; si++) {
+			const seg = segments[si];
+			if (seg.entries.length === 0) continue;
+			for (let ei = 0; ei < seg.entries.length; ei++) {
+				const entry = seg.entries[ei];
+				dots.push({
+					entry,
+					segIndex: si,
+					localPct: entryPct(entry, seg, ei, seg.entries.length),
+					isSynth: isSynthesis(entry.snapshot_type),
+				});
+			}
+		}
+		return dots;
+	});
 </script>
 
 <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -178,9 +328,9 @@
 
 <!-- Segmented Timeline -->
 {#if totalEntryCount > 1}
-	{@const widths = segmentWidths()}
+	{@const widths = segmentWidths}
 	{@const nonEmptySegments = segments.filter(s => s.entries.length > 0)}
-	<div class="mt-3 rounded-lg border border-surface-700 bg-surface-800/50 px-4 py-3">
+	<div class="mt-3 rounded-lg border border-surface-700 bg-surface-800 px-4 py-3">
 		<!-- Header row -->
 		<div class="flex items-center justify-between mb-2">
 			<span class="text-[11px] font-medium text-surface-400">
@@ -200,61 +350,85 @@
 					Viewing v{version}
 				{/if}
 			</span>
+			{#if isViewingOlder}
+				<button
+					onclick={() => onVersionChange(latestVersion)}
+					class="ml-2 rounded bg-laya-orange/15 px-2 py-0.5 text-[10px] font-medium text-laya-orange transition-colors hover:bg-laya-orange/25"
+				>Now</button>
+			{/if}
 		</div>
 
-		<!-- Segment labels -->
-		<div class="flex mb-1">
+		<!-- Segment labels — positioned at distorted midpoints so they shift with the fisheye -->
+		<div class="relative h-4 mb-1 overflow-hidden">
 			{#each segments as seg, si}
 				{#if seg.entries.length > 0}
-					{#if si > 0 && segments.slice(0, si).some(s => s.entries.length > 0)}
-						<div class="w-px"></div>
-					{/if}
-					<div style="width: {widths[si]}%" class="text-center">
-						<span class="text-[9px] uppercase tracking-wider text-surface-500">{seg.label}</span>
-					</div>
+					{@const leftEdge = segmentEdges[si].left}
+					{@const rightEdge = segmentEdges[si].right}
+					{@const distLeft = mouseRatio !== null ? fisheye(leftEdge / 100, mouseRatio, 10) * 100 : leftEdge}
+					{@const distRight = mouseRatio !== null ? fisheye(rightEdge / 100, mouseRatio, 10) * 100 : rightEdge}
+					{@const center = (distLeft + distRight) / 2}
+					<span
+						class="absolute -translate-x-1/2 text-[9px] uppercase tracking-wider text-surface-500"
+						style="left: {center}%; transition: left 150ms cubic-bezier(0.25, 0.1, 0.25, 1);"
+					>{seg.label}</span>
 				{/if}
 			{/each}
 		</div>
 
-		<!-- Track with segments -->
-		<div class="flex items-center h-5">
-			{#each segments as seg, si}
-				{#if seg.entries.length > 0}
-					<!-- Divider between segments -->
-					{#if si > 0 && segments.slice(0, si).some(s => s.entries.length > 0)}
-						<div class="w-px h-4 bg-surface-600 flex-shrink-0"></div>
-					{/if}
-					<!-- Segment track -->
-					<div class="relative h-5" style="width: {widths[si]}%">
-						<!-- Track line -->
-						<div class="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-px bg-surface-600"></div>
+		<!-- Single-container fisheye track -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="relative h-10 overflow-hidden"
+			bind:this={timelineEl}
+			onmousemove={handleTimelineMove}
+			onmouseleave={handleTimelineLeave}
+		>
+			<!-- Track line — centered vertically in upper portion -->
+			<div class="absolute left-0 right-0 top-[10px] h-px bg-surface-600"></div>
 
-						{#each seg.entries as entry, ei}
-							{@const isActive = entry.version === (previewVersion ?? version)}
-							{@const isSynth = isSynthesis(entry.snapshot_type)}
-							{@const pct = entryPct(entry, seg, ei, seg.entries.length)}
-							<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
-							<div
-								class="absolute -translate-x-1/2 flex flex-col items-center cursor-pointer group/tick"
-								style="left: {pct}%"
-								onclick={() => { previewVersion = null; onVersionChange(entry.version); }}
-								onmouseenter={() => { previewVersion = entry.version; }}
-								onmouseleave={() => { previewVersion = null; }}
-							>
-								<div class="px-1 py-1.5">
-									<div class="rounded-full transition-colors
-										{isSynth ? 'w-2 h-2' : 'w-1.5 h-1.5'}
-										{isActive
-											? 'bg-laya-orange ring-2 ring-laya-orange/30'
-											: isSynth
-												? 'bg-laya-orange/40 group-hover/tick:bg-laya-orange/70'
-												: 'bg-surface-500 group-hover/tick:bg-surface-300'}
-									"></div>
-								</div>
-							</div>
-						{/each}
+			<!-- Segment dividers -->
+			{#each dividerPositions as dpos}
+				<div
+					class="absolute w-px h-5 bg-surface-600 top-[3px]"
+					style="left: {mouseRatio !== null ? fisheye(dpos / 100, mouseRatio, 10) * 100 : dpos}%; transition: left 150ms cubic-bezier(0.25, 0.1, 0.25, 1);"
+				></div>
+			{/each}
+
+			<!-- Hour ticks in Today segment — hang well below the track line -->
+			{#each todayHourTicks as tick}
+				{@const tickLeft = mouseRatio !== null ? fisheye(tick.globalPct / 100, mouseRatio, 10) * 100 : tick.globalPct}
+				<div
+					class="absolute flex flex-col items-center -translate-x-1/2 pointer-events-none top-[18px]"
+					style="left: {tickLeft}%; transition: left 150ms cubic-bezier(0.25, 0.1, 0.25, 1);"
+				>
+					<div class="w-px h-2 bg-surface-600/40"></div>
+					<span class="text-[7px] text-surface-600 mt-0.5 leading-none">{tick.label}</span>
+				</div>
+			{/each}
+
+			<!-- All dots — centered on the track line -->
+			{#each flatDots as dot}
+				{@const isActive = dot.entry.version === (previewVersion ?? version)}
+				{@const leftPct = distortedPct(dot.segIndex, dot.localPct)}
+				<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+				<div
+					class="absolute -translate-x-1/2 -translate-y-1/2 flex items-center justify-center cursor-pointer group/tick top-[10px]"
+					style="left: {leftPct}%; transition: left 150ms cubic-bezier(0.25, 0.1, 0.25, 1);"
+					onclick={() => { previewVersion = null; onVersionChange(dot.entry.version); }}
+					onmouseenter={() => { previewVersion = dot.entry.version; }}
+					onmouseleave={() => { previewVersion = null; }}
+				>
+					<div class="p-1.5">
+						<div class="rounded-full transition-colors
+							{isActive ? 'w-2.5 h-2.5 bg-green-400' : 'w-1.5 h-1.5'}
+							{isActive
+								? ''
+								: dot.isSynth
+									? 'bg-laya-orange group-hover/tick:bg-laya-orange'
+									: 'bg-surface-400 group-hover/tick:bg-surface-200'}
+						"></div>
 					</div>
-				{/if}
+				</div>
 			{/each}
 		</div>
 
