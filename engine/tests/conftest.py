@@ -36,10 +36,13 @@ async def db(tmp_path):
     # Apply all migrations using the migration runner
     await run_migrations(conn)
 
-    # Patch get_db to return this connection
+    # Patch _db so get_db() returns this connection via the real function.
     with patch("laya.db.sqlite._db", conn):
-        with patch("laya.db.sqlite.get_db", return_value=conn):
-            yield conn
+        # Clear omni delta cache to prevent cross-test state leakage
+        from laya.pipeline.omni import _latest_cache
+        _latest_cache.clear()
+        yield conn
+        _latest_cache.clear()
 
     await conn.close()
 

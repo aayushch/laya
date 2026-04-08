@@ -86,8 +86,8 @@
 
 		unsubWs = lastMessage.subscribe((msg) => {
 			if (msg?.type === 'omni_updated') {
-				// Resynthesis completed — clear the flag and reload
-				clearResynthesizing(activeSpaceId);
+				// Resynthesizing flag is cleared by the store's global listener
+				// (only for non-incremental snapshot types like scheduled/rolling/manual).
 				loadOmni();
 				loadTimeline();
 			}

@@ -138,9 +138,11 @@ async def _run_omni_housekeeping(retention_days: int) -> None:
     """Delete omni snapshots older than `retention_days` days.
 
     Always preserves the latest snapshot per space regardless of age
-    so the user never sees an empty Omni page.
+    so the user never sees an empty Omni page. Also protects base
+    snapshots that have active delta dependents within the retention window.
     """
     from laya.db.sqlite import get_db
+    from laya.pipeline.omni import _latest_cache
 
     cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
 
@@ -155,13 +157,26 @@ async def _run_omni_housekeeping(retention_days: int) -> None:
     )
     protected_ids = {row["snapshot_id"] for row in latest_rows}
 
+    # Protect base snapshots that have delta dependents within the retention window.
+    # Without their base, those deltas can't be reconstructed.
+    base_rows = await db.execute_fetchall(
+        """SELECT DISTINCT s2.snapshot_id
+           FROM omni_snapshots s1
+           JOIN omni_snapshots s2 ON s1.space_id = s2.space_id AND s1.base_version = s2.version
+           WHERE s1.is_delta = 1 AND s1.created_at >= ? AND s2.is_delta = 0""",
+        (cutoff,),
+    )
+    for row in base_rows:
+        protected_ids.add(row["snapshot_id"])
+
     # Find candidates for deletion
     rows = await db.execute_fetchall(
-        "SELECT snapshot_id FROM omni_snapshots WHERE created_at < ?",
+        "SELECT snapshot_id, space_id FROM omni_snapshots WHERE created_at < ?",
         (cutoff,),
     )
 
     to_delete = [row["snapshot_id"] for row in rows if row["snapshot_id"] not in protected_ids]
+    affected_spaces = {row["space_id"] for row in rows if row["snapshot_id"] not in protected_ids}
 
     if not to_delete:
         log.info("omni_housekeeping_nothing_to_delete", retention_days=retention_days)
@@ -173,6 +188,11 @@ async def _run_omni_housekeeping(retention_days: int) -> None:
         to_delete,
     )
     await db.commit()
+
+    # Invalidate cache for affected spaces
+    for sid in affected_spaces:
+        _latest_cache.pop(sid, None)
+
     log.info("omni_housekeeping_complete", deleted=len(to_delete), retention_days=retention_days)
 
 
