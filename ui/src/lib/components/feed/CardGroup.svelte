@@ -309,7 +309,7 @@
 
 <!-- Single persistent DOM — morphs between collapsed stack and expanded list -->
 <div
-	class="relative transition-opacity duration-200 {isDimmed ? 'opacity-45 hover:opacity-70' : ''}"
+	class="relative rounded-xl transition-opacity duration-200 {isDimmed ? 'opacity-45 hover:opacity-70' : ''}"
 	style="padding-bottom: {!expanded && ghostCount > 0 ? 12 : 0}px; transition: padding-bottom 200ms ease;"
 	data-card-id={topCard.card_id}
 	data-group-entity={group.entity_id}

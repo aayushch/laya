@@ -38,11 +38,13 @@ async def db(tmp_path):
 
     # Patch _db so get_db() returns this connection via the real function.
     with patch("laya.db.sqlite._db", conn):
-        # Clear omni delta cache to prevent cross-test state leakage
-        from laya.pipeline.omni import _latest_cache
+        # Clear omni state to prevent cross-test leakage
+        from laya.pipeline.omni import _latest_cache, _resynthesis_gates
         _latest_cache.clear()
+        _resynthesis_gates.clear()
         yield conn
         _latest_cache.clear()
+        _resynthesis_gates.clear()
 
     await conn.close()
 

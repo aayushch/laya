@@ -431,31 +431,52 @@
 		}
 	}
 
-	// Find a DOM element for a card — checks direct card elements first, then
-	// falls back to finding the group that contains this card (collapsed groups
-	// only expose data-card-id for their top card).
+	// Find the DOM element for a card. Prefers the individual ActionCard element
+	// over the group wrapper — the group wrapper also carries data-card-id for
+	// its topCard, but is ~11k px tall for large groups so scrolling to it
+	// centers the group, not the card. Falls back to the group wrapper when
+	// the group is collapsed (individual card not rendered).
 	function findCardElement(cardId: string): Element | null {
-		const direct = document.querySelector(`[data-card-id="${cardId}"]`);
-		if (direct) return direct;
-		// Card might be inside a collapsed group — find its entity_id and look up the group
-		for (const g of groups) {
-			if (g.cards.some((c) => c.card_id === cardId)) {
-				const groupEl = document.querySelector(`[data-group-entity="${g.entity_id}"]`);
-				if (groupEl) return groupEl;
+		return document.querySelector(`[data-card-id="${cardId}"]:not([data-group-entity])`)
+			?? document.querySelector(`[data-card-id="${cardId}"]`);
+	}
+
+	// Walk up the DOM to find the nearest scrollable ancestor (overflow auto/scroll
+	// with content that actually overflows). This avoids assuming which container
+	// scrolls — the layout has nested overflow-auto on both <main> and containerEl.
+	function getScrollParent(el: Element): Element {
+		let parent = el.parentElement;
+		while (parent) {
+			const { overflowY } = getComputedStyle(parent);
+			if ((overflowY === 'auto' || overflowY === 'scroll') && parent.scrollHeight > parent.clientHeight) {
+				return parent;
 			}
+			parent = parent.parentElement;
 		}
-		return null;
+		return document.documentElement;
+	}
+
+	// Scroll an element to the vertical center of its nearest scrollable ancestor.
+	// Uses manual scrollTo on the specific container to avoid scrollIntoView's
+	// nested scroll container bug (it scrolls ALL overflow ancestors unpredictably).
+	function scrollElToCenter(el: Element, behavior: ScrollBehavior = 'smooth') {
+		const scroller = getScrollParent(el);
+		const scrollerRect = scroller.getBoundingClientRect();
+		const elRect = el.getBoundingClientRect();
+		const targetTop = scroller.scrollTop + (elRect.top - scrollerRect.top) - (scrollerRect.height - elRect.height) / 2;
+		scroller.scrollTo({ top: targetTop, behavior });
 	}
 
 	function scrollToCard(cardId: string) {
 		_scrollToCardId = cardId;
 		// Wait for any in-progress FLIP animation to finish, then scroll
 		_flipSettled.then(() => {
+			// Retry up to 15 times (~250ms) to allow group slide transition (200ms) to complete
 			const attempt = (tries: number) => {
 				requestAnimationFrame(() => {
 					const el = findCardElement(cardId);
 					if (el) {
-						el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+						scrollElToCenter(el);
 						// Brief highlight flash
 						el.classList.add('card-highlight-fade');
 						el.addEventListener('animationend', () => el.classList.remove('card-highlight-fade'), { once: true });
@@ -468,7 +489,7 @@
 					}
 				});
 			};
-			attempt(5);
+			attempt(15);
 		});
 	}
 
@@ -683,6 +704,15 @@
 	let numColumns = $state(3);
 	let panelTransitioning = $state(false);
 
+	// Content width excluding padding — matches what ResizeObserver's contentRect.width reports.
+	// closeDetailPanel/openDetailPanel must use this instead of clientWidth (which includes padding)
+	// to avoid predicting one column too many.
+	function getContentWidth(): number {
+		if (!containerEl) return 0;
+		const s = getComputedStyle(containerEl);
+		return containerEl.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight);
+	}
+
 	// FLIP helper: capture positions, update columns, animate cards to new positions
 	// When instant=true, repack without animation (used for panel open/close)
 	async function flipColumns(newCols: number, instant = false) {
@@ -716,7 +746,7 @@
 			return;
 		}
 		// Panel will take DETAIL_PANEL_WIDTH + COL_GAP from the container
-		const currentWidth = containerEl.clientWidth;
+		const currentWidth = getContentWidth();
 		const finalWidth = currentWidth - DETAIL_PANEL_WIDTH - COL_GAP;
 		const finalCols = Math.max(1, Math.floor((finalWidth + COL_GAP) / (CARD_WIDTH + COL_GAP)));
 
@@ -729,18 +759,27 @@
 			setTimeout(() => scrollToCard(selectedCard!.card_id), 320);
 		}
 
-		// Allow ResizeObserver to resume after panel transition ends (300ms duration)
-		setTimeout(() => { panelTransitioning = false; }, 350);
+		// Allow ResizeObserver to resume after panel transition ends (300ms duration).
+		// Recalculate columns in case the predicted count was wrong. Instant repack
+		// to avoid a visible FLIP animation stacking on top of the panel slide.
+		setTimeout(() => {
+			panelTransitioning = false;
+			const w = getContentWidth();
+			const correctCols = Math.max(1, Math.floor((w + COL_GAP) / (CARD_WIDTH + COL_GAP)));
+			if (correctCols !== numColumns) flipColumns(correctCols, true);
+		}, 350);
 	}
 
-	// Scroll to a card and show a fading highlight border (used when panel closes)
+	// Scroll to a card and show a fading highlight border (used when panel closes).
+	// Uses instant scroll so only the highlight animates — smooth scroll gets
+	// interrupted by ResizeObserver reflows after the panel transition.
 	function scrollToCardWithFade(cardId: string) {
 		_flipSettled.then(() => {
 			const attempt = (tries: number) => {
 				requestAnimationFrame(() => {
 					const el = findCardElement(cardId);
 					if (el) {
-						el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+						scrollElToCenter(el, 'instant');
 						// Fading orange ring highlight via CSS animation
 						el.classList.add('card-highlight-fade');
 						el.addEventListener('animationend', () => {
@@ -754,7 +793,7 @@
 					}
 				});
 			};
-			attempt(5);
+			attempt(15);
 		});
 	}
 
@@ -765,9 +804,18 @@
 		}
 		// Use lastDetailCardId which survives dismiss (X button clears selectedCard but not this)
 		const lastCardId = lastDetailCardId;
+		// Resolve the group entity_id now, before closeDetail clears state.
+		// Column repacking destroys/recreates CardGroup components (resetting expanded=false),
+		// so the individual card element won't exist after reflow. We scroll to the group
+		// wrapper instead, found by entity_id which is stable across repacks.
+		let lastEntityId: string | null = null;
+		if (lastCardId) {
+			const g = groups.find((g) => g.cards.some((c) => c.card_id === lastCardId));
+			if (g && g.card_count > 1) lastEntityId = g.entity_id;
+		}
 
 		// Panel will free DETAIL_PANEL_WIDTH + COL_GAP back to the container
-		const currentWidth = containerEl.clientWidth;
+		const currentWidth = getContentWidth();
 		const finalWidth = currentWidth + DETAIL_PANEL_WIDTH + COL_GAP;
 		const finalCols = Math.max(1, Math.floor((finalWidth + COL_GAP) / (CARD_WIDTH + COL_GAP)));
 
@@ -776,12 +824,32 @@
 		flipColumns(finalCols, !!lastCardId);
 		closeDetail();
 
-		// After panel slide completes, scroll to the card that was selected and show fading highlight
-		if (lastCardId) {
-			setTimeout(() => scrollToCardWithFade(lastCardId), 350);
-		}
-
-		setTimeout(() => { panelTransitioning = false; }, 350);
+		// Allow ResizeObserver to resume after panel transition ends (300ms duration).
+		// Recalculate columns in case the predicted count was wrong, then scroll to
+		// the last-active card/group once layout is fully settled. Column correction is
+		// instant (no FLIP animation) so only the final scroll+highlight animates.
+		setTimeout(() => {
+			panelTransitioning = false;
+			const w = getContentWidth();
+			const correctCols = Math.max(1, Math.floor((w + COL_GAP) / (CARD_WIDTH + COL_GAP)));
+			if (correctCols !== numColumns) flipColumns(correctCols, true);
+			// Wait a frame for the DOM to repaint after column repack before
+			// reading element positions for scroll.
+			const scrollTargetId = lastEntityId || lastCardId;
+			if (scrollTargetId) {
+				requestAnimationFrame(() => {
+					// For groups, find by entity_id (stable across repacks); for single cards, by card_id
+					const el = lastEntityId
+						? document.querySelector(`[data-group-entity="${lastEntityId}"]`)
+						: findCardElement(scrollTargetId);
+					if (el) {
+						scrollElToCenter(el);
+						el.classList.add('card-highlight-fade');
+						el.addEventListener('animationend', () => el.classList.remove('card-highlight-fade'), { once: true });
+					}
+				});
+			}
+		}, 350);
 	}
 
 	// Distribute groups into columns (round-robin)

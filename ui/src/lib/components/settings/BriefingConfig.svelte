@@ -385,6 +385,7 @@
 
 					<p class="text-xs text-surface-500">
 						Resynthesis triggers: daily at <span class="text-surface-300">{omniPreviewTime}</span>{omniRollingHours > 0 ? `, every ${omniRollingHours}h` : ''}{omniEventThreshold > 0 ? `, or after ${omniEventThreshold} new events` : ''} — whichever comes first.
+						Synthesis is skipped automatically if no new cards have arrived since the last run.
 					</p>
 
 					{#if omniError}

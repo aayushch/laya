@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { TraceListItem } from '$lib/api/types';
 	import { slide } from 'svelte/transition';
+	import PlatformBadge from '$lib/components/PlatformBadge.svelte';
 
 	let {
 		traces,
@@ -30,14 +31,6 @@
 
 	function hideTooltip() { tooltip = null; }
 
-	const platformColors: Record<string, string> = {
-		jira: 'bg-blue-500/20 text-blue-400',
-		github: 'bg-purple-500/20 text-purple-400',
-		bitbucket: 'bg-sky-500/20 text-sky-400',
-		slack: 'bg-green-500/20 text-green-400',
-		gmail: 'bg-red-500/20 text-red-400',
-		calendar: 'bg-yellow-500/20 text-yellow-400'
-	};
 </script>
 
 <!-- Fixed-position tooltip -->
@@ -84,9 +77,7 @@
 						</div>
 						<div class="flex items-center gap-2 mt-1.5">
 							{#each trace.platforms as platform}
-								<span class="px-1.5 py-0.5 rounded text-[10px] font-medium {platformColors[platform] || 'bg-surface-700 text-surface-300'}">
-									{platform}
-								</span>
+								<PlatformBadge {platform} />
 							{/each}
 							<span class="text-xs text-surface-500">
 								{trace.total_cards} cards
