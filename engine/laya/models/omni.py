@@ -13,6 +13,8 @@ class OmniItem(BaseModel):
     platforms: list[str] = []  # cross-cutting platform tags
     priority: str = "MEDIUM"  # CRITICAL / HIGH / MEDIUM / LOW
     pinned: bool = False
+    bookmarked: bool = False
+    entity_id: str | None = None  # for entity-level fusion in recent section
     space_id: str = "default"
 
 

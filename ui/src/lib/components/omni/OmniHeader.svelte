@@ -1,13 +1,14 @@
 <script lang="ts">
-	import type { OmniHistoryEntry, OmniStats, Space } from '$lib/api/types';
+	import type { TimelineSegment, TimelineEntry, OmniStats, Space } from '$lib/api/types';
 
 	let {
 		version,
 		generatedAt,
 		snapshotType,
 		stats,
-		history,
+		segments,
 		resynthesizing,
+		nextSynthesis,
 		spaces,
 		activeSpaceId,
 		onVersionChange,
@@ -18,8 +19,9 @@
 		generatedAt: string | null;
 		snapshotType: string | null;
 		stats: OmniStats;
-		history: OmniHistoryEntry[];
+		segments: TimelineSegment[];
 		resynthesizing: boolean;
+		nextSynthesis: string | null;
 		spaces: Space[];
 		activeSpaceId: string;
 		onVersionChange: (version: number) => void;
@@ -27,8 +29,11 @@
 		onSpaceChange: (spaceId: string) => void;
 	} = $props();
 
-	// Slider preview: tracks the version being hovered/dragged before release
 	let previewVersion = $state<number | null>(null);
+
+	// Flatten all entries for lookups
+	const allEntries = $derived(segments.flatMap(s => s.entries));
+	const totalEntryCount = $derived(allEntries.length);
 
 	function formatTimestamp(iso: string | null): string {
 		if (!iso) return 'Never';
@@ -49,18 +54,42 @@
 		return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 	}
 
-	/** Look up a history entry by version number. */
-	function findEntry(v: number): OmniHistoryEntry | undefined {
-		return history.find((h) => h.version === v);
+	function findEntry(v: number): TimelineEntry | undefined {
+		return allEntries.find((e) => e.version === v);
 	}
 
-	const minVersion = $derived(history.length > 0 ? history[history.length - 1].version : 1);
-	const maxVersion = $derived(history.length > 0 ? history[0].version : version);
-
-	// The label shown while dragging — either the preview or current version
 	const activeEntry = $derived(findEntry(previewVersion ?? version));
 	const activeLabel = $derived(activeEntry ? formatDate(activeEntry.generated_at) : formatTimestamp(generatedAt));
 	const activeType = $derived(activeEntry?.snapshot_type ?? snapshotType);
+
+	// Compute proportional segment widths (min 12% each for non-empty, 0 for empty)
+	const segmentWidths = $derived(() => {
+		const nonEmpty = segments.filter(s => s.entries.length > 0);
+		if (nonEmpty.length === 0) return segments.map(() => 0);
+
+		const weights = segments.map(s => Math.max(s.entries.length, 0));
+		const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
+		const minPct = 12;
+		const raw = weights.map(w => w > 0 ? Math.max((w / totalWeight) * 100, minPct) : 0);
+		const rawTotal = raw.reduce((a, b) => a + b, 0) || 1;
+		return raw.map(r => (r / rawTotal) * 100);
+	});
+
+	/** Position a dot within its segment's time range based on actual timestamp. */
+	function entryPct(entry: TimelineEntry, seg: TimelineSegment, idx: number, count: number): number {
+		if (count <= 1) return 50;
+		const segStart = seg.range_start ? new Date(seg.range_start).getTime() : new Date(entry.generated_at).getTime();
+		const segEnd = seg.range_end ? new Date(seg.range_end).getTime() : Date.now();
+		const entryTime = new Date(entry.generated_at).getTime();
+		const range = segEnd - segStart;
+		if (range <= 0) return (idx / (count - 1)) * 100;
+		// Clamp to 2%-98% so dots don't sit on the edge/divider
+		return Math.max(2, Math.min(98, ((entryTime - segStart) / range) * 100));
+	}
+
+	function isSynthesis(type: string): boolean {
+		return type === 'scheduled' || type === 'rolling' || type === 'manual';
+	}
 </script>
 
 <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -130,23 +159,29 @@
 </div>
 
 <!-- Stats bar -->
-{#if stats.events_processed > 0}
+{#if stats.events_processed > 0 || nextSynthesis}
 	<div class="mt-2 flex items-center gap-4 text-[11px] text-surface-500">
-		<span>{stats.events_processed} events processed</span>
+		{#if stats.events_processed > 0}
+			<span>{stats.events_processed} events processed</span>
+		{/if}
 		{#if stats.cards_acted_on > 0}
 			<span>{stats.cards_acted_on} user actions</span>
 		{/if}
 		{#if stats.compression_ratio > 0}
 			<span>{Math.round(stats.compression_ratio * 100)}% distilled</span>
 		{/if}
+		{#if nextSynthesis}
+			<span class="text-surface-400">Next synthesis {nextSynthesis}</span>
+		{/if}
 	</div>
 {/if}
 
-<!-- Timeline scale — separate row below stats, only when there's history to navigate -->
-{#if history.length > 1}
-	{@const displayEntries = history.slice().reverse()}
+<!-- Segmented Timeline -->
+{#if totalEntryCount > 1}
+	{@const widths = segmentWidths()}
+	{@const nonEmptySegments = segments.filter(s => s.entries.length > 0)}
 	<div class="mt-3 rounded-lg border border-surface-700 bg-surface-800/50 px-4 py-3">
-		<!-- Label row -->
+		<!-- Header row -->
 		<div class="flex items-center justify-between mb-2">
 			<span class="text-[11px] font-medium text-surface-400">
 				<svg class="inline h-3 w-3 mr-0.5 -mt-px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -167,37 +202,70 @@
 			</span>
 		</div>
 
-		<!-- Scale track -->
-		<div class="relative flex items-center h-5">
-			<!-- Track line -->
-			<div class="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-px bg-surface-600"></div>
-
-			<!-- Tick marks + dots -->
-			{#each displayEntries as entry, i}
-				{@const isActive = entry.version === (previewVersion ?? version)}
-				{@const isSynthesis = entry.snapshot_type === 'scheduled' || entry.snapshot_type === 'rolling' || entry.snapshot_type === 'manual'}
-				{@const isLatest = i === displayEntries.length - 1}
-				{@const pct = displayEntries.length > 1 ? (i / (displayEntries.length - 1)) * 100 : 50}
-				<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
-				<div
-					class="absolute -translate-x-1/2 flex flex-col items-center cursor-pointer group/tick"
-					style="left: {pct}%"
-					onclick={() => { previewVersion = null; onVersionChange(entry.version); }}
-					onmouseenter={() => { previewVersion = entry.version; }}
-					onmouseleave={() => { previewVersion = null; }}
-				>
-					<!-- Dot with wider hit area; synthesis snapshots are larger + orange-tinted -->
-					<div class="px-1 py-1.5">
-						<div class="rounded-full transition-colors {isSynthesis ? 'w-2 h-2' : 'w-1.5 h-1.5'} {isActive ? 'bg-laya-orange' : isSynthesis ? 'bg-laya-orange/40 group-hover/tick:bg-laya-orange/70' : 'bg-surface-600 group-hover/tick:bg-surface-300'}"></div>
+		<!-- Segment labels -->
+		<div class="flex mb-1">
+			{#each segments as seg, si}
+				{#if seg.entries.length > 0}
+					{#if si > 0 && segments.slice(0, si).some(s => s.entries.length > 0)}
+						<div class="w-px"></div>
+					{/if}
+					<div style="width: {widths[si]}%" class="text-center">
+						<span class="text-[9px] uppercase tracking-wider text-surface-500">{seg.label}</span>
 					</div>
-				</div>
+				{/if}
+			{/each}
+		</div>
+
+		<!-- Track with segments -->
+		<div class="flex items-center h-5">
+			{#each segments as seg, si}
+				{#if seg.entries.length > 0}
+					<!-- Divider between segments -->
+					{#if si > 0 && segments.slice(0, si).some(s => s.entries.length > 0)}
+						<div class="w-px h-4 bg-surface-600 flex-shrink-0"></div>
+					{/if}
+					<!-- Segment track -->
+					<div class="relative h-5" style="width: {widths[si]}%">
+						<!-- Track line -->
+						<div class="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-px bg-surface-600"></div>
+
+						{#each seg.entries as entry, ei}
+							{@const isActive = entry.version === (previewVersion ?? version)}
+							{@const isSynth = isSynthesis(entry.snapshot_type)}
+							{@const pct = entryPct(entry, seg, ei, seg.entries.length)}
+							<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+							<div
+								class="absolute -translate-x-1/2 flex flex-col items-center cursor-pointer group/tick"
+								style="left: {pct}%"
+								onclick={() => { previewVersion = null; onVersionChange(entry.version); }}
+								onmouseenter={() => { previewVersion = entry.version; }}
+								onmouseleave={() => { previewVersion = null; }}
+							>
+								<div class="px-1 py-1.5">
+									<div class="rounded-full transition-colors
+										{isSynth ? 'w-2 h-2' : 'w-1.5 h-1.5'}
+										{isActive
+											? 'bg-laya-orange ring-2 ring-laya-orange/30'
+											: isSynth
+												? 'bg-laya-orange/40 group-hover/tick:bg-laya-orange/70'
+												: 'bg-surface-500 group-hover/tick:bg-surface-300'}
+									"></div>
+								</div>
+							</div>
+						{/each}
+					</div>
+				{/if}
 			{/each}
 		</div>
 
 		<!-- Edge labels -->
 		<div class="flex items-center justify-between mt-1">
-			<span class="text-[9px] text-surface-500">{formatDate(displayEntries[0]?.generated_at)}</span>
-			<span class="text-[9px] text-surface-400 font-medium">Latest</span>
+			<span class="text-[9px] text-surface-500">
+				{#if nonEmptySegments.length > 0 && nonEmptySegments[0].entries.length > 0}
+					{formatDate(nonEmptySegments[0].entries[0].generated_at)}
+				{/if}
+			</span>
+			<span class="text-[9px] text-surface-400 font-medium">Now</span>
 		</div>
 	</div>
 {/if}

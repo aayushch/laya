@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import structlog
 from fastapi import APIRouter, HTTPException
@@ -29,6 +29,12 @@ class PinRequest(BaseModel):
     text: str
     source_cards: list[str] = []
     platforms: list[str] = []
+
+
+class BookmarkRequest(BaseModel):
+    space_id: str = "default"
+    source_card_id: str  # first source_card ID — unique identifier for the item
+    bookmarked: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -117,13 +123,113 @@ async def get_omni_history(space_id: str = "default", limit: int = 30):
 
 
 # ---------------------------------------------------------------------------
+# Timeline (logarithmic sampling across retention window)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/omni/timeline")
+async def get_omni_timeline(space_id: str = "default"):
+    """Return a three-tier sampled timeline for the Omni time-travel UI.
+
+    Tiers:
+      - today (past 24h): every snapshot
+      - this_week (1-7 days ago): latest snapshot per hour
+      - earlier (7+ days ago): only synthesis snapshots
+    """
+    db = await get_db()
+    now = datetime.now(timezone.utc)
+    today_start = (now - timedelta(hours=24)).isoformat()
+    week_start = (now - timedelta(days=7)).isoformat()
+    now_iso = now.isoformat()
+
+    def _row_to_entry(row):
+        return {
+            "snapshot_id": row["snapshot_id"],
+            "version": row["version"],
+            "generated_at": row["generated_at"],
+            "snapshot_type": row["snapshot_type"],
+            "events_processed": row["events_processed"],
+        }
+
+    # Tier 1: Today — all snapshots
+    today_rows = await db.execute_fetchall(
+        """SELECT snapshot_id, version, generated_at, snapshot_type, events_processed
+           FROM omni_snapshots
+           WHERE space_id = ? AND generated_at >= ?
+           ORDER BY generated_at ASC""",
+        (space_id, today_start),
+    )
+
+    # Tier 2: This week — latest snapshot per hour bucket
+    week_rows = await db.execute_fetchall(
+        """SELECT snapshot_id, version, generated_at, snapshot_type, events_processed
+           FROM omni_snapshots
+           WHERE snapshot_id IN (
+               SELECT snapshot_id FROM (
+                   SELECT snapshot_id,
+                          ROW_NUMBER() OVER (
+                              PARTITION BY strftime('%Y-%m-%d %H', generated_at)
+                              ORDER BY version DESC
+                          ) AS rn
+                   FROM omni_snapshots
+                   WHERE space_id = ? AND generated_at >= ? AND generated_at < ?
+               ) WHERE rn = 1
+           )
+           ORDER BY generated_at ASC""",
+        (space_id, week_start, today_start),
+    )
+
+    # Tier 3: Earlier — only synthesis snapshots
+    earlier_rows = await db.execute_fetchall(
+        """SELECT snapshot_id, version, generated_at, snapshot_type, events_processed
+           FROM omni_snapshots
+           WHERE space_id = ? AND generated_at < ?
+             AND snapshot_type IN ('scheduled', 'rolling', 'manual')
+           ORDER BY generated_at ASC""",
+        (space_id, week_start),
+    )
+
+    return {
+        "space_id": space_id,
+        "segments": [
+            {
+                "tier": "earlier",
+                "label": "Earlier",
+                "range_start": None,
+                "range_end": week_start,
+                "entries": [_row_to_entry(r) for r in earlier_rows],
+            },
+            {
+                "tier": "this_week",
+                "label": "This Week",
+                "range_start": week_start,
+                "range_end": today_start,
+                "entries": [_row_to_entry(r) for r in week_rows],
+            },
+            {
+                "tier": "today",
+                "label": "Today",
+                "range_start": today_start,
+                "range_end": now_iso,
+                "entries": [_row_to_entry(r) for r in today_rows],
+            },
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Resynthesis
 # ---------------------------------------------------------------------------
 
 
 @router.post("/omni/resynthesis")
 async def trigger_resynthesis(space_id: str = "default"):
-    """Manually trigger a full Omni resynthesis."""
+    """Manually trigger a full Omni resynthesis (runs in background).
+
+    Returns immediately with 202 Accepted. The client should listen for
+    the ``omni_updated`` WebSocket event to know when resynthesis is done.
+    """
+    import asyncio
     from laya.pipeline.omni import run_omni_resynthesis
 
     if space_id in _resynthesis_in_progress:
@@ -133,18 +239,22 @@ async def trigger_resynthesis(space_id: str = "default"):
         )
 
     _resynthesis_in_progress.add(space_id)
-    try:
-        snapshot_ids = await run_omni_resynthesis(space_id=space_id)
-        return {
-            "status": "ok",
-            "snapshot_ids": snapshot_ids,
-            "space_id": space_id,
-        }
-    except Exception as e:
-        log.error("omni_resynthesis_api_failed", space_id=space_id, error=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        _resynthesis_in_progress.discard(space_id)
+
+    async def _run():
+        try:
+            await run_omni_resynthesis(space_id=space_id, snapshot_type="manual")
+        except Exception as e:
+            log.error("omni_resynthesis_api_failed", space_id=space_id, error=str(e))
+        finally:
+            _resynthesis_in_progress.discard(space_id)
+
+    asyncio.create_task(_run())
+
+    from starlette.responses import JSONResponse
+    return JSONResponse(
+        status_code=202,
+        content={"status": "accepted", "space_id": space_id},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -233,3 +343,64 @@ async def unpin_item(pin_id: str):
     log.info("omni_item_unpinned", pin_id=pin_id)
 
     return {"status": "ok", "pin_id": pin_id}
+
+
+# ---------------------------------------------------------------------------
+# Bookmark endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/omni/bookmark")
+async def toggle_bookmark(req: BookmarkRequest):
+    """Toggle bookmark on an item in the latest snapshot.
+
+    Bookmarks live inside the snapshot JSON — they die when the item is
+    distilled away during resynthesis.
+    """
+    db = await get_db()
+
+    rows = await db.execute_fetchall(
+        """SELECT snapshot_id, content_json
+           FROM omni_snapshots
+           WHERE space_id = ?
+           ORDER BY version DESC
+           LIMIT 1""",
+        (req.space_id,),
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="No snapshot found")
+
+    snapshot_id = rows[0]["snapshot_id"]
+    content = json.loads(rows[0]["content_json"])
+    sections = content.get("sections", [])
+
+    # Find the item by its first source_card ID and toggle bookmark
+    found = False
+    for section in sections:
+        for item in section.get("items", []):
+            cards = item.get("source_cards", [])
+            if cards and cards[0] == req.source_card_id:
+                item["bookmarked"] = req.bookmarked
+                found = True
+                break
+        if found:
+            break
+
+    if not found:
+        raise HTTPException(status_code=404, detail="Item not found in snapshot")
+
+    content["sections"] = sections
+    await db.execute(
+        "UPDATE omni_snapshots SET content_json = ? WHERE snapshot_id = ?",
+        (json.dumps(content), snapshot_id),
+    )
+    await db.commit()
+
+    log.info(
+        "omni_item_bookmark_toggled",
+        source_card_id=req.source_card_id,
+        bookmarked=req.bookmarked,
+        space_id=req.space_id,
+    )
+
+    return {"status": "ok", "bookmarked": req.bookmarked}

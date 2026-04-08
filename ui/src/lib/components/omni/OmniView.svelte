@@ -2,11 +2,12 @@
 	import type { OmniSnapshot, OmniItem as OmniItemType } from '$lib/api/types';
 	import OmniItem from './OmniItem.svelte';
 
-	let { snapshot, onPin, onUnpin, onDrillDown }: {
+	let { snapshot, onPin, onUnpin, onDrillDown, onBookmark }: {
 		snapshot: OmniSnapshot;
 		onPin?: (item: OmniItemType) => void;
 		onUnpin?: (item: OmniItemType) => void;
 		onDrillDown?: (cardIds: string[]) => void;
+		onBookmark?: (item: OmniItemType) => void;
 	} = $props();
 
 	const sectionMeta: Record<string, { title: string; icon: string; emptyText: string }> = {
@@ -82,7 +83,7 @@
 				{@const totalSourceCards = section.items.reduce((sum, i) => sum + i.source_cards.length, 0)}
 				<div class="flex flex-col gap-0.5">
 					{#each section.items as item}
-						<OmniItem {item} {onPin} {onUnpin} {onDrillDown} />
+						<OmniItem {item} {onPin} {onUnpin} {onDrillDown} {onBookmark} />
 					{/each}
 				</div>
 				<!-- Condensed indicator — shows when items aggregate more events than shown -->

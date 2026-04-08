@@ -413,6 +413,7 @@ async def run_emit(
             card_priority=router_output.priority.value,
             source_platform=event.source.platform,
             space_id=space_id,
+            entity_id=entity_id,
         ),
         name=f"omni_{card_id}",
     )
