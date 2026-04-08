@@ -408,7 +408,9 @@
 
 			<!-- All dots — centered on the track line -->
 			{#each flatDots as dot}
-				{@const isActive = dot.entry.version === (previewVersion ?? version)}
+				{@const isSelected = dot.entry.version === version}
+				{@const isHovered = previewVersion !== null && dot.entry.version === previewVersion && !isSelected}
+				{@const isActive = isSelected || isHovered}
 				{@const leftPct = distortedPct(dot.segIndex, dot.localPct)}
 				<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
 				<div
@@ -420,12 +422,14 @@
 				>
 					<div class="p-1.5">
 						<div class="rounded-full transition-colors
-							{isActive ? 'w-2.5 h-2.5 bg-green-400' : 'w-1.5 h-1.5'}
-							{isActive
-								? ''
-								: dot.isSynth
-									? 'bg-laya-orange group-hover/tick:bg-laya-orange'
-									: 'bg-surface-400 group-hover/tick:bg-surface-200'}
+							{isActive ? 'w-2.5 h-2.5' : 'w-1.5 h-1.5'}
+							{isSelected
+								? 'bg-green-400'
+								: isHovered
+									? 'border-2 border-green-400 bg-transparent'
+									: dot.isSynth
+										? 'bg-laya-orange group-hover/tick:bg-laya-orange'
+										: 'bg-surface-400 group-hover/tick:bg-surface-200'}
 						"></div>
 					</div>
 				</div>

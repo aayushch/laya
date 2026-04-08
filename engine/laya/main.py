@@ -43,6 +43,7 @@ from laya.db.chromadb_store import connect_chromadb, disconnect_chromadb
 from laya.db.migrate import run_migrations
 from laya.db.sqlite import connect, disconnect
 from laya.logging_setup import setup_logging
+from laya.pipeline.omni import start_omni_processor, stop_omni_processor
 from laya.pipeline.queue import recover_stalled_cards, recover_stalled_events, start_consumer, stop_consumer
 from laya.scheduler import start_scheduler, stop_scheduler
 from laya.security.keychain import load_all_keys_to_env
@@ -208,6 +209,10 @@ async def lifespan(app: FastAPI):
     await recover_stalled_cards()
     start_consumer()
 
+    # Start Omni queue processor — picks up any cards left in omni_queue
+    # from a previous crash, plus handles all future incremental updates.
+    start_omni_processor()
+
     # Start egress connection health monitor
     from laya.egress.health import start_health_monitor, stop_health_monitor
     await start_health_monitor()
@@ -218,6 +223,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     log.info("engine_stopping")
     await stop_health_monitor()
+    stop_omni_processor()
     await stop_consumer()
     stop_scheduler()
     await session_manager.cleanup_on_shutdown()

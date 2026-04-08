@@ -242,71 +242,121 @@ async def _load_full_snapshot(
     return content, target_version, card_ids, meta
 
 # ---------------------------------------------------------------------------
-# Debounce state for incremental updates (same pattern as summarizer)
+# Queue processor — polls omni_queue table instead of in-memory list.
+# Cards are enqueued by emit.py in the same transaction as the card persist,
+# so they survive engine crashes. During resynthesis the processor pauses
+# to avoid the race where incremental updates get overwritten.
 # ---------------------------------------------------------------------------
-_debounce_lock = asyncio.Lock()
-_pending_cards: list[dict] = []
-_debounce_task: asyncio.Task | None = None
-_DEBOUNCE_SECONDS = 10
+_POLL_INTERVAL_SECONDS = 10
+_queue_task: asyncio.Task | None = None
+
+# Per-space gate: when a space has an active resynthesis, its asyncio.Event
+# is *cleared* (blocking). When resynthesis finishes it is *set* (unblocked).
+_resynthesis_gates: dict[str, asyncio.Event] = {}
 
 
-async def trigger_omni_update(
-    card_id: str,
-    card_header: str,
-    card_summary: str,
-    card_priority: str,
-    source_platform: str | None = None,
-    space_id: str | None = None,
-    entity_id: str | None = None,
-) -> None:
-    """Queue a new card for Omni incorporation (debounced).
+def _get_gate(space_id: str) -> asyncio.Event:
+    """Get or create the resynthesis gate for a space (default: open)."""
+    if space_id not in _resynthesis_gates:
+        ev = asyncio.Event()
+        ev.set()  # open by default — no resynthesis running
+        _resynthesis_gates[space_id] = ev
+    return _resynthesis_gates[space_id]
 
-    This does NOT call the LLM — it appends a structured item to the
-    "recent" section of the latest snapshot. The LLM is only used during
-    scheduled resynthesis to compress layers.
+
+def start_omni_processor() -> None:
+    """Start the background queue processor. Called once at startup."""
+    global _queue_task
+    if _queue_task is not None and not _queue_task.done():
+        return
+    from laya.tasks import create_task as create_tracked_task
+    _queue_task = create_tracked_task(_queue_loop(), name="omni_queue_processor")
+    log.info("omni_queue_processor_started")
+
+
+def stop_omni_processor() -> None:
+    """Stop the background queue processor. Called on shutdown."""
+    global _queue_task
+    if _queue_task is not None:
+        _queue_task.cancel()
+        _queue_task = None
+        log.info("omni_queue_processor_stopped")
+
+
+async def _queue_loop() -> None:
+    """Poll omni_queue every POLL_INTERVAL_SECONDS and process batches."""
+    while True:
+        try:
+            await asyncio.sleep(_POLL_INTERVAL_SECONDS)
+            await _process_queue()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.error("omni_queue_loop_error", error=str(e))
+
+
+async def _process_queue() -> None:
+    """Read pending cards from omni_queue, group by space, and append.
+
+    For spaces with an active resynthesis, cards are left in the queue
+    and picked up on the next poll (after resynthesis completes).
     """
-    global _debounce_task
-
     settings = load_settings()
     if not settings.get("omni", {}).get("enabled", True):
         return
 
-    card_data = {
-        "card_id": card_id,
-        "card_header": card_header,
-        "card_summary": card_summary,
-        "card_priority": card_priority,
-        "source_platform": source_platform or "unknown",
-        "space_id": space_id or "default",
-        "entity_id": entity_id,
-    }
+    db = await get_db()
 
-    async with _debounce_lock:
-        _pending_cards.append(card_data)
-        if _debounce_task and not _debounce_task.done():
-            _debounce_task.cancel()
-        from laya.tasks import create_task as create_tracked_task
-        _debounce_task = create_tracked_task(_debounced_run())
+    rows = await db.execute_fetchall(
+        """SELECT oq.card_id, oq.space_id,
+                  ac.header, ac.summary, ac.priority,
+                  ac.entity_id, e.source_platform
+           FROM omni_queue oq
+           JOIN action_cards ac ON oq.card_id = ac.card_id
+           LEFT JOIN events e ON ac.event_id = e.event_id
+           ORDER BY oq.created_at ASC
+           LIMIT 200"""
+    )
 
-
-async def _debounced_run() -> None:
-    """Wait for the debounce period, then batch-append all pending cards."""
-    try:
-        await asyncio.sleep(_DEBOUNCE_SECONDS)
-    except asyncio.CancelledError:
-        return  # Another update came in, timer reset
-
-    async with _debounce_lock:
-        cards = list(_pending_cards)
-        _pending_cards.clear()
-
-    if not cards:
+    if not rows:
         return
 
-    try:
-        await _append_to_recent(cards)
-    except Exception as e:
-        log.error("omni_incremental_update_failed", error=str(e))
+    # Group by space_id; skip spaces with active resynthesis
+    by_space: dict[str, list[dict]] = {}
+    skipped_ids: list[str] = []
+    for row in rows:
+        sid = row["space_id"]
+        gate = _get_gate(sid)
+        if not gate.is_set():
+            # Resynthesis running for this space — leave in queue
+            skipped_ids.append(row["card_id"])
+            continue
+        by_space.setdefault(sid, []).append({
+            "card_id": row["card_id"],
+            "card_header": row["header"],
+            "card_summary": row["summary"],
+            "card_priority": row["priority"],
+            "source_platform": row["source_platform"] or "unknown",
+            "space_id": sid,
+            "entity_id": row["entity_id"],
+        })
+
+    if skipped_ids:
+        log.debug("omni_queue_skipped_resynthesis", count=len(skipped_ids))
+
+    for space_id, space_cards in by_space.items():
+        try:
+            await _append_to_recent(space_cards)
+            # Delete processed rows from the queue
+            processed_ids = [c["card_id"] for c in space_cards]
+            placeholders = ",".join("?" for _ in processed_ids)
+            await db.execute(
+                f"DELETE FROM omni_queue WHERE card_id IN ({placeholders})",
+                processed_ids,
+            )
+            await db.commit()
+        except Exception as e:
+            log.error("omni_incremental_update_failed", space_id=space_id, error=str(e))
 
 
 async def _append_to_recent(cards: list[dict]) -> None:
@@ -541,7 +591,14 @@ async def run_omni_resynthesis(
 
 
 async def _resynthesize_space(db, space_id: str, density: str, snapshot_type: str = "scheduled") -> str | None:
-    """Resynthesize Omni for a single space."""
+    """Resynthesize Omni for a single space.
+
+    Gates the queue processor for this space during the LLM call so that
+    incremental updates don't race with the resynthesis snapshot write.
+    Cards that arrive during resynthesis stay in omni_queue and are
+    processed on the next poll after the gate reopens.
+    """
+    gate = _get_gate(space_id)
 
     # 1. Load latest snapshot (reconstructed if delta chain)
     current_snapshot, current_version, existing_card_ids, _meta = await _load_full_snapshot(db, space_id)
@@ -600,9 +657,11 @@ async def _resynthesize_space(db, space_id: str, density: str, snapshot_type: st
         if c.get("user_feedback") or c.get("status") in ("done", "dismissed", "archived")
     ]
 
-    # If no snapshot and no new cards, nothing to do
-    if not current_snapshot and not new_cards:
-        log.info("omni_resynthesis_skipped_empty", space_id=space_id)
+    # If no new cards, skip — nothing has changed since the last synthesis.
+    # (No snapshot + no cards = first run with nothing to process;
+    #  existing snapshot + no cards = redundant LLM call with identical input.)
+    if not new_cards:
+        log.info("omni_resynthesis_skipped_no_new_cards", space_id=space_id)
         return None
 
     # 5. Build LLM prompt
@@ -616,6 +675,10 @@ async def _resynthesize_space(db, space_id: str, density: str, snapshot_type: st
     )
 
     schema = get_omni_json_schema()
+
+    # --- GATE: pause queue processing for this space during LLM call ---
+    gate.clear()
+    log.info("omni_resynthesis_gate_closed", space_id=space_id)
 
     # 6. Call LLM
     try:
@@ -640,7 +703,9 @@ async def _resynthesize_space(db, space_id: str, density: str, snapshot_type: st
 
     except Exception as e:
         log.error("omni_resynthesis_llm_failed", space_id=space_id, error=str(e))
-        # On LLM failure, keep the current snapshot unchanged
+        # Re-open the gate so queued cards resume processing
+        gate.set()
+        log.info("omni_resynthesis_gate_opened", space_id=space_id, reason="llm_failed")
         return None
 
     # 7. Inject space_id into all items
@@ -666,11 +731,18 @@ async def _resynthesize_space(db, space_id: str, density: str, snapshot_type: st
         },
     }
 
-    # 9. Save new snapshot
+    # 9. Save new snapshot — re-read the current max version to avoid
+    #    collision with any incremental snapshots that were written before
+    #    the gate closed (the gate only blocks future queue polls).
     now = datetime.now(timezone.utc).isoformat()
-    new_version = current_version + 1
     snapshot_id = f"omni_{uuid.uuid4().hex[:12]}"
     all_card_ids = list(set(existing_card_ids + [c["card_id"] for c in new_cards]))
+
+    max_ver_rows = await db.execute_fetchall(
+        "SELECT COALESCE(MAX(version), 0) AS mv FROM omni_snapshots WHERE space_id = ?",
+        (space_id,),
+    )
+    new_version = max_ver_rows[0]["mv"] + 1
 
     await db.execute(
         """INSERT INTO omni_snapshots
@@ -705,6 +777,10 @@ async def _resynthesize_space(db, space_id: str, density: str, snapshot_type: st
             "snapshot_type": snapshot_type,
         },
     }
+
+    # --- GATE: re-open so queued cards resume on next poll ---
+    gate.set()
+    log.info("omni_resynthesis_gate_opened", space_id=space_id, reason="resynthesis_complete")
 
     # 10. Broadcast
     await manager.broadcast({

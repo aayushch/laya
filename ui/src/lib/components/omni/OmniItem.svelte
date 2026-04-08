@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { OmniItem } from '$lib/api/types';
+	import PlatformBadge from '$lib/components/PlatformBadge.svelte';
 
 	let { item, onPin, onUnpin, onDrillDown, onBookmark }: {
 		item: OmniItem;
@@ -35,9 +36,7 @@
 		<!-- Platform badges + card links -->
 		<div class="mt-1 flex items-center gap-1.5 flex-wrap">
 			{#each item.platforms as platform}
-				<span class="inline-flex items-center rounded bg-surface-800 px-1.5 py-0.5 text-[10px] font-medium text-surface-400 uppercase tracking-wider">
-					{platform}
-				</span>
+				<PlatformBadge {platform} />
 			{/each}
 
 			{#if item.source_cards.length > 0}
@@ -51,9 +50,11 @@
 		</div>
 	</div>
 
-	<!-- Action icons — visible on hover, always visible when active -->
+	<!-- Bookmark & Pin disabled: with delta-based snapshots the reconciliation
+	     complexity outweighs the value. Backend endpoints remain intact so these
+	     can be re-enabled by uncommenting this block.
+	<!--
 	<div class="mt-1 flex items-center gap-1 flex-shrink-0">
-		<!-- Bookmark toggle -->
 		<div class="group/bookmark relative transition-opacity
 			{item.bookmarked ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}">
 			<button
@@ -70,7 +71,6 @@
 			</span>
 		</div>
 
-		<!-- Pin toggle -->
 		<div class="group/tip relative transition-opacity
 			{item.pinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}">
 			<button
@@ -88,4 +88,5 @@
 			</span>
 		</div>
 	</div>
+	-->
 </div>

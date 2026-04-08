@@ -1,16 +1,7 @@
 <script lang="ts">
 	const keybindings = [
-		{ key: 'C', description: 'Open compose modal', scope: 'Global', note: 'Only when not focused on an input field' },
 		{ key: 'A', description: 'Open run agent dialog', scope: 'Global', note: 'Only when not focused on an input field' },
-		{ key: 'Esc', description: 'Close run agent dialog', scope: 'Run agent modal' },
-		{ key: 'Cmd+Enter', description: 'Submit agent prompt', scope: 'Run agent modal' },
-		{ key: 'Esc', description: 'Close compose modal', scope: 'Compose modal' },
-		{ key: 'Esc', description: 'Close connection dialog', scope: 'Connection modal' },
-		{ key: 'Esc', description: 'Close classification dialog', scope: 'Classification dialog' },
-		{ key: 'Esc', description: 'Cancel delete confirmation', scope: 'Card actions' },
-		{ key: 'Enter', description: 'Open selected card', scope: 'Feed' },
-		{ key: 'Enter', description: 'Open conversation', scope: 'Chat sidebar' },
-		{ key: 'Enter', description: 'Send message', scope: 'Chat input' },
+		{ key: 'C', description: 'Open compose modal', scope: 'Global', note: 'Only when not focused on an input field' },
 	];
 </script>
 

@@ -15,7 +15,6 @@ from laya.models.card import ActionCardData
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 from laya.pipeline.entity_resolution import resolve_semantic_entities
-from laya.pipeline.omni import trigger_omni_update
 from laya.pipeline.summarize import trigger_summary_status_update, trigger_summary_update
 from laya.workers.base import WorkerResult
 
@@ -223,6 +222,12 @@ async def run_emit(
                 space_id,
             ),
         )
+
+    # Enqueue for Omni processing (same transaction as card persist — crash-safe)
+    await db.execute(
+        "INSERT OR IGNORE INTO omni_queue (card_id, space_id, created_at) VALUES (?, ?, ?)",
+        (card_id, space_id, datetime.now(timezone.utc).isoformat()),
+    )
     await db.commit()
 
     # Carry forward: update group_active_at for ALL cards in this entity group
@@ -404,18 +409,7 @@ async def run_emit(
         name=f"summary_{card_id}",
     )
 
-    # 9. Trigger Omni rolling summary update (async, non-blocking)
-    create_tracked_task(
-        trigger_omni_update(
-            card_id=card_id,
-            card_header=stager_output.header,
-            card_summary=stager_output.summary,
-            card_priority=router_output.priority.value,
-            source_platform=event.source.platform,
-            space_id=space_id,
-            entity_id=entity_id,
-        ),
-        name=f"omni_{card_id}",
-    )
+    # 9. Omni update: card_id is already in omni_queue (enqueued atomically
+    #    with the card persist above). The omni queue processor picks it up.
 
     return card_id

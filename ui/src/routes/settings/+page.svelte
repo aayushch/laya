@@ -13,8 +13,8 @@
 	import BriefingConfig from '$lib/components/settings/BriefingConfig.svelte';
 	import { page } from '$app/state';
 
-	type TabId = 'team' | 'rules' | 'models' | 'repos' | 'agent' | 'integrations' | 'spaces' | 'briefing' | 'audit' | 'appearance' | 'keybindings' | 'data';
-	const validTabs = new Set<string>(['team', 'rules', 'models', 'repos', 'agent', 'integrations', 'spaces', 'briefing', 'audit', 'appearance', 'keybindings', 'data']);
+	type TabId = 'team' | 'rules' | 'models' | 'repos' | 'agent' | 'integrations' | 'spaces' | 'scheduling' | 'audit' | 'appearance' | 'keybindings' | 'data';
+	const validTabs = new Set<string>(['team', 'rules', 'models', 'repos', 'agent', 'integrations', 'spaces', 'scheduling', 'audit', 'appearance', 'keybindings', 'data']);
 	let activeTab = $state<TabId>('team');
 
 	// React to URL query params (works for both initial load and client-side navigation)
@@ -44,7 +44,7 @@
 		{ id: 'agent',   label: 'Agent' },
 		{ id: 'integrations', label: 'Integrations' },
 		{ id: 'spaces',       label: 'Spaces' },
-		{ id: 'briefing',     label: 'Briefing' },
+		{ id: 'scheduling',   label: 'Scheduling' },
 		{ id: 'audit',        label: 'Audit' },
 		{ id: 'appearance',   label: 'Appearance' },
 		{ id: 'keybindings',  label: 'Keys' },
@@ -108,7 +108,7 @@
 		<IntegrationsConfig />
 	{:else if activeTab === 'spaces'}
 		<SpacesConfig />
-	{:else if activeTab === 'briefing'}
+	{:else if activeTab === 'scheduling'}
 		<BriefingConfig />
 	{:else if activeTab === 'appearance'}
 		<AppearanceConfig />
