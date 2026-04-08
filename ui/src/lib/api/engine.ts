@@ -47,6 +47,7 @@ import type {
 	OAuthStartResponse,
 	OmniSnapshot,
 	OmniHistoryResponse,
+	OmniTimelineResponse,
 	OmniPinsResponse,
 	OmniPin
 } from './types';
@@ -663,6 +664,9 @@ export const engineApi = {
 	getOmniHistory: (spaceId = 'default', limit = 30) =>
 		request<OmniHistoryResponse>(`/omni/history?space_id=${encodeURIComponent(spaceId)}&limit=${limit}`),
 
+	getOmniTimeline: (spaceId = 'default') =>
+		request<OmniTimelineResponse>(`/omni/timeline?space_id=${encodeURIComponent(spaceId)}`),
+
 	triggerOmniResynthesis: (spaceId = 'default') =>
 		request<{ status: string; snapshot_ids: string[]; space_id: string }>(`/omni/resynthesis?space_id=${encodeURIComponent(spaceId)}`, {
 			method: 'POST'
@@ -680,5 +684,11 @@ export const engineApi = {
 	unpinOmniItem: (pinId: string) =>
 		request<{ status: string; pin_id: string }>(`/omni/pin/${encodeURIComponent(pinId)}`, {
 			method: 'DELETE'
+		}),
+
+	toggleOmniBookmark: (data: { space_id: string; source_card_id: string; bookmarked: boolean }) =>
+		request<{ status: string; bookmarked: boolean }>('/omni/bookmark', {
+			method: 'POST',
+			body: JSON.stringify(data)
 		})
 };

@@ -911,6 +911,7 @@ export interface OmniItem {
 	platforms: string[];
 	priority: string;
 	pinned: boolean;
+	bookmarked: boolean;
 	space_id?: string;
 }
 
@@ -948,6 +949,29 @@ export interface OmniHistoryEntry {
 export interface OmniHistoryResponse {
 	space_id: string;
 	snapshots: OmniHistoryEntry[];
+}
+
+export interface TimelineEntry {
+	snapshot_id: string;
+	version: number;
+	generated_at: string;
+	snapshot_type: string;
+	events_processed: number;
+}
+
+export type TimelineTier = 'today' | 'this_week' | 'earlier';
+
+export interface TimelineSegment {
+	tier: TimelineTier;
+	label: string;
+	range_start: string | null;
+	range_end: string | null;
+	entries: TimelineEntry[];
+}
+
+export interface OmniTimelineResponse {
+	space_id: string;
+	segments: TimelineSegment[];
 }
 
 export interface OmniPin {

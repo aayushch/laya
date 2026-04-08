@@ -41,6 +41,7 @@ async def trigger_omni_update(
     card_priority: str,
     source_platform: str | None = None,
     space_id: str | None = None,
+    entity_id: str | None = None,
 ) -> None:
     """Queue a new card for Omni incorporation (debounced).
 
@@ -61,6 +62,7 @@ async def trigger_omni_update(
         "card_priority": card_priority,
         "source_platform": source_platform or "unknown",
         "space_id": space_id or "default",
+        "entity_id": entity_id,
     }
 
     async with _debounce_lock:
@@ -144,21 +146,64 @@ async def _append_to_recent(cards: list[dict]) -> None:
             recent_section = {"type": "recent", "label": None, "items": []}
             content.setdefault("sections", []).append(recent_section)
 
-        # Append new cards as items
+        # Build an index of existing recent items by entity_id for fusion.
+        # entity_id is stored on each item so we can match incoming cards
+        # against items already in the recent section.
+        entity_index: dict[str, int] = {}
+        for idx, existing_item in enumerate(recent_section.get("items", [])):
+            eid = existing_item.get("entity_id")
+            if eid:
+                entity_index[eid] = idx
+
+        # Append new cards — fuse with existing items when same entity
         new_card_ids = []
+        _PRIORITY_RANK = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
         for card in space_cards:
             cid = card["card_id"]
             if cid in existing_card_ids:
                 continue
 
-            item = {
-                "text": f"{card['card_header']} — {card['card_summary']}"[:200],
-                "source_cards": [cid],
-                "platforms": [card.get("source_platform", "unknown")],
-                "priority": card.get("card_priority", "MEDIUM"),
-                "pinned": False,
-            }
-            recent_section["items"].append(item)
+            card_entity_id = card.get("entity_id")
+            platform = card.get("source_platform", "unknown")
+            priority = card.get("card_priority", "MEDIUM")
+
+            # Check if an existing recent item covers the same entity
+            if card_entity_id and card_entity_id in entity_index:
+                # Fuse: update existing item instead of creating a new one
+                existing_idx = entity_index[card_entity_id]
+                existing_item = recent_section["items"][existing_idx]
+
+                # Use the latest card's text (most recent = most complete picture)
+                existing_item["text"] = f"{card['card_header']} — {card['card_summary']}"
+
+                # Merge source_cards list
+                if cid not in existing_item.get("source_cards", []):
+                    existing_item.setdefault("source_cards", []).append(cid)
+
+                # Merge platforms (deduplicate)
+                if platform not in existing_item.get("platforms", []):
+                    existing_item.setdefault("platforms", []).append(platform)
+
+                # Escalate priority (keep the highest)
+                old_rank = _PRIORITY_RANK.get(existing_item.get("priority", "MEDIUM"), 2)
+                new_rank = _PRIORITY_RANK.get(priority, 2)
+                if new_rank < old_rank:
+                    existing_item["priority"] = priority
+            else:
+                # New entity — create a fresh item
+                item = {
+                    "text": f"{card['card_header']} — {card['card_summary']}",
+                    "source_cards": [cid],
+                    "platforms": [platform],
+                    "priority": priority,
+                    "pinned": False,
+                    "bookmarked": False,
+                    "entity_id": card_entity_id,
+                }
+                recent_section["items"].append(item)
+                if card_entity_id:
+                    entity_index[card_entity_id] = len(recent_section["items"]) - 1
+
             new_card_ids.append(cid)
 
         if not new_card_ids:
