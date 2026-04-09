@@ -40,6 +40,7 @@ async def run_stager(
     worker_results: list[WorkerResult] | None = None,
     space_id: str | None = None,
     user_identity: dict | None = None,
+    actor_relationship: str = "external",
 ) -> ActionCardData:
     """Run the STAGER step: synthesize findings into a polished action card.
 
@@ -61,7 +62,7 @@ async def run_stager(
     # 2. Build messages and call LLM
     messages = build_stager_messages(
         event, router_output, worker_results, related_context, entity_history,
-        user_identity=user_identity,
+        user_identity=user_identity, actor_relationship=actor_relationship,
     )
     schema = get_stager_json_schema()
 

@@ -20,6 +20,7 @@ async def run_comms(
     prior_findings: dict | None = None,
     card_id: str | None = None,
     user_identity: dict | None = None,
+    actor_relationship: str = "external",
 ) -> WorkerResult:
     """Run the COMMS worker: draft a reply using LLM + memory context.
 
@@ -36,7 +37,7 @@ async def run_comms(
         log.warning("comms_context_search_failed", error=str(e))
 
     # Build messages and call LLM
-    messages = build_comms_messages(event, router_output, related_context, prior_findings, user_identity=user_identity)
+    messages = build_comms_messages(event, router_output, related_context, prior_findings, user_identity=user_identity, actor_relationship=actor_relationship)
     schema = get_comms_json_schema()
 
     response = await llm_call(

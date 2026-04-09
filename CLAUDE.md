@@ -74,6 +74,7 @@ Event Sources → n8n (port 45678) → Engine (port 8420) → UI (Tauri + Svelte
 - **Theme system**: CSS custom properties in `ui/src/app.css` with `--color-laya-*` brand tokens. Dark/light mode via `data-theme` attribute on `<html>`.
 - **Feed layout**: 3-column flex layout with round-robin card distribution (not CSS columns — intentional, see memory for rationale).
 - **Comment workarounds and defensive fixes**: Any time a workaround, defensive fix, or non-obvious hack is applied, leave a comment in the code explaining *why* the fix exists and what breaks without it. Future readers (and Claude Code) should understand the reasoning without having to rediscover the problem.
+- **n8n workflow versions**: Every time a bundled workflow JSON in `n8n/workflows/` is modified, bump its `meta.laya_version` field. The engine's startup sync compares this version against deployed records and propagates updates to cloned workflow instances only when the version changes.
 
 ## Ports
 
