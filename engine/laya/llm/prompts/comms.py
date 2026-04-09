@@ -21,13 +21,15 @@ Draft a clear, professional, contextually appropriate reply. Match the tone of t
 original message. If the event includes technical findings from a prior worker, \
 incorporate them naturally into the reply.
 
-## User Identity Awareness
+## Actor–User Relationship (Pre-Resolved)
 
-When a [USER IDENTITY] section is provided:
-- If the event actor is the user themselves, do NOT draft a reply addressed to the user \
-(no "Hi John, regarding your issue..."). Instead draft a follow-up, status note, or \
-context summary that the user might post on the thread for others to see.
-- If the event is from someone else, draft the reply normally, addressed to that person.
+An [ACTOR CONTEXT] block is provided with each event. The relationship has ALREADY been \
+resolved by the system — follow the directive exactly:
+- **relationship: self** → The actor IS the Laya user. Do NOT draft a reply addressed \
+to the user (no "Hi John, regarding your issue..."). Instead draft a follow-up, status \
+note, or context summary that the user might post on the thread for others to see.
+- **Any other relationship** → The actor is NOT the Laya user. Draft the reply normally, \
+addressed to that person. Do NOT use "you"/"your" to refer to the actor.
 
 Output the drafted reply text, the tone you chose, and a brief explanation of your approach."""
 
@@ -38,6 +40,7 @@ def build_comms_messages(
     related_context: list[dict[str, Any]] | None = None,
     prior_findings: dict[str, Any] | None = None,
     user_identity: dict[str, str] | None = None,
+    actor_relationship: str = "external",
 ) -> list[dict[str, str]]:
     """Build the messages array for the COMMS worker LLM call."""
     event_text = f"""\
@@ -64,21 +67,32 @@ Body:
     if prior_findings:
         findings_text = f"\n\nFindings from prior ENGINEER worker:\n{_summarize_findings(prior_findings)}"
 
+    # Actor–user relationship context (pre-resolved by the system)
     identity_text = ""
     if user_identity:
-        emails = user_identity.get("emails", [user_identity["email"]])
-        accounts = user_identity.get("accounts", [])
-        lines = [
-            f"Name: {user_identity['name']}",
-            f"Emails: {', '.join(emails)}",
-        ]
-        if accounts:
-            lines.append(f"Platform accounts: {', '.join(accounts)}")
-        lines.append(
-            "If the event actor's email OR handle matches any of the above, "
-            "do NOT draft a reply addressed to them."
+        actor_name = event.actor.name
+        actor_email = event.actor.email
+        user_name = user_identity["name"]
+        is_self = actor_relationship == "self"
+        if is_self:
+            directive = (
+                f"The actor IS the Laya user ({user_name}). "
+                "Do NOT draft a reply addressed to yourself. "
+                "Draft a follow-up or status note instead."
+            )
+        else:
+            directive = (
+                f"The actor ({actor_name}) is NOT the Laya user ({user_name}). "
+                f"Draft the reply addressed to {actor_name}."
+            )
+        identity_text = (
+            f"\n\n[ACTOR CONTEXT]\n"
+            f"Actor: {actor_name} ({actor_email})\n"
+            f"Laya user: {user_name}\n"
+            f"Relationship: {actor_relationship}\n"
+            f">>> {directive}\n"
+            f"[END ACTOR CONTEXT]"
         )
-        identity_text = "\n\n[USER IDENTITY]\n" + "\n".join(lines) + "\n[END USER IDENTITY]"
 
     user_message = f"""\
 Draft a professional reply to this communication.

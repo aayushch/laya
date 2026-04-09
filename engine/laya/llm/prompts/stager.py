@@ -113,26 +113,26 @@ For update cards, the staged_output type should be "status_update" unless the up
 contains substantive new content requiring action (e.g., a comment requesting code review \
 should still use "code_fix" or "draft_reply").
 
-## User Identity Awareness
+## Actor–User Relationship (Pre-Resolved)
 
-When a [USER IDENTITY] section is provided, the event actor may be the same person who \
-uses Laya. Apply these rules:
+An [ACTOR CONTEXT] block is provided with each event. The relationship between the event \
+actor and the Laya user has ALREADY been resolved by the system — do NOT attempt your own \
+comparison. Follow the directive exactly:
 
-- **Self-initiated events**: If the event actor's email matches the user's email, this \
-is the user's own action. Use first-person framing in headers and summaries — "You opened \
-issue BUG-123", "Your PR #45 was merged", NOT "John Doe opened issue BUG-123".
-- **Pre-drafted responses**: NEVER draft a reply or message addressed to the user \
-themselves (no "Hi John, regarding your issue..."). If the event was triggered by the \
-user's own action (they opened a ticket, created a PR, sent an email), the staged_output \
-should be a brief summary or status update — not a reply to themselves.
+- **relationship: self** → The actor IS the Laya user. Use first-person framing in \
+headers and summaries — "You opened issue BUG-123", "Your PR #45 was merged". \
+NEVER draft a reply addressed to the user themselves. The staged_output should be a \
+brief summary or status update, not a self-addressed message. Suggested actions are \
+still valid (the user may want to comment, transition, or close their own items) — \
+just ensure payload content is not addressed to themselves.
+- **relationship: manager / teammate / external / bot** → The actor is NOT the Laya \
+user. Use third-person framing — "{actor_name} opened issue BUG-123", \
+"{actor_name}'s PR #45". Draft replies addressed to the actor. Do NOT use "you" or \
+"your" to refer to the actor — those pronouns refer ONLY to the Laya user.
 - **Actions from others on user's items**: If someone else acts on the user's item \
 (e.g., Jane comments on a PR the user created), frame it as "Jane commented on your \
 PR #45" and the pre-drafted response should address Jane, not the user.
-- **Actions still valid**: Do NOT remove suggested actions just because the event was \
-self-initiated. The user may still want to comment, transition, or close their own items. \
-Just ensure the payload content (e.g., comment body) is contextually appropriate and \
-not addressed to themselves.
-- **If no USER IDENTITY is provided**, fall back to the default third-person behavior."""
+- **If no [ACTOR CONTEXT] is provided**, fall back to third-person behavior."""
 
 
 def build_stager_messages(
@@ -142,6 +142,7 @@ def build_stager_messages(
     related_context: list[dict[str, Any]] | None = None,
     entity_history: list[dict[str, Any]] | None = None,
     user_identity: dict[str, str] | None = None,
+    actor_relationship: str = "external",
 ) -> list[dict[str, str]]:
     """Build the messages array for the Stager LLM call."""
     event_text = f"""\
@@ -229,22 +230,33 @@ Body:
             "[END EXISTING CARDS]"
         )
 
-    # User identity context
+    # Actor–user relationship context (pre-resolved by the system)
     identity_text = ""
     if user_identity:
-        emails = user_identity.get("emails", [user_identity["email"]])
-        accounts = user_identity.get("accounts", [])
-        lines = [
-            f"Name: {user_identity['name']}",
-            f"Emails: {', '.join(emails)}",
-        ]
-        if accounts:
-            lines.append(f"Platform accounts: {', '.join(accounts)}")
-        lines.append(
-            "If the event actor's email OR platform handle matches any of the above, "
-            "this is the user's own action — use first-person framing."
+        actor_name = event.actor.name
+        actor_email = event.actor.email
+        user_name = user_identity["name"]
+        is_self = actor_relationship == "self"
+        if is_self:
+            directive = (
+                f"The actor IS the Laya user ({user_name}). "
+                "Use first-person framing (\"You opened…\", \"Your PR…\"). "
+                "Do NOT draft replies addressed to yourself."
+            )
+        else:
+            directive = (
+                f"The actor ({actor_name}) is NOT the Laya user ({user_name}). "
+                f"Use third-person framing (\"{actor_name} opened…\"). "
+                f"Do NOT attribute this action to the user."
+            )
+        identity_text = (
+            f"\n\n[ACTOR CONTEXT]\n"
+            f"Actor: {actor_name} ({actor_email})\n"
+            f"Laya user: {user_name}\n"
+            f"Relationship: {actor_relationship}\n"
+            f">>> {directive}\n"
+            f"[END ACTOR CONTEXT]"
         )
-        identity_text = "\n\n[USER IDENTITY]\n" + "\n".join(lines) + "\n[END USER IDENTITY]"
 
     user_message = f"""\
 Synthesize the following event and findings into a polished action card.

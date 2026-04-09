@@ -1,0 +1,124 @@
+{
+  "name": "Laya - Linear Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      },
+      "name": "Every 2 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.linear.app/graphql",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "linearApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: '{ issues(filter: { updatedAt: { gte: \"' + new Date(Date.now() - 150000).toISOString() + '\" } }, first: 50, orderBy: updatedAt) { nodes { id identifier title description url state { id name type } priority priorityLabel assignee { id name email displayName } creator { id name email displayName } team { id name key } labels { nodes { name } } createdAt updatedAt comments { nodes { id body createdAt user { id name email displayName } } } history(first: 20) { nodes { id createdAt fromState { name type } toState { name type } fromAssignee { name email } toAssignee { name email } fromPriority toPriority actor { id name email displayName } } } } } }' }) }}",
+        "options": {}
+      },
+      "name": "Fetch Recent Issues",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Classify Linear issue changes and normalize to Laya event format.\n\nconst TWO_MINUTES_MS = 150000; // 2.5 min to match poll window\nconst now = Date.now();\n\nconst input = $input.first().json;\nconst issues = (input.data && input.data.issues && input.data.issues.nodes) || [];\n\nconst results = [];\n\nfor (const issue of issues) {\n  const createdAt = new Date(issue.createdAt).getTime();\n  const updatedAt = new Date(issue.updatedAt).getTime();\n  const isNew = (now - createdAt) < TWO_MINUTES_MS;\n\n  // Parse recent history entries\n  const history = (issue.history && issue.history.nodes) || [];\n  const recentHistory = history.filter(h => (now - new Date(h.createdAt).getTime()) < TWO_MINUTES_MS);\n\n  // Parse recent comments\n  const comments = (issue.comments && issue.comments.nodes) || [];\n  const recentComments = comments.filter(c => (now - new Date(c.createdAt).getTime()) < TWO_MINUTES_MS);\n\n  // --- Classify change type ---\n  let rawEventType = 'issue_updated';\n  let body = '';\n  let changeType = 'generic_update';\n  let actorName = (issue.creator && issue.creator.displayName) || (issue.creator && issue.creator.name) || 'Unknown';\n  let actorEmail = (issue.creator && issue.creator.email) || '';\n  let actorHandle = (issue.creator && issue.creator.name) || '';\n\n  if (isNew) {\n    rawEventType = 'issue_created';\n    changeType = 'created';\n    body = issue.description || issue.title || '';\n\n  } else {\n    // Check history for status changes, reassignments, priority changes\n    let statusChange = null;\n    let assigneeChange = null;\n    let priorityChange = null;\n\n    for (const entry of recentHistory) {\n      if (entry.fromState && entry.toState) {\n        statusChange = entry;\n      }\n      if (entry.fromAssignee || entry.toAssignee) {\n        assigneeChange = entry;\n      }\n      if (entry.fromPriority !== undefined && entry.fromPriority !== null &&\n          entry.toPriority !== undefined && entry.toPriority !== null &&\n          entry.fromPriority !== entry.toPriority) {\n        priorityChange = entry;\n      }\n    }\n\n    if (statusChange) {\n      const fromName = statusChange.fromState.name;\n      const toName = statusChange.toState.name;\n      const toType = (statusChange.toState.type || '').toLowerCase();\n      const fromType = (statusChange.fromState.type || '').toLowerCase();\n\n      if ((toType === 'completed' || toType === 'canceled') && fromType !== 'completed' && fromType !== 'canceled') {\n        rawEventType = 'issue_resolved';\n        changeType = 'resolved';\n        body = 'Issue ' + toName.toLowerCase() + ': ' + fromName + ' → ' + toName + '.';\n      } else if ((fromType === 'completed' || fromType === 'canceled') && toType !== 'completed' && toType !== 'canceled') {\n        rawEventType = 'issue_reopened';\n        changeType = 'reopened';\n        body = 'Issue reopened: ' + fromName + ' → ' + toName + '.';\n      } else {\n        rawEventType = 'issue_status_changed';\n        changeType = 'status_changed';\n        body = 'Status changed: ' + fromName + ' → ' + toName + '.';\n      }\n\n      if (statusChange.actor) {\n        actorName = statusChange.actor.displayName || statusChange.actor.name || actorName;\n        actorEmail = statusChange.actor.email || actorEmail;\n        actorHandle = statusChange.actor.name || actorHandle;\n      }\n\n    } else if (assigneeChange) {\n      rawEventType = 'issue_assigned';\n      changeType = 'assigned';\n      const from = (assigneeChange.fromAssignee && assigneeChange.fromAssignee.name) || 'Unassigned';\n      const to = (assigneeChange.toAssignee && assigneeChange.toAssignee.name) || 'Unassigned';\n      body = 'Assignee changed: ' + from + ' → ' + to + '.';\n\n      if (assigneeChange.actor) {\n        actorName = assigneeChange.actor.displayName || assigneeChange.actor.name || actorName;\n        actorEmail = assigneeChange.actor.email || actorEmail;\n        actorHandle = assigneeChange.actor.name || actorHandle;\n      }\n\n    } else if (priorityChange) {\n      rawEventType = 'issue_priority_changed';\n      changeType = 'priority_changed';\n      const priorityLabels = ['No priority', 'Urgent', 'High', 'Medium', 'Low'];\n      const fromLabel = priorityLabels[priorityChange.fromPriority] || String(priorityChange.fromPriority);\n      const toLabel = priorityLabels[priorityChange.toPriority] || String(priorityChange.toPriority);\n      body = 'Priority changed: ' + fromLabel + ' → ' + toLabel + '.';\n\n      if (priorityChange.actor) {\n        actorName = priorityChange.actor.displayName || priorityChange.actor.name || actorName;\n        actorEmail = priorityChange.actor.email || actorEmail;\n        actorHandle = priorityChange.actor.name || actorHandle;\n      }\n\n    } else if (recentComments.length > 0) {\n      const latest = recentComments[recentComments.length - 1];\n      rawEventType = 'issue_commented';\n      changeType = 'commented';\n      const commenterName = (latest.user && (latest.user.displayName || latest.user.name)) || 'Unknown';\n      body = 'New comment from ' + commenterName + ':\\n' + (latest.body || '');\n\n      if (latest.user) {\n        actorName = latest.user.displayName || latest.user.name || actorName;\n        actorEmail = latest.user.email || actorEmail;\n        actorHandle = latest.user.name || actorHandle;\n      }\n\n    } else {\n      // Generic update — no specific change detected in poll window\n      changeType = 'generic_update';\n      body = 'Issue updated. Current status: ' + ((issue.state && issue.state.name) || 'Unknown') + '.';\n    }\n  }\n\n  const epoch = new Date(issue.updatedAt || Date.now()).getTime();\n  const teamKey = (issue.team && issue.team.key) || '';\n  const labels = (issue.labels && issue.labels.nodes) ? issue.labels.nodes.map(function(l) { return l.name; }) : [];\n\n  results.push({\n    json: {\n      event_id: 'evt_linear_' + issue.id + '_' + epoch,\n      timestamp: issue.updatedAt || new Date().toISOString(),\n      source: {\n        platform: 'linear',\n        connection_id: $workflow.id,\n        raw_event_type: rawEventType\n      },\n      actor: {\n        name: actorName,\n        email: actorEmail,\n        platform_handle: actorHandle\n      },\n      subject: {\n        type: 'ticket',\n        id: issue.identifier || '',\n        title: issue.title || '',\n        url: issue.url || ''\n      },\n      content: {\n        body: body,\n        attachments: [],\n        metadata: {\n          linear_team: teamKey,\n          linear_labels: labels,\n          linear_priority: issue.priorityLabel || null,\n          linear_status: (issue.state && issue.state.name) || null,\n          linear_status_type: (issue.state && issue.state.type) || null,\n          linear_assignee: (issue.assignee && issue.assignee.email) || null,\n          linear_assignee_name: (issue.assignee && issue.assignee.displayName) || null,\n          linear_change_type: changeType,\n          linear_description: issue.description || ''\n        }\n      }\n    }\n  });\n}\n\nreturn results;"
+      },
+      "name": "Classify & Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        750,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8420/events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "name": "POST to Laya Engine",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1000,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Every 2 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Fetch Recent Issues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Recent Issues": {
+      "main": [
+        [
+          {
+            "node": "Classify & Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify & Normalize": {
+      "main": [
+        [
+          {
+            "node": "POST to Laya Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "meta": {
+    "laya_version": "2026.04.1"
+  }
+}

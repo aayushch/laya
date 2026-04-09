@@ -20,6 +20,7 @@ async def run_workers(
     card_id: str | None = None,
     space_id: str | None = None,
     user_identity: dict | None = None,
+    actor_relationship: str = "external",
 ) -> list[WorkerResult]:
     """Dispatch workers based on Router output.
 
@@ -36,6 +37,7 @@ async def run_workers(
         card_id=card_id,
         space_id=space_id,
         user_identity=user_identity,
+        actor_relationship=actor_relationship,
     )
     results.append(primary_result)
 
@@ -49,6 +51,7 @@ async def run_workers(
             prior_findings=primary_result.findings,
             space_id=space_id,
             user_identity=user_identity,
+            actor_relationship=actor_relationship,
         )
         results.append(secondary_result)
 
@@ -69,6 +72,7 @@ async def _dispatch_worker(
     prior_findings: dict | None = None,
     space_id: str | None = None,
     user_identity: dict | None = None,
+    actor_relationship: str = "external",
 ) -> WorkerResult:
     """Dispatch to the appropriate worker based on persona."""
     try:
@@ -78,7 +82,7 @@ async def _dispatch_worker(
             case Persona.COMMS:
                 return await run_comms(
                     event, router_output, prior_findings=prior_findings, card_id=card_id,
-                    user_identity=user_identity,
+                    user_identity=user_identity, actor_relationship=actor_relationship,
                 )
             case Persona.OPS:
                 return await run_ops(event, router_output, card_id=card_id)

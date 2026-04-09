@@ -651,6 +651,12 @@ async def _clone_workflows_for_connection(
     short_id = connection_id.replace("conn_", "")
     platform_label = platform_config.get("label", platform.title())
 
+    # Fetch existing n8n workflows to prevent creating duplicates.
+    # Without this check, restarts or retries can create orphan workflows
+    # in n8n that the engine doesn't track, leading to double-ingestion.
+    from laya.integrations.n8n_bootstrap import _get_existing_workflows
+    existing_n8n_workflows = await _get_existing_workflows(base_url, api_key) or {}
+
     for template_name in template_names:
         template_data = template_files.get(template_name)
         if not template_data:
@@ -693,24 +699,32 @@ async def _clone_workflows_for_connection(
                     "name": connection_name,
                 }
 
-        # 3. Create workflow in n8n
-        create_fields = {"name", "nodes", "connections", "settings", "staticData", "tags"}
-        create_data = {k: v for k, v in wf_data.items() if k in create_fields}
-        try:
-            resp = await get_client().post(
-                f"{base_url}/api/v1/workflows",
-                headers=headers,
-                json=create_data,
-                timeout=10.0,
-            )
-            if resp.status_code not in (200, 201):
-                errors.append(f"Failed to create \"{wf_data['name']}\": HTTP {resp.status_code}")
+        # 3. Create workflow in n8n (or reuse existing if same name already exists)
+        target_name = wf_data["name"]
+        existing_wf = existing_n8n_workflows.get(target_name)
+        if existing_wf:
+            # Workflow with this name already exists in n8n — reuse it
+            wf_id = str(existing_wf["id"])
+            log.info("workflow_clone_reused_existing",
+                     name=target_name, id=wf_id, connection_id=connection_id)
+        else:
+            create_fields = {"name", "nodes", "connections", "settings", "staticData", "tags"}
+            create_data = {k: v for k, v in wf_data.items() if k in create_fields}
+            try:
+                resp = await get_client().post(
+                    f"{base_url}/api/v1/workflows",
+                    headers=headers,
+                    json=create_data,
+                    timeout=10.0,
+                )
+                if resp.status_code not in (200, 201):
+                    errors.append(f"Failed to create \"{target_name}\": HTTP {resp.status_code}")
+                    continue
+                created_wf = resp.json()
+                wf_id = str(created_wf.get("id", ""))
+            except Exception as e:
+                errors.append(f"Failed to create \"{target_name}\": {e}")
                 continue
-            created_wf = resp.json()
-            wf_id = str(created_wf.get("id", ""))
-        except Exception as e:
-            errors.append(f"Failed to create \"{wf_data['name']}\": {e}")
-            continue
 
         # 4. Activate
         try:
