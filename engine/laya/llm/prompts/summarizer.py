@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from laya.llm.prompts import current_timestamp_line
+
 SUMMARIZER_SYSTEM_PROMPT = """\
-You are the Daily Summarizer for Laya, a professional AI operating system. Your job is \
+You are the Daily Summarizer for Laya, an AI-powered professional work assistant. Your job is \
 to maintain a running summary of the user's day by incrementally incorporating new events.
 
 You receive:
@@ -97,6 +99,8 @@ def build_summarizer_messages(
         intel_text = "\nKey findings:\n" + "\n".join(f"  - {i}" for i in card_intelligence[:5])
 
     user_message = f"""\
+{current_timestamp_line()}
+
 Update the daily summary to incorporate this new card.
 {current_text}
 
@@ -132,6 +136,8 @@ def build_status_change_messages(
     import json
 
     user_message = f"""\
+{current_timestamp_line()}
+
 A card's status has changed. Update the daily summary accordingly.
 
 [CURRENT SUMMARY]

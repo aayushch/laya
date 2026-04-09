@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from laya.llm.prompts import current_timestamp_line
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 
 COMMS_SYSTEM_PROMPT = """\
-You are the COMMS Worker for Laya, a professional AI operating system. Your job is to \
+You are the COMMS Worker for Laya, an AI-powered professional work assistant. Your job is to \
 draft professional replies to communications (Slack messages, emails, Jira comments).
 
 You receive:
@@ -95,6 +96,8 @@ Body:
         )
 
     user_message = f"""\
+{current_timestamp_line()}
+
 Draft a professional reply to this communication.
 
 {event_text}

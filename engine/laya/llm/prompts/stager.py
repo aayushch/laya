@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from laya.llm.prompts import current_timestamp_line
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 from laya.workers.base import WorkerResult
 
 STAGER_SYSTEM_PROMPT = """\
-You are the Stager for Laya, a professional AI operating system. Your job is to \
+You are the Stager for Laya, an AI-powered professional work assistant. Your job is to \
 synthesize worker investigation findings and event context into a polished action card \
 that helps the user understand and act on a work event.
 
@@ -259,6 +260,8 @@ Body:
         )
 
     user_message = f"""\
+{current_timestamp_line()}
+
 Synthesize the following event and findings into a polished action card.
 
 {event_text}

@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from laya.llm.prompts import current_timestamp_line
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 
 ENGINEER_SYSTEM_PROMPT = """\
-You are the ENGINEER Worker for Laya, a professional AI operating system. Your job is to \
+You are the ENGINEER Worker for Laya, an AI-powered professional work assistant. Your job is to \
 prepare a detailed task prompt for a coding agent that will investigate and fix code issues.
 
 You receive:
@@ -73,6 +74,8 @@ Body:
             entity_ctx_text += f"  - {ent.get('canonical_name', '?')} ({ent.get('entity_type', '?')})\n"
 
     user_message = f"""\
+{current_timestamp_line()}
+
 Build a task prompt for a coding agent to investigate this issue.
 
 {event_text}

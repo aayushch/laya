@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from laya.llm.prompts import current_timestamp_line
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 
 OPS_SYSTEM_PROMPT = """\
-You are the OPS Worker for Laya, a professional AI operating system. Your job is to \
+You are the OPS Worker for Laya, an AI-powered professional work assistant. Your job is to \
 prepare operational briefings for calendar events and logistics.
 
 You receive:
@@ -58,6 +59,8 @@ Body:
         metadata_text = "\n\nEvent metadata:\n" + "\n".join(metadata_lines)
 
     user_message = f"""\
+{current_timestamp_line()}
+
 Prepare an operational briefing for this event.
 
 {event_text}

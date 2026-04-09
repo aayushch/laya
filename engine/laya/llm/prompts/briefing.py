@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from laya.llm.prompts import current_timestamp_line
+
 BRIEFING_SYSTEM_PROMPT = """\
 You are generating a daily briefing for a busy professional using Laya. \
 Summarize overnight activity, highlight items needing attention, and \
@@ -75,6 +77,7 @@ def build_briefing_messages(
     sections.append(f"  - Cards resolved: {stats.get('cards_resolved', 0)}")
 
     user_message = (
+        f"{current_timestamp_line()}\n\n"
         "Generate a daily briefing from the following data.\n\n"
         + "\n".join(sections)
         + "\n\nProvide a concise, actionable briefing."
