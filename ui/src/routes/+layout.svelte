@@ -18,6 +18,8 @@
 	import ComposeModal from '$lib/components/egress/ComposeModal.svelte';
 	import { agentDialog } from '$lib/stores/agentDialog';
 	import RunAgentModal from '$lib/components/agent/RunAgentModal.svelte';
+	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
+	import { checkForUpdate } from '$lib/stores/updater';
 	import { onMount } from 'svelte';
 
 	function formatDateLabel(dateStr: string): string {
@@ -84,6 +86,13 @@
 		loadSpaces();
 		loadFeedFilters();
 		loadBudgetStatus();
+	});
+
+	// Check for app updates after startup
+	$effect(() => {
+		if (!$startupReady) return;
+		const timer = setTimeout(checkForUpdate, 5000);
+		return () => clearTimeout(timer);
 	});
 
 	// React to budget WebSocket messages
@@ -180,6 +189,9 @@
 				<a href="/settings?tab=models&section=cost-control" class="ml-1 text-xs font-medium text-red-400 underline underline-offset-2 hover:text-red-300">Manage</a>
 			</div>
 		{/if}
+
+		<!-- Update available banner -->
+		<UpdateBanner />
 
 		<!-- Header -->
 		<header bind:this={headerEl} class="relative z-50 flex items-center border-b border-surface-700 bg-surface-900/95 px-5 py-2.5 backdrop-blur-sm">

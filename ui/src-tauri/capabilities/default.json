@@ -11,6 +11,7 @@
     "shell:allow-execute",
     "shell:allow-spawn",
     "shell:allow-stdin-write",
-    "dialog:default"
+    "dialog:default",
+    "updater:default"
   ]
 }
