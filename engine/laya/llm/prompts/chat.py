@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from laya.llm.prompts import current_timestamp_line
+
 
 CHAT_SYSTEM_PROMPT = """\
 You are Laya, a professional AI assistant that helps users understand and manage \
@@ -110,9 +112,10 @@ def build_chat_messages(
         messages.append(msg)
 
     # Add current user message with context
-    user_content = user_message
+    timestamp_prefix = f"[{current_timestamp_line()}]\n\n"
+    user_content = timestamp_prefix + user_message
     if context_text:
-        user_content = f"{user_message}\n\n[RETRIEVED CONTEXT]\n{context_text}\n[END CONTEXT]"
+        user_content = f"{timestamp_prefix}{user_message}\n\n[RETRIEVED CONTEXT]\n{context_text}\n[END CONTEXT]"
 
     messages.append({"role": "user", "content": user_content})
 

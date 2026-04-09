@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from laya.llm.prompts import current_timestamp_line
 from laya.models.trace import TraceCluster
 
 
@@ -48,7 +49,7 @@ def build_summary_messages(
     query: str, clusters: list[TraceCluster]
 ) -> list[dict[str, str]]:
     """Build the messages list for the overall trace summary LLM call."""
-    parts: list[str] = [f"Search query: {query}", f"Total clusters: {len(clusters)}", ""]
+    parts: list[str] = [current_timestamp_line(), "", f"Search query: {query}", f"Total clusters: {len(clusters)}", ""]
 
     for cluster in clusters:
         entity = cluster.primary_entity
@@ -86,7 +87,7 @@ def build_summary_messages(
 def build_narrative_messages(clusters: list[TraceCluster]) -> list[dict[str, str]]:
     """Build the messages list for the narrative LLM call."""
     # Collect all cards from all clusters into a structured summary
-    parts: list[str] = []
+    parts: list[str] = [current_timestamp_line(), ""]
 
     for cluster in clusters:
         entity = cluster.primary_entity

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from laya.llm.prompts import current_timestamp_line
+
 
 RELEVANCE_FILTER_SYSTEM = """\
 You are a relevance judge for a work search system. Given a user's search query \
@@ -55,7 +57,7 @@ def build_relevance_filter_messages(
     Returns:
         [system_message, user_message] for llm_call().
     """
-    lines = [f'Search query: "{query}"', "", "Candidates:"]
+    lines = [current_timestamp_line(), "", f'Search query: "{query}"', "", "Candidates:"]
     for c in candidates:
         header = c["header"][:200] if c.get("header") else "(no header)"
         summary = c["summary"][:200] if c.get("summary") else "(no summary)"

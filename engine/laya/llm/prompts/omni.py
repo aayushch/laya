@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from laya.llm.prompts import current_timestamp_line
+
 # ---------------------------------------------------------------------------
 # Density presets: structural constraints passed to the LLM
 # ---------------------------------------------------------------------------
@@ -202,6 +204,7 @@ def build_omni_resynthesis_messages(
     density_text = _density_instructions(density)
 
     user_message = (
+        f"{current_timestamp_line()}\n\n"
         f"Synthesize the Omni summary for space '{space_id}'.\n"
         f"{snapshot_text}\n"
         f"{cards_text}"

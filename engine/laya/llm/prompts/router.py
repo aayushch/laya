@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from laya.llm.prompts import current_timestamp_line
 from laya.models.event import LayaEvent
 
 ROUTER_SYSTEM_PROMPT = """\
-You are the Router for Laya, a professional AI operating system. Your job is to \
+You are the Router for Laya, an AI-powered professional work assistant. Your job is to \
 classify incoming work events and plan investigation steps.
 
 You receive a normalized event from the user's professional tools (Jira, Bitbucket, \
@@ -141,6 +142,8 @@ Body:
         feedback_section = f"\n\n{feedback_context}"
 
     user_message = f"""\
+{current_timestamp_line()}
+
 Classify this event and plan investigation steps.
 
 {event_text}{context_section}{feedback_section}

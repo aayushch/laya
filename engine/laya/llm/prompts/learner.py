@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from laya.llm.prompts import current_timestamp_line
+
 
 LEARNER_SYSTEM_PROMPT = """\
-You are the Classification Learner for Laya, a professional AI operating system.
+You are the Classification Learner for Laya, an AI-powered professional work assistant.
 
 Your job is to analyze a batch of user corrections to card classifications and extract \
 generalized rules that can improve future classification accuracy.
@@ -76,6 +78,8 @@ def build_learner_messages(
         existing_text = "(none)"
 
     user_message = f"""\
+{current_timestamp_line()}
+
 Analyze these user corrections and extract classification rules.
 
 --- CORRECTIONS ({len(corrections)} total) ---
