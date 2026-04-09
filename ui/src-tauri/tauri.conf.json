@@ -35,7 +35,6 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "createUpdaterArtifacts": "v2Compatible",
     "resources": [
       "resources/engine/**/*"
     ],
