@@ -294,7 +294,10 @@ async def _scheduler_loop() -> None:
                                    WHERE snapshot_type IN ('scheduled', 'rolling', 'manual')
                                    ORDER BY version DESC LIMIT 1"""
                             )
-                            _since = _last_synth[0]["generated_at"] if _last_synth else "2000-01-01T00:00:00"
+                            # Normalize ISO 'T' separator to space to match SQLite CURRENT_TIMESTAMP format,
+                            # otherwise string comparison fails (space 0x20 < 'T' 0x54).
+                            _raw = _last_synth[0]["generated_at"] if _last_synth else None
+                            _since = _raw.replace("T", " ").split("+")[0] if _raw else "2000-01-01 00:00:00"
                             _count_rows = await _db.execute_fetchall(
                                 "SELECT COUNT(*) AS cnt FROM action_cards WHERE created_at > ?",
                                 (_since,),
