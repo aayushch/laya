@@ -624,7 +624,10 @@ async def _resynthesize_space(db, space_id: str, density: str, snapshot_type: st
            ORDER BY version DESC LIMIT 1""",
         (space_id,),
     )
-    since = last_synth_row[0]["generated_at"] if last_synth_row else "2000-01-01T00:00:00"
+    # Normalize ISO 'T' separator to space to match SQLite CURRENT_TIMESTAMP format,
+    # otherwise string comparison fails (space 0x20 < 'T' 0x54).
+    _raw_since = last_synth_row[0]["generated_at"] if last_synth_row else None
+    since = _raw_since.replace("T", " ").split("+")[0] if _raw_since else "2000-01-01 00:00:00"
 
     card_rows = await db.execute_fetchall(
         """SELECT ac.card_id, ac.header, ac.summary, ac.priority, ac.persona,
