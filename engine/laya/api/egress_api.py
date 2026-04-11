@@ -218,6 +218,7 @@ async def ai_assist(body: AiAssistRequest) -> dict:
         response = await llm_call(
             role="stager",
             messages=messages,
+            step="egress_draft",
             temperature=0.4,
             max_tokens=1000,
         )

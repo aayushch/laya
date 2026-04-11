@@ -127,34 +127,44 @@ async def get_dashboard(days: int = 30) -> DashboardResponse:
     time_saved = TimeSavedEstimate(total_minutes=total_minutes, by_action_type=by_action_type)
 
     # 5. LLM costs
+    from laya.pipeline.budget import STEP_TO_FEATURE
+
     cost_rows = await db.execute_fetchall(
-        f"""SELECT model_used,
+        f"""SELECT model_used, step,
                    SUM(input_tokens) as total_in,
                    SUM(output_tokens) as total_out
             FROM audit_log
             WHERE timestamp > {date_filter} AND success = 1
-            GROUP BY model_used"""
+            GROUP BY model_used, step"""
     )
     total_cost = 0.0
     by_model: dict[str, float] = {}
+    by_step: dict[str, float] = {}
+    by_feature: dict[str, float] = {}
     total_input_tokens = 0
     total_output_tokens = 0
 
     for row in cost_rows:
         model = row[0] or "unknown"
-        in_tokens = row[1] or 0
-        out_tokens = row[2] or 0
+        step = row[1] or "unknown"
+        in_tokens = row[2] or 0
+        out_tokens = row[3] or 0
         total_input_tokens += in_tokens
         total_output_tokens += out_tokens
 
         pricing = MODEL_PRICING.get(model, {"input": 1.0, "output": 3.0})
         cost = (in_tokens * pricing["input"] + out_tokens * pricing["output"]) / 1_000_000
-        by_model[model] = round(cost, 4)
+        by_model[model] = round(by_model.get(model, 0.0) + cost, 4)
+        by_step[step] = round(by_step.get(step, 0.0) + cost, 4)
+        feature = STEP_TO_FEATURE.get(step, "Other")
+        by_feature[feature] = round(by_feature.get(feature, 0.0) + cost, 4)
         total_cost += cost
 
     llm_costs = LLMCostEstimate(
         total_cost_usd=round(total_cost, 4),
         by_model=by_model,
+        by_feature=by_feature,
+        by_step=by_step,
         total_input_tokens=total_input_tokens,
         total_output_tokens=total_output_tokens,
     )

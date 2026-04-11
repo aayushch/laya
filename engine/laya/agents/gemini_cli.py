@@ -53,7 +53,7 @@ class GeminiCliAgent(CodingAgent):
 
     async def start_session(
         self, session_id: str, prompt: str, repo_path: str, add_dirs: list[str] | None = None,
-        mode: str | None = None,
+        mode: str | None = None, research: bool = False,
     ) -> None:
         self._session_id = session_id
         self._repo_path = repo_path
@@ -66,6 +66,16 @@ class GeminiCliAgent(CodingAgent):
             "--output-format",
             "stream-json",
         ]
+
+        if research:
+            # Auto-approve file writes so the agent can save research output.
+            # Gemini CLI has no CLI-level directory scoping — auto_edit approves
+            # writes everywhere.  The cwd is set to the research directory and
+            # the prompt instructs the agent to write only there, but this is
+            # not enforced at the tool level (unlike Claude Code's --allowedTools
+            # or Codex's OS-level sandbox).
+            # Web search (Google Search) is always enabled — no flag needed.
+            args.extend(["--approval-mode", "auto_edit"])
 
         if add_dirs:
             for d in add_dirs:

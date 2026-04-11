@@ -70,6 +70,7 @@ async def start_session(
     space_id: str | None = None,
     add_dirs: list[str] | None = None,
     mode: str | None = None,
+    research: bool = False,
 ) -> tuple[str, CodingAgent]:
     """Create and start a new agent session.
 
@@ -78,6 +79,7 @@ async def start_session(
     Args:
         add_dirs: Additional directory paths to include via --add-dir / --include-directories.
         mode: Agent-specific permission/sandbox mode override (e.g. "plan", "acceptEdits").
+        research: If True, enable web search and file write permissions for research tasks.
 
     Returns:
         Tuple of (session_id, CodingAgent instance).
@@ -104,7 +106,7 @@ async def start_session(
 
     # Create and start the agent
     agent = _create_agent(agent_type)
-    await agent.start_session(session_id, prompt, repo_path, add_dirs=add_dirs, mode=mode)
+    await agent.start_session(session_id, prompt, repo_path, add_dirs=add_dirs, mode=mode, research=research)
     _active_sessions[session_id] = agent
     _card_sessions[card_id] = session_id
 

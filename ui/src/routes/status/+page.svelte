@@ -7,6 +7,7 @@
 	import StatCard from '$lib/components/dashboard/StatCard.svelte';
 	import BarChart from '$lib/components/dashboard/BarChart.svelte';
 	import DonutChart from '$lib/components/dashboard/DonutChart.svelte';
+	import FeatureCostChart from '$lib/components/dashboard/FeatureCostChart.svelte';
 
 	// --- Service health ---
 	function statusIcon(status: string | undefined): string {
@@ -118,6 +119,7 @@
 			value: Math.round((value as number) * 1000) / 1000
 		}));
 	});
+
 
 	function formatCost(usd: number): string {
 		return usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`;
@@ -345,6 +347,15 @@
 			{#if sourceData.length > 0}
 				<div class="mt-3">
 					<BarChart data={sourceData} title="Events by Source" />
+				</div>
+			{/if}
+
+			{#if dashboard.llm_costs.by_feature && Object.keys(dashboard.llm_costs.by_feature).length > 0}
+				<div class="mt-3">
+					<FeatureCostChart
+						byFeature={dashboard.llm_costs.by_feature}
+						byStep={dashboard.llm_costs.by_step}
+					/>
 				</div>
 			{/if}
 

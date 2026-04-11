@@ -17,7 +17,8 @@
 	import TraceHistory from '$lib/components/trace/TraceHistory.svelte';
 	import type { TraceResponse } from '$lib/api/types';
 
-	let loading = $state(false);
+	// Use the persistent store so loading state survives navigation away and back.
+	const loading = $derived($traceLoading);
 	let cancelling = $state(false);
 	let error = $state<string | null>(null);
 	let trace = $state<TraceResponse | null>(get(currentTrace));
@@ -218,7 +219,7 @@
 		enableText?: boolean;
 		enableLlmFilter?: boolean;
 	}) {
-		loading = true;
+		traceLoading.set(true);
 		error = null;
 		// Clear the active trace so the progress bar shows immediately
 		// instead of staying on stale results while the new search runs.
@@ -248,7 +249,7 @@
 				error = msg;
 			}
 		} finally {
-			loading = false;
+			traceLoading.set(false);
 			cancelling = false;
 			traceProgress.set(null);
 		}
@@ -264,7 +265,7 @@
 	}
 
 	async function handleSelectTrace(traceId: string) {
-		loading = true;
+		traceLoading.set(true);
 		error = null;
 		removedClusterIds = new Set();
 		traceNarrativeMap.set({});
@@ -284,7 +285,7 @@
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load trace';
 		} finally {
-			loading = false;
+			traceLoading.set(false);
 		}
 	}
 
@@ -293,7 +294,7 @@
 		if (!id) return;
 
 		const rerunQuery = trace?.query ?? '';
-		loading = true;
+		traceLoading.set(true);
 		error = null;
 		trace = null;
 		currentTrace.set(null);
@@ -312,7 +313,7 @@
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Rerun failed';
 		} finally {
-			loading = false;
+			traceLoading.set(false);
 			traceProgress.set(null);
 		}
 	}

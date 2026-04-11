@@ -9,8 +9,9 @@
 		card,
 		onclose,
 		ondismiss,
-		ongotocard
-	}: { card: ActionCard; onclose: () => void; ondismiss?: () => void; ongotocard?: (card: ActionCard) => void } = $props();
+		ongotocard,
+		onlink
+	}: { card: ActionCard; onclose: () => void; ondismiss?: () => void; ongotocard?: (card: ActionCard) => void; onlink?: (card: ActionCard) => void } = $props();
 
 	let markingDone = $state(false);
 	let approvingAgent = $state(false);
@@ -29,6 +30,20 @@
 	let deleting = $state(false);
 	let showClassificationDialog = $state(false);
 	let bookmarking = $state(false);
+	let unlinkingCard = $state(false);
+	let showResearchInput = $state(false);
+	let researchPrompt = $state('');
+	let startingResearch = $state(false);
+
+	async function unlinkCard() {
+		if (!card.context_id) return;
+		unlinkingCard = true;
+		try {
+			await engineApi.unlinkContextGroup(card.context_id);
+		} finally {
+			unlinkingCard = false;
+		}
+	}
 
 	const priorityColors: Record<string, string> = {
 		CRITICAL: 'bg-red-600 text-red-50',
@@ -107,14 +122,25 @@
 		}
 	}
 
+	/** Identify the main editable text field in an action payload (body, comment, message, etc.). */
+	function getEditableTextField(payload: Record<string, unknown>): string | null {
+		for (const key of ['body', 'comment', 'message', 'description']) {
+			if (typeof payload[key] === 'string' && (payload[key] as string).length > 0) return key;
+		}
+		return null;
+	}
+
 	function startEditing(action: { action_id: string; payload: Record<string, unknown> }) {
 		editingActionId = action.action_id;
 		const p = action.payload;
-		editedPayload = {
-			...(typeof p.to === 'string' ? { to: p.to } : {}),
-			...(typeof p.subject === 'string' ? { subject: p.subject } : {}),
-			...(typeof p.body === 'string' ? { body: p.body } : {})
-		};
+		// Extract all string fields for editing — works for email (to/subject/body),
+		// Bitbucket/GitHub (comment), Slack (message), Jira (comment), etc.
+		editedPayload = {};
+		for (const [key, value] of Object.entries(p)) {
+			if (typeof value === 'string' && value.length > 0) {
+				editedPayload[key] = value;
+			}
+		}
 	}
 
 	async function savePayload(action: { action_id: string; payload: Record<string, unknown> }) {
@@ -230,6 +256,27 @@
 		}
 		chatInputPreset.set(lines.join('\n'));
 		chatOpen.set(true);
+	}
+
+	// Research is available on cards without an active workspace, in eligible statuses
+	const researchEligible = $derived(
+		!card.has_workspace &&
+		['ready', 'done', 'dismissed', 'failed'].includes(card.status)
+	);
+
+	async function startResearch() {
+		startingResearch = true;
+		try {
+			await engineApi.startResearch(card.card_id, {
+				prompt: researchPrompt || undefined
+			});
+			card.status = 'agent_running';
+			card.has_workspace = true;
+			showResearchInput = false;
+			researchPrompt = '';
+		} finally {
+			startingResearch = false;
+		}
 	}
 </script>
 
@@ -385,53 +432,41 @@
 				{#each card.suggested_actions as action}
 					{@const isSelected = card.selected_action_id === action.action_id}
 					{@const payload = action.payload}
-					{@const hasBody = payload && typeof payload.body === 'string' && payload.body.length > 0}
+					{@const editableField = payload ? getEditableTextField(payload) : null}
 
-					<!-- Action payload preview -->
-					{#if hasBody}
+					<!-- Action payload preview — works for any action with editable text (email body, PR comment, Slack message, etc.) -->
+					{#if editableField}
 						{@const isEditing = editingActionId === action.action_id}
 						<div class="mb-2 rounded-lg border border-surface-700 bg-surface-900/50 p-3">
 							{#if !isEditing}
-								<!-- Read-only view -->
-								{#if payload.to}
-									<div class="mb-1.5 flex items-center gap-1.5 text-[11px]">
-										<span class="font-medium text-surface-500">To:</span>
-										<span class="text-surface-300">{payload.to}</span>
-									</div>
-								{/if}
-								{#if payload.subject}
-									<div class="mb-1.5 flex items-center gap-1.5 text-[11px]">
-										<span class="font-medium text-surface-500">Subject:</span>
-										<span class="text-surface-300">{payload.subject}</span>
-									</div>
-								{/if}
-								<div class="max-h-48 overflow-y-auto whitespace-pre-wrap text-laya-base text-surface-200">{payload.body}</div>
+								<!-- Read-only view: show metadata fields, then the main text -->
+								{#each Object.entries(payload) as [key, value]}
+									{#if typeof value === 'string' && value.length > 0 && key !== editableField}
+										<div class="mb-1.5 flex items-center gap-1.5 text-[11px]">
+											<span class="font-medium text-surface-500 capitalize">{key}:</span>
+											<span class="text-surface-300">{value}</span>
+										</div>
+									{/if}
+								{/each}
+								<div class="max-h-48 overflow-y-auto whitespace-pre-wrap text-laya-base text-surface-200">{payload[editableField]}</div>
 							{:else}
-								<!-- Edit mode -->
-								{#if payload.to}
-									<div class="mb-1.5 flex items-center gap-1.5 text-[11px]">
-										<span class="shrink-0 font-medium text-surface-500">To:</span>
-										<input
-											type="text"
-											class="w-full rounded border border-surface-600 bg-surface-800 px-1.5 py-0.5 text-[11px] text-surface-200 outline-none focus:border-laya-orange/50"
-											bind:value={editedPayload.to}
-										/>
-									</div>
-								{/if}
-								{#if payload.subject}
-									<div class="mb-1.5 flex items-center gap-1.5 text-[11px]">
-										<span class="shrink-0 font-medium text-surface-500">Subject:</span>
-										<input
-											type="text"
-											class="w-full rounded border border-surface-600 bg-surface-800 px-1.5 py-0.5 text-[11px] text-surface-200 outline-none focus:border-laya-orange/50"
-											bind:value={editedPayload.subject}
-										/>
-									</div>
-								{/if}
+								<!-- Edit mode: inputs for metadata, textarea for main text -->
+								{#each Object.entries(editedPayload) as [key]}
+									{#if key !== editableField}
+										<div class="mb-1.5 flex items-center gap-1.5 text-[11px]">
+											<span class="shrink-0 font-medium text-surface-500 capitalize">{key}:</span>
+											<input
+												type="text"
+												class="w-full rounded border border-surface-600 bg-surface-800 px-1.5 py-0.5 text-[11px] text-surface-200 outline-none focus:border-laya-orange/50"
+												bind:value={editedPayload[key]}
+											/>
+										</div>
+									{/if}
+								{/each}
 								<textarea
 									class="w-full resize-y rounded border border-surface-600 bg-surface-800 p-2 text-sm text-surface-200 outline-none focus:border-laya-orange/50"
 									rows="6"
-									bind:value={editedPayload.body}
+									bind:value={editedPayload[editableField]}
 								></textarea>
 							{/if}
 							<!-- Edit / Save / Cancel controls -->
@@ -519,7 +554,7 @@
 			</div>
 		{/if}
 
-		<!-- Metadata footer -->
+		<!-- Metadata -->
 		<div class="mt-4 border-t border-surface-700 pt-3">
 			<div class="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-surface-500">
 				{#if card.confidence}
@@ -534,19 +569,90 @@
 					<span>Created: {new Date(card.created_at).toLocaleString()}</span>
 				{/if}
 			</div>
-			<button
-				class="mt-2 text-xs text-laya-orange/70 hover:text-laya-orange transition-colors"
-				onclick={() => (showClassificationDialog = true)}
-			>
-				Adjust classification
-			</button>
 		</div>
 	</div>
 
-	<!-- Action buttons -->
-	<div class="border-t border-surface-700 px-5 py-3">
-		{#if card.status === 'ready'}
-			{#if showDismissInput}
+	<!-- Footer -->
+	<div class="border-t border-surface-700 px-5 py-2">
+		<!-- Secondary actions -->
+		<div class="flex items-center justify-end gap-1">
+			<button
+				class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-surface-200"
+				onclick={() => (showClassificationDialog = true)}
+			>
+				<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+				Classify
+			</button>
+			{#if onlink}
+				<button
+					class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-surface-200"
+					onclick={() => onlink(card)}
+				>
+					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+					Link
+				</button>
+			{/if}
+			{#if card.context_id}
+				<button
+					class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-red-400 disabled:opacity-50"
+					onclick={unlinkCard}
+					disabled={unlinkingCard}
+				>
+					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /><line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+					{unlinkingCard ? '...' : 'Unlink'}
+				</button>
+			{/if}
+			{#if researchEligible}
+				<button
+					class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-cyan-400"
+					onclick={() => (showResearchInput = true)}
+				>
+					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+					Research
+				</button>
+			{/if}
+			{#if card.status === 'archived'}
+				<button
+					class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-red-400 disabled:opacity-50"
+					onclick={() => (showDeleteConfirm = true)}
+					disabled={deleting}
+				>
+					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+					Delete
+				</button>
+			{/if}
+		</div>
+
+		<!-- Primary actions -->
+		<div class="mt-3">
+			{#if showResearchInput}
+				<div class="flex flex-col gap-2">
+					<div class="flex items-center gap-2 text-xs text-surface-400">
+						<svg class="h-3.5 w-3.5 text-cyan-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+						Start Research
+					</div>
+					<input
+						bind:value={researchPrompt}
+						placeholder="What would you like to research? (optional)"
+						class="flex-1 rounded-md border border-surface-600 bg-surface-900 px-2 py-1.5 text-xs text-surface-50 placeholder-surface-500"
+					/>
+					<div class="flex gap-2">
+						<button
+							class="flex-1 rounded-md bg-cyan-700/40 px-2 py-1.5 text-xs font-medium text-cyan-300 transition-colors hover:bg-cyan-700/60 disabled:opacity-50"
+							onclick={startResearch}
+							disabled={startingResearch}
+						>
+							{startingResearch ? 'Starting...' : 'Start'}
+						</button>
+						<button
+							class="text-sm text-surface-400 hover:text-surface-200"
+							onclick={() => { showResearchInput = false; researchPrompt = ''; }}
+						>
+							Cancel
+						</button>
+					</div>
+				</div>
+			{:else if showDismissInput}
 				<div class="flex gap-2">
 					<input
 						bind:value={dismissReason}
@@ -567,10 +673,10 @@
 						Cancel
 					</button>
 				</div>
-			{:else}
+			{:else if card.status === 'ready'}
 				<div class="flex gap-2">
 					<button
-						class="flex-1 rounded-md bg-green-700/40 px-2 py-1.5 text-xs font-medium text-green-300 transition-colors hover:bg-green-700/60"
+						class="flex-1 rounded-md bg-green-700/40 px-2 py-1.5 text-xs font-medium text-green-300 transition-colors hover:bg-green-700/60 disabled:opacity-50"
 						onclick={markDone}
 						disabled={markingDone}
 					>
@@ -583,111 +689,74 @@
 						Dismiss
 					</button>
 					<button
-						class="rounded-md bg-surface-700/30 px-2 py-1.5 text-xs font-medium text-surface-500 transition-colors hover:bg-surface-700"
+						class="flex-1 rounded-md bg-surface-700/30 px-2 py-1.5 text-xs font-medium text-surface-500 transition-colors hover:bg-surface-700 disabled:opacity-50"
 						onclick={archive}
 						disabled={archiving}
-						title="Archive this card"
 					>
 						{archiving ? '...' : 'Archive'}
 					</button>
 				</div>
-			{/if}
-		{:else if card.status === 'requires_approval'}
-			{#if showDismissInput}
-				<div class="flex gap-2">
-					<input
-						bind:value={dismissReason}
-						placeholder="Reason (optional)"
-						class="flex-1 rounded-md border border-surface-600 bg-surface-900 px-2 py-1.5 text-xs text-surface-50 placeholder-surface-500"
-					/>
-					<button
-						class="rounded-md bg-surface-600 px-3 py-1.5 text-xs font-medium text-surface-200 hover:bg-surface-500"
-						onclick={dismiss}
-						disabled={dismissing}
-					>
-						{dismissing ? '...' : 'Confirm'}
-					</button>
-					<button
-						class="text-sm text-surface-400 hover:text-surface-200"
-						onclick={() => (showDismissInput = false)}
-					>
-						Cancel
-					</button>
-				</div>
-			{:else}
+			{:else if card.status === 'requires_approval'}
 				<div class="flex gap-2">
 					<button
-						class="flex-1 rounded-md bg-green-700/40 px-2 py-1.5 text-xs font-medium text-green-300 transition-colors hover:bg-green-700/60"
-						onclick={markDone}
-						disabled={markingDone}
-					>
-						{markingDone ? '...' : 'Done'}
-					</button>
-					<button
-						class="flex-1 rounded-md bg-violet-700/40 px-2 py-1.5 text-xs font-medium text-violet-300 transition-colors hover:bg-violet-700/60"
+						class="flex-1 rounded-md bg-violet-700/40 px-2 py-1.5 text-xs font-medium text-violet-300 transition-colors hover:bg-violet-700/60 disabled:opacity-50"
 						onclick={approveAgent}
 						disabled={approvingAgent}
 					>
 						{approvingAgent ? '...' : 'Approve'}
 					</button>
 					<button
+						class="flex-1 rounded-md bg-green-700/40 px-2 py-1.5 text-xs font-medium text-green-300 transition-colors hover:bg-green-700/60 disabled:opacity-50"
+						onclick={markDone}
+						disabled={markingDone}
+					>
+						{markingDone ? '...' : 'Done'}
+					</button>
+					<button
 						class="flex-1 rounded-md bg-surface-700/50 px-2 py-1.5 text-xs font-medium text-surface-400 transition-colors hover:bg-surface-700"
 						onclick={() => (showDismissInput = true)}
 					>
 						Dismiss
 					</button>
 					<button
-						class="rounded-md bg-surface-700/30 px-2 py-1.5 text-xs font-medium text-surface-500 transition-colors hover:bg-surface-700"
+						class="flex-1 rounded-md bg-surface-700/30 px-2 py-1.5 text-xs font-medium text-surface-500 transition-colors hover:bg-surface-700 disabled:opacity-50"
 						onclick={archive}
 						disabled={archiving}
-						title="Archive this card"
+					>
+						{archiving ? '...' : 'Archive'}
+					</button>
+				</div>
+			{:else if card.status === 'dismissed' || card.status === 'archived' || card.status === 'done' || card.status === 'failed'}
+				<div class="flex gap-2">
+					<button
+						class="flex-1 rounded-md bg-laya-orange/15 px-2 py-1.5 text-xs font-medium text-laya-orange transition-colors hover:bg-laya-orange/25 disabled:opacity-50"
+						onclick={reopen}
+						disabled={reopening}
+					>
+						{reopening ? 'Reopening...' : card.status === 'archived' ? 'Unarchive' : card.status === 'failed' ? 'Retry' : 'Reopen'}
+					</button>
+					{#if card.status !== 'archived'}
+						<button
+							class="flex-1 rounded-md bg-surface-700/30 px-2 py-1.5 text-xs font-medium text-surface-500 transition-colors hover:bg-surface-700 disabled:opacity-50"
+							onclick={archive}
+							disabled={archiving}
+						>
+							{archiving ? '...' : 'Archive'}
+						</button>
+					{/if}
+				</div>
+			{:else}
+				<div class="flex gap-2">
+					<button
+						class="flex-1 rounded-md bg-surface-700/30 px-2 py-1.5 text-xs font-medium text-surface-500 transition-colors hover:bg-surface-700 disabled:opacity-50"
+						onclick={archive}
+						disabled={archiving}
 					>
 						{archiving ? '...' : 'Archive'}
 					</button>
 				</div>
 			{/if}
-		{:else if card.status === 'dismissed' || card.status === 'archived' || card.status === 'done' || card.status === 'failed'}
-			<div class="flex gap-2">
-				<button
-					class="flex-1 rounded-md bg-laya-orange/15 px-2 py-1.5 text-xs font-medium text-laya-orange transition-colors hover:bg-laya-orange/25 disabled:opacity-50"
-					onclick={reopen}
-					disabled={reopening}
-				>
-					{reopening ? 'Reopening...' : card.status === 'archived' ? 'Unarchive' : card.status === 'failed' ? 'Retry' : 'Reopen'}
-				</button>
-				{#if card.status !== 'archived'}
-					<button
-						class="rounded-lg bg-surface-700/30 px-3 py-2 text-sm font-medium text-surface-500 transition-colors hover:bg-surface-700 disabled:opacity-50"
-						onclick={archive}
-						disabled={archiving}
-					>
-						{archiving ? '...' : 'Archive'}
-					</button>
-				{/if}
-				{#if card.status === 'archived'}
-					<button
-						class="rounded-lg bg-red-950/60 px-3 py-2 text-sm text-red-400 transition-colors hover:bg-red-900/60 disabled:opacity-50"
-						onclick={() => (showDeleteConfirm = true)}
-						title="Delete permanently"
-						disabled={deleting}
-					>
-						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-						</svg>
-					</button>
-				{/if}
-			</div>
-		{:else}
-			<div class="flex gap-2">
-				<button
-					class="rounded-lg bg-surface-700/30 px-3 py-2 text-sm font-medium text-surface-500 transition-colors hover:bg-surface-700 disabled:opacity-50"
-					onclick={archive}
-					disabled={archiving}
-				>
-					{archiving ? '...' : 'Archive'}
-				</button>
-			</div>
-		{/if}
+		</div>
 	</div>
 </div>
 

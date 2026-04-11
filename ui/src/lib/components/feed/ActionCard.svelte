@@ -7,7 +7,7 @@
 	import { feedDate } from '$lib/stores/feedFilters';
 	import StatusDot from './StatusDot.svelte';
 
-	let { card, onselect, ondelete, selectedCardId = '', hasSelection = false, lastViewedCardId = '' }: { card: ActionCard; onselect: (card: ActionCard) => void; ondelete?: (cardId: string) => void; selectedCardId?: string; hasSelection?: boolean; lastViewedCardId?: string } = $props();
+	let { card, onselect, ondelete, onlink, selectedCardId = '', hasSelection = false, lastViewedCardId = '' }: { card: ActionCard; onselect: (card: ActionCard) => void; ondelete?: (cardId: string) => void; onlink?: (card: ActionCard) => void; selectedCardId?: string; hasSelection?: boolean; lastViewedCardId?: string } = $props();
 
 	const isSelected = $derived(card.card_id === selectedCardId);
 	// Show a persistent left accent bar on the last-viewed card after the detail panel closes
@@ -18,7 +18,6 @@
 	let dismissing = $state(false);
 	let archiving = $state(false);
 	let reopening = $state(false);
-	let copied = $state(false);
 	let showDeleteConfirm = $state(false);
 	let deleting = $state(false);
 	let actionMenuOpen = $state(false);
@@ -217,13 +216,6 @@
 		}
 	}
 
-	async function copyId(e: Event) {
-		e.stopPropagation();
-		await navigator.clipboard.writeText(card.card_id);
-		copied = true;
-		setTimeout(() => (copied = false), 1500);
-	}
-
 	function deleteCard(e: Event) {
 		e.stopPropagation();
 		showDeleteConfirm = false;
@@ -370,52 +362,41 @@
 					</button>
 					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Done</span>
 				</div>
-				<!-- Approve Agent -->
+				<!-- Dismiss -->
 				<div class="group/act relative">
 					<button
-						aria-label="Approve Agent"
-						class="flex h-6 w-6 items-center justify-center rounded-md text-violet-400/60 transition-all hover:bg-violet-500/15 hover:text-violet-400 disabled:opacity-40"
-						onclick={approveAgent}
-						disabled={approvingAgent}
+						aria-label="Dismiss"
+						class="flex h-6 w-6 items-center justify-center rounded-md text-surface-500 transition-all hover:bg-surface-500/15 hover:text-surface-300 disabled:opacity-40"
+						onclick={dismiss}
+						disabled={dismissing}
 					>
-						<svg class="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
-							<path d="M8 5v14l11-7z" />
-						</svg>
+						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12" /></svg>
 					</button>
-					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-violet-500/30 bg-surface-800 px-2 py-1 text-[10px] font-medium text-violet-400 opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Approve Agent</span>
+					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Dismiss</span>
 				</div>
-				<!-- Overflow: Dismiss + Archive -->
-				<div class="action-overflow-menu relative">
-					<button
-						class="flex h-6 w-6 items-center justify-center rounded-md text-surface-500 transition-all hover:bg-surface-700/50 hover:text-surface-300"
-						onclick={(e) => { e.stopPropagation(); actionMenuOpen = !actionMenuOpen; }}
-						aria-label="More actions"
-					>
-						<svg class="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20">
-							<path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM18 10a2 2 0 11-4 0 2 2 0 014 0z" />
-						</svg>
-					</button>
-					{#if actionMenuOpen}
-						<div class="absolute left-0 top-full z-50 mt-1 w-36 rounded-lg border border-surface-600 bg-surface-800 p-1 shadow-xl shadow-black/30" role="menu">
-							<button
-								class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-surface-200 disabled:opacity-40"
-								role="menuitem"
-								onclick={(e) => { actionMenuOpen = false; dismiss(e); }}
-								disabled={dismissing}
-							>
-								<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12" /></svg>
-								Dismiss
-							</button>
-							<button
-								class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400 disabled:opacity-40"
-								role="menuitem"
-								onclick={(e) => { actionMenuOpen = false; archive(e); }}
-								disabled={archiving}
-							>
-								<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
-								Archive
-							</button>
-							{#if card.has_workspace}
+				{#if card.has_workspace}
+					<!-- Overflow: Archive + Workspace -->
+					<div class="action-overflow-menu relative">
+						<button
+							class="flex h-6 w-6 items-center justify-center rounded-md text-surface-500 transition-all hover:bg-surface-700/50 hover:text-surface-300"
+							onclick={(e) => { e.stopPropagation(); actionMenuOpen = !actionMenuOpen; }}
+							aria-label="More actions"
+						>
+							<svg class="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20">
+								<path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM18 10a2 2 0 11-4 0 2 2 0 014 0z" />
+							</svg>
+						</button>
+						{#if actionMenuOpen}
+							<div class="absolute left-0 top-full z-50 mt-1 w-40 rounded-lg border border-surface-600 bg-surface-800 p-1 shadow-xl shadow-black/30" role="menu">
+								<button
+									class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400 disabled:opacity-40"
+									role="menuitem"
+									onclick={(e) => { actionMenuOpen = false; archive(e); }}
+									disabled={archiving}
+								>
+									<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
+									Archive
+								</button>
 								<button
 									class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-violet-400"
 									role="menuitem"
@@ -424,10 +405,25 @@
 									<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
 									Workspace
 								</button>
-							{/if}
-						</div>
-					{/if}
-				</div>
+							</div>
+						{/if}
+					</div>
+				{:else}
+					<!-- No workspace — Archive fits as 3rd button -->
+					<div class="group/act relative">
+						<button
+							aria-label="Archive"
+							class="flex h-6 w-6 items-center justify-center rounded-md text-red-400/60 transition-all hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40"
+							onclick={archive}
+							disabled={archiving}
+						>
+							<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+							</svg>
+						</button>
+						<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
+					</div>
+				{/if}
 			{:else if card.status === 'dismissed'}
 				<!-- Reopen -->
 				<div class="group/act relative">
@@ -581,27 +577,6 @@
 
 		<!-- Right: utility icons (appear on hover) + priority chip -->
 		<div class="flex items-center gap-0.5 min-w-0">
-			<!-- Copy card ID -->
-			<div class="group/act relative">
-				<span
-					role="button"
-					tabindex="0"
-					onclick={copyId}
-					onkeydown={(e) => e.key === 'Enter' && copyId(e)}
-					class="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md transition-all opacity-0 group-hover/card:opacity-100 {copied ? 'text-green-400' : 'text-surface-600 hover:bg-surface-700/50 hover:text-surface-300'}"
-				>
-					{#if copied}
-						<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-						</svg>
-					{:else}
-						<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-						</svg>
-					{/if}
-				</span>
-				<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">{copied ? 'Copied!' : 'Copy ID'}</span>
-			</div>
 			<!-- Chat -->
 			<div class="group/act relative">
 				<span
@@ -617,6 +592,24 @@
 				</span>
 				<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Chat</span>
 			</div>
+			<!-- Link to (only for standalone cards, not cards inside groups) -->
+			{#if onlink}
+				<div class="group/act relative">
+					<span
+						role="button"
+						tabindex="0"
+						onclick={(e: Event) => { e.stopPropagation(); onlink(card); }}
+						onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') { e.stopPropagation(); onlink(card); }}}
+						class="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md transition-all
+							text-surface-600 hover:bg-surface-700/50 hover:text-laya-orange opacity-0 group-hover/card:opacity-100"
+					>
+						<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+						</svg>
+					</span>
+					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Link to...</span>
+				</div>
+			{/if}
 			<!-- Bookmark -->
 			<div class="group/act relative">
 				<span
@@ -635,11 +628,22 @@
 				</span>
 				<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">{card.bookmarked_at ? 'Remove Bookmark' : 'Bookmark'}</span>
 			</div>
-			<!-- Status indicator -->
-			<span class="ml-1 flex items-center gap-1 min-w-0 overflow-hidden">
-				<StatusDot status={card.status} size="md" />
-				<span class="text-[11px] text-surface-400 truncate">{statusLabel[card.status] ?? card.status}</span>
-			</span>
+			<!-- Status indicator / Approve button -->
+			{#if card.status === 'requires_approval'}
+				<button
+					class="ml-1 flex items-center gap-1 rounded-full bg-violet-500/20 px-2 py-0.5 text-[11px] font-medium text-violet-400 transition-colors hover:bg-violet-500/30 disabled:opacity-40"
+					onclick={approveAgent}
+					disabled={approvingAgent}
+				>
+					<svg class="h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+					{approvingAgent ? 'Approving...' : 'Approve'}
+				</button>
+			{:else}
+				<span class="ml-1 flex items-center gap-1 min-w-0 overflow-hidden">
+					<StatusDot status={card.status} size="md" />
+					<span class="text-[11px] text-surface-400 truncate">{statusLabel[card.status] ?? card.status}</span>
+				</span>
+			{/if}
 			<!-- Priority chip -->
 			<span class="ml-1 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase {priorityColors[card.priority] ?? priorityColors.MEDIUM}">
 				{priorityLabel[card.priority] ?? card.priority}

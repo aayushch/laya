@@ -71,6 +71,7 @@ class CardResponse(BaseModel):
     space_color: str | None = None
     bookmarked_at: str | None = None
     group_active_at: str | None = None
+    context_id: str | None = None
 
 
 class CardsListResponse(BaseModel):
@@ -83,7 +84,7 @@ class CardsListResponse(BaseModel):
 
 
 class CardGroup(BaseModel):
-    """A group of cards that refer to the same entity (e.g. a Jira ticket)."""
+    """A group of cards that refer to the same entity or semantic context."""
 
     entity_id: str
     entity_title: str
@@ -95,6 +96,8 @@ class CardGroup(BaseModel):
     has_pending: bool
     cards: list[CardResponse]
     sort_key: str | None = None
+    context_id: str | None = None
+    context_label: str | None = None
 
 
 class GroupedCardsResponse(BaseModel):

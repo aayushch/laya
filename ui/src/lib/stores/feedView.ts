@@ -1,13 +1,12 @@
 import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
 
-export type FeedViewMode = 'card' | 'summary' | 'list';
+export type FeedViewMode = 'card' | 'list';
 
 const STORAGE_KEY = 'laya-feed-view';
 
-const initial: FeedViewMode = browser
-	? ((localStorage.getItem(STORAGE_KEY) as FeedViewMode) ?? 'card')
-	: 'card';
+const stored = browser ? localStorage.getItem(STORAGE_KEY) : null;
+const initial: FeedViewMode = (stored === 'card' || stored === 'list') ? stored : 'card';
 
 const { subscribe, set: _set } = writable<FeedViewMode>(initial);
 
@@ -25,17 +24,3 @@ export const feedViewMode = {
 	}
 };
 
-/** Backward-compatible derived check */
-export const showSummary = {
-	subscribe(fn: (val: boolean) => void) {
-		return feedViewMode.subscribe((mode) => fn(mode === 'summary'));
-	},
-	set(val: boolean) {
-		feedViewMode.set(val ? 'summary' : 'card');
-	},
-	update(fn: (val: boolean) => boolean) {
-		let current = false;
-		showSummary.subscribe((v) => (current = v))();
-		feedViewMode.set(fn(current) ? 'summary' : 'card');
-	}
-};

@@ -216,3 +216,126 @@ async def confirm_entity_link(
     except Exception as e:
         log.warning("entity_confirm_failed", error=str(e))
         return False
+
+
+async def confirm_context_link(
+    card_a_header: str,
+    card_a_summary: str,
+    card_b_header: str,
+    card_b_summary: str,
+    space_id: str | None = None,
+) -> tuple[bool, str]:
+    """LLM confirmation that two cards are about the same real-world context.
+
+    Unlike confirm_entity_link (which compares entity identifiers), this
+    compares full card content to decide whether two notifications relate
+    to the same underlying topic — e.g. a bill notification and a payment
+    receipt for that bill.
+
+    Injects learned context rules and recent user corrections when available
+    to improve accuracy over time.
+
+    Args:
+        card_a_header: Header of the first card.
+        card_a_summary: Summary of the first card.
+        card_b_header: Header of the second card.
+        card_b_summary: Summary of the second card.
+        space_id: Optional space for rule scoping.
+
+    Returns:
+        Tuple of (match: bool, label: str). Label is a short description
+        of the shared context when match is True, empty string otherwise.
+    """
+    # Fetch learned rules and recent corrections for prompt injection
+    feedback_section = ""
+    try:
+        from laya.pipeline.context_learn import (
+            format_context_feedback_section,
+            query_context_rules,
+            query_recent_context_corrections,
+        )
+        rules = await query_context_rules(space_id)
+        corrections = await query_recent_context_corrections(space_id, limit=10)
+        feedback_section = format_context_feedback_section(rules, corrections) or ""
+    except Exception as e:
+        log.debug("context_feedback_injection_failed", error=str(e))
+
+    feedback_prompt = f"\n\n{feedback_section}" if feedback_section else ""
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You determine whether two notifications are about the same "
+                "real-world context or topic. Two notifications are about the "
+                "same context if they refer to the same underlying event, item, "
+                "project, transaction, or situation — even if they come from "
+                "different senders or platforms. For example, a bill notification "
+                "and a payment receipt for that bill are the same context."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Are these two notifications about the same real-world context?\n\n"
+                f"Notification A:\n"
+                f"  Title: {card_a_header}\n"
+                f"  Summary: {card_a_summary[:300]}\n\n"
+                f"Notification B:\n"
+                f"  Title: {card_b_header}\n"
+                f"  Summary: {card_b_summary[:300]}\n\n"
+                f"{feedback_prompt}"
+                f"Respond with JSON matching the schema."
+            ),
+        },
+    ]
+
+    schema = {
+        "name": "context_match",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "match": {"type": "boolean"},
+                "reasoning": {"type": "string"},
+                "label": {
+                    "type": "string",
+                    "description": "Short label (under 50 chars) describing the shared context, e.g. 'April utility bill'. Empty if no match.",
+                },
+            },
+            "required": ["match", "reasoning", "label"],
+            "additionalProperties": False,
+        },
+    }
+
+    try:
+        response = await llm_call(
+            role="router",  # cheap model
+            messages=messages,
+            response_schema=schema,
+            step="context_confirm",
+            temperature=0.0,
+            max_tokens=200,
+        )
+
+        if response.parsed and response.parsed.get("match"):
+            label = response.parsed.get("label", "")
+            log.info(
+                "context_link_confirmed",
+                card_a=card_a_header,
+                card_b=card_b_header,
+                label=label,
+            )
+            return True, label
+
+        log.debug(
+            "context_link_rejected",
+            card_a=card_a_header,
+            card_b=card_b_header,
+            reasoning=response.parsed.get("reasoning", "") if response.parsed else "",
+        )
+        return False, ""
+
+    except Exception as e:
+        log.warning("context_confirm_failed", error=str(e))
+        return False, ""

@@ -16,6 +16,29 @@ from laya.api.dashboard_api import MODEL_PRICING  # noqa: E402
 
 _DEFAULT_PRICING = {"input": 1.0, "output": 3.0}
 
+# Maps audit_log step values to high-level features for cost breakdown.
+STEP_TO_FEATURE: dict[str, str] = {
+    "route": "Pulse",
+    "stage": "Pulse",
+    "emit": "Pulse",
+    "entity_confirm": "Pulse",
+    "context_confirm": "Pulse",
+    "context_learn": "Pulse",
+    "learn": "Pulse",
+    "summarize": "Pulse",
+    "worker": "Pulse",
+    "trace": "Coherence",
+    "trace_filter": "Coherence",
+    "trace_summary": "Coherence",
+    "omni_resynthesis": "Omni",
+    "chat": "Chat",
+    "briefing": "Briefing",
+    "egress_draft": "Egress",
+    "execute": "Egress",
+    "lifecycle": "System",
+    "recovery": "System",
+}
+
 
 def _current_year_month_local(tz_name: str = "America/New_York") -> str:
     """Return 'YYYY-MM' in the user's configured timezone."""
@@ -82,35 +105,44 @@ async def get_current_month_cost(tz_name: str | None = None) -> dict:
 
     db = await get_db()
     rows = await db.execute_fetchall(
-        """SELECT model_used,
+        """SELECT model_used, step,
                   SUM(input_tokens) as total_in,
                   SUM(output_tokens) as total_out
            FROM audit_log
            WHERE timestamp > ? AND success = 1
-           GROUP BY model_used""",
+           GROUP BY model_used, step""",
         (month_start_utc,),
     )
 
     total_cost = 0.0
     by_model: dict[str, float] = {}
+    by_step: dict[str, float] = {}
+    by_feature: dict[str, float] = {}
     total_in = 0
     total_out = 0
 
     for row in rows:
         model = row[0] or "unknown"
-        in_tokens = row[1] or 0
-        out_tokens = row[2] or 0
+        step = row[1] or "unknown"
+        in_tokens = row[2] or 0
+        out_tokens = row[3] or 0
         total_in += in_tokens
         total_out += out_tokens
         pricing = MODEL_PRICING.get(model, _DEFAULT_PRICING)
         cost = (in_tokens * pricing["input"] + out_tokens * pricing["output"]) / 1_000_000
-        by_model[model] = round(cost, 4)
+
+        by_model[model] = round(by_model.get(model, 0.0) + cost, 4)
+        by_step[step] = round(by_step.get(step, 0.0) + cost, 4)
+        feature = STEP_TO_FEATURE.get(step, "Other")
+        by_feature[feature] = round(by_feature.get(feature, 0.0) + cost, 4)
         total_cost += cost
 
     return {
         "year_month": year_month,
         "total_cost_usd": round(total_cost, 4),
         "by_model": by_model,
+        "by_feature": by_feature,
+        "by_step": by_step,
         "total_input_tokens": total_in,
         "total_output_tokens": total_out,
     }

@@ -80,6 +80,7 @@ def _row_to_card(row) -> CardResponse:
         space_color=row["space_color"] if "space_color" in row.keys() else None,
         bookmarked_at=row["bookmarked_at"] if "bookmarked_at" in row.keys() else None,
         group_active_at=row["group_active_at"] if "group_active_at" in row.keys() else None,
+        context_id=row["context_id"] if "context_id" in row.keys() else None,
     )
 
 
@@ -236,7 +237,7 @@ async def get_grouped_cards(
                    c.status, c.privacy_tier, c.has_workspace, c.resolved_at, c.user_feedback,
                    c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at,
                    c.entity_id, c.source_ref, c.source_url, c.selected_action_id,
-                   c.space_id, c.bookmarked_at, c.group_active_at,
+                   c.space_id, c.bookmarked_at, c.group_active_at, c.context_id,
                    e.actor_name, e.actor_email,
                    s.name AS space_name, s.color AS space_color
             FROM action_cards c
@@ -247,12 +248,20 @@ async def get_grouped_cards(
         params,
     )
 
+    # Determine grouping mode: context_id (smart grouping) vs entity_id
+    from laya.config import load_settings
+    settings = load_settings()
+    smart_grouping = settings.get("smart_grouping", {}).get("smart_display", True)
+
     groups: dict[str, list] = {}
     for row in rows:
-        eid = row["entity_id"] or f"singleton:{row['card_id']}"
-        if eid not in groups:
-            groups[eid] = []
-        groups[eid].append(row)
+        if smart_grouping:
+            group_key = row["context_id"] or row["entity_id"] or f"singleton:{row['card_id']}"
+        else:
+            group_key = row["entity_id"] or f"singleton:{row['card_id']}"
+        if group_key not in groups:
+            groups[group_key] = []
+        groups[group_key].append(row)
 
     event_ids = [rows_list[0]["event_id"] for rows_list in groups.values()]
     event_meta: dict[str, dict] = {}
@@ -265,8 +274,22 @@ async def get_grouped_cards(
         for ev in ev_rows:
             event_meta[ev["event_id"]] = dict(ev)
 
+    # Pre-fetch context group labels for smart grouping
+    context_labels: dict[str, str] = {}
+    if smart_grouping:
+        context_ids = [k for k in groups if k.startswith("ctx_")]
+        if context_ids:
+            placeholders = ",".join("?" * len(context_ids))
+            ctx_rows = await db.execute_fetchall(
+                f"SELECT context_id, label FROM context_groups WHERE context_id IN ({placeholders})",
+                context_ids,
+            )
+            for cr in ctx_rows:
+                if cr["label"]:
+                    context_labels[cr["context_id"]] = cr["label"]
+
     result: list[CardGroup] = []
-    for entity_id, entity_rows in groups.items():
+    for group_key, entity_rows in groups.items():
         cards = [_row_to_card(r) for r in entity_rows]
         meta = event_meta.get(entity_rows[0]["event_id"], {})
         top_priority = min(
@@ -275,10 +298,21 @@ async def get_grouped_cards(
         )
         latest_at = max((c.created_at or "") for c in cards)
         has_pending = any(c.status in ("pending", "ready", "requires_approval") for c in cards)
+
+        # Resolve context group metadata
+        is_context_group = group_key.startswith("ctx_")
+        context_id = group_key if is_context_group else None
+        context_label = context_labels.get(group_key) if is_context_group else None
+
+        # For context groups, entity_id is the first card's entity_id;
+        # entity_title uses context_label when available
+        entity_id_val = entity_rows[0]["entity_id"] or group_key
+        entity_title = context_label or meta.get("subject_title") or entity_id_val
+
         result.append(
             CardGroup(
-                entity_id=entity_id,
-                entity_title=meta.get("subject_title") or entity_id,
+                entity_id=entity_id_val,
+                entity_title=entity_title,
                 entity_url=meta.get("subject_url"),
                 platform=meta.get("source_platform", ""),
                 card_count=len(cards),
@@ -286,6 +320,8 @@ async def get_grouped_cards(
                 latest_at=latest_at,
                 has_pending=has_pending,
                 cards=cards,
+                context_id=context_id,
+                context_label=context_label,
             )
         )
 
@@ -1082,6 +1118,171 @@ class RunAgentRequest(BaseModel):
     images: list[str] | None = None  # Absolute paths to uploaded images
 
 
+class StartResearchRequest(BaseModel):
+    prompt: str | None = None  # Optional user focus question
+    directory: str | None = None  # Optional working dir (defaults to ~/.laya/tmp/research/<card_id>/)
+
+
+async def _stream_agent_to_card(
+    card_id: str,
+    prompt: str,
+    directory: str,
+    agent_type: "Any",
+    space_id: str | None = None,
+    add_dirs: list[str] | None = None,
+    mode: str | None = None,
+    research: bool = False,
+) -> None:
+    """Shared background task: spawn agent, stream events, update card status.
+
+    Used by both run_agent() and start_research() endpoints. Handles the
+    full lifecycle: session spawn, event streaming, status transitions,
+    findings extraction, and session completion.
+    """
+    from laya.agents import session_manager
+    from laya.models.workspace import SessionStatus
+
+    try:
+        session_id, agent = await session_manager.start_session(
+            card_id=card_id,
+            prompt=prompt,
+            repo_path=directory,
+            agent_type=agent_type,
+            space_id=space_id,
+            add_dirs=add_dirs,
+            mode=mode,
+            research=research,
+        )
+    except Exception as e:
+        log.error("agent_spawn_failed", card_id=card_id, error=str(e))
+        db2 = await get_db()
+        await db2.execute(
+            "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_spawn', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            (card_id,),
+        )
+        await db2.commit()
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": card_id, "payload": {"status": "failed"}}
+        )
+        return
+
+    # Broadcast workspace availability
+    await manager.broadcast(
+        {"type": "card_updated", "card_id": card_id, "payload": {"has_workspace": True, "session_id": session_id}}
+    )
+
+    # Stream events
+    findings: dict[str, Any] = {}
+    cc_session_id_stored = False
+
+    try:
+        async for ws_event in agent.stream_events():
+            inserted = await session_manager.store_workspace_event(ws_event)
+            if not inserted:
+                continue
+
+            if not cc_session_id_stored and hasattr(agent, "cc_session_id") and agent.cc_session_id:
+                await session_manager.store_cc_session_id(session_id, agent.cc_session_id)
+                cc_session_id_stored = True
+
+            if ws_event.event_type.value == "approval_request":
+                if ws_event.content.get("ask_user_question"):
+                    db3 = await get_db()
+                    await db3.execute(
+                        "UPDATE action_cards SET status = 'awaiting_input', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+                        (card_id,),
+                    )
+                    await db3.commit()
+                    await manager.broadcast(
+                        {"type": "card_updated", "card_id": card_id, "payload": {"status": "awaiting_input"}}
+                    )
+                await manager.broadcast(
+                    {"type": "approval_request", "card_id": card_id, "session_id": session_id, "payload": ws_event.content}
+                )
+            elif ws_event.event_type.value == "error":
+                findings["last_error"] = ws_event.content.get("error", "")
+                await manager.broadcast(
+                    {"type": "agent_error", "card_id": card_id, "session_id": session_id, "payload": ws_event.content}
+                )
+
+            if ws_event.event_type.value == "agent_message" and ws_event.content.get("is_plan"):
+                findings["agent_plan"] = ws_event.content.get("text", "")
+            if ws_event.event_type.value == "status_change":
+                if ws_event.content.get("status") == "result_received":
+                    findings["agent_result"] = ws_event.content.get("result", "")
+
+    except Exception as e:
+        log.error("agent_stream_error", session_id=session_id, error=str(e))
+        await session_manager.complete_session(session_id, error=str(e))
+        db4 = await get_db()
+        await db4.execute(
+            "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_execution', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            (card_id,),
+        )
+        await db4.commit()
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": card_id, "payload": {"status": "failed"}}
+        )
+        return
+
+    # Complete session and update card status
+    final_status = agent.get_status()
+    db5 = await get_db()
+
+    if final_status == SessionStatus.COMPLETED:
+        await session_manager.complete_session(session_id, findings=findings)
+
+        agent_plan = findings.get("agent_plan", "")
+        agent_result = findings.get("agent_result", "")
+        staged_content = agent_plan or agent_result
+        if staged_content:
+            staged_type = "agent_plan" if agent_plan else "agent_result"
+            await db5.execute(
+                "UPDATE action_cards SET staged_output = ?, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+                (json.dumps({"type": staged_type, "content": staged_content}), card_id),
+            )
+
+        has_unanswered = await session_manager.has_unanswered_questions(session_id)
+        card_status = "awaiting_input" if has_unanswered else "ready"
+
+        await db5.execute(
+            "UPDATE action_cards SET status = ?, failed_stage = NULL, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            (card_status, card_id),
+        )
+        await db5.commit()
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": card_id, "payload": {"status": card_status}}
+        )
+        await manager.broadcast(
+            {"type": "agent_completed", "card_id": card_id, "session_id": session_id, "payload": {"findings": findings}}
+        )
+    elif final_status == SessionStatus.CANCELLED:
+        await session_manager.complete_session(session_id, error="Cancelled by user")
+        await db5.execute(
+            "UPDATE action_cards SET status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            (card_id,),
+        )
+        await db5.commit()
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": card_id, "payload": {"status": "ready"}}
+        )
+    else:
+        last_error = findings.get("last_error", "")
+        error_msg = f"Agent ended with status: {final_status.value}"
+        if last_error:
+            error_msg += f" — {last_error}"
+        log.error("agent_failed", session_id=session_id, error=error_msg)
+        await session_manager.complete_session(session_id, error=error_msg)
+        await db5.execute(
+            "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_execution', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            (card_id,),
+        )
+        await db5.commit()
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": card_id, "payload": {"status": "failed"}}
+        )
+
+
 @router.post("/upload-agent-image")
 async def upload_agent_image(file: UploadFile = File(...)) -> dict:
     """Upload an image for use with an agent run.
@@ -1225,148 +1426,15 @@ async def run_agent(body: RunAgentRequest) -> dict:
 
     # Spawn agent in background
     async def _run_agent_task() -> None:
-        """Background task: spawn agent, stream events, update card status."""
-        try:
-            session_id, agent = await session_manager.start_session(
-                card_id=card_id,
-                prompt=effective_prompt,
-                repo_path=body.directory,
-                agent_type=agent_type,
-                space_id=body.space_id,
-                add_dirs=body.add_dirs,
-                mode=body.mode,
-            )
-        except Exception as e:
-            log.error("run_agent_spawn_failed", card_id=card_id, error=str(e))
-            db2 = await get_db()
-            await db2.execute(
-                "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_spawn', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-                (card_id,),
-            )
-            await db2.commit()
-            await manager.broadcast(
-                {"type": "card_updated", "card_id": card_id, "payload": {"status": "failed"}}
-            )
-            return
-
-        # Broadcast workspace availability
-        await manager.broadcast(
-            {"type": "card_updated", "card_id": card_id, "payload": {"has_workspace": True, "session_id": session_id}}
+        await _stream_agent_to_card(
+            card_id=card_id,
+            prompt=effective_prompt,
+            directory=body.directory,
+            agent_type=agent_type,
+            space_id=body.space_id,
+            add_dirs=body.add_dirs,
+            mode=body.mode,
         )
-
-        # Stream events (same pattern as run_engineer_from_prompt)
-        findings: dict[str, Any] = {}
-        cc_session_id_stored = False
-
-        try:
-            async for ws_event in agent.stream_events():
-                inserted = await session_manager.store_workspace_event(ws_event)
-                if not inserted:
-                    continue
-
-                if not cc_session_id_stored and hasattr(agent, "cc_session_id") and agent.cc_session_id:
-                    await session_manager.store_cc_session_id(session_id, agent.cc_session_id)
-                    cc_session_id_stored = True
-
-                if ws_event.event_type.value == "approval_request":
-                    if ws_event.content.get("ask_user_question"):
-                        db3 = await get_db()
-                        await db3.execute(
-                            "UPDATE action_cards SET status = 'awaiting_input', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-                            (card_id,),
-                        )
-                        await db3.commit()
-                        await manager.broadcast(
-                            {"type": "card_updated", "card_id": card_id, "payload": {"status": "awaiting_input"}}
-                        )
-                    await manager.broadcast(
-                        {"type": "approval_request", "card_id": card_id, "session_id": session_id, "payload": ws_event.content}
-                    )
-                elif ws_event.event_type.value == "error":
-                    findings["last_error"] = ws_event.content.get("error", "")
-                    await manager.broadcast(
-                        {"type": "agent_error", "card_id": card_id, "session_id": session_id, "payload": ws_event.content}
-                    )
-
-                if ws_event.event_type.value == "agent_message" and ws_event.content.get("is_plan"):
-                    findings["agent_plan"] = ws_event.content.get("text", "")
-                if ws_event.event_type.value == "status_change":
-                    if ws_event.content.get("status") == "result_received":
-                        findings["agent_result"] = ws_event.content.get("result", "")
-
-        except Exception as e:
-            log.error("run_agent_stream_error", session_id=session_id, error=str(e))
-            await session_manager.complete_session(session_id, error=str(e))
-            db4 = await get_db()
-            await db4.execute(
-                "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_execution', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-                (card_id,),
-            )
-            await db4.commit()
-            await manager.broadcast(
-                {"type": "card_updated", "card_id": card_id, "payload": {"status": "failed"}}
-            )
-            return
-
-        # Complete session and update card status
-        from laya.models.workspace import SessionStatus
-
-        final_status = agent.get_status()
-        db5 = await get_db()
-
-        if final_status == SessionStatus.COMPLETED:
-            await session_manager.complete_session(session_id, findings=findings)
-
-            agent_plan = findings.get("agent_plan", "")
-            agent_result = findings.get("agent_result", "")
-            staged_content = agent_plan or agent_result
-            if staged_content:
-                staged_type = "agent_plan" if agent_plan else "agent_result"
-                await db5.execute(
-                    "UPDATE action_cards SET staged_output = ?, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-                    (json.dumps({"type": staged_type, "content": staged_content}), card_id),
-                )
-
-            has_unanswered = await session_manager.has_unanswered_questions(session_id)
-            card_status = "awaiting_input" if has_unanswered else "ready"
-
-            await db5.execute(
-                "UPDATE action_cards SET status = ?, failed_stage = NULL, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-                (card_status, card_id),
-            )
-            await db5.commit()
-            await manager.broadcast(
-                {"type": "card_updated", "card_id": card_id, "payload": {"status": card_status}}
-            )
-            await manager.broadcast(
-                {"type": "agent_completed", "card_id": card_id, "session_id": session_id, "payload": {"findings": findings}}
-            )
-        elif final_status == SessionStatus.CANCELLED:
-            await session_manager.complete_session(session_id, error="Cancelled by user")
-            await db5.execute(
-                "UPDATE action_cards SET status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-                (card_id,),
-            )
-            await db5.commit()
-            await manager.broadcast(
-                {"type": "card_updated", "card_id": card_id, "payload": {"status": "ready"}}
-            )
-        else:
-            last_error = findings.get("last_error", "")
-            error_msg = f"Agent ended with status: {final_status.value}"
-            if last_error:
-                error_msg += f" — {last_error}"
-            log.error("run_agent_failed", session_id=session_id, error=error_msg)
-            await session_manager.complete_session(session_id, error=error_msg)
-            await db5.execute(
-                "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_execution', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-                (card_id,),
-            )
-            await db5.commit()
-            await manager.broadcast(
-                {"type": "card_updated", "card_id": card_id, "payload": {"status": "failed"}}
-            )
-
         # Clean up uploaded images after agent finishes (regardless of outcome)
         if body.images:
             for img_path in body.images:
@@ -1382,3 +1450,309 @@ async def run_agent(body: RunAgentRequest) -> dict:
 
     log.info("run_agent_initiated", card_id=card_id, agent_type=agent_type.value)
     return {"status": "agent_running", "card_id": card_id}
+
+
+@router.post("/cards/{card_id}/start-research")
+async def start_research(card_id: str, body: StartResearchRequest) -> dict:
+    """Start a research agent session on an existing card.
+
+    Unlike run-agent (which creates a new card), this attaches a workspace
+    to an existing card of any persona. Builds a research-oriented prompt
+    from the card's context and spawns the configured agent.
+    """
+    from laya.agents import session_manager
+    from laya.config import LAYA_HOME, load_settings
+    from laya.llm.prompts.research import build_research_prompt
+
+    db = await get_db()
+
+    # Fetch card
+    rows = await db.execute_fetchall(
+        "SELECT card_id, event_id, status, header, summary, intelligence, space_id FROM action_cards WHERE card_id = ?",
+        (card_id,),
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    card = rows[0]
+
+    # Validate status — reject statuses where research doesn't make sense
+    blocked = {"agent_running", "awaiting_input", "archived", "pending"}
+    if card["status"] in blocked:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot start research on card with status '{card['status']}'"
+        )
+
+    # Validate agent is configured
+    settings = load_settings()
+    agent_setting = settings.get("coding_agent", "none")
+    if agent_setting == "none":
+        raise HTTPException(
+            status_code=409,
+            detail="No agent configured. Set a coding agent in Settings to use research."
+        )
+
+    agent_type = session_manager.get_configured_agent_type()
+
+    # Fetch source event body for context
+    event_body = ""
+    platform = "unknown"
+    event_rows = await db.execute_fetchall(
+        "SELECT content_body, source_platform FROM events WHERE event_id = ?",
+        (card["event_id"],),
+    )
+    if event_rows:
+        event_body = event_rows[0]["content_body"] or ""
+        platform = event_rows[0]["source_platform"] or "unknown"
+
+    # Parse intelligence
+    intelligence: list[str] = []
+    if card["intelligence"]:
+        try:
+            parsed = json.loads(card["intelligence"])
+            if isinstance(parsed, list):
+                intelligence = parsed
+        except json.JSONDecodeError:
+            pass
+
+    # Build research prompt
+    research_prompt = build_research_prompt(
+        header=card["header"] or "",
+        summary=card["summary"] or "",
+        intelligence=intelligence,
+        event_body=event_body,
+        platform=platform,
+        user_question=body.prompt,
+    )
+
+    # Resolve working directory
+    if body.directory:
+        directory = body.directory
+    else:
+        research_dir = LAYA_HOME / "tmp" / "research" / card_id
+        research_dir.mkdir(parents=True, exist_ok=True)
+        directory = str(research_dir)
+
+    # Update card: set status, workspace flag, and store the research prompt
+    now = datetime.now(timezone.utc).isoformat()
+    await db.execute(
+        """UPDATE action_cards
+           SET status = 'agent_running', has_workspace = 1, agent_prompt = ?, updated_at = ?
+           WHERE card_id = ?""",
+        (research_prompt, now, card_id),
+    )
+    await db.commit()
+
+    # Broadcast status change
+    await manager.broadcast(
+        {"type": "card_updated", "card_id": card_id, "payload": {"status": "agent_running", "has_workspace": True}}
+    )
+
+    # Spawn agent in background — research=True enables web search + file writes
+    asyncio.create_task(
+        _stream_agent_to_card(
+            card_id=card_id,
+            prompt=research_prompt,
+            directory=directory,
+            agent_type=agent_type,
+            space_id=card["space_id"],
+            research=True,
+        ),
+        name=f"research_{card_id}",
+    )
+
+    log.info("start_research_initiated", card_id=card_id, has_user_prompt=bool(body.prompt))
+    return {"status": "agent_running", "card_id": card_id}
+
+
+# ---------- Context Group Management ----------
+
+
+class MergeCardsRequest(BaseModel):
+    card_ids: list[str]
+
+
+@router.get("/cards/groups/{context_id}")
+async def get_context_group(context_id: str):
+    """Get context group metadata and member entity_ids."""
+    db = await get_db()
+    group_row = await db.execute_fetchall(
+        "SELECT * FROM context_groups WHERE context_id = ?", (context_id,)
+    )
+    if not group_row:
+        raise HTTPException(status_code=404, detail="Context group not found")
+
+    members = await db.execute_fetchall(
+        "SELECT entity_id, confidence, link_method, added_at FROM context_group_members WHERE context_id = ?",
+        (context_id,),
+    )
+    cards = await db.execute_fetchall(
+        "SELECT card_id, header, entity_id, status FROM action_cards WHERE context_id = ?",
+        (context_id,),
+    )
+
+    return {
+        "context_id": context_id,
+        "label": group_row[0]["label"],
+        "user_confirmed": bool(group_row[0]["user_confirmed"]),
+        "user_split": bool(group_row[0]["user_split"]),
+        "created_at": group_row[0]["created_at"],
+        "members": [dict(m) for m in members],
+        "cards": [{"card_id": c["card_id"], "header": c["header"], "entity_id": c["entity_id"], "status": c["status"]} for c in cards],
+    }
+
+
+@router.post("/cards/groups/{context_id}/unlink")
+async def unlink_context_group(context_id: str):
+    """Split a context group — cards revert to entity_id grouping.
+
+    Sets user_split=TRUE so the system won't re-merge these cards.
+    """
+    db = await get_db()
+    group_row = await db.execute_fetchall(
+        "SELECT context_id FROM context_groups WHERE context_id = ?", (context_id,)
+    )
+    if not group_row:
+        raise HTTPException(status_code=404, detail="Context group not found")
+
+    # Fetch cards in this group before unlinking (for correction recording)
+    group_cards = await db.execute_fetchall(
+        """SELECT c.card_id, c.header, c.summary, c.space_id, e.source_platform
+           FROM action_cards c
+           LEFT JOIN events e ON c.event_id = e.event_id
+           WHERE c.context_id = ?""",
+        (context_id,),
+    )
+
+    # Mark as user-split so resolve_context_group won't re-merge
+    await db.execute(
+        "UPDATE context_groups SET user_split = TRUE WHERE context_id = ?",
+        (context_id,),
+    )
+    # Remove context_id from all member cards
+    await db.execute(
+        "UPDATE action_cards SET context_id = NULL WHERE context_id = ?",
+        (context_id,),
+    )
+
+    # Record unlink corrections for learning (pairwise between all cards)
+    if len(group_cards) >= 2:
+        space_id = group_cards[0]["space_id"]
+        for i in range(len(group_cards)):
+            for j in range(i + 1, len(group_cards)):
+                a, b = group_cards[i], group_cards[j]
+                try:
+                    await db.execute(
+                        """INSERT INTO context_corrections
+                           (card_id_a, card_id_b, header_a, header_b, summary_a, summary_b,
+                            platform_a, platform_b, action, space_id)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'unlink', ?)""",
+                        (a["card_id"], b["card_id"], a["header"], b["header"],
+                         a["summary"], b["summary"],
+                         a["source_platform"], b["source_platform"], space_id),
+                    )
+                except Exception as e:
+                    log.debug("context_correction_insert_failed", error=str(e))
+
+    await db.commit()
+
+    log.info("context_group_unlinked", context_id=context_id)
+    await manager.broadcast({"type": "context_group_unlinked", "payload": {"context_id": context_id}})
+    return {"status": "unlinked", "context_id": context_id}
+
+
+@router.post("/cards/groups/merge")
+async def merge_cards(body: MergeCardsRequest):
+    """Manually merge cards into a context group.
+
+    Creates a user-confirmed context group for the specified cards.
+    """
+    import uuid
+
+    if len(body.card_ids) < 2:
+        raise HTTPException(status_code=400, detail="At least 2 card_ids required")
+
+    db = await get_db()
+
+    # Fetch all specified cards (include summary + platform for correction recording)
+    placeholders = ",".join("?" * len(body.card_ids))
+    cards = await db.execute_fetchall(
+        f"""SELECT c.card_id, c.entity_id, c.context_id, c.header, c.summary, c.space_id,
+                   e.source_platform
+            FROM action_cards c
+            LEFT JOIN events e ON c.event_id = e.event_id
+            WHERE c.card_id IN ({placeholders})""",
+        body.card_ids,
+    )
+    if len(cards) < 2:
+        raise HTTPException(status_code=404, detail="Not enough valid cards found")
+
+    # Check if any card already belongs to a context group — extend it
+    existing_context_id = None
+    for c in cards:
+        if c["context_id"]:
+            existing_context_id = c["context_id"]
+            break
+
+    if existing_context_id:
+        context_id = existing_context_id
+        # Update the group to user-confirmed and clear any user_split
+        await db.execute(
+            "UPDATE context_groups SET user_confirmed = TRUE, user_split = FALSE WHERE context_id = ?",
+            (context_id,),
+        )
+    else:
+        context_id = f"ctx_{uuid.uuid4().hex[:12]}"
+        # Use the first card's header as the label
+        label = cards[0]["header"]
+        if len(label) > 60:
+            label = label[:57] + "..."
+        await db.execute(
+            "INSERT INTO context_groups (context_id, label, user_confirmed) VALUES (?, ?, TRUE)",
+            (context_id, label),
+        )
+
+    # Assign context_id to all cards and register entity memberships
+    for c in cards:
+        await db.execute(
+            "UPDATE action_cards SET context_id = ? WHERE card_id = ?",
+            (context_id, c["card_id"]),
+        )
+        if c["entity_id"]:
+            await db.execute(
+                "INSERT OR IGNORE INTO context_group_members (context_id, entity_id, confidence, link_method) VALUES (?, ?, 1.0, 'user')",
+                (context_id, c["entity_id"]),
+            )
+    await db.commit()
+
+    # Record link corrections for learning (pairwise between cards from different entity groups)
+    space_id = cards[0]["space_id"] if cards else None
+    seen_pairs: set[tuple[str, str]] = set()
+    for i in range(len(cards)):
+        for j in range(i + 1, len(cards)):
+            a, b = cards[i], cards[j]
+            # Only record pairs from different entity groups (same-entity links are redundant)
+            if a["entity_id"] and b["entity_id"] and a["entity_id"] == b["entity_id"]:
+                continue
+            pair_key = tuple(sorted([a["card_id"], b["card_id"]]))
+            if pair_key in seen_pairs:
+                continue
+            seen_pairs.add(pair_key)
+            try:
+                await db.execute(
+                    """INSERT INTO context_corrections
+                       (card_id_a, card_id_b, header_a, header_b, summary_a, summary_b,
+                        platform_a, platform_b, action, space_id)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'link', ?)""",
+                    (a["card_id"], b["card_id"], a["header"], b["header"],
+                     a["summary"], b["summary"],
+                     a["source_platform"], b["source_platform"], space_id),
+                )
+            except Exception as e:
+                log.debug("context_correction_insert_failed", error=str(e))
+    await db.commit()
+
+    log.info("context_group_merged", context_id=context_id, card_count=len(cards))
+    await manager.broadcast({"type": "context_group_merged", "payload": {"context_id": context_id}})
+    return {"status": "merged", "context_id": context_id, "card_count": len(cards)}
