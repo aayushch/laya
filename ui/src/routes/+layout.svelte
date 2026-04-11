@@ -353,7 +353,7 @@
 					<div class="flex items-center gap-0.5">
 						<!-- Cost amount → status page breakdown -->
 						<a
-							href="/status"
+							href="/status#cost"
 							class="rounded-md px-1.5 py-0.5 font-medium tabular-nums transition-colors hover:bg-surface-800 {$budgetPaused ? 'text-red-400 hover:text-red-300' : $budgetRatio != null && $budgetRatio >= 0.75 ? 'text-amber-400 hover:text-amber-300' : 'text-surface-400 hover:text-surface-200'}"
 							title="LLM cost this month — click for breakdown"
 						>

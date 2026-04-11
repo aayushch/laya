@@ -69,6 +69,13 @@
 			dashError = e instanceof Error ? e.message : 'Failed to load analytics';
 		} finally {
 			dashLoading = false;
+			// Scroll to hash anchor after data loads (e.g. #cost from footer link)
+			if (window.location.hash) {
+				requestAnimationFrame(() => {
+					const el = document.querySelector(window.location.hash);
+					el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+				});
+			}
 		}
 	}
 
@@ -312,7 +319,7 @@
 					color="text-emerald-400"
 				/>
 				<StatCard
-					label="Time Saved"
+					label="Time Saved (BETA)"
 					value={formatTime(dashboard.time_saved.total_minutes)}
 					color="text-amber-400"
 				/>
@@ -351,7 +358,7 @@
 			{/if}
 
 			{#if dashboard.llm_costs.by_feature && Object.keys(dashboard.llm_costs.by_feature).length > 0}
-				<div class="mt-3">
+				<div id="cost" class="mt-3">
 					<FeatureCostChart
 						byFeature={dashboard.llm_costs.by_feature}
 						byStep={dashboard.llm_costs.by_step}
