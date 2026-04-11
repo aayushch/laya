@@ -253,11 +253,24 @@
 		{/if}
 	</span>
 
-	<!-- Status — fixed width -->
-	<span class="w-[70px] shrink-0 flex items-center gap-1 ml-2">
-		<StatusDot status={card.status} size="md" />
-		<span class="text-[11px] text-surface-500 whitespace-nowrap truncate">{statusLabel[card.status] ?? card.status}</span>
-	</span>
+	<!-- Status — fixed width / Approve button for requires_approval -->
+	{#if card.status === 'requires_approval'}
+		<span class="w-[70px] shrink-0 flex items-center ml-2">
+			<button
+				class="flex items-center gap-1 rounded-full bg-violet-500/20 px-2 py-0.5 text-[10px] font-medium text-violet-400 transition-colors hover:bg-violet-500/30 disabled:opacity-40"
+				onclick={approveAgent}
+				disabled={approvingAgent}
+			>
+				<svg class="h-2.5 w-2.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+				{approvingAgent ? '...' : 'Approve'}
+			</button>
+		</span>
+	{:else}
+		<span class="w-[70px] shrink-0 flex items-center gap-1 ml-2">
+			<StatusDot status={card.status} size="md" />
+			<span class="text-[11px] text-surface-500 whitespace-nowrap truncate">{statusLabel[card.status] ?? card.status}</span>
+		</span>
+	{/if}
 
 	<!-- Action buttons — fixed width slot (visible on hover) -->
 	<div class="w-[68px] shrink-0 flex items-center justify-end gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
@@ -288,16 +301,16 @@
 				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Done</span>
 			</div>
 			<div class="group/act relative">
-				<button aria-label="Approve Agent" class="h-5 w-5 flex items-center justify-center rounded text-violet-400/60 hover:bg-violet-500/15 hover:text-violet-400 disabled:opacity-40" onclick={approveAgent} disabled={approvingAgent}>
-					<svg class="h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-				</button>
-				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Approve</span>
-			</div>
-			<div class="group/act relative">
 				<button aria-label="Dismiss" class="h-5 w-5 flex items-center justify-center rounded text-surface-500 hover:bg-surface-500/15 hover:text-surface-300 disabled:opacity-40" onclick={dismiss} disabled={dismissing}>
 					<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12" /></svg>
 				</button>
 				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Dismiss</span>
+			</div>
+			<div class="group/act relative">
+				<button aria-label="Archive" class="h-5 w-5 flex items-center justify-center rounded text-red-400/60 hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40" onclick={archive} disabled={archiving}>
+					<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
+				</button>
+				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
 			</div>
 		{:else if card.status === 'dismissed' || card.status === 'done'}
 			<div class="group/act relative">

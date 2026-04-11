@@ -18,6 +18,7 @@ _last_omni_rolling: datetime | None = None
 _last_housekeeping_date: str | None = None
 _last_budget_month: str | None = None
 _last_learn_check: datetime | None = None
+_last_context_learn_check: datetime | None = None
 
 # Statuses that are safe to auto-delete (never auto-delete active/in-progress cards)
 _HOUSEKEEPING_STATUSES = ("archived", "dismissed", "done", "failed")
@@ -198,7 +199,7 @@ async def _run_omni_housekeeping(retention_days: int) -> None:
 
 async def _scheduler_loop() -> None:
     """Main scheduler loop — runs every 60 seconds."""
-    global _last_briefing_date, _last_housekeeping_date, _last_budget_month, _last_learn_check, _last_omni_rolling
+    global _last_briefing_date, _last_housekeeping_date, _last_budget_month, _last_learn_check, _last_omni_rolling, _last_context_learn_check
 
     while True:
         await asyncio.sleep(60)
@@ -388,6 +389,15 @@ async def _scheduler_loop() -> None:
                     await run_learn_all()
                 except Exception as e:
                     log.error("learn_extraction_failed", error=str(e))
+
+            # --- Context association learning (every 6 hours) ---
+            if _last_context_learn_check is None or (now_utc - _last_context_learn_check) >= timedelta(hours=6):
+                _last_context_learn_check = now_utc
+                try:
+                    from laya.pipeline.context_learn import run_context_learn_all
+                    await run_context_learn_all()
+                except Exception as e:
+                    log.error("context_learn_extraction_failed", error=str(e))
 
         except asyncio.CancelledError:
             raise

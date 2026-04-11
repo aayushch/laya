@@ -1,9 +1,11 @@
-"""POST /events — Accept, validate, store, and enqueue Laya Events."""
+"""Events API — Accept, validate, store, enqueue, and recover Laya Events."""
 
 import json
+from typing import Optional
 
 import structlog
 from fastapi import APIRouter
+from pydantic import BaseModel
 
 from laya.db.sqlite import get_db
 from laya.models.event import EventResponse, LayaEvent
@@ -11,6 +13,17 @@ from laya.pipeline.queue import enqueue_event
 
 log = structlog.get_logger()
 router = APIRouter()
+
+
+# ── request / response models for dead event recovery ────────────────────
+
+class RetryDeadEventsRequest(BaseModel):
+    event_ids: Optional[list[str]] = None
+    all: bool = False
+
+
+class RetryDeadEventsResponse(BaseModel):
+    retried: int
 
 
 @router.post("/events", response_model=EventResponse, status_code=202)
@@ -81,3 +94,79 @@ async def receive_event(event: LayaEvent) -> EventResponse:
     )
 
     return EventResponse(event_id=event.event_id)
+
+
+# ── dead event recovery ─────────────────────────────────────────────────
+
+@router.get("/events/dead")
+async def list_dead_events(limit: int = 25, offset: int = 0) -> dict:
+    """List events that exhausted all retries and are permanently failed."""
+    db = await get_db()
+
+    count_rows = await db.execute_fetchall(
+        "SELECT COUNT(*) as total FROM events WHERE processing_status = 'dead'"
+    )
+    total = count_rows[0]["total"] if count_rows else 0
+
+    rows = await db.execute_fetchall(
+        """SELECT event_id, timestamp, source_platform, subject_type,
+                  subject_title, subject_url, actor_name,
+                  processing_attempts, manual_retries, last_error, created_at
+           FROM events
+           WHERE processing_status = 'dead'
+           ORDER BY created_at DESC
+           LIMIT ? OFFSET ?""",
+        (limit, offset),
+    )
+
+    return {
+        "events": [dict(r) for r in rows],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@router.post("/events/dead/retry", response_model=RetryDeadEventsResponse)
+async def retry_dead_events(body: RetryDeadEventsRequest) -> RetryDeadEventsResponse:
+    """Re-enqueue dead events for a full fresh retry cycle.
+
+    Accepts either specific event_ids or all=true for bulk retry.
+    Resets processing_attempts to 0 so the event gets 3 fresh automatic
+    retries from the queue consumer.
+    """
+    db = await get_db()
+
+    if body.all:
+        cursor = await db.execute(
+            """UPDATE events
+               SET processing_status = 'queued',
+                   processing_attempts = 0,
+                   last_error = NULL,
+                   next_retry_at = NULL,
+                   manual_retries = manual_retries + 1
+               WHERE processing_status = 'dead'"""
+        )
+    elif body.event_ids:
+        placeholders = ",".join("?" for _ in body.event_ids)
+        cursor = await db.execute(
+            f"""UPDATE events
+                SET processing_status = 'queued',
+                    processing_attempts = 0,
+                    last_error = NULL,
+                    next_retry_at = NULL,
+                    manual_retries = manual_retries + 1
+                WHERE processing_status = 'dead'
+                  AND event_id IN ({placeholders})""",
+            tuple(body.event_ids),
+        )
+    else:
+        return RetryDeadEventsResponse(retried=0)
+
+    await db.commit()
+    retried = cursor.rowcount
+
+    if retried:
+        log.info("dead_events_retried", count=retried, bulk=body.all)
+
+    return RetryDeadEventsResponse(retried=retried)

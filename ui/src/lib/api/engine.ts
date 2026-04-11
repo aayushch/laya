@@ -49,7 +49,9 @@ import type {
 	OmniHistoryResponse,
 	OmniTimelineResponse,
 	OmniPinsResponse,
-	OmniPin
+	OmniPin,
+	DeadEventsResponse,
+	RetryDeadEventsResponse
 } from './types';
 
 const ENGINE_URL = 'http://127.0.0.1:8420';
@@ -192,6 +194,11 @@ export const engineApi = {
 			method: 'POST',
 			body: JSON.stringify(data)
 		}),
+	startResearch: (cardId: string, data?: { prompt?: string; directory?: string }) =>
+		request<{ status: string; card_id: string }>(`/cards/${cardId}/start-research`, {
+			method: 'POST',
+			body: JSON.stringify(data ?? {})
+		}),
 	dismissCard: (cardId: string, reason?: string, feedbackType?: string) =>
 		request<{ status: string; card_id: string }>(`/cards/${cardId}/dismiss`, {
 			method: 'POST',
@@ -204,6 +211,18 @@ export const engineApi = {
 	reopenCard: (cardId: string) =>
 		request<{ status: string; card_id: string }>(`/cards/${cardId}/reopen`, {
 			method: 'POST'
+		}),
+	// Context group management
+	getContextGroup: (contextId: string) =>
+		request<{ context_id: string; label: string; user_confirmed: boolean; user_split: boolean; members: Array<{ entity_id: string; confidence: number; link_method: string }>; cards: Array<{ card_id: string; header: string; entity_id: string; status: string }> }>(`/cards/groups/${contextId}`),
+	unlinkContextGroup: (contextId: string) =>
+		request<{ status: string; context_id: string }>(`/cards/groups/${contextId}/unlink`, {
+			method: 'POST'
+		}),
+	mergeCards: (cardIds: string[]) =>
+		request<{ status: string; context_id: string; card_count: number }>('/cards/groups/merge', {
+			method: 'POST',
+			body: JSON.stringify({ card_ids: cardIds })
 		}),
 	deleteCard: (cardId: string) =>
 		request<{ status: string; card_id: string }>(`/cards/${cardId}`, {
@@ -594,6 +613,21 @@ export const engineApi = {
 		const qs = searchParams.toString();
 		return request<AuditLogResponse>(`/audit-log${qs ? '?' + qs : ''}`);
 	},
+
+	// Dead Events
+	getDeadEvents: (params?: { limit?: number; offset?: number }) => {
+		const searchParams = new URLSearchParams();
+		if (params?.limit) searchParams.set('limit', String(params.limit));
+		if (params?.offset) searchParams.set('offset', String(params.offset));
+		const qs = searchParams.toString();
+		return request<DeadEventsResponse>(`/events/dead${qs ? '?' + qs : ''}`);
+	},
+
+	retryDeadEvents: (eventIds?: string[]) =>
+		request<RetryDeadEventsResponse>('/events/dead/retry', {
+			method: 'POST',
+			body: JSON.stringify(eventIds ? { event_ids: eventIds } : { all: true })
+		}),
 
 	// Egress
 	egressExecute: (data: EgressExecuteRequest) =>

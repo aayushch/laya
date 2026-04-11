@@ -165,6 +165,35 @@
       "onError": "continueErrorOutput"
     },
     {
+      "name": "Check Create Result",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1050,
+        -50
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.errors }}",
+              "rightValue": "",
+              "operator": {
+                "type": "array",
+                "operation": "empty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
       "name": "Add Comment",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -183,6 +212,35 @@
         "options": {}
       },
       "onError": "continueErrorOutput"
+    },
+    {
+      "name": "Check Comment Result",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1050,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.errors }}",
+              "rightValue": "",
+              "operator": {
+                "type": "array",
+                "operation": "empty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
     },
     {
       "name": "Update Status",
@@ -205,6 +263,35 @@
       "onError": "continueErrorOutput"
     },
     {
+      "name": "Check Status Result",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1050,
+        450
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.errors }}",
+              "rightValue": "",
+              "operator": {
+                "type": "array",
+                "operation": "empty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
       "name": "Assign Issue",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -225,12 +312,41 @@
       "onError": "continueErrorOutput"
     },
     {
+      "name": "Check Assign Result",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1050,
+        700
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.errors }}",
+              "rightValue": "",
+              "operator": {
+                "type": "array",
+                "operation": "empty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
       "name": "Respond Create Success",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        1150,
-        -100
+        1250,
+        -150
       ],
       "parameters": {
         "respondWith": "json",
@@ -242,12 +358,12 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        1150,
-        0
+        1250,
+        50
       ],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : ($json.errors ? JSON.stringify($json.errors) : 'Linear create issue failed \u2014 check credentials and workflow execution log')) }) }}"
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : ($json.errors ? JSON.stringify($json.errors) : 'Linear create issue failed — check credentials and workflow execution log')) }) }}"
       }
     },
     {
@@ -255,7 +371,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        1150,
+        1250,
         150
       ],
       "parameters": {
@@ -268,12 +384,12 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        1150,
+        1250,
         250
       ],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : ($json.errors ? JSON.stringify($json.errors) : 'Linear comment failed \u2014 check credentials and workflow execution log')) }) }}"
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : ($json.errors ? JSON.stringify($json.errors) : 'Linear comment failed — check credentials and workflow execution log')) }) }}"
       }
     },
     {
@@ -281,7 +397,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        1150,
+        1250,
         400
       ],
       "parameters": {
@@ -294,12 +410,12 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        1150,
+        1250,
         500
       ],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : ($json.errors ? JSON.stringify($json.errors) : 'Linear update status failed \u2014 check credentials and workflow execution log')) }) }}"
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : ($json.errors ? JSON.stringify($json.errors) : 'Linear update status failed — check credentials and workflow execution log')) }) }}"
       }
     },
     {
@@ -307,7 +423,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        1150,
+        1250,
         650
       ],
       "parameters": {
@@ -320,12 +436,12 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        1150,
+        1250,
         750
       ],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : ($json.errors ? JSON.stringify($json.errors) : 'Linear assign failed \u2014 check credentials and workflow execution log')) }) }}"
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : ($json.errors ? JSON.stringify($json.errors) : 'Linear assign failed — check credentials and workflow execution log')) }) }}"
       }
     },
     {
@@ -428,6 +544,24 @@
       "main": [
         [
           {
+            "node": "Check Create Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Create Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Create Result": {
+      "main": [
+        [
+          {
             "node": "Respond Create Success",
             "type": "main",
             "index": 0
@@ -443,6 +577,24 @@
       ]
     },
     "Add Comment": {
+      "main": [
+        [
+          {
+            "node": "Check Comment Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Comment Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Comment Result": {
       "main": [
         [
           {
@@ -464,6 +616,24 @@
       "main": [
         [
           {
+            "node": "Check Status Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Status Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Status Result": {
+      "main": [
+        [
+          {
             "node": "Respond Status Success",
             "type": "main",
             "index": 0
@@ -479,6 +649,24 @@
       ]
     },
     "Assign Issue": {
+      "main": [
+        [
+          {
+            "node": "Check Assign Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Assign Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Assign Result": {
       "main": [
         [
           {
@@ -502,6 +690,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.03.2"
+    "laya_version": "2026.04.1"
   }
 }

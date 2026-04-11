@@ -51,14 +51,16 @@ class CodexCliAgent(CodingAgent):
 
     async def start_session(
         self, session_id: str, prompt: str, repo_path: str, add_dirs: list[str] | None = None,
-        mode: str | None = None,
+        mode: str | None = None, research: bool = False,
     ) -> None:
         self._session_id = session_id
         self._repo_path = repo_path
         self._status = SessionStatus.STARTING
 
-        # Default to "read-only" if no mode specified
-        sandbox_mode = mode or "read-only"
+        # Research mode: workspace-write sandbox enforces writes at the OS level
+        # (Seatbelt on macOS, Landlock on Linux) — only the cwd (research dir)
+        # is writable.  Normal mode defaults to read-only.
+        sandbox_mode = mode or ("workspace-write" if research else "read-only")
 
         args = [
             self._binary,
@@ -68,6 +70,10 @@ class CodexCliAgent(CodingAgent):
             sandbox_mode,
             prompt,
         ]
+
+        if research:
+            # Enable live web search for research tasks
+            args.append("--search")
 
         if add_dirs:
             for d in add_dirs:

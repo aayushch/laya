@@ -10,15 +10,32 @@
 		group,
 		onselect,
 		ondelete,
+		onlink,
 		selectedCardId = '',
 		hasSelection = false,
 		lastViewedCardId = '',
 		scrollToCardId = null
-	}: { group: CardGroup; onselect: (card: ActionCard) => void; ondelete?: (cardId: string) => void; selectedCardId?: string; hasSelection?: boolean; lastViewedCardId?: string; scrollToCardId?: string | null } = $props();
+	}: { group: CardGroup; onselect: (card: ActionCard) => void; ondelete?: (cardId: string) => void; onlink?: (group: CardGroup) => void; selectedCardId?: string; hasSelection?: boolean; lastViewedCardId?: string; scrollToCardId?: string | null } = $props();
 
 	let expanded = $state(false);
 	let bulkActionRunning = $state(false);
 	let groupMenuOpen = $state(false);
+	let unlinking = $state(false);
+
+	const isSmartGroup = $derived(!!group.context_id);
+
+	async function unlinkGroup(e: Event) {
+		e.stopPropagation();
+		groupMenuOpen = false;
+		if (!group.context_id) return;
+		unlinking = true;
+		try {
+			await engineApi.unlinkContextGroup(group.context_id);
+			// Trigger feed refresh via WebSocket broadcast from backend
+		} finally {
+			unlinking = false;
+		}
+	}
 
 	// Truncation detection for conditional tooltips (fixed positioning to escape overflow-hidden)
 	let summaryEl: HTMLElement | undefined = $state();
@@ -231,6 +248,9 @@
 		return `${Math.floor(hours / 24)}d ago`;
 	}
 
+	// Extract subject ID from entity_id (e.g., "jira:ticket:FERR-1056" → "FERR-1056")
+	const subjectId = $derived(group.entity_id?.includes(':') ? group.entity_id.split(':').pop() : group.entity_id);
+
 	const hasBookmark = $derived(group.cards.some((c) => c.bookmarked_at));
 	const isGroupSelected = $derived(group.cards.some((c) => c.card_id === selectedCardId));
 	// Show last-viewed accent on the group header when collapsed and it contains the last-viewed card
@@ -245,7 +265,7 @@
 	const canReopenAll = $derived(group.cards.some(c => ['dismissed', 'archived', 'done'].includes(c.status)));
 	const canUnarchiveAll = $derived(group.cards.some(c => c.status === 'archived'));
 
-	const hasAnyAction = $derived(canApproveAll || canCompleteAll || canDismissAll || canArchiveAll || canReopenAll || canUnarchiveAll);
+	const hasAnyAction = $derived(canApproveAll || canCompleteAll || canDismissAll || canArchiveAll || canReopenAll || canUnarchiveAll || isSmartGroup);
 
 	function toggle() {
 		expanded = !expanded;
@@ -358,6 +378,14 @@
 				<span class="text-[10px] font-semibold uppercase tracking-widest text-surface-500">
 					{platformLabel[group.platform] ?? group.platform}
 				</span>
+				{#if isSmartGroup}
+					<div class="group/tip relative">
+						<svg class="h-3 w-3 text-laya-orange/60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+						<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">Linked</span>
+					</div>
+				{:else if subjectId}
+					<span class="text-[10px] font-medium text-laya-orange/70 truncate max-w-[120px]">{subjectId}</span>
+				{/if}
 				<div class="ml-auto flex items-center gap-1.5">
 					{#if hasBookmark}
 						<svg class="h-3 w-3 text-laya-orange/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -368,7 +396,7 @@
 						{priorityLabel[group.top_priority] ?? group.top_priority}
 					</span>
 					<!-- Card count badge (always visible) -->
-					<span class="rounded-full border border-surface-600 bg-surface-700 px-2 py-0.5 text-[10px] font-semibold text-surface-300">
+					<span class="whitespace-nowrap rounded-full border border-surface-600 bg-surface-700 px-2 py-0.5 text-[10px] font-semibold text-surface-300">
 						{expanded ? `${group.card_count} cards` : `+${extraCount}`}
 					</span>
 					{#if expanded && hasAnyAction}
@@ -432,6 +460,26 @@
 											Unarchive All
 										</button>
 									{/if}
+									<div class="my-1 border-t border-surface-700"></div>
+									<button
+										class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-laya-orange"
+										role="menuitem"
+										onclick={(e) => { e.stopPropagation(); groupMenuOpen = false; onlink?.(group); }}
+									>
+										<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+										Link to...
+									</button>
+									{#if isSmartGroup}
+										<button
+											class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400"
+											role="menuitem"
+											disabled={unlinking}
+											onclick={unlinkGroup}
+										>
+											<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /><line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+											{unlinking ? 'Unlinking...' : 'Unlink Group'}
+										</button>
+									{/if}
 								</div>
 							{/if}
 						</div>
@@ -443,9 +491,9 @@
 				</div>
 			</div>
 
-			<!-- Entity title -->
+			<!-- Entity title (context label for smart groups) -->
 			<span class="line-clamp-2 text-sm font-semibold leading-snug {expanded ? 'text-surface-100' : 'text-surface-50'}">
-				{group.entity_title}
+				{group.context_label ?? group.entity_title}
 			</span>
 		</div>
 

@@ -326,6 +326,31 @@ async def run_emit(
     except Exception as e:
         log.warning("card_embed_failed", card_id=card_id, error=str(e))
 
+    # 4b. Semantic context grouping — find related cards across entity boundaries
+    from laya.pipeline.context_grouping import resolve_context_group
+
+    try:
+        context_id = await resolve_context_group(
+            card_id=card_id,
+            entity_id=entity_id,
+            embed_text=embed_text,
+            space_id=space_id,
+            platform=event.source.platform,
+        )
+        if context_id:
+            await db.execute(
+                "UPDATE action_cards SET context_id = ? WHERE card_id = ?",
+                (context_id, card_id),
+            )
+            await db.execute(
+                "UPDATE action_cards SET group_active_at = ? WHERE context_id = ?",
+                (now_ts, context_id),
+            )
+            await db.commit()
+            log.info("context_group_assigned", card_id=card_id, context_id=context_id)
+    except Exception as e:
+        log.warning("context_grouping_failed", card_id=card_id, error=str(e))
+
     # 5. Entity resolution Layer 2 (semantic, non-blocking)
     entity_values = [e.value for e in router_output.entities]
     if entity_values:

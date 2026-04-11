@@ -11,6 +11,67 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
+	// Action execution & draft editing state
+	let executingActionId = $state<string | null>(null);
+	let executeError = $state<string | null>(null);
+	let editingActionId = $state<string | null>(null);
+	let editedPayload = $state<Record<string, string>>({});
+	let savingPayload = $state(false);
+
+	const terminalStatuses = new Set(['done', 'failed', 'dismissed', 'archived']);
+
+	/** Identify the main editable text field in an action payload. */
+	function getEditableTextField(payload: Record<string, unknown>): string | null {
+		for (const key of ['body', 'comment', 'message', 'description']) {
+			if (typeof payload[key] === 'string' && (payload[key] as string).length > 0) return key;
+		}
+		return null;
+	}
+
+	function startEditing(action: { action_id: string; payload: Record<string, unknown> }) {
+		editingActionId = action.action_id;
+		const p = action.payload;
+		editedPayload = {};
+		for (const [key, value] of Object.entries(p)) {
+			if (typeof value === 'string' && value.length > 0) {
+				editedPayload[key] = value;
+			}
+		}
+	}
+
+	async function savePayload(card: ActionCard, action: { action_id: string; payload: Record<string, unknown> }) {
+		savingPayload = true;
+		try {
+			await engineApi.updateActionPayload(card.card_id, action.action_id, editedPayload);
+			Object.assign(action.payload, editedPayload);
+			editingActionId = null;
+			editedPayload = {};
+		} catch (err) {
+			executeError = err instanceof Error ? err.message : 'Failed to save draft';
+		} finally {
+			savingPayload = false;
+		}
+	}
+
+	async function executeAction(card: ActionCard, actionId: string) {
+		executingActionId = actionId;
+		executeError = null;
+		try {
+			const mods = editingActionId === actionId && Object.keys(editedPayload).length > 0
+				? editedPayload
+				: undefined;
+			const result = await engineApi.executeAction(card.card_id, actionId, mods);
+			card.status = result.status as ActionCard['status'];
+			card.selected_action_id = actionId;
+			editingActionId = null;
+			editedPayload = {};
+		} catch (err) {
+			executeError = err instanceof Error ? err.message : 'Execution failed';
+		} finally {
+			executingActionId = null;
+		}
+	}
+
 	// Chat state
 	let chatMessages = $state<ChatMessageType[]>([]);
 	let chatInput = $state('');
@@ -263,26 +324,30 @@
 						</div>
 					{/if}
 
+					<!-- Subject ID (e.g., PR-49, FERR-1056) -->
+					{#if card.source_ref}
+						<div class="mb-3 flex items-center gap-2">
+							{#if card.source_url}
+								<a
+									href={card.source_url}
+									target="_blank"
+									rel="noopener noreferrer"
+									class="inline-flex items-center gap-1.5 rounded-md border border-surface-700 px-3 py-1.5 text-xs text-surface-300 transition-colors hover:border-laya-orange/30 hover:text-laya-orange"
+								>
+									<svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+										<path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" />
+									</svg>
+									{card.source_ref}
+								</a>
+							{:else}
+								<span class="inline-flex items-center rounded-md border border-surface-700 px-3 py-1.5 text-xs font-medium text-surface-300">{card.source_ref}</span>
+							{/if}
+						</div>
+					{/if}
+
 					<!-- Header + summary -->
 					<h2 class="mb-2 text-lg font-semibold text-surface-50">{card.header}</h2>
 					<p class="mb-5 text-laya-base leading-relaxed text-surface-300">{card.summary}</p>
-
-					<!-- Source link -->
-					{#if card.source_url}
-						<div class="mb-5">
-							<a
-								href={card.source_url}
-								target="_blank"
-								rel="noopener noreferrer"
-								class="inline-flex items-center gap-1.5 rounded-md border border-surface-700 px-3 py-1.5 text-xs text-surface-300 transition-colors hover:border-laya-orange/30 hover:text-laya-orange"
-							>
-								<svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-									<path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" />
-								</svg>
-								{card.source_ref ?? 'Open source'}
-							</a>
-						</div>
-					{/if}
 
 					<!-- Intelligence report -->
 					{#if card.intelligence && card.intelligence.length > 0}
@@ -311,6 +376,112 @@
 								<div class="prose-plan overflow-y-auto overflow-x-auto rounded-lg border border-surface-700 bg-surface-900/50 p-4 text-laya-base text-surface-200">
 									{@html marked(card.staged_output.content)}
 								</div>
+							{/if}
+						</div>
+					{/if}
+
+					<!-- Suggested actions -->
+					{#if card.suggested_actions && card.suggested_actions.length > 0}
+						<div class="mb-5">
+							<h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-surface-400">Suggested Actions</h3>
+							{#each card.suggested_actions as action}
+								{@const isSelected = card.selected_action_id === action.action_id}
+								{@const isTerminal = terminalStatuses.has(card.status)}
+								{@const payload = action.payload}
+								{@const editableField = payload ? getEditableTextField(payload) : null}
+
+								<!-- Action payload preview with edit capability -->
+								{#if editableField}
+									{@const isEditing = editingActionId === action.action_id}
+									<div class="mb-2 rounded-lg border border-surface-700 bg-surface-900/50 p-3">
+										{#if !isEditing}
+											<!-- Read-only view of editable fields -->
+											{#each Object.entries(payload) as [key, value]}
+												{#if typeof value === 'string' && value.length > 0 && key !== editableField}
+													<div class="mb-1.5 flex items-center gap-1.5 text-[11px]">
+														<span class="font-medium text-surface-500 capitalize">{key}:</span>
+														<span class="text-surface-300">{value}</span>
+													</div>
+												{/if}
+											{/each}
+											<div class="max-h-48 overflow-y-auto whitespace-pre-wrap text-laya-base text-surface-200">{payload[editableField]}</div>
+										{:else}
+											<!-- Edit mode -->
+											{#each Object.entries(editedPayload) as [key]}
+												{#if key !== editableField}
+													<div class="mb-1.5 flex items-center gap-1.5 text-[11px]">
+														<span class="shrink-0 font-medium text-surface-500 capitalize">{key}:</span>
+														<input
+															type="text"
+															class="w-full rounded border border-surface-600 bg-surface-800 px-1.5 py-0.5 text-[11px] text-surface-200 outline-none focus:border-laya-orange/50"
+															bind:value={editedPayload[key]}
+														/>
+													</div>
+												{/if}
+											{/each}
+											<textarea
+												class="w-full resize-y rounded border border-surface-600 bg-surface-800 p-2 text-sm text-surface-200 outline-none focus:border-laya-orange/50"
+												rows="6"
+												bind:value={editedPayload[editableField]}
+											></textarea>
+										{/if}
+										<!-- Edit / Save / Cancel controls -->
+										{#if !isTerminal && !isSelected}
+											<div class="mt-2 flex justify-end gap-3">
+												{#if !isEditing}
+													<button
+														class="text-[11px] text-surface-400 hover:text-laya-orange transition-colors"
+														onclick={() => startEditing(action)}
+													>
+														Edit draft
+													</button>
+												{:else}
+													<button
+														class="text-[11px] text-surface-400 hover:text-surface-200 transition-colors"
+														onclick={() => { editingActionId = null; editedPayload = {}; }}
+														disabled={savingPayload}
+													>
+														Cancel
+													</button>
+													<button
+														class="text-[11px] font-medium text-laya-orange hover:text-laya-gold transition-colors disabled:opacity-50"
+														onclick={() => savePayload(card, action)}
+														disabled={savingPayload}
+													>
+														{savingPayload ? 'Saving...' : 'Save'}
+													</button>
+												{/if}
+											</div>
+										{/if}
+									</div>
+								{/if}
+
+								<div class="mb-2 flex flex-wrap gap-2">
+									<button
+										class="rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed
+											{isSelected
+												? 'border-laya-orange/50 bg-laya-orange/15 text-laya-orange'
+												: card.selected_action_id && !isSelected
+													? 'border-surface-700 bg-surface-800/50 text-surface-500'
+													: 'border-surface-600 bg-surface-700/50 text-surface-200 hover:bg-surface-600'}
+											{!isSelected && card.selected_action_id ? 'opacity-50' : ''}"
+										onclick={() => executeAction(card, action.action_id)}
+										disabled={!!executingActionId || isTerminal}
+									>
+										{#if executingActionId === action.action_id}
+											Executing...
+										{:else}
+											{#if isSelected}
+												<span class="mr-1">&#10003;</span>
+											{/if}
+											{action.label}
+											<span class="ml-1 {isSelected ? 'text-laya-orange/60' : 'text-surface-500'}">({action.target_platform})</span>
+										{/if}
+									</button>
+								</div>
+							{/each}
+							{#if executeError}
+								<p class="mt-2 text-xs text-red-400">{executeError}</p>
 							{/if}
 						</div>
 					{/if}

@@ -13,6 +13,7 @@
 	import ListRow from '$lib/components/feed/ListRow.svelte';
 	import ListGroupComponent from '$lib/components/feed/ListGroup.svelte';
 	import BulkActionsDropdown from '$lib/components/feed/BulkActionsDropdown.svelte';
+	import LinkDialog from '$lib/components/feed/LinkDialog.svelte';
 	import { recentCards, recentDrawerOpen, trackCardVisit, clearRecentCards, type RecentCardEntry } from '$lib/stores/recentCards';
 	import { pendingCardId } from '$lib/stores/chat';
 	import { spaces } from '$lib/stores/spaces';
@@ -53,36 +54,76 @@
 	// Persists after panel close so the card keeps a visual accent bar
 	let lastViewedCardId = $state<string | null>(null);
 
-	// Track last non-summary view so we can restore it when clicking summary items
-	let lastNonSummaryView = $state<'card' | 'list'>(
-		($feedViewMode === 'card' || $feedViewMode === 'list') ? $feedViewMode : 'card'
-	);
+	// Link dialog state
+	let linkSourceGroup = $state<CardGroup | null>(null);
 
-	// Update lastNonSummaryView whenever the user switches to card or list
-	$effect(() => {
-		if ($feedViewMode === 'card' || $feedViewMode === 'list') {
-			lastNonSummaryView = $feedViewMode;
-		}
+	// Recent cards FLIP animation
+	let recentListEl = $state<HTMLElement | null>(null);
+
+	function flipRecentCards() {
+		if (!recentListEl) return;
+		const oldPositions = new Map<string, DOMRect>();
+		recentListEl.querySelectorAll('[data-recent-id]').forEach((el) => {
+			oldPositions.set((el as HTMLElement).dataset.recentId!, el.getBoundingClientRect());
+		});
+		tick().then(() => {
+			if (!recentListEl) return;
+			recentListEl.querySelectorAll('[data-recent-id]').forEach((el) => {
+				const htmlEl = el as HTMLElement;
+				const id = htmlEl.dataset.recentId!;
+				const oldRect = oldPositions.get(id);
+				if (!oldRect) return;
+				const newRect = el.getBoundingClientRect();
+				const dy = oldRect.top - newRect.top;
+				if (Math.abs(dy) < 1) return;
+				htmlEl.style.transform = `translateY(${dy}px)`;
+				htmlEl.style.transition = 'none';
+				requestAnimationFrame(() => {
+					htmlEl.style.transition = 'transform 250ms ease';
+					htmlEl.style.transform = '';
+					htmlEl.addEventListener('transitionend', () => {
+						htmlEl.style.transition = '';
+					}, { once: true });
+				});
+			});
+		});
+	}
+
+	// A card is standalone if its group has exactly 1 card and no context_id
+	const selectedCardIsStandalone = $derived.by(() => {
+		if (!selectedCard) return false;
+		const group = groups.find(g =>
+			g.cards.some(c => c.card_id === selectedCard!.card_id)
+		);
+		return group ? group.card_count === 1 : false;
 	});
 
+	function handleLinkGroup(group: CardGroup) {
+		linkSourceGroup = group;
+	}
+
+	function handleLinkCard(card: ActionCard) {
+		// Wrap standalone card as a single-card group for the link dialog
+		const syntheticGroup: CardGroup = {
+			entity_id: card.entity_id ?? card.card_id,
+			entity_title: card.header,
+			platform: card.space_name ?? '',
+			card_count: 1,
+			top_priority: card.priority as CardGroup['top_priority'],
+			latest_at: card.created_at ?? '',
+			has_pending: ['pending', 'ready', 'requires_approval'].includes(card.status),
+			cards: [card],
+			context_id: card.context_id,
+		};
+		linkSourceGroup = syntheticGroup;
+	}
+
+
 	// When switching views, scroll selected card into view.
-	// When coming FROM summary view, suppress FLIP since cards are rendering fresh.
-	let _prevViewMode = $state($feedViewMode);
 	$effect(() => {
 		const mode = $feedViewMode;
-		const fromSummary = _prevViewMode === 'summary';
-		_prevViewMode = mode;
-
-		if (mode === 'card' || mode === 'list') {
-			if (fromSummary) {
-				// Cards are rendering fresh — no old positions to FLIP from.
-				// Suppress ResizeObserver FLIP during initial layout.
-				panelTransitioning = true;
-				setTimeout(() => { panelTransitioning = false; }, 350);
-			}
-			if (selectedCard) {
-				tick().then(() => scrollToCard(selectedCard!.card_id));
-			}
+		if (selectedCard) {
+			tick().then(() => scrollToCard(selectedCard!.card_id));
 		}
 	});
 
@@ -94,7 +135,8 @@
 	// Search state (ephemeral — resets on date change)
 	let searchQuery = $state('');
 
-	// Summary View state
+	// Summary modal state
+	let summaryModalOpen = $state(false);
 	let daySummary = $state<DaySummary | null>(null);
 	let summaryUpdatedAt = $state<string | null>(null);
 	let summaryLoading = $state(false);
@@ -268,10 +310,10 @@
 		loadGroups();
 	});
 
-	// Load summary when date changes or summary view is toggled on
+	// Load summary when date changes while modal is open
 	$effect(() => {
 		$feedDate;
-		if ($feedViewMode === 'summary') loadSummary();
+		if (summaryModalOpen) loadSummary();
 	});
 
 	// One-time integrations setup popup — show once on first feed visit after setup
@@ -308,7 +350,7 @@
 			return;
 		}
 
-		if (!['card_created', 'card_deleted', 'card_updated', 'group_carried_forward'].includes(msg.type)) return;
+		if (!['card_created', 'card_deleted', 'card_updated', 'group_carried_forward', 'context_group_unlinked', 'context_group_merged'].includes(msg.type)) return;
 		_lastProcessedMsg = msg;
 
 		if (msg.type === 'card_created' || msg.type === 'group_carried_forward') {
@@ -399,6 +441,9 @@
 			// Card not in current groups — may have been created while on another
 			// page or the card_created message was missed. Reload to pick it up.
 			if (!found) scheduleReload();
+		} else if (msg.type === 'context_group_unlinked' || msg.type === 'context_group_merged') {
+			// Context group structure changed — reload to reflect new grouping
+			scheduleReload();
 		}
 	});
 
@@ -559,8 +604,8 @@
 	}
 
 	function handleSummaryGotoCard(cardId: string) {
-		// Restore the last non-summary view (card or list)
-		$feedViewMode = lastNonSummaryView;
+		// Close the summary modal and navigate to the card
+		summaryModalOpen = false;
 		// Find the card in groups
 		for (const g of groups) {
 			const found = g.cards.find((c) => c.card_id === cardId);
@@ -580,6 +625,8 @@
 	}
 
 	function handleRecentCardClick(entry: RecentCardEntry) {
+		// Capture positions before the reorder for FLIP animation
+		flipRecentCards();
 		// Find the card in currently loaded groups
 		for (const g of groups) {
 			const found = g.cards.find((c) => c.card_id === entry.card_id);
@@ -1166,25 +1213,36 @@
 			Bookmarks
 		</button>
 
+		<!-- Recent Cards toggle -->
+		<button
+			onclick={() => ($recentDrawerOpen = !$recentDrawerOpen)}
+			class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors
+				{$recentDrawerOpen
+					? 'border-laya-orange/30 bg-laya-orange/10 text-laya-orange'
+					: 'border-surface-700 bg-surface-800/60 text-surface-400 hover:text-surface-200 hover:border-surface-600'}"
+		>
+			<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+			</svg>
+			Recent
+		</button>
+
+		<!-- Summary button -->
+		<button
+			onclick={() => { summaryModalOpen = true; loadSummary(); }}
+			class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors
+				{summaryModalOpen
+					? 'border-laya-orange/30 bg-laya-orange/10 text-laya-orange'
+					: 'border-surface-700 bg-surface-800/60 text-surface-400 hover:text-surface-200 hover:border-surface-600'}"
+		>
+			<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+			</svg>
+			Summary
+		</button>
+
 		<!-- Separator -->
 		<div class="h-5 w-px bg-surface-700/60 mx-1"></div>
-
-		<!-- Recent Cards toggle -->
-		<div class="group/tip relative">
-			<button
-				class="flex items-center justify-center rounded-lg border px-2 py-1 transition-colors
-					{$recentDrawerOpen
-						? 'border-laya-orange/40 bg-laya-orange/10 text-laya-orange'
-						: 'border-surface-700 bg-surface-800/60 text-surface-500 hover:text-surface-200 hover:border-surface-600'}"
-				onclick={() => ($recentDrawerOpen = !$recentDrawerOpen)}
-				aria-label="Recent Cards"
-			>
-				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-				</svg>
-			</button>
-			<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">Recent Cards</span>
-		</div>
 		<!-- Search -->
 		<div class="relative">
 			<svg class="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-surface-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1234,26 +1292,14 @@
 				</button>
 				<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">List View</span>
 			</div>
-			<div class="group/tip relative">
-				<button
-					class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {$feedViewMode === 'summary' ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-200'}"
-					onclick={() => ($feedViewMode = 'summary')}
-					aria-label="Summary View"
-				>
-					<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-					</svg>
-				</button>
-				<span class="pointer-events-none absolute right-0 top-full z-50 mt-1.5 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">Summary View</span>
-			</div>
 		</div>
 	</div>
 
 	<!-- Content area: recent drawer + cards + detail panel side by side -->
 	<div class="flex min-h-0 flex-1 gap-4">
 		<!-- Recent Cards drawer -->
-		{#if $recentDrawerOpen}
-			<div class="flex w-[260px] flex-shrink-0 flex-col overflow-hidden rounded-xl border border-surface-700/50 bg-surface-900/60">
+		<div class="flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-in-out {$recentDrawerOpen ? 'w-[260px]' : 'w-0'}">
+			<div class="flex h-full w-[260px] flex-col overflow-hidden rounded-xl border border-surface-700/50 bg-surface-900/60">
 				<div class="flex items-center justify-between border-b border-surface-700/50 px-3 py-2">
 					<span class="text-xs font-medium text-surface-300">Recent Cards</span>
 					<div class="flex items-center gap-1">
@@ -1279,7 +1325,7 @@
 						</button>
 					</div>
 				</div>
-				<div class="flex-1 overflow-y-auto">
+				<div bind:this={recentListEl} class="flex-1 overflow-y-auto">
 					{#if filteredRecentCards.length === 0}
 						<div class="flex flex-col items-center justify-center px-4 py-8 text-surface-600">
 							<svg class="mb-2 h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1291,6 +1337,7 @@
 					{:else}
 						{#each filteredRecentCards as entry (entry.card_id)}
 							<button
+								data-recent-id={entry.card_id}
 								class="flex w-full flex-col gap-0.5 border-b border-surface-800/50 px-3 py-2 text-left transition-colors hover:bg-surface-800/60
 									{selectedCard?.card_id === entry.card_id ? 'bg-laya-orange/5 border-l-2 border-l-laya-orange/40' : ''}"
 								onclick={() => handleRecentCardClick(entry)}
@@ -1310,30 +1357,10 @@
 					{/if}
 				</div>
 			</div>
-		{/if}
+		</div>
 		<!-- Cards / Summary / List section -->
 		<div bind:this={containerEl} class="flex min-w-0 flex-1 flex-col overflow-y-auto p-3">
-			<!-- Summary View -->
-			{#if $feedViewMode === 'summary'}
-				<div class="flex-1 overflow-y-auto rounded-xl border border-surface-700/50 bg-surface-900/30 p-6">
-					{#if summaryLoading}
-						<div class="flex h-full items-center justify-center text-surface-400">
-							<span class="text-sm">Loading summary...</span>
-						</div>
-					{:else if !filteredDaySummary && searchTerms.length > 0 && daySummary}
-						<div class="flex h-full flex-col items-center justify-center text-surface-500">
-							<svg class="mb-2 h-8 w-8 text-surface-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-							</svg>
-							<p class="text-sm">No summary items match "<span class="text-surface-300">{searchQuery}</span>"</p>
-							<button class="mt-2 text-xs text-laya-orange hover:underline" onclick={() => (searchQuery = '')}>Clear search</button>
-						</div>
-					{:else}
-						<DaySummaryComponent summary={filteredDaySummary} updatedAt={summaryUpdatedAt} ongotocard={handleSummaryGotoCard} spaceFilter={$feedFilters.spaceFilter} />
-					{/if}
-				</div>
-			<!-- List / Card shared empty states -->
-			{:else if loading && groups.length === 0}
+			{#if loading && groups.length === 0}
 				<div class="py-12 text-center text-surface-400">Loading cards...</div>
 			{:else if error}
 				<div class="rounded-lg border border-red-800 bg-red-900/30 px-4 py-3 text-sm text-red-300">
@@ -1434,9 +1461,9 @@
 									{@const isGroupExiting = group.cards.every((c) => exitingCardIds.has(c.card_id))}
 									<div data-entity-id={group.entity_id} class="card-exit-wrap {isGroupExiting ? 'card-exiting' : ''}">
 										{#if group.card_count === 1}
-											<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
+											<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} onlink={handleLinkCard} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
 										{:else}
-											<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} scrollToCardId={_scrollToCardId} />
+											<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} onlink={handleLinkGroup} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} scrollToCardId={_scrollToCardId} />
 										{/if}
 									</div>
 								{/each}
@@ -1453,9 +1480,9 @@
 							{#each col as group (group.entity_id)}
 								<div data-entity-id={group.entity_id}>
 									{#if group.card_count === 1}
-										<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
+										<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} onlink={handleLinkCard} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
 									{:else}
-										<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} scrollToCardId={_scrollToCardId} />
+										<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} onlink={handleLinkGroup} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} scrollToCardId={_scrollToCardId} />
 									{/if}
 								</div>
 							{/each}
@@ -1465,39 +1492,37 @@
 			{/if}
 		</div>
 
-		<!-- Detail panel (hidden in summary view) -->
-		{#if $feedViewMode !== 'summary'}
-			<div class="relative flex flex-shrink-0">
-				<!-- Toggle button — always visible on the left edge of the panel area -->
-				<button
-					class="absolute -left-3 top-4 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-surface-600 bg-surface-800 text-surface-400 shadow-md transition-colors hover:bg-surface-700 hover:text-surface-200"
-					onclick={() => { if (detailPanelOpen) closeDetailPanel(); else openDetailPanel(); }}
-					title={detailPanelOpen ? 'Collapse detail panel' : 'Expand detail panel'}
-				>
-					<svg class="h-3 w-3 transition-transform {detailPanelOpen ? '' : 'rotate-180'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-					</svg>
-				</button>
+		<!-- Detail panel -->
+		<div class="relative flex flex-shrink-0">
+			<!-- Toggle button — always visible on the left edge of the panel area -->
+			<button
+				class="absolute -left-3 top-4 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-surface-600 bg-surface-800 text-surface-400 shadow-md transition-colors hover:bg-surface-700 hover:text-surface-200"
+				onclick={() => { if (detailPanelOpen) closeDetailPanel(); else openDetailPanel(); }}
+				title={detailPanelOpen ? 'Collapse detail panel' : 'Expand detail panel'}
+			>
+				<svg class="h-3 w-3 transition-transform {detailPanelOpen ? '' : 'rotate-180'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+				</svg>
+			</button>
 
-				<!-- Sliding panel -->
-				<div
-					class="overflow-hidden transition-[width] duration-300 ease-in-out {detailPanelOpen ? 'w-[420px]' : 'w-0'}"
-				>
-					<div class="w-[420px] h-full overflow-y-auto">
-						{#if selectedCard}
-							<CardDetail card={selectedCard} onclose={closeDetailPanel} ondismiss={dismissActiveCard} ongotocard={gotoCard} />
-						{:else}
-							<div class="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-surface-700 text-surface-600">
-								<svg class="mb-2 h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-								</svg>
-								<p class="text-xs">Select a card to view details</p>
-							</div>
-						{/if}
-					</div>
+			<!-- Sliding panel -->
+			<div
+				class="overflow-hidden transition-[width] duration-300 ease-in-out {detailPanelOpen ? 'w-[420px]' : 'w-0'}"
+			>
+				<div class="w-[420px] h-full overflow-y-auto">
+					{#if selectedCard}
+						<CardDetail card={selectedCard} onclose={closeDetailPanel} ondismiss={dismissActiveCard} ongotocard={gotoCard} onlink={selectedCardIsStandalone ? handleLinkCard : undefined} />
+					{:else}
+						<div class="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-surface-700 text-surface-600">
+							<svg class="mb-2 h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+							</svg>
+							<p class="text-xs">Select a card to view details</p>
+						</div>
+					{/if}
 				</div>
 			</div>
-		{/if}
+		</div>
 	</div>
 </div>
 
@@ -1551,6 +1576,55 @@
 				>
 					Later
 				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+{#if linkSourceGroup}
+	<LinkDialog
+		sourceGroup={linkSourceGroup}
+		allGroups={groups}
+		onclose={() => linkSourceGroup = null}
+	/>
+{/if}
+
+<!-- Summary modal -->
+{#if summaryModalOpen}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+		onclick={(e) => { if (e.target === e.currentTarget) summaryModalOpen = false; }}
+		onkeydown={(e) => { if (e.key === 'Escape') summaryModalOpen = false; }}
+	>
+		<div class="relative mx-4 flex max-h-[90vh] w-full max-w-6xl flex-col rounded-xl border border-surface-700 bg-surface-800 shadow-2xl">
+			<!-- Header -->
+			<div class="flex items-center justify-between border-b border-surface-700 px-6 py-4">
+				<div class="flex items-center gap-2">
+					<svg class="h-4 w-4 text-laya-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+					</svg>
+					<h2 class="text-sm font-semibold text-surface-100">Day Summary — {formatDateLabel($feedDate)}</h2>
+				</div>
+				<button
+					onclick={() => summaryModalOpen = false}
+					class="text-surface-500 hover:text-surface-300 transition-colors"
+					aria-label="Close"
+				>
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			</div>
+			<!-- Body -->
+			<div class="flex-1 overflow-y-auto p-6">
+				{#if summaryLoading}
+					<div class="flex h-48 items-center justify-center text-surface-400">
+						<span class="text-sm">Loading summary...</span>
+					</div>
+				{:else}
+					<DaySummaryComponent summary={filteredDaySummary} updatedAt={summaryUpdatedAt} ongotocard={handleSummaryGotoCard} spaceFilter={$feedFilters.spaceFilter} />
+				{/if}
 			</div>
 		</div>
 	</div>

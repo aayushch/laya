@@ -128,6 +128,9 @@
 					case 'unarchive':
 						promises.push(engineApi.reopenCard(card.card_id).then(() => { card.status = 'ready'; }));
 						break;
+					case 'link':
+						// Handled below as a single API call, not per-card
+						break;
 					case 'delete':
 						promises.push(engineApi.deleteCard(card.card_id).then(() => {
 							feedSelection.removeDeleted(card.card_id);

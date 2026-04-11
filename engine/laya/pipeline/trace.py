@@ -365,7 +365,8 @@ async def _run_trace_inner(
 
     # Merge non-identifier signals via RRF
     await _progress("Ranking results", 2, total_steps)
-    fused = _reciprocal_rank_fusion(ranked_lists, k=60)
+    loop = asyncio.get_event_loop()
+    fused = await loop.run_in_executor(None, _reciprocal_rank_fusion, ranked_lists, 60)
 
     # Build seed list: guaranteed identifier matches first, then RRF results
     seen: set[str] = set()
@@ -448,7 +449,11 @@ async def _run_trace_inner(
 
     # Phase 3 — Clustering (before capping, so small clusters aren't eliminated)
     await _progress("Building clusters", 6, total_steps)
-    clusters = _build_clusters(all_cards, entity_map, seeds)
+    # Clustering is CPU-bound (union-find + chapter detection) — run in
+    # executor so the event loop stays responsive for other API requests.
+    clusters = await loop.run_in_executor(
+        None, _build_clusters, all_cards, entity_map, seeds
+    )
 
     # Cap cards per cluster to keep results manageable without dropping
     # entire clusters. Distribute max_results proportionally.

@@ -56,7 +56,7 @@ for send_message; add "thread_ts": "timestamp" for reply_thread
     - **jira**: {"issue_key": "PROJ-123", "comment": "The comment body"} for comment; \
 {"issue_key": "PROJ-123", "target_status": "Done"} for transition; \
 {"project": "PROJ", "summary": "Title", "description": "...", "type": "Task"} for create_issue
-    - **bitbucket**: {"workspace": "ws", "repo": "repo", "pr_id": "123", "comment": "body"} \
+    - **bitbucket**: {"workspace": "ws", "repo": "repo", "pr_id": "123", "comment": "body", "comment_id": "optional — the ID of the comment to reply to (from bb_comment_id in event metadata). Include this when replying to a specific comment thread so the reply is posted as a thread reply, not a new top-level comment."} \
 for comment_pr; same without comment for approve_pr, decline_pr, merge_pr
     - **github**: {"owner": "repo-owner", "repo": "repo-name", "issue_number": 123, "comment": "body"} \
 for comment/close_issue; {"owner": "o", "repo": "r", "pr_number": 123} for approve_pr/merge_pr/request_changes; \
@@ -146,6 +146,17 @@ def build_stager_messages(
     actor_relationship: str = "external",
 ) -> list[dict[str, str]]:
     """Build the messages array for the Stager LLM call."""
+    # Include event metadata so the LLM can use platform-specific IDs
+    # (e.g., bb_comment_id for Bitbucket thread replies, gmail_thread_id for Gmail)
+    metadata_text = ""
+    if event.content.metadata:
+        metadata_lines = []
+        for k, v in event.content.metadata.items():
+            if v is not None and v != "" and v != []:
+                metadata_lines.append(f"  {k}: {v}")
+        if metadata_lines:
+            metadata_text = "\nMetadata:\n" + "\n".join(metadata_lines)
+
     event_text = f"""\
 [EVENT CONTENT]
 Platform: {event.source.platform}
@@ -154,7 +165,7 @@ Actor: {event.actor.name} ({event.actor.email})
 Subject: [{event.subject.type}] {event.subject.id} — {event.subject.title}
 URL: {event.subject.url or "N/A"}
 Body:
-{event.content.body}
+{event.content.body}{metadata_text}
 [END EVENT CONTENT]"""
 
     # Router classification

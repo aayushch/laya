@@ -20,6 +20,13 @@
 	let omniSaved = $state(false);
 	let omniError = $state('');
 
+	// Context Association settings
+	let contextAssociationEnabled = $state(true);
+	let smartDisplayEnabled = $state(true);
+	let contextSaving = $state(false);
+	let contextSaved = $state(false);
+	let contextError = $state('');
+
 	// Debounce timers
 	let briefingTimer: ReturnType<typeof setTimeout> | null = null;
 	let omniTimer: ReturnType<typeof setTimeout> | null = null;
@@ -72,6 +79,9 @@
 			omniTimezone = s.omni?.timezone ?? 'America/New_York';
 			omniRollingHours = s.omni?.rolling_interval_hours ?? 4;
 			omniEventThreshold = s.omni?.event_threshold ?? 50;
+
+			contextAssociationEnabled = s.smart_grouping?.context_association ?? true;
+			smartDisplayEnabled = s.smart_grouping?.smart_display ?? true;
 			loading = false;
 		});
 	});
@@ -175,6 +185,41 @@
 		omniEnabled = !omniEnabled;
 		saveOmni();
 	}
+
+	function handleContextAssociationToggle() {
+		contextAssociationEnabled = !contextAssociationEnabled;
+		// When disabling context association, also disable smart display
+		if (!contextAssociationEnabled) {
+			smartDisplayEnabled = false;
+		}
+		saveContextSettings();
+	}
+
+	function handleSmartDisplayToggle() {
+		smartDisplayEnabled = !smartDisplayEnabled;
+		saveContextSettings();
+	}
+
+	async function saveContextSettings() {
+		contextSaving = true;
+		contextError = '';
+		try {
+			await engineApi.updateSettings({
+				smart_grouping: {
+					context_association: contextAssociationEnabled,
+					smart_display: smartDisplayEnabled,
+					confidence_threshold: 0.30,
+					auto_confirm_threshold: 0.20,
+				}
+			} as never);
+			contextSaved = true;
+			setTimeout(() => (contextSaved = false), 2000);
+		} catch (e) {
+			contextError = e instanceof Error ? e.message : 'Save failed';
+		} finally {
+			contextSaving = false;
+		}
+	}
 </script>
 
 <div class="space-y-6">
@@ -256,6 +301,87 @@
 						in
 						<span class="text-surface-300">{timezone.replace(/_/g, ' ')}</span>.
 					</p>
+				{/if}
+			</div>
+		{/if}
+	</div>
+
+	<!-- Context Association -->
+	<div class="rounded-lg border border-surface-700 bg-surface-800 p-5">
+		<div class="flex items-center gap-2 mb-1">
+			<h3 class="font-medium">Context Association</h3>
+			<span class="rounded-full border border-laya-orange/30 bg-laya-orange/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-laya-orange">Beta</span>
+		</div>
+		<p class="mb-4 text-sm text-surface-400">
+			Automatically detect when different notifications are about the same real-world context.
+			For example, a bill notification and its payment receipt will be linked together.
+			Works across different senders, threads, and platforms.
+		</p>
+
+		{#if !loading}
+			<div class="space-y-4">
+				<!-- Context Association main toggle -->
+				<div class="rounded-md border border-surface-600 bg-surface-700/40">
+					<div class="flex items-center justify-between px-4 py-3">
+						<div>
+							<span class="text-sm font-medium text-surface-100">Enable context association</span>
+							<p class="text-xs text-surface-400">Compute semantic links between related cards during event processing</p>
+						</div>
+						<button
+							class="relative h-6 w-11 shrink-0 rounded-full transition-colors {contextAssociationEnabled ? 'bg-laya-orange' : 'bg-surface-600'}"
+							onclick={handleContextAssociationToggle}
+							role="switch"
+							aria-checked={contextAssociationEnabled}
+							aria-label="Toggle context association"
+						>
+							<span class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform {contextAssociationEnabled ? 'translate-x-5' : ''}"></span>
+						</button>
+					</div>
+
+					<!-- Smart Grouping — nested sub-setting -->
+					<div class="border-t border-surface-600/50 ml-4 mr-3 py-2.5 pl-3 pr-1 transition-opacity
+						{contextAssociationEnabled ? '' : 'opacity-40 pointer-events-none'}">
+						<div class="flex items-center justify-between">
+							<div>
+								<div class="flex items-center gap-2">
+									<span class="text-xs font-medium {contextAssociationEnabled ? 'text-surface-200' : 'text-surface-500'}">Smart grouping</span>
+									<span class="rounded-full border border-laya-orange/30 bg-laya-orange/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wider text-laya-orange">Beta</span>
+								</div>
+								<p class="text-[11px] {contextAssociationEnabled ? 'text-surface-500' : 'text-surface-600'}">
+									Group related cards by shared context in the feed
+								</p>
+							</div>
+							<button
+								class="relative h-5 w-9 shrink-0 rounded-full transition-colors {smartDisplayEnabled && contextAssociationEnabled ? 'bg-laya-orange' : 'bg-surface-600'}"
+								onclick={handleSmartDisplayToggle}
+								role="switch"
+								aria-checked={smartDisplayEnabled}
+								aria-label="Toggle smart grouping"
+								disabled={!contextAssociationEnabled}
+							>
+								<span class="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform {smartDisplayEnabled && contextAssociationEnabled ? 'translate-x-4' : ''}"></span>
+							</button>
+						</div>
+					</div>
+
+					<!-- Warning when disabling -->
+					{#if !contextAssociationEnabled}
+						<div class="border-t border-surface-600/50 px-4 py-2">
+							<p class="text-[11px] text-laya-amber/80 flex items-center gap-1.5">
+								<svg class="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+								Smart grouping is disabled when context association is off.
+							</p>
+						</div>
+					{/if}
+				</div>
+
+				{#if contextError}
+					<p class="text-xs text-red-400">{contextError}</p>
+				{/if}
+				{#if contextSaving}
+					<p class="text-xs text-laya-orange">Saving...</p>
+				{:else if contextSaved}
+					<p class="text-xs text-green-400">Saved</p>
 				{/if}
 			</div>
 		{/if}

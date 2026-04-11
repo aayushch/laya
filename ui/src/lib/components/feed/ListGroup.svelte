@@ -33,6 +33,10 @@
 	let groupMenuOpen = $state(false);
 	let bulkActionRunning = $state(false);
 
+	// Extract subject ID from entity_id (e.g., "jira:FERR-1056" → "FERR-1056")
+	// Extract subject ID from entity_id (e.g., "jira:ticket:FERR-1056" → "FERR-1056")
+	const subjectId = $derived(group.entity_id?.includes(':') ? group.entity_id.split(':').pop() : group.entity_id);
+
 	const hasBookmark = $derived(group.cards.some((c) => c.bookmarked_at));
 	const isGroupSelected = $derived(group.cards.some((c) => c.card_id === selectedCardId));
 	const isGroupLastViewed = $derived(!expanded && !isGroupSelected && !hasSelection && !!lastViewedCardId && group.cards.some(c => c.card_id === lastViewedCardId));
@@ -247,8 +251,10 @@
 			{platformLabel[group.platform] ?? group.platform}
 		</span>
 
-		<!-- Actor spacer — matches ListRow's w-[100px] actor column for alignment -->
-		<span class="w-[100px] shrink-0 ml-2"></span>
+		<!-- Subject ID (e.g., FERR-1056) extracted from entity_id -->
+		<span class="w-[100px] shrink-0 ml-2 text-[11px] font-medium text-laya-orange/70 truncate">
+			{subjectId ?? ''}
+		</span>
 
 		<!-- Subject (entity title) -->
 		<span class="group/subject relative min-w-0 flex-1 ml-2"

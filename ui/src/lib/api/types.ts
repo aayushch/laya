@@ -249,6 +249,12 @@ export interface Settings {
 	feed_preferences?: FeedPreferences;
 	pipeline?: PipelineSettings;
 	setup_complete?: boolean;
+	smart_grouping?: {
+		context_association: boolean;
+		smart_display: boolean;
+		confidence_threshold: number;
+		auto_confirm_threshold: number;
+	};
 }
 
 /** Staged output attached to an action card */
@@ -309,9 +315,10 @@ export interface ActionCard {
 	space_color?: string;
 	bookmarked_at?: string;
 	group_active_at?: string;
+	context_id?: string;
 }
 
-/** A group of cards sharing the same entity (e.g. one Jira ticket) */
+/** A group of cards sharing the same entity or semantic context */
 export interface CardGroup {
 	entity_id: string;
 	entity_title: string;
@@ -323,6 +330,8 @@ export interface CardGroup {
 	has_pending: boolean;
 	cards: ActionCard[];
 	sort_key?: string;
+	context_id?: string;
+	context_label?: string;
 }
 
 /** Response from GET /cards/grouped */
@@ -407,6 +416,8 @@ export interface TimeSavedEstimate {
 export interface LLMCostEstimate {
 	total_cost_usd: number;
 	by_model: Record<string, number>;
+	by_feature: Record<string, number>;
+	by_step: Record<string, number>;
 	total_input_tokens: number;
 	total_output_tokens: number;
 }
@@ -490,6 +501,34 @@ export interface AuditLogResponse {
 	total: number;
 	limit: number;
 	offset: number;
+}
+
+/** Dead event — failed permanently after exhausting retries */
+export interface DeadEvent {
+	event_id: string;
+	timestamp: string;
+	source_platform: string;
+	subject_type: string;
+	subject_title: string;
+	subject_url?: string;
+	actor_name?: string;
+	processing_attempts: number;
+	manual_retries: number;
+	last_error?: string;
+	created_at: string;
+}
+
+/** Paginated dead events response */
+export interface DeadEventsResponse {
+	events: DeadEvent[];
+	total: number;
+	limit: number;
+	offset: number;
+}
+
+/** Response from retrying dead events */
+export interface RetryDeadEventsResponse {
+	retried: number;
 }
 
 /** Inbound Laya Event (n8n -> Engine) */
@@ -713,6 +752,8 @@ export interface BudgetConfig {
 	current_month_cost: number;
 	current_month: string;
 	by_model: Record<string, number>;
+	by_feature: Record<string, number>;
+	by_step: Record<string, number>;
 	total_input_tokens: number;
 	total_output_tokens: number;
 	is_paused: boolean;

@@ -175,7 +175,7 @@
         "nodeCredentialType": "bitbucketAccessTokenApi",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ content: { raw: $json.body.payload.comment || '' } }) }}",
+        "jsonBody": "={{ JSON.stringify(Object.assign({ content: { raw: $json.body.payload.comment || '' } }, $json.body.payload.comment_id ? { parent: { id: Number($json.body.payload.comment_id) } } : {})) }}",
         "options": {}
       },
       "onError": "continueErrorOutput"
@@ -512,6 +512,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.03.2"
+    "laya_version": "2026.04.1"
   }
 }

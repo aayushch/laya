@@ -95,6 +95,12 @@ DEFAULT_SETTINGS = {
         "max_concurrent_events": 4,
         "queue_poll_interval": 2,
     },
+    "smart_grouping": {
+        "context_association": True,
+        "smart_display": True,
+        "confidence_threshold": 0.30,
+        "auto_confirm_threshold": 0.20,
+    },
 }
 
 

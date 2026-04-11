@@ -17,6 +17,10 @@ def normalize_payload(action_type: str, payload: dict) -> dict:
             or ""
         )
 
+    # Normalize comment_id for thread replies (may come as int or string)
+    if "comment_id" in p and p["comment_id"]:
+        p["comment_id"] = str(p["comment_id"])
+
     # Normalize PR ID
     if "pr_id" not in p:
         p["pr_id"] = p.pop("pr_number", None) or p.pop("number", None) or ""

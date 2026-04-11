@@ -56,13 +56,17 @@ class ClaudeCodeAgent(CodingAgent):
 
     async def start_session(
         self, session_id: str, prompt: str, repo_path: str, add_dirs: list[str] | None = None,
-        mode: str | None = None,
+        mode: str | None = None, research: bool = False,
     ) -> None:
         self._session_id = session_id
         self._repo_path = repo_path
         self._status = SessionStatus.STARTING
 
-        # Default to "plan" if no mode specified
+        # Research mode: stay in plan mode (read-only baseline) and use
+        # --allowedTools to selectively grant Edit/Write only inside the
+        # research directory, plus WebFetch for web search.  In non-interactive
+        # -p mode, any tool NOT in --allowedTools is denied, so Bash and
+        # Edit/Write to paths outside the pattern are blocked.
         permission_mode = mode or "plan"
 
         args = [
@@ -75,6 +79,14 @@ class ClaudeCodeAgent(CodingAgent):
             "--permission-mode",
             permission_mode,
         ]
+
+        if research:
+            abs_path = repo_path.rstrip("/")
+            # Scoped file writes — double-slash = absolute path in Claude Code
+            args.extend(["--allowedTools", f"Edit(//{abs_path}/**)"])
+            args.extend(["--allowedTools", f"Write(//{abs_path}/**)"])
+            # Web search — wildcard domain access
+            args.extend(["--allowedTools", "WebFetch(domain:*)"])
 
         if add_dirs:
             for d in add_dirs:

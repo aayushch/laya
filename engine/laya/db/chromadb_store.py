@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from functools import partial
 from typing import Any
 
 import chromadb
@@ -319,17 +321,25 @@ async def memory_search(
     if where:
         kwargs["where"] = where
 
+    loop = asyncio.get_event_loop()
+
     if _active_model_config is not None:
-        # Use our model (with appropriate prefix handling) for query embedding
+        # Use our model (with appropriate prefix handling) for query embedding.
+        # Embedding generation is CPU-intensive (SentenceTransformer.encode),
+        # so run in executor to avoid blocking the event loop.
         query_fn = LayaQueryEmbeddingFunction()
-        query_embeddings = query_fn([query])
+        query_embeddings = await loop.run_in_executor(None, query_fn, [query])
         kwargs["query_embeddings"] = query_embeddings
     else:
         # ChromaDB default: pass query text and let it embed internally
         kwargs["query_texts"] = [query]
 
     try:
-        results = collection.query(**kwargs)
+        # ChromaDB query is synchronous I/O — run in executor to keep
+        # the event loop responsive for other API requests.
+        results = await loop.run_in_executor(
+            None, partial(collection.query, **kwargs)
+        )
     except Exception as e:
         log.warning("memory_search_failed", error=str(e))
         return []

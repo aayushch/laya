@@ -12,9 +12,11 @@
 	import DataConfig from '$lib/components/settings/DataConfig.svelte';
 	import BriefingConfig from '$lib/components/settings/BriefingConfig.svelte';
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 
 	type TabId = 'team' | 'rules' | 'models' | 'repos' | 'agent' | 'integrations' | 'spaces' | 'scheduling' | 'audit' | 'appearance' | 'keybindings' | 'data';
 	const validTabs = new Set<string>(['team', 'rules', 'models', 'repos', 'agent', 'integrations', 'spaces', 'scheduling', 'audit', 'appearance', 'keybindings', 'data']);
+	const SETTINGS_TAB_KEY = 'laya-settings-tab';
 	let activeTab = $state<TabId>('team');
 
 	// React to URL query params (works for both initial load and client-side navigation)
@@ -24,6 +26,12 @@
 
 		if (tab && validTabs.has(tab)) {
 			activeTab = tab as TabId;
+		} else if (!tab) {
+			// No tab in URL — restore from localStorage
+			const saved = localStorage.getItem(SETTINGS_TAB_KEY);
+			if (saved && validTabs.has(saved)) {
+				activeTab = saved as TabId;
+			}
 		}
 
 		if (section) {
@@ -36,6 +44,13 @@
 			});
 		}
 	});
+
+	function switchTab(tabId: TabId) {
+		activeTab = tabId;
+		localStorage.setItem(SETTINGS_TAB_KEY, tabId);
+		// Update URL without full navigation so back button works
+		goto(`/settings?tab=${tabId}`, { replaceState: true, noScroll: true });
+	}
 	const tabs = [
 		{ id: 'team',    label: 'Team' },
 		{ id: 'rules',   label: 'Rules' },
@@ -44,7 +59,7 @@
 		{ id: 'agent',   label: 'Agent' },
 		{ id: 'integrations', label: 'Integrations' },
 		{ id: 'spaces',       label: 'Spaces' },
-		{ id: 'scheduling',   label: 'Scheduling' },
+		{ id: 'scheduling',   label: 'Features' },
 		{ id: 'audit',        label: 'Audit' },
 		{ id: 'appearance',   label: 'Appearance' },
 		{ id: 'keybindings',  label: 'Keys' },
@@ -87,7 +102,7 @@
 					{activeTab === tab.id
 						? 'bg-laya-orange/15 text-laya-orange'
 						: 'text-surface-400 hover:text-surface-200'}"
-				onclick={() => (activeTab = tab.id as typeof activeTab)}
+				onclick={() => switchTab(tab.id as TabId)}
 			>
 				{tab.label}
 			</button>

@@ -34,6 +34,8 @@ async def get_budget() -> dict:
         "current_month_cost": cost["total_cost_usd"],
         "current_month": cost["year_month"],
         "by_model": cost["by_model"],
+        "by_feature": cost["by_feature"],
+        "by_step": cost["by_step"],
         "total_input_tokens": cost["total_input_tokens"],
         "total_output_tokens": cost["total_output_tokens"],
         "is_paused": paused,
