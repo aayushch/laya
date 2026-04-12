@@ -1372,6 +1372,21 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
         <h3>Omni</h3>
         <p>A rolling cross-platform summary that answers "where am I right now?" at a glance. Four temporal layers — from items needing attention to long-term milestones — compressed by AI.</p>
       </div>
+      <div class="feature-card animate-on-scroll">
+        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></div>
+        <h3>Context Association</h3>
+        <p>Automatically links related cards across platforms using semantic similarity and LLM confirmation. Learns from your link/unlink corrections to improve grouping accuracy over time.</p>
+      </div>
+      <div class="feature-card animate-on-scroll">
+        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><path d="M11 8v6" stroke="#ff9770"/><path d="M8 11h6" stroke="#ff9770"/></svg></div>
+        <h3>Card Research</h3>
+        <p>Launch on-demand deep research sessions on any card. A coding agent investigates with web search, file access, and semantic context — then reports findings back to the card.</p>
+      </div>
+      <div class="feature-card animate-on-scroll">
+        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+        <h3>Budget Tracking</h3>
+        <p>Monitor LLM costs broken down by feature (Pulse, Omni, Chat, Coherence) and pipeline step. Set monthly spending caps with automatic pause when limits are reached.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -1381,7 +1396,7 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
   <div class="container">
     <div class="section-header">
       <h2>How <span class="text-orange">Laya</span> works</h2>
-      <p>A 6-stage AI pipeline transforms raw notifications into ready-to-approve intelligence.</p>
+      <p>A multi-stage AI pipeline transforms raw notifications into ready-to-approve intelligence.</p>
     </div>
     <div class="steps">
       <div class="step animate-on-scroll">
@@ -1435,9 +1450,9 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
       <div class="feature-text">
         <span class="tag">Views</span>
         <h2>Your feed, your way</h2>
-        <p>Switch between list view for rapid triage, card view for visual scanning, or summary view for the big picture. Sort by newest, priority, category, or platform.</p>
+        <p>Switch between list view for rapid triage or card view for visual scanning. Sort by newest, priority, category, or platform. Context-grouped cards cluster related items automatically.</p>
         <ul>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> List, Card, and Summary view modes</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> List and Card view modes with context grouping</li>
           <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Filter by status, priority, category, space</li>
           <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Bulk actions — approve, dismiss, archive</li>
         </ul>
@@ -1517,10 +1532,32 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
   </div>
 </section>
 
-<!-- ═══════════════════ COHERENCE ═══════════════════ -->
+<!-- ═══════════════════ OMNI ═══════════════════ -->
 <section>
   <div class="container">
     <div class="feature-showcase animate-on-scroll">
+      <div class="feature-text">
+        <span class="tag">Omni</span>
+        <h2>Your big picture, always current</h2>
+        <p>Omni is a rolling cross-platform summary that synthesizes all your professional activity into a single unified view. It answers "where am I right now?" — especially powerful after time away or for sprint retrospectives.</p>
+        <ul>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Four temporal layers: Attention, Recent, Period, and Milestone</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Progressive summarization — older layers compress automatically</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Pin important items so they survive compression</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Time-travel slider to view previous snapshots</li>
+        </ul>
+      </div>
+      <div class="feature-image">
+        <img src="images/omni-view.png" alt="Laya Omni — rolling cross-platform summary with progressive summarization">
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ COHERENCE ═══════════════════ -->
+<section>
+  <div class="container">
+    <div class="feature-showcase reverse animate-on-scroll">
       <div class="feature-text">
         <span class="tag">Coherence</span>
         <h2>Trace any entity across every platform</h2>
@@ -1539,10 +1576,54 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
   </div>
 </section>
 
-<!-- ═══════════════════ EGRESS ═══════════════════ -->
+<!-- ═══════════════════ CONTEXT ASSOCIATION ═══════════════════ -->
+<section>
+  <div class="container">
+    <div class="feature-showcase animate-on-scroll">
+      <div class="feature-text">
+        <span class="tag">Context Association</span>
+        <h2>Related cards, automatically linked</h2>
+        <p>Laya's context association engine uses semantic similarity and LLM confirmation to automatically group cards that belong to the same real-world context — even across different platforms and entity types. Link or unlink groups manually, and Laya learns from every correction.</p>
+        <ul>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Semantic matching with confidence thresholds (auto-confirm + LLM-confirm)</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Manual merge and unlink via Link Dialog</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Learning pipeline extracts grouping rules from corrections every 6 hours</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Respects user-split decisions — never re-merges what you separated</li>
+        </ul>
+      </div>
+      <div class="feature-image">
+        <img src="images/card-view.png" alt="Laya Context Association — related cards automatically grouped across platforms">
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ CARD RESEARCH ═══════════════════ -->
 <section>
   <div class="container">
     <div class="feature-showcase reverse animate-on-scroll">
+      <div class="feature-text">
+        <span class="tag">Research</span>
+        <h2>Deep-dive into any card on demand</h2>
+        <p>Need more context? Launch a research session on any card. A coding agent investigates using web search, semantic memory, and file access — then reports findings directly back to the card workspace.</p>
+        <ul>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> One-click research launch from any card</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Web search and file access in a sandboxed environment</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Builds research prompt from card context and intelligence</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Live progress streaming via workspace timeline</li>
+        </ul>
+      </div>
+      <div class="feature-image">
+        <img src="images/card-view.png" alt="Laya Card Research — deep-dive research sessions on any card">
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ EGRESS ═══════════════════ -->
+<section>
+  <div class="container">
+    <div class="feature-showcase animate-on-scroll">
       <div class="feature-text">
         <span class="tag">Egress</span>
         <h2>Take action without leaving Laya</h2>
@@ -1556,28 +1637,6 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
       </div>
       <div class="feature-image" style="max-width: 380px; margin: 0 auto;">
         <img src="images/egress-actions.png" alt="Laya egress — execute actions directly from the app">
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ═══════════════════ OMNI ═══════════════════ -->
-<section>
-  <div class="container">
-    <div class="feature-showcase animate-on-scroll">
-      <div class="feature-text">
-        <span class="tag">Omni</span>
-        <h2>Your big picture, always current</h2>
-        <p>Omni is a rolling cross-platform summary that synthesizes all your professional activity into a single unified view. It answers "where am I right now?" — especially powerful after time away or for sprint retrospectives.</p>
-        <ul>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Four temporal layers: Attention, Recent, Period, and Milestone</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Progressive summarization — older layers compress automatically</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Pin important items so they survive compression</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Time-travel slider to view previous snapshots</li>
-        </ul>
-      </div>
-      <div class="feature-image">
-        <img src="images/omni-view.png" alt="Laya Omni — rolling cross-platform summary with progressive summarization">
       </div>
     </div>
   </div>
@@ -1746,7 +1805,14 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
         <a href="#doc-feed-actions">Card Actions</a>
         <a href="#doc-feed-statuses">Card Statuses</a>
         <a href="#doc-feed-bookmarks">Bookmarks</a>
+        <a href="#doc-feed-research">Card Research</a>
         <a href="#doc-daily-briefing">Daily Briefing</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Omni</div>
+        <a href="#doc-omni-overview">Rolling Summary</a>
+        <a href="#doc-omni-layers">Temporal Layers</a>
+        <a href="#doc-omni-pins">Pins &amp; Time Travel</a>
       </div>
       <div class="sidebar-section">
         <div class="sidebar-title">Coherence</div>
@@ -1754,15 +1820,14 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
         <a href="#doc-coherence-traces">Traces &amp; Narratives</a>
       </div>
       <div class="sidebar-section">
+        <div class="sidebar-title">Context Association</div>
+        <a href="#doc-context-overview">Semantic Grouping</a>
+        <a href="#doc-context-learning">Learning Pipeline</a>
+      </div>
+      <div class="sidebar-section">
         <div class="sidebar-title">Egress</div>
         <a href="#doc-egress-overview">Outbound Actions</a>
         <a href="#doc-egress-connections">Connections</a>
-      </div>
-      <div class="sidebar-section">
-        <div class="sidebar-title">Omni</div>
-        <a href="#doc-omni-overview">Rolling Summary</a>
-        <a href="#doc-omni-layers">Temporal Layers</a>
-        <a href="#doc-omni-pins">Pins &amp; Time Travel</a>
       </div>
       <div class="sidebar-section">
         <div class="sidebar-title">Configuration</div>
@@ -1775,6 +1840,7 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
         <a href="#doc-settings-repos">Repositories</a>
         <a href="#doc-settings-briefing">Briefing Schedule</a>
         <a href="#doc-settings-appearance">Appearance</a>
+        <a href="#doc-settings-budget">Budget &amp; Costs</a>
         <a href="#doc-settings-data">Data &amp; Retention</a>
       </div>
       <div class="sidebar-section">
@@ -2152,11 +2218,10 @@ npm install --prefix ~/.laya/n8n_module n8n</code></pre>
 
       <!-- ─── THE PULSE ─── -->
       <h2 id="doc-feed-views">Views &amp; Layouts</h2>
-      <p>The Pulse is the main feed for interacting with your Action Cards. It supports three view modes accessible from the header:</p>
+      <p>The Pulse is the main feed for interacting with your Action Cards. It supports two view modes accessible from the header:</p>
       <ul>
-        <li><strong>Card View</strong> &mdash; 3-column grid of grouped cards, best for visual scanning</li>
+        <li><strong>Card View</strong> &mdash; 3-column grid of grouped cards, best for visual scanning. Context-grouped cards are clustered together automatically when smart grouping is enabled.</li>
         <li><strong>List View</strong> &mdash; Dense tabular layout, best for rapid triage of many items</li>
-        <li><strong>Summary View</strong> &mdash; AI-synthesized daily briefing with Events, Action Items, and Key Updates</li>
       </ul>
       <p>Click any card to open its <strong>Detail Panel</strong> on the right, showing the full intelligence report, staged output (draft replies, code diffs), and action buttons.</p>
 
@@ -2183,6 +2248,7 @@ npm install --prefix ~/.laya/n8n_module n8n</code></pre>
         <tr><td><strong>Reopen</strong></td><td>Bring back a dismissed, archived, or failed card for reprocessing.</td></tr>
         <tr><td><strong>Approve Agent</strong></td><td>Start a coding agent to work on the task (for <code>requires_approval</code> cards).</td></tr>
         <tr><td><strong>Execute Action</strong></td><td>Run a suggested action (send email, post comment) via n8n.</td></tr>
+        <tr><td><strong>Start Research</strong></td><td>Launch a deep-research session. A coding agent investigates using web search and semantic context.</td></tr>
         <tr><td><strong>Delete</strong></td><td>Permanently remove an archived card and all its data.</td></tr>
       </table>
 
@@ -2210,6 +2276,16 @@ npm install --prefix ~/.laya/n8n_module n8n</code></pre>
         <li>Unbookmark by clicking the icon again</li>
       </ul>
 
+      <h2 id="doc-feed-research">Card Research</h2>
+      <p>Any card can be further investigated with an on-demand research session. Click <strong>Start Research</strong> on a card to launch a coding agent that:</p>
+      <ul>
+        <li>Builds a research prompt from the card's context, intelligence report, and source event content</li>
+        <li>Spawns a Claude Code agent with scoped permissions: web search (unlimited), file writes (sandboxed to <code>~/.laya/tmp/research/&lt;card_id&gt;/</code>), and read access to the broader filesystem</li>
+        <li>Streams progress to the card's workspace timeline in real time</li>
+        <li>Reports findings back to the card when complete</li>
+      </ul>
+      <p>Research sessions are useful for cards where you need more context than the initial pipeline provided &mdash; for example, investigating an unfamiliar sender, researching a technical topic mentioned in a PR, or verifying claims in an email.</p>
+
       <h2 id="doc-daily-briefing">Daily Briefing</h2>
       <p>Laya generates a synthesized daily briefing at your configured time (default 7:00 AM). The briefing aggregates overnight activity into three sections:</p>
       <ul>
@@ -2217,7 +2293,7 @@ npm install --prefix ~/.laya/n8n_module n8n</code></pre>
         <li><strong>Action Items</strong> &mdash; Tasks requiring your attention, ranked by priority</li>
         <li><strong>Key Updates</strong> &mdash; Important changes filtered from noise</li>
       </ul>
-      <p>Access the briefing via the <strong>Summary View</strong> in the feed. Configure schedule under <strong>Settings &rarr; Briefing</strong>.</p>
+      <p>Configure the briefing schedule under <strong>Settings &rarr; Briefing</strong>.</p>
 
       <!-- ─── COHERENCE ─── -->
       <h2 id="doc-coherence-overview">Coherence &mdash; Entity Search</h2>
@@ -2251,6 +2327,31 @@ npm install --prefix ~/.laya/n8n_module n8n</code></pre>
         <li><strong>Search metadata</strong> &mdash; Diagnostics about which search methods contributed results</li>
       </ul>
       <p>Traces can be rerun to pick up new events, and exported as markdown reports.</p>
+
+      <!-- ─── CONTEXT ASSOCIATION ─── -->
+      <h2 id="doc-context-overview">Context Association &mdash; Semantic Grouping</h2>
+      <p>Context association automatically links related cards across different platforms and entity types. When a new card is emitted, Laya searches for semantically similar existing cards and groups them together if they belong to the same real-world context.</p>
+
+      <h3>How It Works</h3>
+      <ol>
+        <li><strong>Semantic search</strong> &mdash; New cards are compared against existing cards in ChromaDB using vector similarity</li>
+        <li><strong>Confidence thresholds</strong> &mdash; Matches below 0.20 distance are auto-confirmed; matches between 0.20&ndash;0.30 are confirmed via LLM call</li>
+        <li><strong>Context groups</strong> &mdash; Linked cards share a <code>context_id</code> and display a context label in the feed</li>
+        <li><strong>User overrides</strong> &mdash; Manual merge (Link Dialog) and unlink operations are respected; user-split groups are never re-merged</li>
+      </ol>
+
+      <h3>Smart Grouping in Feed</h3>
+      <p>When smart grouping is enabled (Settings &rarr; Briefing &rarr; Smart Grouping), context-associated cards are clustered together in the feed. Cards show a "linked" badge when they belong to a context group.</p>
+
+      <h2 id="doc-context-learning">Context Association &mdash; Learning Pipeline</h2>
+      <p>Laya learns from your link and unlink corrections to improve future grouping accuracy. The learning pipeline runs every 6 hours and:</p>
+      <ol>
+        <li>Collects unprocessed link/unlink corrections (up to 40 per batch)</li>
+        <li>Sends them to the LLM to extract generalizable rules (e.g., "bills and payment receipts for the same service should be grouped")</li>
+        <li>Stores extracted rules in the <code>context_rules</code> table</li>
+        <li>Injects these rules into future context confirmation prompts</li>
+      </ol>
+      <p>Rules are per-space and improve automatically as more corrections are processed. View active rules and correction history in <strong>Settings &rarr; Audit Log</strong>.</p>
 
       <!-- ─── EGRESS ─── -->
       <h2 id="doc-egress-overview">Egress &mdash; Outbound Actions</h2>
@@ -2503,6 +2604,18 @@ content.body         content.metadata.*</code></pre>
       </ul>
       <p>Theme preference is stored in Laya&rsquo;s localStorage and applied instantly.</p>
 
+      <h2 id="doc-settings-budget">Budget &amp; Costs</h2>
+      <p>Track and control LLM spending under <strong>Settings &rarr; Budget</strong> or the <strong>Dashboard</strong>.</p>
+      <table>
+        <tr><th>Feature</th><th>Description</th></tr>
+        <tr><td><strong>Feature breakdown</strong></td><td>Costs grouped by feature: Pulse, Coherence, Omni, Chat, Briefing, Egress, System</td></tr>
+        <tr><td><strong>Step breakdown</strong></td><td>Expandable per-feature cost details: Routing, Entity Resolution, Context Learning, Stager, Trace, etc.</td></tr>
+        <tr><td><strong>Monthly history</strong></td><td>Monthly cost aggregation with trend tracking</td></tr>
+        <tr><td><strong>Monthly cap</strong></td><td>Set a maximum monthly spend. When exceeded, Laya pauses AI processing and notifies you.</td></tr>
+        <tr><td><strong>Pause/Resume</strong></td><td>Manually pause or resume AI processing to control costs</td></tr>
+      </table>
+      <p>The Dashboard includes an interactive Feature Cost Chart that visualizes costs by feature with expandable step-level details.</p>
+
       <h2 id="doc-settings-data">Data &amp; Retention</h2>
       <p>Configure how long Laya retains historical data under <strong>Settings &rarr; Data</strong>.</p>
       <table>
@@ -2551,16 +2664,20 @@ content.body         content.metadata.*</code></pre>
 
       <!-- ─── ADVANCED ─── -->
       <h2 id="doc-pipeline">Processing Pipeline</h2>
-      <p>Every event flows through Laya's 6-stage AI pipeline:</p>
+      <p>Every event flows through Laya's multi-stage AI pipeline:</p>
       <ol>
         <li><strong>INGEST</strong> &mdash; Parse event, resolve actor from team directory, store raw event, resolve space</li>
         <li><strong>RULES</strong> &mdash; Evaluate user-defined filter rules; drop or pass</li>
         <li><strong>ROUTER</strong> (Fast LLM) &mdash; Classify priority, category, persona; extract entities; build research plan; query memory for related events</li>
         <li><strong>WORKERS</strong> (Specialized) &mdash; Engineer worker (code analysis, agent spawning), Comms worker (draft replies), Ops worker (calendar synthesis)</li>
         <li><strong>STAGER</strong> (Strong LLM) &mdash; Synthesize research + drafts into polished card; generate intelligence report; prepare suggested actions</li>
-        <li><strong>EMIT</strong> &mdash; Store card in database, embed summary in ChromaDB, push to UI via WebSocket</li>
+        <li><strong>EMIT</strong> &mdash; Store card in database, embed summary in ChromaDB, attempt context association with related cards, push to UI via WebSocket</li>
+        <li><strong>TRACE</strong> &mdash; Index entities into ChromaDB for Coherence search</li>
+        <li><strong>LEARN</strong> &mdash; Extract classification rules from user feedback (priority/persona corrections)</li>
+        <li><strong>CONTEXT LEARN</strong> &mdash; Extract context grouping rules from user link/unlink corrections (runs periodically)</li>
+        <li><strong>OMNI</strong> &mdash; Append card to rolling cross-platform summary (debounced incremental update)</li>
       </ol>
-      <p>Every step is recorded in the <strong>Audit Log</strong> (Settings &rarr; Audit) with model used, token counts, latency, and success/failure status.</p>
+      <p>Every step is recorded in the <strong>Audit Log</strong> (Settings &rarr; Audit) with model used, token counts, latency, and success/failure status. Failed events retry with exponential backoff (up to 3 attempts); permanently failed events are visible in <strong>Settings &rarr; Audit Log</strong> and can be manually retried.</p>
 
       <h2 id="doc-event-schema">Event Schema</h2>
       <p>Events sent from n8n to the Laya Engine follow this schema:</p>

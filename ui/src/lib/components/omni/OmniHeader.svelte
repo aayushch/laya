@@ -96,6 +96,7 @@
 	// --- Fisheye lens distortion (Time Machine style) ---
 	// The SCALE itself stretches near the cursor, spreading tick marks apart.
 	let timelineEl: HTMLDivElement | undefined = $state();
+	let timelineWidth = $state(800);
 	let mouseRatio = $state<number | null>(null); // 0-1 across the timeline
 	let rafId: number | null = null;
 
@@ -193,7 +194,7 @@
 		const range = segEnd - segStart;
 		if (range <= 0) return [];
 
-		const ticks: HourTick[] = [];
+		const allTicks: HourTick[] = [];
 		// Walk through each hour boundary within the segment's range
 		const startDate = new Date(segStart);
 		const firstHour = new Date(startDate);
@@ -210,9 +211,21 @@
 			const globalPct = (segOffset + (clampedPct / 100) * w[todayIdx]);
 			const hour = new Date(t).getHours();
 			const label = `${hour.toString().padStart(2, '0')}:00`;
-			ticks.push({ hour, label, globalPct });
+			allTicks.push({ hour, label, globalPct });
 		}
-		return ticks;
+
+		// Show all labels when fisheye distortion is active (hovering stretches the area).
+		// Thin out ticks at rest when the segment is too narrow for all labels.
+		if (mouseRatio !== null) return allTicks;
+
+		const containerPx = timelineWidth;
+		const segPx = (w[todayIdx] / 100) * containerPx;
+		const labelWidth = 32;
+		const maxLabels = Math.max(1, Math.floor(segPx / labelWidth));
+		if (allTicks.length <= maxLabels) return allTicks;
+
+		const step = Math.ceil(allTicks.length / maxLabels);
+		return allTicks.filter((_, i) => i % step === 0);
 	});
 
 	// Build flat list of all dots with global positions for the single-container rendering
@@ -380,6 +393,7 @@
 		<div
 			class="relative h-10 overflow-hidden"
 			bind:this={timelineEl}
+			bind:clientWidth={timelineWidth}
 			onmousemove={handleTimelineMove}
 			onmouseleave={handleTimelineLeave}
 		>

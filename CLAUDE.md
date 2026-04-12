@@ -46,7 +46,7 @@ Event Sources → n8n (port 45678) → Engine (port 8420) → UI (Tauri + Svelte
 ```
 
 **Three layers:**
-- **Engine** (`engine/laya/`): Python FastAPI backend. Pipeline processes events through `ingest → router → stager → emit → trace → learn → omni`. LLM calls go through LiteLLM (`llm/client.py`). 22 API routers in `api/`. Async throughout (aiosqlite, httpx).
+- **Engine** (`engine/laya/`): Python FastAPI backend. Pipeline processes events through `ingest → router → stager → emit → context_assoc → trace → learn → context_learn → omni`. LLM calls go through LiteLLM (`llm/client.py`). 23 API routers in `api/`. Async throughout (aiosqlite, httpx).
 - **UI** (`ui/src/`): SvelteKit frontend using Svelte 5 runes (`$state`, `$derived`, `$effect`, `$props`). Skeleton UI v4 + Tailwind CSS v4. Static adapter (SPA mode). Key routes: feed, coherence, dashboard, settings, workspace, omni.
 - **Tauri Shell** (`ui/src-tauri/`): Rust process that manages engine and n8n lifecycle (`sidecar.rs`, `n8n.rs`), tray icon, and native APIs.
 
@@ -67,7 +67,7 @@ Event Sources → n8n (port 45678) → Engine (port 8420) → UI (Tauri + Svelte
 
 - **Svelte 5 runes only**: Use `$state`, `$derived`, `$effect` — never `$:` reactive declarations
 - **Async everywhere in engine**: All DB access, HTTP, and pipeline functions are async
-- **SQLite migrations**: Numbered files in `engine/laya/db/migrations/` (001-039). New migrations get the next number. Migration runner in `db/migrate.py` applies on startup.
+- **SQLite migrations**: Numbered files in `engine/laya/db/migrations/` (001-046). New migrations get the next number. Migration runner in `db/migrate.py` applies on startup.
 - **LLM prompts**: Organized by role in `engine/laya/llm/prompts/` (router, stager, engineer, comms, ops, chat, etc.)
 - **Config files**: User settings live in `~/.laya/` (settings.json, team.json, rules.json, repos.json). API keys stored in OS keychain via `security/keychain.py`.
 - **Test fixtures**: `engine/tests/conftest.py` provides `db` (in-memory SQLite with all migrations), `sample_event`, `bot_event`, `slack_event`, `sample_team`. All test fixtures are async (`@pytest_asyncio.fixture`).
