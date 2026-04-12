@@ -18,7 +18,7 @@ laya/
 |   |   |-- scheduler.py                  # Background scheduler (briefings, housekeeping)
 |   |   |-- http_client.py                # Shared HTTP client
 |   |   |
-|   |   |-- api/                          # HTTP + WebSocket endpoints (22 routers)
+|   |   |-- api/                          # HTTP + WebSocket endpoints (23 routers)
 |   |   |   |-- __init__.py
 |   |   |   |-- events.py                 # POST /events (receives from n8n)
 |   |   |   |-- cards_api.py              # Card CRUD, grouping, archive/reopen, bookmarks
@@ -49,14 +49,17 @@ laya/
 |   |   |   |-- rules.py                  # RULES step: evaluate user-defined rules (rules.json)
 |   |   |   |-- router.py                 # ROUTER step: LLM classification (category, persona, priority)
 |   |   |   |-- stager.py                 # STAGER step: LLM card generation
-|   |   |   |-- emit.py                   # EMIT step: store card, embed in ChromaDB, push via WebSocket
+|   |   |   |-- emit.py                   # EMIT step: store card, embed, context assoc, push via WebSocket
 |   |   |   |-- executor.py               # Execute approved actions via n8n
 |   |   |   |-- trace.py                  # Coherence: entity search, clustering, narrative generation
 |   |   |   |-- learn.py                  # Classification learning: extract rules from corrections
+|   |   |   |-- context_grouping.py       # Context association: semantic grouping across entity boundaries
+|   |   |   |-- context_learn.py          # Context learning: extract grouping rules from user corrections
+|   |   |   |-- entity_resolution.py      # Cross-platform entity linking with context awareness
 |   |   |   |-- omni.py                   # Omni: rolling summary, incremental updates, resynthesis
+|   |   |   |-- budget.py                 # LLM cost tracking by feature and pipeline step
 |   |   |   |-- chat.py                   # Chat assistant pipeline
 |   |   |   |-- workers.py                # Multi-persona LLM workers
-|   |   |   |-- entity_resolution.py      # Cross-platform entity linking
 |   |   |   |-- space_resolution.py       # Space/source identification
 |   |   |   |-- feedback.py               # Learning loop (approval pattern tracking)
 |   |   |   |-- summarize.py              # Daily briefing generation
@@ -81,7 +84,7 @@ laya/
 |   |   |   |-- __init__.py
 |   |   |   |-- client.py                 # LiteLLM wrapper with model selection, retries, space overrides
 |   |   |   |-- providers.py              # Custom model provider management
-|   |   |   |-- prompts/                  # Prompt templates (router, stager, engineer, comms, ops, omni, etc.)
+|   |   |   |-- prompts/                  # Prompt templates (router, stager, engineer, comms, ops, omni, research, context_learner, etc.)
 |   |   |   |-- tools/                    # MCP tool definitions
 |   |   |       |-- definitions.py        # Tool schemas
 |   |   |       |-- card_tools.py         # Card query tools
@@ -101,7 +104,7 @@ laya/
 |   |   |   |-- chromadb_store.py         # ChromaDB vector store (embedded PersistentClient)
 |   |   |   |-- chunking.py              # Document chunking for embeddings
 |   |   |   |-- migrate.py               # Migration runner (check version, apply pending)
-|   |   |   |-- migrations/              # 39 numbered SQL migration files
+|   |   |   |-- migrations/              # 46 numbered SQL migration files
 |   |   |       |-- 001_initial.sql       # Core tables: events, action_cards, action_log
 |   |   |       |-- 002_entities.sql      # Entity resolution: entities table
 |   |   |       |-- ...
@@ -113,6 +116,10 @@ laya/
 |   |   |       |-- 033_traces.sql        # Coherence entity search
 |   |   |       |-- 034_egress_connections.sql  # Platform connections
 |   |   |       |-- 035_traces_fuzzy.sql  # Fuzzy search optimization
+|   |   |       |-- ...
+|   |   |       |-- 044_manual_retries.sql    # Dead event manual retry counter
+|   |   |       |-- 045_context_groups.sql    # Context groups, members tables
+|   |   |       |-- 046_context_learning.sql  # Context corrections + rules tables
 |   |   |
 |   |   |-- models/                       # Pydantic data models
 |   |   |   |-- __init__.py
@@ -197,12 +204,12 @@ laya/
 |   |   |   |   |-- types.ts              # TypeScript types matching API contracts
 |   |   |   |
 |   |   |   |-- components/              # Reusable UI components
-|   |   |       |-- feed/                 # ActionCard, CardGroup, CardDetail, FilterBar, etc.
+|   |   |       |-- feed/                 # ActionCard, CardGroup, CardDetail, FilterBar, LinkDialog, etc.
 |   |   |       |-- workspace/            # AgentPanel, Timeline, Context, StagedOutput, etc.
 |   |   |       |-- trace/                # TraceCard, TraceHeader, TraceTimeline, TraceSearch, etc.
 |   |   |       |-- omni/                # OmniView, OmniHeader, OmniItem
 |   |   |       |-- egress/               # ComposeModal, action preview
-|   |   |       |-- dashboard/            # StatCard, charts, analytics components
+|   |   |       |-- dashboard/            # StatCard, FeatureCostChart, charts, analytics components
 |   |   |       |-- chat/                 # ChatPanel, ChatMessage, ChatInput
 |   |   |       |-- settings/             # SettingsLayout, ModelConfig, SpacesConfig, etc.
 |   |   |       |-- setup/                # SetupWizard steps

@@ -98,12 +98,16 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |                                                                  |    |
 |  |  +- FastAPI Server -------------------------------------------+  |    |
 |  |  |  POST /events          (receives from n8n)                 |  |    |
+|  |  |  GET  /events/dead     (failed events for retry)           |  |    |
 |  |  |  POST /actions/approve (receives from UI)                  |  |    |
 |  |  |  GET  /cards           (UI fetches feed)                   |  |    |
+|  |  |  POST /cards/:id/start-research (launch research session)  |  |    |
 |  |  |  GET  /dashboard       (UI fetches stats)                  |  |    |
 |  |  |  POST /trace           (Coherence entity search)           |  |    |
 |  |  |  POST /egress/execute  (outbound actions)                  |  |    |
 |  |  |  CRUD /classification  (rules & corrections)               |  |    |
+|  |  |  CRUD /cards/groups    (context merge/unlink)              |  |    |
+|  |  |  GET  /budget          (LLM cost tracking)                 |  |    |
 |  |  |  WS   /ws              (real-time bidirectional)           |  |    |
 |  |  |  GET  /health          (health check)                      |  |    |
 |  |  |  CRUD /settings        (configuration)                     |  |    |
@@ -113,6 +117,11 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |  +- Asyncio Pipeline -----------------------------------------+  |    |
 |  |  |                                                            |  |    |
 |  |  | INGEST -> RULES -> ROUTER -> WORKER(s) -> STAGER -> EMIT   |  |    |
+|  |  |                                                    |       |  |    |
+|  |  |                                              CONTEXT ASSOC |  |    |
+|  |  |                                              TRACE -> LEARN|  |    |
+|  |  |                                              CONTEXT LEARN |  |    |
+|  |  |                                              OMNI          |  |    |
 |  |  |                      |                                     |  |    |
 |  |  |           +----------+-----------+                         |  |    |
 |  |  |           |      LiteLLM*        |                         |  |    |
@@ -131,6 +140,7 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |  +- Internal Tools (Python functions) ------------------------+  |    |
 |  |  |  memory_search | event_lookup | entity_lookup | entity_link|  |    |
 |  |  |  team_lookup   | card_history | feedback_query             |  |    |
+|  |  |  context_link  | context_confirm | budget_query            |  |    |
 |  |  +------------------------------------------------------------+  |    |
 |  |                                                                  |    |
 |  |  +- Egress Module --------------------------------------------+  |    |
@@ -142,7 +152,9 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |  +- Scheduled Jobs -------------------------------------------+  |    |
 |  |  |  Daily Briefing (cron) | Memory cleanup (weekly)           |  |    |
 |  |  |  Classification learning (periodic rule extraction)        |  |    |
+|  |  |  Context learning (every 6h, grouping rule extraction)     |  |    |
 |  |  |  Omni resynthesis (daily, configurable time)               |  |    |
+|  |  |  Dead event recovery (startup, stalled event detection)    |  |    |
 |  |  +------------------------------------------------------------+  |    |
 |  +------------------------------------------------------------------+    |
 |          |                  |                    |                       |
@@ -159,7 +171,8 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |   Gmail         |   | traces        |   | (local)           |         |
 |  |   Calendar      |   | egress_conn   |   |                   |         |
 |  |   GitHub        |   | classif_*     |   |                   |         |
-|  |   Linear        |   | omni_*        |   |                   |         |
+|  |   Linear        |   | context_*     |   |                   |         |
+|  |                 |   | omni_*        |   |                   |         |
 |  |                 |   | audit_log     |   |                   |         |
 |  |                 |   +---------------+   +-------------------+         |
 |  | Execution:      |                                                     |
@@ -430,6 +443,78 @@ Laya learns from user corrections to improve future card classification:
 2. **Pattern extraction:** After 15+ unprocessed corrections accumulate, the learning pipeline calls the LLM to extract generalizable rules
 3. **Rule injection:** Both manual and learned rules are injected into the router prompt for future classifications
 4. **Continuous improvement:** Rules are per-space and improve over time as more corrections are processed
+
+### Context Association Pipeline
+
+When a new card is emitted, the EMIT step attempts to associate it with existing cards:
+
+```
+Card emitted (EMIT step)
+       |
+       v
+SEMANTIC SEARCH (ChromaDB)
+  - Query for similar card embeddings
+  - Filter by space_id
+       |
+       v
+CONFIDENCE CHECK
+  - Distance < 0.20 → auto-confirm link
+  - Distance 0.20-0.30 → LLM confirmation call
+  - Distance > 0.30 → no link
+       |
+       v
+CONTEXT GROUP
+  - Create or join context_group (shared context_id)
+  - Store members with confidence scores
+  - Respect user-split decisions (never re-merge)
+       |
+       v
+CONTEXT LEARNING (periodic, every 6 hours)
+  - Batch unprocessed link/unlink corrections (up to 40)
+  - LLM extracts generalizable grouping rules
+  - Rules stored in context_rules table
+  - Injected into future confirmation prompts
+```
+
+### Card Research Flow
+
+Any card can be further investigated with an on-demand research session:
+
+```
+User clicks "Start Research" on card
+       |
+       v
+BUILD RESEARCH PROMPT
+  - Card header, summary, intelligence points
+  - Source event body and metadata
+  - Semantic context from ChromaDB
+       |
+       v
+SPAWN AGENT (Claude Code)
+  - research=True flag
+  - Scoped permissions:
+    - Write: ~/.laya/tmp/research/<card_id>/ only
+    - WebFetch: unlimited (for web research)
+    - Read: full filesystem
+       |
+       v
+STREAM PROGRESS
+  - Agent output → workspace timeline via WebSocket
+  - Live updates visible in card detail
+       |
+       v
+REPORT FINDINGS
+  - Structured output parsed on completion
+  - Results attached to card workspace
+```
+
+### Dead Event Recovery
+
+Events that fail processing 3 times are marked as "dead":
+
+- `GET /events/dead` lists permanently failed events with error context
+- `POST /events/dead/retry` re-enqueues specific or all dead events
+- Each manual retry increments a `manual_retries` counter and resets processing state for 3 fresh attempts
 
 ### Pipeline State
 

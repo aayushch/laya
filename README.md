@@ -26,16 +26,21 @@ Your Tools (Jira, Slack, Gmail, Bitbucket, Calendar)
 
 - **Multi-persona brain:** Routes events to specialized AI personas (Engineer, Comms, Ops) with domain-specific tools and prompts
 - **Card Workspaces:** Complex tasks (bug fixes, code reviews) open interactive workspaces where you collaborate with a coding agent (Claude Code, Gemini CLI, or Codex) through multiple approval steps
+- **Card Research:** Launch on-demand deep research sessions on any card — a coding agent investigates with web search, semantic context, and sandboxed file access
 - **Spaces:** User-defined contexts grouping event sources with per-space model and API key configurations
+- **Context Association:** Automatically links related cards across platforms using semantic similarity and LLM confirmation. Learns from your corrections to improve grouping accuracy over time
 - **Cross-platform memory:** Entity resolution links "BUG-1234" in Jira to "PR-891" in Bitbucket to "the payment bug" in Slack
 - **Daily Briefing:** Morning summary of overnight activity, pending cards, and today's calendar with context
-- **Analytics Dashboard:** Track events processed, time saved, LLM costs, and approval rates
+- **Analytics Dashboard:** Track events processed, time saved, LLM costs (broken down by feature and pipeline step), and approval rates
+- **Budget Tracking:** Monitor LLM costs by feature (Pulse, Omni, Chat, Coherence) with monthly caps and automatic pause when limits are reached
 - **Chat sidebar:** Ask Laya questions about your events, projects, and context
 - **Coherence:** Cross-platform entity search traces any person, ticket, or PR across all platforms with AI-generated narratives
 - **Egress:** Execute outbound actions (emails, Slack messages, PR comments) directly from Laya with preview-before-send
 - **Omni:** Rolling cross-platform summary that answers "where am I right now?" with four temporal layers (Attention, Recent, Period, Milestone) and progressive AI compression
 - **Bookmarks:** Pin important cards for quick access regardless of date or status
 - **Classification learning:** Laya extracts rules from your priority/persona corrections and improves classification automatically over time
+- **Context learning:** Laya extracts grouping rules from your link/unlink corrections and improves context association over time
+- **Dead event recovery:** Failed events are tracked with error context and can be manually retried from the audit log
 - **Privacy-aware:** Three-tier data classification with cloud/local processing options
 
 ## Tech Stack
@@ -60,9 +65,9 @@ laya/
 │   ├── laya/
 │   │   ├── main.py          # Entry point (uvicorn server on :8420)
 │   │   ├── config.py        # Settings, paths, agent detection
-│   │   ├── api/             # REST + WebSocket endpoints (21 routers)
-│   │   ├── db/              # SQLite + ChromaDB + 39 migrations
-│   │   ├── pipeline/        # Event processing (ingest → route → stage → emit → trace → learn → omni)
+│   │   ├── api/             # REST + WebSocket endpoints (23 routers)
+│   │   ├── db/              # SQLite + ChromaDB + 46 migrations
+│   │   ├── pipeline/        # Event processing (ingest → route → stage → emit → trace → learn → context_learn → omni)
 │   │   ├── llm/             # LiteLLM client, prompts, MCP tools
 │   │   ├── agents/          # Coding agent adapters (Claude, Gemini, Codex)
 │   │   ├── workers/         # Multi-persona LLM workers (engineer, comms, ops)

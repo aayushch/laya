@@ -245,6 +245,73 @@ CREATE TABLE omni_pins (
 );
 ```
 
+### context_groups
+
+Semantic grouping layer that merges related cards across entity and platform boundaries.
+
+```sql
+CREATE TABLE context_groups (
+    context_id      TEXT PRIMARY KEY,
+    label           TEXT,
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    user_confirmed  BOOLEAN DEFAULT FALSE,  -- user manually confirmed this group
+    user_split      BOOLEAN DEFAULT FALSE   -- user explicitly split this group (never re-merge)
+);
+```
+
+### context_group_members
+
+Tracks which entity_ids belong to a context group (with confidence and audit trail).
+
+```sql
+CREATE TABLE context_group_members (
+    context_id      TEXT NOT NULL REFERENCES context_groups(context_id),
+    entity_id       TEXT NOT NULL,
+    confidence      REAL DEFAULT 0.0,       -- semantic distance score
+    link_method     TEXT DEFAULT 'semantic', -- 'semantic', 'user', 'llm'
+    added_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (context_id, entity_id)
+);
+```
+
+### context_corrections
+
+Tracks user link/unlink actions for the context learning pipeline.
+
+```sql
+CREATE TABLE context_corrections (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    card_id_a       TEXT NOT NULL,
+    card_id_b       TEXT NOT NULL,
+    header_a        TEXT,
+    header_b        TEXT,
+    summary_a       TEXT,
+    summary_b       TEXT,
+    platform_a      TEXT,
+    platform_b      TEXT,
+    action          TEXT NOT NULL,       -- 'link' or 'unlink'
+    space_id        TEXT,
+    processed       INTEGER NOT NULL DEFAULT 0,
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### context_rules
+
+Learned and manual rules for improving context association accuracy.
+
+```sql
+CREATE TABLE context_rules (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    space_id        TEXT,
+    rule_text       TEXT NOT NULL,           -- human-readable grouping rule
+    source          TEXT NOT NULL DEFAULT 'learned',  -- 'learned' or 'manual'
+    active          INTEGER NOT NULL DEFAULT 1,
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
 ## ChromaDB Collection
 
 ### laya_memory
@@ -378,7 +445,7 @@ CREATE TABLE egress_connections (
 
 ## Migration Files
 
-Migrations are numbered SQL files in `engine/laya/db/migrations/`. There are currently 39 migrations (001 through 039), covering:
+Migrations are numbered SQL files in `engine/laya/db/migrations/`. There are currently 46 migrations (001 through 046), covering:
 
 | Range | Description |
 |---|---|
@@ -399,5 +466,11 @@ Migrations are numbered SQL files in `engine/laya/db/migrations/`. There are cur
 | `035` | Fuzzy search optimization for traces |
 | `036`-`038` | Chat, scheduling, and pipeline improvements |
 | `039` | **Omni**: omni_snapshots and omni_pins tables for rolling cross-platform summaries |
+| `040`-`041` | Spaces-Omni-Trace model enhancements, Omni timeline index |
+| `042` | Omni delta-based storage for snapshot compression |
+| `043` | Omni persistent message queue |
+| `044` | **Dead event recovery**: manual_retries counter on events |
+| `045` | **Context groups**: context_groups, context_group_members tables for semantic card grouping |
+| `046` | **Context learning**: context_corrections, context_rules tables for learned grouping rules |
 
 The migration runner (`engine/laya/db/migrate.py`) checks `schema_version` on startup and applies any migrations with version > current version.
