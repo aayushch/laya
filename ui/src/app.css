@@ -2,25 +2,18 @@
 @import '@skeletonlabs/skeleton';
 @import '@skeletonlabs/skeleton/themes/cerberus';
 
-/* Prevent macOS elastic overscroll from moving fixed header/footer.
-   Rounded corners restore the native macOS look lost with decorations:false. */
+/* Prevent macOS elastic overscroll from moving fixed header/footer */
 html, body {
 	overflow: hidden;
 	overscroll-behavior: none;
 	height: 100%;
-	border-radius: 10px;
-	background: transparent;
 }
 
 /* ─────────────────────────────────────────────────────────────
    FONT SCALE — set via --laya-font-base on <html> (12-15px)
    Secondary sizes derive from the base so everything scales together.
    ───────────────────────────────────────────────────────────── */
-:root {
-	--laya-font-base: 13px;
-	--titlebar-left-inset: 0px;
-	--titlebar-right-inset: 0px;
-}
+:root { --laya-font-base: 13px; }
 .text-laya-base  { font-size: var(--laya-font-base); line-height: 1.5; }
 .text-laya-secondary { font-size: calc(var(--laya-font-base) - 2px); line-height: 1.5; }
 .text-laya-micro { font-size: calc(var(--laya-font-base) - 3px); line-height: 1.4; }

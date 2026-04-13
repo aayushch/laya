@@ -424,23 +424,6 @@ pub fn run() {
                 }
             }
 
-            // Restore rounded corners on macOS (lost when decorations:false).
-            // Makes the NSWindow background transparent so CSS border-radius on
-            // html/body clips the visible content to rounded corners.
-            #[cfg(target_os = "macos")]
-            {
-                use cocoa::appkit::NSWindow;
-                if let Some(window) = app.get_webview_window("main") {
-                    let ns_window = window.ns_window().unwrap() as cocoa::base::id;
-                    unsafe {
-                        let clear_color: cocoa::base::id = cocoa::appkit::NSColor::clearColor(cocoa::base::nil);
-                        NSWindow::setBackgroundColor_(ns_window, clear_color);
-                        NSWindow::setOpaque_(ns_window, cocoa::base::NO);
-                        NSWindow::setHasShadow_(ns_window, cocoa::base::YES);
-                    }
-                }
-            }
-
             // --- System tray ---
             let dashboard =
                 MenuItem::with_id(app, "dashboard", "Dashboard", true, None::<&str>)?;
