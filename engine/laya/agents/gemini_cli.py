@@ -84,7 +84,7 @@ class GeminiCliAgent(CodingAgent):
         await self._process.spawn(args=args, cwd=repo_path)
         self._status = SessionStatus.RUNNING
 
-    async def resume_with_answer(self, answer_text: str, add_dirs: list[str] | None = None) -> None:
+    async def resume_with_answer(self, answer_text: str, add_dirs: list[str] | None = None, research: bool = False) -> None:
         """Resume the Gemini CLI conversation with the user's answer.
 
         Spawns a new subprocess using --resume <session_id> so Gemini
@@ -93,6 +93,7 @@ class GeminiCliAgent(CodingAgent):
         Args:
             answer_text: The user's response text.
             add_dirs: Extra directory paths to pass via --include-directories flags.
+            research: If True, apply auto_edit approval mode for research writes.
         """
         if not self._gemini_session_id:
             raise ValueError("No Gemini session ID available for resumption")
@@ -109,6 +110,11 @@ class GeminiCliAgent(CodingAgent):
             "--output-format",
             "stream-json",
         ]
+
+        if research:
+            # Same as start_session: auto-approve writes, web search is always on.
+            # No CLI-level directory scoping available for Gemini.
+            args.extend(["--approval-mode", "auto_edit"])
 
         if add_dirs:
             for d in add_dirs:

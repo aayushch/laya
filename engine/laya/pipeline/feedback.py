@@ -27,8 +27,10 @@ async def query_feedback_patterns(
     db = await get_db()
 
     try:
+        from laya.config import get_tuning
+        window_days = get_tuning("feedback_time_window_days", 30)
         rows = await db.execute_fetchall(
-            """SELECT
+            f"""SELECT
                    e.source_platform,
                    e.source_raw_event_type,
                    ac.persona,
@@ -40,7 +42,7 @@ async def query_feedback_patterns(
                WHERE e.source_platform = ?
                  AND ac.status IN ('done', 'dismissed')
                  AND ac.resolved_at IS NOT NULL
-                 AND ac.created_at > datetime('now', '-30 days')
+                 AND ac.created_at > datetime('now', '-{window_days} days')
                GROUP BY e.source_platform, e.source_raw_event_type,
                         ac.persona, ac.priority, ac.status
                ORDER BY count DESC

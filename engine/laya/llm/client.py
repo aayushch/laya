@@ -409,7 +409,14 @@ async def llm_call(
         response = await _call_with_retry()
         elapsed_ms = int((time.monotonic() - start) * 1000)
 
+        # Thinking models (Qwen 3.5, DeepSeek-R1, etc.) may place their
+        # output in reasoning_content instead of content when the response
+        # is generated entirely within <think> tags.  LMStudio separates
+        # these into distinct fields in the API response.  Fall back to
+        # reasoning_content when content is empty.
         content = response.choices[0].message.content or ""
+        if not content:
+            content = getattr(response.choices[0].message, "reasoning_content", None) or ""
         finish_reason = response.choices[0].finish_reason or "stop"
         input_tokens = response.usage.prompt_tokens if response.usage else 0
         output_tokens = response.usage.completion_tokens if response.usage else 0
@@ -433,6 +440,8 @@ async def llm_call(
             elapsed_ms += int((time.monotonic() - retry_start) * 1000)
 
             content = response.choices[0].message.content or ""
+            if not content:
+                content = getattr(response.choices[0].message, "reasoning_content", None) or ""
             finish_reason = response.choices[0].finish_reason or "stop"
             input_tokens += response.usage.prompt_tokens if response.usage else 0
             output_tokens = response.usage.completion_tokens if response.usage else 0
@@ -529,7 +538,15 @@ async def llm_call(
             finish_reason=finish_reason,
         )
 
-        # Log successful call to audit
+        # Log call to audit — mark as failed if structured output was
+        # requested but JSON parsing failed (the HTTP call succeeded but the
+        # response is unusable by the caller).
+        _audit_success = True
+        _audit_error = None
+        if response_schema and not result.parsed:
+            _audit_success = False
+            _audit_error = "Structured output requested but response was not valid JSON"
+
         await log_to_audit(
             event_id=event_id,
             card_id=card_id,
@@ -538,7 +555,8 @@ async def llm_call(
             input_tokens=result.input_tokens,
             output_tokens=result.output_tokens,
             latency_ms=result.latency_ms,
-            success=True,
+            success=_audit_success,
+            error=_audit_error,
         )
 
         # Check budget limit (fire-and-forget to avoid slowing the pipeline)

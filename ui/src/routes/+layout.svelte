@@ -129,6 +129,10 @@
 		startHealthPolling();
 		initWebSocket();
 
+		// Disable default Tauri context menu (Back/Forward/Reload/Inspect Element)
+		// — nav controls are in the top bar instead
+		document.addEventListener('contextmenu', (e) => e.preventDefault());
+
 		// Keyboard shortcut: press 'c' (not in input/textarea) to open compose modal
 		function handleComposeShortcut(e: KeyboardEvent) {
 			if (e.key === 'c' && !e.metaKey && !e.ctrlKey && !e.altKey) {
@@ -278,8 +282,42 @@
 			{/if}
 			<div class="flex-1"></div>
 
-			<!-- Right: Global utilities -->
+			<!-- Right: Navigation + Global utilities -->
 			<div class="flex items-center gap-1 ml-3">
+				<!-- Browser back/forward/reload (Safari-style pill) -->
+				<div class="flex items-center rounded-lg bg-surface-800 border border-surface-700 mr-2">
+					<button
+						class="px-1.5 py-1 text-surface-400 transition-colors hover:text-surface-200"
+						onclick={() => history.back()}
+						title="Back"
+					>
+						<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+						</svg>
+					</button>
+					<span class="h-3.5 w-px bg-surface-700"></span>
+					<button
+						class="px-1.5 py-1 text-surface-400 transition-colors hover:text-surface-200"
+						onclick={() => history.forward()}
+						title="Forward"
+					>
+						<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+						</svg>
+					</button>
+					<span class="h-3.5 w-px bg-surface-700"></span>
+					<button
+						class="px-1.5 py-1 text-surface-400 transition-colors hover:text-surface-200"
+						onclick={() => location.reload()}
+						title="Reload"
+					>
+						<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+						</svg>
+					</button>
+				</div>
+			</div>
+			<div class="flex items-center gap-1">
 				<!-- Chat (hidden on Omni insight view which has its own inline chat) -->
 				{#if !isOmniInsight}
 				<div class="group/tip relative">

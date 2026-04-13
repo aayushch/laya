@@ -185,16 +185,16 @@
 			</div>
 
 			{#if deadExpanded}
-				<div class="mt-3 overflow-x-auto rounded-lg border border-surface-700">
-					<table class="w-full text-left text-xs">
+				<div class="mt-3 overflow-visible rounded-lg border border-surface-700">
+					<table class="w-full table-fixed text-left text-xs">
 						<thead class="border-b border-surface-700 bg-surface-800 text-surface-400">
 							<tr>
-								<th class="px-3 py-2">Time</th>
-								<th class="px-3 py-2">Platform</th>
-								<th class="px-3 py-2">Subject</th>
-								<th class="px-3 py-2">Error</th>
-								<th class="px-3 py-2">Attempts</th>
-								<th class="px-3 py-2">Action</th>
+								<th class="w-[18%] px-3 py-2">Time</th>
+								<th class="w-[10%] px-3 py-2">Platform</th>
+								<th class="w-[22%] px-3 py-2">Subject</th>
+								<th class="w-[24%] px-3 py-2">Error</th>
+								<th class="w-[16%] px-3 py-2">Attempts</th>
+								<th class="w-[10%] px-3 py-2">Action</th>
 							</tr>
 						</thead>
 						<tbody class="divide-y divide-surface-700/50">
@@ -208,17 +208,31 @@
 											{evt.source_platform}
 										</span>
 									</td>
-									<td class="max-w-[200px] truncate px-3 py-2 font-medium text-surface-200" title={evt.subject_title}>
-										{#if evt.subject_url}
-											<a href={evt.subject_url} target="_blank" rel="noopener" class="hover:text-laya-orange hover:underline">
+									<td class="group/subj relative overflow-visible px-3 py-2 font-medium text-surface-200">
+										<span class="block truncate">
+											{#if evt.subject_url}
+												<a href={evt.subject_url} target="_blank" rel="noopener" class="hover:text-laya-orange hover:underline">
+													{evt.subject_title}
+												</a>
+											{:else}
 												{evt.subject_title}
-											</a>
-										{:else}
-											{evt.subject_title}
+											{/if}
+										</span>
+										{#if evt.subject_title && evt.subject_title.length > 25}
+											<div class="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 hidden max-w-sm whitespace-normal break-words rounded-lg border border-surface-600 bg-surface-800 px-3 py-2 text-xs font-normal text-surface-200 shadow-lg group-hover/subj:block">
+												{evt.subject_title}
+											</div>
 										{/if}
 									</td>
-									<td class="max-w-[240px] truncate px-3 py-2 text-red-400" title={evt.last_error ?? ''}>
-										{truncateError(evt.last_error)}
+									<td class="group/err relative overflow-visible px-3 py-2 text-red-400">
+										<span class="block truncate">
+											{truncateError(evt.last_error)}
+										</span>
+										{#if evt.last_error && evt.last_error.length > 30}
+											<div class="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 hidden max-w-sm whitespace-normal break-words rounded-lg border border-surface-600 bg-surface-800 px-3 py-2 text-xs font-normal text-red-300 shadow-lg group-hover/err:block">
+												{evt.last_error}
+											</div>
+										{/if}
 									</td>
 									<td class="whitespace-nowrap px-3 py-2 text-surface-400">
 										{evt.processing_attempts} attempt{evt.processing_attempts !== 1 ? 's' : ''}{#if evt.manual_retries > 0}, retried {evt.manual_retries}x{/if}

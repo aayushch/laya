@@ -98,8 +98,38 @@ DEFAULT_SETTINGS = {
     "smart_grouping": {
         "context_association": True,
         "smart_display": True,
-        "confidence_threshold": 0.30,
-        "auto_confirm_threshold": 0.20,
+        "confidence_threshold": 0.22,
+        "auto_confirm_threshold": 0.12,
+    },
+    "tuning": {
+        # Context association
+        "context_association_time_window_days": 7,
+        # Entity resolution
+        "semantic_entity_threshold": 0.35,
+        "entity_search_results": 5,
+        # Classification learning
+        "classification_learn_threshold": 15,
+        "classification_learn_batch": 50,
+        "classification_learn_interval_hours": 6,
+        # Context learning
+        "context_learn_threshold": 10,
+        "context_learn_batch": 40,
+        "context_learn_interval_hours": 6,
+        "context_rules_max_injection": 20,
+        "context_corrections_max_injection": 10,
+        # Trace / RAG search
+        "trace_search_results": 30,
+        "trace_max_seeds": 20,
+        "trace_semantic_max_distance": 0.65,
+        # Chat retrieval
+        "chat_semantic_max_distance": 0.60,
+        "chat_context_items": 12,
+        # Router
+        "router_related_context_results": 3,
+        # Feedback
+        "feedback_time_window_days": 30,
+        # Corrections cleanup
+        "corrections_retention_days": 30,
     },
 }
 
@@ -118,6 +148,19 @@ DEFAULT_RULES: dict = {
         }
     ]
 }
+
+
+def get_tuning(key: str, default=None):
+    """Read a tuning parameter from settings.json with fallback to DEFAULT_SETTINGS.
+
+    Usage: ``get_tuning("trace_search_results", 30)``
+    """
+    settings = load_settings()
+    tuning = settings.get("tuning", {})
+    if default is not None:
+        return tuning.get(key, default)
+    # Fall back to DEFAULT_SETTINGS tuning section
+    return tuning.get(key, DEFAULT_SETTINGS.get("tuning", {}).get(key))
 
 
 def ensure_directories() -> None:

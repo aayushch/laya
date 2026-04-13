@@ -85,8 +85,13 @@ class ClaudeCodeAgent(CodingAgent):
             # Scoped file writes — double-slash = absolute path in Claude Code
             args.extend(["--allowedTools", f"Edit(//{abs_path}/**)"])
             args.extend(["--allowedTools", f"Write(//{abs_path}/**)"])
-            # Web search — wildcard domain access
-            args.extend(["--allowedTools", "WebFetch(domain:*)"])
+            # Web access — bare tool names without domain qualifier.
+            # WebFetch(domain:*) wildcard is a known Claude Code bug
+            # (github.com/anthropics/claude-code/issues/11972) where the
+            # wildcard is silently ignored.  Bare "WebFetch" blanket-allows
+            # all domains.  WebSearch is a separate tool for internet searches.
+            args.extend(["--allowedTools", "WebFetch"])
+            args.extend(["--allowedTools", "WebSearch"])
 
         if add_dirs:
             for d in add_dirs:
@@ -95,7 +100,7 @@ class ClaudeCodeAgent(CodingAgent):
         await self._process.spawn(args=args, cwd=repo_path)
         self._status = SessionStatus.RUNNING
 
-    async def resume_with_answer(self, answer_text: str, add_dirs: list[str] | None = None) -> None:
+    async def resume_with_answer(self, answer_text: str, add_dirs: list[str] | None = None, research: bool = False) -> None:
         """Resume the Claude Code conversation with the user's answer.
 
         Spawns a new subprocess using --resume <cc_session_id> so Claude Code
@@ -103,12 +108,17 @@ class ClaudeCodeAgent(CodingAgent):
 
         Args:
             add_dirs: Extra directory paths to pass via --add-dir flags.
+            research: If True, use plan mode with scoped writes + web instead of acceptEdits.
         """
         if not self._cc_session_id:
             raise ValueError("No Claude Code session ID available for resumption")
 
         self._process = AgentProcess()
         self._status = SessionStatus.STARTING
+
+        # Research sessions keep plan mode with scoped tool access;
+        # code sessions get acceptEdits for full write access.
+        permission_mode = "plan" if research else "acceptEdits"
 
         args = [
             self._binary,
@@ -120,8 +130,15 @@ class ClaudeCodeAgent(CodingAgent):
             "stream-json",
             "--verbose",
             "--permission-mode",
-            "acceptEdits",
+            permission_mode,
         ]
+
+        if research:
+            abs_path = self._repo_path.rstrip("/")
+            args.extend(["--allowedTools", f"Edit(//{abs_path}/**)"])
+            args.extend(["--allowedTools", f"Write(//{abs_path}/**)"])
+            args.extend(["--allowedTools", "WebFetch"])
+            args.extend(["--allowedTools", "WebSearch"])
 
         if add_dirs:
             for d in add_dirs:

@@ -14,8 +14,9 @@
 		selectedCardId = '',
 		hasSelection = false,
 		lastViewedCardId = '',
-		scrollToCardId = null
-	}: { group: CardGroup; onselect: (card: ActionCard) => void; ondelete?: (cardId: string) => void; onlink?: (group: CardGroup) => void; selectedCardId?: string; hasSelection?: boolean; lastViewedCardId?: string; scrollToCardId?: string | null } = $props();
+		scrollToCardId = null,
+		detailPanelOpen = false
+	}: { group: CardGroup; onselect: (card: ActionCard) => void; ondelete?: (cardId: string) => void; onlink?: (group: CardGroup) => void; selectedCardId?: string; hasSelection?: boolean; lastViewedCardId?: string; scrollToCardId?: string | null; detailPanelOpen?: boolean } = $props();
 
 	let expanded = $state(false);
 	let bulkActionRunning = $state(false);
@@ -66,6 +67,17 @@
 		}
 	});
 
+	// Auto-collapse when the detail panel slides out (detailPanelOpen goes from true → false).
+	// Skip the slide transition to avoid jarring back-to-back animations with scroll-into-view.
+	let prevDetailPanelOpen = $state(detailPanelOpen);
+	let skipCollapseTransition = $state(false);
+	$effect(() => {
+		if (prevDetailPanelOpen && !detailPanelOpen && expanded) {
+			skipCollapseTransition = true;
+			expanded = false;
+		}
+		prevDetailPanelOpen = detailPanelOpen;
+	});
 
 	// Close group menu on outside click
 	$effect(() => {
@@ -251,6 +263,7 @@
 	// Extract subject ID from entity_id (e.g., "jira:ticket:FERR-1056" → "FERR-1056")
 	const subjectId = $derived(group.entity_id?.includes(':') ? group.entity_id.split(':').pop() : group.entity_id);
 
+	const groupHasWorkspace = $derived(group.cards.some((c) => c.has_workspace));
 	const hasBookmark = $derived(group.cards.some((c) => c.bookmarked_at));
 	const isGroupSelected = $derived(group.cards.some((c) => c.card_id === selectedCardId));
 	// Show last-viewed accent on the group header when collapsed and it contains the last-viewed card
@@ -391,6 +404,13 @@
 						<svg class="h-3 w-3 text-laya-orange/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke-dasharray="3 2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
 						</svg>
+					{/if}
+					{#if groupHasWorkspace}
+						<span class="text-violet-400/60" title="Has Workspace">
+							<svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+							</svg>
+						</span>
 					{/if}
 					<span class="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase {priorityColors[group.top_priority] ?? priorityColors.MEDIUM}">
 						{priorityLabel[group.top_priority] ?? group.top_priority}
@@ -545,7 +565,9 @@
 
 		<!-- Expanded-only content: card list (slides in/out) -->
 		{#if expanded}
-			<div class="space-y-2 px-3 pb-3 pt-1" transition:slide={{ duration: 200 }}>
+			<div class="space-y-2 px-3 pb-3 pt-1" transition:slide={{ duration: skipCollapseTransition ? 0 : 200 }}
+				onoutroend={() => { skipCollapseTransition = false; }}
+			>
 				{#each group.cards as card (card.card_id)}
 					<ActionCardComponent {card} onselect={onselect} {ondelete} {selectedCardId} {hasSelection} {lastViewedCardId} />
 				{/each}

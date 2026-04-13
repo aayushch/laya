@@ -113,6 +113,35 @@ async def _run_trace_housekeeping(retention_days: int) -> None:
     log.info("trace_housekeeping_complete", deleted=deleted, retention_days=retention_days)
 
 
+async def _run_corrections_housekeeping(retention_days: int) -> None:
+    """Delete processed corrections older than `retention_days` days.
+
+    Applies to both classification_corrections and context_corrections.
+    Only deletes rows that have already been processed by the learner
+    (processed=1), keeping unprocessed corrections for future learning.
+    """
+    from laya.db.sqlite import get_db
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+    db = await get_db()
+    total_deleted = 0
+
+    for table in ("classification_corrections", "context_corrections"):
+        try:
+            cursor = await db.execute(
+                f"DELETE FROM {table} WHERE processed = 1 AND created_at < ?",
+                (cutoff,),
+            )
+            if cursor.rowcount:
+                total_deleted += cursor.rowcount
+        except Exception as e:
+            log.debug("corrections_housekeeping_table_skip", table=table, error=str(e))
+
+    await db.commit()
+    if total_deleted:
+        log.info("corrections_housekeeping_complete", deleted=total_deleted, retention_days=retention_days)
+
+
 async def _run_audit_housekeeping(retention_days: int) -> None:
     """Delete audit_log entries older than `retention_days` days.
 
@@ -277,6 +306,7 @@ async def _scheduler_loop() -> None:
                     event_threshold = int(omni_cfg.get("event_threshold", 50))
                     should_roll = False
                     trigger_reason = ""
+                    _threshold_spaces: list[str] = []
 
                     if rolling_hours > 0:
                         if _last_omni_rolling is None:
@@ -286,28 +316,40 @@ async def _scheduler_loop() -> None:
                             trigger_reason = f"interval_{rolling_hours}h"
 
                     if not should_roll and event_threshold > 0:
-                        # Count cards since last resynthesis (any type)
+                        # Check event threshold per-space so each space triggers
+                        # resynthesis independently based on its own activity.
                         try:
                             from laya.db.sqlite import get_db
                             _db = await get_db()
-                            _last_synth = await _db.execute_fetchall(
-                                """SELECT generated_at FROM omni_snapshots
-                                   WHERE snapshot_type IN ('scheduled', 'rolling', 'manual')
-                                   ORDER BY version DESC LIMIT 1"""
-                            )
-                            # Normalize ISO 'T' separator to space to match SQLite CURRENT_TIMESTAMP format,
-                            # otherwise string comparison fails (space 0x20 < 'T' 0x54).
-                            _raw = _last_synth[0]["generated_at"] if _last_synth else None
-                            _since = _raw.replace("T", " ").split("+")[0] if _raw else "2000-01-01 00:00:00"
-                            _count_rows = await _db.execute_fetchall(
-                                "SELECT COUNT(*) AS cnt FROM action_cards WHERE created_at > ?",
-                                (_since,),
-                            )
-                            _new_count = _count_rows[0]["cnt"] if _count_rows else 0
-                            if _new_count >= event_threshold:
-                                should_roll = True
-                                trigger_reason = f"threshold_{_new_count}_events"
+                            _space_rows = await _db.execute_fetchall("SELECT space_id FROM spaces")
+                            _space_ids = [r["space_id"] for r in _space_rows] if _space_rows else ["default"]
+                            if "default" not in _space_ids:
+                                _space_ids.append("default")
+
+                            for _sid in _space_ids:
+                                _last_synth = await _db.execute_fetchall(
+                                    """SELECT generated_at FROM omni_snapshots
+                                       WHERE snapshot_type IN ('scheduled', 'rolling', 'manual')
+                                         AND space_id = ?
+                                       ORDER BY version DESC LIMIT 1""",
+                                    (_sid,),
+                                )
+                                # Normalize ISO 'T' separator to space to match SQLite CURRENT_TIMESTAMP format,
+                                # otherwise string comparison fails (space 0x20 < 'T' 0x54).
+                                _raw = _last_synth[0]["generated_at"] if _last_synth else None
+                                _since = _raw.replace("T", " ").split("+")[0] if _raw else "2000-01-01 00:00:00"
+                                _count_rows = await _db.execute_fetchall(
+                                    "SELECT COUNT(*) AS cnt FROM action_cards WHERE space_id = ? AND created_at > ?",
+                                    (_sid, _since),
+                                )
+                                _new_count = _count_rows[0]["cnt"] if _count_rows else 0
+                                if _new_count >= event_threshold:
+                                    _threshold_spaces.append(_sid)
+
+                            if _threshold_spaces:
+                                trigger_reason = f"threshold_{len(_threshold_spaces)}_spaces"
                         except Exception as e:
+                            _threshold_spaces = []
                             log.warning("omni_event_threshold_check_failed", error=str(e))
 
                     if should_roll:
@@ -319,6 +361,17 @@ async def _scheduler_loop() -> None:
                             log.info("scheduler_omni_resynthesis_complete", trigger=trigger_reason, snapshots=len(snapshot_ids))
                         except Exception as e:
                             log.error("scheduler_omni_resynthesis_failed", trigger=trigger_reason, error=str(e))
+                    elif _threshold_spaces:
+                        # Per-space threshold-triggered resynthesis
+                        _last_omni_rolling = now_utc
+                        from laya.pipeline.omni import run_omni_resynthesis
+                        for _sid in _threshold_spaces:
+                            log.info("scheduler_omni_resynthesis_triggered", trigger=f"threshold_space_{_sid}")
+                            try:
+                                snapshot_ids = await run_omni_resynthesis(space_id=_sid, snapshot_type="rolling")
+                                log.info("scheduler_omni_resynthesis_complete", trigger=f"threshold_space_{_sid}", snapshots=len(snapshot_ids))
+                            except Exception as e:
+                                log.error("scheduler_omni_resynthesis_failed", trigger=f"threshold_space_{_sid}", error=str(e))
 
             # --- Housekeeping (once per day at ~00:00 UTC) ---
             if _last_housekeeping_date != today_str:
@@ -359,6 +412,13 @@ async def _scheduler_loop() -> None:
                 except Exception as e:
                     log.error("omni_housekeeping_failed", error=str(e))
 
+                # Processed corrections cleanup
+                corrections_retention = int(settings.get("tuning", {}).get("corrections_retention_days", 30))
+                try:
+                    await _run_corrections_housekeeping(corrections_retention)
+                except Exception as e:
+                    log.error("corrections_housekeeping_failed", error=str(e))
+
             # --- Budget month rollover (local timezone) ---
             try:
                 tz_name = settings.get("briefing", {}).get("timezone", "America/New_York")
@@ -382,7 +442,9 @@ async def _scheduler_loop() -> None:
                 log.error("budget_month_rollover_failed", error=str(e))
 
             # --- Classification learning (every 6 hours) ---
-            if _last_learn_check is None or (now_utc - _last_learn_check) >= timedelta(hours=6):
+            tuning = settings.get("tuning", {})
+            cls_learn_hours = int(tuning.get("classification_learn_interval_hours", 6))
+            if _last_learn_check is None or (now_utc - _last_learn_check) >= timedelta(hours=cls_learn_hours):
                 _last_learn_check = now_utc
                 try:
                     from laya.pipeline.learn import run_learn_all
@@ -390,8 +452,9 @@ async def _scheduler_loop() -> None:
                 except Exception as e:
                     log.error("learn_extraction_failed", error=str(e))
 
-            # --- Context association learning (every 6 hours) ---
-            if _last_context_learn_check is None or (now_utc - _last_context_learn_check) >= timedelta(hours=6):
+            # --- Context association learning ---
+            ctx_learn_hours = int(tuning.get("context_learn_interval_hours", 6))
+            if _last_context_learn_check is None or (now_utc - _last_context_learn_check) >= timedelta(hours=ctx_learn_hours):
                 _last_context_learn_check = now_utc
                 try:
                     from laya.pipeline.context_learn import run_context_learn_all

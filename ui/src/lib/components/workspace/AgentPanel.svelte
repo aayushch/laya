@@ -8,11 +8,15 @@
 	let {
 		card,
 		session,
-		events
+		events,
+		timelineOpen = false,
+		ontoggletime
 	}: {
 		card: ActionCard;
 		session: WorkspaceSession | null;
 		events: WorkspaceEvent[];
+		timelineOpen?: boolean;
+		ontoggletime?: () => void;
 	} = $props();
 
 	const VISIBLE_LIMIT = 150;
@@ -325,38 +329,52 @@
 	}
 </script>
 
-<div class="flex h-full flex-1 min-w-0 flex-col">
+<div class="flex h-full flex-1 min-w-0 flex-col border-l border-surface-700">
 	<!-- Header bar -->
-	<div class="flex h-11 items-center justify-between border-b border-surface-700 px-4">
-		<div class="flex items-center gap-2">
-			<h2 class="text-sm font-semibold text-surface-100 truncate max-w-[300px]">{card.header}</h2>
+	<div class="flex h-11 items-center justify-between border-b border-surface-700 px-4 gap-3">
+		<div class="flex min-w-0 flex-1 items-center gap-1.5">
+			{#if ontoggletime}
+				<button
+					class="shrink-0 text-laya-orange transition-transform duration-200"
+					onclick={ontoggletime}
+					title="{timelineOpen ? 'Hide' : 'Show'} timeline"
+				>
+					<svg class="h-4 w-4 transition-transform duration-200 {timelineOpen ? '' : 'rotate-180'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7" />
+					</svg>
+				</button>
+			{/if}
+			<h2 class="min-w-0 flex-1 truncate text-sm font-semibold text-surface-100">{card.header}</h2>
+		</div>
+
+		<div class="flex shrink-0 items-center gap-2">
 			{#if session}
 				<span class="rounded px-1.5 py-0.5 text-[10px] font-medium {sessionStatusColors[session.status] ?? 'bg-surface-700 text-surface-300'}">
 					{session.status}
 				</span>
 				<span class="text-[10px] text-surface-500">{session.agent_type}</span>
 			{/if}
-		</div>
 
-		{#if session && !['completed', 'failed', 'cancelled'].includes(session.status)}
-			<div class="flex gap-1">
-				{#if session.status === 'paused'}
+			{#if session && !['completed', 'failed', 'cancelled'].includes(session.status)}
+				<div class="ml-1 flex gap-1">
+					{#if session.status === 'paused'}
+						<button
+							class="rounded px-2 py-1 text-[11px] text-surface-300 hover:bg-surface-700"
+							onclick={() => controlSession('resume')}
+						>Resume</button>
+					{:else}
+						<button
+							class="rounded px-2 py-1 text-[11px] text-surface-300 hover:bg-surface-700"
+							onclick={() => controlSession('pause')}
+						>Pause</button>
+					{/if}
 					<button
-						class="rounded px-2 py-1 text-[11px] text-surface-300 hover:bg-surface-700"
-						onclick={() => controlSession('resume')}
-					>Resume</button>
-				{:else}
-					<button
-						class="rounded px-2 py-1 text-[11px] text-surface-300 hover:bg-surface-700"
-						onclick={() => controlSession('pause')}
-					>Pause</button>
-				{/if}
-				<button
-					class="rounded px-2 py-1 text-[11px] text-red-400 hover:bg-red-900/30"
-					onclick={() => controlSession('cancel')}
-				>Cancel</button>
-			</div>
-		{/if}
+						class="rounded px-2 py-1 text-[11px] text-red-400 hover:bg-red-900/30"
+						onclick={() => controlSession('cancel')}
+					>Cancel</button>
+				</div>
+			{/if}
+		</div>
 	</div>
 
 	<!-- Event stream -->

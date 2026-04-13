@@ -15,6 +15,7 @@
 	let context = $state<Record<string, unknown>>({});
 	let loading = $state(true);
 	let error = $state<string | null>(null);
+	let timelineOpen = $state(false);
 
 	const cardId = $derived($page.params.card_id ?? '');
 
@@ -156,8 +157,13 @@
 	</div>
 {:else if card}
 	<div class="flex h-[calc(100%+3rem)] -m-6">
-		<TimelinePanel {events} onselect={handleTimelineSelect} />
-		<AgentPanel {card} {session} {events} />
+		<!-- Collapsible timeline panel -->
+		<div class="shrink-0 overflow-hidden transition-[width] duration-300 ease-in-out {timelineOpen ? 'w-72' : 'w-0'}">
+			<div class="h-full w-72">
+				<TimelinePanel {events} onselect={handleTimelineSelect} />
+			</div>
+		</div>
+		<AgentPanel {card} {session} {events} {timelineOpen} ontoggletime={() => (timelineOpen = !timelineOpen)} />
 		<ContextPanel {card} {session} {events} {context} />
 	</div>
 {/if}

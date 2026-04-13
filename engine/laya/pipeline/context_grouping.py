@@ -7,6 +7,7 @@ then assigns a shared context_id so the feed can group them together.
 """
 
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import structlog
 
@@ -46,13 +47,25 @@ async def resolve_context_group(
     if not sg_config.get("context_association", True):
         return None
 
-    confidence_threshold = sg_config.get("confidence_threshold", 0.30)
-    auto_confirm_threshold = sg_config.get("auto_confirm_threshold", 0.20)
+    confidence_threshold = sg_config.get("confidence_threshold", 0.22)
+    auto_confirm_threshold = sg_config.get("auto_confirm_threshold", 0.12)
+
+    # Time window: only consider cards from the last N days
+    tuning = settings.get("tuning", {})
+    time_window_days = tuning.get("context_association_time_window_days", 7)
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=time_window_days)).isoformat()
 
     # Search ChromaDB for semantically similar cards
-    where_filter: dict | None = None
+    # Filter by space and time window to avoid stale matches
     if space_id:
-        where_filter = {"space_id": space_id}
+        where_filter: dict | None = {
+            "$and": [
+                {"space_id": space_id},
+                {"timestamp": {"$gte": cutoff}},
+            ]
+        }
+    else:
+        where_filter = {"timestamp": {"$gte": cutoff}}
 
     try:
         results = await memory_search(

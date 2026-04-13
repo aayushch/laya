@@ -15,15 +15,20 @@ from laya.llm.prompts.context_learner import (
 
 log = structlog.get_logger()
 
-# Minimum unprocessed corrections before triggering extraction
-CORRECTION_THRESHOLD = 10
+# Defaults — configurable via settings.json tuning section
+def _correction_threshold() -> int:
+    from laya.config import get_tuning
+    return get_tuning("context_learn_threshold", 10)
 
-# Maximum corrections to send in a single LLM call
-BATCH_LIMIT = 40
+def _batch_limit() -> int:
+    from laya.config import get_tuning
+    return get_tuning("context_learn_batch", 40)
 
 
-async def get_spaces_with_unprocessed(threshold: int = CORRECTION_THRESHOLD) -> list:
+async def get_spaces_with_unprocessed(threshold: int | None = None) -> list:
     """Return space_ids that have enough unprocessed context corrections."""
+    if threshold is None:
+        threshold = _correction_threshold()
     db = await get_db()
     try:
         rows = await db.execute_fetchall(
@@ -57,7 +62,7 @@ async def run_context_learn_extraction(space_id: str | None) -> int:
                WHERE processed = 0 AND space_id = ?
                ORDER BY created_at ASC
                LIMIT ?""",
-            (space_id, BATCH_LIMIT),
+            (space_id, _batch_limit()),
         )
     else:
         corrections_rows = await db.execute_fetchall(
@@ -67,7 +72,7 @@ async def run_context_learn_extraction(space_id: str | None) -> int:
                WHERE processed = 0 AND space_id IS NULL
                ORDER BY created_at ASC
                LIMIT ?""",
-            (BATCH_LIMIT,),
+            (_batch_limit(),),
         )
 
     if not corrections_rows:
@@ -172,14 +177,16 @@ async def query_context_rules(space_id: str | None) -> list[dict]:
 
     Returns rules applicable to the given space (space-specific + global).
     """
+    from laya.config import get_tuning
+    max_rules = get_tuning("context_rules_max_injection", 20)
     db = await get_db()
     try:
         rows = await db.execute_fetchall(
             """SELECT rule_text, source FROM context_rules
                WHERE active = 1 AND (space_id IS NULL OR space_id = ?)
                ORDER BY created_at DESC
-               LIMIT 20""",
-            (space_id,),
+               LIMIT ?""",
+            (space_id, max_rules),
         )
     except Exception as e:
         log.warning("context_rules_query_failed", error=str(e))

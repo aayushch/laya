@@ -48,7 +48,8 @@ async def get_workspace(card_id: str) -> dict[str, Any]:
     session_row = await db.execute_fetchall(
         """SELECT session_id, card_id, agent_type, status,
                   repo_path, initial_prompt, started_at, updated_at,
-                  completed_at, findings_json, error_message, add_dirs
+                  completed_at, findings_json, error_message, add_dirs,
+                  session_type
            FROM workspace_sessions
            WHERE card_id = ?
            ORDER BY started_at DESC
@@ -71,6 +72,11 @@ async def get_workspace(card_id: str) -> dict[str, Any]:
         "findings": json.loads(row[9]) if row[9] else None,
         "error_message": row[10],
         "add_dirs": json.loads(row[11]) if row[11] else [],
+        # Detect research sessions: explicit column value, or infer from repo_path
+        # for sessions created before the session_type column was added.
+        "session_type": row[12] or (
+            "research" if row[4] and "/tmp/research/" in row[4] else "code"
+        ),
     }
 
     # Get workspace events for this session
@@ -472,3 +478,133 @@ async def dismiss_questions(session_id: str) -> dict[str, str]:
     })
 
     return {"status": "dismissed", "session_id": session_id}
+
+
+# ---------- Research file browsing ----------
+
+_RESEARCH_ROOT: str | None = None
+
+
+def _get_research_root() -> str:
+    """Return the resolved research directory root (~/.laya/tmp/research/)."""
+    global _RESEARCH_ROOT
+    if _RESEARCH_ROOT is None:
+        from laya.config import LAYA_HOME
+        _RESEARCH_ROOT = str((LAYA_HOME / "tmp" / "research").resolve())
+    return _RESEARCH_ROOT
+
+
+def _validate_research_path(path: str) -> str:
+    """Resolve a path and verify it's inside the research directory.
+
+    Prevents directory traversal attacks (e.g. ../../etc/passwd).
+    Returns the resolved absolute path.
+    """
+    from pathlib import Path
+    resolved = str(Path(path).resolve())
+    root = _get_research_root()
+    if not resolved.startswith(root + "/") and resolved != root:
+        raise HTTPException(status_code=403, detail="Access denied: path is outside the research directory")
+    return resolved
+
+
+@router.get("/workspace/research-files/{card_id}")
+async def list_research_files(card_id: str) -> dict:
+    """List files in a research session's working directory.
+
+    Only works for research sessions — returns 404 for code sessions.
+    Scoped to ~/.laya/tmp/research/<card_id>/ for security.
+    """
+    from pathlib import Path
+
+    # Verify this is a research session
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT repo_path, session_type FROM workspace_sessions WHERE card_id = ? ORDER BY started_at DESC LIMIT 1",
+        (card_id,),
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="No session found for this card")
+
+    repo_path = rows[0]["repo_path"] or ""
+    st = rows[0]["session_type"]
+    is_research = st == "research" or (not st and "/tmp/research/" in repo_path)
+    if not is_research:
+        raise HTTPException(status_code=403, detail="File browsing is only available for research sessions")
+
+    if not repo_path:
+        return {"card_id": card_id, "files": []}
+
+    # Validate the path is inside the research directory
+    resolved = _validate_research_path(repo_path)
+    research_dir = Path(resolved)
+    if not research_dir.exists():
+        return {"card_id": card_id, "files": []}
+
+    files = []
+    for f in sorted(research_dir.rglob("*")):
+        if f.is_file():
+            rel = str(f.relative_to(research_dir))
+            files.append({
+                "name": f.name,
+                "path": rel,
+                "size": f.stat().st_size,
+                "modified": f.stat().st_mtime,
+            })
+
+    return {"card_id": card_id, "files": files}
+
+
+@router.get("/workspace/research-files/{card_id}/read")
+async def read_research_file(card_id: str, path: str) -> dict:
+    """Read a file from a research session's working directory.
+
+    Only works for research sessions. The `path` query parameter is
+    relative to the session's repo_path. Scoped to ~/.laya/tmp/research/
+    for security.
+    """
+    from pathlib import Path
+
+    if not path:
+        raise HTTPException(status_code=400, detail="Missing 'path' query parameter")
+
+    # Verify this is a research session
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT repo_path, session_type FROM workspace_sessions WHERE card_id = ? ORDER BY started_at DESC LIMIT 1",
+        (card_id,),
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="No session found for this card")
+
+    repo_path = rows[0]["repo_path"] or ""
+    st = rows[0]["session_type"]
+    is_research = st == "research" or (not st and "/tmp/research/" in repo_path)
+    if not is_research:
+        raise HTTPException(status_code=403, detail="File reading is only available for research sessions")
+
+    if not repo_path:
+        raise HTTPException(status_code=404, detail="No working directory for this session")
+
+    # Resolve and validate the full file path
+    full_path = _validate_research_path(str(Path(repo_path) / path))
+    file_path = Path(full_path)
+
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail=f"File not found: {path}")
+
+    # Read with size limit (2 MB) to prevent memory issues
+    MAX_SIZE = 2 * 1024 * 1024
+    if file_path.stat().st_size > MAX_SIZE:
+        raise HTTPException(status_code=413, detail="File too large (max 2 MB)")
+
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=422, detail="File is not valid UTF-8 text")
+
+    return {
+        "path": path,
+        "name": file_path.name,
+        "content": content,
+    }

@@ -386,7 +386,7 @@
 								</div>
 							{/if}
 							<div class="flex-1 min-w-0">
-								<ListRow {card} {onselect} {ondelete} {selectedCardId} indented={true} {hasSelection} />
+								<ListRow {card} {onselect} {ondelete} {selectedCardId} indented={true} {hasSelection} {lastViewedCardId} />
 							</div>
 						</div>
 					{/each}

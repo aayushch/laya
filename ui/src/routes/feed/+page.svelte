@@ -343,7 +343,10 @@
 		if (msg.type === 'summary_updated' && msg.payload) {
 			_lastProcessedMsg = msg;
 			const payload = msg.payload as { date?: string; summary?: DaySummary; updated_at?: string };
-			if (payload.date === $feedDate && payload.summary) {
+			// payload.date is UTC; $feedDate is local — accept the update
+			// whenever the user is viewing today's feed (isToday) to handle
+			// the UTC/local date mismatch.
+			if (payload.summary && (payload.date === $feedDate || isToday)) {
 				daySummary = payload.summary;
 				summaryUpdatedAt = payload.updated_at ?? null;
 			}
@@ -1463,7 +1466,7 @@
 										{#if group.card_count === 1}
 											<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} onlink={handleLinkCard} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
 										{:else}
-											<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} onlink={handleLinkGroup} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} scrollToCardId={_scrollToCardId} />
+											<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} onlink={handleLinkGroup} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} scrollToCardId={_scrollToCardId} {detailPanelOpen} />
 										{/if}
 									</div>
 								{/each}
@@ -1482,7 +1485,7 @@
 									{#if group.card_count === 1}
 										<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} onlink={handleLinkCard} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
 									{:else}
-										<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} onlink={handleLinkGroup} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} scrollToCardId={_scrollToCardId} />
+										<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} onlink={handleLinkGroup} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} scrollToCardId={_scrollToCardId} {detailPanelOpen} />
 									{/if}
 								</div>
 							{/each}

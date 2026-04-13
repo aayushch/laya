@@ -115,6 +115,38 @@
 	function handleTimelineLeave() {
 		if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
 		mouseRatio = null;
+		previewVersion = null;
+	}
+
+	/** Find the nearest dot to a given x-position (as % of container width). */
+	function nearestDot(xPct: number): FlatDot | null {
+		let best: FlatDot | null = null;
+		let bestDist = Infinity;
+		for (const dot of flatDots) {
+			const dotPct = distortedPct(dot.segIndex, dot.localPct);
+			const dist = Math.abs(dotPct - xPct);
+			if (dist < bestDist) { bestDist = dist; best = dot; }
+		}
+		return best;
+	}
+
+	function handleDotHover(e: MouseEvent) {
+		if (!timelineEl) return;
+		const rect = timelineEl.getBoundingClientRect();
+		const xPct = ((e.clientX - rect.left) / rect.width) * 100;
+		const dot = nearestDot(xPct);
+		previewVersion = dot ? dot.entry.version : null;
+	}
+
+	function handleDotClick(e: MouseEvent) {
+		if (!timelineEl) return;
+		const rect = timelineEl.getBoundingClientRect();
+		const xPct = ((e.clientX - rect.left) / rect.width) * 100;
+		const dot = nearestDot(xPct);
+		if (dot) {
+			previewVersion = null;
+			onVersionChange(dot.entry.version);
+		}
 	}
 
 	/**
@@ -389,13 +421,14 @@
 		</div>
 
 		<!-- Single-container fisheye track -->
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
 		<div
-			class="relative h-10 overflow-hidden"
+			class="relative h-10 overflow-hidden cursor-pointer"
 			bind:this={timelineEl}
 			bind:clientWidth={timelineWidth}
-			onmousemove={handleTimelineMove}
+			onmousemove={(e) => { handleTimelineMove(e); handleDotHover(e); }}
 			onmouseleave={handleTimelineLeave}
+			onclick={handleDotClick}
 		>
 			<!-- Track line — centered vertically in upper portion -->
 			<div class="absolute left-0 right-0 top-[10px] h-px bg-surface-600"></div>
@@ -426,13 +459,9 @@
 				{@const isHovered = previewVersion !== null && dot.entry.version === previewVersion && !isSelected}
 				{@const isActive = isSelected || isHovered}
 				{@const leftPct = distortedPct(dot.segIndex, dot.localPct)}
-				<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
 				<div
-					class="absolute -translate-x-1/2 -translate-y-1/2 flex items-center justify-center cursor-pointer group/tick top-[10px]"
+					class="absolute -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none top-[10px]"
 					style="left: {leftPct}%; transition: left 150ms cubic-bezier(0.25, 0.1, 0.25, 1);"
-					onclick={() => { previewVersion = null; onVersionChange(dot.entry.version); }}
-					onmouseenter={() => { previewVersion = dot.entry.version; }}
-					onmouseleave={() => { previewVersion = null; }}
 				>
 					<div class="p-1.5">
 						<div class="rounded-full transition-colors
@@ -442,8 +471,8 @@
 								: isHovered
 									? 'border-2 border-green-400 bg-transparent'
 									: dot.isSynth
-										? 'bg-laya-orange group-hover/tick:bg-laya-orange'
-										: 'bg-surface-400 group-hover/tick:bg-surface-200'}
+										? 'bg-laya-orange'
+										: 'bg-surface-400'}
 						"></div>
 					</div>
 				</div>

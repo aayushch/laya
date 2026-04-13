@@ -691,7 +691,7 @@ async def _resynthesize_space(db, space_id: str, density: str, snapshot_type: st
             response_schema=schema,
             step="omni_resynthesis",
             temperature=0.3,
-            max_tokens=4000,
+            max_tokens=32000,
             space_id=space_id,
         )
 

@@ -29,6 +29,8 @@
 		previewUrl: string;
 	}
 
+	import type { Repo } from '$lib/api/types';
+
 	let selectedAgent = $state('claude_code');
 	let selectedMode = $state('plan');
 	let directory = $state('');
@@ -42,6 +44,8 @@
 	let configuredAgent = $state<string | null>(null);
 	let agentPaths = $state<Record<string, string>>({});
 	let dragOver = $state(false);
+	let repos = $state<Repo[]>([]);
+	let dirDropdownOpen = $state(false);
 
 	const currentAgent = $derived(agents.find((a) => a.value === selectedAgent));
 	const availableModes = $derived(currentAgent?.modes ?? []);
@@ -66,13 +70,17 @@
 
 	async function loadSettings() {
 		try {
-			const settings = await engineApi.getSettings();
+			const [settings, reposConfig] = await Promise.all([
+				engineApi.getSettings(),
+				engineApi.getRepos()
+			]);
 			const agent = settings.coding_agent || 'claude_code';
 			if (agent !== 'none') {
 				configuredAgent = agent;
 				selectedAgent = agent;
 			}
 			agentPaths = settings.agent_paths || {};
+			repos = reposConfig.repos || [];
 			settingsLoaded = true;
 		} catch {
 			settingsLoaded = true;
@@ -80,18 +88,6 @@
 	}
 
 	// --- Browse directory using Tauri dialog (graceful fallback for web dev) ---
-
-	async function browseDirectory() {
-		try {
-			const { invoke } = await import('@tauri-apps/api/core');
-			const path = await invoke<string>('pick_folder', {
-				title: 'Select working directory'
-			});
-			if (path) directory = path;
-		} catch {
-			// Not in Tauri — ignore (user types path manually)
-		}
-	}
 
 	async function browseAddDir() {
 		try {
@@ -233,6 +229,7 @@
 		uploading = false;
 		settingsLoaded = false;
 		dragOver = false;
+		dirDropdownOpen = false;
 	}
 
 	function close() {
@@ -249,11 +246,17 @@
 		if (e.target === e.currentTarget) close();
 	}
 
+	// Close directory dropdown when clicking anywhere else in the modal
+	function handleModalClick(e: MouseEvent) {
+		const target = e.target as HTMLElement;
+		if (dirDropdownOpen && !target.closest('.relative')) {
+			dirDropdownOpen = false;
+		}
+	}
+
 	const inputClass =
 		'w-full rounded-md border border-surface-600 bg-surface-800 px-3 py-2 text-sm text-surface-200 placeholder-surface-600 focus:border-laya-orange/50 focus:outline-none focus:ring-1 focus:ring-laya-orange/30';
 	const labelClass = 'block text-xs font-medium text-surface-400 mb-1';
-	const browseBtn =
-		'shrink-0 rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-xs font-medium text-surface-300 transition-colors hover:bg-surface-600 hover:text-surface-100';
 </script>
 
 {#if $agentDialog.isOpen}
@@ -266,8 +269,10 @@
 		onclick={handleBackdrop}
 		onkeydown={handleKeydown}
 	>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			class="mx-4 w-full max-w-2xl rounded-xl border border-surface-700 bg-surface-900 shadow-2xl max-h-[90vh] flex flex-col"
+			onclick={handleModalClick}
 		>
 			<!-- Header -->
 			<div
@@ -354,32 +359,47 @@
 				{/if}
 
 				<!-- Working Directory -->
-				<div>
+				<div class="relative">
 					<label class={labelClass} for="agent-directory">Working Directory</label>
-					<div class="flex gap-2">
-						<input
-							id="agent-directory"
-							type="text"
-							bind:value={directory}
-							class={inputClass}
-							placeholder="/path/to/project"
-						/>
-						<button class={browseBtn} onclick={browseDirectory} title="Browse for folder">
-							<svg
-								class="h-4 w-4"
-								fill="none"
-								stroke="currentColor"
-								viewBox="0 0 24 24"
-							>
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									stroke-width="2"
-									d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-								/>
-							</svg>
-						</button>
-					</div>
+					<button
+						id="agent-directory"
+						type="button"
+						class="flex w-full items-center justify-between rounded-md border border-surface-600 bg-surface-800 px-3 py-2 text-left text-sm transition-colors hover:border-surface-500 {directory ? 'text-surface-200' : 'text-surface-500'}"
+						onclick={() => (dirDropdownOpen = !dirDropdownOpen)}
+					>
+						<span class="truncate">{directory || 'Select a repository...'}</span>
+						<svg
+							class="ml-2 h-4 w-4 shrink-0 text-surface-400 transition-transform {dirDropdownOpen ? 'rotate-180' : ''}"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+						</svg>
+					</button>
+
+					{#if dirDropdownOpen}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div
+							class="absolute z-50 mt-1 w-full rounded-md border border-surface-600 bg-surface-800 shadow-lg"
+							onkeydown={(e) => { if (e.key === 'Escape') dirDropdownOpen = false; }}
+						>
+							<div class="max-h-48 overflow-y-auto py-1">
+								{#each repos as repo}
+									<button
+										class="flex w-full flex-col px-3 py-2 text-left transition-colors hover:bg-surface-700 {directory === repo.path ? 'bg-surface-700' : ''}"
+										onclick={() => { directory = repo.path; dirDropdownOpen = false; }}
+									>
+										<span class="text-xs font-medium text-surface-200">{repo.name}</span>
+										<span class="truncate text-[10px] text-surface-500">{repo.path}</span>
+									</button>
+								{/each}
+								{#if repos.length === 0}
+									<div class="px-3 py-2 text-xs text-surface-500">No repos configured</div>
+								{/if}
+							</div>
+						</div>
+					{/if}
 				</div>
 
 				<!-- Additional directories -->

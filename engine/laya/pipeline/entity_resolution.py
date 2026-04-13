@@ -11,8 +11,11 @@ from laya.llm.client import llm_call
 
 log = structlog.get_logger()
 
-# Cosine distance threshold for semantic matching (lower = more similar)
-SEMANTIC_THRESHOLD = 0.35
+# Cosine distance threshold for semantic matching (lower = more similar).
+# Configurable via settings.json tuning.semantic_entity_threshold
+def _get_semantic_threshold() -> float:
+    from laya.config import get_tuning
+    return get_tuning("semantic_entity_threshold", 0.35)
 
 
 async def resolve_semantic_entities(
@@ -43,7 +46,7 @@ async def resolve_semantic_entities(
 
             for result in results:
                 distance = result.get("distance", 1.0)
-                if distance > SEMANTIC_THRESHOLD:
+                if distance > _get_semantic_threshold():
                     continue
 
                 metadata = result.get("metadata", {})
@@ -268,10 +271,25 @@ async def confirm_context_link(
             "content": (
                 "You determine whether two notifications are about the same "
                 "real-world context or topic. Two notifications are about the "
-                "same context if they refer to the same underlying event, item, "
-                "project, transaction, or situation — even if they come from "
-                "different senders or platforms. For example, a bill notification "
-                "and a payment receipt for that bill are the same context."
+                "same context if they refer to the same specific underlying "
+                "entity, transaction, project, or situation — even if they come "
+                "from different senders or platforms.\n\n"
+                "Examples of SAME context:\n"
+                "- A utility bill notification + a payment receipt for that bill\n"
+                "- A PR comment + the CI build it triggered\n"
+                "- A meeting invite + follow-up notes for that meeting\n"
+                "- A shipping confirmation + delivery notification for the same order\n\n"
+                "Examples of NOT same context:\n"
+                "- Two different newsletters from different senders\n"
+                "- Two unrelated promotional emails\n"
+                "- Two reviews of different products or content\n"
+                "- Two alerts about different services or accounts\n"
+                "- Two emails that just happen to have similar subject lines\n\n"
+                "IMPORTANT: Notifications are NOT the same context just because "
+                "they are the same type of notification. Two email reviews, two "
+                "newsletters, or two alerts are NOT the same context unless they "
+                "refer to the exact same underlying thing. When in doubt, return "
+                "match: false."
             ),
         },
         {
