@@ -365,6 +365,8 @@ fn kill_process_on_port(port: u16) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_decorum::init())
+        .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -420,6 +422,40 @@ pub fn run() {
                     let icon_bytes = include_bytes!("../icons/icon.png");
                     if let Ok(icon) = tauri::image::Image::from_bytes(icon_bytes) {
                         let _ = window.set_icon(icon);
+                    }
+                }
+            }
+
+            // Custom titlebar: create overlay titlebar via decorum plugin.
+            // On macOS: expects Overlay titlebar style from tauri.macos.conf.json.
+            // On Windows: hides native decorations, enables Snap Layout support.
+            // On Linux: no-op (decorations already disabled in base config).
+            {
+                use tauri_plugin_decorum::WebviewWindowExt;
+                let main_window = app.get_webview_window("main").unwrap();
+                main_window.create_overlay_titlebar().unwrap();
+
+                // macOS: reposition traffic lights to align with our 38px titlebar
+                #[cfg(target_os = "macos")]
+                main_window.set_traffic_lights_inset(12.0, 12.0).unwrap();
+
+                // macOS: set window background color to match surface-900 (~rgb(24,24,27))
+                // so the titlebar area blends seamlessly with the app
+                #[cfg(target_os = "macos")]
+                #[allow(deprecated)]
+                {
+                    use cocoa::appkit::{NSColor, NSWindow};
+                    use cocoa::base::{id, nil};
+                    let ns_window = main_window.ns_window().unwrap() as id;
+                    unsafe {
+                        let bg_color = NSColor::colorWithRed_green_blue_alpha_(
+                            nil,
+                            24.0 / 255.0,
+                            24.0 / 255.0,
+                            27.0 / 255.0,
+                            1.0,
+                        );
+                        ns_window.setBackgroundColor_(bg_color);
                     }
                 }
             }
