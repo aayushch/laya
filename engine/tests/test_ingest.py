@@ -30,8 +30,26 @@ async def test_resolve_known_bot(sample_event, mock_team):
 @pytest.mark.asyncio
 async def test_resolve_unknown_defaults_external(sample_event, mock_team):
     sample_event.actor.email = "stranger@other.com"
+    sample_event.actor.name = "Unknown Person"
     role = await resolve_actor_relationship(sample_event)
     assert role == "external"
+
+
+@pytest.mark.asyncio
+async def test_resolve_name_fallback_when_no_email(sample_event, mock_team):
+    """Platforms like Bitbucket/GitHub send empty email — fall back to name matching."""
+    sample_event.actor.email = ""
+    sample_event.actor.name = "Sarah Chen"
+    role = await resolve_actor_relationship(sample_event)
+    assert role == "teammate"
+
+
+@pytest.mark.asyncio
+async def test_resolve_name_fallback_case_insensitive(sample_event, mock_team):
+    sample_event.actor.email = ""
+    sample_event.actor.name = "sarah chen"
+    role = await resolve_actor_relationship(sample_event)
+    assert role == "teammate"
 
 
 @pytest.mark.asyncio

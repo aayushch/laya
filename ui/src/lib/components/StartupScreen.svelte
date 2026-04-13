@@ -102,7 +102,7 @@
 	}
 </script>
 
-<div class="flex h-screen w-full flex-col items-center justify-center bg-surface-900">
+<div class="flex h-screen w-full flex-col items-center justify-center bg-surface-900 pt-10">
 	<!-- Logo -->
 	<h1 class="mb-2 text-8xl font-bold tracking-wide text-laya-orange">Laya</h1>
 
