@@ -98,6 +98,7 @@ class CardGroup(BaseModel):
     sort_key: str | None = None
     context_id: str | None = None
     context_label: str | None = None
+    platforms: list[str] | None = None  # All distinct platforms in linked groups
 
 
 class GroupedCardsResponse(BaseModel):

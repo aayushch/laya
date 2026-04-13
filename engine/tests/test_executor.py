@@ -177,3 +177,17 @@ class TestExecutor:
                 result = await execute_action("card_fail2", "act_1")
 
         assert result["status"] == "done"
+
+    async def test_execute_from_agent_running_status(self, db):
+        """Execution works from 'agent_running' status — users can invoke actions while agent is active."""
+        await insert_test_card(db, "card_agrun", "evt_agrun", status="agent_running")
+
+        mock_egress_result = EgressResult(success=True, result_data={})
+
+        with patch("laya.egress.route_and_execute", new_callable=AsyncMock, return_value=mock_egress_result):
+            with patch("laya.pipeline.executor.manager.broadcast", new_callable=AsyncMock):
+                from laya.pipeline.executor import execute_action
+
+                result = await execute_action("card_agrun", "act_1")
+
+        assert result["status"] == "done"

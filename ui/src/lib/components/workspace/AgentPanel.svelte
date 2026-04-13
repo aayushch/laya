@@ -1,8 +1,8 @@
 <script lang="ts">
-	import type { ActionCard, WorkspaceEvent, WorkspaceSession, Repo } from '$lib/api/types';
+	import type { ActionCard, WorkspaceEvent, WorkspaceSession } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
 	import { sendMessage } from '$lib/stores/websocket';
-	import { tick, onMount } from 'svelte';
+	import { tick } from 'svelte';
 	import { marked } from 'marked';
 
 	let {
@@ -10,12 +10,14 @@
 		session,
 		events,
 		timelineOpen = false,
+		selectedAddDirs = new Set<string>(),
 		ontoggletime
 	}: {
 		card: ActionCard;
 		session: WorkspaceSession | null;
 		events: WorkspaceEvent[];
 		timelineOpen?: boolean;
+		selectedAddDirs?: Set<string>;
 		ontoggletime?: () => void;
 	} = $props();
 
@@ -32,30 +34,6 @@
 	let questionSelections = $state<Record<string, string>>({});
 	let submittingAnswer = $state(false);
 	let dismissingQuestions = $state(false);
-
-	// Add Path state
-	let allRepos = $state<Repo[]>([]);
-	let selectedAddDirs = $state<Set<string>>(new Set());
-	let showAddPath = $state(false);
-
-	onMount(async () => {
-		try {
-			const config = await engineApi.getRepos();
-			allRepos = config.repos ?? [];
-		} catch { /* repos unavailable */ }
-	});
-
-	// Repos available to add (exclude the session's current cwd)
-	const availableRepos = $derived(
-		allRepos.filter((r) => r.path !== session?.repo_path)
-	);
-
-	function toggleDir(path: string) {
-		const next = new Set(selectedAddDirs);
-		if (next.has(path)) next.delete(path);
-		else next.add(path);
-		selectedAddDirs = next;
-	}
 
 	const addDirsArray = $derived(
 		selectedAddDirs.size > 0 ? [...selectedAddDirs] : undefined
@@ -329,9 +307,9 @@
 	}
 </script>
 
-<div class="flex h-full flex-1 min-w-0 flex-col border-l border-surface-700">
-	<!-- Header bar -->
-	<div class="flex h-11 items-center justify-between border-b border-surface-700 px-4 gap-3">
+<div class="flex h-full flex-1 min-w-0 flex-col border-l border-surface-700 bg-surface-900">
+	<!-- Header bar — bg-surface-900 prevents title clipping during macOS elastic overscroll -->
+	<div class="relative z-10 flex h-11 items-center justify-between border-b border-surface-700 bg-surface-900 px-4 gap-3">
 		<div class="flex min-w-0 flex-1 items-center gap-1.5">
 			{#if ontoggletime}
 				<button
@@ -530,41 +508,41 @@
 			{:else if segment.kind === 'tool_group'}
 				{@const groupEvents = segment.events}
 				{@const isExpanded = expandedGroups.has(segIdx)}
-				<div class="rounded-lg border border-surface-700/60 bg-surface-850 overflow-hidden">
+				{@const toolNames = groupEvents.map(e => (e.content.tool as string) ?? e.event_type)}
+				{@const maxPreview = 3}
+				{@const previewNames = toolNames.slice(0, maxPreview)}
+				{@const remaining = toolNames.length - maxPreview}
+				<!-- Compact inline tool hint — minimal footprint between chat bubbles -->
+				<div class="px-2 py-0.5">
 					<button
-						class="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-surface-800"
+						class="inline-flex min-w-0 max-w-full items-center gap-1.5 text-left transition-colors hover:text-surface-300"
 						onclick={() => toggleGroup(segIdx)}
 					>
 						<svg
-							class="h-3 w-3 text-surface-500 transition-transform {isExpanded ? 'rotate-90' : ''}"
+							class="h-2.5 w-2.5 shrink-0 text-surface-600 transition-transform {isExpanded ? 'rotate-90' : ''}"
 							fill="none" stroke="currentColor" viewBox="0 0 24 24"
 						>
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 						</svg>
-						<span class="text-[11px] font-medium text-surface-400">
+						<span class="text-[10px] text-surface-600">
 							{groupEvents.length} tool{groupEvents.length === 1 ? '' : 's'}
 						</span>
 						{#if !isExpanded}
-							<span class="flex-1 truncate text-[10px] text-surface-500">
-								{groupEvents.map(e => (e.content.tool as string) ?? e.event_type).join(', ')}
+							<span class="truncate text-[10px] text-surface-600">
+								{previewNames.join(', ')}{remaining > 0 ? `, +${remaining} more` : ''}
 							</span>
 						{/if}
-						<span class="text-[10px] text-surface-600">
-							{new Date(groupEvents[0].timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-						</span>
 					</button>
 					{#if isExpanded}
-						<div class="border-t border-surface-700/40 divide-y divide-surface-700/30">
+						<div class="mt-1 ml-4 space-y-0.5">
 							{#each groupEvents as ev (ev.event_id)}
-								<div id="event-{ev.event_id}" class="flex items-start gap-2 px-3 py-1.5">
-									<svg class="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-surface-400" viewBox="0 0 24 24" fill="currentColor">
+								<div id="event-{ev.event_id}" class="flex items-center gap-1.5">
+									<svg class="h-3 w-3 shrink-0 text-surface-500" viewBox="0 0 24 24" fill="currentColor">
 										<path d={toolIconPaths[ev.event_type] ?? toolIconPaths.tool_call} />
 									</svg>
-									<div class="min-w-0 flex-1">
-										<p class="text-xs font-mono text-surface-300 truncate" title={toolLabel(ev)}>
-											{toolLabel(ev)}
-										</p>
-									</div>
+									<p class="truncate text-[10px] font-mono text-surface-500" title={toolLabel(ev)}>
+										{toolLabel(ev)}
+									</p>
 								</div>
 							{/each}
 						</div>
@@ -584,70 +562,22 @@
 		{/if}
 	</div>
 
-	<!-- Input bar — always visible when session exists, disabled when agent is active -->
+	<!-- Input bar — seamless bottom area, no extra borders around the field -->
 	{#if session}
-		<div class="border-t border-surface-700 px-4 py-3 space-y-2">
-			<!-- Add Path selector — only when agent is not running -->
-			{#if !isAgentActive && availableRepos.length > 0}
-				{#if showAddPath}
-					<div class="rounded-lg border border-surface-600 bg-surface-900 p-2">
-						<div class="mb-1.5 flex items-center justify-between">
-							<span class="text-[10px] font-semibold uppercase tracking-wider text-surface-400">Add paths to next session</span>
-							<button
-								class="text-[10px] text-surface-500 hover:text-surface-300"
-								onclick={() => { showAddPath = false; }}
-							>Close</button>
-						</div>
-						<div class="space-y-1">
-							{#each availableRepos as repo}
-								<button
-									class="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs transition-colors
-										{selectedAddDirs.has(repo.path)
-											? 'bg-laya-orange/15 text-laya-orange'
-											: 'text-surface-300 hover:bg-surface-700'}"
-									onclick={() => toggleDir(repo.path)}
-								>
-									<span class="flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center rounded border text-[9px]
-										{selectedAddDirs.has(repo.path)
-											? 'border-laya-orange/50 bg-laya-orange/20 text-laya-orange'
-											: 'border-surface-600'}"
-									>{selectedAddDirs.has(repo.path) ? '✓' : ''}</span>
-									<span class="truncate font-medium">{repo.name}</span>
-									<span class="ml-auto truncate text-[10px] text-surface-500 max-w-[200px]">{repo.path}</span>
-								</button>
-							{/each}
-						</div>
-					</div>
-				{:else}
-					<div class="flex items-center gap-2">
-						<button
-							class="rounded px-2 py-1 text-[11px] text-surface-400 border border-surface-700 hover:border-surface-500 hover:text-surface-200 transition-colors"
-							onclick={() => { showAddPath = true; }}
-						>
-							+ Add Path
-						</button>
-						{#if selectedAddDirs.size > 0}
-							<span class="text-[10px] text-laya-orange">{selectedAddDirs.size} path{selectedAddDirs.size > 1 ? 's' : ''} selected</span>
-						{/if}
-					</div>
-				{/if}
-			{/if}
-
-			<div class="flex gap-2">
-				<textarea
-					bind:value={userInput}
-					placeholder={isAgentActive ? 'Agent is working...' : 'Send a message to the agent...'}
-					rows="1"
-					class="flex-1 resize-none rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-100 placeholder-surface-500 focus:border-blue-600 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-					onkeydown={handleKeydown}
-					disabled={isAgentActive || sendingPrompt}
-				></textarea>
-				<button
-					class="rounded-lg bg-laya-orange px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-laya-coral disabled:opacity-50 disabled:cursor-not-allowed"
-					onclick={sendUserInput}
-					disabled={!userInput.trim() || isAgentActive || sendingPrompt}
-				>{sendingPrompt ? 'Sending...' : 'Send'}</button>
-			</div>
+		<div class="flex gap-2 bg-surface-900 px-4 py-3">
+			<textarea
+				bind:value={userInput}
+				placeholder={isAgentActive ? 'Agent is working...' : 'Send a message to the agent...'}
+				rows="1"
+				class="flex-1 resize-none rounded-lg bg-surface-800 px-3 py-2 text-sm text-surface-100 placeholder-surface-500 focus:outline-none focus:ring-1 focus:ring-laya-orange/40 disabled:opacity-50 disabled:cursor-not-allowed"
+				onkeydown={handleKeydown}
+				disabled={isAgentActive || sendingPrompt}
+			></textarea>
+			<button
+				class="rounded-lg bg-laya-orange px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-laya-coral disabled:opacity-50 disabled:cursor-not-allowed"
+				onclick={sendUserInput}
+				disabled={!userInput.trim() || isAgentActive || sendingPrompt}
+			>{sendingPrompt ? 'Sending...' : 'Send'}</button>
 		</div>
 	{/if}
 </div>

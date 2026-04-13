@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { ActionCard, WorkspaceEvent, WorkspaceSession } from '$lib/api/types';
+	import type { ActionCard, WorkspaceEvent, WorkspaceSession, Repo } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
 	import { marked } from 'marked';
 
@@ -7,13 +7,34 @@
 		card,
 		session,
 		events,
-		context
+		context,
+		allRepos = [],
+		selectedAddDirs = $bindable(new Set<string>())
 	}: {
 		card: ActionCard;
 		session: WorkspaceSession | null;
 		events: WorkspaceEvent[];
 		context: Record<string, unknown>;
+		allRepos?: Repo[];
+		selectedAddDirs?: Set<string>;
 	} = $props();
+
+	let showAddPath = $state(false);
+
+	const isAgentActive = $derived(
+		session != null && ['starting', 'running'].includes(session.status)
+	);
+
+	const availableRepos = $derived(
+		allRepos.filter((r) => r.path !== session?.repo_path)
+	);
+
+	function toggleDir(path: string) {
+		const next = new Set(selectedAddDirs);
+		if (next.has(path)) next.delete(path);
+		else next.add(path);
+		selectedAddDirs = next;
+	}
 
 	const priorityColors: Record<string, string> = {
 		CRITICAL: 'text-red-400',
@@ -220,6 +241,51 @@
 							<p class="break-all font-mono text-[11px] text-surface-300">{dir}</p>
 						{/each}
 					</div>
+				{/if}
+
+				<!-- Add Path — available when agent is not running -->
+				{#if !isAgentActive && availableRepos.length > 0}
+					{#if showAddPath}
+						<div class="mt-3 border-t border-surface-700/50 pt-2">
+							<div class="mb-1.5 flex items-center justify-between">
+								<span class="text-[10px] font-semibold uppercase tracking-wider text-surface-500">Add paths</span>
+								<button
+									class="text-[10px] text-surface-500 hover:text-surface-300"
+									onclick={() => { showAddPath = false; }}
+								>Close</button>
+							</div>
+							<div class="space-y-1">
+								{#each availableRepos as repo}
+									<button
+										class="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[11px] transition-colors
+											{selectedAddDirs.has(repo.path)
+												? 'bg-laya-orange/15 text-laya-orange'
+												: 'text-surface-300 hover:bg-surface-700'}"
+										onclick={() => toggleDir(repo.path)}
+									>
+										<span class="flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center rounded border text-[9px]
+											{selectedAddDirs.has(repo.path)
+												? 'border-laya-orange/50 bg-laya-orange/20 text-laya-orange'
+												: 'border-surface-600'}"
+										>{selectedAddDirs.has(repo.path) ? '✓' : ''}</span>
+										<span class="truncate font-medium">{repo.name}</span>
+									</button>
+								{/each}
+							</div>
+						</div>
+					{:else}
+						<div class="mt-2.5 flex items-center gap-2">
+							<button
+								class="rounded px-2 py-1 text-[10px] text-surface-400 border border-surface-700 hover:border-surface-500 hover:text-surface-200 transition-colors"
+								onclick={() => { showAddPath = true; }}
+							>
+								+ Add Path
+							</button>
+							{#if selectedAddDirs.size > 0}
+								<span class="text-[10px] text-laya-orange">{selectedAddDirs.size} added</span>
+							{/if}
+						</div>
+					{/if}
 				{/if}
 			</div>
 		{/if}

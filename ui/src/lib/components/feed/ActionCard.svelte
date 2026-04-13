@@ -21,6 +21,7 @@
 	let showDeleteConfirm = $state(false);
 	let deleting = $state(false);
 	let actionMenuOpen = $state(false);
+	let actionMenuEl: HTMLElement | undefined = $state();
 	let bookmarking = $state(false);
 
 	// Truncation detection for conditional tooltips
@@ -34,12 +35,13 @@
 	let actorTruncated = $state(false);
 
 	// Close action overflow menu on outside click — swallow the event so it
-	// doesn't propagate to the card and trigger a selection.
+	// doesn't propagate to the card and trigger a selection.  Uses element
+	// ref so clicking another card's menu correctly closes this one.
 	$effect(() => {
 		if (!actionMenuOpen) return;
 		function handleClick(e: MouseEvent) {
 			const target = e.target as HTMLElement;
-			if (!target.closest('.action-overflow-menu')) {
+			if (!actionMenuEl?.contains(target)) {
 				e.stopPropagation();
 				e.preventDefault();
 				actionMenuOpen = false;
@@ -301,7 +303,7 @@
 				</div>
 				{#if card.has_workspace}
 					<!-- Overflow: Archive + Workspace -->
-					<div class="action-overflow-menu relative">
+					<div class="action-overflow-menu relative" bind:this={actionMenuEl}>
 						<button
 							class="flex h-6 w-6 items-center justify-center rounded-md text-surface-500 transition-all hover:bg-surface-700/50 hover:text-surface-300"
 							onclick={(e) => { e.stopPropagation(); actionMenuOpen = !actionMenuOpen; }}
@@ -376,7 +378,7 @@
 				</div>
 				{#if card.has_workspace}
 					<!-- Overflow: Archive + Workspace -->
-					<div class="action-overflow-menu relative">
+					<div class="action-overflow-menu relative" bind:this={actionMenuEl}>
 						<button
 							class="flex h-6 w-6 items-center justify-center rounded-md text-surface-500 transition-all hover:bg-surface-700/50 hover:text-surface-300"
 							onclick={(e) => { e.stopPropagation(); actionMenuOpen = !actionMenuOpen; }}

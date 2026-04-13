@@ -100,7 +100,7 @@ class ClaudeCodeAgent(CodingAgent):
         await self._process.spawn(args=args, cwd=repo_path)
         self._status = SessionStatus.RUNNING
 
-    async def resume_with_answer(self, answer_text: str, add_dirs: list[str] | None = None, research: bool = False) -> None:
+    async def resume_with_answer(self, answer_text: str, add_dirs: list[str] | None = None, research: bool = False, mode: str | None = None) -> None:
         """Resume the Claude Code conversation with the user's answer.
 
         Spawns a new subprocess using --resume <cc_session_id> so Claude Code
@@ -109,6 +109,8 @@ class ClaudeCodeAgent(CodingAgent):
         Args:
             add_dirs: Extra directory paths to pass via --add-dir flags.
             research: If True, use plan mode with scoped writes + web instead of acceptEdits.
+            mode: Explicit permission mode override. If None, defaults to
+                  'plan' for research or 'acceptEdits' for code sessions.
         """
         if not self._cc_session_id:
             raise ValueError("No Claude Code session ID available for resumption")
@@ -118,7 +120,8 @@ class ClaudeCodeAgent(CodingAgent):
 
         # Research sessions keep plan mode with scoped tool access;
         # code sessions get acceptEdits for full write access.
-        permission_mode = "plan" if research else "acceptEdits"
+        # An explicit mode overrides the default.
+        permission_mode = mode or ("plan" if research else "acceptEdits")
 
         args = [
             self._binary,

@@ -36,13 +36,14 @@ class CodingAgent(abc.ABC):
         """
         ...
 
-    async def resume_with_answer(self, answer_text: str, add_dirs: list[str] | None = None, research: bool = False) -> None:
+    async def resume_with_answer(self, answer_text: str, add_dirs: list[str] | None = None, research: bool = False, mode: str | None = None) -> None:
         """Resume a previous conversation with new user input.
 
         Args:
             add_dirs: Extra directory paths to include.
             research: If True, apply research-mode permissions (scoped writes + web)
                 instead of full edit access.
+            mode: Explicit permission mode override (e.g. 'full' for bash access).
 
         Not all agents support this — the default raises NotImplementedError.
         """

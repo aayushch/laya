@@ -4,7 +4,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { lastMessage } from '$lib/stores/websocket';
 	import { engineApi } from '$lib/api/engine';
-	import type { ActionCard, WorkspaceSession, WorkspaceEvent } from '$lib/api/types';
+	import type { ActionCard, WorkspaceSession, WorkspaceEvent, Repo } from '$lib/api/types';
 	import TimelinePanel from '$lib/components/workspace/TimelinePanel.svelte';
 	import AgentPanel from '$lib/components/workspace/AgentPanel.svelte';
 	import ContextPanel from '$lib/components/workspace/ContextPanel.svelte';
@@ -17,6 +17,10 @@
 	let error = $state<string | null>(null);
 	let timelineOpen = $state(false);
 
+	// Shared Add Path state — lives here so both panels can access it
+	let selectedAddDirs = $state<Set<string>>(new Set());
+	let allRepos = $state<Repo[]>([]);
+
 	const cardId = $derived($page.params.card_id ?? '');
 
 	const POLL_INTERVAL_MS = 5000;
@@ -26,6 +30,10 @@
 	onMount(async () => {
 		await loadWorkspace();
 		startPoller();
+		try {
+			const config = await engineApi.getRepos();
+			allRepos = config.repos ?? [];
+		} catch { /* repos unavailable */ }
 	});
 
 	onDestroy(() => {
@@ -156,14 +164,16 @@
 		>Retry</button>
 	</div>
 {:else if card}
-	<div class="flex h-[calc(100%+3rem)] -m-6">
+	<!-- -m-4 cancels main's p-4; h-[calc(100%+2rem)] reclaims the vertical padding so
+		 the workspace fills the viewport exactly and only individual panels scroll. -->
+	<div class="flex h-[calc(100%+2rem)] -m-4 overflow-hidden">
 		<!-- Collapsible timeline panel -->
 		<div class="shrink-0 overflow-hidden transition-[width] duration-300 ease-in-out {timelineOpen ? 'w-72' : 'w-0'}">
 			<div class="h-full w-72">
 				<TimelinePanel {events} onselect={handleTimelineSelect} />
 			</div>
 		</div>
-		<AgentPanel {card} {session} {events} {timelineOpen} ontoggletime={() => (timelineOpen = !timelineOpen)} />
-		<ContextPanel {card} {session} {events} {context} />
+		<AgentPanel {card} {session} {events} {timelineOpen} {selectedAddDirs} ontoggletime={() => (timelineOpen = !timelineOpen)} />
+		<ContextPanel {card} {session} {events} {context} {allRepos} bind:selectedAddDirs />
 	</div>
 {/if}

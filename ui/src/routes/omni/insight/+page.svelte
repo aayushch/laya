@@ -298,11 +298,7 @@
 
 			<!-- Render each card -->
 			{#each cards as card, idx}
-				{#if idx > 0}
-					<hr class="my-6 border-surface-700/50" />
-				{/if}
-
-				<div class="mb-2">
+				<div class="mb-4 rounded-xl p-5 insight-card-bg">
 					<!-- Card meta bar -->
 					<div class="mb-3 flex items-center gap-2 flex-wrap">
 						<span class="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider {priorityColors[card.priority]}">{card.priority}</span>
@@ -575,3 +571,14 @@
 		</div>
 	</div>
 {/if}
+
+<style>
+	/* Dark theme: subtle orange-tinted card background */
+	:global([data-theme='dark']) .insight-card-bg {
+		background-color: oklch(0.25 0.04 63 / 0.9);
+	}
+	/* Light theme: warm orange-tinted card background */
+	:global([data-theme='light']) .insight-card-bg {
+		background-color: oklch(0.93 0.035 63 / 0.7);
+	}
+</style>

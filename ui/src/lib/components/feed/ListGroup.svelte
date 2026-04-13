@@ -9,6 +9,7 @@
 		group,
 		onselect,
 		ondelete,
+		onlink,
 		selectedCardId = '',
 		scrollToCardId = null,
 		bulkSelectedIds,
@@ -20,6 +21,7 @@
 		group: CardGroup;
 		onselect: (card: ActionCard) => void;
 		ondelete?: (cardId: string) => void;
+		onlink?: (group: CardGroup) => void;
 		selectedCardId?: string;
 		scrollToCardId?: string | null;
 		bulkSelectedIds?: Set<string>;
@@ -31,11 +33,30 @@
 
 	let expanded = $state(false);
 	let groupMenuOpen = $state(false);
+	let menuEl: HTMLElement | undefined = $state();
 	let bulkActionRunning = $state(false);
+	let unlinking = $state(false);
 
-	// Extract subject ID from entity_id (e.g., "jira:FERR-1056" → "FERR-1056")
+	async function unlinkGroup(e: Event) {
+		e.stopPropagation();
+		groupMenuOpen = false;
+		if (!group.context_id) return;
+		unlinking = true;
+		try {
+			await engineApi.unlinkContextGroup(group.context_id);
+		} finally {
+			unlinking = false;
+		}
+	}
+
 	// Extract subject ID from entity_id (e.g., "jira:ticket:FERR-1056" → "FERR-1056")
-	const subjectId = $derived(group.entity_id?.includes(':') ? group.entity_id.split(':').pop() : group.entity_id);
+	// For linked groups, use the top card's entity_id instead of the context_id
+	const effectiveEntityId = $derived(
+		group.context_id && group.cards[0]?.entity_id
+			? group.cards[0].entity_id
+			: group.entity_id
+	);
+	const subjectId = $derived(effectiveEntityId?.includes(':') ? effectiveEntityId.split(':').pop() : effectiveEntityId);
 
 	const hasBookmark = $derived(group.cards.some((c) => c.bookmarked_at));
 	const isGroupSelected = $derived(group.cards.some((c) => c.card_id === selectedCardId));
@@ -50,12 +71,13 @@
 	});
 
 
-	// Close group menu on outside click
+	// Close group menu on outside click — uses element ref so clicking
+	// another group's menu correctly closes this one.
 	$effect(() => {
 		if (!groupMenuOpen) return;
 		function handleClick(e: MouseEvent) {
 			const target = e.target as HTMLElement;
-			if (!target.closest('.group-menu')) groupMenuOpen = false;
+			if (!menuEl?.contains(target)) groupMenuOpen = false;
 		}
 		document.addEventListener('click', handleClick, true);
 		return () => document.removeEventListener('click', handleClick, true);
@@ -65,6 +87,19 @@
 		jira: 'Jira', gmail: 'Gmail', slack: 'Slack',
 		bitbucket: 'Bitbucket', calendar: 'Calendar', github: 'GitHub', laya: 'Laya'
 	};
+
+	const isSmartGroup = $derived(!!group.context_id);
+	const isMultiPlatform = $derived(isSmartGroup && (group.platforms?.length ?? 0) > 1);
+	const sourceLabel = $derived(
+		isSmartGroup && isMultiPlatform
+			? 'Multiple'
+			: (platformLabel[group.platform] ?? group.platform)
+	);
+	const sourcesDetail = $derived(
+		isSmartGroup && group.platforms
+			? group.platforms.map(p => platformLabel[p] ?? p).join(', ')
+			: ''
+	);
 
 	const topCard = $derived(group.cards[0]);
 
@@ -161,7 +196,7 @@
 	const canArchiveAll = $derived(group.cards.some((c) => c.status !== 'archived'));
 	const canReopenAll = $derived(group.cards.some((c) => ['dismissed', 'archived', 'done'].includes(c.status)));
 	const canUnarchiveAll = $derived(group.cards.some((c) => c.status === 'archived'));
-	const hasAnyAction = $derived(canApproveAll || canCompleteAll || canDismissAll || canArchiveAll || canReopenAll || canUnarchiveAll);
+	const hasAnyAction = $derived(canApproveAll || canCompleteAll || canDismissAll || canArchiveAll || canReopenAll || canUnarchiveAll || !!onlink);
 
 	async function bulkAction(action: 'approve' | 'complete' | 'dismiss' | 'archive' | 'reopen' | 'unarchive', e: Event) {
 		e.stopPropagation();
@@ -247,8 +282,13 @@
 				</button>
 
 				<!-- Source — fixed width, matches ListRow -->
-		<span class="w-[60px] shrink-0 text-[11px] font-semibold uppercase tracking-wider text-surface-500 truncate">
-			{platformLabel[group.platform] ?? group.platform}
+		<span class="w-[60px] shrink-0 flex flex-col" title={isSmartGroup && sourcesDetail ? sourcesDetail : undefined}>
+			<span class="text-[11px] font-semibold uppercase tracking-wider text-surface-500 truncate">
+				{sourceLabel}
+			</span>
+			{#if isSmartGroup && sourcesDetail}
+				<span class="truncate text-[8px] text-surface-600">{sourcesDetail}</span>
+			{/if}
 		</span>
 
 		<!-- Subject ID (e.g., FERR-1056) extracted from entity_id -->
@@ -288,7 +328,7 @@
 		<!-- Three-dot menu — aligned with ListRow action buttons column (w-[68px]) -->
 		<div class="w-[68px] shrink-0 flex items-center justify-end">
 			{#if hasAnyAction}
-				<div class="group-menu relative">
+				<div class="group-menu relative" bind:this={menuEl}>
 					<button
 						class="flex h-5 w-5 items-center justify-center rounded text-surface-500 hover:bg-surface-700 hover:text-surface-300 disabled:opacity-50 opacity-0 group-hover/grow:opacity-100 transition-opacity"
 						onclick={toggleGroupMenu}
@@ -325,6 +365,26 @@
 							{/if}
 							{#if canUnarchiveAll}
 								<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-laya-orange" role="menuitem" onclick={(e) => bulkAction('unarchive', e)}>Unarchive All</button>
+							{/if}
+							<div class="my-1 border-t border-surface-700"></div>
+							<button
+								class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-laya-orange"
+								role="menuitem"
+								onclick={(e) => { e.stopPropagation(); groupMenuOpen = false; onlink?.(group); }}
+							>
+								<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+								Link to...
+							</button>
+							{#if isSmartGroup}
+								<button
+									class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-red-400"
+									role="menuitem"
+									disabled={unlinking}
+									onclick={unlinkGroup}
+								>
+									<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /><line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+									{unlinking ? 'Unlinking...' : 'Unlink Group'}
+								</button>
 							{/if}
 						</div>
 					{/if}
