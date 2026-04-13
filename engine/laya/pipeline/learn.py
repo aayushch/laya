@@ -13,15 +13,20 @@ from laya.llm.prompts.learner import build_learner_messages, get_learner_json_sc
 
 log = structlog.get_logger()
 
-# Minimum unprocessed corrections before triggering extraction
-CORRECTION_THRESHOLD = 15
+# Defaults — configurable via settings.json tuning section
+def _correction_threshold() -> int:
+    from laya.config import get_tuning
+    return get_tuning("classification_learn_threshold", 15)
 
-# Maximum corrections to send in a single LLM call
-BATCH_LIMIT = 50
+def _batch_limit() -> int:
+    from laya.config import get_tuning
+    return get_tuning("classification_learn_batch", 50)
 
 
-async def get_spaces_with_unprocessed(threshold: int = CORRECTION_THRESHOLD) -> list:
+async def get_spaces_with_unprocessed(threshold: int | None = None) -> list:
     """Return space_ids that have enough unprocessed corrections for rule extraction."""
+    if threshold is None:
+        threshold = _correction_threshold()
     db = await get_db()
     try:
         rows = await db.execute_fetchall(
@@ -55,7 +60,7 @@ async def run_learn_extraction(space_id: str | None) -> int:
                WHERE processed = 0 AND space_id = ?
                ORDER BY created_at ASC
                LIMIT ?""",
-            (space_id, BATCH_LIMIT),
+            (space_id, _batch_limit()),
         )
     else:
         corrections_rows = await db.execute_fetchall(
@@ -65,7 +70,7 @@ async def run_learn_extraction(space_id: str | None) -> int:
                WHERE processed = 0 AND space_id IS NULL
                ORDER BY created_at ASC
                LIMIT ?""",
-            (BATCH_LIMIT,),
+            (_batch_limit(),),
         )
 
     if not corrections_rows:

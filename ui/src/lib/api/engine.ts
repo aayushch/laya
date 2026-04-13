@@ -264,8 +264,10 @@ export const engineApi = {
 
 	// Summary
 	getDaySummary: (date?: string) => {
-		const qs = date ? `?date=${date}` : '';
-		return request<DaySummaryResponse>(`/summary${qs}`);
+		const params = new URLSearchParams();
+		if (date) params.set('date', date);
+		params.set('tz', Intl.DateTimeFormat().resolvedOptions().timeZone);
+		return request<DaySummaryResponse>(`/summary?${params.toString()}`);
 	},
 
 	// Actions
@@ -304,6 +306,16 @@ export const engineApi = {
 		request<{ status: string; session_id: string }>(`/workspace/${sessionId}/dismiss-questions`, {
 			method: 'POST'
 		}),
+
+	// Research file browsing
+	listResearchFiles: (cardId: string) =>
+		request<{ card_id: string; files: Array<{ name: string; path: string; size: number; modified: number }> }>(
+			`/workspace/research-files/${cardId}`
+		),
+	readResearchFile: (cardId: string, filePath: string) =>
+		request<{ path: string; name: string; content: string }>(
+			`/workspace/research-files/${cardId}/read?path=${encodeURIComponent(filePath)}`
+		),
 
 	// Dashboard
 	getDashboard: (days?: number) => {

@@ -82,11 +82,12 @@ class CodexCliAgent(CodingAgent):
         await self._process.spawn(args=args, cwd=repo_path)
         self._status = SessionStatus.RUNNING
 
-    async def resume_with_answer(self, answer_text: str, add_dirs: list[str] | None = None) -> None:
+    async def resume_with_answer(self, answer_text: str, add_dirs: list[str] | None = None, research: bool = False) -> None:
         """Resume the Codex conversation with new instructions.
 
-        Spawns ``codex exec resume <thread_id> "<prompt>" --full-auto --json``
-        so Codex loads the session history and continues with write access.
+        Spawns ``codex exec resume <thread_id> "<prompt>" --json`` with
+        appropriate sandbox mode: workspace-write for research (OS-level
+        scoping to cwd), full-auto for code tasks.
         """
         if not self._thread_id:
             raise ValueError("No Codex thread ID available for resumption")
@@ -101,8 +102,12 @@ class CodexCliAgent(CodingAgent):
             self._thread_id,
             answer_text,
             "--json",
-            "--full-auto",
         ]
+
+        if research:
+            args.extend(["--sandbox", "workspace-write", "--search"])
+        else:
+            args.append("--full-auto")
 
         if add_dirs:
             for d in add_dirs:

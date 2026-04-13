@@ -93,14 +93,15 @@ async def start_session(
 
     session_id = f"sess_{uuid.uuid4().hex[:12]}"
 
-    # Persist session to SQLite (including add_dirs for resumption)
+    # Persist session to SQLite (including add_dirs and session_type for resumption)
+    session_type = "research" if research else "code"
     db = await get_db()
     await db.execute(
         """INSERT INTO workspace_sessions
-           (session_id, card_id, agent_type, status, repo_path, initial_prompt, add_dirs)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+           (session_id, card_id, agent_type, status, repo_path, initial_prompt, add_dirs, session_type)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (session_id, card_id, agent_type.value, SessionStatus.STARTING.value,
-         repo_path, prompt, json.dumps(add_dirs) if add_dirs else None),
+         repo_path, prompt, json.dumps(add_dirs) if add_dirs else None, session_type),
     )
     await db.commit()
 
@@ -283,13 +284,14 @@ async def resume_conversation(
     """
     db = await get_db()
     rows = await db.execute_fetchall(
-        "SELECT cc_session_id, repo_path, agent_type, add_dirs FROM workspace_sessions WHERE session_id = ?",
+        "SELECT cc_session_id, repo_path, agent_type, add_dirs, session_type FROM workspace_sessions WHERE session_id = ?",
         (session_id,),
     )
     if not rows:
         raise ValueError(f"No session found: {session_id}")
 
-    agent_session_id, repo_path, agent_type_str, existing_dirs_json = rows[0]
+    agent_session_id, repo_path, agent_type_str, existing_dirs_json, session_type = rows[0]
+    is_research = session_type == "research"
 
     # Merge new add_dirs with previously stored ones (deduplicated, order-preserving)
     existing_dirs: list[str] = json.loads(existing_dirs_json) if existing_dirs_json else []
@@ -334,7 +336,7 @@ async def resume_conversation(
         else:
             raise ValueError(f"Agent type {agent_type.value} does not support session resumption")
 
-        await agent.resume_with_answer(answer_text, add_dirs=all_dirs)
+        await agent.resume_with_answer(answer_text, add_dirs=all_dirs, research=is_research)
     else:
         # No agent session ID stored (e.g. session started with old adapter).
         # Fall back to starting a fresh session with the prompt in the same repo.
@@ -345,7 +347,7 @@ async def resume_conversation(
             reason="no agent session ID stored",
         )
         agent = _create_agent(agent_type)
-        await agent.start_session(session_id, answer_text, repo_path)
+        await agent.start_session(session_id, answer_text, repo_path, research=is_research)
 
     # Update session status back to running
     await _update_session_status(session_id, SessionStatus.RUNNING)

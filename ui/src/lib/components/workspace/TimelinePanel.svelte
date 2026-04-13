@@ -67,7 +67,7 @@
 	}
 </script>
 
-<div class="flex h-full w-72 flex-col border-r border-surface-700 bg-surface-850">
+<div class="flex h-full w-72 flex-col bg-surface-850">
 	<div class="flex h-11 items-center gap-2 border-b border-surface-700 px-4">
 		<h2 class="text-xs font-semibold uppercase tracking-wider text-surface-400">Timeline</h2>
 		<span class="text-[10px] text-surface-500">{events.length} events</span>

@@ -6,10 +6,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from laya.pipeline.entity_resolution import (
-    SEMANTIC_THRESHOLD,
+    _get_semantic_threshold,
     confirm_entity_link,
     resolve_semantic_entities,
 )
+
+SEMANTIC_THRESHOLD = _get_semantic_threshold()
 
 
 @pytest.mark.asyncio

@@ -117,6 +117,7 @@ export interface WorkspaceSession {
 	completed_at?: string;
 	findings?: Record<string, unknown>;
 	error_message?: string;
+	session_type?: 'code' | 'research';
 }
 
 /** Workspace event */

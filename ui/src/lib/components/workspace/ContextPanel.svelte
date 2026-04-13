@@ -1,5 +1,7 @@
 <script lang="ts">
 	import type { ActionCard, WorkspaceEvent, WorkspaceSession } from '$lib/api/types';
+	import { engineApi } from '$lib/api/engine';
+	import { marked } from 'marked';
 
 	let {
 		card,
@@ -61,6 +63,59 @@
 		return `${Math.round(ms / 3600_000 * 10) / 10}h`;
 	});
 
+	// Research file browsing — only for research sessions
+	const isResearch = $derived(session?.session_type === 'research');
+	let researchFiles = $state<Array<{ name: string; path: string; size: number; modified: number }>>([]);
+	let filesLoaded = $state(false);
+	let filesLoading = $state(false);
+	let viewingFile = $state<{ name: string; content: string } | null>(null);
+	let fileLoading = $state(false);
+	let fileCopied = $state(false);
+
+	async function copyFileContent() {
+		if (!viewingFile) return;
+		await navigator.clipboard.writeText(viewingFile.content);
+		fileCopied = true;
+		setTimeout(() => (fileCopied = false), 1500);
+	}
+
+	$effect(() => {
+		if (isResearch && session && !filesLoaded) {
+			loadFiles();
+		}
+	});
+
+	async function loadFiles() {
+		filesLoading = true;
+		try {
+			const result = await engineApi.listResearchFiles(card.card_id);
+			researchFiles = result.files;
+			filesLoaded = true;
+		} catch {
+			researchFiles = [];
+		} finally {
+			filesLoading = false;
+		}
+	}
+
+	async function viewFile(filePath: string) {
+		fileLoading = true;
+		try {
+			const result = await engineApi.readResearchFile(card.card_id, filePath);
+			viewingFile = { name: result.name, content: result.content };
+		} catch {
+			// failed to load
+		} finally {
+			fileLoading = false;
+		}
+	}
+
+	function formatFileSize(bytes: number): string {
+		if (bytes < 1024) return `${bytes} B`;
+		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	}
+
 	const relatedEntities = $derived(
 		((context.related_entities as Array<{ entity_type: string; value: string } | string>) ?? []).map(
 			(e) => (typeof e === 'string' ? e : e.value)
@@ -115,8 +170,49 @@
 		<!-- Working Directory -->
 		{#if session?.repo_path}
 			<div class="rounded-lg border border-surface-700 bg-surface-800 p-3">
-				<h3 class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Working Directory</h3>
+				<div class="mb-1.5 flex items-center justify-between">
+					<h3 class="text-[10px] font-semibold uppercase tracking-wider text-surface-500">Working Directory</h3>
+					{#if isResearch && filesLoaded}
+						<button
+							class="text-[10px] text-cyan-400 hover:text-cyan-300 transition-colors"
+							onclick={loadFiles}
+							disabled={filesLoading}
+						>
+							{filesLoading ? '...' : 'Refresh'}
+						</button>
+					{/if}
+				</div>
 				<p class="break-all font-mono text-[11px] text-surface-200">{session.repo_path}</p>
+
+				{#if isResearch}
+					<!-- Research files -->
+					{#if filesLoading && !filesLoaded}
+						<p class="mt-2 text-[11px] text-surface-500">Loading files...</p>
+					{:else if researchFiles.length > 0}
+						<div class="mt-2.5 border-t border-surface-700/50 pt-2">
+							<h4 class="mb-1.5 text-[10px] font-medium text-surface-500">Generated Files</h4>
+							<div class="space-y-1">
+								{#each researchFiles as file}
+									<button
+										class="flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left transition-colors hover:bg-surface-700/50"
+										onclick={() => viewFile(file.path)}
+									>
+										<div class="flex min-w-0 items-center gap-1.5">
+											<svg class="h-3 w-3 shrink-0 text-surface-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+											</svg>
+											<span class="truncate text-[11px] text-surface-200">{file.name}</span>
+										</div>
+										<span class="shrink-0 text-[10px] text-surface-500">{formatFileSize(file.size)}</span>
+									</button>
+								{/each}
+							</div>
+						</div>
+					{:else if filesLoaded}
+						<p class="mt-2 text-[11px] text-surface-500">No files generated yet</p>
+					{/if}
+				{/if}
+
 				{#if session.add_dirs && session.add_dirs.length > 0}
 					<h3 class="mt-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Additional Directories</h3>
 					<div class="space-y-1">
@@ -229,3 +325,178 @@
 		{/if}
 	</div>
 </div>
+
+<!-- File viewer modal -->
+{#if viewingFile}
+	<div
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+		role="dialog"
+		aria-label="File viewer"
+		tabindex="-1"
+		onclick={(e) => { if (e.target === e.currentTarget) viewingFile = null; }}
+		onkeydown={(e) => { if (e.key === 'Escape') viewingFile = null; }}
+	>
+		<div class="mx-4 flex h-[80vh] w-full max-w-3xl flex-col rounded-xl border border-surface-600 bg-surface-800 shadow-2xl">
+			<!-- Modal header -->
+			<div class="flex shrink-0 items-center justify-between border-b border-surface-700 px-5 py-3">
+				<div class="flex items-center gap-2">
+					<svg class="h-4 w-4 text-cyan-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+					</svg>
+					<span class="text-sm font-medium text-surface-100">{viewingFile.name}</span>
+				</div>
+				<div class="flex items-center gap-1">
+					<!-- Copy button -->
+					<button
+						class="rounded-md px-2 py-1 text-[11px] transition-colors {fileCopied ? 'text-green-400' : 'text-surface-400 hover:bg-surface-700 hover:text-surface-200'}"
+						onclick={copyFileContent}
+					>
+						{#if fileCopied}
+							Copied!
+						{:else}
+							<span class="flex items-center gap-1">
+								<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+								</svg>
+								Copy
+							</span>
+						{/if}
+					</button>
+					<!-- Close button -->
+					<button
+						class="rounded-md p-1 text-surface-400 transition-colors hover:bg-surface-700 hover:text-surface-200"
+						onclick={() => (viewingFile = null)}
+						aria-label="Close"
+					>
+						<svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+							<path stroke-linecap="round" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
+			</div>
+			<!-- Modal body -->
+			<div class="flex-1 overflow-y-auto p-5">
+				{#if viewingFile.name.endsWith('.md')}
+					<div class="research-file-content">
+						{@html marked(viewingFile.content)}
+					</div>
+				{:else}
+					<pre class="whitespace-pre-wrap break-words rounded-lg bg-surface-900 p-4 font-mono text-[11px] text-surface-200">{viewingFile.content}</pre>
+				{/if}
+			</div>
+		</div>
+	</div>
+{/if}
+
+<style>
+	/* Research file markdown renderer — compact sizing with proper table support */
+	.research-file-content {
+		color: var(--color-surface-200);
+		font-size: 12px;
+		line-height: 1.6;
+	}
+	.research-file-content :global(h1) {
+		font-size: 16px;
+		font-weight: 700;
+		color: var(--color-surface-100);
+		margin: 1.25em 0 0.5em;
+		padding-bottom: 0.3em;
+		border-bottom: 1px solid var(--color-surface-700);
+	}
+	.research-file-content :global(h2) {
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--color-surface-100);
+		margin: 1em 0 0.4em;
+		padding-bottom: 0.25em;
+		border-bottom: 1px solid var(--color-surface-700);
+	}
+	.research-file-content :global(h3) {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--color-surface-100);
+		margin: 0.8em 0 0.3em;
+	}
+	.research-file-content :global(h4),
+	.research-file-content :global(h5),
+	.research-file-content :global(h6) {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--color-surface-100);
+		margin: 0.6em 0 0.25em;
+	}
+	.research-file-content :global(p) {
+		margin: 0.5em 0;
+	}
+	.research-file-content :global(ul),
+	.research-file-content :global(ol) {
+		margin: 0.4em 0;
+		padding-left: 1.5em;
+	}
+	.research-file-content :global(li) {
+		margin: 0.15em 0;
+	}
+	.research-file-content :global(a) {
+		color: var(--color-laya-orange);
+	}
+	.research-file-content :global(strong) {
+		color: var(--color-surface-100);
+		font-weight: 600;
+	}
+	.research-file-content :global(code) {
+		color: var(--color-laya-orange);
+		background: var(--color-surface-900);
+		padding: 0.1em 0.3em;
+		border-radius: 3px;
+		font-size: 11px;
+	}
+	.research-file-content :global(pre) {
+		background: var(--color-surface-900);
+		border: 1px solid var(--color-surface-700);
+		border-radius: 6px;
+		padding: 0.75em;
+		overflow-x: auto;
+		margin: 0.5em 0;
+		font-size: 11px;
+	}
+	.research-file-content :global(pre code) {
+		background: none;
+		padding: 0;
+	}
+	.research-file-content :global(blockquote) {
+		border-left: 3px solid var(--color-surface-600);
+		padding-left: 0.75em;
+		margin: 0.5em 0;
+		color: var(--color-surface-400);
+	}
+	.research-file-content :global(hr) {
+		border: none;
+		border-top: 1px solid var(--color-surface-700);
+		margin: 1em 0;
+	}
+	/* Table styles */
+	.research-file-content :global(table) {
+		width: 100%;
+		border-collapse: collapse;
+		margin: 0.5em 0;
+		font-size: 11px;
+	}
+	.research-file-content :global(thead) {
+		border-bottom: 2px solid var(--color-surface-600);
+	}
+	.research-file-content :global(th) {
+		text-align: left;
+		font-weight: 600;
+		color: var(--color-surface-100);
+		padding: 0.4em 0.75em;
+		background: var(--color-surface-900);
+	}
+	.research-file-content :global(td) {
+		padding: 0.35em 0.75em;
+		border-bottom: 1px solid var(--color-surface-700);
+		color: var(--color-surface-300);
+	}
+	.research-file-content :global(tr:hover td) {
+		background: var(--color-surface-800);
+	}
+</style>

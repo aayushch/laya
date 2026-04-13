@@ -1074,15 +1074,41 @@ async def update_classification(card_id: str, body: UpdateClassificationRequest)
 
 
 @router.get("/summary")
-async def get_daily_summary(date: str | None = None) -> dict:
-    """Get the daily summary for a given date (defaults to today)."""
+async def get_daily_summary(date: str | None = None, tz: str | None = None) -> dict:
+    """Get the daily summary for a given date (defaults to today).
+
+    When ``tz`` is provided the caller's local date is converted to the
+    corresponding UTC date for the DB lookup (summaries are stored under
+    UTC dates).  This mirrors the timezone handling in ``get_grouped_cards``.
+    """
     if not date:
-        date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        if tz:
+            try:
+                from zoneinfo import ZoneInfo
+                local_now = datetime.now(ZoneInfo(tz))
+                date = local_now.strftime("%Y-%m-%d")
+            except (KeyError, ValueError):
+                date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        else:
+            date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Summaries are stored under UTC dates.  Convert the caller's local
+    # date to the matching UTC date so the lookup succeeds regardless of
+    # timezone offset.
+    lookup_date = date
+    if tz:
+        try:
+            from zoneinfo import ZoneInfo
+            local_tz = ZoneInfo(tz)
+            local_midnight = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=local_tz)
+            lookup_date = local_midnight.astimezone(timezone.utc).strftime("%Y-%m-%d")
+        except (KeyError, ValueError):
+            pass  # Fall through — use date as-is
 
     db = await get_db()
     rows = await db.execute_fetchall(
         "SELECT summary_json, card_ids, updated_at FROM daily_summaries WHERE date = ?",
-        (date,),
+        (lookup_date,),
     )
 
     if not rows:
@@ -1356,12 +1382,16 @@ async def run_agent(body: RunAgentRequest) -> dict:
 
     db = await get_db()
 
-    # Synthetic event so the FK constraint is satisfied
+    # Synthetic event so the FK constraint is satisfied.
+    # Mark as 'completed' so the queue consumer never picks it up —
+    # the raw_json is a flat dict (not a valid LayaEvent) and would
+    # fail deserialization in _load_event().
     await db.execute(
         """INSERT INTO events
            (event_id, timestamp, source_platform, source_raw_event_type,
-            subject_type, subject_id, subject_title, content_body, raw_json, processed)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            subject_type, subject_id, subject_title, content_body, raw_json,
+            processed, processing_status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             event_id,
             now,
@@ -1373,16 +1403,18 @@ async def run_agent(body: RunAgentRequest) -> dict:
             body.prompt,
             json.dumps({"source": "laya", "type": "agent_run", "prompt": body.prompt}),
             True,
+            "completed",
         ),
     )
 
+    now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     await db.execute(
         """INSERT INTO action_cards
            (card_id, event_id, priority, persona, category, header, summary,
             intelligence, staged_output, suggested_actions, status,
             privacy_tier, has_workspace, confidence, entity_id, source_ref,
-            space_id, agent_prompt)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            space_id, agent_prompt, group_active_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             card_id,
             event_id,
@@ -1391,17 +1423,18 @@ async def run_agent(body: RunAgentRequest) -> dict:
             "CODE",
             header,
             body.prompt,  # summary shows the original prompt (without image paths)
-            json.dumps({}),
+            json.dumps([]),
             json.dumps({}),
             json.dumps([]),
             "agent_running",
-            "internal",
+            2,
             True,
             1.0,
             entity_id,
             "Agent Run",
             body.space_id or "default",
             effective_prompt,  # agent_prompt includes image references
+            now_ts,
         ),
     )
     await db.commit()
@@ -1419,7 +1452,7 @@ async def run_agent(body: RunAgentRequest) -> dict:
                 "category": "CODE",
                 "status": "agent_running",
                 "has_workspace": True,
-                "privacy_tier": "internal",
+                "privacy_tier": 2,
             },
         }
     )
@@ -1630,30 +1663,34 @@ async def unlink_context_group(context_id: str):
         "UPDATE context_groups SET user_split = TRUE WHERE context_id = ?",
         (context_id,),
     )
-    # Remove context_id from all member cards
+    # Restore original group_active_at and remove context_id from all member cards.
+    # Cards revert to their pre-linking feed date.
     await db.execute(
-        "UPDATE action_cards SET context_id = NULL WHERE context_id = ?",
+        """UPDATE action_cards
+           SET context_id = NULL,
+               group_active_at = COALESCE(pre_context_group_active_at, group_active_at),
+               pre_context_group_active_at = NULL
+           WHERE context_id = ?""",
         (context_id,),
     )
 
-    # Record unlink corrections for learning (pairwise between all cards)
+    # Record unlink corrections for learning (anchor-based: first card paired with each other)
     if len(group_cards) >= 2:
         space_id = group_cards[0]["space_id"]
-        for i in range(len(group_cards)):
-            for j in range(i + 1, len(group_cards)):
-                a, b = group_cards[i], group_cards[j]
-                try:
-                    await db.execute(
-                        """INSERT INTO context_corrections
-                           (card_id_a, card_id_b, header_a, header_b, summary_a, summary_b,
-                            platform_a, platform_b, action, space_id)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'unlink', ?)""",
-                        (a["card_id"], b["card_id"], a["header"], b["header"],
-                         a["summary"], b["summary"],
-                         a["source_platform"], b["source_platform"], space_id),
-                    )
-                except Exception as e:
-                    log.debug("context_correction_insert_failed", error=str(e))
+        anchor = group_cards[0]
+        for other in group_cards[1:]:
+            try:
+                await db.execute(
+                    """INSERT INTO context_corrections
+                       (card_id_a, card_id_b, header_a, header_b, summary_a, summary_b,
+                        platform_a, platform_b, action, space_id)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'unlink', ?)""",
+                    (anchor["card_id"], other["card_id"], anchor["header"], other["header"],
+                     anchor["summary"], other["summary"],
+                     anchor["source_platform"], other["source_platform"], space_id),
+                )
+            except Exception as e:
+                log.debug("context_correction_insert_failed", error=str(e))
 
     await db.commit()
 
@@ -1726,31 +1763,25 @@ async def merge_cards(body: MergeCardsRequest):
             )
     await db.commit()
 
-    # Record link corrections for learning (pairwise between cards from different entity groups)
+    # Record link corrections for learning (anchor-based: first card paired with each other)
     space_id = cards[0]["space_id"] if cards else None
-    seen_pairs: set[tuple[str, str]] = set()
-    for i in range(len(cards)):
-        for j in range(i + 1, len(cards)):
-            a, b = cards[i], cards[j]
-            # Only record pairs from different entity groups (same-entity links are redundant)
-            if a["entity_id"] and b["entity_id"] and a["entity_id"] == b["entity_id"]:
-                continue
-            pair_key = tuple(sorted([a["card_id"], b["card_id"]]))
-            if pair_key in seen_pairs:
-                continue
-            seen_pairs.add(pair_key)
-            try:
-                await db.execute(
-                    """INSERT INTO context_corrections
-                       (card_id_a, card_id_b, header_a, header_b, summary_a, summary_b,
-                        platform_a, platform_b, action, space_id)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'link', ?)""",
-                    (a["card_id"], b["card_id"], a["header"], b["header"],
-                     a["summary"], b["summary"],
-                     a["source_platform"], b["source_platform"], space_id),
-                )
-            except Exception as e:
-                log.debug("context_correction_insert_failed", error=str(e))
+    anchor = cards[0]
+    for other in cards[1:]:
+        # Only record pairs from different entity groups (same-entity links are redundant)
+        if anchor["entity_id"] and other["entity_id"] and anchor["entity_id"] == other["entity_id"]:
+            continue
+        try:
+            await db.execute(
+                """INSERT INTO context_corrections
+                   (card_id_a, card_id_b, header_a, header_b, summary_a, summary_b,
+                    platform_a, platform_b, action, space_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'link', ?)""",
+                (anchor["card_id"], other["card_id"], anchor["header"], other["header"],
+                 anchor["summary"], other["summary"],
+                 anchor["source_platform"], other["source_platform"], space_id),
+            )
+        except Exception as e:
+            log.debug("context_correction_insert_failed", error=str(e))
     await db.commit()
 
     log.info("context_group_merged", context_id=context_id, card_count=len(cards))

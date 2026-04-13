@@ -1854,6 +1854,7 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
         <a href="#doc-pipeline">Processing Pipeline</a>
         <a href="#doc-event-schema">Event Schema</a>
         <a href="#doc-config-files">Config Files</a>
+        <a href="#doc-tuning">Tuning Parameters</a>
         <a href="#doc-troubleshooting">Troubleshooting</a>
       </div>
     </aside>
@@ -2724,6 +2725,94 @@ content.body         content.metadata.*</code></pre>
       <div class="callout callout-info">
         <p><strong>Note:</strong> All config files are created automatically on first run with sensible defaults. You can edit them directly or use the Settings UI.</p>
       </div>
+
+      <h2 id="doc-tuning">Tuning Parameters</h2>
+      <p>Laya exposes internal parameters that control the behavior, sensitivity, and resource usage of its AI pipeline. These have sensible defaults and do not need to be changed for normal operation. Advanced users can override them via the <code>tuning</code> section in <code>~/.laya/settings.json</code>.</p>
+
+      <div class="callout">
+        <p><strong>How to override:</strong> Add a <code>tuning</code> object to your <code>~/.laya/settings.json</code>. Only include the parameters you want to change &mdash; omitted parameters use their defaults. Changes take effect on the next pipeline run (no restart required).</p>
+      </div>
+
+<pre><code>{
+  "tuning": {
+    "context_association_time_window_days": 14,
+    "trace_semantic_max_distance": 0.50
+  }
+}</code></pre>
+
+      <h3>Context Association</h3>
+      <p>Controls how Laya detects semantic relationships between cards from different sources.</p>
+      <table>
+        <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+        <tr><td><code>context_association_time_window_days</code></td><td>7</td><td>Only consider cards within this many days for grouping. Lower = fewer but more relevant matches. Higher = broader but more false positives.</td></tr>
+      </table>
+      <p>The distance thresholds for context association live in the <code>smart_grouping</code> section (not <code>tuning</code>):</p>
+      <table>
+        <tr><th>Setting</th><th>Default</th><th>Description</th></tr>
+        <tr><td><code>smart_grouping.auto_confirm_threshold</code></td><td>0.12</td><td>ChromaDB cosine distance below which cards are auto-grouped without LLM confirmation. Lower = stricter.</td></tr>
+        <tr><td><code>smart_grouping.confidence_threshold</code></td><td>0.22</td><td>Max distance for LLM-confirmed grouping. Cards beyond this are never grouped.</td></tr>
+      </table>
+
+      <h3>Entity Resolution</h3>
+      <table>
+        <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+        <tr><td><code>semantic_entity_threshold</code></td><td>0.35</td><td>Cosine distance threshold for semantic entity linking. Controls when entities (tickets, people, repos) are considered related across cards.</td></tr>
+        <tr><td><code>entity_search_results</code></td><td>5</td><td>Number of ChromaDB results fetched per entity during semantic resolution.</td></tr>
+      </table>
+
+      <h3>Classification Learning</h3>
+      <p>Controls how Laya learns classification rules from user corrections (priority/persona adjustments).</p>
+      <table>
+        <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+        <tr><td><code>classification_learn_threshold</code></td><td>15</td><td>Minimum unprocessed corrections per space before the learner triggers.</td></tr>
+        <tr><td><code>classification_learn_batch</code></td><td>50</td><td>Max corrections sent to the LLM in a single learning call.</td></tr>
+        <tr><td><code>classification_learn_interval_hours</code></td><td>6</td><td>How often the scheduler checks for unprocessed corrections.</td></tr>
+      </table>
+
+      <h3>Context Learning</h3>
+      <p>Controls how Laya learns from user link/unlink actions to improve context grouping.</p>
+      <table>
+        <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+        <tr><td><code>context_learn_threshold</code></td><td>10</td><td>Minimum unprocessed context corrections before the learner triggers.</td></tr>
+        <tr><td><code>context_learn_batch</code></td><td>40</td><td>Max context corrections sent to the LLM per learning call.</td></tr>
+        <tr><td><code>context_learn_interval_hours</code></td><td>6</td><td>Scheduler interval for context learning checks.</td></tr>
+        <tr><td><code>context_rules_max_injection</code></td><td>20</td><td>Max learned rules injected into the LLM confirmation prompt.</td></tr>
+        <tr><td><code>context_corrections_max_injection</code></td><td>10</td><td>Max recent user link/unlink actions injected as examples.</td></tr>
+      </table>
+
+      <h3>Trace / RAG Search</h3>
+      <table>
+        <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+        <tr><td><code>trace_search_results</code></td><td>30</td><td>Results per search strategy (identifier, semantic, entity, text, fuzzy).</td></tr>
+        <tr><td><code>trace_max_seeds</code></td><td>20</td><td>Max seed results retained after merging all search strategies.</td></tr>
+        <tr><td><code>trace_semantic_max_distance</code></td><td>0.65</td><td>Max cosine distance for semantic search in traces. Lower = fewer but more relevant.</td></tr>
+      </table>
+
+      <h3>Chat Retrieval</h3>
+      <table>
+        <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+        <tr><td><code>chat_semantic_max_distance</code></td><td>0.60</td><td>Max cosine distance for semantic search in chat context.</td></tr>
+        <tr><td><code>chat_context_items</code></td><td>12</td><td>Max context items (cards, events, entities) included in the chat prompt.</td></tr>
+      </table>
+
+      <h3>Router &amp; Feedback</h3>
+      <table>
+        <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+        <tr><td><code>router_related_context_results</code></td><td>3</td><td>Related past cards fetched to provide context during event classification.</td></tr>
+        <tr><td><code>feedback_time_window_days</code></td><td>30</td><td>Time window for querying user feedback patterns (approval/dismissal rates).</td></tr>
+        <tr><td><code>corrections_retention_days</code></td><td>30</td><td>Days to keep processed corrections before automatic deletion.</td></tr>
+      </table>
+
+      <h3>Cosine Distance Reference</h3>
+      <p>Laya uses cosine distance in ChromaDB (range 0.0&ndash;1.0). The embedding model is <code>nomic-ai/nomic-embed-text-v1.5</code> (768 dimensions).</p>
+      <table>
+        <tr><th>Distance</th><th>Meaning</th><th>Typical Use</th></tr>
+        <tr><td>0.00&ndash;0.10</td><td>Near-identical content</td><td>Same event, different wording</td></tr>
+        <tr><td>0.10&ndash;0.20</td><td>Very similar</td><td>Same topic, closely related</td></tr>
+        <tr><td>0.20&ndash;0.35</td><td>Moderately similar</td><td>Related topics, same domain</td></tr>
+        <tr><td>0.35&ndash;0.50</td><td>Loosely related</td><td>Same category, different subjects</td></tr>
+        <tr><td>0.50+</td><td>Unrelated</td><td>Different domains</td></tr>
+      </table>
 
       <h2 id="doc-troubleshooting">Troubleshooting</h2>
 

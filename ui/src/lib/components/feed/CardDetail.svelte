@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { ActionCard } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
+	import { goto } from '$app/navigation';
 	import { chatOpen, chatInputPreset } from '$lib/stores/chat';
 	import { marked } from 'marked';
 	import ClassificationDialog from './ClassificationDialog.svelte';
@@ -562,9 +563,6 @@
 				{/if}
 				<span>Category: {card.category}</span>
 				<span class={statusColors[card.status] ?? 'text-surface-400'}>Status: {statusLabels[card.status] ?? card.status}</span>
-				{#if card.has_workspace}
-					<a href="/workspace/{card.card_id}" class="text-violet-400 hover:text-violet-300 underline">Open Workspace</a>
-				{/if}
 				{#if card.created_at}
 					<span>Created: {new Date(card.created_at).toLocaleString()}</span>
 				{/if}
@@ -576,6 +574,16 @@
 	<div class="border-t border-surface-700 px-5 py-2">
 		<!-- Secondary actions -->
 		<div class="flex items-center justify-end gap-1">
+			{#if card.has_workspace}
+				<a
+					href="/workspace/{card.card_id}"
+					class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-violet-400/80 transition-colors hover:bg-violet-500/15 hover:text-violet-300"
+					onclick={(e) => { e.preventDefault(); e.stopPropagation(); goto(`/workspace/${card.card_id}`); }}
+				>
+					<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+					Workspace
+				</a>
+			{/if}
 			<button
 				class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-surface-200"
 				onclick={() => (showClassificationDialog = true)}

@@ -101,6 +101,9 @@ html, body {
 [data-theme='light'] .bg-orange-500   { background-color: oklch(0.62 0.18 47);  }
 /* bg-blue-600 override removed — MEDIUM priority now uses laya-coral brand color */
 
+/* Last-viewed accent — white in dark, black in light */
+[data-theme='light'] .card-last-viewed { --last-viewed-accent: oklch(0.75 0.18 55 / 0.7); }
+
 /* Subtle action button bg adjustments */
 [data-theme='light'] .bg-green-700\/30,
 [data-theme='light'] .bg-green-700\/40,
@@ -215,66 +218,16 @@ html, body {
    ───────────────────────────────────────────────────────────── */
 .card-last-viewed {
 	position: relative;
+	--last-viewed-accent: oklch(0.75 0.18 55 / 0.7);
+	box-shadow: inset 0 0 0 1px var(--last-viewed-accent);
 }
-/* Corner brackets — L-shaped marks at each corner */
+/* Hide corner pseudo-elements — full border replaces them */
 .card-last-viewed::before,
-.card-last-viewed::after {
-	content: '';
-	position: absolute;
-	width: 16px;
-	height: 16px;
-	pointer-events: none;
-	z-index: 1;
-}
-.card-last-viewed::before {
-	top: -1px;
-	left: -1px;
-	border-top: 2px solid oklch(0.75 0.18 55 / 0.7);
-	border-left: 2px solid oklch(0.75 0.18 55 / 0.7);
-	border-top-left-radius: inherit;
-}
-.card-last-viewed::after {
-	top: -1px;
-	right: -1px;
-	border-top: 2px solid oklch(0.75 0.18 55 / 0.7);
-	border-right: 2px solid oklch(0.75 0.18 55 / 0.7);
-	border-top-right-radius: inherit;
-}
-/* Bottom corners via a wrapper pseudo on the inner element */
-.card-last-viewed > .card-corner-bottom {
-	position: absolute;
-	bottom: -1px;
-	left: 0;
-	right: 0;
-	height: 0;
-	pointer-events: none;
-}
-.card-last-viewed > .card-corner-bottom::before,
-.card-last-viewed > .card-corner-bottom::after {
-	content: '';
-	position: absolute;
-	bottom: 0;
-	width: 16px;
-	height: 16px;
-}
-.card-last-viewed > .card-corner-bottom::before {
-	left: -1px;
-	border-bottom: 2px solid oklch(0.75 0.18 55 / 0.7);
-	border-left: 2px solid oklch(0.75 0.18 55 / 0.7);
-	border-bottom-left-radius: var(--corner-radius, 0.75rem);
-}
-.card-last-viewed > .card-corner-bottom::after {
-	right: -1px;
-	border-bottom: 2px solid oklch(0.75 0.18 55 / 0.7);
-	border-right: 2px solid oklch(0.75 0.18 55 / 0.7);
-	border-bottom-right-radius: var(--corner-radius, 0.75rem);
-}
+.card-last-viewed::after { display: none; }
+.card-last-viewed > .card-corner-bottom { display: none; }
 
-/* Compact variant for list rows / list groups — shorter brackets */
-.card-last-viewed--compact::before,
-.card-last-viewed--compact::after { width: 10px; height: 10px; }
-.card-last-viewed--compact > .card-corner-bottom::before,
-.card-last-viewed--compact > .card-corner-bottom::after { width: 10px; height: 10px; }
+/* Compact variant for list rows / list groups — thinner border */
+.card-last-viewed--compact { box-shadow: inset 0 0 0 1px var(--last-viewed-accent); }
 
 /* ─────────────────────────────────────────────────────────────
    CARD HIGHLIGHT FADE — orange background flash that fades out,
