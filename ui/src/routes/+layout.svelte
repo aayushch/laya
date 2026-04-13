@@ -19,6 +19,7 @@
 	import { agentDialog } from '$lib/stores/agentDialog';
 	import RunAgentModal from '$lib/components/agent/RunAgentModal.svelte';
 	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
+	import Titlebar from '$lib/components/Titlebar.svelte';
 	import { checkForUpdate } from '$lib/stores/updater';
 	import { onMount } from 'svelte';
 
@@ -43,16 +44,80 @@
 	let isFeedRoute = $derived(page.url.pathname === '/feed' || page.url.pathname === '/');
 	let isOmniInsight = $derived(page.url.pathname.startsWith('/omni/insight'));
 
-	let headerEl = $state<HTMLElement | null>(null);
+	// Responsive titlebar: two-stage collapse using collision detection.
+	// Stage 1: nav links collapse to hamburger when they overlap the center date panel.
+	// Stage 2: date panel collapses to a calendar button when it overlaps the right controls.
+	let navCollapsed = $state(false);
+	let navMenuOpen = $state(false);
+	let navCollapseWidth = 0;
 
-	// Measure header and expose as CSS variable for chat sidebar positioning
+	let dateCollapsed = $state(false);
+	let dateMenuOpen = $state(false);
+	let dateCollapseWidth = 0;
+
 	$effect(() => {
-		if (!headerEl) return;
-		const ro = new ResizeObserver(([e]) => {
-			document.documentElement.style.setProperty('--header-h', `${e.borderBoxSize[0].blockSize}px`);
-		});
-		ro.observe(headerEl);
-		return () => ro.disconnect();
+		function check() {
+			const center = document.querySelector('[data-titlebar-center]');
+
+			// Stage 1: nav vs center collision
+			if (!navCollapsed) {
+				if (center) {
+					const nav = document.querySelector('[data-titlebar-nav]');
+					if (nav) {
+						const navRight = nav.getBoundingClientRect().right;
+						const centerLeft = center.getBoundingClientRect().left;
+						if (navRight + 8 >= centerLeft) {
+							navCollapseWidth = window.innerWidth;
+							navCollapsed = true;
+							navMenuOpen = false;
+						}
+					}
+				}
+			} else {
+				// Uncollapse nav only based on window width (not center existence).
+				// When nav uncollapses, date must also uncollapse since nav needs even more room.
+				if (window.innerWidth > navCollapseWidth + 60) {
+					navCollapsed = false;
+					dateCollapsed = false;
+				}
+			}
+
+			// Stage 2: nav overflow menu vs center collision (only when nav is collapsed, date isn't)
+			if (navCollapsed && !dateCollapsed) {
+				if (center) {
+					const navMenu = document.querySelector('[data-titlebar-nav-menu]');
+					if (navMenu) {
+						const navMenuRight = navMenu.getBoundingClientRect().right;
+						const centerLeft = center.getBoundingClientRect().left;
+						if (navMenuRight + 8 >= centerLeft) {
+							dateCollapseWidth = window.innerWidth;
+							dateCollapsed = true;
+							dateMenuOpen = false;
+						}
+					}
+				}
+			} else if (dateCollapsed && navCollapsed) {
+				// Uncollapse date when window grows past date collapse point (nav stays collapsed)
+				if (window.innerWidth > dateCollapseWidth + 60) {
+					dateCollapsed = false;
+				}
+			}
+		}
+		const observer = new ResizeObserver(check);
+		observer.observe(document.documentElement);
+		return () => observer.disconnect();
+	});
+
+	// Close menus when navigating
+	$effect(() => {
+		page.url.pathname;
+		navMenuOpen = false;
+		dateMenuOpen = false;
+	});
+
+	// Set header height CSS variable for chat sidebar positioning (fixed titlebar height)
+	$effect(() => {
+		document.documentElement.style.setProperty('--header-h', '38px');
 	});
 
 	// Apply theme to <html> so CSS [data-theme] selectors work globally
@@ -177,12 +242,249 @@
 
 </script>
 
+<Titlebar>
+	{#snippet nav()}
+		{#if navCollapsed}
+			<!-- Overflow menu for narrow windows -->
+			<div data-titlebar-nav-menu class="relative">
+				<button
+					onclick={() => (navMenuOpen = !navMenuOpen)}
+					class="rounded-md p-1 text-surface-400 transition-colors hover:text-surface-200 hover:bg-surface-800"
+					aria-label="Navigation menu"
+				>
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+					</svg>
+				</button>
+				{#if navMenuOpen}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div class="fixed inset-0 z-[9998]" onclick={() => (navMenuOpen = false)} onkeydown={() => {}}></div>
+					<nav class="absolute left-0 top-full z-[9999] mt-1 flex flex-col rounded-lg border border-surface-700 bg-surface-800 py-1 shadow-lg">
+						<a
+							href="/feed"
+							class="whitespace-nowrap px-4 py-1.5 text-xs font-medium transition-colors
+								{isFeedRoute
+									? 'bg-laya-orange/10 text-laya-orange'
+									: 'text-surface-400 hover:text-surface-200 hover:bg-surface-700'}"
+						>Pulse</a>
+						<a
+							href="/omni"
+							class="whitespace-nowrap px-4 py-1.5 text-xs font-medium transition-colors
+								{page.url.pathname.startsWith('/omni')
+									? 'bg-laya-orange/10 text-laya-orange'
+									: 'text-surface-400 hover:text-surface-200 hover:bg-surface-700'}"
+						>Omni</a>
+						<a
+							href="/coherence"
+							class="whitespace-nowrap px-4 py-1.5 text-xs font-medium transition-colors
+								{page.url.pathname.startsWith('/coherence')
+									? 'bg-laya-orange/10 text-laya-orange'
+									: 'text-surface-400 hover:text-surface-200 hover:bg-surface-700'}"
+						>Coherence<sup class="text-[7px] ml-0.5 opacity-60 tracking-wider">BETA</sup></a>
+					</nav>
+				{/if}
+			</div>
+		{:else}
+			<!-- Inline nav for normal widths -->
+			<nav data-titlebar-nav class="flex items-center gap-0.5">
+				<a
+					href="/feed"
+					class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors
+						{isFeedRoute
+							? 'bg-laya-orange/10 text-laya-orange'
+							: 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'}"
+				>Pulse</a>
+				<a
+					href="/omni"
+					class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors
+						{page.url.pathname.startsWith('/omni')
+							? 'bg-laya-orange/10 text-laya-orange'
+							: 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'}"
+				>Omni</a>
+				<a
+					href="/coherence"
+					class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors
+						{page.url.pathname.startsWith('/coherence')
+							? 'bg-laya-orange/10 text-laya-orange'
+							: 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'}"
+				>Coherence<sup class="text-[7px] ml-0.5 opacity-60 tracking-wider">BETA</sup></a>
+			</nav>
+		{/if}
+	{/snippet}
+	{#snippet center()}
+		{#if isFeedRoute}
+			{#if dateCollapsed}
+				<!-- Collapsed date: calendar icon button with dropdown -->
+				<div class="relative">
+					<button
+						onclick={() => (dateMenuOpen = !dateMenuOpen)}
+						class="rounded-md p-1 text-surface-400 transition-colors hover:text-surface-200 hover:bg-surface-800"
+						aria-label="Date navigation"
+						title={formatDateLabel($feedDate)}
+					>
+						<svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+						</svg>
+					</button>
+					{#if dateMenuOpen}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div class="fixed inset-0 z-[9998]" onclick={() => (dateMenuOpen = false)} onkeydown={() => {}}></div>
+						<div class="absolute left-1/2 -translate-x-1/2 top-full z-[9999] mt-1 rounded-lg border border-surface-700 bg-surface-800 p-2 shadow-lg">
+							{#if $feedFilters.showBookmarked}
+								<div class="flex items-center gap-1.5 px-2 py-1">
+									<svg class="h-3.5 w-3.5 text-laya-orange" fill="currentColor" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+									</svg>
+									<span class="text-xs font-medium text-laya-orange whitespace-nowrap">Bookmarked</span>
+								</div>
+							{:else}
+								<div class="flex items-center gap-1">
+									<button
+										class="rounded-md p-1.5 text-surface-400 transition-colors hover:bg-surface-700 hover:text-surface-200 disabled:opacity-30"
+										disabled={!$feedPrevDate}
+										onclick={() => { if ($feedPrevDate) $feedDate = $feedPrevDate; }}
+										title="Previous day"
+									>
+										<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+										</svg>
+									</button>
+									{#if isToday}
+										<span class="w-[7.5rem] text-center text-xs font-medium text-surface-200 whitespace-nowrap">
+											{formatDateLabel($feedDate)}
+										</span>
+									{:else}
+										<button
+											class="w-[7.5rem] text-center text-xs font-medium whitespace-nowrap rounded-md px-2 py-1 transition-colors text-surface-200 hover:text-laya-orange hover:bg-laya-orange/10"
+											onclick={() => { $feedDate = localToday(); dateMenuOpen = false; }}
+											title="Jump to today"
+										>
+											{formatDateLabel($feedDate)}
+										</button>
+									{/if}
+									<button
+										class="rounded-md p-1.5 text-surface-400 transition-colors hover:bg-surface-700 hover:text-surface-200 disabled:opacity-30"
+										disabled={!$feedNextDate}
+										onclick={() => { if ($feedNextDate) $feedDate = $feedNextDate; }}
+										title="Next day"
+									>
+										<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+										</svg>
+									</button>
+								</div>
+							{/if}
+						</div>
+					{/if}
+				</div>
+			{:else if $feedFilters.showBookmarked}
+				<div data-titlebar-center class="flex items-center gap-1.5">
+					<svg class="h-3.5 w-3.5 text-laya-orange" fill="currentColor" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+					</svg>
+					<span class="text-xs font-medium text-laya-orange whitespace-nowrap">Bookmarked</span>
+				</div>
+			{:else}
+				<div data-titlebar-center class="flex items-center gap-1">
+					<button
+						class="rounded-md p-1.5 text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-200 disabled:opacity-30 disabled:hover:bg-transparent"
+						disabled={!$feedPrevDate}
+						onclick={() => { if ($feedPrevDate) $feedDate = $feedPrevDate; }}
+						title="Previous day"
+					>
+						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+						</svg>
+					</button>
+					{#if isToday}
+						<span class="w-[7.5rem] text-center text-xs font-medium text-surface-200 whitespace-nowrap">
+							{formatDateLabel($feedDate)}
+						</span>
+					{:else}
+						<button
+							class="group/today w-[7.5rem] text-center text-xs font-medium whitespace-nowrap rounded-md px-2 py-1 transition-colors text-surface-200 hover:text-laya-orange hover:bg-laya-orange/10"
+							onclick={() => ($feedDate = localToday())}
+							title="Jump to today"
+						>
+							{formatDateLabel($feedDate)}
+							<span class="block text-[9px] font-normal text-surface-500 group-hover/today:text-laya-orange/70 transition-colors">click for today</span>
+						</button>
+					{/if}
+					<button
+						class="rounded-md p-1.5 text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-200 disabled:opacity-30 disabled:hover:bg-transparent"
+						disabled={!$feedNextDate}
+						onclick={() => { if ($feedNextDate) $feedDate = $feedNextDate; }}
+						title="Next day"
+					>
+						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+						</svg>
+					</button>
+				</div>
+			{/if}
+		{/if}
+	{/snippet}
+	{#snippet right()}
+		<!-- Chat (hidden on Omni insight view which has its own inline chat) -->
+		{#if !isOmniInsight}
+		<div class="group/tip relative">
+			<button
+				onclick={() => {
+					if ($chatOpen) {
+						chatOpen.set(false);
+					} else {
+						chatListOpen.set(true);
+						chatOpen.set(true);
+					}
+				}}
+				class="rounded-lg p-1.5 transition-colors hover:bg-surface-800
+					{$chatOpen
+						? 'bg-laya-orange/10 text-laya-orange'
+						: 'text-surface-400 hover:text-laya-orange'}"
+				aria-label="Chat with Laya"
+			>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+				</svg>
+			</button>
+			<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">Chat</span>
+		</div>
+		{/if}
+
+		<!-- Settings -->
+		<div class="group/tip relative">
+			<a
+				href="/settings"
+				class="block rounded-lg p-1.5 transition-colors hover:bg-surface-800
+					{page.url.pathname.startsWith('/settings')
+						? 'text-laya-orange'
+						: 'text-surface-400 hover:text-laya-orange'}"
+				aria-label="Settings"
+			>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+				</svg>
+			</a>
+			<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">Settings</span>
+		</div>
+
+		<!-- Health badge -->
+		<div class="group/tip relative">
+			<a href="/status" class="block rounded-lg px-1.5 py-1 transition-colors hover:bg-surface-800" aria-label="System status">
+				<HealthBadge />
+			</a>
+			<span class="pointer-events-none absolute right-0 top-full z-50 mt-1.5 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">Status</span>
+		</div>
+	{/snippet}
+</Titlebar>
+
 {#if $needsSetup || !$startupReady}
 	<StartupScreen />
 {:else if isSetupRoute}
 	{@render children()}
 {:else}
-	<div class="flex h-screen flex-col bg-surface-900 text-surface-50">
+	<div class="flex h-screen flex-col bg-surface-900 pt-[38px] text-surface-50">
 		<!-- Budget paused banner -->
 		{#if $budgetPaused}
 			<div class="flex items-center justify-center gap-2 bg-red-500/15 border-b border-red-500/30 px-4 py-1.5">
@@ -196,181 +498,6 @@
 
 		<!-- Update available banner -->
 		<UpdateBanner />
-
-		<!-- Header -->
-		<header bind:this={headerEl} class="relative z-50 flex items-center border-b border-surface-700 bg-surface-900/95 px-5 py-2.5 backdrop-blur-sm">
-			<!-- Left: Logo + Primary Nav -->
-			<div class="flex items-center gap-1 mr-4">
-				<a href="/feed" class="flex items-center gap-2 mr-3">
-					<h1 class="text-xl font-bold tracking-wide text-laya-orange">Laya</h1>
-				</a>
-				<nav class="flex items-center gap-0.5">
-					<a
-						href="/feed"
-						class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors
-							{isFeedRoute
-								? 'bg-laya-orange/10 text-laya-orange'
-								: 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'}"
-					>Pulse</a>
-					<a
-						href="/omni"
-						class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors
-							{page.url.pathname.startsWith('/omni')
-								? 'bg-laya-orange/10 text-laya-orange'
-								: 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'}"
-					>Omni</a>
-					<a
-						href="/coherence"
-						class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors
-							{page.url.pathname.startsWith('/coherence')
-								? 'bg-laya-orange/10 text-laya-orange'
-								: 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'}"
-					>Coherence<sup class="text-[8px] ml-0.5 opacity-60 tracking-wider">BETA</sup></a>
-				</nav>
-			</div>
-
-			<!-- Center: Date navigation (absolutely centered, only on feed route) -->
-			{#if isFeedRoute}
-				<div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-					{#if $feedFilters.showBookmarked}
-						<div class="flex items-center gap-1.5">
-							<svg class="h-3.5 w-3.5 text-laya-orange" fill="currentColor" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-							</svg>
-							<span class="text-xs font-medium text-laya-orange whitespace-nowrap">Bookmarked</span>
-						</div>
-					{:else}
-						<div class="flex items-center gap-1">
-							<button
-								class="rounded-md p-1.5 text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-200 disabled:opacity-30 disabled:hover:bg-transparent"
-								disabled={!$feedPrevDate}
-								onclick={() => { if ($feedPrevDate) $feedDate = $feedPrevDate; }}
-								title="Previous day"
-							>
-								<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-								</svg>
-							</button>
-							<!-- Date label: clickable to jump to today when viewing a past date -->
-							{#if isToday}
-								<span class="w-[7.5rem] text-center text-xs font-medium text-surface-200 whitespace-nowrap">
-									{formatDateLabel($feedDate)}
-								</span>
-							{:else}
-								<button
-									class="group/today w-[7.5rem] text-center text-xs font-medium whitespace-nowrap rounded-md px-2 py-1 transition-colors text-surface-200 hover:text-laya-orange hover:bg-laya-orange/10"
-									onclick={() => ($feedDate = localToday())}
-									title="Jump to today"
-								>
-									{formatDateLabel($feedDate)}
-									<span class="block text-[9px] font-normal text-surface-500 group-hover/today:text-laya-orange/70 transition-colors">click for today</span>
-								</button>
-							{/if}
-							<button
-								class="rounded-md p-1.5 text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-200 disabled:opacity-30 disabled:hover:bg-transparent"
-								disabled={!$feedNextDate}
-								onclick={() => { if ($feedNextDate) $feedDate = $feedNextDate; }}
-								title="Next day"
-							>
-								<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-								</svg>
-							</button>
-						</div>
-					{/if}
-				</div>
-			{/if}
-			<div class="flex-1"></div>
-
-			<!-- Right: Navigation + Global utilities -->
-			<div class="flex items-center gap-1 ml-3">
-				<!-- Browser back/forward -->
-				<div class="flex items-center rounded-lg bg-surface-800 border border-surface-700">
-					<button
-						class="px-1.5 py-1 text-surface-400 transition-colors hover:text-surface-200"
-						onclick={() => history.back()}
-						title="Back"
-					>
-						<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-						</svg>
-					</button>
-					<span class="h-3.5 w-px bg-surface-700"></span>
-					<button
-						class="px-1.5 py-1 text-surface-400 transition-colors hover:text-surface-200"
-						onclick={() => history.forward()}
-						title="Forward"
-					>
-						<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-						</svg>
-					</button>
-				</div>
-				<!-- Reload -->
-				<button
-					class="rounded-lg bg-surface-800 border border-surface-700 px-1.5 py-1 text-surface-400 transition-colors hover:text-surface-200 mr-2"
-					onclick={() => location.reload()}
-					title="Reload"
-				>
-					<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-					</svg>
-				</button>
-			</div>
-			<div class="flex items-center gap-1">
-				<!-- Chat (hidden on Omni insight view which has its own inline chat) -->
-				{#if !isOmniInsight}
-				<div class="group/tip relative">
-					<button
-						onclick={() => {
-							if ($chatOpen) {
-								chatOpen.set(false);
-							} else {
-								chatListOpen.set(true);
-								chatOpen.set(true);
-							}
-						}}
-						class="rounded-lg p-1.5 transition-colors hover:bg-surface-800
-							{$chatOpen
-								? 'bg-laya-orange/10 text-laya-orange'
-								: 'text-surface-400 hover:text-laya-orange'}"
-						aria-label="Chat with Laya"
-					>
-						<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-						</svg>
-					</button>
-					<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">Chat</span>
-				</div>
-				{/if}
-
-				<!-- Settings -->
-				<div class="group/tip relative">
-					<a
-						href="/settings"
-						class="block rounded-lg p-1.5 transition-colors hover:bg-surface-800
-							{page.url.pathname.startsWith('/settings')
-								? 'text-laya-orange'
-								: 'text-surface-400 hover:text-laya-orange'}"
-						aria-label="Settings"
-					>
-						<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-						</svg>
-					</a>
-					<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">Settings</span>
-				</div>
-
-				<!-- Health badge -->
-				<div class="group/tip relative">
-					<a href="/status" class="block rounded-lg px-2 py-1.5 transition-colors hover:bg-surface-800" aria-label="System status">
-						<HealthBadge />
-					</a>
-					<span class="pointer-events-none absolute right-0 top-full z-50 mt-1.5 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">Status</span>
-				</div>
-			</div>
-		</header>
 
 		<!-- Main content — add right padding when chat sidebar is open so content isn't hidden behind it -->
 		<main class="flex-1 overflow-auto p-4 transition-[padding] duration-250 {$chatOpen ? 'pr-[476px]' : ''}">
