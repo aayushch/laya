@@ -8,6 +8,7 @@ export interface FeedFilters {
 	sortAsc: boolean;
 	showArchived: boolean;
 	showBookmarked: boolean;
+	hasWorkspace: boolean;
 	spaceFilter: string[];
 }
 
@@ -29,6 +30,7 @@ const defaults: FeedFilters = {
 	sortAsc: false,
 	showArchived: false,
 	showBookmarked: false,
+	hasWorkspace: false,
 	spaceFilter: []
 };
 
@@ -55,6 +57,7 @@ export async function loadFeedFilters(): Promise<void> {
 				sortAsc: prefs.sortAsc ?? defaults.sortAsc,
 				showArchived: prefs.showArchived ?? defaults.showArchived,
 				showBookmarked: prefs.showBookmarked ?? defaults.showBookmarked,
+				hasWorkspace: prefs.hasWorkspace ?? defaults.hasWorkspace,
 				spaceFilter: Array.isArray(prefs.spaceFilter) ? prefs.spaceFilter : prefs.spaceFilter ? [prefs.spaceFilter] : defaults.spaceFilter
 			});
 		}

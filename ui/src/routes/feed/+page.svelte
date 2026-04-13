@@ -23,7 +23,7 @@
 	const activeStatusCount = $derived($feedFilters.statusFilters.length);
 	const activePriorityCount = $derived($feedFilters.priorityFilters.length);
 	const activeSpaceCount = $derived($feedFilters.spaceFilter.length);
-	const hasActiveFilters = $derived(activeStatusCount > 0 || activePriorityCount > 0 || $feedFilters.showArchived || $feedFilters.showBookmarked || activeSpaceCount > 0);
+	const hasActiveFilters = $derived(activeStatusCount > 0 || activePriorityCount > 0 || $feedFilters.showArchived || $feedFilters.showBookmarked || $feedFilters.hasWorkspace || activeSpaceCount > 0);
 
 	function toggleFilter(arr: string[], value: string): string[] {
 		return arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value];
@@ -243,7 +243,8 @@
 				show_archived: f.showArchived || undefined,
 				date: f.showBookmarked ? undefined : $feedDate,
 				space_id: f.spaceFilter.length ? f.spaceFilter.join(',') : undefined,
-				bookmarked: f.showBookmarked || undefined
+				bookmarked: f.showBookmarked || undefined,
+				has_workspace: f.hasWorkspace || undefined
 			});
 			if (id !== _fetchId) return;
 
@@ -1063,7 +1064,7 @@
 				</svg>
 				Filters
 				{#if hasActiveFilters}
-					<span class="flex h-4 w-4 items-center justify-center rounded-full bg-laya-orange text-[9px] font-bold text-surface-900">{activeStatusCount + activePriorityCount + activeSpaceCount + ($feedFilters.showArchived ? 1 : 0) + ($feedFilters.showBookmarked ? 1 : 0)}</span>
+					<span class="flex h-4 w-4 items-center justify-center rounded-full bg-laya-orange text-[9px] font-bold text-surface-900">{activeStatusCount + activePriorityCount + activeSpaceCount + ($feedFilters.showArchived ? 1 : 0) + ($feedFilters.showBookmarked ? 1 : 0) + ($feedFilters.hasWorkspace ? 1 : 0)}</span>
 				{/if}
 			</button>
 
@@ -1191,6 +1192,20 @@
 							</span>
 							Show Archived
 						</button>
+						<button
+							class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors hover:bg-surface-700
+								{$feedFilters.hasWorkspace ? 'text-laya-orange' : 'text-surface-300'}"
+							onclick={() => ($feedFilters.hasWorkspace = !$feedFilters.hasWorkspace)}
+						>
+							<span class="flex h-4 w-4 items-center justify-center rounded border {$feedFilters.hasWorkspace ? 'border-laya-orange bg-laya-orange/20' : 'border-surface-600'}">
+								{#if $feedFilters.hasWorkspace}
+									<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+									</svg>
+								{/if}
+							</span>
+							Has Workspace
+						</button>
 					</div>
 
 					<!-- Clear all -->
@@ -1203,6 +1218,7 @@
 									$feedFilters.priorityFilters = [];
 									$feedFilters.showArchived = false;
 									$feedFilters.showBookmarked = false;
+									$feedFilters.hasWorkspace = false;
 									$feedFilters.spaceFilter = [];
 								}}
 							>
@@ -1431,7 +1447,7 @@
 									{#if group.card_count === 1}
 										<ListRow card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} bulkSelected={$feedSelection.has(group.cards[0].card_id)} onbulktoggle={handleBulkToggle} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
 									{:else}
-										<ListGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} scrollToCardId={_scrollToCardId} bulkSelectedIds={$feedSelection} onbulktoggle={handleBulkToggle} onbulktogglegroup={handleBulkToggleGroup} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
+										<ListGroupComponent {group} onselect={selectCard} ondelete={handleDelete} onlink={handleLinkGroup} selectedCardId={selectedCard?.card_id ?? ''} scrollToCardId={_scrollToCardId} bulkSelectedIds={$feedSelection} onbulktoggle={handleBulkToggle} onbulktogglegroup={handleBulkToggleGroup} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
 									{/if}
 								{/each}
 							</div>
@@ -1444,7 +1460,7 @@
 							{#if group.card_count === 1}
 								<ListRow card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} bulkSelected={$feedSelection.has(group.cards[0].card_id)} onbulktoggle={handleBulkToggle} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
 							{:else}
-								<ListGroupComponent {group} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} scrollToCardId={_scrollToCardId} bulkSelectedIds={$feedSelection} onbulktoggle={handleBulkToggle} onbulktogglegroup={handleBulkToggleGroup} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
+								<ListGroupComponent {group} onselect={selectCard} ondelete={handleDelete} onlink={handleLinkGroup} selectedCardId={selectedCard?.card_id ?? ''} scrollToCardId={_scrollToCardId} bulkSelectedIds={$feedSelection} onbulktoggle={handleBulkToggle} onbulktogglegroup={handleBulkToggleGroup} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
 							{/if}
 						{/each}
 					</div>

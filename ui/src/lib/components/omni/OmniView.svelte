@@ -33,8 +33,8 @@
 		}
 	};
 
-	// Order sections: attention → recent → period → milestone
-	const sectionOrder = ['attention', 'recent', 'period', 'milestone'];
+	// Order sections: attention → period → milestone → recent
+	const sectionOrder = ['attention', 'period', 'milestone', 'recent'];
 
 	const orderedSections = $derived(
 		sectionOrder

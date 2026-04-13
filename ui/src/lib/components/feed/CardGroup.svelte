@@ -21,6 +21,7 @@
 	let expanded = $state(false);
 	let bulkActionRunning = $state(false);
 	let groupMenuOpen = $state(false);
+	let menuEl: HTMLElement | undefined = $state();
 	let unlinking = $state(false);
 
 	const isSmartGroup = $derived(!!group.context_id);
@@ -79,12 +80,13 @@
 		prevDetailPanelOpen = detailPanelOpen;
 	});
 
-	// Close group menu on outside click
+	// Close group menu on outside click — uses element ref so clicking
+	// another group's menu correctly closes this one.
 	$effect(() => {
 		if (!groupMenuOpen) return;
 		function handleClick(e: MouseEvent) {
 			const target = e.target as HTMLElement;
-			if (!target.closest('.group-menu')) {
+			if (!menuEl?.contains(target)) {
 				groupMenuOpen = false;
 			}
 		}
@@ -261,7 +263,26 @@
 	}
 
 	// Extract subject ID from entity_id (e.g., "jira:ticket:FERR-1056" → "FERR-1056")
-	const subjectId = $derived(group.entity_id?.includes(':') ? group.entity_id.split(':').pop() : group.entity_id);
+	// For linked groups, use the top card's entity_id instead of the context_id
+	const effectiveEntityId = $derived(
+		group.context_id && group.cards[0]?.entity_id
+			? group.cards[0].entity_id
+			: group.entity_id
+	);
+	const subjectId = $derived(effectiveEntityId?.includes(':') ? effectiveEntityId.split(':').pop() : effectiveEntityId);
+
+	// Linked group source display: "Multiple" if mixed platforms, else the single platform name
+	const isMultiPlatform = $derived(isSmartGroup && (group.platforms?.length ?? 0) > 1);
+	const sourceLabel = $derived(
+		isSmartGroup && isMultiPlatform
+			? 'Multiple'
+			: (platformLabel[group.platform] ?? group.platform)
+	);
+	const sourcesDetail = $derived(
+		isSmartGroup && group.platforms
+			? group.platforms.map(p => platformLabel[p] ?? p).join(', ')
+			: ''
+	);
 
 	const groupHasWorkspace = $derived(group.cards.some((c) => c.has_workspace));
 	const hasBookmark = $derived(group.cards.some((c) => c.bookmarked_at));
@@ -388,9 +409,16 @@
 		>
 			<!-- Top row: source · priority · count/menu · chevron -->
 			<div class="flex items-center gap-2">
-				<span class="text-[10px] font-semibold uppercase tracking-widest text-surface-500">
-					{platformLabel[group.platform] ?? group.platform}
-				</span>
+				<div class="flex flex-col">
+					<span class="text-[10px] font-semibold uppercase tracking-widest text-surface-500">
+						{sourceLabel}
+					</span>
+					{#if isSmartGroup && sourcesDetail}
+						<span class="group/sources relative max-w-[140px] truncate text-[8px] text-surface-600" title={sourcesDetail}>
+							{sourcesDetail}
+						</span>
+					{/if}
+				</div>
 				{#if isSmartGroup}
 					<div class="group/tip relative">
 						<svg class="h-3 w-3 text-laya-orange/60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
@@ -421,7 +449,7 @@
 					</span>
 					{#if expanded && hasAnyAction}
 						<!-- Three-dot group actions menu (expanded only) -->
-						<div class="group-menu relative">
+						<div class="group-menu relative" bind:this={menuEl}>
 							<button
 								onclick={toggleGroupMenu}
 								disabled={bulkActionRunning}

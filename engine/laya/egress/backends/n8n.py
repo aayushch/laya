@@ -397,6 +397,11 @@ class N8nBackend(EgressBackend):
             try:
                 resp_data = resp.json()
             except Exception:
+                # Some n8n workflow nodes return empty bodies on success (e.g.
+                # Jira comment).  Treat HTTP 2xx with empty/non-JSON body as
+                # success rather than failing the action.
+                if 200 <= resp.status_code < 300:
+                    return EgressResult(success=True, result_data={})
                 return EgressResult(
                     success=False,
                     error=f"n8n returned non-JSON response (HTTP {resp.status_code}): {resp.text[:200]}",

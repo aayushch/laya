@@ -168,6 +168,7 @@ async def get_grouped_cards(
     space_id: str | None = None,
     tz: str | None = None,
     bookmarked: bool = False,
+    has_workspace: bool = False,
 ) -> GroupedCardsResponse:
     """Return cards grouped by entity_id, filtered by date and space."""
     db = await get_db()
@@ -227,6 +228,8 @@ async def get_grouped_cards(
             placeholders = ",".join("?" for _ in priorities)
             conditions.append(f"c.priority IN ({placeholders})")
             params.extend(priorities)
+    if has_workspace:
+        conditions.append("c.has_workspace = 1")
     if not show_archived:
         conditions.append("c.status != 'archived'")
     where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
@@ -290,6 +293,11 @@ async def get_grouped_cards(
 
     result: list[CardGroup] = []
     for group_key, entity_rows in groups.items():
+        # For context (linked) groups, ensure cards are sorted by created_at
+        # descending (latest first) regardless of entity_id, so the most
+        # recent card always appears on top.
+        if group_key.startswith("ctx_"):
+            entity_rows.sort(key=lambda r: r["created_at"] or "", reverse=True)
         cards = [_row_to_card(r) for r in entity_rows]
         meta = event_meta.get(entity_rows[0]["event_id"], {})
         top_priority = min(
@@ -304,17 +312,38 @@ async def get_grouped_cards(
         context_id = group_key if is_context_group else None
         context_label = context_labels.get(group_key) if is_context_group else None
 
-        # For context groups, entity_id is the first card's entity_id;
-        # entity_title uses context_label when available
-        entity_id_val = entity_rows[0]["entity_id"] or group_key
+        # For context groups, use the context_id as the group's entity_id
+        # to guarantee uniqueness — the first card's entity_id may collide
+        # with a traditional entity group for the same entity.
+        entity_id_val = group_key if is_context_group else (entity_rows[0]["entity_id"] or group_key)
         entity_title = context_label or meta.get("subject_title") or entity_id_val
+
+        # For linked groups, collect all distinct platforms (order-preserving)
+        # and use the top card's platform as the primary.  This makes the
+        # display idempotent — the latest card's platform is always primary,
+        # regardless of link direction.
+        platforms_list: list[str] | None = None
+        group_platform = meta.get("source_platform", "")
+        if is_context_group:
+            seen_platforms: set[str] = set()
+            ordered_platforms: list[str] = []
+            for r in entity_rows:
+                eid = r["entity_id"] or ""
+                plat = eid.split(":")[0] if ":" in eid else ""
+                if plat and plat not in seen_platforms:
+                    seen_platforms.add(plat)
+                    ordered_platforms.append(plat)
+            platforms_list = ordered_platforms or None
+            # Use the top (latest) card's platform as primary
+            top_eid = entity_rows[0]["entity_id"] or ""
+            group_platform = top_eid.split(":")[0] if ":" in top_eid else group_platform
 
         result.append(
             CardGroup(
                 entity_id=entity_id_val,
                 entity_title=entity_title,
                 entity_url=meta.get("subject_url"),
-                platform=meta.get("source_platform", ""),
+                platform=group_platform,
                 card_count=len(cards),
                 top_priority=top_priority,
                 latest_at=latest_at,
@@ -322,6 +351,7 @@ async def get_grouped_cards(
                 cards=cards,
                 context_id=context_id,
                 context_label=context_label,
+                platforms=platforms_list,
             )
         )
 
@@ -1092,23 +1122,14 @@ async def get_daily_summary(date: str | None = None, tz: str | None = None) -> d
         else:
             date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    # Summaries are stored under UTC dates.  Convert the caller's local
-    # date to the matching UTC date so the lookup succeeds regardless of
-    # timezone offset.
-    lookup_date = date
-    if tz:
-        try:
-            from zoneinfo import ZoneInfo
-            local_tz = ZoneInfo(tz)
-            local_midnight = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=local_tz)
-            lookup_date = local_midnight.astimezone(timezone.utc).strftime("%Y-%m-%d")
-        except (KeyError, ValueError):
-            pass  # Fall through — use date as-is
-
+    # Summaries are stored under UTC dates (datetime.now(UTC) at processing
+    # time).  The caller's local date usually matches the UTC date except
+    # near midnight, so we use ``date`` directly — the old midnight-to-UTC
+    # conversion shifted the lookup a full day back for UTC+ timezones.
     db = await get_db()
     rows = await db.execute_fetchall(
         "SELECT summary_json, card_ids, updated_at FROM daily_summaries WHERE date = ?",
-        (lookup_date,),
+        (date,),
     )
 
     if not rows:

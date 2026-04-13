@@ -333,6 +333,7 @@ export interface CardGroup {
 	sort_key?: string;
 	context_id?: string;
 	context_label?: string;
+	platforms?: string[];
 }
 
 /** Response from GET /cards/grouped */
