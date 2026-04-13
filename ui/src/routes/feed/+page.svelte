@@ -874,6 +874,21 @@
 		flipColumns(finalCols, !!lastCardId);
 		closeDetail();
 
+		// Apply the highlight fade immediately after column repack so it starts
+		// as soon as the panel begins sliding out, not after the 350ms transition.
+		const immediateTargetId = lastEntityId || lastCardId;
+		if (immediateTargetId) {
+			requestAnimationFrame(() => {
+				const el = lastEntityId
+					? document.querySelector(`[data-group-entity="${lastEntityId}"]`)
+					: findCardElement(immediateTargetId);
+				if (el) {
+					el.classList.add('card-highlight-fade');
+					el.addEventListener('animationend', () => el.classList.remove('card-highlight-fade'), { once: true });
+				}
+			});
+		}
+
 		// Allow ResizeObserver to resume after panel transition ends (300ms duration).
 		// Recalculate columns in case the predicted count was wrong, then scroll to
 		// the last-active card/group once layout is fully settled. Column correction is
@@ -888,14 +903,11 @@
 			const scrollTargetId = lastEntityId || lastCardId;
 			if (scrollTargetId) {
 				requestAnimationFrame(() => {
-					// For groups, find by entity_id (stable across repacks); for single cards, by card_id
 					const el = lastEntityId
 						? document.querySelector(`[data-group-entity="${lastEntityId}"]`)
 						: findCardElement(scrollTargetId);
 					if (el) {
 						scrollElToCenter(el);
-						el.classList.add('card-highlight-fade');
-						el.addEventListener('animationend', () => el.classList.remove('card-highlight-fade'), { once: true });
 					}
 				});
 			}
