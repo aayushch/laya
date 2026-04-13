@@ -44,6 +44,29 @@
 	let isOmniInsight = $derived(page.url.pathname.startsWith('/omni/insight'));
 
 	let headerEl = $state<HTMLElement | null>(null);
+	let titleBarEl = $state<HTMLElement | null>(null);
+
+	// Pre-load Tauri window API so startDragging() fires synchronously on mousedown.
+	// Dynamic import on every mousedown is too slow — the mouse context goes stale.
+	let tauriWindow: Awaited<typeof import('@tauri-apps/api/window')> | null = null;
+	onMount(() => {
+		import('@tauri-apps/api/window').then(mod => { tauriWindow = mod; }).catch(() => {});
+	});
+
+	// Programmatic window dragging — applied to both title bar and header
+	// so empty space in either row is draggable (like Safari).
+	function makeDraggable(el: HTMLElement | null) {
+		if (!el) return;
+		function handleDrag(e: MouseEvent) {
+			const target = e.target as HTMLElement;
+			if (target.closest('button, a, input, select, textarea')) return;
+			tauriWindow?.getCurrentWindow().startDragging();
+		}
+		el.addEventListener('mousedown', handleDrag);
+		return () => el.removeEventListener('mousedown', handleDrag);
+	}
+	$effect(() => makeDraggable(titleBarEl));
+	$effect(() => makeDraggable(headerEl));
 
 	// Measure header and expose as CSS variable for chat sidebar positioning
 	$effect(() => {
@@ -64,6 +87,11 @@
 	$effect(() => {
 		document.documentElement.style.setProperty('--laya-font-base', `${$fontScale}px`);
 	});
+
+	// Window control actions (custom title bar — no native decorations)
+	function windowClose() { tauriWindow?.getCurrentWindow().close(); }
+	function windowMinimize() { tauriWindow?.getCurrentWindow().minimize(); }
+	function windowToggleMaximize() { tauriWindow?.getCurrentWindow().toggleMaximize(); }
 
 	// Persist when filters change (only after initial load to avoid overwriting saved prefs with defaults)
 	$effect(() => {
@@ -183,6 +211,53 @@
 	{@render children()}
 {:else}
 	<div class="flex h-screen flex-col bg-surface-900 text-surface-50">
+		<!-- Custom title bar — no native decorations; mousedown on empty space triggers window drag -->
+		<div bind:this={titleBarEl} class="z-50 flex h-[38px] shrink-0 cursor-default items-center bg-surface-900 px-3">
+			<!-- Window controls (macOS-style traffic lights) -->
+			<div class="group/wc flex items-center gap-2 mr-4">
+				<button onclick={windowClose} class="h-3 w-3 rounded-full bg-[#ff5f57] hover:brightness-90 transition-all" title="Close"></button>
+				<button onclick={windowMinimize} class="h-3 w-3 rounded-full bg-[#febc2e] hover:brightness-90 transition-all" title="Minimize"></button>
+				<button onclick={windowToggleMaximize} class="h-3 w-3 rounded-full bg-[#28c840] hover:brightness-90 transition-all" title="Maximize"></button>
+			</div>
+
+			<!-- Browser navigation -->
+			<div class="flex items-center gap-1">
+				<div class="flex items-center rounded-lg bg-surface-800 border border-surface-700">
+					<button
+						class="px-1.5 py-1 text-surface-400 transition-colors hover:text-surface-200"
+						onclick={() => history.back()}
+						title="Back"
+					>
+						<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+						</svg>
+					</button>
+					<span class="h-3.5 w-px bg-surface-700"></span>
+					<button
+						class="px-1.5 py-1 text-surface-400 transition-colors hover:text-surface-200"
+						onclick={() => history.forward()}
+						title="Forward"
+					>
+						<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+						</svg>
+					</button>
+				</div>
+				<button
+					class="rounded-lg bg-surface-800 border border-surface-700 px-1.5 py-1 text-surface-400 transition-colors hover:text-surface-200"
+					onclick={() => location.reload()}
+					title="Reload"
+				>
+					<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+					</svg>
+				</button>
+			</div>
+
+			<!-- Empty spacer — this area is the primary drag target -->
+			<div class="flex-1 h-full"></div>
+		</div>
+
 		<!-- Budget paused banner -->
 		{#if $budgetPaused}
 			<div class="flex items-center justify-center gap-2 bg-red-500/15 border-b border-red-500/30 px-4 py-1.5">
@@ -282,41 +357,7 @@
 			{/if}
 			<div class="flex-1"></div>
 
-			<!-- Right: Navigation + Global utilities -->
-			<div class="flex items-center gap-1 ml-3">
-				<!-- Browser back/forward -->
-				<div class="flex items-center rounded-lg bg-surface-800 border border-surface-700">
-					<button
-						class="px-1.5 py-1 text-surface-400 transition-colors hover:text-surface-200"
-						onclick={() => history.back()}
-						title="Back"
-					>
-						<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-						</svg>
-					</button>
-					<span class="h-3.5 w-px bg-surface-700"></span>
-					<button
-						class="px-1.5 py-1 text-surface-400 transition-colors hover:text-surface-200"
-						onclick={() => history.forward()}
-						title="Forward"
-					>
-						<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-						</svg>
-					</button>
-				</div>
-				<!-- Reload -->
-				<button
-					class="rounded-lg bg-surface-800 border border-surface-700 px-1.5 py-1 text-surface-400 transition-colors hover:text-surface-200 mr-2"
-					onclick={() => location.reload()}
-					title="Reload"
-				>
-					<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-					</svg>
-				</button>
-			</div>
+			<!-- Right: Global utilities -->
 			<div class="flex items-center gap-1">
 				<!-- Chat (hidden on Omni insight view which has its own inline chat) -->
 				{#if !isOmniInsight}
