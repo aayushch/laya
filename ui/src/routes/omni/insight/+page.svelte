@@ -491,28 +491,25 @@
 			{/each}
 		</div>
 
-		<!-- Resize handle -->
+		<!-- Resize handle — invisible, only shows drag dots on hover -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
-			class="group relative w-1.5 flex-shrink-0 cursor-col-resize bg-surface-700 hover:bg-laya-orange/40 transition-colors {dragging ? 'bg-laya-orange/50' : ''}"
+			class="group relative w-3 flex-shrink-0 cursor-col-resize"
 			onmousedown={onDragStart}
 		>
-			<!-- Drag dots indicator — visible on hover -->
 			<div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
 				<div class="flex flex-col gap-1">
-					<div class="h-0.5 w-0.5 rounded-full bg-surface-300"></div>
-					<div class="h-0.5 w-0.5 rounded-full bg-surface-300"></div>
-					<div class="h-0.5 w-0.5 rounded-full bg-surface-300"></div>
-					<div class="h-0.5 w-0.5 rounded-full bg-surface-300"></div>
-					<div class="h-0.5 w-0.5 rounded-full bg-surface-300"></div>
+					<div class="h-1 w-1 rounded-full bg-surface-400"></div>
+					<div class="h-1 w-1 rounded-full bg-surface-400"></div>
+					<div class="h-1 w-1 rounded-full bg-surface-400"></div>
 				</div>
 			</div>
 		</div>
 
-		<!-- Right: Chat panel -->
-		<div class="flex flex-col bg-surface-900/50" style="width: {chatWidth}px; min-width: {MIN_CHAT}px; max-width: {MAX_CHAT}px;">
+		<!-- Right: Chat panel — rounded container aligned with cards -->
+		<div class="flex flex-col my-6 mr-6 rounded-xl border border-surface-700 bg-surface-800/50 overflow-hidden" style="width: {chatWidth}px; min-width: {MIN_CHAT}px; max-width: {MAX_CHAT}px;">
 			<!-- Chat header -->
-			<div class="flex items-center gap-2 border-b border-surface-700 px-4 py-3">
+			<div class="flex items-center gap-2 px-4 py-3">
 				<svg class="h-4 w-4 text-surface-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 					<path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
 				</svg>
@@ -550,7 +547,7 @@
 			</div>
 
 			<!-- Input -->
-			<div class="border-t border-surface-700 p-3">
+			<div class="p-3">
 				<div class="flex items-end gap-2">
 					<textarea
 						bind:this={textareaEl}
