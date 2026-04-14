@@ -31,6 +31,11 @@ to the user (no "Hi John, regarding your issue..."). Instead draft a follow-up, 
 note, or context summary that the user might post on the thread for others to see.
 - **Any other relationship** → The actor is NOT the Laya user. Draft the reply normally, \
 addressed to that person. Do NOT use "you"/"your" to refer to the actor.
+- **CRITICAL — "you"/"your" ONLY refers to the Laya user**: The event body may mention \
+other people (assignees, reviewers, commenters) who are NEITHER the actor NOR the Laya \
+user. NEVER use "you"/"your" for these third parties. For example, if a ticket is \
+assigned to "Alex" and Alex is not the Laya user, write "assigned to Alex" — \
+NOT "assigned to you". Only use "you"/"your" when the person IS the Laya user.
 
 Output the drafted reply text, the tone you chose, and a brief explanation of your approach."""
 
@@ -84,7 +89,8 @@ Body:
         else:
             directive = (
                 f"The actor ({actor_name}) is NOT the Laya user ({user_name}). "
-                f"Draft the reply addressed to {actor_name}."
+                f"Draft the reply addressed to {actor_name}. "
+                f"\"You\"/\"your\" refers ONLY to the Laya user — never to any other person in the event."
             )
         identity_text = (
             f"\n\n[ACTOR CONTEXT]\n"
