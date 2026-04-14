@@ -107,8 +107,13 @@
 		loading = true;
 		error = null;
 		try {
-			const results = await Promise.all(cardIds.map((id) => engineApi.getCard(id)));
-			cards = results;
+			const results = await Promise.allSettled(cardIds.map((id) => engineApi.getCard(id)));
+			cards = results
+				.filter((r): r is PromiseFulfilledResult<ActionCard> => r.status === 'fulfilled')
+				.map((r) => r.value);
+			if (cards.length === 0) {
+				error = 'None of the referenced cards could be found';
+			}
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load cards';
 		} finally {

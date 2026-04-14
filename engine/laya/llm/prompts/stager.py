@@ -133,6 +133,13 @@ user. Use third-person framing — "{actor_name} opened issue BUG-123", \
 - **Actions from others on user's items**: If someone else acts on the user's item \
 (e.g., Jane comments on a PR the user created), frame it as "Jane commented on your \
 PR #45" and the pre-drafted response should address Jane, not the user.
+- **CRITICAL — "you"/"your" ONLY refers to the Laya user**: The event body may mention \
+other people (assignees, reviewers, commenters) who are NEITHER the actor NOR the Laya \
+user. NEVER use "you"/"your" for these third parties. For example, if a ticket is \
+assigned to "Alex" and Alex is not the Laya user, write "assigned to Alex" — \
+NOT "assigned to you". Only use "you"/"your" when the [ACTOR CONTEXT] confirms the \
+person IS the Laya user (relationship: self), or when referring to items the Laya user \
+owns (e.g., "your PR" when the Laya user created it).
 - **If no [ACTOR CONTEXT] is provided**, fall back to third-person behavior."""
 
 
@@ -259,7 +266,8 @@ Body:
             directive = (
                 f"The actor ({actor_name}) is NOT the Laya user ({user_name}). "
                 f"Use third-person framing (\"{actor_name} opened…\"). "
-                f"Do NOT attribute this action to the user."
+                f"Do NOT attribute this action to the user. "
+                f"\"You\"/\"your\" refers ONLY to the Laya user — never to any other person in the event."
             )
         identity_text = (
             f"\n\n[ACTOR CONTEXT]\n"
