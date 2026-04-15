@@ -30,6 +30,8 @@
 	} = $props();
 
 	let previewVersion = $state<number | null>(null);
+	let spaceDropdownOpen = $state(false);
+	const activeSpace = $derived(spaces.find(s => s.space_id === activeSpaceId));
 
 	// Flatten all entries for lookups
 	const allEntries = $derived(segments.flatMap(s => s.entries));
@@ -310,24 +312,49 @@
 
 	<!-- Right: Controls -->
 	<div class="flex items-center gap-2">
-		<!-- Space pills -->
+		<!-- Space dropdown -->
 		{#if spaces.length > 1}
-			<div class="flex items-center gap-0.5 rounded-lg border border-surface-700 overflow-hidden">
-				{#each spaces as space}
-					<button
-						onclick={() => onSpaceChange(space.space_id)}
-						class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium transition-colors
-							{activeSpaceId === space.space_id
-								? 'bg-laya-orange/15 text-laya-orange'
-								: 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'}"
-					>
-						<span
-							class="inline-block h-1.5 w-1.5 rounded-full"
-							style="background-color: {space.color}"
-						></span>
-						{space.name}
-					</button>
-				{/each}
+			<div class="relative">
+				<button
+					onclick={() => spaceDropdownOpen = !spaceDropdownOpen}
+					class="flex items-center gap-2 rounded-lg border border-surface-700 px-3 py-1.5 text-xs font-medium transition-colors hover:border-laya-orange/30
+						{spaceDropdownOpen ? 'border-laya-orange/30 text-laya-orange' : 'text-surface-300'}"
+				>
+					{#if activeSpace}
+						<span class="inline-block h-1.5 w-1.5 rounded-full" style="background-color: {activeSpace.color}"></span>
+						{activeSpace.name}
+					{:else}
+						All Spaces
+					{/if}
+					<svg class="h-3 w-3 text-surface-500 transition-transform {spaceDropdownOpen ? 'rotate-180' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+					</svg>
+				</button>
+
+				{#if spaceDropdownOpen}
+					<!-- Backdrop to close on click outside -->
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div class="fixed inset-0 z-40" onclick={() => spaceDropdownOpen = false} onkeydown={() => {}}></div>
+					<div class="absolute right-0 top-full z-50 mt-1 min-w-[160px] rounded-lg border border-surface-700 bg-surface-900 py-1 shadow-xl">
+						{#each spaces as space}
+							<button
+								onclick={() => { onSpaceChange(space.space_id); spaceDropdownOpen = false; }}
+								class="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-medium transition-colors
+									{space.space_id === activeSpaceId
+										? 'bg-laya-orange/10 text-laya-orange'
+										: 'text-surface-300 hover:bg-surface-800 hover:text-surface-200'}"
+							>
+								<span class="inline-block h-1.5 w-1.5 rounded-full" style="background-color: {space.color}"></span>
+								{space.name}
+								{#if space.space_id === activeSpaceId}
+									<svg class="ml-auto h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+										<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+									</svg>
+								{/if}
+							</button>
+						{/each}
+					</div>
+				{/if}
 			</div>
 		{/if}
 

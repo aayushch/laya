@@ -1,15 +1,18 @@
 <script lang="ts">
-	let { status, size = 'sm' }: { status: string; size?: 'sm' | 'md' } = $props();
+	let { status, size = 'sm', errorMessage = '' }: { status: string; size?: 'sm' | 'md'; errorMessage?: string } = $props();
 
-	// Luminance-separated colors: done is lighter, failed is darker
+	// Status dot colors use custom CSS classes (status-dot-*) so they aren't
+	// affected by the global light-theme text-color overrides in app.css, which
+	// darken text-amber-400 / text-yellow-400 for readability on light
+	// backgrounds — too dark for small iconic dots.
 	const colors: Record<string, string> = {
-		pending:            'text-yellow-400',
-		ready:              'text-amber-400',
-		requires_approval:  'text-violet-400',
-		agent_running:      'text-violet-400',
-		awaiting_input:     'text-yellow-400',
-		done:               'text-green-400',
-		failed:             'text-red-600',
+		pending:            'status-dot-yellow',
+		ready:              'status-dot-amber',
+		requires_approval:  'status-dot-violet',
+		agent_running:      'status-dot-violet',
+		awaiting_input:     'status-dot-yellow',
+		done:               'status-dot-green',
+		failed:             'status-dot-red',
 		dismissed:          'text-surface-500',
 		archived:           'text-surface-600',
 	};
@@ -23,8 +26,10 @@
 	const colorClass = $derived(colors[status] ?? 'text-surface-500');
 	const animateClass = $derived(animate[status] ?? '');
 	const sizeClass = $derived(size === 'md' ? 'h-[11px] w-[11px]' : 'h-2 w-2');
+	const hasError = $derived(status === 'failed' && !!errorMessage);
 </script>
 
+{#snippet dot()}
 <!-- Each status gets a unique shape so meaning isn't conveyed by color alone -->
 <svg class="{sizeClass} shrink-0 {colorClass} {animateClass}" viewBox="0 0 8 8" fill="none" aria-hidden="true">
 	{#if status === 'done'}
@@ -60,3 +65,10 @@
 		<circle cx="4" cy="4" r="3" fill="currentColor" />
 	{/if}
 </svg>
+{/snippet}
+
+{#if hasError}
+	<span class="inline-flex cursor-help" title={errorMessage}>{@render dot()}</span>
+{:else}
+	{@render dot()}
+{/if}

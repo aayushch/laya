@@ -110,6 +110,7 @@
 				for (const c of restored.clusters) {
 					if (c.narrative) narratives[c.cluster_id] = c.narrative;
 				}
+				if (restored.summary) narratives[SUMMARY_ID] = restored.summary;
 				if (Object.keys(narratives).length > 0) {
 					traceNarrativeMap.set(narratives);
 				}
@@ -174,10 +175,17 @@
 				traceNarrativeStreamingMap.update((m) => ({ ...m, [cid]: false }));
 				traceNarrativeMap.update((m) => ({ ...m, [cid]: narrative }));
 				if (trace) {
-					const cluster = trace.clusters.find((c) => c.cluster_id === cid);
-					if (cluster) {
-						cluster.narrative = narrative;
-						trace = trace;
+					if (cid === SUMMARY_ID) {
+						// Persist summary into the trace object so currentTrace
+						// store survives navigation away and back.
+						trace = { ...trace, summary: narrative };
+						currentTrace.set(trace);
+					} else {
+						const cluster = trace.clusters.find((c) => c.cluster_id === cid);
+						if (cluster) {
+							cluster.narrative = narrative;
+							trace = trace;
+						}
 					}
 				}
 			}
@@ -281,6 +289,7 @@
 			for (const c of result.clusters) {
 				if (c.narrative) narratives[c.cluster_id] = c.narrative;
 			}
+			if (result.summary) narratives[SUMMARY_ID] = result.summary;
 			traceNarrativeMap.set(narratives);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load trace';
@@ -531,30 +540,9 @@
 				</div>
 
 				<div class="flex items-center gap-1.5">
-					{#if clustersExpanded}
-						<button
-							onclick={() => { expandAllClusters = false; clustersExpanded = false; setTimeout(() => expandAllClusters = null, 50); }}
-							class="text-[11px] text-surface-500 hover:text-laya-orange transition-colors"
-						>collapse all</button>
-					{:else}
-						<button
-							onclick={() => { expandAllClusters = true; clustersExpanded = true; setTimeout(() => expandAllClusters = null, 50); }}
-							class="text-[11px] text-surface-500 hover:text-laya-orange transition-colors"
-						>expand all</button>
-					{/if}
-					{#if removedClusterIds.size > 0}
-						<span class="text-surface-600">·</span>
-						<button
-							onclick={handleRestoreClusters}
-							class="text-[11px] text-surface-500 hover:text-laya-orange transition-colors"
-						>
-							restore {removedClusterIds.size}
-						</button>
-					{/if}
-					<span class="text-surface-600">·</span>
 					<button
 						onclick={() => handleRerun()}
-						class="p-1 rounded text-surface-400 hover:text-surface-200 hover:bg-surface-700 transition-colors"
+						class="p-1 rounded text-surface-400 hover:text-laya-orange hover:bg-laya-orange/5 transition-colors"
 						title="Re-run trace"
 					>
 						<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -640,6 +628,29 @@
 					<span class="text-laya-orange text-[13px]">◆</span>
 					<span class="text-[13px] font-medium text-surface-200">{trace.query}</span>
 					<span class="text-[11px] text-surface-500 ml-1">{visibleClusters.length} clusters</span>
+
+					<div class="ml-auto flex items-center gap-1.5">
+						{#if clustersExpanded}
+							<button
+								onclick={() => { expandAllClusters = false; clustersExpanded = false; setTimeout(() => expandAllClusters = null, 50); }}
+								class="text-[11px] text-surface-500 hover:text-laya-orange transition-colors"
+							>collapse all</button>
+						{:else}
+							<button
+								onclick={() => { expandAllClusters = true; clustersExpanded = true; setTimeout(() => expandAllClusters = null, 50); }}
+								class="text-[11px] text-surface-500 hover:text-laya-orange transition-colors"
+							>expand all</button>
+						{/if}
+						{#if removedClusterIds.size > 0}
+							<span class="text-surface-600">·</span>
+							<button
+								onclick={handleRestoreClusters}
+								class="text-[11px] text-surface-500 hover:text-laya-orange transition-colors"
+							>
+								restore {removedClusterIds.size}
+							</button>
+						{/if}
+					</div>
 				</div>
 
 				<!-- Cluster nodes -->

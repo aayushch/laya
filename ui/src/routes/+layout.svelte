@@ -194,9 +194,23 @@
 		startHealthPolling();
 		initWebSocket();
 
-		// Disable default Tauri context menu (Back/Forward/Reload/Inspect Element)
-		// — nav controls are in the top bar instead
-		document.addEventListener('contextmenu', (e) => e.preventDefault());
+		// Selectively disable Tauri's default context menu to hide browser nav
+		// (Back/Forward/Reload/Inspect Element), but allow it on text-interactive
+		// elements and text selections so copy/paste still works.
+		document.addEventListener('contextmenu', (e) => {
+			const target = e.target as HTMLElement;
+			const tag = target?.tagName;
+
+			// Allow native context menu on text-interactive elements
+			if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return;
+
+			// Allow native context menu when text is selected (for copy)
+			const selection = window.getSelection();
+			if (selection && selection.toString().trim().length > 0) return;
+
+			// Block browser nav context menu on everything else
+			e.preventDefault();
+		});
 
 		// Keyboard shortcut: press 'c' (not in input/textarea) to open compose modal
 		function handleComposeShortcut(e: KeyboardEvent) {

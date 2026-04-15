@@ -114,6 +114,11 @@
 				: undefined;
 			const result = await engineApi.executeAction(card.card_id, actionId, mods);
 			card.status = result.status as ActionCard['status'];
+			if (result.error) {
+				card.last_error = result.error;
+			} else {
+				card.last_error = undefined;
+			}
 			editingActionId = null;
 			editedPayload = {};
 		} catch (err) {
@@ -471,7 +476,7 @@
 								></textarea>
 							{/if}
 							<!-- Edit / Save / Cancel controls -->
-							{#if !isTerminal && !isSelected}
+							{#if !isTerminal}
 								<div class="mt-2 flex justify-end gap-3">
 									{#if !isEditing}
 										<button
@@ -505,11 +510,14 @@
 						<button
 							class="rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed
 								{isSelected
-									? 'border-laya-orange/50 bg-laya-orange/15 text-laya-orange'
+									? isTerminal
+										? 'border-laya-orange/50 bg-laya-orange/15 text-laya-orange'
+										: 'border-surface-500 border-dashed bg-surface-800/50 text-surface-400'
 									: card.selected_action_id && !isSelected
-										? 'border-surface-700 bg-surface-800/50 text-surface-500'
-										: 'border-surface-600 bg-surface-700/50 text-surface-200 hover:bg-surface-600'}
-								{!isSelected && card.selected_action_id ? 'opacity-50' : ''}"
+										? isTerminal
+											? 'border-surface-700 bg-surface-800/50 text-surface-500 opacity-50'
+											: 'border-surface-600 bg-surface-700/50 text-surface-200 hover:bg-surface-600'
+										: 'border-surface-600 bg-surface-700/50 text-surface-200 hover:bg-surface-600'}"
 							onclick={() => executeAction(action.action_id)}
 							disabled={!!executingActionId || isTerminal}
 						>
@@ -517,10 +525,10 @@
 								Executing...
 							{:else}
 								{#if isSelected}
-									<span class="mr-1">&#10003;</span>
+									<span class="mr-1">{isTerminal ? '✓' : '↩'}</span>
 								{/if}
 								{action.label}
-								<span class="ml-1 {isSelected ? 'text-laya-orange/60' : 'text-surface-500'}">({action.target_platform})</span>
+								<span class="ml-1 {isSelected && isTerminal ? 'text-laya-orange/60' : 'text-surface-500'}">({action.target_platform})</span>
 							{/if}
 						</button>
 					</div>
@@ -562,7 +570,16 @@
 					<span>Confidence: {Math.round(card.confidence * 100)}%</span>
 				{/if}
 				<span>Category: {card.category}</span>
-				<span class={statusColors[card.status] ?? 'text-surface-400'}>Status: {statusLabels[card.status] ?? card.status}</span>
+				{#if card.status === 'failed' && card.last_error}
+					<span class="{statusColors[card.status]} relative group cursor-help">
+						Status: {statusLabels[card.status]}
+						<span class="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2.5 py-1.5 text-[11px] leading-tight bg-surface-800 border border-surface-600 text-surface-300 rounded shadow-lg whitespace-normal max-w-[280px] w-max z-50">
+							{card.last_error}
+						</span>
+					</span>
+				{:else}
+					<span class={statusColors[card.status] ?? 'text-surface-400'}>Status: {statusLabels[card.status] ?? card.status}</span>
+				{/if}
 				{#if card.created_at}
 					<span>Created: {new Date(card.created_at).toLocaleString()}</span>
 				{/if}

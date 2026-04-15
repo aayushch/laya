@@ -81,6 +81,7 @@ def _row_to_card(row) -> CardResponse:
         bookmarked_at=row["bookmarked_at"] if "bookmarked_at" in row.keys() else None,
         group_active_at=row["group_active_at"] if "group_active_at" in row.keys() else None,
         context_id=row["context_id"] if "context_id" in row.keys() else None,
+        last_error=row["last_error"] if "last_error" in row.keys() else None,
     )
 
 

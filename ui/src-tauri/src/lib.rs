@@ -105,6 +105,40 @@ async fn pick_folder(app: tauri::AppHandle, title: Option<String>) -> Result<Str
     Ok(path)
 }
 
+// ── Theme sync ─────────────────────────────────────────────────────────
+
+/// Update the native window background color to match the active theme.
+/// On macOS the unfocused traffic lights become grayscale — if the window
+/// background doesn't match the theme, the lights disappear against it.
+#[tauri::command]
+fn set_window_theme(app: tauri::AppHandle, theme: String) {
+    #[cfg(target_os = "macos")]
+    {
+        let Some(win) = app.get_webview_window("main") else { return };
+        #[allow(deprecated)]
+        {
+            use cocoa::appkit::{NSColor, NSWindow};
+            use cocoa::base::{id, nil};
+            let ns_window = win.ns_window().unwrap() as id;
+            let (r, g, b) = if theme == "light" {
+                // Warm cream matching light-theme surface-900 (~oklch(0.97 0.005 74))
+                (247.0, 245.0, 240.0)
+            } else {
+                // Dark surface-900 (~rgb(24,24,27))
+                (24.0, 24.0, 27.0)
+            };
+            unsafe {
+                let bg_color = NSColor::colorWithRed_green_blue_alpha_(
+                    nil, r / 255.0, g / 255.0, b / 255.0, 1.0,
+                );
+                ns_window.setBackgroundColor_(bg_color);
+            }
+        }
+    }
+    // Suppress unused variable warning on non-macOS
+    let _ = (app, theme);
+}
+
 // ── Setup commands ──────────────────────────────────────────────────────
 
 /// Check if the Python environment is ready.
@@ -572,6 +606,7 @@ pub fn run() {
             pick_folder,
             check_environment,
             setup_environment,
+            set_window_theme,
         ])
         .on_page_load(|webview, payload| {
             use tauri::webview::PageLoadEvent;

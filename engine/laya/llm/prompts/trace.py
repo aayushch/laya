@@ -25,6 +25,14 @@ Rules:
 - Be specific: include ticket IDs, PR numbers, people's names, and dates.
 - If there are pending actions or blockers, mention them at the end.
 - Do NOT include preamble like "Here is a summary" — just start narrating.
+
+## User Identity
+
+If a [LAYA USER] block is provided, it identifies the person reading this summary. \
+Use this to correctly attribute actions: distinguish between what the Laya user did \
+and what other actors did. Never confuse the PR author, ticket reporter, or commenter \
+with the Laya user unless they are actually the same person (matched by name or email). \
+The actor_name on each card tells you WHO performed that action — use it faithfully.
 """
 
 
@@ -42,14 +50,39 @@ Rules:
 - Mention the platforms involved and the time span.
 - Be specific: include identifiers, names, and dates.
 - Do NOT include preamble like "Here is a summary" — start narrating directly.
+
+## User Identity
+
+If a [LAYA USER] block is provided, it identifies the person reading this summary. \
+Use this to correctly attribute actions — pay close attention to the actor_name on \
+each card to determine WHO actually performed an action. Do NOT confuse roles: if \
+the Laya user opened a PR, say so; if someone else authored it, name them correctly. \
+Never assume the PR author or ticket reporter based on who the Laya user is — always \
+derive authorship from the card data (actor_name fields and event content).
 """
 
 
+def _identity_block(user_identity: dict[str, str] | None) -> str:
+    """Return a [LAYA USER] context block, or empty string if not configured."""
+    if not user_identity:
+        return ""
+    name = user_identity.get("name", "Unknown")
+    email = user_identity.get("email", "")
+    emails = user_identity.get("emails", [email] if email else [])
+    return (
+        f"\n[LAYA USER]\n"
+        f"Name: {name}\n"
+        f"Emails: {', '.join(emails)}\n"
+        f"[END LAYA USER]\n"
+    )
+
+
 def build_summary_messages(
-    query: str, clusters: list[TraceCluster]
+    query: str, clusters: list[TraceCluster],
+    user_identity: dict[str, str] | None = None,
 ) -> list[dict[str, str]]:
     """Build the messages list for the overall trace summary LLM call."""
-    parts: list[str] = [current_timestamp_line(), "", f"Search query: {query}", f"Total clusters: {len(clusters)}", ""]
+    parts: list[str] = [current_timestamp_line(), _identity_block(user_identity), f"Search query: {query}", f"Total clusters: {len(clusters)}", ""]
 
     for cluster in clusters:
         entity = cluster.primary_entity
@@ -84,10 +117,13 @@ def build_summary_messages(
     ]
 
 
-def build_narrative_messages(clusters: list[TraceCluster]) -> list[dict[str, str]]:
+def build_narrative_messages(
+    clusters: list[TraceCluster],
+    user_identity: dict[str, str] | None = None,
+) -> list[dict[str, str]]:
     """Build the messages list for the narrative LLM call."""
     # Collect all cards from all clusters into a structured summary
-    parts: list[str] = [current_timestamp_line(), ""]
+    parts: list[str] = [current_timestamp_line(), _identity_block(user_identity), ""]
 
     for cluster in clusters:
         entity = cluster.primary_entity

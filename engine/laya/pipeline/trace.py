@@ -22,6 +22,7 @@ from laya.pipeline.queue import _get_semaphore
 from laya.api.websocket import manager
 from laya.db.chromadb_store import memory_search
 from laya.db.sqlite import get_db
+from laya.config import get_self_user
 from laya.llm.client import llm_call, llm_call_streaming
 from laya.llm.prompts.trace import build_narrative_messages, build_summary_messages
 from laya.llm.prompts.trace_filter import (
@@ -1238,7 +1239,7 @@ async def _stream_cluster_narrative_inner(
     cluster_id = cluster.cluster_id
     full_narrative = ""
     try:
-        messages = build_narrative_messages([cluster])
+        messages = build_narrative_messages([cluster], user_identity=get_self_user())
 
         await manager.broadcast({
             "type": "trace_narrative_start",
@@ -1309,7 +1310,7 @@ async def stream_trace_summary(
         full_text = ""
         summary_id = "__summary__"
         try:
-            messages = build_summary_messages(query, clusters)
+            messages = build_summary_messages(query, clusters, user_identity=get_self_user())
 
             await manager.broadcast({
                 "type": "trace_narrative_start",

@@ -40,20 +40,27 @@ export const budgetRatio = derived(budgetData, ($d) => {
 });
 
 let _initialized = false;
+let _debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-export async function loadBudgetStatus() {
-	try {
-		const data: BudgetConfig = await engineApi.getBudget();
-		budgetPaused.set(data.is_paused);
-		budgetData.set({
-			currentMonthCost: data.current_month_cost,
-			monthlyLimit: data.monthly_limit_usd,
-			enabled: data.enabled,
-		});
-		_initialized = true;
-	} catch {
-		// Engine not ready yet — ignore
-	}
+/** Debounced budget fetch — collapses rapid-fire calls (e.g. from a burst
+ *  of card_created / card_updated WS messages) into a single request. */
+export function loadBudgetStatus() {
+	if (_debounceTimer) clearTimeout(_debounceTimer);
+	_debounceTimer = setTimeout(async () => {
+		_debounceTimer = null;
+		try {
+			const data: BudgetConfig = await engineApi.getBudget();
+			budgetPaused.set(data.is_paused);
+			budgetData.set({
+				currentMonthCost: data.current_month_cost,
+				monthlyLimit: data.monthly_limit_usd,
+				enabled: data.enabled,
+			});
+			_initialized = true;
+		} catch {
+			// Engine not ready yet — ignore
+		}
+	}, 5000);
 }
 
 export function handleBudgetWsMessage(msg: { type: string; paused?: boolean }) {
