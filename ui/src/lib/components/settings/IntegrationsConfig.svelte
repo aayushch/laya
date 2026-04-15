@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
 	import PlatformCard from './PlatformCard.svelte';
 	import ConnectModal from './ConnectModal.svelte';
@@ -31,13 +32,19 @@
 		email: 'Email'
 	};
 
-	// Load data on mount
+	// Load data on mount (once). loadData() reads `platforms` to decide
+	// whether to show the loading skeleton, which Svelte 5 would track as
+	// a dependency — then setting `platforms` after the fetch re-triggers
+	// the effect, creating an infinite request loop. Using untrack prevents this.
 	$effect(() => {
-		loadData();
+		untrack(() => loadData());
 	});
 
 	async function loadData() {
-		loading = true;
+		// Only show the full loading skeleton on initial load; refreshes
+		// (e.g. after disconnect) update in-place to preserve scroll position.
+		const isInitial = platforms && Object.keys(platforms).length === 0;
+		if (isInitial) loading = true;
 		error = null;
 		try {
 			const [platformsResp, connectionsResp] = await Promise.all([

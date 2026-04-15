@@ -10,13 +10,31 @@ const initial: Theme = browser
 
 const { subscribe, set } = writable<Theme>(initial);
 
+/** Sync native window background with theme so macOS traffic lights
+ *  stay visible when the window loses focus (grayscale lights blend
+ *  into a mismatched background). */
+async function syncNativeTheme(value: Theme) {
+	try {
+		const { invoke } = await import('@tauri-apps/api/core');
+		invoke('set_window_theme', { theme: value });
+	} catch {
+		// Not running inside Tauri shell (e.g. dev server in browser)
+	}
+}
+
 export const theme = {
 	subscribe,
 	set(value: Theme) {
 		set(value);
-		if (browser) localStorage.setItem('laya-theme', value);
+		if (browser) {
+			localStorage.setItem('laya-theme', value);
+			syncNativeTheme(value);
+		}
 	}
 };
+
+// Apply initial theme to native window on startup
+if (browser) syncNativeTheme(initial);
 
 // React to settings_changed events broadcast by update_theme tool
 if (browser) {

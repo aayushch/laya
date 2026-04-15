@@ -317,6 +317,7 @@ export interface ActionCard {
 	bookmarked_at?: string;
 	group_active_at?: string;
 	context_id?: string;
+	last_error?: string;
 }
 
 /** A group of cards sharing the same entity or semantic context */
@@ -820,6 +821,7 @@ export interface TraceResponse {
 	clusters: TraceCluster[];
 	search_metadata: TraceSearchMetadata;
 	created_at: string;
+	summary?: string | null;
 }
 
 export interface TraceListItem {

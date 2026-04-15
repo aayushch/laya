@@ -153,8 +153,8 @@
         -50
       ],
       "parameters": {
-        "resource": "issue",
-        "operation": "addComment",
+        "resource": "issueComment",
+        "operation": "add",
         "issueKey": "={{ $json.body.payload.issue_key }}",
         "comment": "={{ $json.body.payload.comment }}",
         "options": {}
@@ -621,6 +621,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.03.2"
+    "laya_version": "2026.04.1"
   }
 }

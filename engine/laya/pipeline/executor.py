@@ -105,11 +105,32 @@ async def execute_action(
         log.warning("action_type_remapped", original="send_message", corrected="send_email", platform=target_platform)
         action_type = "send_email"
 
-    # 6. Delegate to egress module
+    # 6. Resolve connection_id from the originating event so the egress
+    # module picks the correct executor workflow when multiple connections
+    # exist for the same platform (e.g. two Jira instances).
+    # The event stores the n8n workflow_id as source_connection_id, so we
+    # look up the corresponding egress connection_id from the sources table.
+    connection_id = None
+    if card_row["event_id"]:
+        evt_rows = await db.execute_fetchall(
+            "SELECT source_connection_id FROM events WHERE event_id = ?",
+            (card_row["event_id"],),
+        )
+        if evt_rows and evt_rows[0]["source_connection_id"]:
+            workflow_id = evt_rows[0]["source_connection_id"]
+            conn_rows = await db.execute_fetchall(
+                "SELECT connection_id FROM sources WHERE workflow_id = ? AND connection_id IS NOT NULL LIMIT 1",
+                (workflow_id,),
+            )
+            if conn_rows:
+                connection_id = conn_rows[0]["connection_id"]
+
+    # 7. Delegate to egress module
     request = EgressRequest(
         platform=target_platform,
         action_type=action_type,
         payload=payload,
+        connection_id=connection_id,
         source_card_id=card_id,
         source_event_id=card_row["event_id"],
         space_id=card_row["space_id"],
@@ -117,7 +138,7 @@ async def execute_action(
 
     result = await egress_execute(request)
 
-    # 7. Store in action_log
+    # 8. Store in action_log
     result_status = "done" if result.success else "failed"
     now = datetime.now(timezone.utc).isoformat()
 
@@ -138,7 +159,7 @@ async def execute_action(
                 card_id,
                 action["action_type"],
                 target_platform,
-                None,
+                connection_id,
                 json.dumps(payload),
                 now,
                 result_status,
@@ -151,23 +172,23 @@ async def execute_action(
     except Exception as db_err:
         log.error("action_log_write_failed", card_id=card_id, error=str(db_err))
 
-    # 8. Update card final status
+    # 9. Update card final status
     try:
         if result_status == "failed":
             await db.execute(
-                "UPDATE action_cards SET status = ?, failed_stage = 'action_execution', updated_at = ? WHERE card_id = ?",
-                (result_status, now, card_id),
+                "UPDATE action_cards SET status = ?, failed_stage = 'action_execution', last_error = ?, updated_at = ? WHERE card_id = ?",
+                (result_status, result.error, now, card_id),
             )
         else:
             await db.execute(
-                "UPDATE action_cards SET status = ?, failed_stage = NULL, updated_at = ? WHERE card_id = ?",
+                "UPDATE action_cards SET status = ?, failed_stage = NULL, last_error = NULL, updated_at = ? WHERE card_id = ?",
                 (result_status, now, card_id),
             )
         await db.commit()
     except Exception as db_err:
         log.error("card_status_update_failed", card_id=card_id, error=str(db_err))
 
-    # 9. Broadcast final status
+    # 10. Broadcast final status
     broadcast_payload: dict = {"status": result_status}
     if result.result_url:
         broadcast_payload["result_url"] = result.result_url

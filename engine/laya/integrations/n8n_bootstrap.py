@@ -269,9 +269,18 @@ def _merge_credentials(old_nodes: list[dict], new_nodes: list[dict]) -> list[dic
             creds_by_type[node.get("type", "")] = node_creds
 
     for node in new_nodes:
-        if node.get("credentials"):
-            # New workflow already specifies credentials (e.g. placeholder) — skip
-            continue
+        existing_creds = node.get("credentials")
+        if existing_creds:
+            # Check if credentials are real (injected by cloning) or placeholders
+            # from the template. Placeholders have id == type name (e.g.
+            # "jiraSoftwareCloudApi" as both the key and the id value).
+            is_placeholder = any(
+                isinstance(v, dict) and v.get("id") == cred_type
+                for cred_type, v in existing_creds.items()
+            )
+            if not is_placeholder:
+                continue  # Real credentials already set — keep them
+
         key = (node.get("name", ""), node.get("type", ""))
         merged = creds_by_name_type.get(key) or creds_by_type.get(node.get("type", ""))
         if merged:
@@ -426,7 +435,7 @@ async def import_workflows(base_url: str) -> int:
     changed = 0
     if templates_needing_update:
         try:
-            changed = await _propagate_to_clones(base_url, api_key)
+            changed = await _propagate_to_clones(base_url, api_key, templates_needing_update)
             if changed:
                 log.info("n8n_clones_updated", count=changed)
         except Exception as e:
@@ -436,7 +445,7 @@ async def import_workflows(base_url: str) -> int:
     return changed
 
 
-async def _propagate_to_clones(base_url: str, api_key: str) -> int:
+async def _propagate_to_clones(base_url: str, api_key: str, changed_templates: list[str]) -> int:
     """Propagate template workflow updates to all cloned instances.
 
     Clones are identified by having a connection_id in the sources table.
@@ -472,21 +481,38 @@ async def _propagate_to_clones(base_url: str, api_key: str) -> int:
             source_type = "executor" if "executor" in wf_name.lower() else "ingestion"
             type_to_template[(platform_key, source_type)] = wf_name
 
+    # Look up n8n_credential_id + connection name for each connection_id
+    conn_ids = list({row["connection_id"] for row in clone_rows if row["connection_id"]})
+    conn_cred_map: dict[str, tuple[str, str]] = {}  # connection_id → (n8n_credential_id, name)
+    if conn_ids:
+        placeholders = ",".join("?" for _ in conn_ids)
+        cred_rows = await db.execute_fetchall(
+            f"SELECT connection_id, n8n_credential_id, name FROM egress_connections WHERE connection_id IN ({placeholders})",
+            conn_ids,
+        )
+        for cr in cred_rows:
+            if cr["n8n_credential_id"]:
+                conn_cred_map[cr["connection_id"]] = (cr["n8n_credential_id"], cr["name"] or "")
+
+    import copy
+
     updated = 0
     for row in clone_rows:
         platform = row["platform"]
         source_type = row["source_type"]
         wf_id = row["workflow_id"]
         clone_name = row["name"]
+        connection_id = row["connection_id"]
 
         template_name = type_to_template.get((platform, source_type))
         if not template_name or template_name not in template_data_map:
             continue
+        if template_name not in changed_templates:
+            continue  # This clone's template hasn't changed — skip
 
         template = template_data_map[template_name]
 
         # Build update data from template but preserve clone's name
-        import copy
         update_data = copy.deepcopy(template)
         update_data["name"] = clone_name
 
@@ -499,7 +525,35 @@ async def _propagate_to_clones(base_url: str, api_key: str) -> int:
                     node["parameters"]["path"] = clone_webhook_path
                     break
 
-        # _update_workflow handles credential merging automatically
+        # Inject the connection's real n8n credential into all matching nodes,
+        # exactly like _clone_workflows_for_connection does. This is more
+        # reliable than merging from old nodes (which may already have
+        # placeholder credentials from a previous broken sync).
+        platform_config = PLATFORMS.get(platform, {})
+        n8n_type = platform_config.get("n8n_type", "")
+        n8n_node = platform_config.get("n8n_node", "")
+        cred_info = conn_cred_map.get(connection_id)
+        if cred_info and n8n_type:
+            cred_id, cred_name = cred_info
+            for node in update_data.get("nodes", []):
+                node_creds = node.get("credentials", {})
+                params = node.get("parameters", {})
+                node_type = node.get("type", "")
+                is_match = (
+                    n8n_type in node_creds
+                    or node_type == n8n_node
+                    or node_type.startswith(n8n_node)
+                    or params.get("nodeCredentialType") == n8n_type
+                )
+                if is_match:
+                    if "credentials" not in node:
+                        node["credentials"] = {}
+                    node["credentials"][n8n_type] = {
+                        "id": cred_id,
+                        "name": cred_name,
+                    }
+
+        # _update_workflow handles credential merging as a secondary fallback
         if await _update_workflow(base_url, api_key, wf_id, update_data):
             updated += 1
             log.info("n8n_clone_updated", name=clone_name, workflow_id=wf_id)

@@ -90,6 +90,7 @@ class TraceResponse(BaseModel):
     clusters: list[TraceCluster]
     search_metadata: SearchMetadata
     created_at: str
+    summary: str | None = None
 
 
 class TraceListItem(BaseModel):

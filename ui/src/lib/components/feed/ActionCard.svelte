@@ -634,8 +634,8 @@
 				</button>
 			{:else}
 				<span class="ml-1 flex items-center gap-1 min-w-0 overflow-hidden">
-					<StatusDot status={card.status} size="md" />
-					<span class="text-[11px] text-surface-400 truncate">{statusLabel[card.status] ?? card.status}</span>
+					<StatusDot status={card.status} size="md" errorMessage={card.last_error} />
+					<span class="text-[11px] text-surface-400 truncate" title={card.status === 'failed' && card.last_error ? card.last_error : ''}>{statusLabel[card.status] ?? card.status}</span>
 				</span>
 			{/if}
 			<!-- Priority chip -->

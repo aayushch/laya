@@ -96,6 +96,20 @@ html, body {
 [data-theme='light'] .text-emerald-400  { color: oklch(0.38 0.18 160); }
 [data-theme='light'] .text-amber-400    { color: oklch(0.44 0.18 70);  }
 
+/* Status-dot colors — bright enough for small icons in both themes.
+   The global light-theme text overrides above darken colors for text
+   readability, but status dots are tiny shapes that need vivid color. */
+.status-dot-amber  { color: oklch(0.75 0.17 65);  }
+.status-dot-yellow { color: oklch(0.80 0.16 90);  }
+.status-dot-green  { color: oklch(0.72 0.19 145); }
+.status-dot-red    { color: oklch(0.55 0.22 27);  }
+.status-dot-violet { color: oklch(0.65 0.20 285); }
+[data-theme='light'] .status-dot-amber  { color: oklch(0.70 0.17 65);  }
+[data-theme='light'] .status-dot-yellow { color: oklch(0.72 0.16 90);  }
+[data-theme='light'] .status-dot-green  { color: oklch(0.50 0.19 145); }
+[data-theme='light'] .status-dot-red    { color: oklch(0.50 0.22 27);  }
+[data-theme='light'] .status-dot-violet { color: oklch(0.55 0.20 285); }
+
 /* Priority badge text - ensure contrast in light mode */
 [data-theme='light'] .bg-red-600      { background-color: oklch(0.50 0.22 27);  }
 [data-theme='light'] .bg-orange-500   { background-color: oklch(0.62 0.18 47);  }
@@ -176,6 +190,16 @@ html, body {
 [data-theme='light'] .bg-teal-950\/50    { background-color: oklch(0.94 0.04 185); }
 [data-theme='light'] .border-teal-800\/20 { border-color: oklch(0.74 0.07 185 / 40%); }
 [data-theme='light'] .hover\:border-teal-700\/35:hover { border-color: oklch(0.64 0.10 185 / 55%); }
+
+/* ─────────────────────────────────────────────────────────────
+   LIGHT THEME — card group ghost strips (stacked card effect)
+   Ghost strips use lower-opacity *-950 bg variants that are
+   too dark against the cream background in light mode. Override
+   to near-surface tints so the stack effect is subtle, not muddy.
+   ───────────────────────────────────────────────────────────── */
+[data-theme='light'] .bg-amber-950\/30   { background-color: oklch(0.95 0.025 75); }
+[data-theme='light'] .bg-violet-950\/30  { background-color: oklch(0.95 0.02 285); }
+[data-theme='light'] .bg-emerald-950\/25 { background-color: oklch(0.97 0.010 162); }
 
 /* ─────────────────────────────────────────────────────────────
    LIGHT THEME — card action text and workspace badges

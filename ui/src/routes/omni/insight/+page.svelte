@@ -20,6 +20,13 @@
 
 	const terminalStatuses = new Set(['done', 'failed', 'dismissed', 'archived']);
 
+	function formatCardDate(dateStr?: string): string {
+		if (!dateStr) return '';
+		const utcStr = dateStr.endsWith('Z') || dateStr.includes('+') ? dateStr : dateStr + 'Z';
+		const d = new Date(utcStr);
+		return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+	}
+
 	/** Identify the main editable text field in an action payload. */
 	function getEditableTextField(payload: Record<string, unknown>): string | null {
 		for (const key of ['body', 'comment', 'message', 'description']) {
@@ -110,7 +117,12 @@
 			const results = await Promise.allSettled(cardIds.map((id) => engineApi.getCard(id)));
 			cards = results
 				.filter((r): r is PromiseFulfilledResult<ActionCard> => r.status === 'fulfilled')
-				.map((r) => r.value);
+				.map((r) => r.value)
+				.sort((a, b) => {
+					const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+					const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+					return tb - ta;
+				});
 			if (cards.length === 0) {
 				error = 'None of the referenced cards could be found';
 			}
@@ -313,6 +325,9 @@
 							<span class="text-[10px] text-surface-500 uppercase tracking-wider">{extractPlatform(card)}</span>
 						{/if}
 						<span class="rounded bg-surface-800 px-1.5 py-0.5 text-[10px] text-surface-400">{card.status}</span>
+						{#if card.created_at}
+							<span class="ml-auto shrink-0 text-[10px] text-surface-500">{formatCardDate(card.created_at)}</span>
+						{/if}
 					</div>
 
 					<!-- Actor -->

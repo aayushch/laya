@@ -469,6 +469,7 @@ async def _reconstruct_trace(db, row) -> TraceResponse:
         clusters=clusters,
         search_metadata=SearchMetadata(**search_meta_raw),
         created_at=row["created_at"],
+        summary=row["summary"] if "summary" in row.keys() else None,
     )
 
 

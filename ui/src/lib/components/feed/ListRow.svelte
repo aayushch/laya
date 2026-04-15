@@ -267,8 +267,8 @@
 		</span>
 	{:else}
 		<span class="w-[70px] shrink-0 flex items-center gap-1 ml-2">
-			<StatusDot status={card.status} size="md" />
-			<span class="text-[11px] text-surface-500 whitespace-nowrap truncate">{statusLabel[card.status] ?? card.status}</span>
+			<StatusDot status={card.status} size="md" errorMessage={card.last_error} />
+			<span class="text-[11px] text-surface-500 whitespace-nowrap truncate" title={card.status === 'failed' && card.last_error ? card.last_error : ''}>{statusLabel[card.status] ?? card.status}</span>
 		</span>
 	{/if}
 

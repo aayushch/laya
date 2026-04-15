@@ -72,6 +72,7 @@ class CardResponse(BaseModel):
     bookmarked_at: str | None = None
     group_active_at: str | None = None
     context_id: str | None = None
+    last_error: str | None = None
 
 
 class CardsListResponse(BaseModel):

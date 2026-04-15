@@ -256,6 +256,18 @@ class N8nBackend(EgressBackend):
             if actor not in self_emails:
                 payload["to"] = event_ctx["actor_email"]
 
+        # For Jira actions using httpRequest nodes, the executor workflow needs
+        # the Jira instance base URL to construct REST API endpoints. Look it up
+        # from the connection's stored credentials (domain field).
+        if request.platform == "jira" and not payload.get("jira_base_url") and request.connection_id:
+            try:
+                from laya.egress.connections import _get_from_keychain
+                jira_creds = _get_from_keychain(request.connection_id, "jira")
+                if jira_creds and jira_creds.get("domain"):
+                    payload["jira_base_url"] = jira_creds["domain"].rstrip("/")
+            except Exception:
+                pass  # Non-fatal — workflow falls back to placeholder URL
+
         # For Outlook archive/mark_read, enrich outlook_id from event metadata
         # so the executor workflow can target the correct message.
         if (
