@@ -394,7 +394,7 @@
 			{expanded
 				? 'border-surface-600 bg-surface-900'
 				: groupStyle}
-			{isGroupLastViewed ? 'card-last-viewed' : ''}"
+			{isGroupLastViewed ? ($cardColors ? 'card-last-viewed' : 'card-last-viewed-highlight') : ''}"
 		style="z-index: 3;"
 	>
 		{#if isGroupLastViewed}<div class="card-corner-bottom"></div>{/if}

@@ -131,7 +131,7 @@
 	const isDimmed = $derived(!isSelected && hasSelection && !isArchived);
 
 	const cardStyle = $derived(
-		`${baseCardStyle}${isDimmed ? ' opacity-45 hover:opacity-70' : ''}${isLastViewed ? ' card-last-viewed' : ''}`
+		`${baseCardStyle}${isDimmed ? ' opacity-45 hover:opacity-70' : ''}${isLastViewed ? ($cardColors ? ' card-last-viewed' : ' card-last-viewed-highlight') : ''}`
 	);
 
 	const platform = $derived(

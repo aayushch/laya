@@ -16,7 +16,7 @@ const { subscribe, set } = writable<Theme>(initial);
 async function syncNativeTheme(value: Theme) {
 	try {
 		const { invoke } = await import('@tauri-apps/api/core');
-		invoke('set_window_theme', { theme: value });
+		await invoke('set_window_theme', { theme: value });
 	} catch {
 		// Not running inside Tauri shell (e.g. dev server in browser)
 	}
