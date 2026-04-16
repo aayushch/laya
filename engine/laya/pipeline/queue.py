@@ -204,7 +204,7 @@ async def process_event(event_id: str) -> None:
         user_identity = get_self_user()
 
         # INGEST
-        actor_relationship = await run_ingest(event)
+        actor_relationship, participant_roles = await run_ingest(event)
 
         # SPACE RESOLUTION
         space_id = await resolve_space(
@@ -262,9 +262,9 @@ async def process_event(event_id: str) -> None:
 
         # WORKERS → STAGER → EMIT (inline, not background fire-and-forget)
         if router_output and router_output.requires_research:
-            await _run_workers_pipeline(event, router_output, space_id, user_identity=user_identity, actor_relationship=actor_relationship)
+            await _run_workers_pipeline(event, router_output, space_id, user_identity=user_identity, actor_relationship=actor_relationship, participant_roles=participant_roles)
         elif router_output:
-            await _run_simple_pipeline(event, router_output, space_id, user_identity=user_identity, actor_relationship=actor_relationship)
+            await _run_simple_pipeline(event, router_output, space_id, user_identity=user_identity, actor_relationship=actor_relationship, participant_roles=participant_roles)
 
         await _mark_completed(event_id)
 
@@ -285,6 +285,7 @@ async def _run_workers_pipeline(
     event: LayaEvent, router_output, space_id: str | None,
     user_identity: dict | None = None,
     actor_relationship: str = "external",
+    participant_roles: dict | None = None,
 ) -> None:
     """Workers → Stager → Emit with pre-created card."""
     import uuid as _uuid
@@ -339,8 +340,8 @@ async def _run_workers_pipeline(
     )
 
     try:
-        results = await run_workers(event, router_output, card_id=card_id, space_id=space_id, user_identity=user_identity, actor_relationship=actor_relationship)
-        stager_output = await run_stager(event, router_output, results, space_id=space_id, user_identity=user_identity, actor_relationship=actor_relationship)
+        results = await run_workers(event, router_output, card_id=card_id, space_id=space_id, user_identity=user_identity, actor_relationship=actor_relationship, participant_roles=participant_roles)
+        stager_output = await run_stager(event, router_output, results, space_id=space_id, user_identity=user_identity, actor_relationship=actor_relationship, participant_roles=participant_roles)
         await run_emit(event, router_output, stager_output, results, card_id=card_id, space_id=space_id)
     except Exception as e:
         # Mark the provisional card as failed
@@ -360,12 +361,13 @@ async def _run_simple_pipeline(
     event: LayaEvent, router_output, space_id: str | None,
     user_identity: dict | None = None,
     actor_relationship: str = "external",
+    participant_roles: dict | None = None,
 ) -> None:
     """Stager → Emit for simple events."""
     from laya.pipeline.emit import run_emit
     from laya.pipeline.stager import run_stager
 
-    stager_output = await run_stager(event, router_output, worker_results=None, space_id=space_id, user_identity=user_identity, actor_relationship=actor_relationship)
+    stager_output = await run_stager(event, router_output, worker_results=None, space_id=space_id, user_identity=user_identity, actor_relationship=actor_relationship, participant_roles=participant_roles)
     await run_emit(event, router_output, stager_output, space_id=space_id)
 
 

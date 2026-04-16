@@ -179,7 +179,7 @@
             },
             {
               "name": "content.metadata",
-              "value": "={{ JSON.stringify({ gmail_thread_id: $json.gmail_threadId, gmail_labels: JSON.parse($json.gmail_labelIds || '[]'), gmail_from: $json.raw_from_email, gmail_to: [$json.raw_to_email], gmail_cc: [], gmail_is_reply: $json.is_reply }) }}",
+              "value": "={{ JSON.stringify({ gmail_thread_id: $json.gmail_threadId, gmail_labels: JSON.parse($json.gmail_labelIds || '[]'), gmail_from: $json.raw_from_email, gmail_to: [$json.raw_to_email], gmail_cc: [], gmail_is_reply: $json.is_reply, participants: [{ role: 'sender', name: $json.raw_from_name || '', email: $json.raw_from_email || '' }, { role: 'recipient', name: '', email: $json.raw_to_email || '' }] }) }}",
               "type": "string"
             }
           ]
@@ -271,6 +271,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.03.1"
+    "laya_version": "2026.04.2"
   }
 }

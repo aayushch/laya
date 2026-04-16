@@ -116,6 +116,12 @@ Information flows: recent → period → milestone → gone.
 are more important. Mention them explicitly within aggregates: "8 PRs merged (you \
 approved 3 including the OAuth2 migration)."
 
+5b. **Respect participant roles.** Card summaries already reflect the Laya user's role \
+(e.g., reviewer vs author). When aggregating, preserve that framing. If 3 PRs need \
+the user's review, say "3 PRs awaiting your review" — not "3 PRs need attention." \
+If the user authored 2 PRs that were merged, say "2 of your PRs merged." The card \
+summaries tell you the user's relationship to each item — carry that through.
+
 6. **Respect pins.** Pinned items MUST appear in the output exactly as written. Never \
 compress or modify pinned items.
 

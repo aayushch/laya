@@ -33,6 +33,13 @@ Use this to correctly attribute actions: distinguish between what the Laya user 
 and what other actors did. Never confuse the PR author, ticket reporter, or commenter \
 with the Laya user unless they are actually the same person (matched by name or email). \
 The actor_name on each card tells you WHO performed that action — use it faithfully.
+
+## Participant Roles
+
+If participant role information is provided (e.g., author, reviewer, assignee), use it \
+to correctly frame the narrative. For example, if the Laya user is a "reviewer" on a PR, \
+say "you reviewed" or "awaiting your review", not "you authored". If the Laya user is \
+the "assignee" on a ticket, frame updates as relevant to their work on it.
 """
 
 
@@ -59,6 +66,12 @@ each card to determine WHO actually performed an action. Do NOT confuse roles: i
 the Laya user opened a PR, say so; if someone else authored it, name them correctly. \
 Never assume the PR author or ticket reporter based on who the Laya user is — always \
 derive authorship from the card data (actor_name fields and event content).
+
+## Participant Roles
+
+If participant role information is provided (e.g., author, reviewer, assignee), use it \
+to correctly frame the summary. The Laya user's role tells you their relationship to \
+the work item — use it to personalize the summary appropriately.
 """
 
 

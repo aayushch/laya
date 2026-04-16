@@ -47,6 +47,7 @@ def build_comms_messages(
     prior_findings: dict[str, Any] | None = None,
     user_identity: dict[str, str] | None = None,
     actor_relationship: str = "external",
+    participant_roles: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     """Build the messages array for the COMMS worker LLM call."""
     event_text = f"""\
@@ -76,27 +77,34 @@ Body:
     # Actor–user relationship context (pre-resolved by the system)
     identity_text = ""
     if user_identity:
+        from laya.llm.prompts.stager import _build_role_directive
+
         actor_name = event.actor.name
         actor_email = event.actor.email
         user_name = user_identity["name"]
-        is_self = actor_relationship == "self"
-        if is_self:
-            directive = (
-                f"The actor IS the Laya user ({user_name}). "
-                "Do NOT draft a reply addressed to yourself. "
-                "Draft a follow-up or status note instead."
-            )
-        else:
-            directive = (
-                f"The actor ({actor_name}) is NOT the Laya user ({user_name}). "
-                f"Draft the reply addressed to {actor_name}. "
-                f"\"You\"/\"your\" refers ONLY to the Laya user — never to any other person in the event."
-            )
+        pr = participant_roles or {}
+        actor_role = pr.get("actor_role")
+        laya_user_role = pr.get("laya_user_role")
+
+        directive = _build_role_directive(
+            actor_name, user_name, actor_role, laya_user_role, actor_relationship,
+        )
+
+        role_line = ""
+        if actor_role or laya_user_role:
+            parts = []
+            if actor_role:
+                parts.append(f"Actor's role: {actor_role}")
+            if laya_user_role:
+                parts.append(f"Laya user's role: {laya_user_role}")
+            role_line = "\n" + " | ".join(parts)
+
         identity_text = (
             f"\n\n[ACTOR CONTEXT]\n"
             f"Actor: {actor_name} ({actor_email})\n"
             f"Laya user: {user_name}\n"
-            f"Relationship: {actor_relationship}\n"
+            f"Relationship: {actor_relationship}"
+            f"{role_line}\n"
             f">>> {directive}\n"
             f"[END ACTOR CONTEXT]"
         )

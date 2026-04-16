@@ -93,7 +93,7 @@
             },
             {
               "name": "content.metadata",
-              "value": "={{ JSON.stringify({ cal_start_time: $json.start?.dateTime || $json.start?.date, cal_end_time: $json.end?.dateTime || $json.end?.date, cal_attendees: ($json.attendees || []).map(a => a.email), cal_location: $json.location || '', cal_recurring: !!$json.recurringEventId }) }}",
+              "value": "={{ JSON.stringify({ cal_start_time: $json.start?.dateTime || $json.start?.date, cal_end_time: $json.end?.dateTime || $json.end?.date, cal_attendees: ($json.attendees || []).map(a => a.email), cal_location: $json.location || '', cal_recurring: !!$json.recurringEventId, participants: [{ role: 'organizer', name: $json.organizer?.displayName || '', email: $json.organizer?.email || '' }, ...($json.attendees || []).map(a => ({ role: 'attendee', name: a.displayName || '', email: a.email || '' }))] }) }}",
               "type": "string"
             }
           ]
@@ -163,6 +163,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.03.2"
+    "laya_version": "2026.04.2"
   }
 }

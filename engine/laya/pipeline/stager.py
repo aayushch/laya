@@ -41,6 +41,7 @@ async def run_stager(
     space_id: str | None = None,
     user_identity: dict | None = None,
     actor_relationship: str = "external",
+    participant_roles: dict | None = None,
 ) -> ActionCardData:
     """Run the STAGER step: synthesize findings into a polished action card.
 
@@ -63,6 +64,7 @@ async def run_stager(
     messages = build_stager_messages(
         event, router_output, worker_results, related_context, entity_history,
         user_identity=user_identity, actor_relationship=actor_relationship,
+        participant_roles=participant_roles,
     )
     schema = get_stager_json_schema()
 

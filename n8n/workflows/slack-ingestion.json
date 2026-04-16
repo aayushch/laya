@@ -87,7 +87,7 @@
             },
             {
               "name": "content.metadata",
-              "value": "={{ JSON.stringify({ slack_channel: $json.event?.channel, slack_channel_type: $json.event?.channel_type || 'public', slack_thread_ts: $json.event?.thread_ts, slack_is_mention: ($json.event?.text || '').includes('<@') }) }}",
+              "value": "={{ JSON.stringify({ slack_channel: $json.event?.channel, slack_channel_type: $json.event?.channel_type || 'public', slack_thread_ts: $json.event?.thread_ts, slack_is_mention: ($json.event?.text || '').includes('<@'), participants: [{ role: 'sender', name: $json.event?.user_profile?.real_name || '', email: $json.event?.user_profile?.email || '', handle: $json.event?.user || '' }] }) }}",
               "type": "string"
             }
           ]
@@ -157,6 +157,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.03.1"
+    "laya_version": "2026.04.2"
   }
 }

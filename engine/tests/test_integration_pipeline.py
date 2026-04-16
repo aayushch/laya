@@ -109,7 +109,7 @@ class TestPipelineIntegration:
 
         with patch("laya.pipeline.ingest.load_team", return_value=sample_team):
             with patch("laya.config.load_team", return_value=sample_team):
-                relationship = await run_ingest(event)
+                relationship, _participant_roles = await run_ingest(event)
 
         assert relationship in ("teammate", "manager", "external", "bot")
 
@@ -160,7 +160,7 @@ class TestPipelineIntegration:
 
         with patch("laya.pipeline.ingest.load_team", return_value=sample_team):
             with patch("laya.config.load_team", return_value=sample_team):
-                relationship = await run_ingest(event)
+                relationship, _pr = await run_ingest(event)
 
         assert relationship == "bot"
 
@@ -171,7 +171,7 @@ class TestPipelineIntegration:
 
         with patch("laya.pipeline.ingest.load_team", return_value=sample_team):
             with patch("laya.config.load_team", return_value=sample_team):
-                relationship = await run_ingest(event)
+                relationship, _pr = await run_ingest(event)
 
         async def _llm_fail(**kwargs):
             raise Exception("LLM down")
@@ -193,7 +193,7 @@ class TestPipelineIntegration:
 
         with patch("laya.pipeline.ingest.load_team", return_value=sample_team):
             with patch("laya.config.load_team", return_value=sample_team):
-                relationship = await run_ingest(event)
+                relationship, _pr = await run_ingest(event)
 
         with patch("laya.pipeline.router.llm_call", new_callable=AsyncMock, return_value=mock_router_resp):
             with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]):
@@ -229,7 +229,7 @@ class TestPipelineIntegration:
 
         with patch("laya.pipeline.ingest.load_team", return_value=sample_team):
             with patch("laya.config.load_team", return_value=sample_team):
-                relationship = await run_ingest(event)
+                relationship, _pr = await run_ingest(event)
 
         with patch("laya.pipeline.router.llm_call", new_callable=AsyncMock, return_value=mock_router_resp):
             with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]):
