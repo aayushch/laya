@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { platform } from '@tauri-apps/plugin-os';
 	import { onMount } from 'svelte';
 	import type { Snippet } from 'svelte';
@@ -7,24 +6,25 @@
 	let { nav, center, right }: { nav?: Snippet; center?: Snippet; right?: Snippet } = $props();
 
 	let currentPlatform = $state('');
+	let appWindow: { minimize: () => void; toggleMaximize: () => void; close: () => void; startDragging: () => void } | null = $state(null);
 
-	onMount(() => {
+	onMount(async () => {
 		try {
 			currentPlatform = platform();
+			const { getCurrentWindow } = await import('@tauri-apps/api/window');
+			appWindow = getCurrentWindow();
 		} catch {
-			// Not in Tauri environment (e.g. dev browser) — default to showing custom controls
-			currentPlatform = 'linux';
+			// Not in Tauri environment (e.g. dev browser) — hide window controls
+			currentPlatform = 'browser';
 		}
 	});
-
-	const appWindow = getCurrentWindow();
 
 	/**
 	 * Manual drag handler — more reliable than data-tauri-drag-region.
 	 * Handles both single-click drag and double-click maximize.
 	 */
 	function handleDragMouseDown(e: MouseEvent) {
-		if (e.buttons !== 1) return;
+		if (!appWindow || e.buttons !== 1) return;
 		if (e.detail === 2) {
 			appWindow.toggleMaximize();
 		} else {
@@ -98,11 +98,11 @@
 		</div>
 	{/if}
 
-	<!-- Window controls: only on Windows / Linux (macOS uses native traffic lights) -->
-	{#if currentPlatform !== 'macos' && currentPlatform !== ''}
+	<!-- Window controls: only on Windows / Linux inside Tauri (macOS uses native traffic lights) -->
+	{#if appWindow && currentPlatform !== 'macos' && currentPlatform !== ''}
 		<div class="flex h-full">
 			<button
-				onclick={() => appWindow.minimize()}
+				onclick={() => appWindow?.minimize()}
 				class="flex w-[46px] items-center justify-center text-surface-400 hover:bg-surface-700/50 transition-colors"
 				aria-label="Minimize"
 			>
@@ -111,7 +111,7 @@
 				</svg>
 			</button>
 			<button
-				onclick={() => appWindow.toggleMaximize()}
+				onclick={() => appWindow?.toggleMaximize()}
 				class="flex w-[46px] items-center justify-center text-surface-400 hover:bg-surface-700/50 transition-colors"
 				aria-label="Maximize"
 			>
@@ -120,7 +120,7 @@
 				</svg>
 			</button>
 			<button
-				onclick={() => appWindow.close()}
+				onclick={() => appWindow?.close()}
 				class="flex w-[46px] items-center justify-center text-surface-400 hover:bg-red-500/80 hover:text-white transition-colors"
 				aria-label="Close"
 			>

@@ -28,6 +28,17 @@
 	let expandAllClusters = $state<boolean | null>(null);
 	let clustersExpanded = $state(false);
 
+	// Reset expand/collapse state when switching to a different query
+	let prevTraceId = $state<string | null>(null);
+	$effect(() => {
+		const currentId = trace?.trace_id ?? null;
+		if (currentId !== prevTraceId) {
+			clustersExpanded = false;
+			expandAllClusters = null;
+			prevTraceId = currentId;
+		}
+	});
+
 	// Visible clusters = all clusters minus removed ones
 	const visibleClusters = $derived(
 		trace?.clusters.filter((c) => !removedClusterIds.has(c.cluster_id)) ?? []

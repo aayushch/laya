@@ -200,7 +200,7 @@
 		class="group/row flex flex-1 min-w-0 items-center rounded-lg px-3 py-1.5 text-left transition-colors cursor-pointer
 			border border-transparent {$cardColors ? (statusRowStyle[card.status] ?? 'hover:bg-surface-800/60') : 'hover:bg-surface-800/60'}
 			{isArchived ? 'opacity-50 hover:opacity-75' : isDimmed ? 'opacity-45 hover:opacity-70' : ''}
-			{isLastViewed ? 'card-last-viewed card-last-viewed--compact' : ''}"
+			{isLastViewed ? ($cardColors ? 'card-last-viewed card-last-viewed--compact' : 'card-last-viewed-highlight') : ''}"
 		style="{isLastViewed ? '--corner-radius: 0.5rem' : ''}"
 		onclick={() => onselect(card)}
 		onkeydown={(e) => e.key === 'Enter' && onselect(card)}

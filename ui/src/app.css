@@ -55,6 +55,12 @@ html, body {
 	--color-surface-950: oklch(0.120 0.005 46);
 }
 
+/* Dampen violet card backgrounds in dark mode — the default violet-950
+   is too saturated against warm gray surfaces. */
+[data-theme='dark'] .bg-violet-950\/55  { background-color: oklch(0.26 0.15 285 / 53%); }
+[data-theme='dark'] .bg-violet-950\/70  { background-color: oklch(0.26 0.15 285 / 66%); }
+[data-theme='dark'] .bg-violet-950\/30  { background-color: oklch(0.26 0.15 285 / 30%); }
+
 /* ─────────────────────────────────────────────────────────────
    LIGHT THEME
    Inverted warm surface scale — 900 becomes warm cream background,
@@ -252,6 +258,16 @@ html, body {
 
 /* Compact variant for list rows / list groups — thinner border */
 .card-last-viewed--compact { box-shadow: inset 0 0 0 1px var(--last-viewed-accent); }
+
+/* Highlight variant — subtle background fill instead of border ring,
+   used when card status colors are off to avoid a floating ring with
+   no surrounding color context. Same accent hue as the ring. */
+.card-last-viewed-highlight {
+	background-color: oklch(0.75 0.18 55 / 0.10);
+}
+[data-theme='light'] .card-last-viewed-highlight {
+	background-color: oklch(0.75 0.18 55 / 0.15);
+}
 
 /* ─────────────────────────────────────────────────────────────
    CARD HIGHLIGHT FADE — orange background flash that fades out,
