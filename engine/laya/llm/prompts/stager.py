@@ -140,7 +140,121 @@ assigned to "Alex" and Alex is not the Laya user, write "assigned to Alex" — \
 NOT "assigned to you". Only use "you"/"your" when the [ACTOR CONTEXT] confirms the \
 person IS the Laya user (relationship: self), or when referring to items the Laya user \
 owns (e.g., "your PR" when the Laya user created it).
-- **If no [ACTOR CONTEXT] is provided**, fall back to third-person behavior."""
+- **If no [ACTOR CONTEXT] is provided**, fall back to third-person behavior.
+
+## Participant Roles (when provided)
+
+The [ACTOR CONTEXT] may include a ROLE CONTEXT line with the contextual roles of the \
+actor and the Laya user (e.g., "author" vs "reviewer", "reporter" vs "assignee"). These \
+roles are determined from the platform data — not inferred. When role context is present:
+
+- **Use the Laya user's role to frame summaries and drafts.** If the user is a "reviewer", \
+write from the reviewer's perspective. If the user is the "author", write from the author's \
+perspective. NEVER confuse these — a reviewer does not commit to doing the author's work.
+- **Use the actor's role to frame their actions.** If the actor is the "author", describe \
+their actions as the author's (e.g., "Author pushed a fix", "Author responded to review").
+- **A participant roster may be provided** listing all known participants and their roles. \
+Use this to correctly reference people (e.g., "the assignee Alex" rather than guessing)."""
+
+
+def _build_role_directive(
+    actor_name: str,
+    user_name: str,
+    actor_role: str | None,
+    laya_user_role: str | None,
+    actor_relationship: str,
+) -> str:
+    """Build a role-aware behavioral directive for the stager/comms prompts.
+
+    Uses both the identity relationship (self/teammate/external) and the
+    contextual roles (author/reviewer/assignee/etc.) to guide the LLM on
+    how to frame summaries and draft replies.
+    """
+    is_self = actor_relationship == "self"
+
+    if is_self:
+        role_hint = f" (acting as {actor_role})" if actor_role else ""
+        return (
+            f"The actor IS the Laya user ({user_name}){role_hint}. "
+            "Use first-person framing (\"You opened…\", \"Your PR…\"). "
+            "Do NOT draft replies addressed to yourself."
+        )
+
+    # Actor is someone else — build directive based on role combination
+    base = (
+        f"The actor ({actor_name}) is NOT the Laya user ({user_name}). "
+        f"Use third-person framing (\"{actor_name} opened…\"). "
+        f"Do NOT attribute this action to the user. "
+        f"\"You\"/\"your\" refers ONLY to the Laya user — never to any other person in the event."
+    )
+
+    # Add role-specific guidance when both roles are known
+    role_guidance = ""
+    if actor_role and laya_user_role:
+        # PR scenarios
+        if actor_role == "author" and laya_user_role == "reviewer":
+            role_guidance = (
+                f"\n>>> ROLE CONTEXT: {actor_name} is the PR/item AUTHOR. "
+                f"The Laya user ({user_name}) is a REVIEWER. "
+                "When drafting replies, write from the reviewer's perspective — provide feedback, "
+                "ask questions, approve, or request changes. Do NOT draft replies that commit the "
+                "reviewer to doing the author's work (refactoring, fixing, implementing). "
+                "The author owns the code changes."
+            )
+        elif actor_role == "reviewer" and laya_user_role == "author":
+            role_guidance = (
+                f"\n>>> ROLE CONTEXT: {actor_name} is a REVIEWER. "
+                f"The Laya user ({user_name}) is the AUTHOR. "
+                "When drafting replies, write from the author's perspective — address review feedback, "
+                "explain decisions, commit to action items on your own code."
+            )
+        elif actor_role == "commenter" and laya_user_role == "author":
+            role_guidance = (
+                f"\n>>> ROLE CONTEXT: {actor_name} commented on the Laya user's item. "
+                f"The Laya user ({user_name}) is the AUTHOR/OWNER. "
+                "Draft replies that address the comment from the owner's perspective."
+            )
+        elif actor_role == "commenter" and laya_user_role == "reviewer":
+            role_guidance = (
+                f"\n>>> ROLE CONTEXT: {actor_name} commented. "
+                f"The Laya user ({user_name}) is a REVIEWER. "
+                "Draft replies from the reviewer's perspective — provide input on the discussion."
+            )
+        # Issue/ticket scenarios
+        elif actor_role in ("reporter", "creator") and laya_user_role == "assignee":
+            role_guidance = (
+                f"\n>>> ROLE CONTEXT: {actor_name} is the REPORTER/CREATOR. "
+                f"The Laya user ({user_name}) is the ASSIGNEE. "
+                "This is assigned to the user — draft acknowledgments, ask clarifying questions, "
+                "or provide status updates from the assignee's perspective."
+            )
+        elif actor_role == "assignee" and laya_user_role in ("reporter", "creator"):
+            role_guidance = (
+                f"\n>>> ROLE CONTEXT: {actor_name} is the ASSIGNEE. "
+                f"The Laya user ({user_name}) is the REPORTER/CREATOR. "
+                "Draft follow-ups or status checks from the reporter's perspective."
+            )
+        # Email scenarios
+        elif actor_role == "sender" and laya_user_role == "recipient":
+            role_guidance = (
+                f"\n>>> ROLE CONTEXT: {actor_name} sent this to the Laya user. "
+                "Draft replies addressed to the sender."
+            )
+        # Calendar scenarios
+        elif actor_role == "organizer" and laya_user_role == "attendee":
+            role_guidance = (
+                f"\n>>> ROLE CONTEXT: {actor_name} organized this event. "
+                f"The Laya user ({user_name}) is an attendee."
+            )
+        # Generic: roles are known but no specific combination matched
+        else:
+            role_guidance = (
+                f"\n>>> ROLE CONTEXT: {actor_name}'s role: {actor_role}. "
+                f"Laya user ({user_name})'s role: {laya_user_role}. "
+                "Frame the summary and any draft replies according to these roles."
+            )
+
+    return base + role_guidance
 
 
 def build_stager_messages(
@@ -151,6 +265,7 @@ def build_stager_messages(
     entity_history: list[dict[str, Any]] | None = None,
     user_identity: dict[str, str] | None = None,
     actor_relationship: str = "external",
+    participant_roles: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     """Build the messages array for the Stager LLM call."""
     # Include event metadata so the LLM can use platform-specific IDs
@@ -255,25 +370,42 @@ Body:
         actor_name = event.actor.name
         actor_email = event.actor.email
         user_name = user_identity["name"]
-        is_self = actor_relationship == "self"
-        if is_self:
-            directive = (
-                f"The actor IS the Laya user ({user_name}). "
-                "Use first-person framing (\"You opened…\", \"Your PR…\"). "
-                "Do NOT draft replies addressed to yourself."
-            )
-        else:
-            directive = (
-                f"The actor ({actor_name}) is NOT the Laya user ({user_name}). "
-                f"Use third-person framing (\"{actor_name} opened…\"). "
-                f"Do NOT attribute this action to the user. "
-                f"\"You\"/\"your\" refers ONLY to the Laya user — never to any other person in the event."
-            )
+        pr = participant_roles or {}
+        actor_role = pr.get("actor_role")
+        laya_user_role = pr.get("laya_user_role")
+
+        directive = _build_role_directive(
+            actor_name, user_name, actor_role, laya_user_role, actor_relationship,
+        )
+
+        # Build participant roster (if available)
+        roster_text = ""
+        participants = pr.get("participants", [])
+        if participants:
+            roster_lines = []
+            for p in participants:
+                label = f"{p['name'] or p.get('handle', '?')} — {p['role']}"
+                if p.get("relationship") == "self":
+                    label += " (Laya user)"
+                roster_lines.append(f"  • {label}")
+            roster_text = "\nParticipants:\n" + "\n".join(roster_lines)
+
+        role_line = ""
+        if actor_role or laya_user_role:
+            parts = []
+            if actor_role:
+                parts.append(f"Actor's role: {actor_role}")
+            if laya_user_role:
+                parts.append(f"Laya user's role: {laya_user_role}")
+            role_line = "\n" + " | ".join(parts)
+
         identity_text = (
             f"\n\n[ACTOR CONTEXT]\n"
             f"Actor: {actor_name} ({actor_email})\n"
             f"Laya user: {user_name}\n"
-            f"Relationship: {actor_relationship}\n"
+            f"Relationship: {actor_relationship}"
+            f"{role_line}"
+            f"{roster_text}\n"
             f">>> {directive}\n"
             f"[END ACTOR CONTEXT]"
         )

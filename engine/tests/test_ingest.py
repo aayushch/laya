@@ -69,8 +69,11 @@ async def test_run_ingest_updates_db(db, sample_event, mock_team):
     )
     await db.commit()
 
-    role = await run_ingest(sample_event)
+    role, participant_roles = await run_ingest(sample_event)
     assert role == "teammate"
+    assert participant_roles["laya_user_role"] is None
+    assert participant_roles["actor_role"] is None
+    assert participant_roles["participants"] == []
 
     async with db.execute(
         "SELECT actor_relationship FROM events WHERE event_id=?", (sample_event.event_id,)

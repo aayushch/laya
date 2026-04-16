@@ -93,7 +93,7 @@
             },
             {
               "name": "content.metadata",
-              "value": "={{ JSON.stringify({ cal_start_time: $json.start?.dateTime, cal_end_time: $json.end?.dateTime, cal_timezone: $json.start?.timeZone || $json.originalStartTimeZone, cal_attendees: ($json.attendees || []).map(a => a.emailAddress?.address), cal_location: $json.location?.displayName || '', cal_recurring: !!$json.seriesMasterId, cal_is_online: !!$json.isOnlineMeeting, cal_online_url: $json.onlineMeeting?.joinUrl || '' }) }}",
+              "value": "={{ JSON.stringify({ cal_start_time: $json.start?.dateTime, cal_end_time: $json.end?.dateTime, cal_timezone: $json.start?.timeZone || $json.originalStartTimeZone, cal_attendees: ($json.attendees || []).map(a => a.emailAddress?.address), cal_location: $json.location?.displayName || '', cal_recurring: !!$json.seriesMasterId, cal_is_online: !!$json.isOnlineMeeting, cal_online_url: $json.onlineMeeting?.joinUrl || '', participants: [{ role: 'organizer', name: $json.organizer?.emailAddress?.name || '', email: $json.organizer?.emailAddress?.address || '' }, ...($json.attendees || []).map(a => ({ role: 'attendee', name: a.emailAddress?.name || '', email: a.emailAddress?.address || '' }))] }) }}",
               "type": "string"
             }
           ]
@@ -163,6 +163,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.03.1"
+    "laya_version": "2026.04.2"
   }
 }

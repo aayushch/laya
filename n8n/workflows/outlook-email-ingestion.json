@@ -163,7 +163,7 @@
             },
             {
               "name": "content.metadata",
-              "value": "={{ JSON.stringify({ outlook_conversation_id: $json.outlook_conversationId, outlook_categories: JSON.parse($json.outlook_categories || '[]'), outlook_from: $json.raw_from_email, outlook_to: [$json.raw_to_email], outlook_cc: [], outlook_is_reply: $json.is_reply }) }}",
+              "value": "={{ JSON.stringify({ outlook_conversation_id: $json.outlook_conversationId, outlook_categories: JSON.parse($json.outlook_categories || '[]'), outlook_from: $json.raw_from_email, outlook_to: [$json.raw_to_email], outlook_cc: [], outlook_is_reply: $json.is_reply, participants: [{ role: 'sender', name: $json.raw_from_name || '', email: $json.raw_from_email || '' }, { role: 'recipient', name: '', email: $json.raw_to_email || '' }] }) }}",
               "type": "string"
             }
           ]
@@ -244,6 +244,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.04.2"
+    "laya_version": "2026.04.3"
   }
 }
