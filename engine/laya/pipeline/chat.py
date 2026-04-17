@@ -14,10 +14,11 @@ import structlog
 from laya.db.chromadb_store import memory_search
 from laya.db.sqlite import get_db
 from laya.llm.client import llm_call, llm_call_streaming, StreamEvent
-from laya.llm.prompts.chat import build_chat_messages
+from laya.llm.prompts.chat import build_chat_messages, build_title_generation_messages
 from laya.llm.tools.definitions import get_all_tool_definitions
 from laya.llm.tools.executor import execute_tool
 from laya.models.chat import ChatMessage, ChatResponse
+from laya.tasks import create_task
 
 log = structlog.get_logger()
 
@@ -41,23 +42,146 @@ _STOPWORDS = frozenset({
 })
 
 
+def canonical_card_ids(card_ids: list[str] | None) -> str | None:
+    """Canonical JSON form for a card-ID set, used as the anchor key.
+
+    Returns None when the input is empty so SQL IS NULL comparisons match
+    non-card conversations. Duplicates are dropped and the order is stable so
+    that viewing [A, B] and [B, A] map to the same conversation.
+    """
+    if not card_ids:
+        return None
+    cleaned = sorted({cid for cid in card_ids if cid})
+    if not cleaned:
+        return None
+    return json.dumps(cleaned, separators=(",", ":"))
+
+
 async def _ensure_conversation(
-    db, user_message: str, conversation_id: str | None, space_id: str | None,
+    db,
+    user_message: str,
+    conversation_id: str | None,
+    space_id: str | None,
+    card_ids: list[str] | None = None,
 ) -> str:
-    """Return a valid conversation_id, creating one if needed."""
+    """Return a valid conversation_id, creating one seeded with "New Chat" if needed.
+
+    Title generation is triggered separately based on conversation state
+    (see ``_should_generate_title``) so it works for both auto-created
+    conversations and ones the UI pre-created via POST /chat/conversations.
+
+    When ``card_ids`` is supplied and a new conversation is created, the
+    canonical card-ID set is persisted so the conversation can later be
+    looked up from the Omni → View Cards view.
+    """
     if conversation_id:
         return conversation_id
 
     conv_id = f"conv_{uuid.uuid4().hex[:12]}"
-    title = user_message[:50].strip() or "New Chat"
     now = datetime.now(timezone.utc).isoformat()
+    canonical = canonical_card_ids(card_ids)
     await db.execute(
-        """INSERT INTO chat_conversations (conversation_id, title, space_id, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?)""",
-        (conv_id, title, space_id, now, now),
+        """INSERT INTO chat_conversations
+           (conversation_id, title, space_id, created_at, updated_at, card_ids)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (conv_id, "New Chat", space_id, now, now, canonical),
     )
     await db.commit()
     return conv_id
+
+
+async def _should_generate_title(db, conversation_id: str) -> bool:
+    """True when a conversation still uses the placeholder title and has no user messages yet."""
+    rows = await db.execute_fetchall(
+        """SELECT c.title,
+                  (SELECT COUNT(*) FROM chat_messages m
+                   WHERE m.conversation_id = c.conversation_id
+                     AND m.role = 'user') AS user_msg_count
+           FROM chat_conversations c
+           WHERE c.conversation_id = ?""",
+        (conversation_id,),
+    )
+    if not rows:
+        return False
+    return rows[0]["title"] == "New Chat" and (rows[0]["user_msg_count"] or 0) == 0
+
+
+def _sanitize_generated_title(raw: str) -> str:
+    """Clean up LLM-generated title: strip quotes/punctuation, cap length."""
+    title = (raw or "").strip()
+    # Strip surrounding quotes that models sometimes add
+    if len(title) >= 2 and title[0] in "\"'`" and title[-1] in "\"'`":
+        title = title[1:-1].strip()
+    # Drop a leading "Title:" prefix if the model ignored the instruction
+    for prefix in ("Title:", "title:", "TITLE:"):
+        if title.startswith(prefix):
+            title = title[len(prefix):].strip()
+            break
+    # Collapse to a single line and remove trailing punctuation
+    title = title.splitlines()[0].strip() if title else ""
+    title = title.rstrip(".!?,;: ")
+    if len(title) > 50:
+        title = title[:50].rstrip()
+    return title
+
+
+async def _generate_title_background(
+    conversation_id: str,
+    user_message: str,
+    space_id: str | None,
+) -> None:
+    """Generate a short title via the cheap router model and update the DB.
+
+    Runs fire-and-forget so it never blocks the user's chat response. All
+    failures are swallowed so a flaky router model cannot break chat.
+    """
+    try:
+        messages = build_title_generation_messages(user_message)
+        response = await llm_call(
+            role="router",
+            messages=messages,
+            step="chat_title",
+            temperature=0.3,
+            max_tokens=32,
+            space_id=space_id,
+        )
+        title = _sanitize_generated_title(response.content)
+        if not title or title.lower() == "new chat":
+            return
+
+        now = datetime.now(timezone.utc).isoformat()
+        db = await get_db()
+        # Only overwrite if the title is still the placeholder — preserves any
+        # manual rename the user may have made while generation was in flight.
+        result = await db.execute(
+            """UPDATE chat_conversations
+               SET title = ?, updated_at = ?
+               WHERE conversation_id = ? AND title = 'New Chat'""",
+            (title, now, conversation_id),
+        )
+        await db.commit()
+        if result.rowcount == 0:
+            return
+
+        # Notify any connected UI clients so the sidebar updates without
+        # needing to re-fetch the full conversation list.
+        try:
+            from laya.api.websocket import manager
+            await manager.broadcast({
+                "type": "conversation_title_updated",
+                "conversation_id": conversation_id,
+                "title": title,
+            })
+        except Exception as exc:
+            log.debug("chat_title_broadcast_failed", error=str(exc))
+
+        log.info("chat_title_generated", conversation_id=conversation_id, title=title)
+    except Exception as exc:
+        log.warning(
+            "chat_title_generation_failed",
+            conversation_id=conversation_id,
+            error=str(exc),
+        )
 
 
 async def process_chat_message(
@@ -65,6 +189,7 @@ async def process_chat_message(
     space_id: str | None = None,
     conversation_id: str | None = None,
     card_context: str | None = None,
+    card_ids: list[str] | None = None,
 ) -> ChatResponse:
     """Process a user chat message through the enhanced pipeline.
 
@@ -77,7 +202,18 @@ async def process_chat_message(
         ChatResponse with assistant message and references.
     """
     db = await get_db()
-    conversation_id = await _ensure_conversation(db, user_message, conversation_id, space_id)
+    conversation_id = await _ensure_conversation(
+        db, user_message, conversation_id, space_id, card_ids=card_ids,
+    )
+
+    # Kick off title generation in parallel for first-message conversations so
+    # it doesn't delay the reply. Runs against the cheap router model and
+    # updates the DB + UI when done.
+    if await _should_generate_title(db, conversation_id):
+        create_task(
+            _generate_title_background(conversation_id, user_message, space_id),
+            name=f"chat_title_{conversation_id}",
+        )
 
     # Step 1: Hybrid retrieval
     context = await _retrieve_context(user_message, space_id=space_id)
@@ -246,6 +382,7 @@ async def process_chat_message_streaming(
     space_id: str | None = None,
     conversation_id: str | None = None,
     card_context: str | None = None,
+    card_ids: list[str] | None = None,
 ):
     """Streaming version of process_chat_message.
 
@@ -258,7 +395,15 @@ async def process_chat_message_streaming(
     The full message is persisted to DB after streaming completes.
     """
     db = await get_db()
-    conversation_id = await _ensure_conversation(db, user_message, conversation_id, space_id)
+    conversation_id = await _ensure_conversation(
+        db, user_message, conversation_id, space_id, card_ids=card_ids,
+    )
+
+    if await _should_generate_title(db, conversation_id):
+        create_task(
+            _generate_title_background(conversation_id, user_message, space_id),
+            name=f"chat_title_{conversation_id}",
+        )
 
     # Hybrid retrieval
     context = await _retrieve_context(user_message, space_id=space_id)

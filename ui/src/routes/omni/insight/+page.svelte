@@ -108,6 +108,9 @@
 
 	onMount(async () => {
 		await loadCards();
+		// Restore the prior conversation for this exact card set (if any).
+		// Runs after loadCards so we don't block the visible card render.
+		await restoreChat();
 	});
 
 	async function loadCards() {
@@ -130,6 +133,22 @@
 			error = err instanceof Error ? err.message : 'Failed to load cards';
 		} finally {
 			loading = false;
+		}
+	}
+
+	/** Look up the conversation anchored to this card set and load its messages. */
+	async function restoreChat() {
+		if (cardIds.length === 0) return;
+		try {
+			const conv = await engineApi.getConversationByCards(cardIds);
+			if (!conv) return;
+			chatConversationId = conv.conversation_id;
+			const msgs = await engineApi.getConversationMessages(conv.conversation_id, 100);
+			// Backend returns newest-first; reverse to display chronologically
+			chatMessages = [...msgs].reverse();
+			scrollToBottom();
+		} catch {
+			// Silently ignore — the user can still start a fresh chat
 		}
 	}
 
@@ -209,7 +228,8 @@
 			const response = await engineApi.sendChat(
 				message,
 				chatConversationId ?? undefined,
-				buildCardContext()
+				buildCardContext(),
+				cardIds
 			);
 
 			if (response.message.conversation_id) {

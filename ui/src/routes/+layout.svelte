@@ -11,6 +11,7 @@
 	import { chatOpen, chatListOpen } from '$lib/stores/chat';
 	import { theme } from '$lib/stores/theme';
 	import { fontScale } from '$lib/stores/fontScale';
+	import { accessibleColors } from '$lib/stores/accessibleColors';
 	import { budgetPaused, loadBudgetStatus, handleBudgetWsMessage, costAmount, budgetLabel, budgetRatio } from '$lib/stores/budget';
 	import { feedFilters, loadFeedFilters, saveFeedFilters, filtersLoaded, feedDate, feedPrevDate, feedNextDate, localToday } from '$lib/stores/feedFilters';
 	import { spaces, loadSpaces } from '$lib/stores/spaces';
@@ -128,6 +129,15 @@
 	// Apply font scale as CSS custom property on <html>
 	$effect(() => {
 		document.documentElement.style.setProperty('--laya-font-base', `${$fontScale}px`);
+	});
+
+	// Apply accessible color mode attribute on <html>
+	$effect(() => {
+		if ($accessibleColors) {
+			document.documentElement.setAttribute('data-accessible-colors', '');
+		} else {
+			document.documentElement.removeAttribute('data-accessible-colors');
+		}
 	});
 
 	// Persist when filters change (only after initial load to avoid overwriting saved prefs with defaults)

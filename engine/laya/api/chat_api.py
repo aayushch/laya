@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timezone
 
 import structlog
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from laya.db.sqlite import get_db
 from laya.models.chat import (
@@ -17,7 +17,7 @@ from laya.models.chat import (
     Conversation,
     CreateConversationRequest,
 )
-from laya.pipeline.chat import process_chat_message
+from laya.pipeline.chat import canonical_card_ids, process_chat_message
 
 log = structlog.get_logger()
 router = APIRouter()
@@ -40,6 +40,7 @@ async def send_chat_message(body: ChatRequest) -> ChatResponse:
             space_id=body.space_id,
             conversation_id=body.conversation_id,
             card_context=body.card_context,
+            card_ids=body.card_ids,
         )
         return response
     except Exception as e:
@@ -153,6 +154,49 @@ async def create_conversation(body: CreateConversationRequest) -> Conversation:
         space_id=body.space_id,
         created_at=now,
         updated_at=now,
+    )
+
+
+@router.get("/chat/conversations/by-cards")
+async def get_conversation_by_cards(
+    card_ids: list[str] = Query(default=[]),
+) -> Conversation | None:
+    """Return the most recent conversation anchored to the given card set, or null.
+
+    Used by Omni → View Cards to restore the prior chat when the user
+    returns with the same card IDs. Match is on the canonical sorted JSON
+    form so viewing order doesn't matter.
+    """
+    canonical = canonical_card_ids(card_ids)
+    if not canonical:
+        return None
+
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        """SELECT c.conversation_id, c.title, c.space_id, c.created_at, c.updated_at,
+                  (SELECT content FROM chat_messages m
+                   WHERE m.conversation_id = c.conversation_id
+                   ORDER BY m.timestamp DESC LIMIT 1) AS last_content,
+                  (SELECT COUNT(*) FROM chat_messages m
+                   WHERE m.conversation_id = c.conversation_id) AS message_count
+           FROM chat_conversations c
+           WHERE c.card_ids = ?
+           ORDER BY c.updated_at DESC
+           LIMIT 1""",
+        (canonical,),
+    )
+    if not rows:
+        return None
+
+    row = rows[0]
+    return Conversation(
+        conversation_id=row["conversation_id"],
+        title=row["title"],
+        space_id=row["space_id"],
+        created_at=row["created_at"] or "",
+        updated_at=row["updated_at"] or "",
+        preview=(row["last_content"] or "")[:100],
+        message_count=row["message_count"] or 0,
     )
 
 

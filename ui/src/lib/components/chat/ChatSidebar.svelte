@@ -22,6 +22,9 @@
 	let sending = $state(false);
 	let messagesEl: HTMLDivElement | undefined = $state();
 	let textareaEl: HTMLTextAreaElement | undefined = $state();
+	let renaming = $state(false);
+	let renameValue = $state('');
+	let renameInputEl = $state<HTMLInputElement | undefined>();
 
 	// Show list view when explicitly requested (chatListOpen controls this)
 	const showList = $derived($chatListOpen);
@@ -161,6 +164,21 @@
 				break;
 			}
 
+			case 'conversation_title_updated': {
+				// Backend finished router-model title generation — patch the
+				// store so the sidebar header and list row update in-place.
+				const convId = raw.conversation_id as string | undefined;
+				const newTitle = raw.title as string | undefined;
+				if (convId && newTitle) {
+					conversations.update((list) =>
+						list.map((c) =>
+							c.conversation_id === convId ? { ...c, title: newTitle } : c
+						)
+					);
+				}
+				break;
+			}
+
 			// Legacy non-streaming fallback
 			case 'chat_response': {
 				const payload = msg.payload as unknown as { message: ChatMessageType };
@@ -243,20 +261,80 @@
 		const conv = $conversations.find((c) => c.conversation_id === convId);
 		return conv?.title ?? 'Chat';
 	}
+
+	function startRename() {
+		const convId = get(activeConversationId);
+		if (!convId) return;
+		renameValue = conversationTitle();
+		renaming = true;
+	}
+
+	// Focus + select once the input is mounted
+	$effect(() => {
+		if (renaming && renameInputEl) {
+			renameInputEl.focus();
+			renameInputEl.select();
+		}
+	});
+
+	async function commitRename() {
+		if (!renaming) return;
+		const convId = get(activeConversationId);
+		renaming = false;
+		if (!convId) return;
+
+		const trimmed = renameValue.trim().slice(0, 100);
+		if (!trimmed) return;
+
+		let prior = '';
+		conversations.update((list) => {
+			const found = list.find((c) => c.conversation_id === convId);
+			prior = found?.title ?? '';
+			return list.map((c) =>
+				c.conversation_id === convId ? { ...c, title: trimmed } : c
+			);
+		});
+		if (prior === trimmed) return;
+
+		try {
+			await engineApi.renameConversation(convId, trimmed);
+		} catch {
+			conversations.update((list) =>
+				list.map((c) => (c.conversation_id === convId ? { ...c, title: prior } : c))
+			);
+		}
+	}
+
+	function cancelRename() {
+		renaming = false;
+	}
+
+	function handleRenameKey(e: KeyboardEvent) {
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			commitRename();
+		} else if (e.key === 'Escape') {
+			e.preventDefault();
+			cancelRename();
+		}
+	}
 </script>
 
 {#if $chatOpen}
 	<aside
-		class="fixed bottom-0 right-0 z-40 flex w-[460px] flex-col border-l border-surface-700 bg-surface-900"
+		class="fixed bottom-0 right-0 z-40 flex w-[460px] flex-col"
 		style="top: var(--header-h, 45px);"
 		transition:fly={{ x: 460, duration: 250, opacity: 1 }}
 	>
+	<!-- Inner container: top margin aligns with main content padding (p-4 = 1rem) so the panel
+	     starts at the same height as the feed toolbar / page header controls -->
+	<div class="flex flex-1 flex-col overflow-hidden mt-4 mr-4 rounded-xl border border-surface-700 bg-surface-900">
 		{#if showList}
 			<ChatConversationList />
 		{:else}
 			<!-- Active Chat Header -->
 			<div class="flex items-center justify-between border-b border-surface-700 px-4 py-3">
-				<div class="flex items-center gap-2 min-w-0">
+				<div class="group flex items-center gap-2 min-w-0">
 					<button
 						onclick={goBackToList}
 						aria-label="Back to conversations"
@@ -266,7 +344,37 @@
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
 						</svg>
 					</button>
-					<h3 class="truncate text-sm font-semibold">{conversationTitle()}</h3>
+					{#if renaming}
+						<input
+							bind:this={renameInputEl}
+							bind:value={renameValue}
+							onkeydown={handleRenameKey}
+							onblur={commitRename}
+							maxlength={100}
+							aria-label="Rename conversation"
+							class="min-w-0 flex-1 rounded border border-laya-orange/40 bg-surface-800 px-1.5 py-0.5 text-sm font-semibold text-surface-100 focus:border-laya-orange focus:outline-none"
+						/>
+					{:else}
+						<button
+							type="button"
+							onclick={startRename}
+							disabled={!$activeConversationId}
+							class="flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors enabled:hover:bg-surface-800 disabled:cursor-default"
+							title={$activeConversationId ? 'Rename conversation' : ''}
+						>
+							<h3 class="truncate text-sm font-semibold">{conversationTitle()}</h3>
+							{#if $activeConversationId}
+								<svg
+									class="h-3 w-3 shrink-0 text-surface-500 opacity-0 transition-opacity group-hover:opacity-100"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+								>
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+								</svg>
+							{/if}
+						</button>
+					{/if}
 				</div>
 				<button
 					onclick={() => chatOpen.set(false)}
@@ -341,5 +449,6 @@
 				</div>
 			</div>
 		{/if}
+	</div>
 	</aside>
 {/if}
