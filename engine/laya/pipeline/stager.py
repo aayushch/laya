@@ -110,10 +110,31 @@ async def _query_related_context(event: LayaEvent) -> list[dict]:
         return []
 
 
+_CROSS_PLATFORM_ALLOWED: dict[tuple[str, str], bool] = {
+    # (event_platform, target_platform) combinations accepted as legitimate.
+    # Same-platform pairs are always allowed; this map covers exceptions only.
+    ("gmail", "outlook"): True,
+    ("outlook", "gmail"): True,
+}
+
+
+def _is_platform_compatible(event_platform: str, target_platform: str) -> bool:
+    """Suggested actions should target the event's own platform. A tiny
+    allowlist permits mail-to-mail forwarding; everything else is rejected
+    so the LLM cannot suggest unrelated platforms (e.g. google_calendar on
+    an outlook payment confirmation)."""
+    if not target_platform:
+        return False
+    if event_platform == target_platform:
+        return True
+    return _CROSS_PLATFORM_ALLOWED.get((event_platform, target_platform), False)
+
+
 def _parse_stager_response(data: dict, event: LayaEvent) -> ActionCardData:
     """Parse the LLM response dict into ActionCardData."""
-    # Parse suggested_actions — payload may be a JSON string from strict schema
+    event_platform = event.source.platform
     actions = []
+    dropped: list[dict] = []
     for act in data.get("suggested_actions", []):
         payload = act.get("payload", {})
         if isinstance(payload, str):
@@ -122,14 +143,31 @@ def _parse_stager_response(data: dict, event: LayaEvent) -> ActionCardData:
             except json.JSONDecodeError:
                 payload = {"raw": payload}
 
+        target_platform = act.get("target_platform", "")
+        if not _is_platform_compatible(event_platform, target_platform):
+            dropped.append({
+                "action_id": act.get("action_id"),
+                "target_platform": target_platform,
+                "action_type": act.get("action_type"),
+            })
+            continue
+
         actions.append(
             SuggestedAction(
                 action_id=act["action_id"],
                 label=act["label"],
                 action_type=act["action_type"],
-                target_platform=act["target_platform"],
+                target_platform=target_platform,
                 payload=payload,
             )
+        )
+
+    if dropped:
+        log.info(
+            "stager_dropped_cross_platform_actions",
+            event_id=event.event_id,
+            event_platform=event_platform,
+            dropped=dropped,
         )
 
     staged = data.get("staged_output", {})

@@ -547,6 +547,17 @@ _PLATFORM_NODE_TYPES: dict[str, list[str]] = {
     ],
 }
 
+# Some executor workflows use generic HTTP Request nodes with
+# nodeCredentialType=<platform>OAuth2Api (e.g. Gmail's archive/star/mark_read
+# hit the Graph-style REST endpoint). Those nodes also need the OAuth
+# credential bound, matched by nodeCredentialType rather than node type.
+_PLATFORM_HTTP_CRED_TYPES: dict[str, str] = {
+    "gmail": "gmailOAuth2Api",
+    "calendar": "googleCalendarOAuth2Api",
+    "outlook": "microsoftOutlookOAuth2Api",
+    "outlook_calendar": "microsoftOutlookOAuth2Api",
+}
+
 
 async def _setup_n8n_workflows(
     platform: str, n8n_cred_type: str, n8n_cred_id: str
@@ -604,18 +615,34 @@ async def _setup_n8n_workflows(
             connections = full_wf.get("connections", {})
             modified = False
 
+            http_cred_type = _PLATFORM_HTTP_CRED_TYPES.get(platform)
             for node in nodes:
                 node_type = node.get("type", "")
-                if node_type not in target_node_types:
+                is_target_native = node_type in target_node_types
+                is_target_http = (
+                    http_cred_type is not None
+                    and node_type == "n8n-nodes-base.httpRequest"
+                    and node.get("parameters", {}).get("nodeCredentialType") == http_cred_type
+                )
+                if not (is_target_native or is_target_http):
                     continue
 
-                # Assign the credential to this node
+                # Assign the credential to this node. For HTTP Request nodes the
+                # credential must be bound under the nodeCredentialType key so
+                # n8n resolves it at runtime.
                 if "credentials" not in node:
                     node["credentials"] = {}
-                node["credentials"][n8n_cred_type] = {
+                cred_key = http_cred_type if is_target_http else n8n_cred_type
+                node["credentials"][cred_key] = {
                     "id": n8n_cred_id,
                     "name": f"Laya - {platform.title()} (OAuth)",
                 }
+
+                # Skip parameter templating/migration for generic HTTP nodes —
+                # they own their own params.
+                if is_target_http:
+                    modified = True
+                    continue
 
                 # Fill in skeleton node parameters if missing
                 params = node.get("parameters", {})

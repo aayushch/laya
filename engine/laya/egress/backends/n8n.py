@@ -279,6 +279,22 @@ class N8nBackend(EgressBackend):
             # Event ID format is "evt_outlook_<raw_outlook_id>"
             if request.source_event_id.startswith("evt_outlook_"):
                 payload["outlook_id"] = request.source_event_id[len("evt_outlook_"):]
+            # LLMs often use the generic "message_id" key — accept it as outlook_id
+            elif payload.get("message_id"):
+                payload["outlook_id"] = payload["message_id"]
+
+        # For Gmail archive/star/unstar/mark_read, enrich gmail_id the same way.
+        # The executor workflow's HTTP Request nodes target gmail_id in the URL,
+        # but LLMs often emit "message_id" or nothing at all.
+        if (
+            request.platform == "gmail"
+            and request.action_type in ("archive", "star", "unstar", "mark_read")
+            and not payload.get("gmail_id")
+        ):
+            if payload.get("message_id"):
+                payload["gmail_id"] = payload["message_id"]
+            elif request.source_event_id and request.source_event_id.startswith("evt_gmail_"):
+                payload["gmail_id"] = request.source_event_id[len("evt_gmail_"):]
 
         return {
             "action_id": f"egr_{request.source_card_id or 'direct'}",
