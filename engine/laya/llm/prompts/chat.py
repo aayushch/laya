@@ -5,6 +5,28 @@ from __future__ import annotations
 from laya.llm.prompts import current_timestamp_line
 
 
+TITLE_GENERATION_SYSTEM_PROMPT = """\
+You generate concise titles for chat conversations. Given the user's first \
+message, produce a short title (2-6 words, max 50 characters) that captures \
+the topic.
+
+Rules:
+- Return ONLY the title text — no quotes, no punctuation at the end, no prefix like "Title:"
+- Use Title Case
+- Be specific: prefer "Debugging Jira Webhook" over "Help With Issue"
+- Never exceed 50 characters
+- If the message is ambiguous or a greeting, return "New Chat\""""
+
+
+def build_title_generation_messages(user_message: str) -> list[dict[str, str]]:
+    """Build messages for the router LLM to generate a short conversation title."""
+    truncated = user_message.strip()[:500]
+    return [
+        {"role": "system", "content": TITLE_GENERATION_SYSTEM_PROMPT},
+        {"role": "user", "content": truncated},
+    ]
+
+
 CHAT_SYSTEM_PROMPT = """\
 You are Laya, a professional AI assistant that helps users understand and manage \
 their work events, action cards, and team context.

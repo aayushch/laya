@@ -1,11 +1,17 @@
 <script lang="ts">
 	import { theme, type Theme } from '$lib/stores/theme';
 	import { cardColors } from '$lib/stores/cardColors';
+	import { accessibleColors } from '$lib/stores/accessibleColors';
 	import { fontScale, type FontScale } from '$lib/stores/fontScale';
 
 	const fontSteps: FontScale[] = [12, 13, 14, 15];
 	const fontLabels: Record<FontScale, string> = { 12: 'Compact', 13: 'Default', 14: 'Relaxed', 15: 'Large' };
 	let stepIndex = $derived(fontSteps.indexOf($fontScale));
+
+	// Mockup color hues — shift when accessible mode is on
+	const hDone = $derived($accessibleColors ? 195 : 162);    // emerald → teal
+	const hApproval = $derived($accessibleColors ? 240 : 285); // violet → blue
+	const hFailed = $derived($accessibleColors ? 40 : 25);     // rose → warm vermillion
 </script>
 
 <div class="space-y-8">
@@ -34,11 +40,11 @@
 					<div class="flex gap-1.5 p-2">
 						<div class="flex flex-1 flex-col gap-1">
 							<div class="h-10 rounded-md" style="border:1px solid {$cardColors ? 'oklch(0.51 0.077 68 / 30%)' : 'oklch(0.34 0.009 52)'}; background:{$cardColors ? 'oklch(0.21 0.039 68 / 55%)' : 'oklch(0.265 0.008 50)'}"></div>
-							<div class="h-10 rounded-md" style="border:1px solid {$cardColors ? 'oklch(0.51 0.14 160 / 20%)' : 'oklch(0.34 0.009 52)'}; background:{$cardColors ? 'oklch(0.21 0.04 162 / 50%)' : 'oklch(0.265 0.008 50)'}"></div>
+							<div class="h-10 rounded-md" style="border:1px solid {$cardColors ? `oklch(0.51 0.14 ${hDone} / 20%)` : 'oklch(0.34 0.009 52)'}; background:{$cardColors ? `oklch(0.21 0.04 ${hDone} / 50%)` : 'oklch(0.265 0.008 50)'}"></div>
 						</div>
 						<div class="flex flex-1 flex-col gap-1">
-							<div class="h-14 rounded-md" style="border:1px solid {$cardColors ? 'oklch(0.51 0.1 285 / 25%)' : 'oklch(0.34 0.009 52)'}; background:{$cardColors ? 'oklch(0.21 0.06 285 / 55%)' : 'oklch(0.265 0.008 50)'}"></div>
-							<div class="h-6 rounded-md" style="border:1px solid {$cardColors ? 'oklch(0.51 0.1 25 / 35%)' : 'oklch(0.34 0.009 52)'}; background:{$cardColors ? 'oklch(0.21 0.05 25 / 60%)' : 'oklch(0.265 0.008 50)'}"></div>
+							<div class="h-14 rounded-md" style="border:1px solid {$cardColors ? `oklch(0.51 0.1 ${hApproval} / 25%)` : 'oklch(0.34 0.009 52)'}; background:{$cardColors ? `oklch(0.21 0.06 ${hApproval} / 55%)` : 'oklch(0.265 0.008 50)'}"></div>
+							<div class="h-6 rounded-md" style="border:1px solid {$cardColors ? `oklch(0.51 0.1 ${hFailed} / 35%)` : 'oklch(0.34 0.009 52)'}; background:{$cardColors ? `oklch(0.21 0.05 ${hFailed} / 60%)` : 'oklch(0.265 0.008 50)'}"></div>
 						</div>
 					</div>
 				</div>
@@ -68,11 +74,11 @@
 					<div class="flex gap-1.5 p-2">
 						<div class="flex flex-1 flex-col gap-1">
 							<div class="h-10 rounded-md" style="border:1px solid {$cardColors ? 'oklch(0.80 0.07 70 / 55%)' : 'oklch(0.88 0.006 70)'}; background:{$cardColors ? 'oklch(0.94 0.045 75)' : 'oklch(0.935 0.006 72)'}"></div>
-							<div class="h-10 rounded-md" style="border:1px solid {$cardColors ? 'oklch(0.82 0.04 162 / 30%)' : 'oklch(0.88 0.006 70)'}; background:{$cardColors ? 'oklch(0.97 0.015 162)' : 'oklch(0.935 0.006 72)'}"></div>
+							<div class="h-10 rounded-md" style="border:1px solid {$cardColors ? `oklch(0.82 0.04 ${hDone} / 30%)` : 'oklch(0.88 0.006 70)'}; background:{$cardColors ? `oklch(0.97 0.015 ${hDone})` : 'oklch(0.935 0.006 72)'}"></div>
 						</div>
 						<div class="flex flex-1 flex-col gap-1">
-							<div class="h-14 rounded-md" style="border:1px solid {$cardColors ? 'oklch(0.74 0.07 285 / 45%)' : 'oklch(0.88 0.006 70)'}; background:{$cardColors ? 'oklch(0.94 0.04 285)' : 'oklch(0.935 0.006 72)'}"></div>
-							<div class="h-6 rounded-md" style="border:1px solid {$cardColors ? 'oklch(0.74 0.08 25 / 55%)' : 'oklch(0.88 0.006 70)'}; background:{$cardColors ? 'oklch(0.94 0.045 25)' : 'oklch(0.935 0.006 72)'}"></div>
+							<div class="h-14 rounded-md" style="border:1px solid {$cardColors ? `oklch(0.74 0.07 ${hApproval} / 45%)` : 'oklch(0.88 0.006 70)'}; background:{$cardColors ? `oklch(0.94 0.04 ${hApproval})` : 'oklch(0.935 0.006 72)'}"></div>
+							<div class="h-6 rounded-md" style="border:1px solid {$cardColors ? `oklch(0.74 0.08 ${hFailed} / 55%)` : 'oklch(0.88 0.006 70)'}; background:{$cardColors ? `oklch(0.94 0.045 ${hFailed})` : 'oklch(0.935 0.006 72)'}"></div>
 						</div>
 					</div>
 				</div>
@@ -105,6 +111,49 @@
 				></span>
 			</button>
 		</div>
+	</div>
+
+	<!-- Accessible colors toggle -->
+	<div class="rounded-xl border border-surface-700 bg-surface-800 p-6">
+		<div class="flex items-center justify-between">
+			<div>
+				<h3 class="mb-1 font-semibold text-surface-50">Accessible Colors</h3>
+				<p class="text-sm text-surface-400">Colorblind-friendly palette. Shifts status colors for better contrast across all vision types.</p>
+			</div>
+			<button
+				class="relative h-6 w-11 shrink-0 rounded-full transition-colors {$accessibleColors ? 'bg-laya-orange' : 'bg-surface-600'}"
+				onclick={() => accessibleColors.set(!$accessibleColors)}
+				role="switch"
+				aria-checked={$accessibleColors}
+				aria-label="Toggle accessible colors"
+			>
+				<span
+					class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform {$accessibleColors ? 'translate-x-5' : 'translate-x-0'}"
+				></span>
+			</button>
+		</div>
+
+		<!-- Color legend showing the accessible palette -->
+		{#if $accessibleColors}
+			<div class="mt-4 flex flex-wrap gap-3 text-[11px] text-surface-400">
+				<div class="flex items-center gap-1.5">
+					<span class="h-2.5 w-2.5 rounded-full" style="background: oklch(0.75 0.17 65)"></span>
+					Pending
+				</div>
+				<div class="flex items-center gap-1.5">
+					<span class="h-2.5 w-2.5 rounded-full" style="background: oklch(0.68 0.16 240)"></span>
+					Approval
+				</div>
+				<div class="flex items-center gap-1.5">
+					<span class="h-2.5 w-2.5 rounded-full" style="background: oklch(0.72 0.12 195)"></span>
+					Done
+				</div>
+				<div class="flex items-center gap-1.5">
+					<span class="h-2.5 w-2.5 rounded-full" style="background: oklch(0.62 0.18 40)"></span>
+					Failed
+				</div>
+			</div>
+		{/if}
 	</div>
 
 	<!-- Font scale -->

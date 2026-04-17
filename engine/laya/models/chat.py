@@ -20,6 +20,10 @@ class ChatRequest(BaseModel):
     space_id: str | None = None
     conversation_id: str | None = None
     card_context: str | None = None  # Optional card context injected into system prompt (used by Omni card view)
+    # When the chat is anchored to a specific set of cards (Omni → View Cards),
+    # the client passes the card IDs so the conversation can be tagged and
+    # re-opened when the user returns to the same view.
+    card_ids: list[str] | None = None
 
 
 class ChatResponse(BaseModel):

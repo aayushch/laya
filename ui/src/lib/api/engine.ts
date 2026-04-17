@@ -333,13 +333,14 @@ export const engineApi = {
 		const qs = params.toString();
 		return request<ChatMessage[]>(`/chat/history${qs ? '?' + qs : ''}`);
 	},
-	sendChat: (message: string, conversationId?: string, cardContext?: string) =>
+	sendChat: (message: string, conversationId?: string, cardContext?: string, cardIds?: string[]) =>
 		request<ChatResponse>('/chat', {
 			method: 'POST',
 			body: JSON.stringify({
 				message,
 				conversation_id: conversationId ?? null,
-				...(cardContext ? { card_context: cardContext } : {})
+				...(cardContext ? { card_context: cardContext } : {}),
+				...(cardIds && cardIds.length > 0 ? { card_ids: cardIds } : {})
 			})
 		}),
 
@@ -356,6 +357,12 @@ export const engineApi = {
 	getConversationMessages: (conversationId: string, limit?: number) => {
 		const qs = limit ? `?limit=${limit}` : '';
 		return request<ChatMessage[]>(`/chat/conversations/${conversationId}/messages${qs}`);
+	},
+	getConversationByCards: (cardIds: string[]) => {
+		if (!cardIds || cardIds.length === 0) return Promise.resolve(null);
+		const params = new URLSearchParams();
+		for (const id of cardIds) params.append('card_ids', id);
+		return request<Conversation | null>(`/chat/conversations/by-cards?${params.toString()}`);
 	},
 	deleteConversation: (conversationId: string) =>
 		request<{ status: string; conversation_id: string }>(`/chat/conversations/${conversationId}`, {

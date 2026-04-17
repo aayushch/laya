@@ -11,6 +11,9 @@
 
 	let loading = $state(true);
 	let deletingId = $state<string | null>(null);
+	let editingId = $state<string | null>(null);
+	let editTitle = $state('');
+	let editInputEl = $state<HTMLInputElement | undefined>();
 
 	async function loadConversations() {
 		loading = true;
@@ -28,7 +31,17 @@
 		loadConversations();
 	});
 
+	// Focus + select the rename input when edit mode opens
+	$effect(() => {
+		if (editingId && editInputEl) {
+			editInputEl.focus();
+			editInputEl.select();
+		}
+	});
+
 	async function openConversation(conv: Conversation) {
+		// Don't navigate away while the user is renaming this row
+		if (editingId === conv.conversation_id) return;
 		activeConversationId.set(conv.conversation_id);
 		chatListOpen.set(false);
 		// Load messages for this conversation
@@ -37,6 +50,52 @@
 			chatMessages.set(msgs.reverse());
 		} catch {
 			chatMessages.set([]);
+		}
+	}
+
+	function startEdit(e: Event, conv: Conversation) {
+		e.stopPropagation();
+		editingId = conv.conversation_id;
+		editTitle = conv.title;
+	}
+
+	async function commitEdit(convId: string) {
+		const trimmed = editTitle.trim().slice(0, 100);
+		if (editingId !== convId) return;
+		editingId = null;
+		if (!trimmed) return;
+
+		// Grab the prior title so we can revert if the API call fails
+		let prior = '';
+		conversations.update((list) => {
+			const found = list.find((c) => c.conversation_id === convId);
+			prior = found?.title ?? '';
+			return list.map((c) =>
+				c.conversation_id === convId ? { ...c, title: trimmed } : c
+			);
+		});
+		if (prior === trimmed) return;
+
+		try {
+			await engineApi.renameConversation(convId, trimmed);
+		} catch {
+			conversations.update((list) =>
+				list.map((c) => (c.conversation_id === convId ? { ...c, title: prior } : c))
+			);
+		}
+	}
+
+	function cancelEdit() {
+		editingId = null;
+	}
+
+	function handleEditKey(e: KeyboardEvent, convId: string) {
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			commitEdit(convId);
+		} else if (e.key === 'Escape') {
+			e.preventDefault();
+			cancelEdit();
 		}
 	}
 
@@ -150,33 +209,62 @@
 					>
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center justify-between gap-2">
-								<span class="truncate text-sm font-medium text-surface-200">{conv.title}</span>
-								<span class="shrink-0 text-[10px] text-surface-500">{relativeTime(conv.updated_at)}</span>
+								{#if editingId === conv.conversation_id}
+									<input
+										bind:this={editInputEl}
+										bind:value={editTitle}
+										onclick={(e) => e.stopPropagation()}
+										onkeydown={(e) => handleEditKey(e, conv.conversation_id)}
+										onblur={() => commitEdit(conv.conversation_id)}
+										maxlength={100}
+										aria-label="Rename conversation"
+										class="min-w-0 flex-1 rounded border border-laya-orange/40 bg-surface-800 px-1.5 py-0.5 text-sm font-medium text-surface-100 focus:border-laya-orange focus:outline-none"
+									/>
+								{:else}
+									<span class="truncate text-sm font-medium text-surface-200">{conv.title}</span>
+									<span class="shrink-0 text-[10px] text-surface-500">{relativeTime(conv.updated_at)}</span>
+								{/if}
 							</div>
 							{#if conv.preview}
 								<p class="mt-0.5 truncate text-xs text-surface-500">{conv.preview}</p>
 							{/if}
 							<span class="mt-0.5 text-[10px] text-surface-600">{conv.message_count} message{conv.message_count === 1 ? '' : 's'}</span>
 						</div>
-						<!-- Delete -->
-						<div class="group/del relative shrink-0">
-							<button
-								onclick={(e) => deleteConversation(e, conv.conversation_id)}
-								class="rounded p-1 text-surface-600 opacity-0 transition-all hover:text-red-400 group-hover:opacity-100
-									{deletingId === conv.conversation_id ? '!opacity-100 !text-red-400' : ''}"
-								aria-label={deletingId === conv.conversation_id ? 'Click again to confirm delete' : 'Double-click to delete'}
-							>
-								<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-								</svg>
-							</button>
-							<span class="pointer-events-none absolute right-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border px-2 py-1 text-[10px] font-medium shadow-lg
-								opacity-0 transition-opacity duration-75 group-hover/del:opacity-100
-								{deletingId === conv.conversation_id
-									? 'border-red-400/30 bg-red-950 text-red-300'
-									: 'border-surface-600 bg-surface-800 text-surface-400'}">
-								{deletingId === conv.conversation_id ? 'Click again to confirm' : 'Double-click to delete'}
-							</span>
+						<!-- Actions -->
+						<div class="flex shrink-0 items-start gap-0.5">
+							{#if editingId !== conv.conversation_id}
+								<!-- Rename -->
+								<button
+									onclick={(e) => startEdit(e, conv)}
+									class="rounded p-1 text-surface-600 opacity-0 transition-all hover:text-laya-orange group-hover:opacity-100"
+									aria-label="Rename conversation"
+									title="Rename"
+								>
+									<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+									</svg>
+								</button>
+							{/if}
+							<!-- Delete -->
+							<div class="group/del relative">
+								<button
+									onclick={(e) => deleteConversation(e, conv.conversation_id)}
+									class="rounded p-1 text-surface-600 opacity-0 transition-all hover:text-red-400 group-hover:opacity-100
+										{deletingId === conv.conversation_id ? '!opacity-100 !text-red-400' : ''}"
+									aria-label={deletingId === conv.conversation_id ? 'Click again to confirm delete' : 'Double-click to delete'}
+								>
+									<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+									</svg>
+								</button>
+								<span class="pointer-events-none absolute right-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border px-2 py-1 text-[10px] font-medium shadow-lg
+									opacity-0 transition-opacity duration-75 group-hover/del:opacity-100
+									{deletingId === conv.conversation_id
+										? 'border-red-400/30 bg-red-950 text-red-300'
+										: 'border-surface-600 bg-surface-800 text-surface-400'}">
+									{deletingId === conv.conversation_id ? 'Click again to confirm' : 'Double-click to delete'}
+								</span>
+							</div>
 						</div>
 					</div>
 				{/each}

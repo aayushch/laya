@@ -185,3 +185,65 @@ class TestChatAPI:
                     resp = await client.post("/chat", json={"message": "NPE PaymentService"})
 
         assert resp.status_code == 200
+
+    async def test_chat_persists_card_ids(self, db):
+        """Sending a chat with card_ids tags the new conversation with the canonical set."""
+        with patch("laya.pipeline.chat.llm_call", new_callable=AsyncMock,
+                   return_value=_mock_llm_response("Response.")):
+            with patch("laya.pipeline.chat.memory_search", new_callable=AsyncMock, return_value=[]):
+                with patch("laya.pipeline.chat._should_generate_title", new_callable=AsyncMock, return_value=False):
+                    from laya.main import app
+                    transport = ASGITransport(app=app)
+                    async with AsyncClient(transport=transport, base_url="http://test") as client:
+                        resp = await client.post(
+                            "/chat",
+                            json={"message": "Anchor me", "card_ids": ["card_b", "card_a"]},
+                        )
+
+        assert resp.status_code == 200
+        conv_id = resp.json()["message"]["conversation_id"]
+        rows = await db.execute_fetchall(
+            "SELECT card_ids FROM chat_conversations WHERE conversation_id = ?",
+            (conv_id,),
+        )
+        # Canonical form is sorted JSON
+        assert rows[0]["card_ids"] == '["card_a","card_b"]'
+
+    async def test_by_cards_lookup_returns_latest_conversation(self, db):
+        """GET /chat/conversations/by-cards returns the conversation anchored to the cards."""
+        with patch("laya.pipeline.chat.llm_call", new_callable=AsyncMock,
+                   return_value=_mock_llm_response("Response.")):
+            with patch("laya.pipeline.chat.memory_search", new_callable=AsyncMock, return_value=[]):
+                with patch("laya.pipeline.chat._should_generate_title", new_callable=AsyncMock, return_value=False):
+                    from laya.main import app
+                    transport = ASGITransport(app=app)
+                    async with AsyncClient(transport=transport, base_url="http://test") as client:
+                        # First message anchors the conversation to [card_x, card_y]
+                        first = await client.post(
+                            "/chat",
+                            json={"message": "First", "card_ids": ["card_x", "card_y"]},
+                        )
+                        conv_id = first.json()["message"]["conversation_id"]
+
+                        # Lookup with the cards in reversed order should still match
+                        lookup = await client.get(
+                            "/chat/conversations/by-cards",
+                            params=[("card_ids", "card_y"), ("card_ids", "card_x")],
+                        )
+
+        assert lookup.status_code == 200
+        body = lookup.json()
+        assert body is not None
+        assert body["conversation_id"] == conv_id
+
+    async def test_by_cards_lookup_returns_null_when_no_match(self, db):
+        """by-cards lookup returns null when no conversation matches the card set."""
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get(
+                "/chat/conversations/by-cards",
+                params=[("card_ids", "card_missing")],
+            )
+        assert resp.status_code == 200
+        assert resp.json() is None

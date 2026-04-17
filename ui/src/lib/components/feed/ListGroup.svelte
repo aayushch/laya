@@ -423,7 +423,7 @@
 				{#if onbulktoggle}
 					<div class="w-5 shrink-0"></div>
 				{/if}
-				<div class="flex-1 min-w-0 rounded-b-lg border border-t-0 border-surface-600 bg-surface-900 pt-1 pb-0 overflow-hidden">
+				<div class="flex-1 min-w-0 rounded-b-lg border border-t-0 border-surface-600 bg-surface-900 pt-1 pb-0">
 					{#each group.cards as card (card.card_id)}
 						<div class="flex items-center">
 							<!-- Checkbox pulled into the gutter via negative margin -->

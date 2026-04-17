@@ -97,22 +97,83 @@ class TestChatIntegration:
         assert "error" in result.message.content.lower() or "sorry" in result.message.content.lower()
 
     async def test_chat_creates_conversation(self, db):
-        """First chat message auto-creates a conversation."""
+        """First chat message auto-creates a conversation with the placeholder title."""
         mock_resp = _mock_llm_response("Hello there!")
 
+        # Suppress title generation so we can deterministically observe the
+        # placeholder title that the pipeline seeds on creation.
         with patch("laya.pipeline.chat.llm_call", new_callable=AsyncMock, return_value=mock_resp):
             with patch("laya.pipeline.chat.memory_search", new_callable=AsyncMock, return_value=[]):
-                result = await process_chat_message("Hi")
+                with patch("laya.pipeline.chat._should_generate_title", new_callable=AsyncMock, return_value=False):
+                    result = await process_chat_message("Hi")
 
         assert result.message.conversation_id is not None
 
-        # Verify conversation row exists
+        # Verify conversation row exists with the placeholder title
         rows = await db.execute_fetchall(
             "SELECT conversation_id, title FROM chat_conversations WHERE conversation_id = ?",
             (result.message.conversation_id,),
         )
         assert len(rows) == 1
-        assert rows[0]["title"] == "Hi"
+        assert rows[0]["title"] == "New Chat"
+
+    async def test_chat_generates_title_via_router(self, db):
+        """First message kicks off async title generation through the router model."""
+        import asyncio
+        from laya import tasks as tasks_mod
+
+        mock_resp = _mock_llm_response("Debugging Auth Flow")
+
+        with patch("laya.pipeline.chat.llm_call", new_callable=AsyncMock, return_value=mock_resp):
+            with patch("laya.pipeline.chat.memory_search", new_callable=AsyncMock, return_value=[]):
+                result = await process_chat_message("Why is auth failing?")
+
+        # Wait for the background title-generation task to finish before asserting
+        pending = [t for t in list(tasks_mod._tracked) if not t.done()]
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
+        rows = await db.execute_fetchall(
+            "SELECT title FROM chat_conversations WHERE conversation_id = ?",
+            (result.message.conversation_id,),
+        )
+        assert rows[0]["title"] == "Debugging Auth Flow"
+
+    async def test_title_generation_skipped_after_first_message(self, db):
+        """Subsequent messages in the same conversation do not retrigger title generation."""
+        import asyncio
+        from laya import tasks as tasks_mod
+
+        first_resp = _mock_llm_response("First answer")
+        second_resp = _mock_llm_response("Should Not Overwrite")
+
+        with patch("laya.pipeline.chat.llm_call", new_callable=AsyncMock, return_value=first_resp):
+            with patch("laya.pipeline.chat.memory_search", new_callable=AsyncMock, return_value=[]):
+                with patch("laya.pipeline.chat._should_generate_title", new_callable=AsyncMock, return_value=False):
+                    first = await process_chat_message("Initial message")
+
+        # Manually set a user-chosen title to simulate a rename
+        await db.execute(
+            "UPDATE chat_conversations SET title = ? WHERE conversation_id = ?",
+            ("User Chose This", first.message.conversation_id),
+        )
+        await db.commit()
+
+        with patch("laya.pipeline.chat.llm_call", new_callable=AsyncMock, return_value=second_resp):
+            with patch("laya.pipeline.chat.memory_search", new_callable=AsyncMock, return_value=[]):
+                await process_chat_message(
+                    "Follow-up", conversation_id=first.message.conversation_id
+                )
+
+        pending = [t for t in list(tasks_mod._tracked) if not t.done()]
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
+        rows = await db.execute_fetchall(
+            "SELECT title FROM chat_conversations WHERE conversation_id = ?",
+            (first.message.conversation_id,),
+        )
+        assert rows[0]["title"] == "User Chose This"
 
     async def test_chat_with_space_id(self, db):
         """Chat message with space_id is stored correctly."""
