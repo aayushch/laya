@@ -8,12 +8,14 @@
 
 	let {
 		cluster,
+		traceId,
 		onremove,
 		ongenerate,
 		isLast = false,
 		expandAll = null
 	}: {
 		cluster: TraceCluster;
+		traceId: string;
 		onremove?: () => void;
 		ongenerate?: () => void;
 		isLast?: boolean;
@@ -60,8 +62,11 @@
 		return { thinking: null, response: content, isThinking: false };
 	}
 
-	const isStreaming = $derived($traceNarrativeStreamingMap[cluster.cluster_id] ?? false);
-	const streamedNarrative = $derived($traceNarrativeMap[cluster.cluster_id] ?? '');
+	// Narrative map keys are scoped by trace_id (see coherence/+page.svelte) so
+	// in-flight streaming state survives Back/re-select without colliding across traces.
+	const narrativeMapKey = $derived(`${traceId}:${cluster.cluster_id}`);
+	const isStreaming = $derived($traceNarrativeStreamingMap[narrativeMapKey] ?? false);
+	const streamedNarrative = $derived($traceNarrativeMap[narrativeMapKey] ?? '');
 	const narrativeText = $derived(streamedNarrative || cluster.narrative || '');
 	const parsed = $derived(parseNarrative(narrativeText, isStreaming));
 	const hasNarrative = $derived(!!narrativeText || isStreaming);
@@ -178,27 +183,34 @@
 			{cluster.primary_entity.title}
 		</button>
 
-		<!-- Stats (fixed widths for alignment) -->
-		<span class="text-[11px] text-surface-500 shrink-0 tabular-nums ml-2 w-[56px] text-right">
-			{cluster.status_summary.total_cards} cards
-		</span>
-
-		<span class="shrink-0 tabular-nums ml-2 w-[76px] text-right">
-			{#if cluster.status_summary.pending_actions > 0}
-				<span class="text-[11px] text-laya-orange font-medium">
-					{cluster.status_summary.pending_actions} pending
+		<!-- Meta: compact card-count badge + date range. The badge stays visible at all
+		     times (it's persistent metadata). Only the date fades on hover so the action
+		     overlay below can occupy the date's column without hiding the badge.
+		     Fixed-width sub-columns keep badges and date starts aligned across rows. -->
+		<span class="flex items-center gap-2 shrink-0 ml-2">
+			<span class="w-[24px] flex justify-end">
+				<span
+					class="inline-flex items-center justify-center min-w-[22px] h-[16px] px-1.5 rounded-full
+					       bg-surface-700/60 border border-surface-600/50
+					       text-[10px] font-medium text-surface-300 tabular-nums leading-none"
+					aria-label="{cluster.status_summary.total_cards} cards"
+				>
+					{cluster.status_summary.total_cards}
 				</span>
-			{/if}
+			</span>
+			<span
+				class="text-[10px] text-surface-500 whitespace-nowrap tabular-nums w-[160px] text-right
+				       transition-opacity duration-150 group-hover:opacity-0 group-hover:pointer-events-none"
+			>
+				{dateRangeText}
+			</span>
 		</span>
 
-		<!-- Date range (fixed width, right end) -->
-		<span class="text-[10px] text-surface-500 shrink-0 ml-2 w-[100px] text-right">
-			{dateRangeText}
-		</span>
-
-		<!-- Action buttons — absolutely positioned, overlays date on hover -->
-		<span class="absolute right-0 top-0 h-full items-center gap-1 pr-2 pl-1
-		             hidden group-hover:flex z-10 bg-surface-800 rounded-r">
+		<!-- Action buttons — fade into the meta's spot on hover; no hard bg overlay. -->
+		<span class="absolute right-2 top-0 h-full flex items-center gap-1
+		             opacity-0 pointer-events-none
+		             group-hover:opacity-100 group-hover:pointer-events-auto
+		             transition-opacity duration-150 z-10">
 			{#if hasNarrative}
 				<span class="text-[10px] text-laya-orange" role="img" aria-label="Has narrative"
 					onmouseenter={(e) => showTooltip(e, 'Has narrative')}

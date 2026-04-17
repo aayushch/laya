@@ -16,18 +16,95 @@
       }
     },
     {
-      "name": "Validate",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
+      "name": "Route by Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
       "position": [
         400,
         300
       ],
       "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action_type }}",
+                    "rightValue": "archive",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "outputKey": "archive"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action_type }}",
+                    "rightValue": "mark_read",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "outputKey": "mark_read"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action_type }}",
+                    "rightValue": "send_email",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "outputKey": "send"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      }
+    },
+    {
+      "name": "Validate Recipient",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        600,
+        100
+      ],
+      "parameters": {
         "conditions": {
           "options": {
             "caseSensitive": true,
-            "leftValue": "",
             "typeValidation": "strict"
           },
           "conditions": [
@@ -45,12 +122,68 @@
       }
     },
     {
+      "name": "Validate Archive ID",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        600,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.body.payload.outlook_id || $json.body.payload.message_id || '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "name": "Validate Mark Read ID",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        600,
+        500
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.body.payload.outlook_id || $json.body.payload.message_id || '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
       "name": "Send Email",
       "type": "n8n-nodes-base.microsoftOutlook",
       "typeVersion": 2,
       "position": [
-        600,
-        200
+        800,
+        50
       ],
       "parameters": {
         "operation": "send",
@@ -62,12 +195,46 @@
       "onError": "continueErrorOutput"
     },
     {
-      "name": "Respond Success",
+      "name": "Archive Message",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        800,
+        250
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "move",
+        "messageId": "={{ $json.body.payload.outlook_id || $json.body.payload.message_id }}",
+        "folderId": "archive"
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "name": "Mark Read",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        800,
+        450
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "update",
+        "messageId": "={{ $json.body.payload.outlook_id || $json.body.payload.message_id }}",
+        "updateFields": {
+          "isRead": true
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "name": "Respond Send Success",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        850,
-        100
+        1050,
+        0
       ],
       "parameters": {
         "respondWith": "json",
@@ -75,12 +242,12 @@
       }
     },
     {
-      "name": "Respond Error",
+      "name": "Respond Send Error",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        850,
-        300
+        1050,
+        100
       ],
       "parameters": {
         "respondWith": "json",
@@ -88,16 +255,107 @@
       }
     },
     {
-      "name": "Respond Missing Recipient",
+      "name": "Respond Archive Success",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        600,
+        1050,
+        200
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, result: { archived: true } }) }}"
+      }
+    },
+    {
+      "name": "Respond Archive Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'Outlook archive failed \u2014 check credentials and workflow execution log') }) }}"
+      }
+    },
+    {
+      "name": "Respond Mark Read Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1050,
         400
       ],
       "parameters": {
         "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, result: { marked_read: true } }) }}"
+      }
+    },
+    {
+      "name": "Respond Mark Read Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        500
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'Outlook mark_read failed \u2014 check credentials and workflow execution log') }) }}"
+      }
+    },
+    {
+      "name": "Respond Missing Recipient",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        800,
+        150
+      ],
+      "parameters": {
+        "respondWith": "json",
         "responseBody": "={{ JSON.stringify({ success: false, error: 'No recipient email \u2014 payload.to is missing and event_actor_email is empty. Check Outlook ingestion workflow is capturing actor.email.' }) }}"
+      }
+    },
+    {
+      "name": "Respond Missing Archive ID",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        800,
+        350
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: 'No outlook_id \u2014 payload.outlook_id is missing. Check Outlook ingestion workflow captures message id and event_id is formatted as evt_outlook_<id>.' }) }}"
+      }
+    },
+    {
+      "name": "Respond Missing Mark Read ID",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        800,
+        550
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: 'No outlook_id \u2014 payload.outlook_id is missing.' }) }}"
+      }
+    },
+    {
+      "name": "Respond Unsupported Action",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        600,
+        700
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: 'Unsupported Outlook action: ' + ($json.body.action_type || 'unknown') }) }}"
       }
     }
   ],
@@ -106,14 +364,46 @@
       "main": [
         [
           {
-            "node": "Validate",
+            "node": "Route by Action",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Validate": {
+    "Route by Action": {
+      "main": [
+        [
+          {
+            "node": "Validate Archive ID",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validate Mark Read ID",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validate Recipient",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Unsupported Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Recipient": {
       "main": [
         [
           {
@@ -131,18 +421,90 @@
         ]
       ]
     },
-    "Send Email": {
+    "Validate Archive ID": {
       "main": [
         [
           {
-            "node": "Respond Success",
+            "node": "Archive Message",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Respond Error",
+            "node": "Respond Missing Archive ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Mark Read ID": {
+      "main": [
+        [
+          {
+            "node": "Mark Read",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Missing Mark Read ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email": {
+      "main": [
+        [
+          {
+            "node": "Respond Send Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Send Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Archive Message": {
+      "main": [
+        [
+          {
+            "node": "Respond Archive Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Archive Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Read": {
+      "main": [
+        [
+          {
+            "node": "Respond Mark Read Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Mark Read Error",
             "type": "main",
             "index": 0
           }
@@ -155,6 +517,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.03.1"
+    "laya_version": "2026.04.4"
   }
 }

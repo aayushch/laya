@@ -18,15 +18,34 @@
 	import type { TraceResponse } from '$lib/api/types';
 
 	// Use the persistent store so loading state survives navigation away and back.
+	// `loading` reflects an in-flight coherence search specifically — NOT a quick
+	// DB read in handleSelectTrace, which uses its own local flag. Keeping this
+	// distinct ensures the in-flight card in Recent Searches survives while the
+	// user pokes around other traces.
 	const loading = $derived($traceLoading);
 	let cancelling = $state(false);
 	let error = $state<string | null>(null);
 	let trace = $state<TraceResponse | null>(get(currentTrace));
 	let exporting = $state(false);
+	let selectingTrace = $state(false);
 	let removedClusterIds = $state<Set<string>>(new Set());
 	let _activeTraceId = $state<string | null>(null);
 	let expandAllClusters = $state<boolean | null>(null);
 	let clustersExpanded = $state(false);
+	// When true the user clicked Back during an in-flight search: the search keeps
+	// running in the background but we render the Recent Searches view (with an
+	// in-flight card) instead of the progress bar.
+	let showHistoryDuringSearch = $state(false);
+
+	// Laya-style hover tooltip (mirrors the pattern used in TraceHeader/TraceHistory)
+	// instead of relying on the browser's native `title` attribute, which doesn't
+	// match the app's visual language.
+	let tooltip = $state<{ text: string; x: number; y: number } | null>(null);
+	function showTooltip(e: MouseEvent, text: string) {
+		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		tooltip = { text, x: rect.left + rect.width / 2, y: rect.top - 6 };
+	}
+	function hideTooltip() { tooltip = null; }
 
 	// Reset expand/collapse state when switching to a different query
 	let prevTraceId = $state<string | null>(null);
@@ -108,24 +127,28 @@
 		visibleClusters.reduce((sum, c) => sum + c.status_summary.total_cards, 0)
 	);
 
+	// Narrative map keys are scoped by trace_id so in-flight streaming state
+	// survives navigation (Back then re-select) and can't collide across traces.
+	function narrativeKey(traceId: string, clusterId: string): string {
+		return `${traceId}:${clusterId}`;
+	}
+
 	// Load trace history on mount; restore narratives from persisted trace
 	$effect(() => {
 		loadHistory();
 		const restored = get(currentTrace);
 		if (restored) {
 			trace = restored;
-			const currentMap = get(traceNarrativeMap);
-			const needsRestore = Object.keys(currentMap).length === 0;
-			if (needsRestore) {
-				const narratives: Record<string, string> = {};
+			traceNarrativeMap.update((current) => {
+				const merged = { ...current };
 				for (const c of restored.clusters) {
-					if (c.narrative) narratives[c.cluster_id] = c.narrative;
+					const key = narrativeKey(restored.trace_id, c.cluster_id);
+					if (c.narrative && !merged[key]) merged[key] = c.narrative;
 				}
-				if (restored.summary) narratives[SUMMARY_ID] = restored.summary;
-				if (Object.keys(narratives).length > 0) {
-					traceNarrativeMap.set(narratives);
-				}
-			}
+				const sk = narrativeKey(restored.trace_id, SUMMARY_ID);
+				if (restored.summary && !merged[sk]) merged[sk] = restored.summary;
+				return merged;
+			});
 		}
 	});
 
@@ -158,45 +181,48 @@
 		if (msg.type === 'trace_narrative_start') {
 			_lastProcessedMsg = msg;
 			const raw = msg as unknown as Record<string, unknown>;
-			if (raw.trace_id === trace?.trace_id) {
-				const cid = raw.cluster_id as string;
-				traceNarrativeStreamingMap.update((m) => ({ ...m, [cid]: true }));
-				traceNarrativeMap.update((m) => ({ ...m, [cid]: '' }));
-			}
+			const tid = raw.trace_id as string;
+			const cid = raw.cluster_id as string;
+			// Always update the map — keys are scoped by trace_id, so messages arriving
+			// while the user has navigated to the history view (trace === null) still
+			// land in the right bucket and are visible when they return.
+			const key = narrativeKey(tid, cid);
+			traceNarrativeStreamingMap.update((m) => ({ ...m, [key]: true }));
+			traceNarrativeMap.update((m) => ({ ...m, [key]: '' }));
 			return;
 		}
 
 		if (msg.type === 'trace_narrative_chunk') {
 			_lastProcessedMsg = msg;
 			const raw = msg as unknown as Record<string, unknown>;
-			if (raw.trace_id === trace?.trace_id) {
-				const cid = raw.cluster_id as string;
-				const content = raw.content as string || '';
-				traceNarrativeMap.update((m) => ({ ...m, [cid]: (m[cid] || '') + content }));
-			}
+			const tid = raw.trace_id as string;
+			const cid = raw.cluster_id as string;
+			const content = raw.content as string || '';
+			const key = narrativeKey(tid, cid);
+			traceNarrativeMap.update((m) => ({ ...m, [key]: (m[key] || '') + content }));
 			return;
 		}
 
 		if (msg.type === 'trace_narrative_done') {
 			_lastProcessedMsg = msg;
 			const raw = msg as unknown as Record<string, unknown>;
-			if (raw.trace_id === trace?.trace_id) {
-				const cid = raw.cluster_id as string;
-				const narrative = raw.narrative as string || '';
-				traceNarrativeStreamingMap.update((m) => ({ ...m, [cid]: false }));
-				traceNarrativeMap.update((m) => ({ ...m, [cid]: narrative }));
-				if (trace) {
-					if (cid === SUMMARY_ID) {
-						// Persist summary into the trace object so currentTrace
-						// store survives navigation away and back.
-						trace = { ...trace, summary: narrative };
-						currentTrace.set(trace);
-					} else {
-						const cluster = trace.clusters.find((c) => c.cluster_id === cid);
-						if (cluster) {
-							cluster.narrative = narrative;
-							trace = trace;
-						}
+			const tid = raw.trace_id as string;
+			const cid = raw.cluster_id as string;
+			const narrative = raw.narrative as string || '';
+			const key = narrativeKey(tid, cid);
+			traceNarrativeStreamingMap.update((m) => ({ ...m, [key]: false }));
+			traceNarrativeMap.update((m) => ({ ...m, [key]: narrative }));
+			// Persist into the currentTrace only if the message is for the currently
+			// loaded trace — otherwise the backend's DB write already covers it on next load.
+			if (trace && trace.trace_id === tid) {
+				if (cid === SUMMARY_ID) {
+					trace = { ...trace, summary: narrative };
+					currentTrace.set(trace);
+				} else {
+					const cluster = trace.clusters.find((c) => c.cluster_id === cid);
+					if (cluster) {
+						cluster.narrative = narrative;
+						trace = trace;
 					}
 				}
 			}
@@ -249,28 +275,39 @@
 		traceNarrativeStreamingMap.set({});
 		traceNewEventsDetected.set(false);
 		_activeTraceId = null;
+		showHistoryDuringSearch = false;
 		traceProgress.set({ stage: 'Initializing', step: 0, total: 6, query });
 
 		try {
 			const result = await engineApi.runTrace(query, undefined, fuzzy, opts);
-			trace = result;
-			currentTrace.set(result);
-
-			if (result.clusters.length === 0) {
-				error = 'No results found. Try a different search term.';
+			// Only adopt the result as the current view if the user is still watching
+			// this search. If they've navigated elsewhere (backed out to history, or
+			// opened another trace), leave their view alone and just refresh history
+			// so they can find the new result there.
+			const userStillWatching = !trace && !showHistoryDuringSearch;
+			if (userStillWatching) {
+				trace = result;
+				currentTrace.set(result);
+				if (result.clusters.length === 0) {
+					error = 'No results found. Try a different search term.';
+				}
 			}
 
 			loadHistory();
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : 'Search failed';
-			// Don't show error for cancellation
+			// Don't show error for cancellation, and only surface it if the user is
+			// still on the progress view for this search.
 			if (!msg.includes('cancelled') && !msg.includes('abort')) {
-				error = msg;
+				if (!trace && !showHistoryDuringSearch) {
+					error = msg;
+				}
 			}
 		} finally {
 			traceLoading.set(false);
 			cancelling = false;
 			traceProgress.set(null);
+			showHistoryDuringSearch = false;
 		}
 	}
 
@@ -284,28 +321,38 @@
 	}
 
 	async function handleSelectTrace(traceId: string) {
-		traceLoading.set(true);
+		// Use a local flag, NOT traceLoading/traceProgress — those represent an
+		// in-flight coherence search and must keep reflecting it while the user
+		// opens another trace from history. Clobbering them here is what caused
+		// the in-flight card to disappear when the user clicked another query.
+		selectingTrace = true;
 		error = null;
 		removedClusterIds = new Set();
-		traceNarrativeMap.set({});
-		traceNarrativeStreamingMap.set({});
+		// Do NOT wipe narrative maps — in-flight streaming state for this trace (e.g. a
+		// summary still generating after the user clicked Back) must survive re-selection.
+		// Keys are scoped by trace_id so other traces' state doesn't collide.
 		traceNewEventsDetected.set(false);
-		traceProgress.set(null);
 
 		try {
 			const result = await engineApi.getTrace(traceId);
 			trace = result;
 			currentTrace.set(result);
-			const narratives: Record<string, string> = {};
-			for (const c of result.clusters) {
-				if (c.narrative) narratives[c.cluster_id] = c.narrative;
-			}
-			if (result.summary) narratives[SUMMARY_ID] = result.summary;
-			traceNarrativeMap.set(narratives);
+			// Merge persisted narratives in without overwriting any in-flight streaming
+			// content already captured from WebSocket messages.
+			traceNarrativeMap.update((current) => {
+				const merged = { ...current };
+				for (const c of result.clusters) {
+					const key = narrativeKey(result.trace_id, c.cluster_id);
+					if (c.narrative && !merged[key]) merged[key] = c.narrative;
+				}
+				const sk = narrativeKey(result.trace_id, SUMMARY_ID);
+				if (result.summary && !merged[sk]) merged[sk] = result.summary;
+				return merged;
+			});
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load trace';
 		} finally {
-			traceLoading.set(false);
+			selectingTrace = false;
 		}
 	}
 
@@ -323,6 +370,7 @@
 		traceNarrativeStreamingMap.set({});
 		traceNewEventsDetected.set(false);
 		_activeTraceId = null;
+		showHistoryDuringSearch = false;
 		traceProgress.set({ stage: 'Initializing', step: 0, total: 6, query: rerunQuery });
 
 		try {
@@ -335,6 +383,7 @@
 		} finally {
 			traceLoading.set(false);
 			traceProgress.set(null);
+			showHistoryDuringSearch = false;
 		}
 	}
 
@@ -407,8 +456,12 @@
 
 	// Overall summary state — uses __summary__ as a virtual cluster_id in the narrative maps
 	const SUMMARY_ID = '__summary__';
-	const summaryText = $derived($traceNarrativeMap[SUMMARY_ID] ?? '');
-	const summaryStreaming = $derived($traceNarrativeStreamingMap[SUMMARY_ID] ?? false);
+	const summaryText = $derived(
+		trace ? ($traceNarrativeMap[narrativeKey(trace.trace_id, SUMMARY_ID)] ?? '') : ''
+	);
+	const summaryStreaming = $derived(
+		trace ? ($traceNarrativeStreamingMap[narrativeKey(trace.trace_id, SUMMARY_ID)] ?? false) : false
+	);
 	const hasSummary = $derived(!!summaryText || summaryStreaming);
 
 	function parseLlmContent(content: string, streaming: boolean) {
@@ -451,16 +504,44 @@
 	];
 
 	function handleBack() {
+		// During an in-flight search (no trace yet) Back should hide the progress view
+		// and show Recent Searches without cancelling the running request — the search
+		// continues in the background and surfaces as an in-flight card in the list.
+		if (loading && !trace) {
+			showHistoryDuringSearch = true;
+			return;
+		}
 		trace = null;
 		currentTrace.set(null);
 		removedClusterIds = new Set();
-		traceNarrativeMap.set({});
-		traceNarrativeStreamingMap.set({});
+		// Intentionally do NOT wipe traceNarrativeMap / traceNarrativeStreamingMap:
+		// a summary may still be streaming for the trace we're leaving. Its keys are
+		// scoped by trace_id, so keeping them lets the WebSocket handler continue to
+		// accumulate chunks, and re-selecting the same trace shows the live spinner
+		// and partial text rather than a misleadingly idle "Summarize" button.
 		traceNewEventsDetected.set(false);
-		traceProgress.set(null);
+		// Preserve traceProgress while a coherence search is still in flight — the
+		// Recent Searches in-flight card reads it to show the current stage/progress.
+		// Nuking it here would blank the card until the next WebSocket tick.
+		if (!loading) {
+			traceProgress.set(null);
+		}
 		error = null;
 	}
+
+	function handleResumeSearchView() {
+		showHistoryDuringSearch = false;
+	}
 </script>
+
+{#if tooltip}
+	<div
+		class="fixed z-50 px-2 py-1 rounded-md border border-laya-orange/20 bg-surface-800 text-[10px] font-medium text-laya-orange shadow-lg pointer-events-none -translate-x-1/2 -translate-y-full max-w-[400px] break-words"
+		style="left: {tooltip.x}px; top: {tooltip.y}px;"
+	>
+		{tooltip.text}
+	</div>
+{/if}
 
 <div class="min-h-screen bg-surface-900 p-6">
 	<div class="max-w-5xl mx-auto">
@@ -473,7 +554,7 @@
 					{trace ? `"${trace.query}"` : 'Connect the dots across every platform'}
 				</p>
 			</div>
-			{#if trace}
+			{#if trace || (loading && !showHistoryDuringSearch)}
 				<button
 					onclick={handleBack}
 					class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs text-surface-400 hover:text-surface-200 hover:bg-surface-800 transition-colors"
@@ -553,8 +634,10 @@
 				<div class="flex items-center gap-1.5">
 					<button
 						onclick={() => handleRerun()}
+						onmouseenter={(e) => showTooltip(e, 'Re-run trace')}
+						onmouseleave={hideTooltip}
+						aria-label="Re-run trace"
 						class="p-1 rounded text-surface-400 hover:text-laya-orange hover:bg-laya-orange/5 transition-colors"
-						title="Re-run trace"
 					>
 						<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
@@ -670,6 +753,7 @@
 						<div transition:slide={{ duration: 200 }}>
 							<TraceHeader
 								{cluster}
+								traceId={trace.trace_id}
 								onremove={() => handleRemoveCluster(cluster.cluster_id)}
 								ongenerate={() => handleGenerateNarrative(cluster.cluster_id)}
 								isLast={idx === visibleClusters.length - 1}
@@ -692,12 +776,54 @@
 				</button>
 			</div>
 
-		<!-- Empty state with trace history -->
-		{:else if !trace && !loading}
+		<!-- Empty state with trace history (also shown while an in-flight search is
+		     backgrounded so the user sees the running query alongside recent ones) -->
+		{:else if !trace && (!loading || showHistoryDuringSearch)}
 			<div class="mt-4">
 				<h2 class="text-xs font-medium text-surface-400 uppercase tracking-wider mb-3">
 					Recent Searches
 				</h2>
+
+				{#if loading}
+					<!-- In-flight search card: clicking re-opens the progress view -->
+					<button
+						type="button"
+						onclick={handleResumeSearchView}
+						class="w-full text-left rounded-lg border border-laya-orange/30 bg-laya-orange/5
+						       hover:border-laya-orange/50 hover:bg-laya-orange/10 p-4 mb-2 transition-colors
+						       cursor-pointer flex items-center gap-3"
+					>
+						<svg class="w-4 h-4 animate-spin shrink-0 text-laya-orange" fill="none" viewBox="0 0 24 24">
+							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle>
+							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+						</svg>
+						<div class="flex-1 min-w-0">
+							<div class="flex items-center gap-2">
+								<h3 class="text-sm font-medium text-surface-100 truncate">
+									"{$traceProgress?.query || 'Searching...'}"
+								</h3>
+								<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-laya-orange/15 text-laya-orange border border-laya-orange/30">
+									Running
+								</span>
+							</div>
+							<div class="mt-2 h-1 w-full rounded-full bg-surface-700/60 overflow-hidden">
+								<div
+									class="h-full rounded-full bg-gradient-to-r from-laya-orange to-laya-gold transition-all duration-500 ease-out"
+									style="width: {$traceProgress ? Math.max(($traceProgress.step / $traceProgress.total) * 100, 8) : 8}%"
+								></div>
+							</div>
+							<div class="flex items-center gap-2 mt-1.5 text-xs text-surface-400">
+								<span>{($traceProgress?.step ?? 0) > 0 && ($traceProgress?.step ?? 0) <= coherenceStages.length ? coherenceStages[($traceProgress?.step ?? 1) - 1] : 'Preparing'}</span>
+								<span class="text-surface-600">&middot;</span>
+								<span class="text-surface-500">{$traceProgress?.step ?? 0} / {$traceProgress?.total ?? coherenceStages.length}</span>
+							</div>
+						</div>
+						<svg class="w-4 h-4 text-surface-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+						</svg>
+					</button>
+				{/if}
+
 				<TraceHistory
 					traces={$traceHistory}
 					onselect={handleSelectTrace}
@@ -708,7 +834,7 @@
 		{/if}
 
 		<!-- Loading progress -->
-		{#if loading && !trace}
+		{#if loading && !trace && !showHistoryDuringSearch}
 			<div class="mt-6 rounded-xl border border-surface-700/50 bg-surface-800/40 p-6" in:fade={{ duration: 200 }}>
 				<!-- Query title -->
 				<div class="flex items-center gap-2 mb-5">

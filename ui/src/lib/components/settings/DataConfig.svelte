@@ -1,16 +1,20 @@
 <script lang="ts">
 	import { engineApi } from '$lib/api/engine';
 
+	type Section = 'card' | 'chat' | 'audit' | 'omni';
+
 	let retentionDays = $state(90);
 	let chatRetentionDays = $state(90);
 	let auditRetentionDays = $state(90);
 	let omniRetentionDays = $state(30);
 	let loading = $state(true);
-	let saving = $state(false);
-	let saved = $state(false);
+	let savingSection = $state<Section | null>(null);
+	let savedSection = $state<Section | null>(null);
+	let errorSection = $state<Section | null>(null);
 	let error = $state('');
 
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
+	let savedClearTimer: ReturnType<typeof setTimeout> | null = null;
 
 	$effect(() => {
 		engineApi.getSettings().then((s) => {
@@ -22,15 +26,17 @@
 		});
 	});
 
-	function debouncedSave() {
+	function debouncedSave(section: Section) {
 		if (saveTimer) clearTimeout(saveTimer);
-		saving = true;
-		saved = false;
+		if (savedClearTimer) clearTimeout(savedClearTimer);
+		savingSection = section;
+		savedSection = null;
+		errorSection = null;
 		error = '';
-		saveTimer = setTimeout(() => save(), 800);
+		saveTimer = setTimeout(() => save(section), 800);
 	}
 
-	async function save() {
+	async function save(section: Section) {
 		try {
 			await engineApi.updateSettings({
 				retention: {
@@ -40,12 +46,13 @@
 					omni_retention_days: omniRetentionDays
 				}
 			} as never);
-			saved = true;
-			setTimeout(() => (saved = false), 2000);
+			savedSection = section;
+			savedClearTimer = setTimeout(() => (savedSection = null), 2000);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Save failed';
+			errorSection = section;
 		} finally {
-			saving = false;
+			if (savingSection === section) savingSection = null;
 		}
 	}
 </script>
@@ -71,19 +78,19 @@
 					min="1"
 					max="3650"
 					bind:value={retentionDays}
-					oninput={() => debouncedSave()}
+					oninput={() => debouncedSave('card')}
 					class="h-9 w-32 rounded-md border border-surface-600 bg-surface-700 px-3 text-sm text-surface-50 focus:border-laya-orange/50 focus:outline-none"
 				/>
 			</div>
 
-			{#if error}
+			{#if errorSection === 'card' && error}
 				<p class="mt-2 text-xs text-red-400">{error}</p>
 			{/if}
 
 			<p class="mt-3 text-xs text-surface-500">
-				{#if saving}
+				{#if savingSection === 'card'}
 					<span class="text-laya-orange">Saving…</span>
-				{:else if saved}
+				{:else if savedSection === 'card'}
 					<span class="text-green-400">Saved</span> —
 				{/if}
 				Default: 90 days. Cards created before
@@ -113,12 +120,21 @@
 					min="1"
 					max="3650"
 					bind:value={chatRetentionDays}
-					oninput={() => debouncedSave()}
+					oninput={() => debouncedSave('chat')}
 					class="h-9 w-32 rounded-md border border-surface-600 bg-surface-700 px-3 text-sm text-surface-50 focus:border-laya-orange/50 focus:outline-none"
 				/>
 			</div>
 
+			{#if errorSection === 'chat' && error}
+				<p class="mt-2 text-xs text-red-400">{error}</p>
+			{/if}
+
 			<p class="mt-3 text-xs text-surface-500">
+				{#if savingSection === 'chat'}
+					<span class="text-laya-orange">Saving…</span>
+				{:else if savedSection === 'chat'}
+					<span class="text-green-400">Saved</span> —
+				{/if}
 				Default: 90 days. Conversations last active before
 				<span class="text-surface-300">
 					{new Date(Date.now() - chatRetentionDays * 86400000).toLocaleDateString()}
@@ -145,12 +161,21 @@
 					min="1"
 					max="3650"
 					bind:value={auditRetentionDays}
-					oninput={() => debouncedSave()}
+					oninput={() => debouncedSave('audit')}
 					class="h-9 w-32 rounded-md border border-surface-600 bg-surface-700 px-3 text-sm text-surface-50 focus:border-laya-orange/50 focus:outline-none"
 				/>
 			</div>
 
+			{#if errorSection === 'audit' && error}
+				<p class="mt-2 text-xs text-red-400">{error}</p>
+			{/if}
+
 			<p class="mt-3 text-xs text-surface-500">
+				{#if savingSection === 'audit'}
+					<span class="text-laya-orange">Saving…</span>
+				{:else if savedSection === 'audit'}
+					<span class="text-green-400">Saved</span> —
+				{/if}
 				Default: 90 days.
 			</p>
 		{/if}
@@ -174,12 +199,21 @@
 					min="1"
 					max="365"
 					bind:value={omniRetentionDays}
-					oninput={() => debouncedSave()}
+					oninput={() => debouncedSave('omni')}
 					class="h-9 w-32 rounded-md border border-surface-600 bg-surface-700 px-3 text-sm text-surface-50 focus:border-laya-orange/50 focus:outline-none"
 				/>
 			</div>
 
+			{#if errorSection === 'omni' && error}
+				<p class="mt-2 text-xs text-red-400">{error}</p>
+			{/if}
+
 			<p class="mt-3 text-xs text-surface-500">
+				{#if savingSection === 'omni'}
+					<span class="text-laya-orange">Saving…</span>
+				{:else if savedSection === 'omni'}
+					<span class="text-green-400">Saved</span> —
+				{/if}
 				Default: 30 days.
 			</p>
 		{/if}

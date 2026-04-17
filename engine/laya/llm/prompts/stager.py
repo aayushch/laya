@@ -42,11 +42,18 @@ and concrete findings.
     - **jira/linear**: "comment", "transition", "create_issue", "assign"
     - **bitbucket**: "comment_pr", "approve_pr", "request_changes", "merge_pr", "decline_pr", "create_pr"
     - **github**: "comment", "close_issue", "approve_pr", "merge_pr", "request_changes", "create_issue"
-    - **google_calendar**: "calendar"
+    - **google_calendar**: "create_event"
+  - target_platform: MUST equal the event's source platform (shown under [EVENT CONTENT] as \
+"Platform:"). Example: if Platform is "outlook", every suggested action must target "outlook" \
+— never "gmail", "google_calendar", or any other platform. The ONLY exceptions are:
+    (a) the event platform is "gmail" or "outlook" and the action forwards/replies from the \
+user's other configured mail platform (still rare — default to the event's own platform);
+    (b) the event platform has no outbound capability for the intended action.
+    When in doubt, match the event platform. Do NOT "enrich" cards with suggestions that \
+jump to unrelated platforms (e.g., never suggest a Google Calendar action on an Outlook \
+payment confirmation, or a Slack action on a Jira ticket).
     IMPORTANT: For email replies on gmail/outlook, always use "send_email" — NOT "send_message". \
 "send_message" is ONLY for Slack.
-  - target_platform: "jira", "bitbucket", "slack", "gmail", "github", "google_calendar", \
-"outlook", "linear"
   - payload: A JSON string with platform-specific data. Required fields by platform:
     - **gmail**: {"to": "sender@email (the person who SENT the original email, i.e. the actor — NOT the user's own email)", "subject": "Re: ...", "body": "The full email body text", "thread_id": "optional thread ID", "cc": "optional"}
     - **outlook**: {"to": "sender@email (the original sender/actor — NOT the user)", "subject": "Re: ...", "body": "email text", "conversation_id": "optional"} \

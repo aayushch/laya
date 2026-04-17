@@ -32,52 +32,57 @@
           "assignments": [
             {
               "name": "raw_from_email",
-              "value": "={{ $json.from?.emailAddress?.address || (typeof $json.from === 'string' ? $json.from : '') }}",
+              "value": "={{ $('Outlook Trigger').item.json.from?.emailAddress?.address || $('Outlook Trigger').item.json.sender?.emailAddress?.address || (typeof $('Outlook Trigger').item.json.from === 'string' ? ($('Outlook Trigger').item.json.from.match(/<([^>]+)>/)?.[1] || $('Outlook Trigger').item.json.from.trim()) : '') }}",
               "type": "string"
             },
             {
               "name": "raw_from_name",
-              "value": "={{ $json.from?.emailAddress?.name || (typeof $json.sender === 'object' ? $json.sender?.emailAddress?.name : '') }}",
+              "value": "={{ $('Outlook Trigger').item.json.from?.emailAddress?.name || $('Outlook Trigger').item.json.sender?.emailAddress?.name || (typeof $('Outlook Trigger').item.json.from === 'string' ? $('Outlook Trigger').item.json.from.replace(/<[^>]+>/g, '').trim() : '') }}",
               "type": "string"
             },
             {
               "name": "raw_to_email",
-              "value": "={{ ($json.toRecipients && $json.toRecipients[0]) ? ($json.toRecipients[0].emailAddress?.address || (typeof $json.toRecipients[0] === 'string' ? $json.toRecipients[0] : '')) : (($json.to && $json.to[0]) ? (typeof $json.to[0] === 'string' ? $json.to[0] : ($json.to[0].emailAddress?.address || '')) : '') }}",
+              "value": "={{ (Array.isArray($('Outlook Trigger').item.json.toRecipients) && $('Outlook Trigger').item.json.toRecipients[0]) ? ($('Outlook Trigger').item.json.toRecipients[0].emailAddress?.address || (typeof $('Outlook Trigger').item.json.toRecipients[0] === 'string' ? $('Outlook Trigger').item.json.toRecipients[0] : '')) : '' }}",
               "type": "string"
             },
             {
               "name": "raw_subject",
-              "value": "={{ $json.subject || '' }}",
+              "value": "={{ $('Outlook Trigger').item.json.subject || '' }}",
               "type": "string"
             },
             {
               "name": "is_reply",
-              "value": "={{ !!$json.conversationIndex && $json.conversationIndex.length > 44 }}",
+              "value": "={{ !!$('Outlook Trigger').item.json.conversationIndex && $('Outlook Trigger').item.json.conversationIndex.length > 44 }}",
               "type": "boolean"
             },
             {
               "name": "outlook_id",
-              "value": "={{ $json.id }}",
+              "value": "={{ $('Outlook Trigger').item.json.id }}",
               "type": "string"
             },
             {
               "name": "outlook_conversationId",
-              "value": "={{ $json.conversationId || $json.id }}",
+              "value": "={{ $('Outlook Trigger').item.json.conversationId || $('Outlook Trigger').item.json.id }}",
               "type": "string"
             },
             {
               "name": "outlook_receivedDateTime",
-              "value": "={{ $json.receivedDateTime || $json.createdDateTime }}",
+              "value": "={{ $('Outlook Trigger').item.json.receivedDateTime || $('Outlook Trigger').item.json.createdDateTime }}",
               "type": "string"
             },
             {
               "name": "outlook_categories",
-              "value": "={{ JSON.stringify($json.categories || []) }}",
+              "value": "={{ JSON.stringify($('Outlook Trigger').item.json.categories || []) }}",
+              "type": "string"
+            },
+            {
+              "name": "outlook_webLink",
+              "value": "={{ $('Outlook Trigger').item.json.webLink || '' }}",
               "type": "string"
             },
             {
               "name": "outlook_body",
-              "value": "={{ $json.body?.content ? $json.body.content.replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ').trim() : ($json.bodyPreview || '') }}",
+              "value": "={{ $('Outlook Trigger').item.json.body?.content ? $('Outlook Trigger').item.json.body.content.replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ').trim() : ($('Outlook Trigger').item.json.bodyPreview || '') }}",
               "type": "string"
             }
           ]
@@ -153,7 +158,7 @@
             },
             {
               "name": "subject.url",
-              "value": "={{ $json.webLink || null }}",
+              "value": "={{ $json.outlook_webLink || ('https://outlook.office.com/mail/inbox/id/' + encodeURIComponent($json.outlook_id || '')) }}",
               "type": "string"
             },
             {
@@ -163,7 +168,7 @@
             },
             {
               "name": "content.metadata",
-              "value": "={{ JSON.stringify({ outlook_conversation_id: $json.outlook_conversationId, outlook_categories: JSON.parse($json.outlook_categories || '[]'), outlook_from: $json.raw_from_email, outlook_to: [$json.raw_to_email], outlook_cc: [], outlook_is_reply: $json.is_reply, participants: [{ role: 'sender', name: $json.raw_from_name || '', email: $json.raw_from_email || '' }, { role: 'recipient', name: '', email: $json.raw_to_email || '' }] }) }}",
+              "value": "={{ JSON.stringify({ outlook_id: $json.outlook_id, outlook_conversation_id: $json.outlook_conversationId, outlook_web_link: $json.outlook_webLink, outlook_categories: JSON.parse($json.outlook_categories || '[]'), outlook_from: $json.raw_from_email, outlook_to: [$json.raw_to_email], outlook_cc: [], outlook_is_reply: $json.is_reply, participants: [{ role: 'sender', name: $json.raw_from_name || '', email: $json.raw_from_email || '' }, { role: 'recipient', name: '', email: $json.raw_to_email || '' }] }) }}",
               "type": "string"
             }
           ]
@@ -244,6 +249,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.04.3"
+    "laya_version": "2026.04.4"
   }
 }
