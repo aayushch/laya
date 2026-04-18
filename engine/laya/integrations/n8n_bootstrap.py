@@ -535,20 +535,33 @@ async def _propagate_to_clones(base_url: str, api_key: str, changed_templates: l
         cred_info = conn_cred_map.get(connection_id)
         if cred_info and n8n_type:
             cred_id, cred_name = cred_info
+            # Platforms where HTTP Request nodes carry a different credential
+            # type suffix than the platform's native n8n_type (e.g. Gmail:
+            # native is "gmailOAuth2", HTTP nodes need "gmailOAuth2Api"). Must
+            # be kept in sync with _PLATFORM_HTTP_CRED_TYPES in egress/oauth.py.
+            from laya.egress.oauth import _PLATFORM_HTTP_CRED_TYPES
+            http_cred_type = _PLATFORM_HTTP_CRED_TYPES.get(platform)
             for node in update_data.get("nodes", []):
                 node_creds = node.get("credentials", {})
                 params = node.get("parameters", {})
                 node_type = node.get("type", "")
-                is_match = (
+                node_cred_type = params.get("nodeCredentialType")
+                is_http_match = (
+                    http_cred_type is not None
+                    and node_type == "n8n-nodes-base.httpRequest"
+                    and node_cred_type == http_cred_type
+                )
+                is_native_match = (
                     n8n_type in node_creds
                     or node_type == n8n_node
                     or node_type.startswith(n8n_node)
-                    or params.get("nodeCredentialType") == n8n_type
+                    or node_cred_type == n8n_type
                 )
-                if is_match:
+                if is_http_match or is_native_match:
                     if "credentials" not in node:
                         node["credentials"] = {}
-                    node["credentials"][n8n_type] = {
+                    cred_key = http_cred_type if is_http_match else n8n_type
+                    node["credentials"][cred_key] = {
                         "id": cred_id,
                         "name": cred_name,
                     }

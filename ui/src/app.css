@@ -61,6 +61,15 @@ html, body {
 [data-theme='dark'] .bg-violet-950\/70  { background-color: oklch(0.26 0.15 285 / 66%); }
 [data-theme='dark'] .bg-violet-950\/30  { background-color: oklch(0.26 0.15 285 / 30%); }
 
+/* Lift amber row backgrounds in dark mode — default Tailwind amber-950 has
+   low chroma (~0.065) and at low opacity reads nearly identical to rose-950
+   (failed), making ready/pending rows visually indistinguishable from failed
+   ones. Shift to a warmer hue (~70°, toward brand orange) with higher chroma
+   so the palette stays cohesive but hue separation from rose (~19°) is clear. */
+[data-theme='dark'] .bg-amber-950\/55  { background-color: oklch(0.37 0.11 70 / 55%); }
+[data-theme='dark'] .hover\:bg-amber-950\/70:hover { background-color: oklch(0.40 0.12 70 / 70%); }
+[data-theme='dark'] .bg-amber-950\/30  { background-color: oklch(0.37 0.11 70 / 30%); }
+
 /* ─────────────────────────────────────────────────────────────
    LIGHT THEME
    Inverted warm surface scale — 900 becomes warm cream background,

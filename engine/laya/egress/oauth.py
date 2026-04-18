@@ -552,7 +552,12 @@ _PLATFORM_NODE_TYPES: dict[str, list[str]] = {
 # hit the Graph-style REST endpoint). Those nodes also need the OAuth
 # credential bound, matched by nodeCredentialType rather than node type.
 _PLATFORM_HTTP_CRED_TYPES: dict[str, str] = {
-    "gmail": "gmailOAuth2Api",
+    # n8n registers the Gmail OAuth credential under the name "gmailOAuth2"
+    # (see GmailOAuth2Api.credentials.js — the filename ends in "Api", but the
+    # internal `name` field is just "gmailOAuth2").  HTTP Request nodes must
+    # reference it by that registered name, not by the class name, or n8n
+    # fails the lookup with 'Credential ... does not exist for type ...'.
+    "gmail": "gmailOAuth2",
     "calendar": "googleCalendarOAuth2Api",
     "outlook": "microsoftOutlookOAuth2Api",
     "outlook_calendar": "microsoftOutlookOAuth2Api",
