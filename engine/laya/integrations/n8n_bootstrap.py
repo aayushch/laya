@@ -298,7 +298,7 @@ _VERSIONS_FILE = LAYA_DATA_DIR / "workflow_versions.json"
 def _load_deployed_versions() -> dict[str, str]:
     """Load the mapping of workflow name → deployed laya_version."""
     try:
-        return json.loads(_VERSIONS_FILE.read_text())
+        return json.loads(_VERSIONS_FILE.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
@@ -411,7 +411,7 @@ async def import_workflows(base_url: str) -> int:
 
     for workflow_file in sorted(WORKFLOWS_DIR.glob("*.json")):
         try:
-            workflow_data = json.loads(workflow_file.read_text())
+            workflow_data = json.loads(workflow_file.read_text(encoding="utf-8"))
             workflow_name = workflow_data.get("name", workflow_file.stem)
             bundled_version = (workflow_data.get("meta") or {}).get("laya_version")
 
@@ -469,7 +469,7 @@ async def _propagate_to_clones(base_url: str, api_key: str, changed_templates: l
     if WORKFLOWS_DIR.exists():
         for wf_file in WORKFLOWS_DIR.glob("*.json"):
             try:
-                data = json.loads(wf_file.read_text())
+                data = json.loads(wf_file.read_text(encoding="utf-8"))
                 template_data_map[data.get("name", "")] = data
             except Exception:
                 continue

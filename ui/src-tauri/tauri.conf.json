@@ -51,6 +51,15 @@
     "macOS": {
       "signingIdentity": null,
       "providerShortName": null
+    },
+    "windows": {
+      "wix": {
+        "language": "en-US"
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico"
+      }
     }
   }
 }
