@@ -1,6 +1,18 @@
 mod n8n;
 mod sidecar;
 
+/// On Windows, attach CREATE_NO_WINDOW so spawned child processes do not
+/// flash a console window. No-op on other platforms.
+#[cfg(windows)]
+fn no_window(cmd: &mut std::process::Command) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    cmd.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn no_window(_cmd: &mut std::process::Command) {}
+
 #[derive(serde::Serialize, Clone)]
 pub struct RepoDetection {
     pub path: String,
@@ -59,7 +71,9 @@ async fn pick_repo_folder(app: tauri::AppHandle) -> Result<RepoDetection, String
         return Err("cancelled".to_string());
     }
 
-    let git_out = std::process::Command::new("git")
+    let mut git_cmd = std::process::Command::new("git");
+    no_window(&mut git_cmd);
+    let git_out = git_cmd
         .args(["-C", &path, "remote", "get-url", "origin"])
         .output()
         .map_err(|e| format!("git error: {e}"))?;
@@ -396,6 +410,33 @@ fn kill_process_on_port(port: u16) {
     }
 }
 
+#[cfg(windows)]
+fn kill_process_on_port(port: u16) {
+    let mut netstat = std::process::Command::new("netstat");
+    no_window(&mut netstat);
+    if let Ok(output) = netstat.args(["-ano", "-p", "tcp"]).output() {
+        if !output.status.success() {
+            return;
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let needle = format!(":{}", port);
+        for line in stdout.lines() {
+            if line.contains(&needle) && line.contains("LISTENING") {
+                if let Some(pid) = line
+                    .split_whitespace()
+                    .last()
+                    .and_then(|s| s.parse::<u32>().ok())
+                {
+                    log::info!("Killing orphaned process on port {} (pid {})", port, pid);
+                    let mut tk = std::process::Command::new("taskkill");
+                    no_window(&mut tk);
+                    let _ = tk.args(["/F", "/PID", &pid.to_string()]).status();
+                }
+            }
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -612,15 +653,23 @@ pub fn run() {
             use tauri::webview::PageLoadEvent;
             if let PageLoadEvent::Finished = payload.event() {
                 let url = payload.url().to_string();
+                // Windows uses http://tauri.localhost/ as the production scheme
+                // (Tauri v2); macOS/Linux use tauri://localhost. Both must count
+                // as internal, otherwise the nav bar below injects on top of the
+                // main app URL and covers the Titlebar's window controls.
                 let is_internal = url.starts_with("http://localhost:5173")
                     || url.starts_with("http://127.0.0.1:5173")
                     || url.starts_with("http://127.0.0.1:8420")
                     || url.starts_with("tauri://")
+                    || url.starts_with("http://tauri.localhost/")
+                    || url.starts_with("https://tauri.localhost/")
                     || url.starts_with("about:");
 
                 if !is_internal {
                     let back_url = if cfg!(debug_assertions) {
                         "http://localhost:5173/feed"
+                    } else if cfg!(windows) {
+                        "http://tauri.localhost/feed"
                     } else {
                         "tauri://localhost/feed"
                     };
@@ -716,11 +765,43 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
                                     }
                                 }
 
-                                #[cfg(not(unix))]
+                                #[cfg(windows)]
                                 {
-                                    log::info!("Killing engine process");
-                                    let _ = child.kill();
-                                    let _ = child.wait();
+                                    log::info!("Stopping engine process (pid {})", pid);
+
+                                    // taskkill without /F asks the process to exit cleanly,
+                                    // giving uvicorn a chance to run its lifespan shutdown.
+                                    let mut tk = std::process::Command::new("taskkill");
+                                    no_window(&mut tk);
+                                    let _ = tk.args(["/PID", &pid.to_string()]).status();
+
+                                    let start = std::time::Instant::now();
+                                    loop {
+                                        match child.try_wait() {
+                                            Ok(Some(_)) => {
+                                                log::info!("Engine exited gracefully");
+                                                break;
+                                            }
+                                            Ok(None) => {
+                                                if start.elapsed() > Duration::from_secs(5) {
+                                                    log::warn!("Engine did not exit; force-killing");
+                                                    let mut force = std::process::Command::new("taskkill");
+                                                    no_window(&mut force);
+                                                    let _ = force
+                                                        .args(["/PID", &pid.to_string(), "/F", "/T"])
+                                                        .status();
+                                                    let _ = child.wait();
+                                                    break;
+                                                }
+                                                std::thread::sleep(Duration::from_millis(100));
+                                            }
+                                            Err(e) => {
+                                                log::error!("Error waiting for engine: {}", e);
+                                                let _ = child.kill();
+                                                break;
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -729,7 +810,6 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
                     // Safety net: if setup_environment spawned the engine after
                     // our cleanup above (race), or if we never got a handle,
                     // kill any process listening on the engine port (8420).
-                    #[cfg(unix)]
                     if !killed_engine {
                         kill_process_on_port(8420);
                     }

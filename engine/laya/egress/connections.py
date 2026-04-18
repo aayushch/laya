@@ -628,7 +628,7 @@ async def _clone_workflows_for_connection(
     if WORKFLOWS_DIR.exists():
         for wf_file in WORKFLOWS_DIR.glob("*.json"):
             try:
-                data = json.loads(wf_file.read_text())
+                data = json.loads(wf_file.read_text(encoding="utf-8"))
                 template_files[data.get("name", "")] = data
             except Exception:
                 continue
@@ -726,16 +726,39 @@ async def _clone_workflows_for_connection(
                 errors.append(f"Failed to create \"{target_name}\": {e}")
                 continue
 
-        # 4. Activate
+        # 4. Activate. The client-side call occasionally raises even when the
+        # server-side activation succeeded (observed on Windows: httpx errors
+        # with empty `str(e)`). Verify via GET before surfacing a failure to
+        # the user.
         try:
             await activate_workflow(wf_id, active=True)
             activated += 1
             log.info("workflow_cloned_and_activated",
                      name=wf_data["name"], id=wf_id, connection_id=connection_id)
         except Exception as e:
-            errors.append(f"Failed to activate \"{wf_data['name']}\": {e}")
-            log.warning("workflow_clone_activate_failed",
-                        name=wf_data["name"], error=str(e))
+            err_detail = str(e) or f"{type(e).__name__}: {e!r}"
+
+            try:
+                verify_resp = await get_client().get(
+                    f"{base_url}/api/v1/workflows/{wf_id}",
+                    headers=headers,
+                    timeout=10.0,
+                )
+                is_active = (
+                    verify_resp.status_code == 200
+                    and bool(verify_resp.json().get("active"))
+                )
+            except Exception:
+                is_active = False
+
+            if is_active:
+                activated += 1
+                log.info("workflow_cloned_and_activated",
+                         name=wf_data["name"], id=wf_id, connection_id=connection_id)
+            else:
+                errors.append(f"Failed to activate \"{wf_data['name']}\": {err_detail}")
+                log.warning("workflow_clone_activate_failed",
+                            name=wf_data["name"], id=wf_id, error=err_detail)
 
         # 5. Register as source with connection_id
         is_executor = "executor" in template_name.lower()

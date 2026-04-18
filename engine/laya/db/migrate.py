@@ -41,7 +41,9 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
             continue
 
         log.info("applying_migration", version=version, file=migration_file.name)
-        sql = migration_file.read_text()
+        # Explicit UTF-8: Windows defaults to cp1252 via locale.getpreferredencoding(),
+        # which rejects multibyte UTF-8 bytes (e.g. smart quotes) found in comments.
+        sql = migration_file.read_text(encoding="utf-8")
 
         # Execute all statements in the migration file
         await db.executescript(sql)

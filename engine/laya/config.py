@@ -173,7 +173,7 @@ def ensure_directories() -> None:
 def load_settings() -> dict:
     """Load settings from ~/.laya/settings.json, falling back to defaults."""
     if LAYA_CONFIG_FILE.exists():
-        with open(LAYA_CONFIG_FILE) as f:
+        with open(LAYA_CONFIG_FILE, encoding="utf-8") as f:
             user_settings = json.load(f)
         # Merge user settings over defaults (two-level deep merge so that
         # e.g. new n8n.webhooks entries added to DEFAULT_SETTINGS aren't
@@ -197,7 +197,7 @@ def load_settings() -> dict:
 def save_settings(settings: dict) -> None:
     """Persist settings to ~/.laya/settings.json."""
     ensure_directories()
-    with open(LAYA_CONFIG_FILE, "w") as f:
+    with open(LAYA_CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(settings, f, indent=2)
 
 
@@ -216,14 +216,14 @@ def load_team() -> dict:
     ensure_directories()
     if not LAYA_TEAM_FILE.exists():
         save_team(DEFAULT_TEAM)
-    with open(LAYA_TEAM_FILE) as f:
+    with open(LAYA_TEAM_FILE, encoding="utf-8") as f:
         return json.load(f)
 
 
 def save_team(team: dict) -> None:
     """Persist team config to ~/.laya/team.json."""
     ensure_directories()
-    with open(LAYA_TEAM_FILE, "w") as f:
+    with open(LAYA_TEAM_FILE, "w", encoding="utf-8") as f:
         json.dump(team, f, indent=2)
 
 
@@ -252,14 +252,14 @@ def load_rules() -> dict:
     ensure_directories()
     if not LAYA_RULES_FILE.exists():
         save_rules(DEFAULT_RULES)
-    with open(LAYA_RULES_FILE) as f:
+    with open(LAYA_RULES_FILE, encoding="utf-8") as f:
         return json.load(f)
 
 
 def save_rules(rules: dict) -> None:
     """Persist rules config to ~/.laya/rules.json."""
     ensure_directories()
-    with open(LAYA_RULES_FILE, "w") as f:
+    with open(LAYA_RULES_FILE, "w", encoding="utf-8") as f:
         json.dump(rules, f, indent=2)
 
 
@@ -268,14 +268,14 @@ def load_repos() -> dict:
     ensure_directories()
     if not LAYA_REPOS_FILE.exists():
         save_repos(DEFAULT_REPOS)
-    with open(LAYA_REPOS_FILE) as f:
+    with open(LAYA_REPOS_FILE, encoding="utf-8") as f:
         return json.load(f)
 
 
 def save_repos(repos: dict) -> None:
     """Persist repos config to ~/.laya/repos.json."""
     ensure_directories()
-    with open(LAYA_REPOS_FILE, "w") as f:
+    with open(LAYA_REPOS_FILE, "w", encoding="utf-8") as f:
         json.dump(repos, f, indent=2)
 
 

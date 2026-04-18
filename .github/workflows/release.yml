@@ -19,6 +19,8 @@ jobs:
             target: x86_64-apple-darwin
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
 
     runs-on: ${{ matrix.platform }}
 
@@ -49,9 +51,11 @@ jobs:
         run: npm ci
 
       - name: Bundle engine resources
+        shell: bash
         run: bash scripts/bundle-engine.sh
 
       - name: Set version from tag
+        shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           cd ui/src-tauri
@@ -78,6 +82,9 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Windows code signing (no-op without secrets)
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Laya ${{ github.ref_name }}'
