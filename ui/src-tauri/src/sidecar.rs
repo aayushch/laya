@@ -13,6 +13,18 @@ use std::time::Duration;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 
+/// On Windows, attach CREATE_NO_WINDOW so spawned child processes do not
+/// flash a console window. No-op on other platforms.
+#[cfg(windows)]
+fn no_window(cmd: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    cmd.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn no_window(_cmd: &mut Command) {}
+
 // ── Path helpers ────────────────────────────────────────────────────────
 
 fn home_dir() -> Option<PathBuf> {
@@ -69,6 +81,12 @@ fn engine_source_dir() -> PathBuf {
             .unwrap_or_else(|| exe_dir.join("engine"));
         if linux_resources.exists() {
             return linux_resources;
+        }
+        // Windows MSI / NSIS: exe is at <install_dir>\laya-app.exe,
+        // resources at <install_dir>\resources\engine\
+        let win_resources = exe_dir.join("resources").join("engine");
+        if win_resources.exists() {
+            return win_resources;
         }
         // Fallback: next to executable
         exe_dir.join("engine")
@@ -196,6 +214,7 @@ pub fn find_python() -> Result<(PathBuf, String), String> {
         for name in &candidates {
             let mut cmd = Command::new(name);
             cmd.args(["--version"]);
+            no_window(&mut cmd);
             sanitize_python_cmd(&mut cmd);
             if let Ok(output) = cmd.output() {
                 if output.status.success() {
@@ -222,19 +241,15 @@ pub fn find_python() -> Result<(PathBuf, String), String> {
     Err("Python 3.10+ not found. Please install Python 3.13 or newer.".to_string())
 }
 
-/// Simple `which` implementation — resolve a command name to its absolute path.
+/// Resolve a bare command name to its absolute path using the `which` crate.
+/// The old implementation shelled out to a `which` binary, which doesn't
+/// exist on a stock Windows install.
 fn which(name: &str) -> Option<PathBuf> {
-    // If it's already an absolute path, use it directly
     let p = PathBuf::from(name);
     if p.is_absolute() && p.exists() {
         return Some(p);
     }
-    Command::new("which")
-        .arg(name)
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| PathBuf::from(String::from_utf8_lossy(&o.stdout).trim()))
+    ::which::which(name).ok()
 }
 
 // ── Venv management ─────────────────────────────────────────────────────
@@ -248,6 +263,7 @@ pub fn create_venv(python: &PathBuf) -> Result<(), String> {
         .map_err(|e| format!("Failed to create ~/.laya: {e}"))?;
 
     let mut cmd = Command::new(python);
+    no_window(&mut cmd);
     cmd.args(["-m", "venv", &venv.to_string_lossy()]);
     // AppImage sets PYTHONHOME/PYTHONPATH/LD_LIBRARY_PATH which break the
     // system Python's stdlib resolution (see sanitize_python_cmd).
@@ -327,6 +343,7 @@ fn pip_install<F: FnMut(&str)>(
     log::info!("Installing from {} (log: {})", req.display(), log_path.display());
 
     let mut cmd = Command::new(&python);
+    no_window(&mut cmd);
     cmd.args([
             "-m", "pip",
             "install", "-r", &req.to_string_lossy(),
@@ -441,7 +458,11 @@ fn spawn_dev_engine() -> Result<Child, String> {
     log::info!("Spawning engine (dev): {} -m laya.main", python.display());
 
     let mut cmd = Command::new(&python);
-    cmd.arg("-m").arg("laya.main").current_dir(&engine);
+    no_window(&mut cmd);
+    cmd.arg("-m")
+        .arg("laya.main")
+        .current_dir(&engine)
+        .env("LAYA_PARENT_PID", std::process::id().to_string());
 
     #[cfg(unix)]
     unsafe {
@@ -483,6 +504,7 @@ fn spawn_prod_engine() -> Result<Child, String> {
         .map_err(|e| format!("Failed to clone log handle: {e}"))?;
 
     let mut cmd = Command::new(&python);
+    no_window(&mut cmd);
     cmd.arg("-m")
         .arg("laya.main")
         .current_dir(&engine)
@@ -490,7 +512,11 @@ fn spawn_prod_engine() -> Result<Child, String> {
         .stderr(stderr_file)
         // Prevent Python from writing __pycache__/*.pyc into the signed .app bundle,
         // which would invalidate the code signature.
-        .env("PYTHONDONTWRITEBYTECODE", "1");
+        .env("PYTHONDONTWRITEBYTECODE", "1")
+        // LAYA_PARENT_PID lets the engine's parent-watchdog monitor the actual
+        // laya-app process, not the intermediate Python launcher (uvicorn spawns
+        // a worker subprocess on Windows, so os.getppid() points at the wrong PID).
+        .env("LAYA_PARENT_PID", std::process::id().to_string());
     // AppImage env vars break even the venv Python (see sanitize_python_cmd).
     sanitize_python_cmd(&mut cmd);
 
