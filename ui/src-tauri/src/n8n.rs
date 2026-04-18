@@ -10,6 +10,18 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
+/// On Windows, attach CREATE_NO_WINDOW so spawned child processes do not
+/// flash a console window. No-op on other platforms.
+#[cfg(windows)]
+fn no_window(cmd: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    cmd.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn no_window(_cmd: &mut Command) {}
+
 /// Shared HTTP client for n8n health checks — avoids creating a new TCP
 /// connection (and `reqwest::blocking::Client`) on every call.
 fn shared_client() -> &'static reqwest::blocking::Client {
@@ -81,18 +93,15 @@ const NODE_SEARCH_DIRS: &[&str] = &[
     "/usr/bin",
 ];
 
-/// Resolve a bare command name to its absolute path via `which`.
+/// Resolve a bare command name to its absolute path using the `which` crate.
+/// The old implementation shelled out to a `which` binary, which doesn't
+/// exist on a stock Windows install.
 fn which(name: &str) -> Option<PathBuf> {
     let p = PathBuf::from(name);
     if p.is_absolute() && p.exists() {
         return Some(p);
     }
-    Command::new("which")
-        .arg(name)
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| PathBuf::from(String::from_utf8_lossy(&o.stdout).trim()))
+    ::which::which(name).ok()
 }
 
 /// Find a Node.js 22+ installation, preferring the highest version.
@@ -138,6 +147,7 @@ pub fn find_node() -> Result<(String, String), String> {
     for candidate in &candidates {
         let name = candidate.to_string_lossy();
         let mut cmd = Command::new(candidate);
+        no_window(&mut cmd);
         cmd.arg("--version")
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
@@ -218,6 +228,10 @@ fn node_bin_dir() -> Option<String> {
 /// put the selected node's directory at the front, and strip AppImage-
 /// injected paths from LD_LIBRARY_PATH (handled by sanitize_node_cmd).
 fn augmented_path() -> String {
+    // PATH separator and join character are OS-specific — using ':' on Windows
+    // would split drive letters (e.g. "C:\...").
+    let sep_char = if cfg!(windows) { ';' } else { ':' };
+    let sep_str = if cfg!(windows) { ";" } else { ":" };
     let current = std::env::var("PATH").unwrap_or_default();
     let mut front: Vec<String> = Vec::new();
 
@@ -227,24 +241,27 @@ fn augmented_path() -> String {
         front.push(dir);
     }
 
-    // Also add well-known dirs that might contain npm/npx
-    for dir in NODE_SEARCH_DIRS {
-        let d = dir.to_string();
-        if !front.contains(&d) && std::path::Path::new(dir).is_dir() {
-            front.push(d);
+    // NODE_SEARCH_DIRS are Unix-only paths (/usr/local/bin, /opt/homebrew/bin,
+    // /usr/bin). On Windows, rely on the PATH established by the Node installer.
+    if !cfg!(windows) {
+        for dir in NODE_SEARCH_DIRS {
+            let d = dir.to_string();
+            if !front.contains(&d) && std::path::Path::new(dir).is_dir() {
+                front.push(d);
+            }
         }
     }
 
     // Remove the front dirs from their current position to avoid duplicates,
     // then prepend them.
     let remaining: Vec<&str> = current
-        .split(':')
+        .split(sep_char)
         .filter(|p| !front.iter().any(|f| f == p))
         .collect();
 
     let mut parts = front;
     parts.extend(remaining.into_iter().map(String::from));
-    parts.join(":")
+    parts.join(sep_str)
 }
 
 /// Resolve the npm binary from the same directory as the node binary.
@@ -266,14 +283,16 @@ fn find_npm() -> Result<String, String> {
     }
 
     // Fall back to bare "npm" on PATH
-    if Command::new(npm_name)
+    let mut probe = Command::new(npm_name);
+    no_window(&mut probe);
+    let ok = probe
         .arg("--version")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
         .map(|s| s.success())
-        .unwrap_or(false)
-    {
+        .unwrap_or(false);
+    if ok {
         return Ok(npm_name.to_string());
     }
 
@@ -444,6 +463,7 @@ fn rebuild_native_addon<F: FnMut(&str)>(
     log::info!("Rebuilding native addon: {}", package);
 
     let mut cmd = Command::new(npm);
+    no_window(&mut cmd);
     sanitize_node_cmd(&mut cmd);
     cmd.args(["rebuild", package])
         .current_dir(module_dir)
@@ -480,6 +500,7 @@ fn run_npm_install<F: FnMut(&str)>(
     on_line: &mut F,
 ) -> Result<(), String> {
     let mut cmd = Command::new(npm);
+    no_window(&mut cmd);
     let prefix = module_dir.to_string_lossy();
 
     if ignore_scripts {
@@ -619,6 +640,7 @@ fn spawn_n8n() -> Result<Child, String> {
     log::info!("Spawning n8n: {} start (port {}, PATH: {})", bin.display(), N8N_PORT, path);
 
     let mut cmd = Command::new(&bin);
+    no_window(&mut cmd);
     // Strip AppImage-injected LD_LIBRARY_PATH so n8n uses the correct
     // system libraries (see sanitize_node_cmd).
     sanitize_node_cmd(&mut cmd);
@@ -727,11 +749,42 @@ pub fn shutdown_n8n() {
                 }
             }
 
-            #[cfg(not(unix))]
+            #[cfg(windows)]
             {
-                log::info!("Killing n8n process");
-                let _ = child.kill();
-                let _ = child.wait();
+                // /T kills the entire process tree. n8n's `n8n.cmd` spawns a
+                // node.exe child; without /T the node.exe is orphaned.
+                log::info!("Stopping n8n process tree (pid {})", pid);
+                let mut tk = Command::new("taskkill");
+                no_window(&mut tk);
+                let _ = tk.args(["/T", "/PID", &pid.to_string()]).status();
+
+                let start = std::time::Instant::now();
+                loop {
+                    match child.try_wait() {
+                        Ok(Some(_)) => {
+                            log::info!("n8n exited gracefully");
+                            break;
+                        }
+                        Ok(None) => {
+                            if start.elapsed() > Duration::from_secs(5) {
+                                log::warn!("n8n did not exit; force-killing tree");
+                                let mut force = Command::new("taskkill");
+                                no_window(&mut force);
+                                let _ = force
+                                    .args(["/T", "/F", "/PID", &pid.to_string()])
+                                    .status();
+                                let _ = child.wait();
+                                break;
+                            }
+                            std::thread::sleep(Duration::from_millis(100));
+                        }
+                        Err(e) => {
+                            log::error!("Error waiting for n8n: {}", e);
+                            let _ = child.kill();
+                            break;
+                        }
+                    }
+                }
             }
 
             *guard = None;

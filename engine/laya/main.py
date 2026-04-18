@@ -58,20 +58,52 @@ def _start_parent_watchdog() -> None:
     parent PID changes to 1 (launchd on macOS).  This watchdog thread polls
     every 2 seconds and sends SIGTERM to ourselves when that happens, giving
     uvicorn a chance to run the lifespan shutdown cleanly.
-    """
-    if sys.platform == "win32":
-        return  # Windows handles child process cleanup differently
 
+    On Windows `os.getppid()` is not reliably updated on reparenting, so we
+    use psutil.pid_exists() against the original parent PID instead.
+    """
     import threading
+    import time
 
     parent_pid = os.getppid()
     if parent_pid <= 1:
         # Already orphaned (launched standalone) — nothing to watch
         return
 
+    if sys.platform == "win32":
+        # Prefer LAYA_PARENT_PID (set by the Rust launcher). On Windows, uvicorn
+        # re-execs to a worker subprocess, so os.getppid() points at the worker
+        # spawner rather than laya-app.exe — the actual process we want to track.
+        parent_pid_env = os.environ.get("LAYA_PARENT_PID")
+        if parent_pid_env:
+            try:
+                parent_pid = int(parent_pid_env)
+            except ValueError:
+                pass
+        try:
+            import psutil
+        except ImportError:
+            log.warning("parent_watchdog_unavailable_no_psutil")
+            return
+
+        def _watch_win():
+            while True:
+                time.sleep(2)
+                try:
+                    if not psutil.pid_exists(parent_pid):
+                        log.info("parent_exited", original_parent=parent_pid)
+                        os.kill(os.getpid(), signal.SIGTERM)
+                        return
+                except Exception:
+                    pass
+
+        t = threading.Thread(target=_watch_win, daemon=True, name="parent-watchdog")
+        t.start()
+        log.info("parent_watchdog_started", parent_pid=parent_pid, mode="psutil")
+        return
+
     def _watch():
         while True:
-            import time
             time.sleep(2)
             current_parent = os.getppid()
             if current_parent != parent_pid:
@@ -100,29 +132,53 @@ def _kill_stale_engine(host: str, port: int) -> None:
 
     log.warning("port_in_use", host=host, port=port)
 
-    # Find the PID holding the port and kill it
-    if sys.platform != "win32":
-        import subprocess
-
+    # Find the PID holding the port and kill it. lsof is Unix-only; Windows
+    # uses psutil.net_connections() for the same result.
+    if sys.platform == "win32":
         try:
-            result = subprocess.run(
-                ["lsof", "-ti", f"tcp:{port}", "-s", "tcp:listen"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            pids = [int(p) for p in result.stdout.strip().split("\n") if p.strip()]
+            import psutil
             my_pid = os.getpid()
-            for pid in pids:
-                if pid != my_pid:
-                    log.warning("killing_stale_engine", pid=pid, port=port)
-                    os.kill(pid, signal.SIGTERM)
-            if pids:
-                import time
+            for conn in psutil.net_connections(kind="tcp"):
+                if (
+                    conn.laddr
+                    and conn.laddr.port == port
+                    and conn.status == psutil.CONN_LISTEN
+                    and conn.pid
+                    and conn.pid != my_pid
+                ):
+                    log.warning("killing_stale_engine", pid=conn.pid, port=port)
+                    try:
+                        psutil.Process(conn.pid).terminate()
+                    except Exception:
+                        pass
+            import time
 
-                time.sleep(1)
+            time.sleep(1)
         except Exception as e:
             log.warning("stale_engine_cleanup_failed", error=str(e))
+        return
+
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["lsof", "-ti", f"tcp:{port}", "-s", "tcp:listen"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        pids = [int(p) for p in result.stdout.strip().split("\n") if p.strip()]
+        my_pid = os.getpid()
+        for pid in pids:
+            if pid != my_pid:
+                log.warning("killing_stale_engine", pid=pid, port=port)
+                os.kill(pid, signal.SIGTERM)
+        if pids:
+            import time
+
+            time.sleep(1)
+    except Exception as e:
+        log.warning("stale_engine_cleanup_failed", error=str(e))
 
 
 @asynccontextmanager
@@ -253,7 +309,16 @@ app = FastAPI(title="Laya Engine", version="0.1.0", lifespan=lifespan)
 # Allow the Tauri/SvelteKit frontend to talk to the engine
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "tauri://localhost"],
+    # Windows Tauri v2 serves the bundled frontend from http(s)://tauri.localhost/;
+    # macOS/Linux use tauri://localhost. Both origins must be allowed so fetch()
+    # from the webview (e.g. health polling) isn't blocked by the browser.
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "tauri://localhost",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
