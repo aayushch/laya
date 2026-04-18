@@ -213,7 +213,7 @@
         "method": "POST",
         "url": "={{ 'https://www.googleapis.com/gmail/v1/users/me/messages/' + $json.body.payload.gmail_id + '/modify' }}",
         "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "gmailOAuth2Api",
+        "nodeCredentialType": "gmailOAuth2",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ removeLabelIds: ['INBOX'] }) }}",
@@ -233,7 +233,7 @@
         "method": "POST",
         "url": "={{ 'https://www.googleapis.com/gmail/v1/users/me/messages/' + $json.body.payload.gmail_id + '/modify' }}",
         "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "gmailOAuth2Api",
+        "nodeCredentialType": "gmailOAuth2",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ addLabelIds: ['STARRED'] }) }}",
@@ -253,7 +253,7 @@
         "method": "POST",
         "url": "={{ 'https://www.googleapis.com/gmail/v1/users/me/messages/' + $json.body.payload.gmail_id + '/modify' }}",
         "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "gmailOAuth2Api",
+        "nodeCredentialType": "gmailOAuth2",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ removeLabelIds: ['UNREAD'] }) }}",
@@ -590,6 +590,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.03.2"
+    "laya_version": "2026.04.2"
   }
 }

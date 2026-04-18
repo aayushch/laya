@@ -685,16 +685,32 @@ async def _clone_workflows_for_connection(
             node_creds = node.get("credentials", {})
             params = node.get("parameters", {})
             node_type = node.get("type", "")
-            is_match = (
+            node_cred_type = params.get("nodeCredentialType")
+            # HTTP Request nodes (e.g. Gmail archive/star/mark_read) bind the
+            # credential under the key named by nodeCredentialType, which can
+            # differ from the platform's native n8n_type — Gmail's native type
+            # is "gmailOAuth2" but its HTTP nodes use "gmailOAuth2Api".  Match
+            # on the HTTP cred type for this platform and inject under that key,
+            # otherwise n8n can't resolve the credential at runtime and the
+            # node fails with "Credentials not found".
+            from laya.egress.oauth import _PLATFORM_HTTP_CRED_TYPES
+            http_cred_type = _PLATFORM_HTTP_CRED_TYPES.get(platform)
+            is_http_match = (
+                http_cred_type is not None
+                and node_type == "n8n-nodes-base.httpRequest"
+                and node_cred_type == http_cred_type
+            )
+            is_native_match = (
                 n8n_type in node_creds
                 or node_type == n8n_node
                 or node_type.startswith(n8n_node)  # matches gmailTrigger, googleCalendarTrigger, etc.
-                or params.get("nodeCredentialType") == n8n_type
+                or node_cred_type == n8n_type
             )
-            if is_match:
+            if is_http_match or is_native_match:
                 if "credentials" not in node:
                     node["credentials"] = {}
-                node["credentials"][n8n_type] = {
+                cred_key = http_cred_type if is_http_match else n8n_type
+                node["credentials"][cred_key] = {
                     "id": n8n_credential_id,
                     "name": connection_name,
                 }
