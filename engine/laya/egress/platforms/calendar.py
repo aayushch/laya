@@ -1,6 +1,22 @@
-"""Calendar-specific payload normalization and validation (Google + Outlook)."""
+"""Calendar-specific payload normalization, validation, and event-derived identifiers."""
 
 from __future__ import annotations
+
+
+def identifiers_from_event(
+    action_type: str,
+    event_id: str | None,
+    content_metadata: dict,
+    event_row: dict,
+    self_emails: set[str] | None = None,
+) -> dict:
+    """Derive calendar identifiers from the event.
+
+    ``create_event`` makes a new event and needs no identifier.  Future
+    ``update_event``/``delete_event`` actions (not yet in any executor
+    workflow) would take the event id from the event_id prefix.
+    """
+    return {}
 
 
 def normalize_payload(action_type: str, payload: dict) -> dict:

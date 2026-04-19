@@ -43,6 +43,81 @@ class TestGmail:
         errors = gmail.validate_payload("archive", {})
         assert any("gmail_id" in e for e in errors)
 
+    def test_identifiers_populate_reply_headers(self):
+        meta = {
+            "gmail_thread_id": "t1",
+            "gmail_message_id_header": "<abc@mail.gmail.com>",
+            "gmail_references_header": "<root@x> <prev@y>",
+        }
+        event = {"actor_email": "sender@example.com", "subject_title": "Weekly update"}
+        ids = gmail.identifiers_from_event("send_email", "evt_gmail_m1", meta, event)
+        assert ids["thread_id"] == "t1"
+        assert ids["in_reply_to"] == "<abc@mail.gmail.com>"
+        assert ids["references"] == "<root@x> <prev@y> <abc@mail.gmail.com>"
+        assert ids["original_subject"] == "Weekly update"
+        assert ids["to"] == "sender@example.com"
+
+    def test_identifiers_references_without_existing_chain(self):
+        meta = {
+            "gmail_thread_id": "t1",
+            "gmail_message_id_header": "<abc@mail.gmail.com>",
+        }
+        event = {"actor_email": "s@e.com", "subject_title": "Hi"}
+        ids = gmail.identifiers_from_event("send_email", "evt_gmail_m1", meta, event)
+        assert ids["references"] == "<abc@mail.gmail.com>"
+
+    def test_identifiers_no_reply_headers_when_no_thread(self):
+        meta = {"gmail_message_id_header": "<abc@mail.gmail.com>"}
+        event = {"actor_email": "s@e.com", "subject_title": "Hi"}
+        ids = gmail.identifiers_from_event("send_email", "evt_gmail_m1", meta, event)
+        assert "in_reply_to" not in ids
+        assert "references" not in ids
+        assert "original_subject" not in ids
+
+    def test_identifiers_skip_reply_headers_on_forward(self):
+        meta = {
+            "gmail_thread_id": "t1",
+            "gmail_message_id_header": "<abc@mail.gmail.com>",
+        }
+        event = {"actor_email": "s@e.com", "subject_title": "Hi"}
+        ids = gmail.identifiers_from_event("forward", "evt_gmail_m1", meta, event)
+        assert "in_reply_to" not in ids
+        assert "references" not in ids
+        # forward also shouldn't auto-populate "to"
+        assert "to" not in ids
+
+    def test_normalize_overrides_llm_subject_with_original(self):
+        p = gmail.normalize_payload(
+            "send_email",
+            {
+                "subject": "Response to your inquiry",
+                "thread_id": "t123",
+                "body": "x",
+                "original_subject": "Weekly sync notes",
+            },
+        )
+        assert p["subject"] == "Re: Weekly sync notes"
+        assert "original_subject" not in p
+
+    def test_normalize_strips_re_prefix_from_original_before_prefixing(self):
+        p = gmail.normalize_payload(
+            "send_email",
+            {
+                "subject": "anything",
+                "thread_id": "t1",
+                "body": "x",
+                "original_subject": "Re: Weekly sync",
+            },
+        )
+        assert p["subject"] == "Re: Weekly sync"
+
+    def test_normalize_falls_back_to_llm_subject_without_original(self):
+        p = gmail.normalize_payload(
+            "send_email",
+            {"subject": "Hello", "thread_id": "t1", "body": "x"},
+        )
+        assert p["subject"] == "Re: Hello"
+
 
 class TestJira:
     def test_normalize_issue_key_from_variants(self):
@@ -222,3 +297,148 @@ class TestCalendar:
     def test_validate_update_missing_event_id(self):
         errors = calendar.validate_payload("update_event", {})
         assert any("event_id" in e for e in errors)
+
+
+class TestIdentifiersFromEvent:
+    """Event-derived identifier extraction per platform."""
+
+    def test_github_from_metadata(self):
+        ids = github.identifiers_from_event(
+            "comment",
+            "evt_github_issue_aayushch_laya_10_1776",
+            {"repo": "aayushch/laya", "is_pr": False},
+            {},
+        )
+        assert ids == {"owner": "aayushch", "repo": "laya", "issue_number": 10}
+
+    def test_github_pr_routes_number(self):
+        ids = github.identifiers_from_event(
+            "approve_pr",
+            "evt_github_pr_acme_widgets_42_1776",
+            {"repo": "acme/widgets", "is_pr": True},
+            {},
+        )
+        assert ids["pr_number"] == 42
+        assert "issue_number" not in ids
+
+    def test_github_event_id_fallback_without_metadata(self):
+        ids = github.identifiers_from_event(
+            "comment", "evt_github_issue_a_b_7_1776", {}, {}
+        )
+        # event_id regex is ambiguous with underscores; single-token works
+        assert ids.get("issue_number") == 7
+
+    def test_github_comment_event_uses_metadata_number(self):
+        # comment-kind event_id encodes comment_id, not issue_number;
+        # issue_number must come from metadata.
+        ids = github.identifiers_from_event(
+            "comment",
+            "evt_github_comment_o_r_9999_1776",
+            {"repo": "o/r", "issue_number": 5},
+            {},
+        )
+        assert ids == {"owner": "o", "repo": "r", "issue_number": 5}
+
+    def test_github_no_source_returns_minimal(self):
+        ids = github.identifiers_from_event("comment", None, {}, {})
+        assert ids == {}
+
+    def test_jira_issue_key_from_subject_id(self):
+        ids = jira.identifiers_from_event(
+            "comment",
+            "evt_jira_10017_1776",
+            {"jira_project": "PROJ"},
+            {"subject_id": "PROJ-123"},
+        )
+        assert ids == {"issue_key": "PROJ-123", "project": "PROJ"}
+
+    def test_jira_no_subject_returns_project_only(self):
+        ids = jira.identifiers_from_event("create_issue", None, {"jira_project": "X"}, {})
+        assert ids == {"project": "X"}
+
+    def test_linear_issue_id_from_event_id(self):
+        ids = linear.identifiers_from_event(
+            "comment",
+            "evt_linear_abcd-uuid-1234_1776",
+            {"linear_team_id": "team-uuid"},
+            {},
+        )
+        assert ids == {"issue_id": "abcd-uuid-1234", "team_id": "team-uuid"}
+
+    def test_linear_empty_when_no_sources(self):
+        ids = linear.identifiers_from_event("comment", None, {}, {})
+        assert ids == {}
+
+    def test_bitbucket_workspace_repo_and_prid(self):
+        ids = bitbucket.identifiers_from_event(
+            "comment_pr",
+            "evt_bb_pr_acme_my-repo_99_1776",
+            {"bb_repository": "acme/my-repo", "bb_comment_id": 123},
+            {},
+        )
+        assert ids == {
+            "workspace": "acme",
+            "repo": "my-repo",
+            "pr_id": "99",
+            "comment_id": "123",
+        }
+
+    def test_gmail_id_and_reply_to(self):
+        ids = gmail.identifiers_from_event(
+            "send_email",
+            "evt_gmail_msgABC",
+            {"gmail_thread_id": "thr-1"},
+            {"actor_email": "sender@co.com"},
+        )
+        assert ids["gmail_id"] == "msgABC"
+        assert ids["thread_id"] == "thr-1"
+        assert ids["to"] == "sender@co.com"
+
+    def test_gmail_self_reply_guard(self):
+        ids = gmail.identifiers_from_event(
+            "send_email",
+            "evt_gmail_x",
+            {},
+            {"actor_email": "me@co.com"},
+            self_emails={"me@co.com"},
+        )
+        assert "to" not in ids  # don't self-reply
+
+    def test_gmail_forward_does_not_default_to_sender(self):
+        # forward recipients are user-chosen; actor_email should NOT be set as "to".
+        ids = gmail.identifiers_from_event(
+            "forward", "evt_gmail_x", {}, {"actor_email": "sender@co.com"}
+        )
+        assert "to" not in ids
+
+    def test_outlook_id_and_conversation(self):
+        ids = outlook.identifiers_from_event(
+            "archive",
+            "evt_outlook_msgXYZ",
+            {"outlook_conversation_id": "conv-1"},
+            {},
+        )
+        assert ids["outlook_id"] == "msgXYZ"
+        assert ids["conversation_id"] == "conv-1"
+
+    def test_slack_channel_and_thread(self):
+        ids = slack.identifiers_from_event(
+            "reply_thread",
+            "evt_slack_1776.0001",
+            {"slack_channel": "C1", "slack_thread_ts": "1776.0001"},
+            {},
+        )
+        assert ids == {"channel": "C1", "thread_ts": "1776.0001"}
+
+    def test_slack_react_includes_timestamp(self):
+        ids = slack.identifiers_from_event(
+            "react",
+            "evt_slack_1776.0002",
+            {"slack_channel": "C1"},
+            {},
+        )
+        assert ids == {"channel": "C1", "timestamp": "1776.0002"}
+
+    def test_calendar_returns_empty_for_create(self):
+        ids = calendar.identifiers_from_event("create_event", "evt_cal_x", {}, {})
+        assert ids == {}

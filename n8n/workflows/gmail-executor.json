@@ -167,22 +167,24 @@
     },
     {
       "name": "Send Email",
-      "type": "n8n-nodes-base.gmail",
-      "typeVersion": 2,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [
         900,
         -50
       ],
       "parameters": {
-        "operation": "send",
-        "sendTo": "={{ $json.body.payload.to || $json.body.event_actor_email }}",
-        "subject": "={{ $json.body.payload.subject || (($json.body.event_subject || '').toLowerCase().startsWith('re:') ? $json.body.event_subject : 'Re: ' + ($json.body.event_subject || '')) }}",
-        "message": "={{ $json.body.payload.body || $json.body.payload.message || '' }}",
-        "options": {
-          "threadId": "={{ $json.body.payload.thread_id || '' }}"
-        }
+        "method": "POST",
+        "url": "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gmailOAuth2",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => { const p = $json.body.payload || {}; const to = p.to || $json.body.event_actor_email || ''; const bodyText = p.body || p.message || ''; const evtSubj = $json.body.event_subject || ''; const fallbackSubj = evtSubj.toLowerCase().startsWith('re:') ? evtSubj : (evtSubj ? 'Re: ' + evtSubj : ''); const subject = p.subject || fallbackSubj; const inReplyTo = p.in_reply_to || ''; const references = p.references || ''; const threadId = p.thread_id || ''; const headers = ['To: ' + to, 'Subject: ' + subject]; if (inReplyTo) headers.push('In-Reply-To: ' + inReplyTo); if (references) headers.push('References: ' + references); headers.push('MIME-Version: 1.0'); headers.push('Content-Type: text/plain; charset=\"UTF-8\"'); headers.push('Content-Transfer-Encoding: 7bit'); headers.push(''); headers.push(bodyText); const mime = headers.join('\\r\\n'); const raw = Buffer.from(mime, 'utf-8').toString('base64').replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, ''); const obj = { raw: raw }; if (threadId) obj.threadId = threadId; return JSON.stringify(obj); })() }}",
+        "options": {}
       },
-      "onError": "continueErrorOutput"
+      "onError": "continueErrorOutput",
+      "notes": "Builds a raw RFC 2822 MIME message and POSTs to gmail.googleapis.com directly. We bypass n8n-nodes-base.gmail's 'send' operation because v2 doesn't expose a way to set custom In-Reply-To / References headers — and Gmail requires those headers (not just threadId) to thread a reply into the original conversation. Without them, replies appear as new threads."
     },
     {
       "name": "Forward Email",
@@ -590,6 +592,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.04.2"
+    "laya_version": "2026.04.3"
   }
 }

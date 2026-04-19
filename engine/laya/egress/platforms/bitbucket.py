@@ -1,6 +1,43 @@
-"""Bitbucket-specific payload normalization and validation."""
+"""Bitbucket-specific payload normalization, validation, and event-derived identifiers."""
 
 from __future__ import annotations
+
+import re
+
+_EVENT_ID_PR_RE = re.compile(r"^evt_bb_pr_.+_(?P<id>\d+)_\d+$")
+
+
+def identifiers_from_event(
+    action_type: str,
+    event_id: str | None,
+    content_metadata: dict,
+    event_row: dict,
+    self_emails: set[str] | None = None,
+) -> dict:
+    """Derive Bitbucket identifiers from the event.
+
+    Prefer ``content_metadata['bb_repository']`` ("workspace/repo") for
+    workspace+repo to avoid event_id regex ambiguity.  The PR id is
+    unambiguous in the event_id suffix.
+    """
+    ids: dict = {}
+
+    repo_full = (content_metadata or {}).get("bb_repository") or ""
+    if "/" in repo_full:
+        workspace, repo = repo_full.split("/", 1)
+        ids["workspace"] = workspace
+        ids["repo"] = repo
+
+    if event_id:
+        m = _EVENT_ID_PR_RE.match(event_id)
+        if m:
+            ids["pr_id"] = m.group("id")
+
+    comment_id = (content_metadata or {}).get("bb_comment_id")
+    if comment_id:
+        ids["comment_id"] = str(comment_id)
+
+    return ids
 
 
 def normalize_payload(action_type: str, payload: dict) -> dict:

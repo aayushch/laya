@@ -35,6 +35,22 @@ should be grouped together"
 - "Marketing newsletters from different companies should NOT be grouped even if they \
 are about similar topics"
 - "Bank transaction alerts and monthly statements should be grouped by account"
+- "A Jira or Linear ticket, its email notifications, and Slack messages that reference \
+the same ticket ID (e.g., 'PROJ-123') should be grouped together"
+- "A GitHub or Bitbucket pull request and its email notifications (review requested, \
+approved, changes requested, merged, commented) should be grouped together"
+- "Commit/push emails and CI build alerts referencing the same pull request or commit \
+SHA should be grouped together"
+- "A calendar invite and the email or Slack discussion about the same meeting should \
+be grouped together"
+- "Incident/on-call pages (PagerDuty, Slack alerts, monitoring emails) referencing the \
+same incident ID should be grouped together"
+- "Different pull requests in the same repository should NOT be grouped just because \
+they share the repo — only events about the SAME PR belong together"
+- "Different Jira/Linear tickets in the same project should NOT be grouped just because \
+they share a project/team key"
+- "Daily standup reminders or recurring meeting invites should NOT be grouped across \
+different days — each day's occurrence is its own context"
 
 Bad examples (too specific or unsupported):
 - "The SP Utilities bill and PayNow receipt should be linked" (too specific to one instance)

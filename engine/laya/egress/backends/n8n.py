@@ -11,6 +11,7 @@ import tenacity
 
 from laya.config import get_n8n_config, load_team
 from laya.db.sqlite import get_db
+from laya.egress import platforms
 from laya.egress.backends.base import EgressBackend
 from laya.egress.models import EgressRequest, EgressResult
 from laya.models.team import TeamConfig, TeamRole
@@ -219,8 +220,18 @@ class N8nBackend(EgressBackend):
     async def _build_payload(self, request: EgressRequest) -> dict:
         """Build the n8n executor payload from an EgressRequest.
 
-        Enriches the payload with event context (actor info, subject) when
-        a source_event_id is available.
+        Flow:
+        1. Copy the caller payload and coerce ``None`` to ``""`` for fields
+           n8n JS expressions concatenate.
+        2. Fetch event context + parse ``content_metadata`` JSON.
+        3. Delegate to the platform helper module in ``laya.egress.platforms``:
+           - ``identifiers_from_event(...)`` derives identifier fields from
+             the event deterministically.  Merge with **engine-wins**
+             precedence — derived values overwrite LLM-emitted ones.
+           - ``normalize_payload(...)`` handles LLM field-name variants and
+             platform defaults.
+        4. Apply connection-derived enrichment (Jira base URL).
+        5. Assemble the final webhook envelope.
         """
         payload = dict(request.payload)
 
@@ -232,33 +243,38 @@ class N8nBackend(EgressBackend):
             if key in payload and payload[key] is None:
                 payload[key] = ""
 
-        # Platform-specific normalization
-        payload = self._normalize_platform_payload(request.platform, request.action_type, payload)
-
-        # Fetch event context for richer executor payloads
+        # Fetch event context and parse metadata once
         event_ctx = await self._fetch_event_context(request.source_event_id)
+        try:
+            content_metadata = json.loads(event_ctx.get("content_metadata") or "{}")
+        except (json.JSONDecodeError, AttributeError, TypeError):
+            content_metadata = {}
 
-        # For email replies triggered from a card (has source_event_id),
-        # ensure "to" is the original sender — the stager LLM sometimes
-        # sets it to the user's own email instead.  We trust event_actor_email
-        # as the correct reply target when one exists.
-        # Guard: skip override if actor_email is the user's own email (self role
-        # in team.json) — the ingestion workflow may have captured the wrong
-        # sender in some Outlook configurations.
-        if (
-            request.platform in ("gmail", "outlook", "smtp")
-            and request.action_type in ("send_email", "reply")
-            and request.source_event_id
-            and event_ctx.get("actor_email")
-        ):
-            actor = event_ctx["actor_email"].lower()
-            self_emails = self._get_self_emails()
-            if actor not in self_emails:
-                payload["to"] = event_ctx["actor_email"]
+        # Delegate identifier derivation + normalization to the platform helper
+        mod = platforms.for_platform(request.platform)
+        if mod is not None:
+            # Derive identifiers from the source event.  Engine-wins precedence:
+            # derived values overwrite any identifier fields the LLM emitted,
+            # because the event is the single source of truth when present.
+            if request.source_event_id and event_ctx:
+                kwargs: dict = {}
+                if request.platform in ("gmail", "outlook"):
+                    kwargs["self_emails"] = self._get_self_emails()
+                derived = mod.identifiers_from_event(
+                    request.action_type,
+                    request.source_event_id,
+                    content_metadata,
+                    event_ctx,
+                    **kwargs,
+                )
+                if derived:
+                    payload = {**payload, **derived}
+            # Apply LLM-variant aliasing and platform defaults
+            payload = mod.normalize_payload(request.action_type, payload)
 
-        # For Jira actions using httpRequest nodes, the executor workflow needs
-        # the Jira instance base URL to construct REST API endpoints. Look it up
-        # from the connection's stored credentials (domain field).
+        # Jira executor workflows need the instance base URL to construct
+        # REST endpoints.  This is connection-derived (from stored credentials),
+        # not event-derived, so it stays here rather than in the helper module.
         if request.platform == "jira" and not payload.get("jira_base_url") and request.connection_id:
             try:
                 from laya.egress.connections import _get_from_keychain
@@ -267,65 +283,6 @@ class N8nBackend(EgressBackend):
                     payload["jira_base_url"] = jira_creds["domain"].rstrip("/")
             except Exception:
                 pass  # Non-fatal — workflow falls back to placeholder URL
-
-        # For Outlook archive/mark_read, enrich outlook_id from event metadata
-        # so the executor workflow can target the correct message.
-        if (
-            request.platform == "outlook"
-            and request.action_type in ("archive", "mark_read")
-            and not payload.get("outlook_id")
-            and request.source_event_id
-        ):
-            # Event ID format is "evt_outlook_<raw_outlook_id>"
-            if request.source_event_id.startswith("evt_outlook_"):
-                payload["outlook_id"] = request.source_event_id[len("evt_outlook_"):]
-            # LLMs often use the generic "message_id" key — accept it as outlook_id
-            elif payload.get("message_id"):
-                payload["outlook_id"] = payload["message_id"]
-
-        # For Gmail archive/star/unstar/mark_read, enrich gmail_id the same way.
-        # The executor workflow's HTTP Request nodes target gmail_id in the URL,
-        # but LLMs often emit "message_id" or nothing at all.
-        if (
-            request.platform == "gmail"
-            and request.action_type in ("archive", "star", "unstar", "mark_read")
-            and not payload.get("gmail_id")
-        ):
-            if payload.get("message_id"):
-                payload["gmail_id"] = payload["message_id"]
-            elif request.source_event_id and request.source_event_id.startswith("evt_gmail_"):
-                payload["gmail_id"] = request.source_event_id[len("evt_gmail_"):]
-
-        # For GitHub, fall back to event context when the LLM omitted owner,
-        # repo, or issue_number.  Event metadata stores "repo" as
-        # "owner/name" and the event_id encodes the issue/PR number.
-        if request.platform == "github" and request.source_event_id:
-            if not payload.get("owner") or not payload.get("repo"):
-                try:
-                    meta = json.loads(event_ctx.get("content_metadata") or "{}")
-                    repo_full = meta.get("repo") or ""
-                    if "/" in repo_full:
-                        ev_owner, ev_repo = repo_full.split("/", 1)
-                        payload.setdefault("owner", ev_owner)
-                        payload.setdefault("repo", ev_repo)
-                except (json.JSONDecodeError, AttributeError, ValueError):
-                    pass
-            # Event IDs look like evt_github_issue_<owner>_<repo>_<num>_<ts>
-            # or evt_github_pr_<owner>_<repo>_<num>_<ts>.  Extract the number
-            # when the LLM forgot it.
-            needs_num = (
-                (request.action_type in ("comment", "close_issue") and not payload.get("issue_number"))
-                or (request.action_type in ("approve_pr", "merge_pr", "request_changes", "comment_pr_line") and not payload.get("pr_number"))
-            )
-            if needs_num:
-                import re
-                m = re.match(r"^evt_github_(?:issue|pr)_.+_(\d+)_\d+$", request.source_event_id)
-                if m:
-                    num = int(m.group(1))
-                    if request.action_type in ("approve_pr", "merge_pr", "request_changes", "comment_pr_line"):
-                        payload["pr_number"] = num
-                    else:
-                        payload["issue_number"] = num
 
         return {
             "action_id": f"egr_{request.source_card_id or 'direct'}",
@@ -341,81 +298,6 @@ class N8nBackend(EgressBackend):
             "event_subject": event_ctx.get("subject_title", ""),
             "event_platform": event_ctx.get("source_platform", request.platform),
         }
-
-    def _normalize_platform_payload(
-        self, platform: str, action_type: str, payload: dict
-    ) -> dict:
-        """Apply platform-specific field normalization.
-
-        Handles common LLM field-name variants and type coercions so executor
-        workflows receive consistent field names.
-        """
-        if platform == "github":
-            # Ensure "comment" field for comment actions
-            if "comment" not in payload and action_type in ("comment", "close_issue"):
-                payload["comment"] = (
-                    payload.pop("body", None)
-                    or payload.pop("message", None)
-                    or payload.pop("content", None)
-                    or payload.pop("text", None)
-                    or ""
-                )
-            # LLMs often emit Jira-style "issue_key" ("owner/repo#123") or a
-            # full GitHub URL instead of separate owner/repo/issue_number
-            # fields.  Parse those variants so the executor receives the
-            # fields it expects.
-            issue_ref = (
-                payload.pop("issue_key", None)
-                or payload.pop("issueKey", None)
-                or payload.pop("issue_url", None)
-                or payload.pop("pr_key", None)
-                or payload.pop("pr_url", None)
-            )
-            if issue_ref and isinstance(issue_ref, str):
-                import re
-                m = re.search(
-                    r"(?:https?://github\.com/)?([^/\s]+)/([^/#\s]+?)(?:/(?:issues|pull))?[/#](\d+)",
-                    issue_ref.strip(),
-                )
-                if m:
-                    payload.setdefault("owner", m.group(1))
-                    payload.setdefault("repo", m.group(2))
-                    num = int(m.group(3))
-                    if action_type in ("approve_pr", "merge_pr", "request_changes", "comment_pr_line"):
-                        payload.setdefault("pr_number", num)
-                    else:
-                        payload.setdefault("issue_number", num)
-            # Coerce issue_number / pr_number to int
-            for key in ("issue_number", "pr_number"):
-                if key in payload:
-                    try:
-                        payload[key] = int(payload[key])
-                    except (ValueError, TypeError):
-                        pass
-
-        elif platform in ("gmail", "outlook"):
-            # Ensure "body" exists — LLMs use various key names
-            if "body" not in payload:
-                payload["body"] = (
-                    payload.pop("message", None)
-                    or payload.pop("content", None)
-                    or payload.pop("text", None)
-                    or payload.pop("reply_body", None)
-                    or payload.pop("email_body", None)
-                    or payload.pop("reply", None)
-                    or ""
-                )
-
-        elif platform == "slack":
-            # Normalize message field
-            if "message" not in payload and "text" not in payload:
-                payload["message"] = (
-                    payload.pop("body", None)
-                    or payload.pop("content", None)
-                    or ""
-                )
-
-        return payload
 
     def _get_self_emails(self) -> set[str]:
         """Return the set of emails (primary + aliases) for the 'self' team member."""

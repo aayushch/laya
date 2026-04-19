@@ -4,10 +4,47 @@ from __future__ import annotations
 
 from typing import Any
 
+from laya.egress.registry import get_capabilities
 from laya.llm.prompts import current_timestamp_line
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 from laya.workers.base import WorkerResult
+
+
+def format_supported_actions(platform: str) -> str:
+    """Render the registry's capabilities for ``platform`` as a markdown
+    [SUPPORTED ACTIONS] block for injection into the stager user message.
+
+    Shows each capability's ``content_fields`` / ``optional_content_fields``
+    directly — the registry declares which fields the LLM must emit, so no
+    external filter list is needed.  Identifier fields are absent by
+    construction because capabilities don't list them as content.
+    """
+    caps = get_capabilities(platform)
+    if not caps:
+        return ""
+
+    lines = [
+        "[SUPPORTED ACTIONS]",
+        (
+            "Pick `action_type` ONLY from this list. The engine fills "
+            "identifier fields automatically from the source event — emit "
+            "only the content fields listed."
+        ),
+    ]
+    for cap in caps:
+        field_parts = []
+        if cap.content_fields:
+            field_parts.append(f"required content fields: {', '.join(cap.content_fields)}")
+        if cap.optional_content_fields:
+            field_parts.append(f"optional: {', '.join(cap.optional_content_fields)}")
+        fields_text = f" — {'; '.join(field_parts)}" if field_parts else ""
+        lines.append(
+            f'- action_type="{cap.action_type}" (label "{cap.label}"): '
+            f"{cap.description}{fields_text}"
+        )
+    lines.append("[END SUPPORTED ACTIONS]")
+    return "\n".join(lines)
 
 STAGER_SYSTEM_PROMPT = """\
 You are the Stager for Laya, an AI-powered professional work assistant. Your job is to \
@@ -36,13 +73,9 @@ and concrete findings.
 - **suggested_actions**: 1-3 actions the user can approve. Each action specifies:
   - action_id: unique identifier (e.g., "act_comment_jira")
   - label: human-readable button text (e.g., "Post Jira Comment")
-  - action_type: must match the target_platform. Valid combinations:
-    - **gmail/outlook**: "send_email", "forward", "archive", "mark_read"
-    - **slack**: "send_message", "reply_thread"
-    - **jira/linear**: "comment", "transition", "create_issue", "assign"
-    - **bitbucket**: "comment_pr", "approve_pr", "request_changes", "merge_pr", "decline_pr", "create_pr"
-    - **github**: "comment", "close_issue", "approve_pr", "merge_pr", "request_changes", "create_issue"
-    - **google_calendar**: "create_event"
+  - action_type: MUST be chosen from the [SUPPORTED ACTIONS] block in the user \
+message below. That list is authoritative for this event's platform. Never \
+invent an action_type that isn't listed — it will be rejected by the executor.
   - target_platform: MUST equal the event's source platform (shown under [EVENT CONTENT] as \
 "Platform:"). Example: if Platform is "outlook", every suggested action must target "outlook" \
 — never "gmail", "google_calendar", or any other platform. The ONLY exceptions are:
@@ -52,27 +85,15 @@ user's other configured mail platform (still rare — default to the event's own
     When in doubt, match the event platform. Do NOT "enrich" cards with suggestions that \
 jump to unrelated platforms (e.g., never suggest a Google Calendar action on an Outlook \
 payment confirmation, or a Slack action on a Jira ticket).
-    IMPORTANT: For email replies on gmail/outlook, always use "send_email" — NOT "send_message". \
-"send_message" is ONLY for Slack.
-  - payload: A JSON string with platform-specific data. Required fields by platform:
-    - **gmail**: {"to": "sender@email (the person who SENT the original email, i.e. the actor — NOT the user's own email)", "subject": "Re: ...", "body": "The full email body text", "thread_id": "optional thread ID", "cc": "optional"}
-    - **outlook**: {"to": "sender@email (the original sender/actor — NOT the user)", "subject": "Re: ...", "body": "email text", "conversation_id": "optional"} \
-for send_email/forward; {"outlook_id": "the outlook message ID from the event"} for archive/mark_read
-    - **slack**: {"channel": "channel-name-or-id", "message": "The message text"} \
-for send_message; add "thread_ts": "timestamp" for reply_thread
-    - **jira**: {"issue_key": "PROJ-123", "comment": "The comment body"} for comment; \
-{"issue_key": "PROJ-123", "target_status": "Done"} for transition; \
-{"project": "PROJ", "summary": "Title", "description": "...", "type": "Task"} for create_issue
-    - **bitbucket**: {"workspace": "ws", "repo": "repo", "pr_id": "123", "comment": "body", "comment_id": "optional — the ID of the comment to reply to (from bb_comment_id in event metadata). Include this when replying to a specific comment thread so the reply is posted as a thread reply, not a new top-level comment."} \
-for comment_pr; same without comment for approve_pr, decline_pr, merge_pr
-    - **github**: {"owner": "repo-owner", "repo": "repo-name", "issue_number": 123, "comment": "body"} \
-for comment/close_issue; {"owner": "o", "repo": "r", "pr_number": 123} for approve_pr/merge_pr/request_changes; \
-{"owner": "o", "repo": "r", "title": "...", "body": "..."} for create_issue
-    - **linear**: {"issue_id": "...", "body": "comment"} for comment; \
-{"team_id": "...", "title": "...", "description": "..."} for create_issue
-    - **google_calendar**: {"title": "Event title", "description": "Details", "start": "ISO datetime", "end": "ISO datetime"}
-  IMPORTANT: For gmail send_email actions, the "body" field is REQUIRED and must contain \
-the full email text. Never omit it.
+  - payload: A JSON object with CONTENT fields for the chosen action. The \
+required/optional content fields for each action are listed in the \
+[SUPPORTED ACTIONS] block in the user message. Do NOT emit identifier fields \
+(owner, repo, issue_number, pr_number, issue_key, issue_id, team_id, \
+workspace, pr_id, channel, thread_ts, gmail_id, outlook_id, \
+conversation_id, thread_id, comment_id, timestamp, to) — they are filled \
+automatically by the engine from the source event. Emit ONLY the content \
+fields the action needs (e.g., comment body, email subject+body, issue \
+title+description, transition target_status, merge_method).
 - **privacy_tier**: 1 (public-safe), 2 (internal), 3 (confidential — PII, credentials, \
 financial data detected)
 
@@ -417,6 +438,14 @@ Body:
             f"[END ACTOR CONTEXT]"
         )
 
+    # Platform-specific allowed actions.  The list comes from the egress
+    # capability registry (which is kept in parity with the n8n executor
+    # workflows) so adding a new action only requires updating one place.
+    supported_actions_text = format_supported_actions(event.source.platform)
+    supported_actions_block = (
+        f"\n\n{supported_actions_text}" if supported_actions_text else ""
+    )
+
     user_message = f"""\
 {current_timestamp_line()}
 
@@ -425,7 +454,7 @@ Synthesize the following event and findings into a polished action card.
 {event_text}
 
 Router classification:
-{classification}{entities_text}{plan_text}{workers_text}{context_text}{entity_text}{identity_text}
+{classification}{entities_text}{plan_text}{workers_text}{context_text}{entity_text}{identity_text}{supported_actions_block}
 
 Produce a JSON action card matching the required schema."""
 

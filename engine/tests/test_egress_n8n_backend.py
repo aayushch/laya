@@ -8,6 +8,7 @@ import pytest_asyncio
 
 from laya.egress.backends.n8n import N8nBackend
 from laya.egress.models import EgressRequest
+from laya.egress.platforms import github, gmail, slack
 
 
 @pytest.fixture
@@ -16,43 +17,40 @@ def backend():
 
 
 class TestNormalizePayload:
-    def test_github_comment_field_normalization(self, backend):
+    """Normalization is now owned by per-platform helper modules; n8n backend
+    delegates.  These tests exercise the helpers directly."""
+
+    def test_github_comment_field_normalization(self):
         payload = {"owner": "a", "repo": "b", "issue_number": "42", "body": "Hello"}
-        result = backend._normalize_platform_payload("github", "comment", payload)
+        result = github.normalize_payload("comment", payload)
         assert result["comment"] == "Hello"
         assert "body" not in result
 
-    def test_github_issue_number_coercion(self, backend):
+    def test_github_issue_number_coercion(self):
         payload = {"owner": "a", "repo": "b", "issue_number": "42", "comment": "x"}
-        result = backend._normalize_platform_payload("github", "comment", payload)
+        result = github.normalize_payload("comment", payload)
         assert result["issue_number"] == 42
 
-    def test_github_pr_number_coercion(self, backend):
+    def test_github_pr_number_coercion(self):
         payload = {"owner": "a", "repo": "b", "pr_number": "10"}
-        result = backend._normalize_platform_payload("github", "approve_pr", payload)
+        result = github.normalize_payload("approve_pr", payload)
         assert result["pr_number"] == 10
 
-    def test_gmail_body_normalization(self, backend):
+    def test_gmail_body_normalization(self):
         payload = {"to": "a@b.com", "message": "Hello"}
-        result = backend._normalize_platform_payload("gmail", "send_email", payload)
+        result = gmail.normalize_payload("send_email", payload)
         assert result["body"] == "Hello"
         assert "message" not in result
 
-    def test_gmail_body_preserved(self, backend):
+    def test_gmail_body_preserved(self):
         payload = {"to": "a@b.com", "body": "Existing"}
-        result = backend._normalize_platform_payload("gmail", "send_email", payload)
+        result = gmail.normalize_payload("send_email", payload)
         assert result["body"] == "Existing"
 
-    def test_slack_message_normalization(self, backend):
+    def test_slack_message_normalization(self):
         payload = {"channel": "general", "body": "Hello"}
-        result = backend._normalize_platform_payload("slack", "send_message", payload)
+        result = slack.normalize_payload("send_message", payload)
         assert result["message"] == "Hello"
-
-    def test_none_values_become_empty_strings(self, backend):
-        payload = {"to": None, "subject": None, "body": None, "comment": None}
-        # Test the None normalization in _build_payload indirectly
-        for key in ("to", "subject", "body", "comment"):
-            assert payload[key] is None
 
 
 class TestBuildPayload:
@@ -84,6 +82,7 @@ class TestBuildPayload:
             mock_db.execute_fetchall = AsyncMock(return_value=[{
                 "actor_email": "sarah@co.com",
                 "actor_name": "Sarah",
+                "subject_id": "X-1",
                 "subject_title": "Fix bug",
                 "source_platform": "jira",
                 "content_metadata": "{}",
@@ -101,6 +100,176 @@ class TestBuildPayload:
             assert payload["event_actor_email"] == "sarah@co.com"
             assert payload["event_actor_name"] == "Sarah"
             assert payload["event_subject"] == "Fix bug"
+
+    @pytest.mark.asyncio
+    async def test_github_identifiers_derived_when_llm_omits(self, backend):
+        """LLM payload missing owner/repo/issue_number — engine derives from event."""
+        with patch("laya.egress.backends.n8n.get_db") as mock_get_db:
+            mock_db = AsyncMock()
+            mock_db.execute_fetchall = AsyncMock(return_value=[{
+                "actor_email": "a@b.com",
+                "actor_name": "A",
+                "subject_id": "10",
+                "subject_title": "Issue 10",
+                "source_platform": "github",
+                "content_metadata": '{"repo": "aayushch/laya", "is_pr": false}',
+            }])
+            mock_get_db.return_value = mock_db
+
+            request = EgressRequest(
+                platform="github",
+                action_type="comment",
+                payload={"comment": "Looking into this"},
+                source_event_id="evt_github_issue_aayushch_laya_10_1776575508000",
+            )
+            payload = await backend._build_payload(request)
+
+            assert payload["payload"]["owner"] == "aayushch"
+            assert payload["payload"]["repo"] == "laya"
+            assert payload["payload"]["issue_number"] == 10
+            assert payload["payload"]["comment"] == "Looking into this"
+
+    @pytest.mark.asyncio
+    async def test_engine_wins_precedence_over_llm(self, backend):
+        """Derived identifiers overwrite LLM-emitted values when both exist."""
+        with patch("laya.egress.backends.n8n.get_db") as mock_get_db:
+            mock_db = AsyncMock()
+            mock_db.execute_fetchall = AsyncMock(return_value=[{
+                "actor_email": "a@b.com",
+                "actor_name": "A",
+                "subject_id": "10",
+                "subject_title": "t",
+                "source_platform": "github",
+                "content_metadata": '{"repo": "real-owner/real-repo", "is_pr": false}',
+            }])
+            mock_get_db.return_value = mock_db
+
+            # LLM hallucinates wrong owner/repo; event-derived values must win.
+            request = EgressRequest(
+                platform="github",
+                action_type="comment",
+                payload={"owner": "wrong", "repo": "wrong", "comment": "x"},
+                source_event_id="evt_github_issue_real-owner_real-repo_10_1776",
+            )
+            payload = await backend._build_payload(request)
+
+            assert payload["payload"]["owner"] == "real-owner"
+            assert payload["payload"]["repo"] == "real-repo"
+
+    @pytest.mark.asyncio
+    async def test_jira_issue_key_from_subject_id(self, backend):
+        """Jira derives issue_key from event_row.subject_id."""
+        with patch("laya.egress.backends.n8n.get_db") as mock_get_db:
+            mock_db = AsyncMock()
+            mock_db.execute_fetchall = AsyncMock(return_value=[{
+                "actor_email": "a@b.com",
+                "actor_name": "A",
+                "subject_id": "PROJ-123",
+                "subject_title": "Bug",
+                "source_platform": "jira",
+                "content_metadata": '{"jira_project": "PROJ"}',
+            }])
+            mock_get_db.return_value = mock_db
+
+            request = EgressRequest(
+                platform="jira",
+                action_type="comment",
+                payload={"comment": "Fixed"},
+                source_event_id="evt_jira_10017_1776",
+            )
+            payload = await backend._build_payload(request)
+
+            assert payload["payload"]["issue_key"] == "PROJ-123"
+            assert payload["payload"]["comment"] == "Fixed"
+
+    @pytest.mark.asyncio
+    async def test_slack_channel_from_metadata(self, backend):
+        """Slack derives channel from content_metadata.slack_channel."""
+        with patch("laya.egress.backends.n8n.get_db") as mock_get_db:
+            mock_db = AsyncMock()
+            mock_db.execute_fetchall = AsyncMock(return_value=[{
+                "actor_email": "",
+                "actor_name": "Ally",
+                "subject_id": "thread-C12345",
+                "subject_title": "Message",
+                "source_platform": "slack",
+                "content_metadata": '{"slack_channel": "C12345", "slack_thread_ts": "1776.0001"}',
+            }])
+            mock_get_db.return_value = mock_db
+
+            request = EgressRequest(
+                platform="slack",
+                action_type="reply_thread",
+                payload={"message": "Ack"},
+                source_event_id="evt_slack_1776.0001",
+            )
+            payload = await backend._build_payload(request)
+
+            assert payload["payload"]["channel"] == "C12345"
+            assert payload["payload"]["thread_ts"] == "1776.0001"
+            assert payload["payload"]["message"] == "Ack"
+
+    @pytest.mark.asyncio
+    async def test_gmail_reply_derives_threading_headers(self, backend):
+        """Gmail reply must carry thread_id + in_reply_to + references + Re:-prefixed
+        subject derived from the original event — Gmail's threading API requires all
+        of them to link a reply into the original conversation."""
+        with patch("laya.egress.backends.n8n.get_db") as mock_get_db:
+            mock_db = AsyncMock()
+            mock_db.execute_fetchall = AsyncMock(return_value=[{
+                "actor_email": "sender@example.com",
+                "actor_name": "Sender",
+                "subject_id": "thread-abc",
+                "subject_title": "Weekly sync notes",
+                "source_platform": "gmail",
+                "content_metadata": (
+                    '{"gmail_thread_id": "thread-abc", '
+                    '"gmail_message_id_header": "<msg-1@mail.gmail.com>", '
+                    '"gmail_references_header": "<root@x>"}'
+                ),
+            }])
+            mock_get_db.return_value = mock_db
+
+            with patch.object(backend, "_get_self_emails", return_value=set()):
+                request = EgressRequest(
+                    platform="gmail",
+                    action_type="send_email",
+                    # LLM emits a deliberately drifted subject — engine must override it.
+                    payload={"subject": "Quick response", "body": "Thanks!"},
+                    source_event_id="evt_gmail_m1",
+                )
+                payload = await backend._build_payload(request)
+
+            p = payload["payload"]
+            assert p["thread_id"] == "thread-abc"
+            assert p["in_reply_to"] == "<msg-1@mail.gmail.com>"
+            assert p["references"] == "<root@x> <msg-1@mail.gmail.com>"
+            assert p["subject"] == "Re: Weekly sync notes"
+            assert p["to"] == "sender@example.com"
+            assert p["body"] == "Thanks!"
+            # Internal signalling field should not leak into the outbound payload.
+            assert "original_subject" not in p
+
+    @pytest.mark.asyncio
+    async def test_no_event_passes_payload_through(self, backend):
+        """Direct egress (no source_event_id) — LLM/caller payload is authoritative."""
+        with patch("laya.egress.backends.n8n.get_db") as mock_get_db:
+            mock_db = AsyncMock()
+            mock_db.execute_fetchall = AsyncMock(return_value=[])
+            mock_get_db.return_value = mock_db
+
+            request = EgressRequest(
+                platform="github",
+                action_type="comment",
+                payload={"owner": "o", "repo": "r", "issue_number": 5, "comment": "hi"},
+                source_event_id=None,
+            )
+            payload = await backend._build_payload(request)
+
+            # Caller-supplied identifiers untouched when no event present.
+            assert payload["payload"]["owner"] == "o"
+            assert payload["payload"]["repo"] == "r"
+            assert payload["payload"]["issue_number"] == 5
 
 
 class TestWebhookResolution:

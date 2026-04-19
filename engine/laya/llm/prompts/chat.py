@@ -142,3 +142,45 @@ def build_chat_messages(
     messages.append({"role": "user", "content": user_content})
 
     return messages
+
+
+POLISH_SYSTEM_PROMPT = """\
+You are a writing assistant that polishes a user's draft response. Rewrite the \
+draft to be clearer, more polished, and appropriately professional while \
+preserving the author's intent, voice, and every factual detail.
+
+Rules:
+- Return ONLY the rewritten text. No preamble, no commentary, no explanations, \
+no quote wrapping, no markdown code fences.
+- Preserve all names, numbers, dates, links, quoted text, code snippets, and \
+identifiers exactly as given.
+- Keep a similar length unless the original is clearly too terse or rambling.
+- Match the conventions of the target platform.
+- If the draft already reads well, make only light touch-ups — do not rewrite \
+for the sake of rewriting.
+- Keep the author's tone (casual vs. formal) consistent with their draft."""
+
+
+_PLATFORM_GUIDANCE = {
+    "gmail": "Email — keep any existing greeting and sign-off; use paragraph breaks; professional but warm.",
+    "outlook": "Email — keep any existing greeting and sign-off; use paragraph breaks; professional but warm.",
+    "jira": "Jira comment — technical tone, direct, concise; preserve any @mentions and ticket IDs.",
+    "linear": "Linear comment — technical tone, direct, concise; preserve any @mentions and issue IDs.",
+    "github": "GitHub comment — technical tone, direct; preserve code blocks, @mentions, and issue/PR references.",
+    "bitbucket": "Bitbucket comment — technical tone, direct; preserve code blocks, @mentions, and PR references.",
+    "slack": "Slack message — conversational and concise; preserve any @mentions, channel refs, and links.",
+}
+
+
+def build_polish_messages(draft_text: str, platform: str | None) -> list[dict[str, str]]:
+    """Build messages for the Chat LLM to polish a user's edited draft."""
+    guidance = _PLATFORM_GUIDANCE.get((platform or "").lower(), "General professional correspondence.")
+    user_content = (
+        f"Platform: {guidance}\n\n"
+        f"Draft to polish:\n---\n{draft_text}\n---\n\n"
+        f"Return only the polished text."
+    )
+    return [
+        {"role": "system", "content": POLISH_SYSTEM_PROMPT},
+        {"role": "user", "content": user_content},
+    ]

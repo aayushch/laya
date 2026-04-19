@@ -354,8 +354,30 @@
 			return;
 		}
 
-		if (!['card_created', 'card_deleted', 'card_updated', 'group_carried_forward', 'context_group_unlinked', 'context_group_merged'].includes(msg.type)) return;
+		if (!['card_created', 'card_deleted', 'card_updated', 'group_carried_forward', 'context_group_unlinked', 'context_group_merged', 'action_payload_updated'].includes(msg.type)) return;
 		_lastProcessedMsg = msg;
+
+		if (msg.type === 'action_payload_updated' && msg.card_id) {
+			// Merge the updated action payload into the cached card so CardDetail
+			// reflects fresh state (polish result, _polishing spinner, _edited flag).
+			const actionId = (msg as { action_id?: string }).action_id;
+			const newPayload = (msg.payload as { payload?: Record<string, unknown> })?.payload;
+			if (actionId && newPayload) {
+				for (const group of groups) {
+					const card = group.cards.find((c) => c.card_id === msg.card_id);
+					if (!card || !card.suggested_actions) continue;
+					const action = card.suggested_actions.find((a) => a.action_id === actionId);
+					if (!action) continue;
+					action.payload = { ...action.payload, ...newPayload };
+					if (selectedCard?.card_id === msg.card_id) {
+						selectedCard = { ...card };
+					}
+					groups = groups;
+					break;
+				}
+			}
+			return;
+		}
 
 		if (msg.type === 'card_created' || msg.type === 'group_carried_forward') {
 			// Only auto-reload if viewing today (new cards / carried-forward groups land on today)
