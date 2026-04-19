@@ -53,7 +53,7 @@ async def resolve_context_group(
     # Time window: only consider cards from the last N days
     tuning = settings.get("tuning", {})
     time_window_days = tuning.get("context_association_time_window_days", 7)
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=time_window_days)).isoformat()
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=time_window_days)).timestamp()
 
     # Search ChromaDB for semantically similar cards
     # Filter by space and time window to avoid stale matches
