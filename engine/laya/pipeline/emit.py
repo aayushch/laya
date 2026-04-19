@@ -319,7 +319,7 @@ async def run_emit(
                 "entity_refs": entity_refs,
                 "persona": router_output.persona.value,
                 "priority": router_output.priority.value,
-                "timestamp": event.timestamp.isoformat(),
+                "timestamp": event.timestamp.timestamp(),
                 "space_id": space_id or "",
             },
         )
