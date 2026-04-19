@@ -30,7 +30,16 @@
       "parameters": {
         "operation": "get",
         "messageId": "={{ $json.id }}",
-        "simple": true
+        "simple": false,
+        "options": {
+          "format": "metadata",
+          "metadataHeaders": [
+            "Message-Id",
+            "Message-ID",
+            "References",
+            "In-Reply-To"
+          ]
+        }
       },
       "name": "Get Thread ID",
       "type": "n8n-nodes-base.gmail",
@@ -39,7 +48,7 @@
         450,
         150
       ],
-      "notes": "Lightweight fetch with simple:true to get reliable threadId from Gmail API (format=metadata). The trigger's simple:false uses format=raw + mailparser which can clobber threadId."
+      "notes": "Fetches threadId + RFC 2822 Message-Id/References headers. Needed because Gmail's threading API requires In-Reply-To/References headers (not just threadId) to link a reply into the same conversation — without the Message-Id captured here, replies render as new threads."
     },
     {
       "parameters": {
@@ -94,6 +103,16 @@
             {
               "name": "gmail_body",
               "value": "={{ $('Gmail Trigger').item.json.text || $('Gmail Trigger').item.json.snippet || $('Gmail Trigger').item.json.html || '' }}",
+              "type": "string"
+            },
+            {
+              "name": "gmail_message_id_header",
+              "value": "={{ (($json.payload && $json.payload.headers) ? (($json.payload.headers.find(h => h.name && h.name.toLowerCase() === 'message-id') || {}).value || '') : '') }}",
+              "type": "string"
+            },
+            {
+              "name": "gmail_references_header",
+              "value": "={{ (($json.payload && $json.payload.headers) ? (($json.payload.headers.find(h => h.name && h.name.toLowerCase() === 'references') || {}).value || '') : '') }}",
               "type": "string"
             }
           ]
@@ -179,7 +198,7 @@
             },
             {
               "name": "content.metadata",
-              "value": "={{ JSON.stringify({ gmail_thread_id: $json.gmail_threadId, gmail_labels: JSON.parse($json.gmail_labelIds || '[]'), gmail_from: $json.raw_from_email, gmail_to: [$json.raw_to_email], gmail_cc: [], gmail_is_reply: $json.is_reply, participants: [{ role: 'sender', name: $json.raw_from_name || '', email: $json.raw_from_email || '' }, { role: 'recipient', name: '', email: $json.raw_to_email || '' }] }) }}",
+              "value": "={{ JSON.stringify({ gmail_thread_id: $json.gmail_threadId, gmail_labels: JSON.parse($json.gmail_labelIds || '[]'), gmail_from: $json.raw_from_email, gmail_to: [$json.raw_to_email], gmail_cc: [], gmail_is_reply: $json.is_reply, gmail_message_id_header: $json.gmail_message_id_header || '', gmail_references_header: $json.gmail_references_header || '', participants: [{ role: 'sender', name: $json.raw_from_name || '', email: $json.raw_from_email || '' }, { role: 'recipient', name: '', email: $json.raw_to_email || '' }] }) }}",
               "type": "string"
             }
           ]
@@ -271,6 +290,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.04.2"
+    "laya_version": "2026.04.3"
   }
 }

@@ -1,6 +1,36 @@
-"""Slack-specific payload normalization and validation."""
+"""Slack-specific payload normalization, validation, and event-derived identifiers."""
 
 from __future__ import annotations
+
+
+def identifiers_from_event(
+    action_type: str,
+    event_id: str | None,
+    content_metadata: dict,
+    event_row: dict,
+    self_emails: set[str] | None = None,
+) -> dict:
+    """Derive Slack identifiers from the event.
+
+    - ``channel`` and ``thread_ts`` come from content_metadata.
+    - For ``react`` actions, ``timestamp`` comes from the event_id
+      (the event_id is ``evt_slack_{message_ts}``).
+    """
+    ids: dict = {}
+
+    meta = content_metadata or {}
+    channel = meta.get("slack_channel")
+    if channel:
+        ids["channel"] = channel
+
+    thread_ts = meta.get("slack_thread_ts")
+    if thread_ts:
+        ids["thread_ts"] = thread_ts
+
+    if action_type == "react" and event_id and event_id.startswith("evt_slack_"):
+        ids["timestamp"] = event_id[len("evt_slack_"):]
+
+    return ids
 
 
 def normalize_payload(action_type: str, payload: dict) -> dict:

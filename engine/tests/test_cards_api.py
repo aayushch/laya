@@ -1,5 +1,9 @@
 """Tests for the Cards REST API."""
 
+import asyncio
+import json
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -238,3 +242,96 @@ class TestCardsAPI:
             resp = await client.post("/cards/card_test/dismiss", json={})
 
         assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+class TestActionPayloadPolish:
+    async def test_polish_flips_flags_and_writes_polished_text(self, db):
+        """POST /cards/:id/action-payload/polish writes polished text back to the action."""
+        await insert_test_card(db, status="ready")
+
+        fake_response = type("R", (), {"content": "Polished reply body."})()
+        from laya.main import app
+
+        with patch("laya.llm.client.llm_call", new=AsyncMock(return_value=fake_response)):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.post(
+                    "/cards/card_test/action-payload/polish",
+                    json={"action_id": "act_1"},
+                )
+                assert resp.status_code == 200
+                assert resp.json()["status"] == "polishing"
+
+                # Drain background tasks so the polish finishes before we read DB
+                await asyncio.sleep(0)
+                for _ in range(20):
+                    pending = [t for t in asyncio.all_tasks() if t.get_name().startswith("polish_")]
+                    if not pending:
+                        break
+                    await asyncio.gather(*pending, return_exceptions=True)
+
+        rows = await db.execute_fetchall(
+            "SELECT suggested_actions FROM action_cards WHERE card_id = ?", ("card_test",)
+        )
+        actions = json.loads(rows[0]["suggested_actions"])
+        payload = actions[0]["payload"]
+        assert payload["body"] == "Polished reply body."
+        assert payload["_polishing"] is False
+        assert "_polished_at" in payload
+
+    async def test_polish_conflict_when_already_polishing(self, db):
+        """A second polish request returns 409 while one is in flight."""
+        await insert_test_card(db, status="ready")
+        # Seed the action as already polishing
+        rows = await db.execute_fetchall(
+            "SELECT suggested_actions FROM action_cards WHERE card_id = ?", ("card_test",)
+        )
+        actions = json.loads(rows[0]["suggested_actions"])
+        actions[0]["payload"]["_polishing"] = True
+        await db.execute(
+            "UPDATE action_cards SET suggested_actions = ? WHERE card_id = ?",
+            (json.dumps(actions), "card_test"),
+        )
+        await db.commit()
+
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/cards/card_test/action-payload/polish",
+                json={"action_id": "act_1"},
+            )
+
+        assert resp.status_code == 409
+
+    async def test_polish_unknown_action_returns_404(self, db):
+        await insert_test_card(db, status="ready")
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/cards/card_test/action-payload/polish",
+                json={"action_id": "does_not_exist"},
+            )
+        assert resp.status_code == 404
+
+    async def test_update_action_payload_sets_edited_flag(self, db):
+        """The existing update endpoint flips `_edited: true` so the Polish link can appear."""
+        await insert_test_card(db, status="ready")
+
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/cards/card_test/action-payload",
+                json={"action_id": "act_1", "payload": {"body": "User edit"}},
+            )
+            assert resp.status_code == 200
+
+        rows = await db.execute_fetchall(
+            "SELECT suggested_actions FROM action_cards WHERE card_id = ?", ("card_test",)
+        )
+        payload = json.loads(rows[0]["suggested_actions"])[0]["payload"]
+        assert payload["body"] == "User edit"
+        assert payload["_edited"] is True

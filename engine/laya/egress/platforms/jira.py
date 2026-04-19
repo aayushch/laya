@@ -1,6 +1,29 @@
-"""Jira-specific payload normalization and validation."""
+"""Jira-specific payload normalization, validation, and event-derived identifiers."""
 
 from __future__ import annotations
+
+
+def identifiers_from_event(
+    action_type: str,
+    event_id: str | None,
+    content_metadata: dict,
+    event_row: dict,
+    self_emails: set[str] | None = None,
+) -> dict:
+    """Derive Jira identifiers from the source event.
+
+    ``subject_id`` holds the canonical issue key (e.g. ``PROJ-123``) that
+    every Jira action except ``create_issue`` needs.  ``jira_project`` in
+    the metadata covers the create path.
+    """
+    ids: dict = {}
+    subject_id = (event_row or {}).get("subject_id")
+    if subject_id:
+        ids["issue_key"] = subject_id
+    project = (content_metadata or {}).get("jira_project")
+    if project:
+        ids["project"] = project
+    return ids
 
 
 def normalize_payload(action_type: str, payload: dict) -> dict:

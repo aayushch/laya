@@ -289,6 +289,15 @@ export const engineApi = {
 			body: JSON.stringify({ action_id: actionId, payload })
 		}),
 
+	polishActionPayload: (cardId: string, actionId: string) =>
+		request<{ status: string; card_id: string; action_id: string }>(
+			`/cards/${cardId}/action-payload/polish`,
+			{
+				method: 'POST',
+				body: JSON.stringify({ action_id: actionId })
+			}
+		),
+
 	// Workspace
 	getWorkspace: (cardId: string) => request<WorkspaceResponse>(`/cards/${cardId}/workspace`),
 

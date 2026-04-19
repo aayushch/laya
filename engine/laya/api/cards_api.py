@@ -981,10 +981,17 @@ async def update_action_payload(card_id: str, body: UpdateActionPayloadRequest) 
     row = rows[0]
     actions = json.loads(row["suggested_actions"]) if row["suggested_actions"] else []
     found = False
+    updated_action: dict | None = None
     for action in actions:
         if action.get("action_id") == body.action_id:
             action["payload"].update(body.payload)
+            # Mark that the user has manually edited this draft — this unlocks
+            # the Polish action in the UI. Only set when caller did not supply
+            # its own value (e.g. the polish task itself preserves the flag).
+            if "_edited" not in body.payload:
+                action["payload"]["_edited"] = True
             found = True
+            updated_action = action
             break
 
     if not found:
@@ -996,7 +1003,191 @@ async def update_action_payload(card_id: str, body: UpdateActionPayloadRequest) 
     )
     await db.commit()
 
+    # Broadcast so other clients (and the feed's selectedCard snapshot) refresh
+    # the action payload without needing a full card reload.
+    await manager.broadcast(
+        {
+            "type": "action_payload_updated",
+            "card_id": card_id,
+            "action_id": body.action_id,
+            "payload": {"payload": updated_action["payload"] if updated_action else {}},
+        }
+    )
+
     return {"status": "updated", "card_id": card_id, "action_id": body.action_id}
+
+
+_POLISH_EDITABLE_FIELDS = ("body", "comment", "message", "description")
+
+
+def _strip_fence_wrap(text: str) -> str:
+    """Remove wrapping triple-backtick fences the LLM might add despite instructions."""
+    if text.startswith("```") and text.endswith("```") and len(text) > 6:
+        inner = text[3:-3]
+        # Drop an optional language tag on the first line
+        newline = inner.find("\n")
+        if 0 <= newline <= 20 and inner[:newline].strip().isalnum():
+            inner = inner[newline + 1:]
+        return inner.strip()
+    return text
+
+
+def _find_editable_field(payload: dict) -> str | None:
+    """Pick the main long-form text field in an action payload."""
+    for key in _POLISH_EDITABLE_FIELDS:
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return key
+    return None
+
+
+class PolishActionPayloadRequest(BaseModel):
+    action_id: str
+
+
+@router.post("/cards/{card_id}/action-payload/polish")
+async def polish_action_payload(card_id: str, body: PolishActionPayloadRequest) -> dict:
+    """Kick off an async LLM rewrite of a draft action payload.
+
+    Returns immediately after marking the action as polishing. The actual LLM
+    call runs as a background task; on completion the polished text is written
+    back to the action payload and an `action_payload_updated` WS event fires.
+    """
+    db = await get_db()
+
+    rows = await db.execute_fetchall(
+        "SELECT suggested_actions, space_id FROM action_cards WHERE card_id = ?",
+        (card_id,),
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    row = rows[0]
+    actions = json.loads(row["suggested_actions"]) if row["suggested_actions"] else []
+    target_action: dict | None = None
+    for action in actions:
+        if action.get("action_id") == body.action_id:
+            target_action = action
+            break
+    if target_action is None:
+        raise HTTPException(status_code=404, detail="Action not found")
+
+    payload = target_action.get("payload") or {}
+    if payload.get("_polishing"):
+        raise HTTPException(status_code=409, detail="Polish already in progress")
+
+    editable_field = _find_editable_field(payload)
+    if not editable_field:
+        raise HTTPException(status_code=400, detail="No editable text field in this action")
+
+    draft_text = payload[editable_field]
+    if not isinstance(draft_text, str) or not draft_text.strip():
+        raise HTTPException(status_code=400, detail="Draft is empty")
+
+    platform = target_action.get("target_platform")
+    space_id = row["space_id"] if "space_id" in row.keys() else None
+
+    # Mark as polishing in DB so a re-mounted UI sees the spinner state.
+    payload["_polishing"] = True
+    await db.execute(
+        "UPDATE action_cards SET suggested_actions = ? WHERE card_id = ?",
+        (json.dumps(actions), card_id),
+    )
+    await db.commit()
+
+    await manager.broadcast(
+        {
+            "type": "action_payload_updated",
+            "card_id": card_id,
+            "action_id": body.action_id,
+            "payload": {"payload": payload},
+        }
+    )
+
+    asyncio.create_task(
+        _run_polish(
+            card_id=card_id,
+            action_id=body.action_id,
+            editable_field=editable_field,
+            draft_text=draft_text,
+            platform=platform,
+            space_id=space_id,
+        ),
+        name=f"polish_{card_id}_{body.action_id}",
+    )
+
+    return {"status": "polishing", "card_id": card_id, "action_id": body.action_id}
+
+
+async def _run_polish(
+    *,
+    card_id: str,
+    action_id: str,
+    editable_field: str,
+    draft_text: str,
+    platform: str | None,
+    space_id: str | None,
+) -> None:
+    """Background task: call the LLM, write polished text back to the action."""
+    from laya.llm.client import llm_call
+    from laya.llm.prompts.chat import build_polish_messages
+
+    polished_text: str | None = None
+    error_message: str | None = None
+    try:
+        response = await llm_call(
+            role="chat",
+            messages=build_polish_messages(draft_text, platform),
+            step="polish_draft",
+            temperature=0.4,
+            max_tokens=2000,
+            card_id=card_id,
+            space_id=space_id,
+        )
+        polished_text = _strip_fence_wrap((response.content or "").strip())
+        if not polished_text:
+            error_message = "Polish returned empty response"
+    except Exception as exc:  # noqa: BLE001 — surface any LLM failure to the user
+        log.exception("polish_draft_failed", card_id=card_id, action_id=action_id)
+        error_message = str(exc) or "Polish failed"
+
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT suggested_actions FROM action_cards WHERE card_id = ?", (card_id,)
+    )
+    if not rows:
+        return
+    actions = json.loads(rows[0]["suggested_actions"]) if rows[0]["suggested_actions"] else []
+    updated_payload: dict | None = None
+    for action in actions:
+        if action.get("action_id") != action_id:
+            continue
+        payload = action.get("payload") or {}
+        payload["_polishing"] = False
+        if polished_text and not error_message:
+            payload[editable_field] = polished_text
+            payload["_polished_at"] = datetime.now(timezone.utc).isoformat()
+            payload.pop("_polish_error", None)
+        elif error_message:
+            payload["_polish_error"] = error_message
+        action["payload"] = payload
+        updated_payload = payload
+        break
+
+    await db.execute(
+        "UPDATE action_cards SET suggested_actions = ? WHERE card_id = ?",
+        (json.dumps(actions), card_id),
+    )
+    await db.commit()
+
+    await manager.broadcast(
+        {
+            "type": "action_payload_updated",
+            "card_id": card_id,
+            "action_id": action_id,
+            "payload": {"payload": updated_payload or {}},
+        }
+    )
 
 
 class UpdateClassificationRequest(BaseModel):

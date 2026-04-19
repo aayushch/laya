@@ -84,10 +84,27 @@ class EgressCapability:
     """Human-readable button text: 'Post Comment', 'Send Email'."""
 
     requires_fields: list[str] = field(default_factory=list)
-    """Fields that must be present in payload."""
+    """All fields the executor needs present in the final payload.
+
+    Includes both engine-derivable identifiers (owner, repo, issue_key, …)
+    and LLM-emitted content fields. Used by UI/connection surfaces to
+    describe full platform requirements. See ``content_fields`` for the
+    LLM-facing subset."""
 
     optional_fields: list[str] = field(default_factory=list)
-    """Fields that may be present."""
+    """Optional fields the executor accepts (identifier + content mixed).
+    See ``optional_content_fields`` for the LLM-facing subset."""
+
+    content_fields: list[str] = field(default_factory=list)
+    """Required fields the LLM must emit in the action payload.
+
+    Excludes identifier fields that the engine fills from the source
+    event (owner, repo, issue_key, gmail_id, channel, …).  Rendered into
+    the stager's [SUPPORTED ACTIONS] block so the LLM only sees content
+    fields it's responsible for producing."""
+
+    optional_content_fields: list[str] = field(default_factory=list)
+    """Optional content fields the LLM may emit."""
 
     description: str = ""
     """What this action does."""

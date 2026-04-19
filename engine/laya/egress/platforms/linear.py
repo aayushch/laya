@@ -1,6 +1,34 @@
-"""Linear-specific payload normalization and validation."""
+"""Linear-specific payload normalization, validation, and event-derived identifiers."""
 
 from __future__ import annotations
+
+import re
+
+_EVENT_ID_RE = re.compile(r"^evt_linear_(?P<id>[^_]+)_\d+$")
+
+
+def identifiers_from_event(
+    action_type: str,
+    event_id: str | None,
+    content_metadata: dict,
+    event_row: dict,
+    self_emails: set[str] | None = None,
+) -> dict:
+    """Derive Linear identifiers from the event.
+
+    ``issue_id`` is the Linear UUID encoded in the event_id.  ``team_id``
+    comes from ``content_metadata['linear_team_id']`` (emitted by the
+    ingestion workflow alongside the team key).
+    """
+    ids: dict = {}
+    if event_id:
+        m = _EVENT_ID_RE.match(event_id)
+        if m:
+            ids["issue_id"] = m.group("id")
+    team_id = (content_metadata or {}).get("linear_team_id")
+    if team_id:
+        ids["team_id"] = team_id
+    return ids
 
 
 def normalize_payload(action_type: str, payload: dict) -> dict:
