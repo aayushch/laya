@@ -5,6 +5,7 @@
 	import { chatOpen, chatInputPreset } from '$lib/stores/chat';
 	import { marked } from 'marked';
 	import ClassificationDialog from './ClassificationDialog.svelte';
+	import PlatformBadge from '$lib/components/PlatformBadge.svelte';
 
 	let {
 		card,
@@ -35,6 +36,27 @@
 	let showResearchInput = $state(false);
 	let researchPrompt = $state('');
 	let startingResearch = $state(false);
+	let actorTruncated = $state(false);
+	let emailTruncated = $state(false);
+
+	// Watches an element for text overflow and reports the result via callback.
+	// The text param is included so the action's `update` re-runs (and re-measures)
+	// when the underlying text changes — ResizeObserver alone fires only on size changes,
+	// so it would miss a shorter string fitting after a card switch.
+	function trackTruncation(node: HTMLElement, params: { onChange: (t: boolean) => void; text: string }) {
+		let { onChange } = params;
+		const measure = () => onChange(node.scrollWidth > node.clientWidth + 1);
+		measure();
+		const ro = new ResizeObserver(measure);
+		ro.observe(node);
+		return {
+			update(next: { onChange: (t: boolean) => void; text: string }) {
+				onChange = next.onChange;
+				queueMicrotask(measure);
+			},
+			destroy() { ro.disconnect(); }
+		};
+	}
 
 	async function unlinkCard() {
 		if (!card.context_id) return;
@@ -374,19 +396,38 @@
 
 	<!-- Scrollable content -->
 	<div class="flex-1 overflow-y-auto px-5 py-4">
-		<!-- Actor info -->
-		{#if card.actor_name || card.actor_email}
+		<!-- Source platform + actor info -->
+		{#if card.entity_id || card.actor_name || card.actor_email}
 			<div class="mb-3 flex flex-col gap-0.5">
+				{#if card.entity_id}
+					<div class="mb-1 flex items-center">
+						<PlatformBadge platform={card.entity_id.split(':')[0]} />
+					</div>
+				{/if}
 				{#if card.actor_name}
-					<div class="flex items-center gap-1.5">
-						<span class="text-[10px] font-semibold uppercase tracking-wider text-surface-500">Actor</span>
-						<span class="text-xs text-surface-300">{card.actor_name}</span>
+					<div class="flex items-center gap-1.5 min-w-0">
+						<span class="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Actor</span>
+						<span class="group/actor relative min-w-0 flex-1">
+							<span use:trackTruncation={{ onChange: (t) => (actorTruncated = t), text: card.actor_name }} class="block truncate text-xs text-surface-300">{card.actor_name}</span>
+							{#if actorTruncated}
+								<span class="pointer-events-none absolute left-0 top-full z-50 mt-1 max-w-xs break-all whitespace-normal rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/actor:opacity-100">
+									{card.actor_name}
+								</span>
+							{/if}
+						</span>
 					</div>
 				{/if}
 				{#if card.actor_email}
-					<div class="flex items-center gap-1.5">
-						<span class="text-[10px] font-semibold uppercase tracking-wider text-surface-500">Email</span>
-						<span class="text-xs text-surface-400">{card.actor_email}</span>
+					<div class="flex items-center gap-1.5 min-w-0">
+						<span class="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Email</span>
+						<span class="group/email relative min-w-0 flex-1">
+							<span use:trackTruncation={{ onChange: (t) => (emailTruncated = t), text: card.actor_email }} class="block truncate text-xs text-surface-400">{card.actor_email}</span>
+							{#if emailTruncated}
+								<span class="pointer-events-none absolute left-0 top-full z-50 mt-1 max-w-xs break-all whitespace-normal rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/email:opacity-100">
+									{card.actor_email}
+								</span>
+							{/if}
+						</span>
 					</div>
 				{/if}
 			</div>
