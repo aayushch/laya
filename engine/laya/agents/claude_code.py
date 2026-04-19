@@ -10,6 +10,11 @@ from typing import Any, AsyncIterator
 import structlog
 
 from laya.agents.base import CodingAgent
+from laya.agents.mcp_config import (
+    augment_prompt_with_mcp_hint,
+    build_laya_mcp_config_json,
+    laya_allowed_tool_flags,
+)
 from laya.agents.subprocess_helper import AgentProcess, strip_ansi
 from laya.models.workspace import (
     SessionStatus,
@@ -56,7 +61,7 @@ class ClaudeCodeAgent(CodingAgent):
 
     async def start_session(
         self, session_id: str, prompt: str, repo_path: str, add_dirs: list[str] | None = None,
-        mode: str | None = None, research: bool = False,
+        mode: str | None = None, research: bool = False, space_id: str | None = None,
     ) -> None:
         self._session_id = session_id
         self._repo_path = repo_path
@@ -69,16 +74,28 @@ class ClaudeCodeAgent(CodingAgent):
         # Edit/Write to paths outside the pattern are blocked.
         permission_mode = mode or "plan"
 
+        # MCP callback: spawn a stdio Laya MCP server as a child of Claude Code
+        # so the agent can search/fetch cards while it works. HTTP MCP servers
+        # silently fail in claude -p mode (issues #34131, #37805), so stdio is
+        # the only reliable transport for non-interactive sessions.
+        mcp_config_json = build_laya_mcp_config_json(space_id)
+        effective_prompt = augment_prompt_with_mcp_hint(prompt)
+
         args = [
             self._binary,
             "-p",
-            prompt,
+            effective_prompt,
             "--output-format",
             "stream-json",
             "--verbose",
             "--permission-mode",
             permission_mode,
+            "--mcp-config",
+            mcp_config_json,
         ]
+
+        # Allowlist Laya MCP tools; any tool not in --allowedTools is denied in -p mode.
+        args.extend(laya_allowed_tool_flags())
 
         if research:
             abs_path = repo_path.rstrip("/")
@@ -100,7 +117,14 @@ class ClaudeCodeAgent(CodingAgent):
         await self._process.spawn(args=args, cwd=repo_path)
         self._status = SessionStatus.RUNNING
 
-    async def resume_with_answer(self, answer_text: str, add_dirs: list[str] | None = None, research: bool = False, mode: str | None = None) -> None:
+    async def resume_with_answer(
+        self,
+        answer_text: str,
+        add_dirs: list[str] | None = None,
+        research: bool = False,
+        mode: str | None = None,
+        space_id: str | None = None,
+    ) -> None:
         """Resume the Claude Code conversation with the user's answer.
 
         Spawns a new subprocess using --resume <cc_session_id> so Claude Code
@@ -111,6 +135,7 @@ class ClaudeCodeAgent(CodingAgent):
             research: If True, use plan mode with scoped writes + web instead of acceptEdits.
             mode: Explicit permission mode override. If None, defaults to
                   'plan' for research or 'acceptEdits' for code sessions.
+            space_id: Laya space context for the MCP callback server.
         """
         if not self._cc_session_id:
             raise ValueError("No Claude Code session ID available for resumption")
@@ -123,6 +148,11 @@ class ClaudeCodeAgent(CodingAgent):
         # An explicit mode overrides the default.
         permission_mode = mode or ("plan" if research else "acceptEdits")
 
+        # Re-pass --mcp-config on every resume; claude -p spawns a fresh
+        # child process each invocation and does not inherit MCP config from
+        # the original session.
+        mcp_config_json = build_laya_mcp_config_json(space_id)
+
         args = [
             self._binary,
             "-p",
@@ -134,7 +164,11 @@ class ClaudeCodeAgent(CodingAgent):
             "--verbose",
             "--permission-mode",
             permission_mode,
+            "--mcp-config",
+            mcp_config_json,
         ]
+
+        args.extend(laya_allowed_tool_flags())
 
         if research:
             abs_path = self._repo_path.rstrip("/")

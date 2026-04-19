@@ -48,7 +48,7 @@
               }
             },
             {
-              "leftValue": "={{ String($json.body.payload.issue_number || $json.body.payload.pr_number || '') }}",
+              "leftValue": "={{ ($json.body.action_type === 'create_issue' || $json.body.action_type === 'create_pr') ? String($json.body.payload.title || '') : String($json.body.payload.issue_number || $json.body.payload.pr_number || '') }}",
               "rightValue": "",
               "operator": {
                 "type": "string",
@@ -537,7 +537,7 @@
       ],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ success: false, error: 'Missing required fields: payload must include owner, repo, and issue_number or pr_number' }) }}"
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.body.action_type === 'create_issue' || $json.body.action_type === 'create_pr') ? 'Missing required fields: payload must include owner, repo, and title' : 'Missing required fields: payload must include owner, repo, and issue_number or pr_number' }) }}"
       }
     },
     {
@@ -787,6 +787,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.03.2"
+    "laya_version": "2026.04.1"
   }
 }

@@ -247,3 +247,131 @@ class TestChatAPI:
             )
         assert resp.status_code == 200
         assert resp.json() is None
+
+
+def _title_llm_response(content: str, finish_reason: str = "stop") -> LLMResponse:
+    return LLMResponse(
+        content=content,
+        parsed=None,
+        model="lmstudio/qwen/qwen3.6-35b-a3b",
+        input_tokens=100,
+        output_tokens=20,
+        latency_ms=500,
+        finish_reason=finish_reason,
+    )
+
+
+class TestTitleSanitizer:
+    """Guards around ``_sanitize_generated_title`` — reasoning-preamble rejection."""
+
+    def test_rejects_thinking_process_preamble(self):
+        from laya.pipeline.chat import _sanitize_generated_title
+        assert _sanitize_generated_title("Thinking Process:") == ""
+        assert _sanitize_generated_title("Thought Process") == ""
+        assert _sanitize_generated_title("## Analysis") == ""
+        assert _sanitize_generated_title("**Reasoning**") == ""
+
+    def test_keeps_real_titles(self):
+        from laya.pipeline.chat import _sanitize_generated_title
+        assert _sanitize_generated_title("Debugging Jira Webhook") == "Debugging Jira Webhook"
+        assert _sanitize_generated_title('"Triage Overdue Jira"') == "Triage Overdue Jira"
+        assert _sanitize_generated_title("Title: Triage Overdue Jira") == "Triage Overdue Jira"
+
+    def test_strips_inline_think_block(self):
+        from laya.pipeline.chat import _sanitize_generated_title
+        raw = "<think>pondering the topic briefly</think>\nDebugging Jira Webhook"
+        assert _sanitize_generated_title(raw) == "Debugging Jira Webhook"
+
+
+@pytest.mark.asyncio
+class TestTitleGenerationBackground:
+    """End-to-end behavior of ``_generate_title_background`` with a mocked LLM."""
+
+    async def _make_convo(self, db, conv_id="conv_title01"):
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        await db.execute(
+            """INSERT INTO chat_conversations
+               (conversation_id, title, space_id, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (conv_id, "New Chat", None, now, now),
+        )
+        await db.commit()
+        return conv_id
+
+    async def _get_title(self, db, conv_id):
+        rows = await db.execute_fetchall(
+            "SELECT title FROM chat_conversations WHERE conversation_id = ?",
+            (conv_id,),
+        )
+        return rows[0]["title"]
+
+    async def test_truncated_reasoning_does_not_overwrite_title(self, db):
+        """If both attempts come back finish_reason='length', leave 'New Chat' in place.
+
+        This is the bug: a Qwen-3/LM-Studio setup was returning reasoning text
+        (starting with 'Thinking Process:') whenever the token budget was
+        exhausted mid-thinking. That must never become a persisted title.
+        """
+        from laya.pipeline.chat import _generate_title_background
+
+        conv_id = await self._make_convo(db)
+        # Both calls (2048 and 4096 budget) truncate.
+        truncated = _title_llm_response("", finish_reason="length")
+        mock = AsyncMock(side_effect=[truncated, truncated])
+        with patch("laya.pipeline.chat.llm_call", mock):
+            await _generate_title_background(conv_id, "help me triage", None)
+
+        assert await self._get_title(db, conv_id) == "New Chat"
+        assert mock.await_count == 2
+        # First attempt uses 2048; retry doubles to 4096.
+        assert mock.await_args_list[0].kwargs["max_tokens"] == 2048
+        assert mock.await_args_list[1].kwargs["max_tokens"] == 4096
+
+    async def test_retry_succeeds_and_title_is_saved(self, db):
+        """If the first call truncates but the retry returns a clean title, persist it."""
+        from laya.pipeline.chat import _generate_title_background
+
+        conv_id = await self._make_convo(db, "conv_title02")
+        mock = AsyncMock(side_effect=[
+            _title_llm_response("", finish_reason="length"),
+            _title_llm_response("Triage Overdue Jira", finish_reason="stop"),
+        ])
+        with patch("laya.pipeline.chat.llm_call", mock):
+            await _generate_title_background(conv_id, "help me triage", None)
+
+        assert await self._get_title(db, conv_id) == "Triage Overdue Jira"
+        assert mock.await_count == 2
+
+    async def test_reasoning_preamble_in_content_is_not_saved(self, db):
+        """If the sanitizer sees a reasoning header, drop it rather than persist.
+
+        Models occasionally emit a header on the first line even when they
+        finish cleanly. We must not let 'Thinking Process' become a title.
+        """
+        from laya.pipeline.chat import _generate_title_background
+
+        conv_id = await self._make_convo(db, "conv_title03")
+        response = _title_llm_response("Thinking Process:", finish_reason="stop")
+        with patch("laya.pipeline.chat.llm_call", new_callable=AsyncMock,
+                   return_value=response):
+            await _generate_title_background(conv_id, "hi", None)
+
+        assert await self._get_title(db, conv_id) == "New Chat"
+
+    async def test_inline_think_block_is_stripped_before_saving(self, db):
+        """`<think>...</think>` wrapper around reasoning should be stripped."""
+        from laya.pipeline.chat import _generate_title_background
+
+        conv_id = await self._make_convo(db, "conv_title04")
+        response = _title_llm_response(
+            "<think>user wants to triage jira tickets</think>\nTriage Jira Tickets",
+            finish_reason="stop",
+        )
+        with patch("laya.pipeline.chat.llm_call", new_callable=AsyncMock,
+                   return_value=response):
+            with patch("laya.api.websocket.manager.broadcast",
+                       new_callable=AsyncMock):
+                await _generate_title_background(conv_id, "triage my jira", None)
+
+        assert await self._get_title(db, conv_id) == "Triage Jira Tickets"

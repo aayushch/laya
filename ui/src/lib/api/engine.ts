@@ -185,12 +185,12 @@ export const engineApi = {
 		}),
 	runAgent: (data: {
 		prompt: string;
-		directory: string;
+		directory?: string;
 		add_dirs?: string[];
 		agent_type?: string;
 		mode?: string;
 		space_id?: string;
-		images?: string[];
+		files?: string[];
 	}) =>
 		request<{ status: string; card_id: string }>('/cards/run-agent', {
 			method: 'POST',

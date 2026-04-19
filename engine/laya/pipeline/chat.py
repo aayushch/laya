@@ -90,6 +90,25 @@ async def _ensure_conversation(
     return conv_id
 
 
+# Reasoning models (Qwen 3, DeepSeek-R1, etc.) sometimes leak a preamble header
+# as their first line of output — e.g. "Thinking Process:", "## Analysis". If
+# that slips through the first-line sanitizer we don't want to persist it as a
+# chat title. Keep this list aligned with the equivalent one in
+# ``laya/api/egress_api.py::_clean_ai_draft``.
+_REASONING_HEADER_RE = re.compile(
+    r"^(?:#{1,3}\s*|\*{1,2})?"
+    r"(?:thinking|thought|analysis|reasoning|approach|plan|evaluation|step)"
+    r"(?:\s+process)?"
+    r"\*{0,2}$",
+    re.IGNORECASE,
+)
+
+# Strips any `<think>...</think>` block some providers (notably LM Studio
+# serving Qwen 3) emit inline in ``content`` instead of splitting it into a
+# separate ``reasoning_content`` field.
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
 async def _should_generate_title(db, conversation_id: str) -> bool:
     """True when a conversation still uses the placeholder title and has no user messages yet."""
     rows = await db.execute_fetchall(
@@ -107,8 +126,15 @@ async def _should_generate_title(db, conversation_id: str) -> bool:
 
 
 def _sanitize_generated_title(raw: str) -> str:
-    """Clean up LLM-generated title: strip quotes/punctuation, cap length."""
-    title = (raw or "").strip()
+    """Clean up LLM-generated title: strip quotes/punctuation, cap length.
+
+    Returns "" when the cleaned text looks like a reasoning-model preamble
+    header (e.g. "Thinking Process", "## Analysis"); the caller treats empty
+    as "skip update" rather than persisting garbage.
+    """
+    # Remove any `<think>...</think>` block that leaked into ``content``
+    # before doing any other processing.
+    title = _THINK_BLOCK_RE.sub("", raw or "").strip()
     # Strip surrounding quotes that models sometimes add
     if len(title) >= 2 and title[0] in "\"'`" and title[-1] in "\"'`":
         title = title[1:-1].strip()
@@ -122,6 +148,10 @@ def _sanitize_generated_title(raw: str) -> str:
     title = title.rstrip(".!?,;: ")
     if len(title) > 50:
         title = title[:50].rstrip()
+    # Guard: reasoning preambles ("Thinking Process", "Analysis", ...) are not
+    # valid titles. Returning "" keeps the conversation as "New Chat".
+    if title and _REASONING_HEADER_RE.match(title):
+        return ""
     return title
 
 
@@ -134,6 +164,13 @@ async def _generate_title_background(
 
     Runs fire-and-forget so it never blocks the user's chat response. All
     failures are swallowed so a flaky router model cannot break chat.
+
+    The token budget here has to accommodate thinking/reasoning models
+    (Qwen 3, DeepSeek-R1, etc.) whose reasoning phase can be thousands of
+    tokens before the final 2-6 word title is emitted. We try 2048 first and
+    retry once at 4096 if the response was truncated; if it's *still*
+    truncated we bail out and leave the conversation as "New Chat" rather
+    than persist whatever reasoning text leaked through.
     """
     try:
         messages = build_title_generation_messages(user_message)
@@ -142,9 +179,30 @@ async def _generate_title_background(
             messages=messages,
             step="chat_title",
             temperature=0.3,
-            max_tokens=32,
+            max_tokens=2048,
             space_id=space_id,
         )
+        if response.finish_reason == "length":
+            # First attempt hit the cap mid-reasoning — retry once with double
+            # the budget. Mirrors the structured-output retry in
+            # ``llm/client.py`` but applies to plain-text title generation.
+            response = await llm_call(
+                role="router",
+                messages=messages,
+                step="chat_title",
+                temperature=0.3,
+                max_tokens=4096,
+                space_id=space_id,
+            )
+        if response.finish_reason == "length":
+            log.info(
+                "chat_title_generation_truncated",
+                conversation_id=conversation_id,
+                model=response.model,
+                finish_reason=response.finish_reason,
+            )
+            return
+
         title = _sanitize_generated_title(response.content)
         if not title or title.lower() == "new chat":
             return
