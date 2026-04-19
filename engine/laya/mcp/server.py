@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 from typing import Any
 
@@ -49,7 +50,10 @@ def _build_mcp_server():
     @server.call_tool()
     async def call_tool(name: str, arguments: dict[str, Any] | None = None) -> list[TextContent]:
         """Execute a Laya tool and return the result."""
-        result_str = await execute_tool(name, arguments or {})
+        # When spawned for a specific agent session, LAYA_SPACE_ID scopes
+        # tool calls to that space so the agent only sees the right cards.
+        space_id = os.environ.get("LAYA_SPACE_ID") or None
+        result_str = await execute_tool(name, arguments or {}, space_id=space_id)
         return [TextContent(type="text", text=result_str)]
 
     return server
@@ -70,11 +74,21 @@ async def _run_server() -> None:
     setup_logging()
     ensure_directories()
     db = await connect()
-    await run_migrations(db)
+
+    # When spawned as a child of a running engine (agent MCP integration), the
+    # parent has already applied migrations. Re-running them concurrently
+    # across several agent sessions races on the SQLite schema lock.
+    if os.environ.get("LAYA_MCP_SKIP_MIGRATIONS") != "1":
+        await run_migrations(db)
+
     load_all_keys_to_env()
     connect_chromadb()
 
-    log.info("mcp_server_starting")
+    log.info(
+        "mcp_server_starting",
+        space_id=os.environ.get("LAYA_SPACE_ID"),
+        skip_migrations=os.environ.get("LAYA_MCP_SKIP_MIGRATIONS") == "1",
+    )
 
     server = _build_mcp_server()
 

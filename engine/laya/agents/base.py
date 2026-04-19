@@ -24,6 +24,7 @@ class CodingAgent(abc.ABC):
         add_dirs: list[str] | None = None,
         mode: str | None = None,
         research: bool = False,
+        space_id: str | None = None,
     ) -> None:
         """Spawn the agent subprocess in the target repo directory.
 
@@ -33,10 +34,19 @@ class CodingAgent(abc.ABC):
             research: If True, enable web search and file write permissions for
                 research-oriented tasks. Each adapter translates this into the
                 appropriate CLI flags.
+            space_id: Laya space context. Used by adapters that configure
+                callback MCP access so tool calls are scoped to the user's space.
         """
         ...
 
-    async def resume_with_answer(self, answer_text: str, add_dirs: list[str] | None = None, research: bool = False, mode: str | None = None) -> None:
+    async def resume_with_answer(
+        self,
+        answer_text: str,
+        add_dirs: list[str] | None = None,
+        research: bool = False,
+        mode: str | None = None,
+        space_id: str | None = None,
+    ) -> None:
         """Resume a previous conversation with new user input.
 
         Args:
@@ -44,6 +54,7 @@ class CodingAgent(abc.ABC):
             research: If True, apply research-mode permissions (scoped writes + web)
                 instead of full edit access.
             mode: Explicit permission mode override (e.g. 'full' for bash access).
+            space_id: Laya space context (see start_session).
 
         Not all agents support this — the default raises NotImplementedError.
         """

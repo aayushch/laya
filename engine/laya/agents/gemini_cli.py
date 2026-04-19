@@ -53,8 +53,12 @@ class GeminiCliAgent(CodingAgent):
 
     async def start_session(
         self, session_id: str, prompt: str, repo_path: str, add_dirs: list[str] | None = None,
-        mode: str | None = None, research: bool = False,
+        mode: str | None = None, research: bool = False, space_id: str | None = None,
     ) -> None:
+        # space_id: MCP wiring not implemented yet for Gemini CLI — see
+        # GitHub issue for the tracking ticket. Configuration requires
+        # writing ~/.gemini/settings.json, which is invasive to user settings.
+        _ = space_id
         self._session_id = session_id
         self._repo_path = repo_path
         self._status = SessionStatus.STARTING
@@ -84,7 +88,16 @@ class GeminiCliAgent(CodingAgent):
         await self._process.spawn(args=args, cwd=repo_path)
         self._status = SessionStatus.RUNNING
 
-    async def resume_with_answer(self, answer_text: str, add_dirs: list[str] | None = None, research: bool = False) -> None:
+    async def resume_with_answer(
+        self,
+        answer_text: str,
+        add_dirs: list[str] | None = None,
+        research: bool = False,
+        mode: str | None = None,
+        space_id: str | None = None,
+    ) -> None:
+        # mode/space_id: accepted for protocol compatibility; not used by Gemini yet.
+        _ = (mode, space_id)
         """Resume the Gemini CLI conversation with the user's answer.
 
         Spawns a new subprocess using --resume <session_id> so Gemini

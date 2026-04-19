@@ -296,6 +296,37 @@ class N8nBackend(EgressBackend):
             elif request.source_event_id and request.source_event_id.startswith("evt_gmail_"):
                 payload["gmail_id"] = request.source_event_id[len("evt_gmail_"):]
 
+        # For GitHub, fall back to event context when the LLM omitted owner,
+        # repo, or issue_number.  Event metadata stores "repo" as
+        # "owner/name" and the event_id encodes the issue/PR number.
+        if request.platform == "github" and request.source_event_id:
+            if not payload.get("owner") or not payload.get("repo"):
+                try:
+                    meta = json.loads(event_ctx.get("content_metadata") or "{}")
+                    repo_full = meta.get("repo") or ""
+                    if "/" in repo_full:
+                        ev_owner, ev_repo = repo_full.split("/", 1)
+                        payload.setdefault("owner", ev_owner)
+                        payload.setdefault("repo", ev_repo)
+                except (json.JSONDecodeError, AttributeError, ValueError):
+                    pass
+            # Event IDs look like evt_github_issue_<owner>_<repo>_<num>_<ts>
+            # or evt_github_pr_<owner>_<repo>_<num>_<ts>.  Extract the number
+            # when the LLM forgot it.
+            needs_num = (
+                (request.action_type in ("comment", "close_issue") and not payload.get("issue_number"))
+                or (request.action_type in ("approve_pr", "merge_pr", "request_changes", "comment_pr_line") and not payload.get("pr_number"))
+            )
+            if needs_num:
+                import re
+                m = re.match(r"^evt_github_(?:issue|pr)_.+_(\d+)_\d+$", request.source_event_id)
+                if m:
+                    num = int(m.group(1))
+                    if request.action_type in ("approve_pr", "merge_pr", "request_changes", "comment_pr_line"):
+                        payload["pr_number"] = num
+                    else:
+                        payload["issue_number"] = num
+
         return {
             "action_id": f"egr_{request.source_card_id or 'direct'}",
             "source_event_id": request.source_event_id,
@@ -329,6 +360,31 @@ class N8nBackend(EgressBackend):
                     or payload.pop("text", None)
                     or ""
                 )
+            # LLMs often emit Jira-style "issue_key" ("owner/repo#123") or a
+            # full GitHub URL instead of separate owner/repo/issue_number
+            # fields.  Parse those variants so the executor receives the
+            # fields it expects.
+            issue_ref = (
+                payload.pop("issue_key", None)
+                or payload.pop("issueKey", None)
+                or payload.pop("issue_url", None)
+                or payload.pop("pr_key", None)
+                or payload.pop("pr_url", None)
+            )
+            if issue_ref and isinstance(issue_ref, str):
+                import re
+                m = re.search(
+                    r"(?:https?://github\.com/)?([^/\s]+)/([^/#\s]+?)(?:/(?:issues|pull))?[/#](\d+)",
+                    issue_ref.strip(),
+                )
+                if m:
+                    payload.setdefault("owner", m.group(1))
+                    payload.setdefault("repo", m.group(2))
+                    num = int(m.group(3))
+                    if action_type in ("approve_pr", "merge_pr", "request_changes", "comment_pr_line"):
+                        payload.setdefault("pr_number", num)
+                    else:
+                        payload.setdefault("issue_number", num)
             # Coerce issue_number / pr_number to int
             for key in ("issue_number", "pr_number"):
                 if key in payload:

@@ -273,11 +273,26 @@ async def lifespan(app: FastAPI):
     from laya.egress.health import start_health_monitor, stop_health_monitor
     await start_health_monitor()
 
+    # Sweep stale agent-upload staging files once at startup, then run an
+    # hourly periodic sweep. A startup-only sweep is insufficient on macOS,
+    # where the app can stay open for days.
+    from laya.agents.staging_cleanup import (
+        start_staging_sweeper,
+        stop_staging_sweeper,
+        sweep_agent_staging,
+    )
+    try:
+        sweep_agent_staging()
+    except Exception as e:
+        log.warning("agent_staging_sweep_startup_error", error=str(e))
+    start_staging_sweeper()
+
     log.info("engine_ready")
     yield
 
     # Shutdown
     log.info("engine_stopping")
+    await stop_staging_sweeper()
     await stop_health_monitor()
     stop_omni_processor()
     await stop_consumer()

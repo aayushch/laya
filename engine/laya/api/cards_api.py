@@ -1158,12 +1158,12 @@ async def get_daily_summary(date: str | None = None, tz: str | None = None) -> d
 
 class RunAgentRequest(BaseModel):
     prompt: str
-    directory: str
+    directory: str | None = None  # If omitted, defaults to ~/.laya/tmp/research/<card_id>/
     add_dirs: list[str] | None = None
     agent_type: str | None = None  # claude_code, gemini_cli, codex_cli
     mode: str | None = None  # e.g. plan, acceptEdits (claude), read-only, full-auto (codex)
     space_id: str | None = None
-    images: list[str] | None = None  # Absolute paths to uploaded images
+    files: list[str] | None = None  # Absolute paths to uploaded staging files
 
 
 class StartResearchRequest(BaseModel):
@@ -1331,38 +1331,134 @@ async def _stream_agent_to_card(
         )
 
 
-@router.post("/upload-agent-image")
-async def upload_agent_image(file: UploadFile = File(...)) -> dict:
-    """Upload an image for use with an agent run.
+class UploadAgentFilePathRequest(BaseModel):
+    path: str
 
-    Saves the file to ~/.laya/tmp/agent-images/<uuid>.<ext> and returns the
-    absolute path so the frontend can collect paths before submitting the
-    run-agent request.
+
+class DeleteStagingFileRequest(BaseModel):
+    path: str
+
+
+@router.post("/delete-agent-staging-file")
+async def delete_agent_staging_file(body: DeleteStagingFileRequest) -> dict:
+    """Delete a staged upload that the user removed before submitting.
+
+    Path must be inside ~/.laya/tmp/agent-staging/; anything else is rejected
+    to prevent path-traversal abuse. Missing files are treated as success
+    (idempotent — safe to call twice).
+    """
+    from pathlib import Path as _Path
+
+    from laya.config import LAYA_HOME
+
+    staging_dir = (LAYA_HOME / "tmp" / "agent-staging").resolve()
+    target = _Path(body.path).expanduser().resolve()
+
+    try:
+        target.relative_to(staging_dir)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Path is not inside the staging directory")
+
+    if target.exists() and target.is_file():
+        try:
+            target.unlink()
+            log.info("agent_staging_file_deleted", path=str(target))
+        except OSError as e:
+            raise HTTPException(status_code=500, detail=f"Delete failed: {e}")
+    return {"status": "ok"}
+
+
+@router.post("/upload-agent-file-path")
+async def upload_agent_file_path(body: UploadAgentFilePathRequest) -> dict:
+    """Stage a reference file by local path.
+
+    Tauri v2 on macOS (WKWebView) doesn't propagate OS-level file drops to the
+    DOM, so the frontend uses Tauri's native drag-drop event which gives us
+    absolute paths instead of File blobs. Since the engine runs locally, we can
+    copy from that path into staging directly.
+    """
+    from pathlib import Path as _Path
+    import mimetypes
+    import shutil
+    import uuid as _uuid
+
+    from laya.config import LAYA_HOME
+
+    src = _Path(body.path).expanduser()
+    if not src.exists() or not src.is_file():
+        raise HTTPException(status_code=404, detail=f"File not found: {body.path}")
+
+    staging_dir = LAYA_HOME / "tmp" / "agent-staging"
+    staging_dir.mkdir(parents=True, exist_ok=True)
+
+    ext = "".join(c for c in src.suffix.lstrip(".").lower() if c.isalnum())[:8] or "bin"
+    filename = f"{_uuid.uuid4().hex[:12]}.{ext}"
+    dst = staging_dir / filename
+    shutil.copy2(src, dst)
+
+    content_type, _ = mimetypes.guess_type(str(src))
+    log.info("agent_file_staged_by_path", src=str(src), dst=str(dst))
+    return {
+        "path": str(dst),
+        "filename": src.name,  # preserve the user's original filename for the UI tile
+        "size": dst.stat().st_size,
+        "content_type": content_type or "application/octet-stream",
+    }
+
+
+@router.post("/upload-agent-file")
+async def upload_agent_file(file: UploadFile = File(...)) -> dict:
+    """Upload a reference file (image, PDF, text, etc.) for use with an agent run.
+
+    Writes the POST body to ~/.laya/tmp/agent-staging/<uuid>.<ext> — a server-side
+    staging area. On run-agent submit, the staged copy is moved into the card's
+    attachments folder. The user's original file on disk is never touched.
     """
     from laya.config import LAYA_HOME
 
-    images_dir = LAYA_HOME / "tmp" / "agent-images"
-    images_dir.mkdir(parents=True, exist_ok=True)
+    staging_dir = LAYA_HOME / "tmp" / "agent-staging"
+    staging_dir.mkdir(parents=True, exist_ok=True)
 
-    # Determine extension from filename or content type
-    ext = "png"
+    # Extension resolution: preserve original (sanitized) if present, else MIME-map.
+    ext = ""
     if file.filename:
         parts = file.filename.rsplit(".", 1)
-        if len(parts) == 2 and parts[1].lower() in ("png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"):
-            ext = parts[1].lower()
-    elif file.content_type:
-        ct_map = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}
-        ext = ct_map.get(file.content_type, "png")
+        if len(parts) == 2:
+            candidate = "".join(c for c in parts[1].lower() if c.isalnum())[:8]
+            if candidate:
+                ext = candidate
+    if not ext and file.content_type:
+        ct_map = {
+            "image/png": "png",
+            "image/jpeg": "jpg",
+            "image/gif": "gif",
+            "image/webp": "webp",
+            "image/bmp": "bmp",
+            "image/svg+xml": "svg",
+            "application/pdf": "pdf",
+            "text/plain": "txt",
+            "text/csv": "csv",
+            "application/json": "json",
+            "text/markdown": "md",
+        }
+        ext = ct_map.get(file.content_type, "")
+    if not ext:
+        ext = "bin"
 
     import uuid as _uuid
     filename = f"{_uuid.uuid4().hex[:12]}.{ext}"
-    filepath = images_dir / filename
+    filepath = staging_dir / filename
 
     content = await file.read()
     filepath.write_bytes(content)
 
-    log.info("agent_image_uploaded", path=str(filepath), size=len(content))
-    return {"path": str(filepath), "filename": filename, "size": len(content)}
+    log.info("agent_file_uploaded", path=str(filepath), size=len(content), content_type=file.content_type)
+    return {
+        "path": str(filepath),
+        "filename": filename,
+        "size": len(content),
+        "content_type": file.content_type or "application/octet-stream",
+    }
 
 
 @router.post("/cards/run-agent")
@@ -1373,7 +1469,10 @@ async def run_agent(body: RunAgentRequest) -> dict:
     Creates a card with source=laya, persona=ENGINEER, and immediately
     spawns the agent subprocess. The card then follows the normal workspace flow.
     """
+    from pathlib import Path
+
     from laya.agents import session_manager
+    from laya.config import LAYA_HOME
     from laya.models.workspace import AgentType
 
     # Resolve agent type
@@ -1385,22 +1484,56 @@ async def run_agent(body: RunAgentRequest) -> dict:
     else:
         agent_type = session_manager.get_configured_agent_type()
 
-    # Build the effective prompt — append image references so the agent
-    # can read them via its Read/file tool (agents don't have --image flags)
-    effective_prompt = body.prompt
-    if body.images:
-        image_lines = "\n".join(f"- {p}" for p in body.images)
-        effective_prompt += (
-            f"\n\nAttached reference images (use your Read/file tool to view them):\n{image_lines}"
-        )
-
-    # Create synthetic event + card
+    # Generate event + card ids up front — we need card_id to provision the
+    # per-card attachments folder before the agent spawns.
     import uuid
     event_id = f"evt_{uuid.uuid4().hex[:12]}"
     card_id = f"card_{uuid.uuid4().hex[:12]}"
     now = datetime.now(timezone.utc).isoformat()
     header = body.prompt[:120] + ("..." if len(body.prompt) > 120 else "")
     entity_id = f"laya:agent_run:{card_id}"
+
+    # Resolve working directory. If the caller didn't specify one, use
+    # ~/.laya/tmp/research/<card_id>/ and enable research mode (scoped writes
+    # + web). The path substring '/tmp/research/' also lets workspace_api
+    # auto-classify this session as research, which unlocks the file browser.
+    card_dir = LAYA_HOME / "tmp" / "research" / card_id
+    card_dir.mkdir(parents=True, exist_ok=True)
+    if body.directory:
+        working_dir = body.directory
+        research_flag = False
+    else:
+        working_dir = str(card_dir)
+        research_flag = True
+
+    # Move staged uploads (server-side copies in ~/.laya/tmp/agent-staging/)
+    # into card_dir/attachments/. The user's original files on disk are never
+    # touched — only the copies the upload endpoint wrote.
+    final_file_paths: list[str] = []
+    if body.files:
+        attachments_dir = card_dir / "attachments"
+        attachments_dir.mkdir(parents=True, exist_ok=True)
+        for staged_path in body.files:
+            src = Path(staged_path)
+            if not src.exists():
+                log.warning("agent_file_move_missing", path=staged_path, card_id=card_id)
+                continue
+            dst = attachments_dir / src.name
+            try:
+                src.rename(dst)
+            except OSError as e:
+                log.warning("agent_file_move_failed", src=str(src), dst=str(dst), error=str(e))
+                continue
+            final_file_paths.append(str(dst))
+
+    # Build the effective prompt — append file references so the agent can
+    # open them via its Read/file tool (agents don't have --attach flags).
+    effective_prompt = body.prompt
+    if final_file_paths:
+        file_lines = "\n".join(f"- {p}" for p in final_file_paths)
+        effective_prompt += (
+            f"\n\nAttached reference files (use your Read/file tool to open them):\n{file_lines}"
+        )
 
     db = await get_db()
 
@@ -1444,7 +1577,7 @@ async def run_agent(body: RunAgentRequest) -> dict:
             "ENGINEER",
             "CODE",
             header,
-            body.prompt,  # summary shows the original prompt (without image paths)
+            body.prompt,  # summary shows the original prompt (without attachment paths)
             json.dumps([]),
             json.dumps({}),
             json.dumps([]),
@@ -1455,7 +1588,7 @@ async def run_agent(body: RunAgentRequest) -> dict:
             entity_id,
             "Agent Run",
             body.space_id or "default",
-            effective_prompt,  # agent_prompt includes image references
+            effective_prompt,  # agent_prompt includes attachment references
             now_ts,
         ),
     )
@@ -1479,29 +1612,21 @@ async def run_agent(body: RunAgentRequest) -> dict:
         }
     )
 
-    # Spawn agent in background
-    async def _run_agent_task() -> None:
-        await _stream_agent_to_card(
+    # Spawn agent in background. Attachments live inside card_dir/attachments/
+    # and persist with the card — no post-run cleanup.
+    asyncio.create_task(
+        _stream_agent_to_card(
             card_id=card_id,
             prompt=effective_prompt,
-            directory=body.directory,
+            directory=working_dir,
             agent_type=agent_type,
             space_id=body.space_id,
             add_dirs=body.add_dirs,
             mode=body.mode,
-        )
-        # Clean up uploaded images after agent finishes (regardless of outcome)
-        if body.images:
-            for img_path in body.images:
-                try:
-                    from pathlib import Path
-                    p = Path(img_path)
-                    if p.exists() and p.is_file():
-                        p.unlink()
-                except Exception as e:
-                    log.debug("agent_image_cleanup_failed", path=img_path, error=str(e))
-
-    asyncio.create_task(_run_agent_task(), name=f"run_agent_{card_id}")
+            research=research_flag,
+        ),
+        name=f"run_agent_{card_id}",
+    )
 
     log.info("run_agent_initiated", card_id=card_id, agent_type=agent_type.value)
     return {"status": "agent_running", "card_id": card_id}

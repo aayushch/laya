@@ -107,7 +107,10 @@ async def start_session(
 
     # Create and start the agent
     agent = _create_agent(agent_type)
-    await agent.start_session(session_id, prompt, repo_path, add_dirs=add_dirs, mode=mode, research=research)
+    await agent.start_session(
+        session_id, prompt, repo_path,
+        add_dirs=add_dirs, mode=mode, research=research, space_id=space_id,
+    )
     _active_sessions[session_id] = agent
     _card_sessions[card_id] = session_id
 
@@ -284,13 +287,17 @@ async def resume_conversation(
     """
     db = await get_db()
     rows = await db.execute_fetchall(
-        "SELECT cc_session_id, repo_path, agent_type, add_dirs, session_type, permission_mode FROM workspace_sessions WHERE session_id = ?",
+        """SELECT ws.cc_session_id, ws.repo_path, ws.agent_type, ws.add_dirs,
+                  ws.session_type, ws.permission_mode, ac.space_id
+           FROM workspace_sessions ws
+           LEFT JOIN action_cards ac ON ac.card_id = ws.card_id
+           WHERE ws.session_id = ?""",
         (session_id,),
     )
     if not rows:
         raise ValueError(f"No session found: {session_id}")
 
-    agent_session_id, repo_path, agent_type_str, existing_dirs_json, session_type, stored_mode = rows[0]
+    agent_session_id, repo_path, agent_type_str, existing_dirs_json, session_type, stored_mode, space_id = rows[0]
     is_research = session_type == "research"
 
     # Merge new add_dirs with previously stored ones (deduplicated, order-preserving)
@@ -336,7 +343,10 @@ async def resume_conversation(
         else:
             raise ValueError(f"Agent type {agent_type.value} does not support session resumption")
 
-        await agent.resume_with_answer(answer_text, add_dirs=all_dirs, research=is_research, mode=stored_mode)
+        await agent.resume_with_answer(
+            answer_text, add_dirs=all_dirs, research=is_research,
+            mode=stored_mode, space_id=space_id,
+        )
     else:
         # No agent session ID stored (e.g. session started with old adapter).
         # Fall back to starting a fresh session with the prompt in the same repo.
@@ -347,7 +357,7 @@ async def resume_conversation(
             reason="no agent session ID stored",
         )
         agent = _create_agent(agent_type)
-        await agent.start_session(session_id, answer_text, repo_path, research=is_research)
+        await agent.start_session(session_id, answer_text, repo_path, research=is_research, space_id=space_id)
 
     # Update session status back to running
     await _update_session_status(session_id, SessionStatus.RUNNING)

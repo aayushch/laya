@@ -23,10 +23,12 @@
 		'full-auto': 'Agent can read and write files automatically'
 	};
 
-	interface UploadedImage {
+	interface UploadedFile {
 		path: string;
 		filename: string;
-		previewUrl: string;
+		previewUrl: string | null;
+		contentType: string;
+		isImage: boolean;
 	}
 
 	import type { Repo } from '$lib/api/types';
@@ -36,7 +38,7 @@
 	let directory = $state('');
 	let addDirs = $state<string[]>([]);
 	let prompt = $state('');
-	let images = $state<UploadedImage[]>([]);
+	let files = $state<UploadedFile[]>([]);
 	let submitting = $state(false);
 	let uploading = $state(false);
 	let error = $state<string | null>(null);
@@ -107,18 +109,16 @@
 		addDirs = addDirs.filter((_, i) => i !== index);
 	}
 
-	// --- Image upload/handling ---
+	// --- File upload/handling ---
 
-	async function uploadImageFile(file: File) {
-		if (!file.type.startsWith('image/')) return;
-
+	async function uploadFile(file: File) {
 		uploading = true;
 		error = null;
 		try {
 			const formData = new FormData();
 			formData.append('file', file);
 
-			const resp = await fetch('http://127.0.0.1:8420/upload-agent-image', {
+			const resp = await fetch('http://127.0.0.1:8420/upload-agent-file', {
 				method: 'POST',
 				body: formData
 			});
@@ -127,55 +127,180 @@
 			}
 			const result = await resp.json();
 
-			// Create a local preview URL
-			const previewUrl = URL.createObjectURL(file);
-			images = [
-				...images,
-				{ path: result.path, filename: result.filename, previewUrl }
+			const contentType: string = result.content_type || file.type || '';
+			const isImage = contentType.startsWith('image/');
+			const previewUrl = isImage ? URL.createObjectURL(file) : null;
+			files = [
+				...files,
+				{
+					path: result.path,
+					filename: result.filename,
+					previewUrl,
+					contentType,
+					isImage
+				}
 			];
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Image upload failed';
+			error = err instanceof Error ? err.message : 'File upload failed';
 		} finally {
 			uploading = false;
 		}
 	}
 
-	function removeImage(index: number) {
-		const removed = images[index];
+	// In Tauri on macOS, WKWebView does not emit HTML5 drop events for OS
+	// file drops. We receive the paths from Tauri's native drag-drop event
+	// and send them to a path-based upload endpoint; since the engine is
+	// local, it reads from that path directly.
+	async function uploadFileByPath(path: string) {
+		uploading = true;
+		error = null;
+		try {
+			const resp = await fetch('http://127.0.0.1:8420/upload-agent-file-path', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ path })
+			});
+			if (!resp.ok) {
+				throw new Error(`Upload failed: ${resp.status}`);
+			}
+			const result = await resp.json();
+			const contentType: string = result.content_type || '';
+			const isImage = contentType.startsWith('image/');
+			files = [
+				...files,
+				{
+					path: result.path,
+					filename: result.filename,
+					previewUrl: null,
+					contentType,
+					isImage
+				}
+			];
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'File upload failed';
+		} finally {
+			uploading = false;
+		}
+	}
+
+	function deleteStagedFile(path: string) {
+		// Fire-and-forget — UI doesn't need to wait, and the 24h sweep is a
+		// backstop if this ever fails.
+		fetch('http://127.0.0.1:8420/delete-agent-staging-file', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ path })
+		}).catch(() => {
+			// Ignore — sweep will clean up eventually.
+		});
+	}
+
+	function removeFile(index: number) {
+		const removed = files[index];
 		if (removed.previewUrl) URL.revokeObjectURL(removed.previewUrl);
-		images = images.filter((_, i) => i !== index);
+		deleteStagedFile(removed.path);
+		files = files.filter((_, i) => i !== index);
+	}
+
+	let fileInput: HTMLInputElement | null = $state(null);
+
+	function triggerFilePicker() {
+		fileInput?.click();
+	}
+
+	function handleFilePickerChange(e: Event) {
+		const target = e.target as HTMLInputElement;
+		if (!target.files) return;
+		for (const f of target.files) {
+			uploadFile(f);
+		}
+		target.value = '';
+	}
+
+	function extOf(filename: string): string {
+		const i = filename.lastIndexOf('.');
+		if (i < 0 || i === filename.length - 1) return 'FILE';
+		return filename.slice(i + 1).toUpperCase().slice(0, 4);
 	}
 
 	function handleDrop(e: DragEvent) {
 		e.preventDefault();
+		e.stopPropagation();
 		dragOver = false;
-		const files = e.dataTransfer?.files;
-		if (files) {
-			for (const file of files) {
-				if (file.type.startsWith('image/')) {
-					uploadImageFile(file);
-				}
+		const dropped = e.dataTransfer?.files;
+		if (dropped && dropped.length > 0) {
+			for (const f of dropped) {
+				uploadFile(f);
 			}
 		}
 	}
 
 	function handleDragOver(e: DragEvent) {
 		e.preventDefault();
+		e.stopPropagation();
+		if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
 		dragOver = true;
 	}
 
-	function handleDragLeave() {
-		dragOver = false;
+	function handleDragLeave(e: DragEvent) {
+		// Only clear when leaving the window, not when moving between child elements
+		if (e.relatedTarget === null) dragOver = false;
 	}
+
+	// Window-level drag/drop listener while the modal is open — handles the
+	// browser/Vite-dev path. In Tauri on macOS, these HTML5 events don't fire
+	// for OS file drops, so we also subscribe to Tauri's native event below.
+	$effect(() => {
+		if (!$agentDialog.isOpen) return;
+		window.addEventListener('dragover', handleDragOver);
+		window.addEventListener('drop', handleDrop);
+		window.addEventListener('dragleave', handleDragLeave);
+		return () => {
+			window.removeEventListener('dragover', handleDragOver);
+			window.removeEventListener('drop', handleDrop);
+			window.removeEventListener('dragleave', handleDragLeave);
+		};
+	});
+
+	// Tauri native drag-drop — required for file drops on macOS WKWebView.
+	$effect(() => {
+		if (!$agentDialog.isOpen) return;
+		let unlisten: (() => void) | undefined;
+		(async () => {
+			try {
+				const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+				const w = getCurrentWebviewWindow();
+				unlisten = await w.onDragDropEvent((event) => {
+					const p = event.payload;
+					if (p.type === 'enter' || p.type === 'over') {
+						dragOver = true;
+					} else if (p.type === 'drop') {
+						dragOver = false;
+						for (const path of p.paths) {
+							uploadFileByPath(path);
+						}
+					} else {
+						dragOver = false;
+					}
+				});
+			} catch {
+				// Not running inside Tauri (e.g. Vite dev in a browser) — fine,
+				// HTML5 drop handlers above cover that case.
+			}
+		})();
+		return () => {
+			unlisten?.();
+		};
+	});
 
 	function handlePaste(e: ClipboardEvent) {
 		const items = e.clipboardData?.items;
 		if (!items) return;
 		for (const item of items) {
-			if (item.type.startsWith('image/')) {
+			if (item.kind === 'file') {
 				e.preventDefault();
-				const file = item.getAsFile();
-				if (file) uploadImageFile(file);
+				const f = item.getAsFile();
+				if (f) uploadFile(f);
 			}
 		}
 	}
@@ -187,10 +312,6 @@
 			error = 'Please enter a prompt';
 			return;
 		}
-		if (!directory.trim()) {
-			error = 'Please specify a directory';
-			return;
-		}
 
 		submitting = true;
 		error = null;
@@ -198,11 +319,11 @@
 		try {
 			const result = await engineApi.runAgent({
 				prompt: prompt.trim(),
-				directory: directory.trim(),
+				directory: directory.trim() || undefined,
 				add_dirs: addDirs.length > 0 ? addDirs : undefined,
 				agent_type: selectedAgent,
 				mode: availableModes.length > 0 ? selectedMode : undefined,
-				images: images.length > 0 ? images.map((i) => i.path) : undefined
+				files: files.length > 0 ? files.map((f) => f.path) : undefined
 			});
 
 			agentDialog.close();
@@ -219,11 +340,14 @@
 		prompt = '';
 		directory = '';
 		addDirs = [];
-		// Revoke all preview URLs
-		for (const img of images) {
-			if (img.previewUrl) URL.revokeObjectURL(img.previewUrl);
+		// Revoke preview URLs and delete any staged files that weren't submitted.
+		// On successful submit the backend already moved the files out of staging,
+		// so the delete endpoint will no-op for those paths (it's idempotent).
+		for (const f of files) {
+			if (f.previewUrl) URL.revokeObjectURL(f.previewUrl);
+			deleteStagedFile(f.path);
 		}
-		images = [];
+		files = [];
 		error = null;
 		submitting = false;
 		uploading = false;
@@ -241,6 +365,15 @@
 		if (e.key === 'Escape') close();
 		if (e.key === 'Enter' && e.metaKey) submit();
 	}
+
+	// Window-level listener: the backdrop div only receives keydown when focus
+	// is inside it, but the modal typically opens with focus on the trigger
+	// button outside. Listen on window while open so ESC always closes.
+	$effect(() => {
+		if (!$agentDialog.isOpen) return;
+		window.addEventListener('keydown', handleKeydown);
+		return () => window.removeEventListener('keydown', handleKeydown);
+	});
 
 	function handleBackdrop(e: MouseEvent) {
 		if (e.target === e.currentTarget) close();
@@ -367,7 +500,7 @@
 						class="flex w-full items-center justify-between rounded-md border border-surface-600 bg-surface-800 px-3 py-2 text-left text-sm transition-colors hover:border-surface-500 {directory ? 'text-surface-200' : 'text-surface-500'}"
 						onclick={() => (dirDropdownOpen = !dirDropdownOpen)}
 					>
-						<span class="truncate">{directory || 'Select a repository...'}</span>
+						<span class="truncate">{directory || 'Optional — leave empty for a research workspace'}</span>
 						<svg
 							class="ml-2 h-4 w-4 shrink-0 text-surface-400 transition-transform {dirDropdownOpen ? 'rotate-180' : ''}"
 							fill="none"
@@ -385,6 +518,17 @@
 							onkeydown={(e) => { if (e.key === 'Escape') dirDropdownOpen = false; }}
 						>
 							<div class="max-h-48 overflow-y-auto py-1">
+								{#if directory}
+									<button
+										class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-surface-400 transition-colors hover:bg-surface-700 hover:text-surface-200"
+										onclick={() => { directory = ''; dirDropdownOpen = false; }}
+									>
+										<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+										</svg>
+										Clear selection (use research workspace)
+									</button>
+								{/if}
 								{#each repos as repo}
 									<button
 										class="flex w-full flex-col px-3 py-2 text-left transition-colors hover:bg-surface-700 {directory === repo.path ? 'bg-surface-700' : ''}"
@@ -400,6 +544,9 @@
 							</div>
 						</div>
 					{/if}
+					<p class="mt-1 text-[10px] text-surface-500">
+						Leave empty to auto-provision a research workspace for this card.
+					</p>
 				</div>
 
 				<!-- Additional directories -->
@@ -456,7 +603,7 @@
 					</button>
 				</div>
 
-				<!-- Prompt + image drop zone -->
+				<!-- Prompt + file drop zone -->
 				<div>
 					<label class={labelClass} for="agent-prompt">Prompt</label>
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -471,7 +618,7 @@
 							bind:value={prompt}
 							rows="6"
 							class="{inputClass} resize-y {dragOver ? '!border-laya-orange !bg-laya-orange/5' : ''}"
-							placeholder="Describe what you want the agent to do...&#10;&#10;Drop or paste images here for reference"
+							placeholder="Describe what you want the agent to do...&#10;&#10;Drop or paste files (PDFs, images, text) here for reference"
 							onpaste={handlePaste}
 						></textarea>
 
@@ -493,46 +640,90 @@
 											d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
 										/>
 									</svg>
-									Drop image here
+									Drop files here
 								</div>
 							</div>
 						{/if}
 					</div>
 
-					<!-- Image previews -->
-					{#if images.length > 0}
-						<div class="mt-2 flex flex-wrap gap-2">
-							{#each images as img, i}
-								<div class="group relative">
-									<img
-										src={img.previewUrl}
-										alt={img.filename}
-										class="h-16 w-16 rounded-md border border-surface-700 object-cover"
-									/>
-									<button
-										class="absolute -right-1.5 -top-1.5 hidden rounded-full bg-surface-800 p-0.5 text-surface-400 shadow-md transition-colors hover:text-red-400 group-hover:block"
-										onclick={() => removeImage(i)}
-										aria-label="Remove image"
-									>
-										<svg
-											class="h-3 w-3"
-											fill="none"
-											stroke="currentColor"
-											viewBox="0 0 24 24"
-										>
-											<path
-												stroke-linecap="round"
-												stroke-linejoin="round"
-												stroke-width="2"
-												d="M6 18L18 6M6 6l12 12"
+					<!-- File previews -->
+					{#if files.length > 0}
+						<div class="mt-2 flex flex-wrap gap-3">
+							{#each files as f, i}
+								<div class="group flex w-16 flex-col items-center">
+									<div class="relative">
+										{#if f.isImage && f.previewUrl}
+											<img
+												src={f.previewUrl}
+												alt={f.filename}
+												class="h-16 w-16 rounded-md border border-surface-700 object-cover"
 											/>
-										</svg>
-									</button>
-									<div
-										class="absolute bottom-0 left-0 right-0 truncate rounded-b-md bg-black/60 px-1 py-0.5 text-[9px] text-surface-300"
-									>
-										{img.filename}
+										{:else}
+											<div
+												class="flex h-16 w-16 items-center justify-center rounded-md border border-surface-700 bg-surface-900"
+												title={f.contentType}
+											>
+												<svg
+													viewBox="0 0 40 48"
+													class="h-12 w-10"
+													xmlns="http://www.w3.org/2000/svg"
+												>
+													<path
+														d="M4 4 H26 L36 14 V42 C 36 43.1 35.1 44 34 44 H6 C 4.9 44 4 43.1 4 42 Z"
+														class="fill-surface-700"
+													/>
+													<path
+														d="M26 4 L26 14 L36 14 Z"
+														class="fill-surface-500"
+														opacity="0.75"
+													/>
+													<rect
+														x="4"
+														y="32"
+														width="32"
+														height="10"
+														class="fill-laya-orange"
+														opacity="0.9"
+													/>
+													<text
+														x="20"
+														y="39.5"
+														text-anchor="middle"
+														class="fill-surface-900"
+														font-size="7"
+														font-weight="700"
+														letter-spacing="0.5"
+														>{extOf(f.filename)}</text
+													>
+												</svg>
+											</div>
+										{/if}
+										<button
+											class="absolute -right-1.5 -top-1.5 hidden rounded-full bg-surface-800 p-0.5 text-surface-400 shadow-md transition-colors hover:text-red-400 group-hover:block"
+											onclick={() => removeFile(i)}
+											aria-label="Remove file"
+										>
+											<svg
+												class="h-3 w-3"
+												fill="none"
+												stroke="currentColor"
+												viewBox="0 0 24 24"
+											>
+												<path
+													stroke-linecap="round"
+													stroke-linejoin="round"
+													stroke-width="2"
+													d="M6 18L18 6M6 6l12 12"
+												/>
+											</svg>
+										</button>
 									</div>
+									<span
+										class="mt-1 w-full truncate text-center text-[9px] text-surface-400"
+										title={f.filename}
+									>
+										{f.filename}
+									</span>
 								</div>
 							{/each}
 						</div>
@@ -555,16 +746,30 @@
 									d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
 								></path>
 							</svg>
-							Uploading image...
+							Uploading file...
 						</div>
 					{/if}
 
-					<p class="mt-1 text-[10px] text-surface-500">
-						<kbd
-							class="rounded border border-surface-600 bg-surface-800 px-1 py-0.5 font-mono text-[10px]"
-							>Cmd+Enter</kbd
-						> to submit &middot; Drop or paste images for reference
-					</p>
+					<div class="mt-3 flex items-center justify-between gap-2">
+						<p class="text-[10px] text-surface-500">
+							<kbd
+								class="rounded border border-surface-600 bg-surface-800 px-1 py-0.5 font-mono text-[10px]"
+								>Cmd+Enter</kbd
+							> to submit &middot; drop, paste, or
+							<button
+								type="button"
+								class="text-laya-orange underline-offset-2 hover:underline"
+								onclick={triggerFilePicker}
+							>browse files</button>
+						</p>
+					</div>
+					<input
+						bind:this={fileInput}
+						type="file"
+						multiple
+						class="hidden"
+						onchange={handleFilePickerChange}
+					/>
 				</div>
 
 				{#if error}
@@ -586,7 +791,7 @@
 				<button
 					class="inline-flex items-center gap-1.5 rounded-md bg-laya-orange/20 px-4 py-1.5 text-xs font-medium text-laya-orange transition-colors hover:bg-laya-orange/30 disabled:cursor-not-allowed disabled:opacity-50"
 					onclick={submit}
-					disabled={submitting || !prompt.trim() || !directory.trim()}
+					disabled={submitting || !prompt.trim()}
 				>
 					{#if submitting}
 						<svg class="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">

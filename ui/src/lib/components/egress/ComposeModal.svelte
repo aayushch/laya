@@ -254,6 +254,15 @@
 		if (e.key === 'Escape') close();
 	}
 
+	// Window-level listener: the backdrop div only receives keydown when focus
+	// is inside it, but the modal typically opens with focus on the trigger
+	// button outside. Listen on window while open so ESC always closes.
+	$effect(() => {
+		if (!$compose.isOpen) return;
+		window.addEventListener('keydown', handleKeydown);
+		return () => window.removeEventListener('keydown', handleKeydown);
+	});
+
 	function handleBackdrop(e: MouseEvent) {
 		if (e.target === e.currentTarget) close();
 	}
