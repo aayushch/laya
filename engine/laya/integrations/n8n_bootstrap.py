@@ -309,6 +309,126 @@ def _save_deployed_versions(versions: dict[str, str]) -> None:
     _VERSIONS_FILE.write_text(json.dumps(versions, indent=2) + "\n")
 
 
+# ---------------------------------------------------------------------------
+# Shared Error Handler workflow — singleton, wired as settings.errorWorkflow
+# on every ingestion clone so n8n node failures flow to the engine.
+# ---------------------------------------------------------------------------
+_ERROR_HANDLER_NAME = "Laya - Error Handler"
+_ERROR_HANDLER_FILENAME = "laya-error-handler.json"
+# Special key stored in workflow_versions.json alongside per-template version
+# entries. Value is the workflow ID n8n assigned to the deployed handler.
+_ERROR_HANDLER_ID_KEY = "__error_handler_id__"
+
+
+def _get_error_handler_id() -> str | None:
+    """Return the currently-deployed error handler workflow ID, or None."""
+    versions = _load_deployed_versions()
+    return versions.get(_ERROR_HANDLER_ID_KEY)
+
+
+async def _ensure_error_handler_workflow(base_url: str, api_key: str) -> str | None:
+    """Make sure the shared "Laya - Error Handler" workflow exists in n8n.
+
+    Idempotent. Called at the top of import_workflows() so the handler's ID is
+    known before any ingestion clone update injects settings.errorWorkflow.
+
+    Self-heals: if the handler was deleted in the n8n UI, this re-creates it.
+    Version bumps on the bundled handler JSON trigger an in-place update.
+    """
+    if not WORKFLOWS_DIR.exists():
+        return None
+
+    handler_file = WORKFLOWS_DIR / _ERROR_HANDLER_FILENAME
+    if not handler_file.exists():
+        log.warning("n8n_error_handler_template_missing", path=str(handler_file))
+        return None
+
+    try:
+        handler_data = json.loads(handler_file.read_text(encoding="utf-8"))
+    except Exception as e:
+        log.warning("n8n_error_handler_template_parse_failed", error=str(e))
+        return None
+
+    bundled_version = (handler_data.get("meta") or {}).get("laya_version")
+    versions = _load_deployed_versions()
+    stored_id = versions.get(_ERROR_HANDLER_ID_KEY)
+
+    existing_workflows = await _get_existing_workflows(base_url, api_key)
+    if existing_workflows is None:
+        log.warning("n8n_error_handler_bootstrap_skipped", reason="n8n_list_failed")
+        return stored_id  # Best-effort: keep whatever we had last time.
+
+    existing = existing_workflows.get(_ERROR_HANDLER_NAME)
+    if existing:
+        handler_id = str(existing["id"])
+        deployed_version = versions.get(_ERROR_HANDLER_NAME)
+        # Update stored ID (self-heal if user recreated it in the UI)
+        if stored_id != handler_id or deployed_version != bundled_version:
+            versions[_ERROR_HANDLER_ID_KEY] = handler_id
+            if bundled_version:
+                versions[_ERROR_HANDLER_NAME] = bundled_version
+            _save_deployed_versions(versions)
+        # If the bundled template is a newer version than what's deployed, push
+        # an in-place update so the payload shape / node logic stays current.
+        if bundled_version and deployed_version != bundled_version:
+            ok = await _update_workflow(base_url, api_key, handler_id, handler_data)
+            if ok:
+                log.info("n8n_error_handler_updated",
+                         workflow_id=handler_id, version=bundled_version)
+            else:
+                log.warning("n8n_error_handler_update_failed",
+                            workflow_id=handler_id, version=bundled_version)
+        log.debug("n8n_error_handler_ready", workflow_id=handler_id)
+        return handler_id
+
+    # Not present — POST it. n8n only accepts a subset of keys on create.
+    create_fields = {"name", "nodes", "connections", "settings", "staticData", "tags"}
+    create_body = {k: v for k, v in handler_data.items() if k in create_fields}
+    headers = {"X-N8N-API-KEY": api_key, "Content-Type": "application/json"}
+
+    try:
+        resp = await get_client().post(
+            f"{base_url}/api/v1/workflows",
+            headers=headers,
+            json=create_body,
+            timeout=10.0,
+        )
+        if resp.status_code not in (200, 201):
+            log.warning("n8n_error_handler_create_failed",
+                        status=resp.status_code, body=resp.text[:300])
+            return None
+        created = resp.json()
+        data = created.get("data", created) if isinstance(created, dict) else created
+        handler_id = str(data.get("id", ""))
+        if not handler_id:
+            log.warning("n8n_error_handler_create_no_id")
+            return None
+    except Exception as e:
+        log.warning("n8n_error_handler_create_error", error=str(e))
+        return None
+
+    # Activate the handler. It only runs when another workflow fails, so
+    # leaving it active costs nothing.
+    try:
+        act_resp = await get_client().post(
+            f"{base_url}/api/v1/workflows/{handler_id}/activate",
+            headers=headers,
+            timeout=10.0,
+        )
+        if act_resp.status_code not in (200, 201):
+            log.warning("n8n_error_handler_activate_failed",
+                        workflow_id=handler_id, status=act_resp.status_code)
+    except Exception as e:
+        log.warning("n8n_error_handler_activate_error", workflow_id=handler_id, error=str(e))
+
+    versions[_ERROR_HANDLER_ID_KEY] = handler_id
+    if bundled_version:
+        versions[_ERROR_HANDLER_NAME] = bundled_version
+    _save_deployed_versions(versions)
+    log.info("n8n_error_handler_created", workflow_id=handler_id, version=bundled_version)
+    return handler_id
+
+
 # Fields that n8n's PUT /api/v1/workflows/{id} accepts.
 _N8N_PUT_ALLOWED_FIELDS = {"name", "nodes", "connections", "settings", "staticData", "tags"}
 
@@ -406,10 +526,19 @@ async def import_workflows(base_url: str) -> int:
         log.warning("n8n_workflow_import_skipped", reason="no_workflows_dir", path=str(WORKFLOWS_DIR))
         return 0
 
+    # Deploy (or self-heal) the shared error-handler workflow BEFORE touching
+    # ingestion templates so its ID is available when _propagate_to_clones
+    # injects settings.errorWorkflow into each clone below.
+    await _ensure_error_handler_workflow(base_url, api_key)
+
     deployed_versions = _load_deployed_versions()
     templates_needing_update: list[str] = []
 
     for workflow_file in sorted(WORKFLOWS_DIR.glob("*.json")):
+        # The error handler is a singleton, not a per-connection clone template.
+        # _ensure_error_handler_workflow already handles its version lifecycle.
+        if workflow_file.name == _ERROR_HANDLER_FILENAME:
+            continue
         try:
             workflow_data = json.loads(workflow_file.read_text(encoding="utf-8"))
             workflow_name = workflow_data.get("name", workflow_file.stem)
@@ -496,6 +625,14 @@ async def _propagate_to_clones(base_url: str, api_key: str, changed_templates: l
 
     import copy
 
+    # Ingestion clones get settings.errorWorkflow injected so their node
+    # failures route to the shared Laya error handler. Executor clones run on
+    # user-initiated egress and their failures already surface via
+    # action_cards.last_error.
+    error_handler_id = _get_error_handler_id()
+    if not error_handler_id:
+        log.info("n8n_propagate_no_error_handler_id")
+
     updated = 0
     for row in clone_rows:
         platform = row["platform"]
@@ -515,6 +652,10 @@ async def _propagate_to_clones(base_url: str, api_key: str, changed_templates: l
         # Build update data from template but preserve clone's name
         update_data = copy.deepcopy(template)
         update_data["name"] = clone_name
+
+        # Wire this ingestion clone to the shared error handler.
+        if error_handler_id and source_type == "ingestion":
+            update_data.setdefault("settings", {})["errorWorkflow"] = error_handler_id
 
         # Preserve clone's webhook paths in the update data
         clone_webhook_path = row["webhook_path"]

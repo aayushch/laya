@@ -1,0 +1,664 @@
+{
+  "name": "Laya - Notion Executor",
+  "nodes": [
+    {
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        400
+      ],
+      "parameters": {
+        "path": "notion-executor",
+        "httpMethod": "POST",
+        "responseMode": "responseNode"
+      }
+    },
+    {
+      "name": "Validate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        450,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.body.action_type || '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "name": "Route Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        650,
+        400
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "outputKey": "create_page",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action_type }}",
+                    "rightValue": "create_page",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "append_block",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action_type }}",
+                    "rightValue": "append_block",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "update_page_property",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action_type }}",
+                    "rightValue": "update_page_property",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "archive_page",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action_type }}",
+                    "rightValue": "archive_page",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "add_comment",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action_type }}",
+                    "rightValue": "add_comment",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "fallbackOutput": "extra"
+      }
+    },
+    {
+      "name": "Create Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/pages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ parent: ($json.body.payload.parent_type === 'page') ? { page_id: $json.body.payload.parent_id } : { database_id: $json.body.payload.parent_id }, properties: Object.assign({}, ($json.body.payload.parent_type === 'page') ? { title: { title: [{ type: 'text', text: { content: $json.body.payload.title || '' } }] } } : { Name: { title: [{ type: 'text', text: { content: $json.body.payload.title || '' } }] } }, $json.body.payload.properties || {}), children: $json.body.payload.children || [] }) }}",
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "name": "Append Block",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        200
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.notion.com/v1/blocks/{{ $json.body.payload.page_id }}/children",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => { const bt = ($json.body.payload.block_type || 'paragraph').toLowerCase(); const text = $json.body.payload.text || ''; const rt = [{ type: 'text', text: { content: text } }]; const block = { object: 'block', type: bt }; if (bt === 'heading_1' || bt === 'heading_2' || bt === 'heading_3') { block[bt] = { rich_text: rt }; } else if (bt === 'to_do') { block.to_do = { rich_text: rt, checked: false }; } else if (bt === 'bulleted_list_item') { block.bulleted_list_item = { rich_text: rt }; } else if (bt === 'numbered_list_item') { block.numbered_list_item = { rich_text: rt }; } else if (bt === 'quote') { block.quote = { rich_text: rt }; } else if (bt === 'callout') { block.callout = { rich_text: rt }; } else { block.type = 'paragraph'; block.paragraph = { rich_text: rt }; } return JSON.stringify({ children: [block] }); })() }}",
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "name": "Update Property",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        400
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.notion.com/v1/pages/{{ $json.body.payload.page_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ properties: $json.body.payload.properties || {} }) }}",
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "name": "Archive Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        600
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.notion.com/v1/pages/{{ $json.body.payload.page_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ archived: true }) }}",
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "name": "Add Comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        800
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/comments",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ parent: { page_id: $json.body.payload.page_id }, rich_text: [{ type: 'text', text: { content: $json.body.payload.comment || '' } }] }) }}",
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "name": "Respond Create Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1150,
+        -50
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, result: { page_id: $json.id || '', url: $json.url || '', action: 'created' } }) }}"
+      }
+    },
+    {
+      "name": "Respond Create Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1150,
+        50
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.message || $json.error.description || JSON.stringify($json.error)) : ($json.message || 'Notion create page failed \u2014 check integration token and database/page access')) }) }}"
+      }
+    },
+    {
+      "name": "Respond Append Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1150,
+        150
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, result: { page_id: $('Webhook').first().json.body.payload.page_id, action: 'block_appended', block_count: ($json.results || []).length } }) }}"
+      }
+    },
+    {
+      "name": "Respond Append Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1150,
+        250
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.message || $json.error.description || JSON.stringify($json.error)) : ($json.message || 'Notion append block failed \u2014 check integration token and page access')) }) }}"
+      }
+    },
+    {
+      "name": "Respond Update Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1150,
+        350
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, result: { page_id: $json.id || $('Webhook').first().json.body.payload.page_id, url: $json.url || '', action: 'property_updated' } }) }}"
+      }
+    },
+    {
+      "name": "Respond Update Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1150,
+        450
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.message || $json.error.description || JSON.stringify($json.error)) : ($json.message || 'Notion update property failed \u2014 check property name/type matches the page schema')) }) }}"
+      }
+    },
+    {
+      "name": "Respond Archive Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1150,
+        550
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, result: { page_id: $json.id || $('Webhook').first().json.body.payload.page_id, action: 'archived' } }) }}"
+      }
+    },
+    {
+      "name": "Respond Archive Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1150,
+        650
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.message || $json.error.description || JSON.stringify($json.error)) : ($json.message || 'Notion archive page failed \u2014 check integration token and page access')) }) }}"
+      }
+    },
+    {
+      "name": "Respond Comment Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1150,
+        750
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, result: { page_id: $('Webhook').first().json.body.payload.page_id, comment_id: $json.id || '', action: 'comment_added' } }) }}"
+      }
+    },
+    {
+      "name": "Respond Comment Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1150,
+        850
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.message || $json.error.description || JSON.stringify($json.error)) : ($json.message || 'Notion add comment failed \u2014 check integration token and page access')) }) }}"
+      }
+    },
+    {
+      "name": "Respond Missing Fields",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        650,
+        600
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: 'Missing required field: action_type is required' }) }}"
+      }
+    },
+    {
+      "name": "Respond Unknown Action",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        900,
+        1000
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: 'Unknown action_type: ' + ($json.body.action_type || 'empty') + '. Supported: create_page, append_block, update_page_property, archive_page, add_comment' }) }}"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate": {
+      "main": [
+        [
+          {
+            "node": "Route Action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Missing Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Action": {
+      "main": [
+        [
+          {
+            "node": "Create Page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Append Block",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Property",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Archive Page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add Comment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Unknown Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Page": {
+      "main": [
+        [
+          {
+            "node": "Respond Create Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Create Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Block": {
+      "main": [
+        [
+          {
+            "node": "Respond Append Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Append Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Property": {
+      "main": [
+        [
+          {
+            "node": "Respond Update Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Update Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Archive Page": {
+      "main": [
+        [
+          {
+            "node": "Respond Archive Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Archive Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Comment": {
+      "main": [
+        [
+          {
+            "node": "Respond Comment Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Comment Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "meta": {
+    "laya_version": "2026.04.1"
+  }
+}

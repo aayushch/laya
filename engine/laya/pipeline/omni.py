@@ -677,7 +677,7 @@ async def _resynthesize_space(db, space_id: str, density: str, snapshot_type: st
         space_id=space_id,
     )
 
-    schema = get_omni_json_schema()
+    schema = get_omni_json_schema(density)
 
     # --- GATE: pause queue processing for this space during LLM call ---
     gate.clear()

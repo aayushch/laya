@@ -1,0 +1,88 @@
+{
+  "name": "Laya - Error Handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Repackage n8n's error-trigger payload into Laya's /ingestion-errors schema.\n// Runs once per failed execution of any workflow that has this handler wired\n// via settings.errorWorkflow. Does NOT resolve source_id / space_id — the\n// engine does that server-side from workflow_id.\n\n// Order matters: \"outlook calendar\" must be checked before \"outlook\".\nconst PLATFORM_RULES = [\n  ['google calendar', 'calendar'],\n  ['outlook calendar', 'outlook_calendar'],\n  ['outlook', 'outlook'],\n  ['gmail', 'gmail'],\n  ['slack', 'slack'],\n  ['jira', 'jira'],\n  ['bitbucket', 'bitbucket'],\n  ['github', 'github'],\n  ['linear', 'linear'],\n  ['notion', 'notion']\n];\n\nfunction derivePlatform(name) {\n  const lower = (name || '').toLowerCase();\n  for (const [needle, platform] of PLATFORM_RULES) {\n    if (lower.includes(needle)) return platform;\n  }\n  return 'unknown';\n}\n\n// Cheap deterministic hash of a string → 8 hex chars. Used to build a stable\n// idempotency key so an n8n retry of the error-handler POST doesn't create a\n// duplicate row. Server-side fingerprint is the source of truth for dedup.\nfunction shortHash(str) {\n  let h = 0;\n  const s = str || '';\n  for (let i = 0; i < s.length; i++) {\n    h = ((h << 5) - h) + s.charCodeAt(i);\n    h |= 0;\n  }\n  return (h >>> 0).toString(16).padStart(8, '0');\n}\n\nconst input = $input.first() ? $input.first().json : {};\nconst exec = input.execution || {};\nconst wf = input.workflow || {};\nconst err = exec.error || {};\nconst nodeName = exec.lastNodeExecuted || '';\nconst node = (wf.nodes || []).find(n => n.name === nodeName) || {};\n\nconst executionId = String(exec.id || '');\nconst errorId = executionId\n  ? `ierr_${executionId}_${shortHash(nodeName)}`\n  : `ierr_${Date.now()}_${shortHash(nodeName)}`;\n\nconst httpCode = err.httpCode !== undefined && err.httpCode !== null && err.httpCode !== ''\n  ? Number(err.httpCode)\n  : null;\n\nreturn [{\n  json: {\n    error_id: errorId,\n    workflow_id: wf.id || '',\n    workflow_name: wf.name || '',\n    platform: derivePlatform(wf.name),\n    execution_id: executionId,\n    execution_url: exec.url || '',\n    execution_mode: exec.mode || '',\n    node_name: nodeName,\n    node_type: node.type || '',\n    error_name: err.name || '',\n    error_message: err.message || 'Unknown error',\n    error_http_code: Number.isFinite(httpCode) ? httpCode : null,\n    error_stack: err.stack || '',\n    error_details: err,\n    occurred_at: new Date().toISOString()\n  }\n}];"
+      },
+      "name": "Build Error Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8420/ingestion-errors",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "name": "POST to Laya",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        750,
+        300
+      ],
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build Error Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Error Payload": {
+      "main": [
+        [
+          {
+            "node": "POST to Laya",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": true,
+  "meta": {
+    "laya_version": "2026.04.0"
+  }
+}

@@ -656,6 +656,19 @@ fn spawn_n8n() -> Result<Child, String> {
         .env("N8N_SECURE_COOKIE", "false")
         .env("N8N_PUBLIC_API_DISABLED", "false")
         .env("N8N_RUNNERS_DISABLED", "true")
+        // Disable all of n8n's upstream network chatter (diagnostics,
+        // version-check pings, personalization survey, hiring banner,
+        // frontend hooks, template gallery). Laya's Terms §9 commits to a
+        // best-effort telemetry opt-out for every bundled third-party
+        // component, and n8n ships with these turned on by default.
+        .env("N8N_DIAGNOSTICS_ENABLED", "false")
+        .env("N8N_VERSION_NOTIFICATIONS_ENABLED", "false")
+        .env("N8N_TEMPLATES_ENABLED", "false")
+        .env("N8N_PERSONALIZATION_ENABLED", "false")
+        .env("N8N_HIRING_BANNER_ENABLED", "false")
+        .env("EXTERNAL_FRONTEND_HOOKS_URLS", "")
+        .env("N8N_DIAGNOSTICS_CONFIG_FRONTEND", "")
+        .env("N8N_DIAGNOSTICS_CONFIG_BACKEND", "")
         .stdout(log_file)
         .stderr(stderr_file);
 

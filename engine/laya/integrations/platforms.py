@@ -116,7 +116,7 @@ PLATFORMS: dict[str, dict] = {
         "n8n_type": "notionApi",
         "n8n_node": "n8n-nodes-base.notion",
         "oauth": False,
-        "workflows": [],
+        "workflows": ["Laya - Notion Ingestion", "Laya - Notion Executor"],
         "fields": [
             {
                 "key": "apiKey",

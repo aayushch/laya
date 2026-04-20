@@ -1,0 +1,159 @@
+{
+  "name": "Laya - Notion Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      },
+      "name": "Every 2 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ filter: { property: 'object', value: 'page' }, sort: { direction: 'descending', timestamp: 'last_edited_time' }, page_size: 25 }) }}",
+        "options": {}
+      },
+      "name": "Search Recent Pages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Notion's /v1/search returns a single item with a results[] array.\n// Unwrap each page into its own item, then drop anything older than the\n// polling window (2 min + a little slack).  Notion doesn't support server-\n// side last_edited_time filters on /search, so this client-side filter is\n// required to avoid re-ingesting the same pages every poll.\n\nconst WINDOW_MS = 2.5 * 60 * 1000;\nconst now = Date.now();\n\nconst results = [];\nfor (const item of $input.all()) {\n  const pages = item.json.results || [];\n  for (const page of pages) {\n    const editedAt = new Date(page.last_edited_time || 0).getTime();\n    if (!editedAt || (now - editedAt) > WINDOW_MS) continue;\n    results.push({ json: page });\n  }\n}\n\nreturn results;"
+      },
+      "name": "Filter Recent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        750,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Classify what changed on each Notion page and produce a normalized\n// event for the Laya engine.  Actor info is limited to the user ID\n// returned by the Notion page object — resolving to name/email would\n// require a secondary /v1/users/{id} call per page, which we skip at\n// poll time to keep this workflow cheap.  team.json mapping handles\n// the enrichment downstream.\n\nconst results = [];\n\nfor (const item of $input.all()) {\n  const page = item.json;\n\n  // --- Title: find the title property on the page ---\n  let title = '(Untitled)';\n  const props = page.properties || {};\n  for (const prop of Object.values(props)) {\n    if (prop && prop.type === 'title' && Array.isArray(prop.title)) {\n      const rendered = prop.title.map(t => t.plain_text || '').join('').trim();\n      if (rendered) { title = rendered; break; }\n    }\n  }\n\n  // --- Classify change type ---\n  const created = page.created_time;\n  const updated = page.last_edited_time;\n  const isNew = created === updated;\n  const archived = page.archived === true;\n\n  let rawEventType = 'page_updated';\n  let body = '';\n\n  if (archived) {\n    rawEventType = 'page_archived';\n    body = `Page archived: ${title}`;\n  } else if (isNew) {\n    rawEventType = 'page_created';\n    body = `New page created: ${title}`;\n  } else {\n    rawEventType = 'page_updated';\n    body = `Page updated: ${title}`;\n  }\n\n  // --- Parent context ---\n  const parent = page.parent || {};\n  const parentType = parent.type || 'workspace';\n  const parentId = parent.database_id || parent.page_id || parent.block_id || null;\n\n  // --- Participants ---\n  const creator = page.created_by || {};\n  const editor = page.last_edited_by || {};\n  const participants = [];\n  if (creator.id) {\n    participants.push({\n      role: 'creator',\n      name: '',\n      email: '',\n      handle: creator.id\n    });\n  }\n  if (editor.id && editor.id !== creator.id) {\n    participants.push({\n      role: 'last_editor',\n      name: '',\n      email: '',\n      handle: editor.id\n    });\n  }\n\n  const actorHandle = editor.id || creator.id || '';\n\n  results.push({\n    json: {\n      event_id: 'evt_notion_' + (page.id || '').replace(/-/g, '') + '_' + new Date(updated || Date.now()).getTime(),\n      timestamp: updated || new Date().toISOString(),\n      source: {\n        platform: 'notion',\n        connection_id: $workflow.id,\n        raw_event_type: rawEventType\n      },\n      actor: {\n        name: '',\n        email: '',\n        platform_handle: actorHandle\n      },\n      subject: {\n        type: 'page',\n        id: page.id || '',\n        title: title,\n        url: page.url || null\n      },\n      content: {\n        body: body,\n        attachments: [],\n        metadata: {\n          notion_page_id: page.id,\n          notion_parent_id: parentId,\n          notion_parent_type: parentType,\n          notion_archived: archived,\n          notion_created_time: created,\n          notion_last_edited_time: updated,\n          notion_cover_url: page.cover?.external?.url || page.cover?.file?.url || null,\n          notion_icon: page.icon?.emoji || page.icon?.external?.url || null,\n          participants: participants\n        }\n      }\n    }\n  });\n}\n\nreturn results;"
+      },
+      "name": "Classify Change",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8420/events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "name": "POST to Laya Engine",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1250,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Every 2 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Search Recent Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Recent Pages": {
+      "main": [
+        [
+          {
+            "node": "Filter Recent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Recent": {
+      "main": [
+        [
+          {
+            "node": "Classify Change",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Change": {
+      "main": [
+        [
+          {
+            "node": "POST to Laya Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "meta": {
+    "laya_version": "2026.04.2"
+  }
+}

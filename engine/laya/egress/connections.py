@@ -600,7 +600,12 @@ async def _clone_workflows_for_connection(
     """
     import copy
 
-    from laya.integrations.n8n_bootstrap import WORKFLOWS_DIR, _load_deployed_versions, _save_deployed_versions
+    from laya.integrations.n8n_bootstrap import (
+        WORKFLOWS_DIR,
+        _get_error_handler_id,
+        _load_deployed_versions,
+        _save_deployed_versions,
+    )
     from laya.integrations.n8n_client import activate_workflow
 
     # Idempotency: skip if sources already exist for this connection
@@ -657,6 +662,12 @@ async def _clone_workflows_for_connection(
     from laya.integrations.n8n_bootstrap import _get_existing_workflows
     existing_n8n_workflows = await _get_existing_workflows(base_url, api_key) or {}
 
+    # The shared error handler's workflow ID is written into each ingestion
+    # clone's settings.errorWorkflow so node failures route back to the engine.
+    # Executor clones don't get wired (egress failures surface through
+    # action_cards.last_error).
+    error_handler_id = _get_error_handler_id()
+
     for template_name in template_names:
         template_data = template_files.get(template_name)
         if not template_data:
@@ -671,6 +682,12 @@ async def _clone_workflows_for_connection(
             wf_data["name"] = f"Laya {platform_label} - {connection_name} ({wf_type})"
         else:
             wf_data["name"] = f"Laya {platform_label} - {short_id} ({wf_type})"
+
+        # Wire ingestion clones to the shared error handler so any node failure
+        # (bad creds, API rate limit, code exception, engine POST failure) lands
+        # in ingestion_errors on the engine.
+        if error_handler_id and wf_type == "Ingestion":
+            wf_data.setdefault("settings", {})["errorWorkflow"] = error_handler_id
 
         # 2. Update webhook paths and inject credentials
         for node in wf_data.get("nodes", []):

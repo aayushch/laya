@@ -9,6 +9,7 @@ from typing import Any
 import chromadb
 import structlog
 from chromadb import Collection, Documents, Embeddings, EmbeddingFunction
+from chromadb.config import Settings as ChromaSettings
 
 from laya.config import LAYA_DATA_DIR
 
@@ -184,7 +185,14 @@ def connect_chromadb() -> Collection:
     global _client, _collection
 
     CHROMADB_DIR.mkdir(parents=True, exist_ok=True)
-    _client = chromadb.PersistentClient(path=str(CHROMADB_DIR))
+    # Pass anonymized_telemetry=False defensively even though
+    # _telemetry_suppression.py already sets ANONYMIZED_TELEMETRY=False in the
+    # env at import time. This survives future chromadb releases that might
+    # rename the env var but not the Settings field. See Terms §9.
+    _client = chromadb.PersistentClient(
+        path=str(CHROMADB_DIR),
+        settings=ChromaSettings(anonymized_telemetry=False),
+    )
 
     embedding_fn = _choose_embedding_function()
 
