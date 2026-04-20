@@ -12,6 +12,7 @@
 	} from '$lib/stores/trace';
 	import { get } from 'svelte/store';
 	import { slide, fade } from 'svelte/transition';
+	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import TraceSearch from '$lib/components/trace/TraceSearch.svelte';
 	import TraceHeader from '$lib/components/trace/TraceHeader.svelte';
 	import TraceHistory from '$lib/components/trace/TraceHistory.svelte';
@@ -750,7 +751,7 @@
 				<!-- Cluster nodes -->
 				<div class="relative">
 					{#each visibleClusters as cluster, idx (cluster.cluster_id)}
-						<div transition:slide={{ duration: 200 }}>
+						<div transition:slide={{ duration: $reducedMotion ? 0 : 200 }}>
 							<TraceHeader
 								{cluster}
 								traceId={trace.trace_id}
@@ -766,7 +767,7 @@
 
 		<!-- All clusters removed -->
 		{:else if trace && trace.clusters.length > 0 && visibleClusters.length === 0}
-			<div class="text-center py-10 text-surface-500" in:fade={{ duration: 250, delay: 300 }}>
+			<div class="text-center py-10 text-surface-500" in:fade={{ duration: $reducedMotion ? 0 : 250, delay: $reducedMotion ? 0 : 300 }}>
 				<p class="text-xs">All clusters removed.</p>
 				<button
 					onclick={handleRestoreClusters}
@@ -835,7 +836,7 @@
 
 		<!-- Loading progress -->
 		{#if loading && !trace && !showHistoryDuringSearch}
-			<div class="mt-6 rounded-xl border border-surface-700/50 bg-surface-800/40 p-6" in:fade={{ duration: 200 }}>
+			<div class="mt-6 rounded-xl border border-surface-700/50 bg-surface-800/40 p-6" in:fade={{ duration: $reducedMotion ? 0 : 200 }}>
 				<!-- Query title -->
 				<div class="flex items-center gap-2 mb-5">
 					<span class="text-laya-orange text-sm">◆</span>

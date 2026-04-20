@@ -2,6 +2,7 @@
 	import { theme, type Theme } from '$lib/stores/theme';
 	import { cardColors } from '$lib/stores/cardColors';
 	import { accessibleColors } from '$lib/stores/accessibleColors';
+	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { fontScale, type FontScale } from '$lib/stores/fontScale';
 
 	const fontSteps: FontScale[] = [12, 13, 14, 15];
@@ -92,7 +93,9 @@
 		</div>
 	</div>
 
-	<!-- Card colors toggle -->
+	<!-- Status Colors — parent toggle with Accessible Colors as a nested sub-setting.
+	     The sub-setting is dimmed/disabled when the parent is off, since accessible
+	     colors only shift the status palette and has no effect without it. -->
 	<div class="rounded-xl border border-surface-700 bg-surface-800 p-6">
 		<div class="flex items-center justify-between">
 			<div>
@@ -111,49 +114,72 @@
 				></span>
 			</button>
 		</div>
+
+		<!-- Accessible Colors sub-setting -->
+		<div class="mt-5 border-t border-surface-700/60 pt-5 pl-4 {$cardColors ? '' : 'opacity-50'}">
+			<div class="flex items-center justify-between">
+				<div>
+					<h4 class="mb-0.5 text-sm font-semibold text-surface-100">Accessible Colors</h4>
+					<p class="text-xs text-surface-400">Colorblind-friendly palette. Shifts status colors for better contrast across all vision types.</p>
+				</div>
+				<button
+					class="relative h-6 w-11 shrink-0 rounded-full transition-colors {$accessibleColors && $cardColors ? 'bg-laya-orange' : 'bg-surface-600'} disabled:cursor-not-allowed"
+					onclick={() => accessibleColors.set(!$accessibleColors)}
+					disabled={!$cardColors}
+					title={$cardColors ? '' : 'Enable Status Colors to use this setting'}
+					role="switch"
+					aria-checked={$accessibleColors}
+					aria-label="Toggle accessible colors"
+				>
+					<span
+						class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform {$accessibleColors ? 'translate-x-5' : 'translate-x-0'}"
+					></span>
+				</button>
+			</div>
+
+			<!-- Color legend showing the accessible palette (only when actually active) -->
+			{#if $accessibleColors && $cardColors}
+				<div class="mt-3 flex flex-wrap gap-3 text-[11px] text-surface-400">
+					<div class="flex items-center gap-1.5">
+						<span class="h-2.5 w-2.5 rounded-full" style="background: oklch(0.75 0.17 65)"></span>
+						Pending
+					</div>
+					<div class="flex items-center gap-1.5">
+						<span class="h-2.5 w-2.5 rounded-full" style="background: oklch(0.68 0.16 240)"></span>
+						Approval
+					</div>
+					<div class="flex items-center gap-1.5">
+						<span class="h-2.5 w-2.5 rounded-full" style="background: oklch(0.72 0.12 195)"></span>
+						Done
+					</div>
+					<div class="flex items-center gap-1.5">
+						<span class="h-2.5 w-2.5 rounded-full" style="background: oklch(0.62 0.18 40)"></span>
+						Failed
+					</div>
+				</div>
+			{/if}
+		</div>
 	</div>
 
-	<!-- Accessible colors toggle -->
+	<!-- Reduce motion toggle -->
 	<div class="rounded-xl border border-surface-700 bg-surface-800 p-6">
 		<div class="flex items-center justify-between">
 			<div>
-				<h3 class="mb-1 font-semibold text-surface-50">Accessible Colors</h3>
-				<p class="text-sm text-surface-400">Colorblind-friendly palette. Shifts status colors for better contrast across all vision types.</p>
+				<h3 class="mb-1 font-semibold text-surface-50">Reduce Motion</h3>
+				<p class="text-sm text-surface-400">Disable tab transitions, panel slides, and card reflow animations. Recommended if motion causes discomfort.</p>
 			</div>
 			<button
-				class="relative h-6 w-11 shrink-0 rounded-full transition-colors {$accessibleColors ? 'bg-laya-orange' : 'bg-surface-600'}"
-				onclick={() => accessibleColors.set(!$accessibleColors)}
+				class="relative h-6 w-11 shrink-0 rounded-full transition-colors {$reducedMotion ? 'bg-laya-orange' : 'bg-surface-600'}"
+				onclick={() => reducedMotion.set(!$reducedMotion)}
 				role="switch"
-				aria-checked={$accessibleColors}
-				aria-label="Toggle accessible colors"
+				aria-checked={$reducedMotion}
+				aria-label="Toggle reduced motion"
 			>
 				<span
-					class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform {$accessibleColors ? 'translate-x-5' : 'translate-x-0'}"
+					class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform {$reducedMotion ? 'translate-x-5' : 'translate-x-0'}"
 				></span>
 			</button>
 		</div>
-
-		<!-- Color legend showing the accessible palette -->
-		{#if $accessibleColors}
-			<div class="mt-4 flex flex-wrap gap-3 text-[11px] text-surface-400">
-				<div class="flex items-center gap-1.5">
-					<span class="h-2.5 w-2.5 rounded-full" style="background: oklch(0.75 0.17 65)"></span>
-					Pending
-				</div>
-				<div class="flex items-center gap-1.5">
-					<span class="h-2.5 w-2.5 rounded-full" style="background: oklch(0.68 0.16 240)"></span>
-					Approval
-				</div>
-				<div class="flex items-center gap-1.5">
-					<span class="h-2.5 w-2.5 rounded-full" style="background: oklch(0.72 0.12 195)"></span>
-					Done
-				</div>
-				<div class="flex items-center gap-1.5">
-					<span class="h-2.5 w-2.5 rounded-full" style="background: oklch(0.62 0.18 40)"></span>
-					Failed
-				</div>
-			</div>
-		{/if}
 	</div>
 
 	<!-- Font scale -->

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { TraceListItem } from '$lib/api/types';
 	import { slide } from 'svelte/transition';
+	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import PlatformBadge from '$lib/components/PlatformBadge.svelte';
 
 	let {
@@ -55,7 +56,7 @@
 		{#each traces as trace (trace.trace_id)}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
-				out:slide={{ duration: 250 }}
+				out:slide={{ duration: $reducedMotion ? 0 : 250 }}
 				class="w-full text-left rounded-lg border border-surface-700/60 bg-surface-800/60
 				       hover:border-surface-600 hover:bg-surface-800 p-4 transition-colors group cursor-pointer"
 				onclick={() => onselect(trace.trace_id)}

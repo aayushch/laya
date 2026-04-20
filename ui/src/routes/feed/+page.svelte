@@ -17,6 +17,7 @@
 	import { recentCards, recentDrawerOpen, trackCardVisit, clearRecentCards, type RecentCardEntry } from '$lib/stores/recentCards';
 	import { pendingCardId } from '$lib/stores/chat';
 	import { spaces } from '$lib/stores/spaces';
+	import { reducedMotion } from '$lib/stores/reducedMotion';
 
 	// Filter toolbar state
 	let filterPopoverOpen = $state(false);
@@ -62,6 +63,8 @@
 
 	function flipRecentCards() {
 		if (!recentListEl) return;
+		// Reduced motion: skip translate animation; entries just appear in new positions.
+		if ($reducedMotion) return;
 		const oldPositions = new Map<string, DOMRect>();
 		recentListEl.querySelectorAll('[data-recent-id]').forEach((el) => {
 			oldPositions.set((el as HTMLElement).dataset.recentId!, el.getBoundingClientRect());
@@ -182,10 +185,11 @@
 	}
 
 	// Apply FLIP animation from old positions to current positions
-	// When instant=true, skip animations (used for panel open/close to avoid jarring double transitions)
+	// When instant=true, skip animations (used for panel open/close to avoid jarring double transitions).
+	// Reduced motion takes the same early-exit path so columns repack without any translate/fade.
 	async function animateFlip(oldPositions: Map<string, DOMRect>, instant = false) {
 		if (!containerEl || oldPositions.size === 0) return;
-		if (instant) {
+		if (instant || $reducedMotion) {
 			_flipSettled = Promise.resolve();
 			return;
 		}

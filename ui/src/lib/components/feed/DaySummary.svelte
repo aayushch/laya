@@ -424,11 +424,6 @@
 		top: 0.45rem;
 		font-size: 0.6rem;
 		font-weight: 500;
-		opacity: 0;
-		transition: opacity 150ms;
-	}
-	.summary-item:hover .summary-item-priority {
-		opacity: 1;
 	}
 
 	/* ── Space-aware background tint ── */

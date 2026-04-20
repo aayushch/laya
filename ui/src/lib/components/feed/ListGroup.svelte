@@ -3,6 +3,7 @@
 	import { engineApi } from '$lib/api/engine';
 	import { slide } from 'svelte/transition';
 	import { cardColors } from '$lib/stores/cardColors';
+	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import ListRow from './ListRow.svelte';
 
 	let {
@@ -417,7 +418,7 @@
 
 	<!-- Expanded: child card rows — checkboxes in gutter, cards in container -->
 	{#if expanded}
-		<div transition:slide={{ duration: 200 }}>
+		<div transition:slide={{ duration: $reducedMotion ? 0 : 200 }}>
 			<div class="flex {onbulktoggle ? 'gap-1.5' : ''}">
 				<!-- Gutter spacer to align container with header -->
 				{#if onbulktoggle}
