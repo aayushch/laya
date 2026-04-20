@@ -78,9 +78,12 @@ individual items because each is a specific actionable thing. But when multiple 
 share a theme, aggregate them: "3 PRs awaiting your review (oldest: 5 days)."
 
 ### recent
-What happened in the last 24-48 hours. Group related events but keep enough detail \
-to be actionable. "3 PRs opened on auth module by Sarah, Alex, and Jo" not three \
-separate items. Each item should cover a cluster of related activity.
+What happened in the last 24-48 hours. EVERY item MUST be an aggregate with counts. \
+NO individual events are allowed in this section. Group related events into clusters \
+and emit one aggregate per cluster: "3 PRs opened on auth module by Sarah, Alex, and Jo" \
+— never three separate items. If an event doesn't fit an existing cluster, fold it \
+into a catch-all aggregate like "4 other updates across Jira and Slack." The density \
+cap is a hard ceiling: compress ALL recent events into that many aggregate lines.
 
 ### period
 What happened this week/sprint. EVERY item MUST be an aggregate with counts. \
@@ -226,8 +229,16 @@ def build_omni_resynthesis_messages(
     ]
 
 
-def get_omni_json_schema() -> dict[str, Any]:
-    """Return the JSON schema for Omni resynthesis output."""
+def get_omni_json_schema(density: str = "compact") -> dict[str, Any]:
+    """Return the JSON schema for Omni resynthesis output.
+
+    The ``density`` preset is used to set a hard ``maxItems`` cap on each
+    section's items array, so the LLM cannot return more items than the
+    density allows even if it ignores the prompt instruction.
+    """
+    preset = DENSITY_PRESETS.get(density, DENSITY_PRESETS["compact"])
+    max_items = preset["max_items_per_section"]
+
     item_schema = {
         "type": "object",
         "properties": {
@@ -272,7 +283,8 @@ def get_omni_json_schema() -> dict[str, Any]:
             "items": {
                 "type": "array",
                 "items": item_schema,
-                "description": "Items in this section",
+                "maxItems": max_items,
+                "description": f"Items in this section (max {max_items})",
             },
         },
         "required": ["type", "label", "items"],

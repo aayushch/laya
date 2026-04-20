@@ -28,6 +28,7 @@ _PLATFORM_TO_WORKFLOW = {
     "outlook": "outlook-email-executor.json",
     "jira": "jira-executor.json",
     "linear": "linear-executor.json",
+    "notion": "notion-executor.json",
     "github": "github-executor.json",
     "bitbucket": "bitbucket-executor.json",
     "slack": "slack-executor.json",

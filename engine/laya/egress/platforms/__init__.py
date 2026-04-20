@@ -23,6 +23,7 @@ from laya.egress.platforms import (
     gmail,
     jira,
     linear,
+    notion,
     outlook,
     slack,
 )
@@ -31,6 +32,7 @@ _MODULES = {
     "github": github,
     "jira": jira,
     "linear": linear,
+    "notion": notion,
     "bitbucket": bitbucket,
     "gmail": gmail,
     "outlook": outlook,
@@ -53,6 +55,7 @@ __all__ = [
     "gmail",
     "jira",
     "linear",
+    "notion",
     "outlook",
     "slack",
     "for_platform",

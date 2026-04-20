@@ -25,7 +25,7 @@ class EventActor(BaseModel):
 
 
 class EventSubject(BaseModel):
-    type: str = Field(..., pattern=r"^(ticket|pull_request|build|thread|email_thread|meeting|briefing)$")
+    type: str = Field(..., pattern=r"^[a-z][a-z0-9_]{0,31}$", min_length=1)
     id: str
     title: str
     url: str | None = None
