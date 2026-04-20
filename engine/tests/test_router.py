@@ -60,6 +60,48 @@ async def test_router_classifies_slack_message(db, slack_event, mock_llm_comms, 
 
 
 @pytest.mark.asyncio
+async def test_router_can_classify_as_sales(db, slack_event, mock_chromadb):
+    """Router accepts SALES as a valid persona in its classification output."""
+    await insert_test_event(
+        db, event_id=slack_event.event_id, platform="gmail",
+        raw_event_type="message_received", subject_type="thread",
+        subject_id="thread-sales-01", subject_title="Re: Acme renewal quote",
+        actor_name="Dana", actor_email="dana@acme.com",
+        content_body="Following up on the renewal quote we discussed last week.",
+    )
+
+    sales_response = {
+        "category": "COMMS",
+        "persona": "SALES",
+        "priority": "HIGH",
+        "confidence": 0.88,
+        "entities": [{"entity_type": "person", "value": "Dana", "platform": "gmail"}],
+        "research_plan": ["Pull past account history for Acme", "Confirm quote status in CRM"],
+        "requires_research": False,
+        "secondary_persona": None,
+        "reasoning": "External customer follow-up about a pending renewal quote.",
+    }
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = json.dumps(sales_response)
+    mock_response.choices[0].message.tool_calls = None
+    mock_response.choices[0].finish_reason = "stop"
+    mock_response.usage = MagicMock()
+    mock_response.usage.prompt_tokens = 400
+    mock_response.usage.completion_tokens = 200
+
+    with patch("laya.pipeline.feedback.query_feedback_patterns", new_callable=AsyncMock, return_value=[]):
+        with patch("litellm.acompletion", new_callable=AsyncMock, return_value=mock_response):
+            with patch("laya.llm.client.load_settings", return_value={"models": {"router": "claude-haiku-4-5-20251001"}}):
+                with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                    with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                        result = await run_router(slack_event, "external")
+
+    assert result.persona.value == "SALES"
+    assert result.category.value == "COMMS"
+
+
+@pytest.mark.asyncio
 async def test_router_handles_llm_failure(db, sample_event, mock_chromadb):
     """Router returns safe defaults when LLM call fails."""
     await insert_test_event(db, event_id=sample_event.event_id)

@@ -26,6 +26,12 @@
 	let renameValue = $state('');
 	let renameInputEl = $state<HTMLInputElement | undefined>();
 
+	// Auto-scroll follows new content only while the user is pinned to the
+	// bottom. If they scroll up to read earlier content (e.g. during streaming),
+	// we stop yanking the viewport. Re-pins when they scroll back to the bottom.
+	let pinnedToBottom = $state(true);
+	const SCROLL_PIN_THRESHOLD = 40;
+
 	// Show list view when explicitly requested (chatListOpen controls this)
 	const showList = $derived($chatListOpen);
 
@@ -33,6 +39,13 @@
 		if (messagesEl) {
 			messagesEl.scrollTop = messagesEl.scrollHeight;
 		}
+	}
+
+	function handleMessagesScroll() {
+		if (!messagesEl) return;
+		const distanceFromBottom =
+			messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight;
+		pinnedToBottom = distanceFromBottom <= SCROLL_PIN_THRESHOLD;
 	}
 
 	function resizeTextarea() {
@@ -72,11 +85,20 @@
 		resizeTextarea();
 	});
 
-	// Scroll to bottom when messages change
+	// Scroll to bottom when messages change, but only if the user hasn't
+	// scrolled up to read earlier content. This lets streamed content flow
+	// naturally without hijacking the scroll when the user is reading.
 	$effect(() => {
-		if ($chatMessages.length > 0) {
+		if ($chatMessages.length > 0 && pinnedToBottom) {
 			setTimeout(scrollToBottom, 0);
 		}
+	});
+
+	// Re-pin to bottom when switching conversations so the new thread opens
+	// at its latest message instead of inheriting the previous scroll state.
+	$effect(() => {
+		$activeConversationId;
+		pinnedToBottom = true;
 	});
 
 	// Handle streaming WS events
@@ -209,6 +231,7 @@
 		chatMessages.update((msgs) => [...msgs, userMsg]);
 		input = '';
 		sending = true;
+		pinnedToBottom = true;
 
 		// Try WS first, fallback to REST
 		let wsConnected = false;
@@ -388,7 +411,7 @@
 			</div>
 
 			<!-- Messages -->
-			<div bind:this={messagesEl} class="flex-1 space-y-3 overflow-auto p-4">
+			<div bind:this={messagesEl} onscroll={handleMessagesScroll} class="flex-1 space-y-3 overflow-auto p-4">
 				{#if $chatMessages.length === 0}
 					<p class="text-center text-sm text-surface-500">
 						Ask Laya about your events, cards, or recent activity.

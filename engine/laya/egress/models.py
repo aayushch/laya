@@ -112,6 +112,22 @@ class EgressCapability:
     confirmation_required: bool = True
     """Whether to show confirmation before executing."""
 
+    summary_template: str | None = None
+    """Preview summary template. Rendered with ``str.format_map`` against the
+    enriched payload (plus computed placeholders: ``{gh_ref}``, ``{bb_ref}``).
+    Missing fields render as ``"unknown"``. When ``None``, preview falls back
+    to ``"<label> on <platform>"``."""
+
+    warnings: list[str] = field(default_factory=list)
+    """Static warning strings always shown in the preview for this action.
+    Dynamic warnings (e.g. terminal-status transitions, many-recipient email)
+    are computed in ``router.py`` because they depend on runtime payload
+    values."""
+
+    impact: str = "low"
+    """Estimated blast radius for the preview UI: ``"low"`` | ``"medium"`` |
+    ``"high"``."""
+
 
 @dataclass
 class Connection:

@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
+
 import structlog
 
 from laya.egress.backends.base import EgressBackend
 from laya.egress.backends.n8n import N8nBackend
 from laya.egress.backends.smtp import SmtpBackend
-from laya.egress.models import EgressPreview, EgressRequest, EgressResult
+from laya.egress.enrichment import enrich_payload_from_event
+from laya.egress.models import EgressCapability, EgressPreview, EgressRequest, EgressResult
 from laya.egress.registry import get_capability
+from laya.egress.summary_helpers import computed_placeholders
 
 log = structlog.get_logger()
 
@@ -50,24 +54,22 @@ async def route_and_execute(request: EgressRequest) -> EgressResult:
 
 
 async def build_preview(request: EgressRequest) -> EgressPreview:
-    """Build a human-readable preview of what an action will do."""
-    platform = request.platform
-    action = request.action_type
-    payload = request.payload
+    """Build a human-readable preview of what an action will do.
 
-    summary = _build_summary(platform, action, payload)
-    warnings = _build_warnings(platform, action, payload)
+    Runs the same payload enrichment (event-derived identifiers + platform
+    normalization) as the execute path so the summary and details shown
+    to the user reflect what will actually be dispatched.
+    """
+    payload, _event_ctx = await enrich_payload_from_event(request)
+    cap = get_capability(request.platform, request.action_type)
 
-    # Determine impact level
-    impact = "low"
-    if action in ("merge_pr", "decline_pr", "delete_event", "transition"):
-        impact = "high"
-    elif action in ("send_email", "send_message", "comment", "create_issue", "create_pr"):
-        impact = "medium"
+    summary = _render_summary(cap, request.platform, request.action_type, payload)
+    warnings = _build_warnings(cap, request.action_type, payload)
+    impact = cap.impact if cap else "low"
 
     return EgressPreview(
-        platform=platform,
-        action_type=action,
+        platform=request.platform,
+        action_type=request.action_type,
         summary=summary,
         details=payload,
         warnings=warnings,
@@ -104,115 +106,57 @@ async def _resolve_backend(request: EgressRequest) -> EgressBackend | None:
     return None
 
 
-def _build_summary(platform: str, action: str, payload: dict) -> str:
-    """Build a one-line human-readable summary of the action."""
-    cap = get_capability(platform, action)
-    label = cap.label if cap else action
+def _render_summary(
+    cap: EgressCapability | None,
+    platform: str,
+    action: str,
+    payload: dict,
+) -> str:
+    """Render a preview summary from the capability's ``summary_template``.
 
-    if platform in ("gmail", "outlook", "smtp") and action == "send_email":
-        to = payload.get("to", "unknown")
-        subject = payload.get("subject", "(no subject)")
-        return f"Send email to {to} with subject '{subject}'"
-
-    if platform in ("gmail", "outlook") and action == "forward":
-        to = payload.get("to", "unknown")
-        return f"Forward email to {to}"
-
-    if platform in ("gmail", "outlook") and action == "archive":
-        return "Archive email (remove from inbox)"
-
-    if platform == "jira":
-        issue = payload.get("issue_key", "unknown")
-        if action == "comment":
-            preview = (payload.get("comment") or "")[:60]
-            return f"Post comment on {issue}: '{preview}...'" if len(payload.get("comment", "")) > 60 else f"Post comment on {issue}"
-        if action == "transition":
-            target = payload.get("target_status", "unknown")
-            return f"Transition {issue} to '{target}'"
-        if action == "create_issue":
-            proj = payload.get("project", "unknown")
-            title = payload.get("summary", payload.get("title", ""))
-            return f"Create {payload.get('type', 'issue')} in {proj}: '{title}'"
-        if action == "assign":
-            return f"Assign {issue} to {payload.get('assignee', 'unknown')}"
-
-    if platform == "github":
-        owner = payload.get("owner", "")
-        repo = payload.get("repo", "")
-        num = payload.get("issue_number") or payload.get("pr_number", "")
-        ref = f"{owner}/{repo}#{num}" if owner and repo else str(num)
-        if action == "comment":
-            return f"Comment on {ref}"
-        if action == "close_issue":
-            return f"Close {ref}"
-        if action == "approve_pr":
-            return f"Approve PR {ref}"
-        if action == "request_changes":
-            return f"Request changes on PR {ref}"
-        if action == "merge_pr":
-            method = payload.get("merge_method", "squash")
-            return f"Merge PR {ref} ({method})"
-        if action == "create_issue":
-            return f"Create issue in {owner}/{repo}: '{payload.get('title', '')}'"
-        if action == "create_pr":
-            return f"Create PR in {owner}/{repo}: '{payload.get('title', '')}'"
-
-    if platform == "bitbucket":
-        ws = payload.get("workspace", "")
-        repo = payload.get("repo", "")
-        pr = payload.get("pr_id", "")
-        ref = f"{ws}/{repo} PR #{pr}" if ws and repo else f"PR #{pr}"
-        if action == "comment_pr":
-            return f"Comment on {ref}"
-        if action == "approve_pr":
-            return f"Approve {ref}"
-        if action == "decline_pr":
-            return f"Decline {ref}"
-        if action == "merge_pr":
-            return f"Merge {ref}"
-
-    if platform == "slack":
-        channel = payload.get("channel", "unknown")
-        if action == "reply_thread":
-            return f"Reply in thread in {channel}"
-        if action == "send_message":
-            return f"Send message to {channel}"
-        if action == "react":
-            emoji = payload.get("emoji", "")
-            return f"React with :{emoji}: in {channel}"
-
-    if action in ("create_event", "update_event", "delete_event"):
-        title = payload.get("title", "event")
-        return f"{label}: '{title}'"
-
-    return f"{label} on {platform}"
+    Missing payload fields render as ``"unknown"``.  Computed placeholders
+    (``{gh_ref}``, ``{bb_ref}``) are injected from
+    :mod:`laya.egress.summary_helpers`.  When a capability has no template
+    (or there's no capability at all) we fall back to ``"<label> on <platform>"``.
+    """
+    if not cap or not cap.summary_template:
+        label = cap.label if cap else action
+        return f"{label} on {platform}"
+    safe = defaultdict(
+        lambda: "unknown",
+        {**payload, **computed_placeholders(payload)},
+    )
+    return cap.summary_template.format_map(safe)
 
 
-def _build_warnings(platform: str, action: str, payload: dict) -> list[str]:
-    """Build warnings for the user about potential impact."""
-    warnings = []
+def _build_warnings(
+    cap: EgressCapability | None,
+    action: str,
+    payload: dict,
+) -> list[str]:
+    """Return static warnings declared on the capability plus any dynamic
+    ones whose condition depends on the current payload (terminal-status
+    transitions, many-recipient emails).  Dynamic branches stay here
+    because templates can't express runtime value predicates cleanly."""
+    warnings: list[str] = list(cap.warnings) if cap else []
 
-    if action == "merge_pr":
-        warnings.append("This will merge the pull request. This action cannot be undone.")
+    # Dynamic: Jira-style transition moving to a terminal status.
+    if action == "transition":
+        target = (payload.get("target_status") or "").lower()
+        if target in ("closed", "done", "resolved"):
+            warnings.append(
+                f"This will move the ticket to terminal status '{payload.get('target_status')}'."
+            )
 
-    if action == "decline_pr":
-        warnings.append("This will decline the pull request.")
-
-    if action == "delete_event":
-        warnings.append("This will permanently delete the calendar event.")
-
-    if action == "transition" and payload.get("target_status", "").lower() in ("closed", "done", "resolved"):
-        warnings.append(f"This will move the ticket to terminal status '{payload.get('target_status')}'.")
-
-    # Email with many recipients
+    # Dynamic: email going to many recipients (to + cc + bcc).
     if action == "send_email":
-        cc = payload.get("cc", "")
-        bcc = payload.get("bcc", "")
+        cc = payload.get("cc") or ""
+        bcc = payload.get("bcc") or ""
         recipients = 1  # to
         if cc:
-            recipients += len(cc.split(","))
+            recipients += len([x for x in cc.split(",") if x.strip()])
         if bcc:
-            recipients += len(bcc.split(","))
+            recipients += len([x for x in bcc.split(",") if x.strip()])
         if recipients > 3:
             warnings.append(f"This email will be sent to {recipients} recipients.")
 

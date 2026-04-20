@@ -93,7 +93,10 @@
 	const personaColors: Record<string, string> = {
 		ENGINEER: 'border-violet-500 text-violet-400',
 		COMMS: 'border-emerald-500 text-emerald-400',
-		OPS: 'border-amber-500 text-amber-400'
+		OPS: 'border-amber-500 text-amber-400',
+		SALES: 'border-sky-500 text-sky-400',
+		HR: 'border-rose-500 text-rose-400',
+		FINANCE: 'border-teal-500 text-teal-400'
 	};
 
 	const outputTypeLabels: Record<string, string> = {

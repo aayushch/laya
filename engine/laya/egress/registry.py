@@ -31,6 +31,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             content_fields=["subject", "body"],
             optional_content_fields=["cc", "bcc"],
             description="Send a new email or reply to a thread.",
+            summary_template="Send email to {to} with subject '{subject}'",
+            impact="medium",
         ),
         EgressCapability(
             action_type="forward",
@@ -40,6 +42,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             content_fields=["to", "body"],
             optional_content_fields=["subject", "cc", "bcc"],
             description="Forward an email to another recipient.",
+            summary_template="Forward email to {to}",
+            impact="medium",
         ),
         EgressCapability(
             action_type="archive",
@@ -47,6 +51,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             requires_fields=["gmail_id"],
             description="Remove email from inbox (archive).",
             confirmation_required=False,
+            summary_template="Archive email (remove from inbox)",
+            impact="low",
         ),
         EgressCapability(
             action_type="star",
@@ -54,6 +60,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             requires_fields=["gmail_id"],
             description="Star/flag an email.",
             confirmation_required=False,
+            summary_template="Star email",
+            impact="low",
         ),
         EgressCapability(
             action_type="mark_read",
@@ -61,6 +69,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             requires_fields=["gmail_id"],
             description="Mark email as read.",
             confirmation_required=False,
+            summary_template="Mark email as read",
+            impact="low",
         ),
     ],
     # Keep in sync with n8n/workflows/outlook-email-executor.json
@@ -73,6 +83,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             content_fields=["subject", "body"],
             optional_content_fields=["cc", "bcc"],
             description="Send a new email or reply to a thread.",
+            summary_template="Send email to {to} with subject '{subject}'",
+            impact="medium",
         ),
         EgressCapability(
             action_type="archive",
@@ -80,6 +92,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             requires_fields=["outlook_id"],
             description="Move email to archive folder.",
             confirmation_required=False,
+            summary_template="Archive email (move to archive folder)",
+            impact="low",
         ),
         EgressCapability(
             action_type="mark_read",
@@ -87,6 +101,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             requires_fields=["outlook_id"],
             description="Mark email as read.",
             confirmation_required=False,
+            summary_template="Mark email as read",
+            impact="low",
         ),
     ],
     # SmtpBackend-only — no n8n executor.  No event context → all fields
@@ -100,6 +116,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             content_fields=["to", "subject", "body"],
             optional_content_fields=["cc", "bcc"],
             description="Send email via SMTP (generic email provider).",
+            summary_template="Send email to {to} with subject '{subject}'",
+            impact="medium",
         ),
     ],
     # Keep in sync with n8n/workflows/jira-executor.json
@@ -112,6 +130,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             content_fields=["comment"],
             optional_content_fields=["visibility"],
             description="Add a comment to a Jira issue.",
+            summary_template="Post comment on {issue_key}",
+            impact="medium",
         ),
         EgressCapability(
             action_type="transition",
@@ -121,6 +141,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             content_fields=["target_status"],
             optional_content_fields=["comment"],
             description="Transition a Jira issue to a new status.",
+            summary_template="Transition {issue_key} to '{target_status}'",
+            impact="high",
         ),
         EgressCapability(
             action_type="create_issue",
@@ -130,6 +152,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             content_fields=["summary"],
             optional_content_fields=["description", "type", "priority", "assignee", "labels"],
             description="Create a new Jira issue.",
+            summary_template="Create issue in {project}: '{summary}'",
+            impact="medium",
         ),
         EgressCapability(
             action_type="assign",
@@ -137,6 +161,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             requires_fields=["issue_key", "assignee"],
             content_fields=["assignee"],
             description="Assign a Jira issue to someone.",
+            summary_template="Assign {issue_key} to {assignee}",
+            impact="low",
         ),
     ],
     # Keep in sync with n8n/workflows/github-executor.json
@@ -147,6 +173,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             requires_fields=["owner", "repo", "issue_number", "comment"],
             content_fields=["comment"],
             description="Post a comment on a GitHub issue or PR.",
+            summary_template="Comment on {gh_ref}",
+            impact="medium",
         ),
         EgressCapability(
             action_type="close_issue",
@@ -155,6 +183,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             optional_fields=["comment"],
             optional_content_fields=["comment"],
             description="Close a GitHub issue.",
+            summary_template="Close {gh_ref}",
+            impact="medium",
         ),
         EgressCapability(
             action_type="create_issue",
@@ -164,6 +194,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             content_fields=["title"],
             optional_content_fields=["body", "labels", "assignees"],
             description="Create a new GitHub issue.",
+            summary_template="Create issue in {owner}/{repo}: '{title}'",
+            impact="medium",
         ),
         EgressCapability(
             action_type="approve_pr",
@@ -172,6 +204,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             optional_fields=["comment"],
             optional_content_fields=["comment"],
             description="Approve a pull request.",
+            summary_template="Approve PR {gh_ref}",
+            impact="medium",
         ),
         EgressCapability(
             action_type="request_changes",
@@ -179,6 +213,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             requires_fields=["owner", "repo", "pr_number", "comment"],
             content_fields=["comment"],
             description="Request changes on a pull request.",
+            summary_template="Request changes on PR {gh_ref}",
+            impact="medium",
         ),
         EgressCapability(
             action_type="merge_pr",
@@ -187,6 +223,9 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             optional_fields=["merge_method", "commit_title"],
             optional_content_fields=["merge_method", "commit_title"],
             description="Merge a pull request.",
+            summary_template="Merge PR {gh_ref}",
+            warnings=["This will merge the pull request. This action cannot be undone."],
+            impact="high",
         ),
     ],
     # Keep in sync with n8n/workflows/bitbucket-executor.json
@@ -197,18 +236,25 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             requires_fields=["workspace", "repo", "pr_id", "comment"],
             content_fields=["comment"],
             description="Post a comment on a Bitbucket pull request.",
+            summary_template="Comment on {bb_ref}",
+            impact="medium",
         ),
         EgressCapability(
             action_type="approve_pr",
             label="Approve PR",
             requires_fields=["workspace", "repo", "pr_id"],
             description="Approve a Bitbucket pull request.",
+            summary_template="Approve {bb_ref}",
+            impact="medium",
         ),
         EgressCapability(
             action_type="decline_pr",
             label="Decline PR",
             requires_fields=["workspace", "repo", "pr_id"],
             description="Decline a Bitbucket pull request.",
+            summary_template="Decline {bb_ref}",
+            warnings=["This will decline the pull request."],
+            impact="high",
         ),
         EgressCapability(
             action_type="merge_pr",
@@ -217,6 +263,9 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             optional_fields=["merge_strategy", "close_source_branch"],
             optional_content_fields=["merge_strategy", "close_source_branch"],
             description="Merge a Bitbucket pull request.",
+            summary_template="Merge {bb_ref}",
+            warnings=["This will merge the pull request. This action cannot be undone."],
+            impact="high",
         ),
     ],
     # Keep in sync with n8n/workflows/slack-executor.json
@@ -227,6 +276,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             requires_fields=["channel", "message"],
             content_fields=["message"],
             description="Send a message to a Slack channel.",
+            summary_template="Send message to {channel}",
+            impact="medium",
         ),
         EgressCapability(
             action_type="reply_thread",
@@ -234,6 +285,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             requires_fields=["channel", "thread_ts", "message"],
             content_fields=["message"],
             description="Reply to a Slack thread.",
+            summary_template="Reply in thread in {channel}",
+            impact="medium",
         ),
         EgressCapability(
             action_type="react",
@@ -242,6 +295,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             content_fields=["emoji"],
             description="Add an emoji reaction to a message.",
             confirmation_required=False,
+            summary_template="React with :{emoji}: in {channel}",
+            impact="low",
         ),
     ],
     # Keep in sync with n8n/workflows/linear-executor.json
@@ -254,6 +309,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             content_fields=["title"],
             optional_content_fields=["description", "priority", "assignee_id", "state_id"],
             description="Create a new Linear issue.",
+            summary_template="Create Linear issue: '{title}'",
+            impact="medium",
         ),
         EgressCapability(
             action_type="comment",
@@ -261,6 +318,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             requires_fields=["issue_id", "body"],
             content_fields=["body"],
             description="Comment on a Linear issue.",
+            summary_template="Comment on Linear issue {issue_id}",
+            impact="medium",
         ),
         EgressCapability(
             action_type="update_status",
@@ -268,6 +327,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             requires_fields=["issue_id", "state_id"],
             content_fields=["state_id"],
             description="Change the status of a Linear issue.",
+            summary_template="Update status of Linear issue {issue_id}",
+            impact="high",
         ),
         EgressCapability(
             action_type="assign",
@@ -275,6 +336,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             requires_fields=["issue_id", "assignee_id"],
             content_fields=["assignee_id"],
             description="Assign a Linear issue to someone.",
+            summary_template="Assign Linear issue {issue_id} to {assignee_id}",
+            impact="low",
         ),
     ],
     # Keep in sync with n8n/workflows/google-calendar-executor.json
@@ -288,6 +351,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             content_fields=["title", "start", "end"],
             optional_content_fields=["description", "attendees", "location"],
             description="Create a calendar event.",
+            summary_template="Create calendar event: '{title}'",
+            impact="medium",
         ),
     ],
     # Keep in sync with n8n/workflows/outlook-calendar-executor.json
@@ -300,6 +365,8 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             content_fields=["title", "start", "end"],
             optional_content_fields=["description", "attendees", "location"],
             description="Create an Outlook calendar event.",
+            summary_template="Create Outlook calendar event: '{title}'",
+            impact="medium",
         ),
     ],
 }

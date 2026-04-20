@@ -9,7 +9,10 @@ from laya.models.event import LayaEvent
 from laya.workers.base import WorkerResult
 from laya.workers.comms import run_comms
 from laya.workers.engineer import run_engineer
+from laya.workers.finance import run_finance
+from laya.workers.hr import run_hr
 from laya.workers.ops import run_ops
+from laya.workers.sales import run_sales
 
 log = structlog.get_logger()
 
@@ -91,6 +94,20 @@ async def _dispatch_worker(
                 )
             case Persona.OPS:
                 return await run_ops(event, router_output, card_id=card_id)
+            case Persona.SALES:
+                return await run_sales(
+                    event, router_output, prior_findings=prior_findings, card_id=card_id,
+                    user_identity=user_identity, actor_relationship=actor_relationship,
+                    participant_roles=participant_roles,
+                )
+            case Persona.HR:
+                return await run_hr(
+                    event, router_output, prior_findings=prior_findings, card_id=card_id,
+                    user_identity=user_identity, actor_relationship=actor_relationship,
+                    participant_roles=participant_roles,
+                )
+            case Persona.FINANCE:
+                return await run_finance(event, router_output, card_id=card_id)
             case _:
                 log.warning("unknown_persona", persona=persona.value)
                 return WorkerResult(persona=persona.value, error=f"Unknown persona: {persona.value}")

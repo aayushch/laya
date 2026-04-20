@@ -413,18 +413,9 @@ async def run_emit(
             }
         )
 
-    # 8. Trigger daily summary update (async, non-blocking)
-    # Resolve space name/color for summary display
-    _space_name: str | None = None
-    _space_color: str | None = None
-    if space_id:
-        _space_row = await db.execute_fetchall(
-            "SELECT name, color FROM spaces WHERE space_id = ?", (space_id,)
-        )
-        if _space_row:
-            _space_name = _space_row[0]["name"]
-            _space_color = _space_row[0]["color"]
-
+    # 8. Trigger daily summary update (async, non-blocking).
+    # Space metadata is hydrated inside summarize.py via a DB join on card_id,
+    # so we no longer pre-resolve space name/color here.
     from laya.tasks import create_task as create_tracked_task
     create_tracked_task(
         trigger_summary_update(
@@ -437,9 +428,6 @@ async def run_emit(
             card_intelligence=stager_output.intelligence_report,
             actor_name=event.actor.name,
             source_platform=event.source.platform,
-            space_id=space_id,
-            space_name=_space_name,
-            space_color=_space_color,
         ),
         name=f"summary_{card_id}",
     )

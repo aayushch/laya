@@ -279,7 +279,7 @@ export interface ActionCard {
 	event_id: string;
 	created_at?: string;
 	priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-	persona: 'ENGINEER' | 'COMMS' | 'OPS';
+	persona: 'ENGINEER' | 'COMMS' | 'OPS' | 'SALES' | 'HR' | 'FINANCE';
 	category: string;
 	header: string;
 	summary: string;

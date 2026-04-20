@@ -9,12 +9,11 @@ import httpx
 import structlog
 import tenacity
 
-from laya.config import get_n8n_config, load_team
+from laya.config import get_n8n_config
 from laya.db.sqlite import get_db
-from laya.egress import platforms
 from laya.egress.backends.base import EgressBackend
+from laya.egress.enrichment import enrich_payload_from_event
 from laya.egress.models import EgressRequest, EgressResult
-from laya.models.team import TeamConfig, TeamRole
 from laya.http_client import get_client
 from laya.security.keychain import get_api_key
 
@@ -218,63 +217,24 @@ class N8nBackend(EgressBackend):
             log.warning("n8n_webhook_cache_refresh_failed", error=str(e))
 
     async def _build_payload(self, request: EgressRequest) -> dict:
-        """Build the n8n executor payload from an EgressRequest.
+        """Build the n8n executor envelope from an EgressRequest.
 
-        Flow:
-        1. Copy the caller payload and coerce ``None`` to ``""`` for fields
-           n8n JS expressions concatenate.
-        2. Fetch event context + parse ``content_metadata`` JSON.
-        3. Delegate to the platform helper module in ``laya.egress.platforms``:
-           - ``identifiers_from_event(...)`` derives identifier fields from
-             the event deterministically.  Merge with **engine-wins**
-             precedence — derived values overwrite LLM-emitted ones.
-           - ``normalize_payload(...)`` handles LLM field-name variants and
-             platform defaults.
-        4. Apply connection-derived enrichment (Jira base URL).
-        5. Assemble the final webhook envelope.
+        Payload enrichment (event-derived identifiers + platform-specific
+        normalization) is delegated to
+        ``laya.egress.enrichment.enrich_payload_from_event`` so that both
+        preview and execute paths see the same enriched payload.
+
+        This method adds only the n8n-specific wrapping:
+        - Connection-derived Jira base URL (needed for REST endpoints in
+          the executor workflow; stays here because it's not event-derived).
+        - The outer envelope the n8n webhook expects (``action_id``,
+          ``target``, event context fields).
         """
-        payload = dict(request.payload)
-
-        # Normalise None values to empty strings for n8n JS compatibility
-        for key in (
-            "body", "subject", "to", "message", "comment",
-            "content", "title", "description",
-        ):
-            if key in payload and payload[key] is None:
-                payload[key] = ""
-
-        # Fetch event context and parse metadata once
-        event_ctx = await self._fetch_event_context(request.source_event_id)
-        try:
-            content_metadata = json.loads(event_ctx.get("content_metadata") or "{}")
-        except (json.JSONDecodeError, AttributeError, TypeError):
-            content_metadata = {}
-
-        # Delegate identifier derivation + normalization to the platform helper
-        mod = platforms.for_platform(request.platform)
-        if mod is not None:
-            # Derive identifiers from the source event.  Engine-wins precedence:
-            # derived values overwrite any identifier fields the LLM emitted,
-            # because the event is the single source of truth when present.
-            if request.source_event_id and event_ctx:
-                kwargs: dict = {}
-                if request.platform in ("gmail", "outlook"):
-                    kwargs["self_emails"] = self._get_self_emails()
-                derived = mod.identifiers_from_event(
-                    request.action_type,
-                    request.source_event_id,
-                    content_metadata,
-                    event_ctx,
-                    **kwargs,
-                )
-                if derived:
-                    payload = {**payload, **derived}
-            # Apply LLM-variant aliasing and platform defaults
-            payload = mod.normalize_payload(request.action_type, payload)
+        payload, event_ctx = await enrich_payload_from_event(request)
 
         # Jira executor workflows need the instance base URL to construct
-        # REST endpoints.  This is connection-derived (from stored credentials),
-        # not event-derived, so it stays here rather than in the helper module.
+        # REST endpoints.  Connection-derived, not event-derived, so it
+        # lives here rather than in the shared enrichment module.
         if request.platform == "jira" and not payload.get("jira_base_url") and request.connection_id:
             try:
                 from laya.egress.connections import _get_from_keychain
@@ -298,46 +258,6 @@ class N8nBackend(EgressBackend):
             "event_subject": event_ctx.get("subject_title", ""),
             "event_platform": event_ctx.get("source_platform", request.platform),
         }
-
-    def _get_self_emails(self) -> set[str]:
-        """Return the set of emails (primary + aliases) for the 'self' team member."""
-        try:
-            team = TeamConfig(**load_team())
-            for m in team.members:
-                if m.role == TeamRole.self_:
-                    emails = {m.email.lower()}
-                    emails.update(a.lower() for a in m.aliases)
-                    return emails
-        except Exception:
-            pass
-        return set()
-
-    async def _fetch_event_context(self, event_id: str | None) -> dict:
-        """Fetch original event context for enriching executor payloads."""
-        if not event_id:
-            return {}
-
-        db = await get_db()
-        rows = await db.execute_fetchall(
-            """SELECT actor_email, actor_name, subject_title, source_platform,
-                      content_metadata
-               FROM events WHERE event_id = ?""",
-            (event_id,),
-        )
-        if not rows:
-            return {}
-
-        ctx = dict(rows[0])
-
-        # Fall back to metadata for actor email (e.g., gmail_from)
-        if not ctx.get("actor_email"):
-            try:
-                meta = json.loads(ctx.get("content_metadata") or "{}")
-                ctx["actor_email"] = meta.get("gmail_from") or meta.get("outlook_from") or meta.get("from") or ""
-            except (json.JSONDecodeError, AttributeError):
-                pass
-
-        return ctx
 
     async def _post_to_n8n(
         self, webhook_url: str, payload: dict, request: EgressRequest

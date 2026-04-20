@@ -1,4 +1,4 @@
-"""Tests for Workers (ENGINEER, COMMS, OPS) and orchestration."""
+"""Tests for Workers (ENGINEER, COMMS, OPS, SALES, HR, FINANCE) and orchestration."""
 
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -90,7 +90,86 @@ def mock_memory():
     with patch("laya.workers.engineer.memory_search", new_callable=AsyncMock, return_value=[]):
         with patch("laya.workers.comms.memory_search", new_callable=AsyncMock, return_value=[]):
             with patch("laya.workers.ops.memory_search", new_callable=AsyncMock, return_value=[]):
-                yield
+                with patch("laya.workers.sales.memory_search", new_callable=AsyncMock, return_value=[]):
+                    with patch("laya.workers.hr.memory_search", new_callable=AsyncMock, return_value=[]):
+                        with patch("laya.workers.finance.memory_search", new_callable=AsyncMock, return_value=[]):
+                            yield
+
+
+@pytest.fixture
+def mock_llm_sales_worker():
+    """Patch litellm for SALES worker calls."""
+    response_data = {
+        "draft_reply": "Hi Dana, thanks for sending the revised proposal — let's sync Thursday.",
+        "tone": "warm-professional",
+        "account_context": "Acme is mid-renewal; previous quote expired last week.",
+        "reasoning": "Customer re-engaged; keep tone warm and schedule follow-up.",
+    }
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = json.dumps(response_data)
+    mock_response.choices[0].message.tool_calls = None
+    mock_response.choices[0].finish_reason = "stop"
+    mock_response.usage = MagicMock()
+    mock_response.usage.prompt_tokens = 300
+    mock_response.usage.completion_tokens = 100
+
+    with patch("litellm.acompletion", new_callable=AsyncMock, return_value=mock_response):
+        with patch("laya.llm.client.load_settings", return_value={"models": {"stager": "claude-sonnet-4-5-20250929"}}):
+            with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                    yield
+
+
+@pytest.fixture
+def mock_llm_hr_worker():
+    """Patch litellm for HR worker calls."""
+    response_data = {
+        "draft_reply": "Hi Jordan, approving the PTO request. Let's find coverage before you leave.",
+        "tone": "supportive-professional",
+        "sensitivity_note": "none",
+        "reasoning": "Routine PTO approval; no confidentiality flags.",
+    }
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = json.dumps(response_data)
+    mock_response.choices[0].message.tool_calls = None
+    mock_response.choices[0].finish_reason = "stop"
+    mock_response.usage = MagicMock()
+    mock_response.usage.prompt_tokens = 300
+    mock_response.usage.completion_tokens = 100
+
+    with patch("litellm.acompletion", new_callable=AsyncMock, return_value=mock_response):
+        with patch("laya.llm.client.load_settings", return_value={"models": {"stager": "claude-sonnet-4-5-20250929"}}):
+            with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                    yield
+
+
+@pytest.fixture
+def mock_llm_finance_worker():
+    """Patch litellm for FINANCE worker calls."""
+    response_data = {
+        "briefing": "Q1 vendor invoice from Acme Cloud exceeds monthly plan by $1,240.",
+        "key_figures": ["Invoice total: $4,240", "Budget: $3,000", "Overrun: +41%"],
+        "open_items": ["Decide whether to approve or challenge overage."],
+        "suggested_actions": ["Flag for review with FP&A before approving."],
+        "reasoning": "Invoice is materially above plan; warrants scrutiny before approval.",
+    }
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = json.dumps(response_data)
+    mock_response.choices[0].message.tool_calls = None
+    mock_response.choices[0].finish_reason = "stop"
+    mock_response.usage = MagicMock()
+    mock_response.usage.prompt_tokens = 400
+    mock_response.usage.completion_tokens = 150
+
+    with patch("litellm.acompletion", new_callable=AsyncMock, return_value=mock_response):
+        with patch("laya.llm.client.load_settings", return_value={"models": {"stager": "claude-sonnet-4-5-20250929"}}):
+            with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                    yield
 
 
 @pytest.fixture
@@ -201,6 +280,48 @@ class TestWorkerOrchestration:
         result = await _dispatch_worker(Persona.COMMS, sample_event, router_output)
         # This succeeds — COMMS is known. Test the error path:
         assert result.persona == "COMMS"
+
+
+class TestSalesWorker:
+    @pytest.mark.asyncio
+    async def test_sales_returns_draft(self, db, sample_event, mock_llm_sales_worker, mock_memory):
+        """SALES worker returns drafted_output with account_context."""
+        router_output = RouterOutput(**MOCK_COMMS_RESPONSE)
+        router_output.persona = Persona.SALES
+        result = await _dispatch_worker(Persona.SALES, sample_event, router_output)
+
+        assert result.persona == "SALES"
+        assert result.error is None
+        assert result.drafted_output is not None
+        assert "account_context" in result.drafted_output
+
+
+class TestHrWorker:
+    @pytest.mark.asyncio
+    async def test_hr_returns_draft(self, db, sample_event, mock_llm_hr_worker, mock_memory):
+        """HR worker returns drafted_output with sensitivity_note."""
+        router_output = RouterOutput(**MOCK_COMMS_RESPONSE)
+        router_output.persona = Persona.HR
+        result = await _dispatch_worker(Persona.HR, sample_event, router_output)
+
+        assert result.persona == "HR"
+        assert result.error is None
+        assert result.drafted_output is not None
+        assert "sensitivity_note" in result.drafted_output
+
+
+class TestFinanceWorker:
+    @pytest.mark.asyncio
+    async def test_finance_returns_briefing(self, db, sample_event, mock_llm_finance_worker, mock_memory):
+        """FINANCE worker returns structured briefing with key_figures."""
+        router_output = RouterOutput(**MOCK_ROUTER_RESPONSE)
+        router_output.persona = Persona.FINANCE
+        result = await _dispatch_worker(Persona.FINANCE, sample_event, router_output)
+
+        assert result.persona == "FINANCE"
+        assert result.error is None
+        assert result.findings is not None
+        assert "key_figures" in result.findings
 
 
 class TestResolveRepoPath:

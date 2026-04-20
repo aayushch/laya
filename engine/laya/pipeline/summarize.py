@@ -39,11 +39,13 @@ async def trigger_summary_update(
     card_intelligence: list[str] | None = None,
     actor_name: str | None = None,
     source_platform: str | None = None,
-    space_id: str | None = None,
-    space_name: str | None = None,
-    space_color: str | None = None,
 ) -> None:
-    """Queue a new card for summary incorporation (debounced)."""
+    """Queue a new card for summary incorporation (debounced).
+
+    Space metadata (space_id/name/color) is resolved from the DB at summarize
+    time via a join on action_cards → spaces, not passed through from the
+    caller. See _hydrate_space_fields.
+    """
     global _debounce_task
 
     card_data = {
@@ -56,9 +58,6 @@ async def trigger_summary_update(
         "card_intelligence": card_intelligence,
         "actor_name": actor_name,
         "source_platform": source_platform,
-        "space_id": space_id,
-        "space_name": space_name,
-        "space_color": space_color,
     }
 
     async with _debounce_lock:
@@ -175,27 +174,20 @@ async def _run_summary_update(
 
     schema = get_summarizer_json_schema()
 
-    # Build card_id → space info lookup from new cards + DB for existing ones
+    # Build card_id → space info lookup straight from the DB for every card the
+    # summary references (new + already-incorporated). The summarizer LLM no
+    # longer carries space_id/name/color through its contract — we hydrate
+    # deterministically from action_cards → spaces so values stay in sync with
+    # DB state and don't leak into the user-visible `text` field.
+    all_card_ids = list({card["card_id"] for card in new_cards} | set(existing_card_ids))
     space_lookup: dict[str, dict[str, str]] = {}
-
-    # Seed from new cards (authoritative — they have fresh space info from emit)
-    for card in new_cards:
-        cid = card["card_id"]
-        space_lookup[cid] = {
-            "space_id": card.get("space_id") or "default",
-            "space_name": card.get("space_name") or "Default",
-            "space_color": card.get("space_color") or "#F97316",
-        }
-
-    # Also look up existing card_ids from the DB so we can fix old items too
-    missing_ids = [cid for cid in existing_card_ids if cid not in space_lookup]
-    if missing_ids:
-        placeholders = ",".join("?" for _ in missing_ids)
+    if all_card_ids:
+        placeholders = ",".join("?" for _ in all_card_ids)
         card_rows = await db.execute_fetchall(
             f"SELECT ac.card_id, ac.space_id, s.name AS space_name, s.color AS space_color "
             f"FROM action_cards ac LEFT JOIN spaces s ON ac.space_id = s.space_id "
             f"WHERE ac.card_id IN ({placeholders})",
-            missing_ids,
+            all_card_ids,
         )
         for row in card_rows:
             space_lookup[row["card_id"]] = {
@@ -204,20 +196,25 @@ async def _run_summary_update(
                 "space_color": row["space_color"] or "#F97316",
             }
 
-    def _fix_space_fields(summary: dict) -> dict:
-        """Overwrite LLM-produced space fields with authoritative values."""
+    def _hydrate_space_fields(summary: dict) -> dict:
+        """Inject space_id/name/color onto every item from the DB-backed lookup.
+
+        Falls back to the Default space when a card isn't found (shouldn't happen
+        in practice — summary-update fires after the card is persisted — but
+        keeps the UI contract stable defensively).
+        """
+        default_info = {"space_id": "default", "space_name": "Default", "space_color": "#F97316"}
         for section in ("events_and_meetings", "action_items", "key_updates"):
             for item in summary.get(section, []):
-                info = space_lookup.get(item.get("card_id", ""))
-                if info:
-                    item["space_id"] = info["space_id"]
-                    item["space_name"] = info["space_name"]
-                    item["space_color"] = info["space_color"]
+                info = space_lookup.get(item.get("card_id", ""), default_info)
+                item["space_id"] = info["space_id"]
+                item["space_name"] = info["space_name"]
+                item["space_color"] = info["space_color"]
         return summary
 
-    # Fix space fields on the existing summary loaded from DB
+    # Hydrate space fields on the existing summary loaded from DB
     if current_summary:
-        current_summary = _fix_space_fields(current_summary)
+        current_summary = _hydrate_space_fields(current_summary)
 
     # Compact the summary if it has grown too large to avoid token truncation
     if current_summary and _count_items(current_summary) >= _COMPACTION_THRESHOLD:
@@ -239,9 +236,6 @@ async def _run_summary_update(
             card_persona=card.get("card_persona"),
             actor_name=card.get("actor_name"),
             source_platform=card.get("source_platform"),
-            space_id=card.get("space_id"),
-            space_name=card.get("space_name"),
-            space_color=card.get("space_color"),
         )
 
         try:
@@ -261,7 +255,7 @@ async def _run_summary_update(
                     f"LLM returned malformed JSON for summary{truncation_hint} "
                     f"(output_tokens={response.output_tokens}, model={response.model})"
                 )
-            current_summary = _fix_space_fields(response.parsed)
+            current_summary = _hydrate_space_fields(response.parsed)
 
             existing_card_ids.append(card["card_id"])
             log.info("summary_card_incorporated", card_id=card["card_id"], date=today)

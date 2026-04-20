@@ -17,8 +17,7 @@ Slack, Gmail, Calendar) and must:
 1. CLASSIFY the event:
    - category: CODE (code-related), COMMS (communication), PEOPLE (team/people), \
 FINANCE (financial), OPS (operations/logistics)
-   - persona: ENGINEER (code/technical), COMMS (communication/messaging), \
-OPS (scheduling/operations)
+   - persona: one of the six personas below (see "Persona selection" section).
    - priority: LOW (informational), MEDIUM (needs attention today), \
 HIGH (needs attention soon), CRITICAL (needs immediate attention)
    - confidence: 0.0-1.0 how confident you are in this classification
@@ -38,9 +37,38 @@ a worker should follow to gather context and prepare a response. Be specific.
    - requires_research: true if the event needs investigation (bug reports, code review \
 requests, complex questions). false for simple notifications.
    - secondary_persona: if the event needs a second worker (e.g., a bug report needing \
-code fix AND a Jira comment -> primary ENGINEER, secondary COMMS). null if not needed.
+code fix AND a Jira comment -> primary ENGINEER, secondary COMMS; a customer bug report \
+-> primary ENGINEER, secondary SALES for an account-aware reply). null if not needed.
 
 5. PROVIDE brief reasoning for your classification.
+
+Persona selection:
+- **ENGINEER** — code/technical work: bugs, PR review, code changes, build/deploy \
+issues, technical investigations.
+- **COMMS** — generic internal communication: teammate/manager messages, replies, \
+mentions, non-domain-specific threads.
+- **OPS** — scheduling and logistics: calendar prep, meeting briefings, operational \
+status, non-financial internal coordination.
+- **SALES** — prospect/customer/deal/pipeline events: inbound leads, customer-facing \
+email or Slack threads, CRM updates, quote/proposal/renewal/churn discussions, \
+account status updates.
+- **HR** — people lifecycle: hiring pipeline, candidate/interview feedback, \
+onboarding, PTO/benefits/policy questions, team announcements, performance cycles.
+- **FINANCE** — money, numbers, and budgets: expenses, invoices, purchase approvals, \
+budget/forecast updates, revenue reports, vendor contracts, financial reviews.
+
+Persona disambiguation (read this carefully):
+- SALES vs COMMS: if the content concerns a *prospect, customer, or deal*, pick SALES. \
+A generic internal teammate/manager message stays COMMS.
+- HR vs COMMS: if the content concerns *hiring, people lifecycle, or team personnel \
+matters* (candidates, onboarding, PTO, performance), pick HR. Casual internal threads \
+stay COMMS.
+- FINANCE vs OPS: if the event is about *money, expenses, revenue, or budgets*, pick \
+FINANCE. Logistics, scheduling, and meeting prep stay OPS.
+- ENGINEER vs anything else: if the event requires reading/writing/reviewing code \
+or investigating technical systems, pick ENGINEER as the primary persona, even when \
+the source is non-technical (e.g., a customer-reported bug → ENGINEER primary, SALES \
+secondary).
 
 Priority guidelines:
 - CRITICAL: Production issues, security alerts, blocking bugs, urgent messages from managers
@@ -174,7 +202,7 @@ def get_router_json_schema() -> dict[str, Any]:
                 },
                 "persona": {
                     "type": "string",
-                    "enum": ["ENGINEER", "COMMS", "OPS"],
+                    "enum": ["ENGINEER", "COMMS", "OPS", "SALES", "HR", "FINANCE"],
                 },
                 "priority": {
                     "type": "string",
@@ -201,7 +229,7 @@ def get_router_json_schema() -> dict[str, Any]:
                 "requires_research": {"type": "boolean"},
                 "secondary_persona": {
                     "type": ["string", "null"],
-                    "enum": ["ENGINEER", "COMMS", "OPS", None],
+                    "enum": ["ENGINEER", "COMMS", "OPS", "SALES", "HR", "FINANCE", None],
                 },
                 "reasoning": {"type": "string"},
             },

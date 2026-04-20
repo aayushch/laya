@@ -13,7 +13,7 @@
 	} = $props();
 
 	const priorities = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const;
-	const personas = ['ENGINEER', 'COMMS', 'OPS'] as const;
+	const personas = ['ENGINEER', 'COMMS', 'OPS', 'SALES', 'HR', 'FINANCE'] as const;
 
 	// svelte-ignore state_referenced_locally
 	let priority = $state(card.priority);
@@ -56,7 +56,10 @@
 	const personaColors: Record<string, string> = {
 		ENGINEER: 'border-violet-500 text-violet-400',
 		COMMS: 'border-emerald-500 text-emerald-400',
-		OPS: 'border-amber-500 text-amber-400'
+		OPS: 'border-amber-500 text-amber-400',
+		SALES: 'border-sky-500 text-sky-400',
+		HR: 'border-rose-500 text-rose-400',
+		FINANCE: 'border-teal-500 text-teal-400'
 	};
 </script>
 
