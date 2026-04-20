@@ -5,6 +5,7 @@
 	import ActionCardComponent from './ActionCard.svelte';
 	import StatusDot from './StatusDot.svelte';
 	import { cardColors } from '$lib/stores/cardColors';
+	import { reducedMotion } from '$lib/stores/reducedMotion';
 
 	let {
 		group,
@@ -596,7 +597,7 @@
 
 		<!-- Expanded-only content: card list (slides in/out) -->
 		{#if expanded}
-			<div class="space-y-2 px-3 pb-3 pt-1" transition:slide={{ duration: skipCollapseTransition ? 0 : 200 }}
+			<div class="space-y-2 px-3 pb-3 pt-1" transition:slide={{ duration: (skipCollapseTransition || $reducedMotion) ? 0 : 200 }}
 				onoutroend={() => { skipCollapseTransition = false; }}
 			>
 				{#each group.cards as card (card.card_id)}

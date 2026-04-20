@@ -17,6 +17,7 @@
 	import ChatConversationList from './ChatConversationList.svelte';
 	import { fly } from 'svelte/transition';
 	import { tick } from 'svelte';
+	import { reducedMotion } from '$lib/stores/reducedMotion';
 
 	let input = $state('');
 	let sending = $state(false);
@@ -347,7 +348,7 @@
 	<aside
 		class="fixed bottom-0 right-0 z-40 flex w-[460px] flex-col"
 		style="top: var(--header-h, 45px);"
-		transition:fly={{ x: 460, duration: 250, opacity: 1 }}
+		transition:fly={{ x: 460, duration: $reducedMotion ? 0 : 250, opacity: 1 }}
 	>
 	<!-- Inner container: top margin aligns with main content padding (p-4 = 1rem) so the panel
 	     starts at the same height as the feed toolbar / page header controls -->

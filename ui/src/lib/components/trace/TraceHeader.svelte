@@ -4,6 +4,7 @@
 	import { pendingCardId } from '$lib/stores/chat';
 	import { goto } from '$app/navigation';
 	import { slide } from 'svelte/transition';
+	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import TraceTimeline from './TraceTimeline.svelte';
 
 	let {
@@ -278,7 +279,7 @@
 
 	<!-- EXPANDED CHILDREN -->
 	{#if expanded}
-		<div transition:slide={{ duration: 200 }}>
+		<div transition:slide={{ duration: $reducedMotion ? 0 : 200 }}>
 			<!--
 			  Sub-tree children. Each child uses pl-5 (20px indent).
 			  DOT: w-1.5 h-1.5 (6px). Horizontal branch ends at dot center.

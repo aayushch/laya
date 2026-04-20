@@ -525,3 +525,29 @@ html, body {
 	--card-pulse-base: oklch(0.55 0.18 240 / 0.30);
 	--card-pulse-color: oklch(0.55 0.18 240 / 0.50);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   REDUCED MOTION — activated via data-reduced-motion on <html>.
+   Neutralizes CSS transitions/animations globally so panels,
+   pulse-glow, highlight-fade, card-exit, and hover color shifts
+   all render instantly. Svelte transition directives are handled
+   in their components (passed duration:0 via the reducedMotion
+   store) and the FLIP layout animation in feed/+page.svelte
+   takes the same early-exit path as its existing instant=true.
+   ═══════════════════════════════════════════════════════════════ */
+[data-reduced-motion],
+[data-reduced-motion] *,
+[data-reduced-motion] *::before,
+[data-reduced-motion] *::after {
+	animation-duration: 0.01ms !important;
+	animation-iteration-count: 1 !important;
+	transition-duration: 0.01ms !important;
+	scroll-behavior: auto !important;
+}
+
+/* Explicit: stop looping breathing glow on pending / agent-running cards */
+[data-reduced-motion] .card-pulse-amber,
+[data-reduced-motion] .card-pulse-violet {
+	animation: none !important;
+}
+

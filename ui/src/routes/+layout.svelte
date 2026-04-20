@@ -12,6 +12,8 @@
 	import { theme } from '$lib/stores/theme';
 	import { fontScale } from '$lib/stores/fontScale';
 	import { accessibleColors } from '$lib/stores/accessibleColors';
+	import { reducedMotion } from '$lib/stores/reducedMotion';
+	import { fly } from 'svelte/transition';
 	import { budgetPaused, loadBudgetStatus, handleBudgetWsMessage, costAmount, budgetLabel, budgetRatio } from '$lib/stores/budget';
 	import { feedFilters, loadFeedFilters, saveFeedFilters, filtersLoaded, feedDate, feedPrevDate, feedNextDate, localToday } from '$lib/stores/feedFilters';
 	import { spaces, loadSpaces } from '$lib/stores/spaces';
@@ -137,6 +139,16 @@
 			document.documentElement.setAttribute('data-accessible-colors', '');
 		} else {
 			document.documentElement.removeAttribute('data-accessible-colors');
+		}
+	});
+
+	// Apply reduced motion attribute on <html> — CSS overrides in app.css
+	// key off this to neutralize transitions/animations globally.
+	$effect(() => {
+		if ($reducedMotion) {
+			document.documentElement.setAttribute('data-reduced-motion', '');
+		} else {
+			document.documentElement.removeAttribute('data-reduced-motion');
 		}
 	});
 
@@ -525,7 +537,14 @@
 
 		<!-- Main content — add right padding when chat sidebar is open so content isn't hidden behind it -->
 		<main class="flex-1 overflow-auto p-4 transition-[padding] duration-250 {$chatOpen ? 'pr-[476px]' : ''}">
-			{@render children()}
+			{#key page.url.pathname}
+				<div
+					class="h-full"
+					in:fly={{ y: $reducedMotion ? 0 : 6, duration: $reducedMotion ? 0 : 150, opacity: 0 }}
+				>
+					{@render children()}
+				</div>
+			{/key}
 		</main>
 
 		<!-- Footer -->
