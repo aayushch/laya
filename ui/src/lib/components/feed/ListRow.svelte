@@ -58,7 +58,10 @@
 	const personaColors: Record<string, string> = {
 		ENGINEER: 'text-violet-400 bg-violet-500/10 border-violet-500/20',
 		COMMS: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
-		OPS: 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+		OPS: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
+		SALES: 'text-sky-400 bg-sky-500/10 border-sky-500/20',
+		HR: 'text-rose-400 bg-rose-500/10 border-rose-500/20',
+		FINANCE: 'text-teal-400 bg-teal-500/10 border-teal-500/20'
 	};
 	const statusDot: Record<string, string> = {
 		pending: 'bg-yellow-400 animate-pulse',

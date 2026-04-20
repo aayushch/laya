@@ -56,7 +56,7 @@ class TestNormalizePayload:
 class TestBuildPayload:
     @pytest.mark.asyncio
     async def test_payload_structure(self, backend):
-        with patch("laya.egress.backends.n8n.get_db") as mock_get_db:
+        with patch("laya.egress.enrichment.get_db") as mock_get_db:
             mock_db = AsyncMock()
             mock_db.execute_fetchall = AsyncMock(return_value=[])
             mock_get_db.return_value = mock_db
@@ -77,7 +77,7 @@ class TestBuildPayload:
 
     @pytest.mark.asyncio
     async def test_payload_with_event_context(self, backend):
-        with patch("laya.egress.backends.n8n.get_db") as mock_get_db:
+        with patch("laya.egress.enrichment.get_db") as mock_get_db:
             mock_db = AsyncMock()
             mock_db.execute_fetchall = AsyncMock(return_value=[{
                 "actor_email": "sarah@co.com",
@@ -104,7 +104,7 @@ class TestBuildPayload:
     @pytest.mark.asyncio
     async def test_github_identifiers_derived_when_llm_omits(self, backend):
         """LLM payload missing owner/repo/issue_number — engine derives from event."""
-        with patch("laya.egress.backends.n8n.get_db") as mock_get_db:
+        with patch("laya.egress.enrichment.get_db") as mock_get_db:
             mock_db = AsyncMock()
             mock_db.execute_fetchall = AsyncMock(return_value=[{
                 "actor_email": "a@b.com",
@@ -132,7 +132,7 @@ class TestBuildPayload:
     @pytest.mark.asyncio
     async def test_engine_wins_precedence_over_llm(self, backend):
         """Derived identifiers overwrite LLM-emitted values when both exist."""
-        with patch("laya.egress.backends.n8n.get_db") as mock_get_db:
+        with patch("laya.egress.enrichment.get_db") as mock_get_db:
             mock_db = AsyncMock()
             mock_db.execute_fetchall = AsyncMock(return_value=[{
                 "actor_email": "a@b.com",
@@ -159,7 +159,7 @@ class TestBuildPayload:
     @pytest.mark.asyncio
     async def test_jira_issue_key_from_subject_id(self, backend):
         """Jira derives issue_key from event_row.subject_id."""
-        with patch("laya.egress.backends.n8n.get_db") as mock_get_db:
+        with patch("laya.egress.enrichment.get_db") as mock_get_db:
             mock_db = AsyncMock()
             mock_db.execute_fetchall = AsyncMock(return_value=[{
                 "actor_email": "a@b.com",
@@ -185,7 +185,7 @@ class TestBuildPayload:
     @pytest.mark.asyncio
     async def test_slack_channel_from_metadata(self, backend):
         """Slack derives channel from content_metadata.slack_channel."""
-        with patch("laya.egress.backends.n8n.get_db") as mock_get_db:
+        with patch("laya.egress.enrichment.get_db") as mock_get_db:
             mock_db = AsyncMock()
             mock_db.execute_fetchall = AsyncMock(return_value=[{
                 "actor_email": "",
@@ -214,7 +214,7 @@ class TestBuildPayload:
         """Gmail reply must carry thread_id + in_reply_to + references + Re:-prefixed
         subject derived from the original event — Gmail's threading API requires all
         of them to link a reply into the original conversation."""
-        with patch("laya.egress.backends.n8n.get_db") as mock_get_db:
+        with patch("laya.egress.enrichment.get_db") as mock_get_db:
             mock_db = AsyncMock()
             mock_db.execute_fetchall = AsyncMock(return_value=[{
                 "actor_email": "sender@example.com",
@@ -230,7 +230,7 @@ class TestBuildPayload:
             }])
             mock_get_db.return_value = mock_db
 
-            with patch.object(backend, "_get_self_emails", return_value=set()):
+            with patch("laya.egress.enrichment._get_self_emails", return_value=set()):
                 request = EgressRequest(
                     platform="gmail",
                     action_type="send_email",
@@ -253,7 +253,7 @@ class TestBuildPayload:
     @pytest.mark.asyncio
     async def test_no_event_passes_payload_through(self, backend):
         """Direct egress (no source_event_id) — LLM/caller payload is authoritative."""
-        with patch("laya.egress.backends.n8n.get_db") as mock_get_db:
+        with patch("laya.egress.enrichment.get_db") as mock_get_db:
             mock_db = AsyncMock()
             mock_db.execute_fetchall = AsyncMock(return_value=[])
             mock_get_db.return_value = mock_db

@@ -51,9 +51,13 @@ Conversely, events like new comments, review requests, status updates, or reopen
 terminal — keep those as "pending". Use the semantic meaning of the card header and summary \
 to judge whether the entity's lifecycle is complete.
 - Prioritize clarity and usefulness for a busy professional scanning their day.
-- Each item MUST include the card_id it relates to for navigation. When merging, use the \
-newest card_id.
-- Each item MUST include space_id, space_name, and space_color from the source card (pass through exactly).
+- Each item MUST set the `card_id` JSON field to the originating card's id (use the newest \
+card_id when merging duplicates). The `card_id` belongs in its own JSON field ONLY — never \
+embed it, or any other identifier / bracketed token, in the `text` field.
+- The `text` field is natural-language prose for a human reader. Do NOT append bracketed ids, \
+space names, hex color codes, or any structural metadata to it.
+    - Wrong: "Review PR-58 [card_abc123] [space_xyz] [Work] [#3B82F6]"
+    - Right: "Review PR-58 (SDK-714) for GCS Stream Seeking Fix"
 - Order items by priority/importance within each section."""
 
 SUMMARIZER_STATUS_CHANGE_PROMPT = """\
@@ -82,9 +86,6 @@ def build_summarizer_messages(
     card_persona: str | None = None,
     actor_name: str | None = None,
     source_platform: str | None = None,
-    space_id: str | None = None,
-    space_name: str | None = None,
-    space_color: str | None = None,
 ) -> list[dict[str, str]]:
     """Build messages for incorporating a new card into the daily summary."""
     current_text = ""
@@ -112,10 +113,7 @@ Priority: {card_priority}
 Category: {card_category}
 Persona: {card_persona or 'N/A'}
 Platform: {source_platform or 'N/A'}
-Actor: {actor_name or 'N/A'}
-Space ID: {space_id or 'default'}
-Space Name: {space_name or 'Default'}
-Space Color: {space_color or '#F97316'}{intel_text}
+Actor: {actor_name or 'N/A'}{intel_text}
 [END NEW CARD]
 
 Produce the updated summary JSON matching the required schema."""
@@ -165,7 +163,7 @@ def get_summarizer_json_schema() -> dict[str, Any]:
         "properties": {
             "text": {
                 "type": "string",
-                "description": "Concise one-line description of the item",
+                "description": "Concise one-line description of the item — natural-language prose only, no bracketed ids or metadata",
             },
             "card_id": {
                 "type": "string",
@@ -179,20 +177,8 @@ def get_summarizer_json_schema() -> dict[str, Any]:
                 "type": "string",
                 "description": "pending, done, dismissed, or archived",
             },
-            "space_id": {
-                "type": "string",
-                "description": "The space_id the card belongs to (pass through from input)",
-            },
-            "space_name": {
-                "type": "string",
-                "description": "Human-readable space name (pass through from input)",
-            },
-            "space_color": {
-                "type": "string",
-                "description": "Hex color for the space (pass through from input)",
-            },
         },
-        "required": ["text", "card_id", "priority", "status", "space_id", "space_name", "space_color"],
+        "required": ["text", "card_id", "priority", "status"],
         "additionalProperties": False,
     }
 

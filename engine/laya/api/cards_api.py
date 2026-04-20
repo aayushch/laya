@@ -1215,7 +1215,7 @@ async def update_classification(card_id: str, body: UpdateClassificationRequest)
     card = rows[0]
     now = datetime.now(timezone.utc).isoformat()
     valid_priorities = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
-    valid_personas = {"ENGINEER", "COMMS", "OPS"}
+    valid_personas = {"ENGINEER", "COMMS", "OPS", "SALES", "HR", "FINANCE"}
 
     if body.priority and body.priority not in valid_priorities:
         raise HTTPException(status_code=422, detail=f"Invalid priority: {body.priority}")

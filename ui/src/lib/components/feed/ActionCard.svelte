@@ -70,7 +70,10 @@
 	const personaColors: Record<string, string> = {
 		ENGINEER: 'text-violet-400',
 		COMMS:    'text-emerald-400',
-		OPS:      'text-amber-400'
+		OPS:      'text-amber-400',
+		SALES:    'text-sky-400',
+		HR:       'text-rose-400',
+		FINANCE:  'text-teal-400'
 	};
 
 	const statusDot: Record<string, string> = {

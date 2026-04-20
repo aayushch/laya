@@ -17,6 +17,9 @@ class Persona(str, Enum):
     ENGINEER = "ENGINEER"
     COMMS = "COMMS"
     OPS = "OPS"
+    SALES = "SALES"
+    HR = "HR"
+    FINANCE = "FINANCE"
 
 
 class Priority(str, Enum):
