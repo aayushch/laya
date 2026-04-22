@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { GroupSummary, CardGroup } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
+	import { chatOpen, chatInputPreset } from '$lib/stores/chat';
 	import PlatformBadge from '$lib/components/PlatformBadge.svelte';
 	import StatusDot from './StatusDot.svelte';
 
@@ -11,6 +12,7 @@
 		onclose,
 		onshowcards,
 		ongotocard,
+		ongotogroup,
 		ongenerate,
 	}: {
 		summary: GroupSummary | null;
@@ -19,10 +21,39 @@
 		onclose: () => void;
 		onshowcards?: () => void;
 		ongotocard?: (cardId: string) => void;
+		ongotogroup?: (entityId: string) => void;
 		ongenerate?: (entityId: string) => void;
 	} = $props();
 
 	let regenerateError = $state<string | null>(null);
+
+	function chatAboutGroup() {
+		const lines = [
+			`I'd like to discuss this group of cards (entity: ${group.entity_id}):`,
+			``,
+			`**Title:** ${group.entity_title}`,
+			`**Platform:** ${group.platform} · **Priority:** ${group.top_priority} · **Cards:** ${group.card_count}`,
+		];
+		if (summary) {
+			lines.push(``, `**Headline:** ${summary.headline}`);
+			lines.push(`**Summary:** ${summary.summary}`);
+			if (summary.key_events?.length) {
+				lines.push(``, `**Key Events:**`);
+				summary.key_events.forEach((e) => lines.push(`- ${e}`));
+			}
+			if (summary.current_status) {
+				lines.push(``, `**Current Status:** ${summary.current_status}`);
+			}
+			if (summary.pending_actions?.length) {
+				lines.push(``, `**Pending Actions:**`);
+				summary.pending_actions.forEach((a) => lines.push(`- ${a}`));
+			}
+		}
+		const cardIds = group.cards.map((c) => c.card_id);
+		lines.push(``, `**Card IDs:** ${cardIds.join(', ')}`);
+		chatInputPreset.set(lines.join('\n'));
+		chatOpen.set(true);
+	}
 
 	const priorityColors: Record<string, string> = {
 		CRITICAL: 'bg-red-600 text-red-50',
@@ -69,6 +100,8 @@
 			: platformLabel[group.platform] ?? group.platform
 	);
 
+	const subjectId = $derived(group.entity_id?.includes(':') ? group.entity_id.split(':').pop() : group.entity_id);
+
 	async function regenerate() {
 		regenerateError = null;
 		ongenerate?.(group.entity_id);
@@ -91,27 +124,67 @@
 				{group.card_count} cards
 			</span>
 		</div>
-		<button aria-label="Close" class="rounded p-1.5 text-surface-400 transition-colors hover:text-surface-100" onclick={onclose}>
-			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-			</svg>
-		</button>
+		<div class="flex items-center gap-1">
+			{#if ongotogroup}
+				<div class="group/act relative">
+					<button
+						onclick={() => ongotogroup?.(group.entity_id)}
+						class="rounded p-1.5 text-surface-500 transition-colors hover:text-laya-orange"
+						aria-label="Go to group"
+					>
+						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5" />
+						</svg>
+					</button>
+					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Go to group</span>
+				</div>
+			{/if}
+			<div class="group/act relative">
+				<button
+					onclick={chatAboutGroup}
+					aria-label="Chat about this group"
+					class="rounded p-1.5 text-surface-500 transition-colors hover:text-laya-orange"
+				>
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+					</svg>
+				</button>
+				<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Chat about group</span>
+			</div>
+			<button aria-label="Close" class="rounded p-1.5 text-surface-400 transition-colors hover:text-surface-100" onclick={onclose}>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+				</svg>
+			</button>
+		</div>
 	</div>
 
 	<!-- Scrollable content -->
 	<div class="flex-1 overflow-y-auto px-5 py-4">
-		<!-- Platform badge -->
-		<div class="mb-3">
+		<!-- Platform + source reference -->
+		<div class="mb-3 flex items-center gap-1.5 min-w-0">
 			<PlatformBadge platform={group.platform} />
+			{#if subjectId}
+				{#if group.entity_url}
+					<a
+						href={group.entity_url}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="inline-flex items-center gap-1 text-xs font-medium text-laya-orange hover:text-laya-peach transition-colors min-w-0 truncate"
+					>
+						<span class="truncate">{subjectId}</span>
+						<svg class="h-2.5 w-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+						</svg>
+					</a>
+				{:else}
+					<span class="text-xs font-medium text-surface-400 truncate">{subjectId}</span>
+				{/if}
+			{/if}
 		</div>
 
 		<!-- Entity title -->
-		<h2 class="mb-1 text-lg font-semibold text-surface-50">{group.entity_title}</h2>
-		{#if group.entity_url}
-			<a href={group.entity_url} target="_blank" rel="noopener noreferrer" class="mb-4 inline-block text-xs text-laya-orange hover:underline">
-				View source
-			</a>
-		{/if}
+		<h2 class="mb-2 text-lg font-semibold text-surface-50">{group.entity_title}</h2>
 
 		<!-- Card status bar -->
 		<div class="mb-5 flex items-center gap-2 rounded-lg border border-surface-700 bg-surface-900/50 px-3 py-2">

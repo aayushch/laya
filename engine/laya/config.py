@@ -86,7 +86,7 @@ DEFAULT_SETTINGS = {
         "density": "compact",  # "compact" | "standard" | "detailed"
         "timezone": "America/New_York",
         "rolling_interval_hours": 4,  # 0 = disabled; triggers resynthesis every N hours
-        "event_threshold": 50,  # 0 = disabled; triggers resynthesis after N new events
+        "event_threshold": 50,  # 0 = disabled; max 100 (clamped by settings API)
     },
     "pipeline": {
         "model_timeout": 480,

@@ -564,6 +564,11 @@ async def run_omni_resynthesis(
     settings = load_settings()
     omni_cfg = settings.get("omni", {})
     density = omni_cfg.get("density", "compact")
+    try:
+        event_threshold = int(omni_cfg.get("event_threshold", 50))
+    except (TypeError, ValueError):
+        event_threshold = 50
+    event_threshold = max(0, min(100, event_threshold))
 
     db = await get_db()
 
@@ -581,7 +586,7 @@ async def run_omni_resynthesis(
 
     for sid in space_ids:
         try:
-            snapshot_id = await _resynthesize_space(db, sid, density, snapshot_type)
+            snapshot_id = await _resynthesize_space(db, sid, density, snapshot_type, event_threshold)
             if snapshot_id:
                 created_ids.append(snapshot_id)
         except Exception as e:
@@ -590,7 +595,13 @@ async def run_omni_resynthesis(
     return created_ids
 
 
-async def _resynthesize_space(db, space_id: str, density: str, snapshot_type: str = "scheduled") -> str | None:
+async def _resynthesize_space(
+    db,
+    space_id: str,
+    density: str,
+    snapshot_type: str = "scheduled",
+    event_threshold: int = 50,
+) -> str | None:
     """Resynthesize Omni for a single space.
 
     Gates the queue processor for this space during the LLM call so that
@@ -624,10 +635,31 @@ async def _resynthesize_space(db, space_id: str, density: str, snapshot_type: st
            ORDER BY version DESC LIMIT 1""",
         (space_id,),
     )
+    last_attempt_row = await db.execute_fetchall(
+        "SELECT last_attempt_at FROM omni_last_attempt WHERE space_id = ?",
+        (space_id,),
+    )
+
     # Normalize ISO 'T' separator to space to match SQLite CURRENT_TIMESTAMP format,
     # otherwise string comparison fails (space 0x20 < 'T' 0x54).
-    _raw_since = last_synth_row[0]["generated_at"] if last_synth_row else None
-    since = _raw_since.replace("T", " ").split("+")[0] if _raw_since else "2000-01-01 00:00:00"
+    def _norm(ts: str | None) -> str | None:
+        if not ts:
+            return None
+        return ts.replace("T", " ").split("+")[0]
+
+    # Since = max(last successful snapshot, last attempt watermark). The
+    # watermark is advanced on every run (including LLM failures) so failed
+    # cards don't re-accumulate into the next run's batch.
+    since_candidates = [
+        _norm(last_synth_row[0]["generated_at"]) if last_synth_row else None,
+        _norm(last_attempt_row[0]["last_attempt_at"]) if last_attempt_row else None,
+    ]
+    since = max([c for c in since_candidates if c] or ["2000-01-01 00:00:00"])
+
+    # Fetch cap scales with event_threshold so users who tolerate larger
+    # per-run batches get proportional headroom for failure recovery. Floor
+    # is 100 (also applies when threshold is disabled).
+    fetch_cap = max(100, 3 * event_threshold) if event_threshold > 0 else 100
 
     card_rows = await db.execute_fetchall(
         """SELECT ac.card_id, ac.header, ac.summary, ac.priority, ac.persona,
@@ -637,8 +669,8 @@ async def _resynthesize_space(db, space_id: str, density: str, snapshot_type: st
            LEFT JOIN events e ON ac.event_id = e.event_id
            WHERE ac.space_id = ? AND ac.created_at > ?
            ORDER BY ac.created_at DESC
-           LIMIT 100""",
-        (space_id, since),
+           LIMIT ?""",
+        (space_id, since, fetch_cap),
     )
 
     new_cards = [
@@ -666,6 +698,33 @@ async def _resynthesize_space(db, space_id: str, density: str, snapshot_type: st
     if not new_cards:
         log.info("omni_resynthesis_skipped_no_new_cards", space_id=space_id)
         return None
+
+    # Visibility: warn when the fetch cap is saturated. Under the default
+    # trigger config this should be rare; if it fires repeatedly, check for
+    # recent LLM failures or misconfigured triggers before trusting the
+    # summary (cards beyond the window are silently dropped from the LLM
+    # input, though they remain in the incremental snapshot).
+    if len(new_cards) >= fetch_cap:
+        log.warning(
+            "omni_resynthesis_cards_saturated",
+            space_id=space_id,
+            cap=fetch_cap,
+            event_threshold=event_threshold,
+            since=since,
+        )
+
+    # Watermark write: advance `last_attempt_at` to "now" BEFORE the LLM call
+    # so that if the LLM fails (or the engine crashes mid-synthesis) the next
+    # run doesn't re-fetch this batch. Cards in this batch are already in
+    # current_snapshot via the incremental path, so no information is lost.
+    attempt_ts = datetime.now(timezone.utc).isoformat()
+    await db.execute(
+        """INSERT INTO omni_last_attempt (space_id, last_attempt_at)
+           VALUES (?, ?)
+           ON CONFLICT(space_id) DO UPDATE SET last_attempt_at = excluded.last_attempt_at""",
+        (space_id, attempt_ts),
+    )
+    await db.commit()
 
     # 5. Build LLM prompt
     messages = build_omni_resynthesis_messages(

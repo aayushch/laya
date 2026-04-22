@@ -111,23 +111,23 @@
 	};
 
 	const statusCardStyle: Record<string, string> = {
-		pending:            'bg-amber-950/55  border-amber-800/30  hover:border-amber-700/45  card-pulse-amber',
-		ready:              'bg-amber-950/55  border-amber-800/30  hover:border-amber-700/45',
-		requires_approval:  'bg-violet-950/55 border-violet-800/25 hover:border-violet-700/40',
-		agent_running:      'bg-violet-950/55 border-violet-800/25 hover:border-violet-700/40 card-pulse-violet',
-		awaiting_input:     'bg-amber-950/55  border-amber-800/30  hover:border-amber-700/45  card-pulse-amber',
-		done:               'bg-emerald-950/50 border-emerald-800/20 hover:border-emerald-700/35',
-		failed:             'bg-rose-950/60   border-rose-800/35   hover:border-rose-700/50',
-		dismissed:          'bg-surface-800/40 border-surface-700/25 hover:border-surface-600/40 opacity-50 hover:opacity-75',
+		pending:            'bg-amber-950/55  border-transparent  hover:border-amber-700/45  card-pulse-amber',
+		ready:              'bg-amber-950/55  border-transparent  hover:border-amber-700/45',
+		requires_approval:  'bg-violet-950/55 border-transparent hover:border-violet-700/40',
+		agent_running:      'bg-violet-950/55 border-transparent hover:border-violet-700/40 card-pulse-violet',
+		awaiting_input:     'bg-amber-950/55  border-transparent  hover:border-amber-700/45  card-pulse-amber',
+		done:               'bg-emerald-950/50 border-transparent hover:border-emerald-700/35',
+		failed:             'bg-rose-950/60   border-transparent   hover:border-rose-700/50',
+		dismissed:          'bg-surface-800/40 border-transparent hover:border-surface-600/40 opacity-50 hover:opacity-75',
 	};
 
-	const neutralCardStyle = 'bg-surface-800 border-surface-700 hover:border-surface-600';
+	const neutralCardStyle = 'bg-surface-800 border-transparent hover:border-surface-600';
 
 	const baseCardStyle = $derived(
 		isArchived
-			? 'bg-surface-900/60 border-dashed border-surface-700/50 opacity-50 hover:opacity-80'
+			? 'bg-surface-900/60 border-transparent opacity-50 hover:opacity-80'
 			: $cardColors
-				? (statusCardStyle[card.status] ?? 'bg-surface-800 border-surface-700 hover:border-laya-orange/30')
+				? (statusCardStyle[card.status] ?? 'bg-surface-800 border-transparent hover:border-laya-orange/30')
 				: neutralCardStyle
 	);
 

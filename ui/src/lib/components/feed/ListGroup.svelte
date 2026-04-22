@@ -125,15 +125,15 @@
 	];
 
 	const groupRowStyle: Record<string, string> = {
-		pending:            'bg-amber-950/55  hover:bg-amber-950/70',
-		ready:              'bg-amber-950/55  hover:bg-amber-950/70',
-		requires_approval:  'bg-violet-950/55 hover:bg-violet-950/70',
-		agent_running:      'bg-violet-950/55 hover:bg-violet-950/70',
-		awaiting_input:     'bg-amber-950/55  hover:bg-amber-950/70',
-		done:               'bg-emerald-950/50 hover:bg-emerald-950/65',
-		failed:             'bg-rose-950/60   hover:bg-rose-950/75',
-		dismissed:          'bg-surface-800/40 hover:bg-surface-800/60',
-		archived:           'bg-surface-900/60 hover:bg-surface-900/80',
+		pending:            'bg-amber-950/55',
+		ready:              'bg-amber-950/55',
+		requires_approval:  'bg-violet-950/55',
+		agent_running:      'bg-violet-950/55',
+		awaiting_input:     'bg-amber-950/55',
+		done:               'bg-emerald-950/50',
+		failed:             'bg-rose-950/60',
+		dismissed:          'bg-surface-800/40',
+		archived:           'bg-surface-900/60',
 	};
 
 	const dominantStatus = $derived.by(() => {
@@ -150,8 +150,8 @@
 		allArchived
 			? 'bg-surface-900/60 opacity-50 hover:opacity-80'
 			: $cardColors
-				? (groupRowStyle[dominantStatus] ?? 'hover:bg-surface-800/60')
-				: 'hover:bg-surface-800/60'
+				? (groupRowStyle[dominantStatus] ?? '')
+				: ''
 	);
 
 	const statusDisplayLabel: Record<string, string> = {
@@ -278,7 +278,7 @@
 			</div>
 		{/if}
 
-		<div class="flex-1 min-w-0 border {expanded ? 'rounded-t-lg border-surface-600 border-b-0 bg-surface-900' : 'rounded-lg border-surface-700/40 ' + groupBgStyle} transition-colors
+		<div data-group-row={group.entity_id} class="flex-1 min-w-0 border {expanded ? 'rounded-t-lg border-transparent bg-surface-900' : 'list-row-hover rounded-lg border-transparent ' + groupBgStyle} transition-colors
 			{isGroupLastViewed ? ($cardColors ? 'card-last-viewed card-last-viewed--compact rounded-lg' : 'card-last-viewed-highlight rounded-lg') : ''}">
 			<!-- Group header row -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -305,13 +305,8 @@
 				</button>
 
 				<!-- Source — fixed width, matches ListRow -->
-		<span class="w-[60px] shrink-0 flex flex-col" title={isSmartGroup && sourcesDetail ? sourcesDetail : undefined}>
-			<span class="text-[11px] font-semibold uppercase tracking-wider text-surface-500 truncate">
-				{sourceLabel}
-			</span>
-			{#if isSmartGroup && sourcesDetail}
-				<span class="truncate text-[8px] text-surface-600">{sourcesDetail}</span>
-			{/if}
+		<span class="w-[76px] shrink-0 text-[11px] font-semibold uppercase tracking-wider text-surface-500 truncate" title={isSmartGroup && sourcesDetail ? sourcesDetail : sourceLabel}>
+			{sourceLabel}
 		</span>
 
 		<!-- Linked icon (fixed slot) + Subject ID -->
@@ -326,12 +321,17 @@
 		</span>
 
 		<!-- Subject (entity title) -->
-		<span class="group/subject relative min-w-0 flex-1 ml-2"
+		<span class="group/subject relative min-w-0 flex-1 ml-2 flex items-center gap-1"
 			onmouseenter={() => { if (subjectEl) subjectTruncated = subjectEl.scrollWidth > subjectEl.clientWidth; }}
 		>
 			<span bind:this={subjectEl} class="block truncate text-xs font-medium text-surface-200">
 				{group.entity_title}
 			</span>
+			{#if hasBookmark}
+				<svg class="h-3 w-3 shrink-0 text-laya-orange/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke-dasharray="3 2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+				</svg>
+			{/if}
 			{#if subjectTruncated}
 				<span class="pointer-events-none absolute top-full left-0 z-10 mt-1 max-w-xs whitespace-normal rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/subject:opacity-100">
 					{group.entity_title}
@@ -340,20 +340,13 @@
 		</span>
 
 		<!-- Card count — aligned with ListRow status column (w-[70px]) -->
-		<div class="group/count relative w-[70px] shrink-0 flex items-center gap-1 ml-2">
-			<span class="w-3 shrink-0 flex items-center justify-center">
-				{#if hasBookmark}
-					<svg class="h-3 w-3 text-laya-orange/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke-dasharray="3 2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-					</svg>
-				{/if}
-			</span>
+		<div class="group/count relative w-[70px] shrink-0 flex items-center ml-2">
 			<button
-				class="rounded-full border border-surface-600 bg-surface-700 px-2 py-0.5 text-[10px] font-semibold text-surface-300 hover:text-laya-orange hover:border-laya-orange/40 transition-colors whitespace-nowrap"
+				class="rounded-full bg-laya-orange/10 px-2 py-0.5 text-[10px] font-semibold text-laya-orange hover:bg-laya-orange/20 transition-colors whitespace-nowrap"
 				title={isSmartGroup ? 'Show all groups' : 'Show all cards'}
 				onclick={(e) => { e.stopPropagation(); expanded = !expanded; }}
 			>
-				{isSmartGroup ? `${group.sub_groups?.length ?? group.card_count} groups` : group.card_count}
+				{isSmartGroup ? `${group.sub_groups?.length ?? group.card_count} groups` : `${group.card_count} cards`}
 			</button>
 			<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/count:opacity-100">
 				{statusSummaryTooltip}
@@ -458,7 +451,7 @@
 				{#if onbulktoggle}
 					<div class="w-5 shrink-0"></div>
 				{/if}
-				<div class="flex-1 min-w-0 rounded-b-lg border border-t-0 border-surface-600 bg-surface-900 pt-1 pb-0">
+				<div class="flex-1 min-w-0 rounded-b-lg bg-surface-900 pt-1 pb-0 pl-4">
 					{#each group.cards as card (card.card_id)}
 						<div class="flex items-center">
 							<!-- Checkbox pulled into the gutter via negative margin -->

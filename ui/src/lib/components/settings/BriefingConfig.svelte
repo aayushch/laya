@@ -566,9 +566,16 @@
 								id="omni-threshold"
 								type="number"
 								min="0"
+								max="100"
 								step="10"
 								bind:value={omniEventThreshold}
-								oninput={() => debouncedSaveOmni()}
+								oninput={() => {
+									// Mirror the server-side clamp [0, 100] so the UI can't
+									// submit a value that will be silently rewritten.
+									if (omniEventThreshold < 0) omniEventThreshold = 0;
+									if (omniEventThreshold > 100) omniEventThreshold = 100;
+									debouncedSaveOmni();
+								}}
 								disabled={!omniEnabled}
 								class="h-9 w-36 rounded-md border border-surface-600 bg-surface-700 px-3 text-sm text-surface-50 focus:border-laya-orange/50 focus:outline-none disabled:cursor-not-allowed"
 								placeholder="0 = off"

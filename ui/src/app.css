@@ -130,6 +130,28 @@ html, body {
 [data-theme='light'] .bg-orange-500   { background-color: oklch(0.62 0.18 47);  }
 /* bg-blue-600 override removed — MEDIUM priority now uses laya-coral brand color */
 
+/* Ghost strip cards: no shadow in dark (invisible anyway), lighter in light to avoid darkening strip 1 */
+[data-theme='dark'] .ghost-strip-shadow { box-shadow: none; }
+[data-theme='light'] .ghost-strip-shadow { box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.03); }
+
+/* Ghost strip borders — invisible in dark, lighter in light */
+[data-theme='dark'] .ghost-strip  { border-color: oklch(0.35 0.01 60 / 0.5); }
+[data-theme='light'] .ghost-strip { border-color: oklch(0.78 0.01 60 / 0.35); }
+
+/* List row hover — inset overlay lightens whatever the base status color is.
+   When combined with card-last-viewed ring, stack both shadows so the ring isn't replaced. */
+.list-row-hover { transition: box-shadow 150ms ease; }
+.list-row-hover:hover { box-shadow: inset 0 0 0 100px rgb(255 255 255 / 0.04); }
+.list-row-hover.card-last-viewed:hover,
+.list-row-hover.card-last-viewed--compact:hover {
+	box-shadow: inset 0 0 0 1px var(--last-viewed-accent), inset 0 0 0 100px rgb(255 255 255 / 0.04);
+}
+[data-theme='light'] .list-row-hover:hover { box-shadow: inset 0 0 0 100px rgb(0 0 0 / 0.05); }
+[data-theme='light'] .list-row-hover.card-last-viewed:hover,
+[data-theme='light'] .list-row-hover.card-last-viewed--compact:hover {
+	box-shadow: inset 0 0 0 1px var(--last-viewed-accent), inset 0 0 0 100px rgb(0 0 0 / 0.05);
+}
+
 /* Last-viewed accent — white in dark, black in light */
 [data-theme='light'] .card-last-viewed { --last-viewed-accent: oklch(0.75 0.18 55 / 0.7); }
 
@@ -293,20 +315,21 @@ html, body {
    used to draw attention to a card after layout changes.
    ───────────────────────────────────────────────────────────── */
 @keyframes card-highlight-fade {
-	0%   { box-shadow: inset 0 0 0 100vmax oklch(0.75 0.18 55 / 0.15); }
-	100% { box-shadow: inset 0 0 0 100vmax oklch(0.75 0.18 55 / 0); }
+	0%   { box-shadow: inset 0 0 0 100px oklch(0.75 0.18 55 / 0.15); }
+	100% { box-shadow: inset 0 0 0 100px oklch(0.75 0.18 55 / 0); }
 }
 
 .card-highlight-fade {
 	animation: card-highlight-fade 1.5s ease-out forwards;
+	overflow: clip;
 }
 
 /* When both the ring border AND the highlight fade are active, use a compound
    animation so the ring persists throughout the background fade-out.
    Without this, the animation's box-shadow replaces the ring's box-shadow. */
 @keyframes card-highlight-fade-with-ring {
-	0%   { box-shadow: inset 0 0 0 1px var(--last-viewed-accent), inset 0 0 0 100vmax oklch(0.75 0.18 55 / 0.15); }
-	100% { box-shadow: inset 0 0 0 1px var(--last-viewed-accent), inset 0 0 0 100vmax oklch(0.75 0.18 55 / 0); }
+	0%   { box-shadow: inset 0 0 0 1px var(--last-viewed-accent), inset 0 0 0 100px oklch(0.75 0.18 55 / 0.15); }
+	100% { box-shadow: inset 0 0 0 1px var(--last-viewed-accent), inset 0 0 0 100px oklch(0.75 0.18 55 / 0); }
 }
 .card-last-viewed.card-highlight-fade {
 	animation: card-highlight-fade-with-ring 1.5s ease-out forwards;
