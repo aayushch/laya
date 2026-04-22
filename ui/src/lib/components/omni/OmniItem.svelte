@@ -66,7 +66,7 @@
 					<path d="M5 5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16l-7-3.5L5 21V5z" />
 				</svg>
 			</button>
-			<span class="pointer-events-none absolute right-0 top-full z-50 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/bookmark:opacity-100">
+			<span class="pointer-events-none absolute right-0 top-full z-50 mt-1 whitespace-nowrap rounded-md border border-transparent glass-card bg-surface-800/40 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/bookmark:opacity-100">
 				{item.bookmarked ? 'Remove bookmark' : 'Bookmark'}
 			</span>
 		</div>
@@ -83,7 +83,7 @@
 					<line x1="8" y1="4" x2="16" y2="4" />
 				</svg>
 			</button>
-			<span class="pointer-events-none absolute right-0 top-full z-50 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">
+			<span class="pointer-events-none absolute right-0 top-full z-50 mt-1 whitespace-nowrap rounded-md border border-transparent glass-card bg-surface-800/40 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100">
 				{item.pinned ? 'Unpin' : 'Pin to preserve'}
 			</span>
 		</div>
