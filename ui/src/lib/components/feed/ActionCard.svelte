@@ -266,7 +266,7 @@
 	role="button"
 	tabindex="0"
 	data-card-id={card.card_id}
-	class="group/card flex min-h-0 w-full cursor-pointer flex-col rounded-xl border px-4 pb-2 pt-3 text-left transition-colors {cardStyle}"
+	class="group/card flex min-h-0 w-full cursor-pointer flex-col rounded-xl border shadow-lg px-4 pb-2 pt-3 text-left transition-colors {cardStyle}"
 	onclick={() => onselect(card)}
 	onkeydown={(e) => e.key === 'Enter' && onselect(card)}
 >
