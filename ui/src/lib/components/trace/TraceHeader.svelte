@@ -295,7 +295,11 @@
 						<div class="absolute left-[10px] top-[12px] w-1.5 h-1.5 rounded-full bg-laya-orange/50"></div>
 						<div class="absolute left-0 top-[15px] bottom-0 w-px bg-surface-700/40"></div>
 
-						{#if parsed.isThinking}
+						{#if parsed.isThinking || (isStreaming && !parsed.response && !parsed.thinking)}
+							<!-- Streaming has started but no content has arrived yet (or we're
+							     still inside <think>) — render a spinner so the user knows
+							     generation is in progress. Without this, parseNarrative('')
+							     short-circuits to isThinking=false and the pill renders empty. -->
 							<div class="rounded-md bg-laya-orange/5 border border-laya-orange/15 px-3 py-2">
 								<div class="flex items-center gap-1.5 text-[11px] text-surface-400">
 									<svg class="h-2.5 w-2.5 animate-spin text-laya-orange/60 shrink-0" fill="none" viewBox="0 0 24 24">
@@ -309,6 +313,12 @@
 							<div class="rounded-md bg-laya-orange/5 border border-laya-orange/15 px-3 py-2">
 								<div class="flex items-center gap-1.5 mb-1">
 									<span class="text-[9px] font-medium uppercase tracking-wider text-laya-orange/70">✦ narrative</span>
+									{#if isStreaming}
+										<svg class="h-2.5 w-2.5 animate-spin text-laya-orange/60 shrink-0" fill="none" viewBox="0 0 24 24">
+											<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+											<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+										</svg>
+									{/if}
 								</div>
 								{#if parsed.thinking}
 									<details>
