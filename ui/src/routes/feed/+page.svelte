@@ -3,10 +3,11 @@
 	import { engineApi } from '$lib/api/engine';
 	import { lastMessage } from '$lib/stores/websocket';
 	import { feedFilters, feedDate, feedPrevDate, feedNextDate, localToday } from '$lib/stores/feedFilters';
-	import type { ActionCard, CardGroup, DaySummary } from '$lib/api/types';
+	import type { ActionCard, CardGroup, GroupSummary, DaySummary } from '$lib/api/types';
 	import CardGroupComponent from '$lib/components/feed/CardGroup.svelte';
 	import ActionCardComponent from '$lib/components/feed/ActionCard.svelte';
 	import CardDetail from '$lib/components/feed/CardDetail.svelte';
+	import GroupSummaryDetail from '$lib/components/feed/GroupSummaryDetail.svelte';
 	import DaySummaryComponent from '$lib/components/feed/DaySummary.svelte';
 	import { feedViewMode } from '$lib/stores/feedView';
 	import { feedSelection } from '$lib/stores/feedSelection';
@@ -48,12 +49,17 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let selectedCard = $state<ActionCard | null>(null);
+	let selectedGroupSummary = $state<{ summary: GroupSummary | null; group: CardGroup } | null>(null);
+	let generatingEntityIds = $state(new Set<string>());
 	let detailPanelOpen = $state(false);
 	let showIntegrationsPopup = $state(false);
 	// Tracks the last card shown in the detail panel — survives dismiss so close can scroll back
 	let lastDetailCardId = $state<string | null>(null);
-	// Persists after panel close so the card keeps a visual accent bar
+	// Tracks the last group shown in the detail panel — used for scroll-back on close
+	let lastDetailEntityId = $state<string | null>(null);
+	// Persists after panel close so the card/group keeps a visual accent bar
 	let lastViewedCardId = $state<string | null>(null);
+	let lastViewedEntityId = $state<string | null>(null);
 
 	// Link dialog state
 	let linkSourceGroup = $state<CardGroup | null>(null);
@@ -91,6 +97,9 @@
 			});
 		});
 	}
+
+	const hasAnySelection = $derived(!!selectedCard || !!selectedGroupSummary);
+	const selectedEntityId = $derived(selectedGroupSummary?.group.entity_id ?? '');
 
 	// A card is standalone if its group has exactly 1 card and no context_id
 	const selectedCardIsStandalone = $derived.by(() => {
@@ -358,6 +367,36 @@
 			return;
 		}
 
+		if (msg.type === 'group_summary_updated' && msg.entity_id) {
+			_lastProcessedMsg = msg;
+			const updatedSummary = msg.summary as GroupSummary;
+			groups = groups.map(g => {
+				if (g.entity_id === msg.entity_id) {
+					return { ...g, group_summary: updatedSummary };
+				}
+				if (g.sub_groups) {
+					return { ...g, sub_groups: g.sub_groups.map(sg =>
+						sg.entity_id === msg.entity_id
+							? { ...sg, group_summary: updatedSummary }
+							: sg
+					)};
+				}
+				return g;
+			});
+			if (generatingEntityIds.has(msg.entity_id)) {
+				generatingEntityIds.delete(msg.entity_id);
+				generatingEntityIds = new Set(generatingEntityIds);
+			}
+			if (selectedGroupSummary && selectedGroupSummary.group.entity_id === msg.entity_id) {
+				const updatedGroup = groups.find(g => g.entity_id === msg.entity_id)
+					?? groups.flatMap(g => g.sub_groups ?? []).find(sg => sg.entity_id === msg.entity_id);
+				if (updatedGroup) {
+					selectedGroupSummary = { summary: updatedSummary, group: updatedGroup };
+				}
+			}
+			return;
+		}
+
 		if (!['card_created', 'card_deleted', 'card_updated', 'group_carried_forward', 'context_group_unlinked', 'context_group_merged', 'action_payload_updated'].includes(msg.type)) return;
 		_lastProcessedMsg = msg;
 
@@ -568,6 +607,24 @@
 		});
 	}
 
+	function scrollToGroupElement(entityId: string) {
+		_flipSettled.then(() => {
+			const attempt = (tries: number) => {
+				requestAnimationFrame(() => {
+					const el = document.querySelector(`[data-group-entity="${entityId}"]`);
+					if (el) {
+						scrollElToCenter(el);
+						el.classList.add('card-highlight-fade');
+						el.addEventListener('animationend', () => el.classList.remove('card-highlight-fade'), { once: true });
+					} else if (tries > 0) {
+						attempt(tries - 1);
+					}
+				});
+			};
+			attempt(15);
+		});
+	}
+
 	// Handle card link clicks from chat — find the card and navigate to it
 	$effect(() => {
 		const rawId = $pendingCardId;
@@ -595,6 +652,9 @@
 	});
 
 	function selectCard(card: ActionCard) {
+		selectedGroupSummary = null;
+		lastDetailEntityId = null;
+		lastViewedEntityId = null;
 		selectedCard = card;
 		lastDetailCardId = card.card_id;
 		lastViewedCardId = card.card_id;
@@ -609,10 +669,26 @@
 		}).catch(() => {});
 	}
 
+	function selectGroupSummary(group: CardGroup) {
+		selectedCard = null;
+		selectedGroupSummary = {
+			summary: group.group_summary ?? null,
+			group
+		};
+		lastDetailCardId = null;
+		lastDetailEntityId = group.entity_id;
+		lastViewedCardId = null;
+		lastViewedEntityId = group.entity_id;
+		sessionStorage.removeItem(SELECTED_CARD_KEY);
+		openDetailPanel(true);
+	}
+
 	function closeDetail() {
 		selectedCard = null;
+		selectedGroupSummary = null;
 		detailPanelOpen = false;
 		lastDetailCardId = null;
+		lastDetailEntityId = null;
 		sessionStorage.removeItem(SELECTED_CARD_KEY);
 	}
 
@@ -831,9 +907,12 @@
 		flipColumns(finalCols, skipFlip);
 		detailPanelOpen = true;
 
-		// Scroll the selected card into view after the panel slide finishes
+		// Scroll the selected card/group into view after the panel slide finishes
 		if (skipFlip && selectedCard) {
 			setTimeout(() => scrollToCard(selectedCard!.card_id), 320);
+		} else if (skipFlip && lastDetailEntityId) {
+			const entityId = lastDetailEntityId;
+			setTimeout(() => scrollToGroupElement(entityId), 320);
 		}
 
 		// Allow ResizeObserver to resume after panel transition ends (300ms duration).
@@ -885,11 +964,14 @@
 		// Column repacking destroys/recreates CardGroup components (resetting expanded=false),
 		// so the individual card element won't exist after reflow. We scroll to the group
 		// wrapper instead, found by entity_id which is stable across repacks.
-		let lastEntityId: string | null = null;
-		if (lastCardId) {
+		// For group summary selections, lastDetailEntityId is already set directly.
+		let lastEntityId: string | null = lastDetailEntityId;
+		if (!lastEntityId && lastCardId) {
 			const g = groups.find((g) => g.cards.some((c) => c.card_id === lastCardId));
 			if (g && g.card_count > 1) lastEntityId = g.entity_id;
 		}
+
+		const hasScrollTarget = !!(lastEntityId || lastCardId);
 
 		// Panel will free DETAIL_PANEL_WIDTH + COL_GAP back to the container
 		const currentWidth = getContentWidth();
@@ -898,7 +980,7 @@
 
 		panelTransitioning = true;
 		// Skip FLIP when scroll-back will also run (avoids jarring double transition)
-		flipColumns(finalCols, !!lastCardId);
+		flipColumns(finalCols, hasScrollTarget);
 		closeDetail();
 
 		// Apply the highlight fade immediately after column repack so it starts
@@ -1471,9 +1553,9 @@
 							<div class="flex flex-col gap-1 mb-2">
 								{#each sectionGroups as group (group.entity_id)}
 									{#if group.card_count === 1}
-										<ListRow card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} bulkSelected={$feedSelection.has(group.cards[0].card_id)} onbulktoggle={handleBulkToggle} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
+										<ListRow card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} bulkSelected={$feedSelection.has(group.cards[0].card_id)} onbulktoggle={handleBulkToggle} hasSelection={hasAnySelection} lastViewedCardId={lastViewedCardId ?? ''} />
 									{:else}
-										<ListGroupComponent {group} onselect={selectCard} ondelete={handleDelete} onlink={handleLinkGroup} selectedCardId={selectedCard?.card_id ?? ''} scrollToCardId={_scrollToCardId} bulkSelectedIds={$feedSelection} onbulktoggle={handleBulkToggle} onbulktogglegroup={handleBulkToggleGroup} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
+										<ListGroupComponent {group} onselect={selectCard} onselectgroup={selectGroupSummary} ondelete={handleDelete} onlink={handleLinkGroup} selectedCardId={selectedCard?.card_id ?? ''} {selectedEntityId} scrollToCardId={_scrollToCardId} bulkSelectedIds={$feedSelection} onbulktoggle={handleBulkToggle} onbulktogglegroup={handleBulkToggleGroup} hasSelection={hasAnySelection} lastViewedCardId={lastViewedCardId ?? ''} lastViewedEntityId={lastViewedEntityId ?? ''} />
 									{/if}
 								{/each}
 							</div>
@@ -1484,9 +1566,9 @@
 					<div class="flex flex-col gap-1">
 						{#each filteredGroups as group (group.entity_id)}
 							{#if group.card_count === 1}
-								<ListRow card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} bulkSelected={$feedSelection.has(group.cards[0].card_id)} onbulktoggle={handleBulkToggle} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
+								<ListRow card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} bulkSelected={$feedSelection.has(group.cards[0].card_id)} onbulktoggle={handleBulkToggle} hasSelection={hasAnySelection} lastViewedCardId={lastViewedCardId ?? ''} />
 							{:else}
-								<ListGroupComponent {group} onselect={selectCard} ondelete={handleDelete} onlink={handleLinkGroup} selectedCardId={selectedCard?.card_id ?? ''} scrollToCardId={_scrollToCardId} bulkSelectedIds={$feedSelection} onbulktoggle={handleBulkToggle} onbulktogglegroup={handleBulkToggleGroup} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
+								<ListGroupComponent {group} onselect={selectCard} onselectgroup={selectGroupSummary} ondelete={handleDelete} onlink={handleLinkGroup} selectedCardId={selectedCard?.card_id ?? ''} {selectedEntityId} scrollToCardId={_scrollToCardId} bulkSelectedIds={$feedSelection} onbulktoggle={handleBulkToggle} onbulktogglegroup={handleBulkToggleGroup} hasSelection={hasAnySelection} lastViewedCardId={lastViewedCardId ?? ''} lastViewedEntityId={lastViewedEntityId ?? ''} />
 							{/if}
 						{/each}
 					</div>
@@ -1518,9 +1600,9 @@
 									{@const isGroupExiting = group.cards.every((c) => exitingCardIds.has(c.card_id))}
 									<div data-entity-id={group.entity_id} class="card-exit-wrap {isGroupExiting ? 'card-exiting' : ''}">
 										{#if group.card_count === 1}
-											<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} onlink={handleLinkCard} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
+											<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} onlink={handleLinkCard} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={hasAnySelection} lastViewedCardId={lastViewedCardId ?? ''} />
 										{:else}
-											<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} onlink={handleLinkGroup} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} scrollToCardId={_scrollToCardId} {detailPanelOpen} />
+											<CardGroupComponent {group} onselect={selectCard} onselectgroup={selectGroupSummary} ondelete={handleDelete} onlink={handleLinkGroup} selectedCardId={selectedCard?.card_id ?? ''} {selectedEntityId} hasSelection={hasAnySelection} lastViewedCardId={lastViewedCardId ?? ''} lastViewedEntityId={lastViewedEntityId ?? ''} scrollToCardId={_scrollToCardId} {detailPanelOpen} />
 										{/if}
 									</div>
 								{/each}
@@ -1537,9 +1619,9 @@
 							{#each col as group (group.entity_id)}
 								<div data-entity-id={group.entity_id}>
 									{#if group.card_count === 1}
-										<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} onlink={handleLinkCard} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} />
+										<ActionCardComponent card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} onlink={handleLinkCard} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={hasAnySelection} lastViewedCardId={lastViewedCardId ?? ''} />
 									{:else}
-										<CardGroupComponent {group} onselect={selectCard} ondelete={handleDelete} onlink={handleLinkGroup} selectedCardId={selectedCard?.card_id ?? ''} hasSelection={!!selectedCard} lastViewedCardId={lastViewedCardId ?? ''} scrollToCardId={_scrollToCardId} {detailPanelOpen} />
+										<CardGroupComponent {group} onselect={selectCard} onselectgroup={selectGroupSummary} ondelete={handleDelete} onlink={handleLinkGroup} selectedCardId={selectedCard?.card_id ?? ''} {selectedEntityId} hasSelection={hasAnySelection} lastViewedCardId={lastViewedCardId ?? ''} lastViewedEntityId={lastViewedEntityId ?? ''} scrollToCardId={_scrollToCardId} {detailPanelOpen} />
 									{/if}
 								</div>
 							{/each}
@@ -1567,7 +1649,25 @@
 				class="overflow-hidden transition-[width] duration-300 ease-in-out {detailPanelOpen ? 'w-[420px]' : 'w-0'}"
 			>
 				<div class="w-[420px] h-full overflow-y-auto">
-					{#if selectedCard}
+					{#if selectedGroupSummary}
+						<GroupSummaryDetail
+							summary={selectedGroupSummary.summary}
+							group={selectedGroupSummary.group}
+							generating={generatingEntityIds.has(selectedGroupSummary.group.entity_id)}
+							onclose={closeDetailPanel}
+							onshowcards={() => {
+								const entityId = selectedGroupSummary?.group.entity_id;
+								if (entityId) {
+									const el = document.querySelector(`[data-group-entity="${entityId}"]`);
+									if (el) el.dispatchEvent(new CustomEvent('expand'));
+								}
+							}}
+							ongenerate={(entityId) => {
+								generatingEntityIds.add(entityId);
+								generatingEntityIds = new Set(generatingEntityIds);
+							}}
+						/>
+					{:else if selectedCard}
 						<CardDetail card={selectedCard} onclose={closeDetailPanel} ondismiss={dismissActiveCard} ongotocard={gotoCard} onlink={selectedCardIsStandalone ? handleLinkCard : undefined} />
 					{:else}
 						<div class="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-surface-700 text-surface-600">

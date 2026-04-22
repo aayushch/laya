@@ -27,6 +27,12 @@
 	let contextSaved = $state(false);
 	let contextError = $state('');
 
+	// Group Summaries settings
+	let groupSummariesEnabled = $state(true);
+	let groupSumSaving = $state(false);
+	let groupSumSaved = $state(false);
+	let groupSumError = $state('');
+
 	// Debounce timers
 	let briefingTimer: ReturnType<typeof setTimeout> | null = null;
 	let omniTimer: ReturnType<typeof setTimeout> | null = null;
@@ -82,6 +88,8 @@
 
 			contextAssociationEnabled = s.smart_grouping?.context_association ?? true;
 			smartDisplayEnabled = s.smart_grouping?.smart_display ?? true;
+
+			groupSummariesEnabled = s.group_summaries?.enabled ?? true;
 			loading = false;
 		});
 	});
@@ -218,6 +226,24 @@
 			contextError = e instanceof Error ? e.message : 'Save failed';
 		} finally {
 			contextSaving = false;
+		}
+	}
+
+	async function handleGroupSummariesToggle() {
+		groupSummariesEnabled = !groupSummariesEnabled;
+		groupSumSaving = true;
+		groupSumError = '';
+		try {
+			await engineApi.updateSettings({
+				group_summaries: { enabled: groupSummariesEnabled }
+			} as never);
+			groupSumSaved = true;
+			setTimeout(() => (groupSumSaved = false), 2000);
+		} catch (e) {
+			groupSumError = e instanceof Error ? e.message : 'Save failed';
+			groupSummariesEnabled = !groupSummariesEnabled;
+		} finally {
+			groupSumSaving = false;
 		}
 	}
 </script>
@@ -381,6 +407,47 @@
 				{#if contextSaving}
 					<p class="text-xs text-laya-orange">Saving...</p>
 				{:else if contextSaved}
+					<p class="text-xs text-green-400">Saved</p>
+				{/if}
+			</div>
+		{/if}
+	</div>
+
+	<!-- Group Summaries -->
+	<div class="rounded-lg border border-surface-700 bg-surface-800 p-5">
+		<div class="flex items-center gap-2 mb-1">
+			<h3 class="font-medium">Group Summaries</h3>
+			<span class="rounded-full border border-laya-orange/30 bg-laya-orange/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-laya-orange">Beta</span>
+		</div>
+		<p class="mb-4 text-sm text-surface-400">
+			Generate rolling AI summaries for card groups. When multiple cards share the same entity,
+			Laya synthesizes them into an executive snapshot that updates as new events arrive.
+		</p>
+
+		{#if !loading}
+			<div class="space-y-4">
+				<div class="flex items-center justify-between rounded-md border border-surface-600 bg-surface-700/40 px-4 py-3">
+					<div>
+						<span class="text-sm font-medium text-surface-100">Enable group summaries</span>
+						<p class="text-xs text-surface-400">Automatically summarize multi-card entity groups</p>
+					</div>
+					<button
+						class="relative h-6 w-11 shrink-0 rounded-full transition-colors {groupSummariesEnabled ? 'bg-laya-orange' : 'bg-surface-600'}"
+						onclick={handleGroupSummariesToggle}
+						role="switch"
+						aria-checked={groupSummariesEnabled}
+						aria-label="Toggle group summaries"
+					>
+						<span class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform {groupSummariesEnabled ? 'translate-x-5' : ''}"></span>
+					</button>
+				</div>
+
+				{#if groupSumError}
+					<p class="text-xs text-red-400">{groupSumError}</p>
+				{/if}
+				{#if groupSumSaving}
+					<p class="text-xs text-laya-orange">Saving...</p>
+				{:else if groupSumSaved}
 					<p class="text-xs text-green-400">Saved</p>
 				{/if}
 			</div>

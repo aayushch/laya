@@ -268,14 +268,24 @@ html, body {
 /* Compact variant for list rows / list groups — thinner border */
 .card-last-viewed--compact { box-shadow: inset 0 0 0 1px var(--last-viewed-accent); }
 
-/* Highlight variant — subtle background fill instead of border ring,
-   used when card status colors are off to avoid a floating ring with
-   no surrounding color context. Same accent hue as the ring. */
+/* Highlight variant — used when card status colors are off.
+   Uses a ::after pseudo-element with high z-index so it paints above
+   child elements (inner card div has z-index:3 and opaque backgrounds
+   that would hide parent-level box-shadow/outline). */
 .card-last-viewed-highlight {
-	background-color: oklch(0.75 0.18 55 / 0.10);
+	position: relative;
 }
-[data-theme='light'] .card-last-viewed-highlight {
-	background-color: oklch(0.75 0.18 55 / 0.15);
+.card-last-viewed-highlight::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	border: 1.5px solid oklch(0.75 0.18 55 / 0.5);
+	z-index: 10;
+	pointer-events: none;
+}
+[data-theme='light'] .card-last-viewed-highlight::after {
+	border-color: oklch(0.75 0.18 55 / 0.6);
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -300,6 +310,31 @@ html, body {
 }
 .card-last-viewed.card-highlight-fade {
 	animation: card-highlight-fade-with-ring 1.5s ease-out forwards;
+}
+
+/* No-colors variant: animate the ::after ring with a glow that settles */
+@keyframes card-highlight-ring-glow {
+	0%   { border-color: oklch(0.75 0.18 55 / 0.8); box-shadow: 0 0 10px oklch(0.75 0.18 55 / 0.3); }
+	100% { border-color: oklch(0.75 0.18 55 / 0.5); box-shadow: none; }
+}
+.card-last-viewed-highlight.card-highlight-fade::after {
+	animation: card-highlight-ring-glow 1.5s ease-out forwards;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CARD STACK BADGE — yellow-tinted on dark, orange on light
+   ───────────────────────────────────────────────────────────── */
+.card-stack-badge {
+	background-color: oklch(0.75 0.16 85 / 0.30);
+}
+.card-stack-badge:hover {
+	background-color: oklch(0.75 0.16 85 / 0.45);
+}
+[data-theme='light'] .card-stack-badge {
+	background-color: oklch(0.75 0.18 55 / 0.20);
+}
+[data-theme='light'] .card-stack-badge:hover {
+	background-color: oklch(0.75 0.18 55 / 0.30);
 }
 
 /* ─────────────────────────────────────────────────────────────

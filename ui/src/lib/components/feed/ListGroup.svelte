@@ -9,27 +9,33 @@
 	let {
 		group,
 		onselect,
+		onselectgroup,
 		ondelete,
 		onlink,
 		selectedCardId = '',
+		selectedEntityId = '',
 		scrollToCardId = null,
 		bulkSelectedIds,
 		onbulktoggle,
 		onbulktogglegroup,
 		hasSelection = false,
-		lastViewedCardId = ''
+		lastViewedCardId = '',
+		lastViewedEntityId = ''
 	}: {
 		group: CardGroup;
 		onselect: (card: ActionCard) => void;
+		onselectgroup?: (group: CardGroup) => void;
 		ondelete?: (cardId: string) => void;
 		onlink?: (group: CardGroup) => void;
 		selectedCardId?: string;
+		selectedEntityId?: string;
 		scrollToCardId?: string | null;
 		bulkSelectedIds?: Set<string>;
 		onbulktoggle?: (cardId: string, event: MouseEvent) => void;
 		onbulktogglegroup?: (cardIds: string[], selected: boolean) => void;
 		hasSelection?: boolean;
 		lastViewedCardId?: string;
+		lastViewedEntityId?: string;
 	} = $props();
 
 	let expanded = $state(false);
@@ -60,8 +66,16 @@
 	const subjectId = $derived(effectiveEntityId?.includes(':') ? effectiveEntityId.split(':').pop() : effectiveEntityId);
 
 	const hasBookmark = $derived(group.cards.some((c) => c.bookmarked_at));
-	const isGroupSelected = $derived(group.cards.some((c) => c.card_id === selectedCardId));
-	const isGroupLastViewed = $derived(!expanded && !isGroupSelected && !hasSelection && !!lastViewedCardId && group.cards.some(c => c.card_id === lastViewedCardId));
+	const isGroupSelected = $derived(
+		group.cards.some((c) => c.card_id === selectedCardId) ||
+		(!!selectedEntityId && group.entity_id === selectedEntityId)
+	);
+	const isGroupLastViewed = $derived(
+		!expanded && !isGroupSelected && !hasSelection && (
+			(!!lastViewedCardId && group.cards.some(c => c.card_id === lastViewedCardId)) ||
+			(!!lastViewedEntityId && group.entity_id === lastViewedEntityId)
+		)
+	);
 	const isDimmed = $derived(hasSelection && !isGroupSelected);
 
 	// Auto-expand when a card in this group is targeted for scroll
@@ -234,7 +248,7 @@
 	}
 </script>
 
-<div class="transition-opacity {isDimmed ? 'opacity-45 hover:opacity-70' : ''}">
+<div class="transition-opacity {isDimmed ? 'opacity-45 hover:opacity-70' : ''}" data-group-entity={group.entity_id}>
 	<!-- Group header: checkbox in gutter + bordered row -->
 	<div class="flex items-center {onbulktoggle ? 'gap-1.5' : ''}">
 		<!-- Bulk selection checkbox (group-level) — in the gutter -->
@@ -264,19 +278,27 @@
 			</div>
 		{/if}
 
-		<div class="flex-1 min-w-0 border {expanded ? 'rounded-t-lg border-surface-600 border-b-0 bg-surface-900' : 'rounded-lg border-surface-700/40 ' + groupBgStyle} {isGroupLastViewed ? ($cardColors ? 'card-last-viewed card-last-viewed--compact' : 'card-last-viewed-highlight') : ''} transition-colors" style="{isGroupLastViewed ? '--corner-radius: 0.5rem' : ''}">
-			{#if isGroupLastViewed}<div class="card-corner-bottom"></div>{/if}
+		<div class="flex-1 min-w-0 border {expanded ? 'rounded-t-lg border-surface-600 border-b-0 bg-surface-900' : 'rounded-lg border-surface-700/40 ' + groupBgStyle} transition-colors
+			{isGroupLastViewed ? ($cardColors ? 'card-last-viewed card-last-viewed--compact rounded-lg' : 'card-last-viewed-highlight rounded-lg') : ''}">
 			<!-- Group header row -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
 				class="group/grow flex min-w-0 items-center px-3 py-1.5 cursor-pointer transition-colors"
-				onclick={toggle}
-				onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}
+				onclick={() => {
+					if (isSmartGroup) {
+						toggle();
+					} else if (onselectgroup) {
+						onselectgroup(group);
+					} else {
+						onselect(topCard);
+					}
+				}}
+				onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (isSmartGroup) { toggle(); } else if (onselectgroup) { onselectgroup(group); } else { onselect(topCard); } } }}
 				role="button"
 				tabindex="0"
 			>
 				<!-- Expand/collapse chevron — same w-5 as card spacer -->
-				<button aria-label="{expanded ? 'Collapse' : 'Expand'} group" class="w-5 shrink-0 flex items-center justify-center rounded text-surface-500 hover:text-surface-300">
+				<button aria-label="{expanded ? 'Collapse' : 'Expand'} group" class="w-5 shrink-0 flex items-center justify-center rounded text-surface-500 hover:text-surface-300" onclick={(e) => { e.stopPropagation(); toggle(); }}>
 					<svg class="h-3 w-3 transition-transform {expanded ? '' : '-rotate-90'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
 					</svg>
@@ -292,8 +314,14 @@
 			{/if}
 		</span>
 
-		<!-- Subject ID (e.g., FERR-1056) extracted from entity_id -->
-		<span class="w-[100px] shrink-0 ml-2 text-[11px] font-medium text-laya-orange/70 truncate">
+		<!-- Linked icon (fixed slot) + Subject ID -->
+		<div class="group/tip relative w-3 shrink-0 ml-2 flex items-center justify-center">
+			{#if isSmartGroup}
+				<svg class="h-3 w-3 text-laya-orange/60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+				<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">Linked</span>
+			{/if}
+		</div>
+		<span class="w-[90px] shrink-0 ml-1 text-[11px] font-medium text-laya-orange/70 truncate">
 			{subjectId ?? ''}
 		</span>
 
@@ -313,14 +341,20 @@
 
 		<!-- Card count — aligned with ListRow status column (w-[70px]) -->
 		<div class="group/count relative w-[70px] shrink-0 flex items-center gap-1 ml-2">
-			{#if hasBookmark}
-				<svg class="h-3 w-3 shrink-0 text-laya-orange/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke-dasharray="3 2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-				</svg>
-			{/if}
-			<span class="rounded-full border border-surface-600 bg-surface-700 px-2 py-0.5 text-[10px] font-semibold text-surface-300 cursor-default">
-				{group.card_count}
+			<span class="w-3 shrink-0 flex items-center justify-center">
+				{#if hasBookmark}
+					<svg class="h-3 w-3 text-laya-orange/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke-dasharray="3 2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+					</svg>
+				{/if}
 			</span>
+			<button
+				class="rounded-full border border-surface-600 bg-surface-700 px-2 py-0.5 text-[10px] font-semibold text-surface-300 hover:text-laya-orange hover:border-laya-orange/40 transition-colors whitespace-nowrap"
+				title={isSmartGroup ? 'Show all groups' : 'Show all cards'}
+				onclick={(e) => { e.stopPropagation(); expanded = !expanded; }}
+			>
+				{isSmartGroup ? `${group.sub_groups?.length ?? group.card_count} groups` : group.card_count}
+			</button>
 			<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/count:opacity-100">
 				{statusSummaryTooltip}
 			</span>

@@ -226,6 +226,13 @@ export const engineApi = {
 			method: 'POST',
 			body: JSON.stringify({ card_ids: cardIds })
 		}),
+	// Group summaries
+	getGroupSummary: (entityId: string) =>
+		request<import('./types').GroupSummary>(`/cards/groups/${encodeURIComponent(entityId)}/summary`),
+	regenerateGroupSummary: (entityId: string) =>
+		request<import('./types').GroupSummary>(`/cards/groups/${encodeURIComponent(entityId)}/summary/regenerate`, {
+			method: 'POST'
+		}),
 	deleteCard: (cardId: string) =>
 		request<{ status: string; card_id: string }>(`/cards/${cardId}`, {
 			method: 'DELETE'

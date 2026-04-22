@@ -228,8 +228,11 @@
 		{platform}
 	</span>
 
+	<!-- Icon spacer — matches ListGroup linked icon slot -->
+	<span class="w-3 shrink-0 ml-2"></span>
+
 	<!-- Actor — fixed width, always present for alignment -->
-	<span class="group/actor relative w-[100px] shrink-0 ml-2"
+	<span class="group/actor relative w-[90px] shrink-0 ml-1"
 		onmouseenter={() => { if (actorEl) actorTruncated = actorEl.scrollWidth > actorEl.clientWidth; }}
 	>
 		<span bind:this={actorEl} class="block truncate text-xs text-surface-400">
