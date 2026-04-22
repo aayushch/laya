@@ -84,6 +84,20 @@ class CardsListResponse(BaseModel):
     offset: int
 
 
+class GroupSummaryResponse(BaseModel):
+    """Rolling LLM-generated summary for a multi-card entity group."""
+
+    entity_id: str
+    headline: str
+    summary: str
+    key_events: list[str] | None = None
+    current_status: str | None = None
+    pending_actions: list[str] | None = None
+    card_count: int
+    card_ids: list[str]
+    updated_at: str | None = None
+
+
 class CardGroup(BaseModel):
     """A group of cards that refer to the same entity or semantic context."""
 
@@ -100,6 +114,8 @@ class CardGroup(BaseModel):
     context_id: str | None = None
     context_label: str | None = None
     platforms: list[str] | None = None  # All distinct platforms in linked groups
+    group_summary: GroupSummaryResponse | None = None
+    sub_groups: list["CardGroup"] | None = None
 
 
 class GroupedCardsResponse(BaseModel):

@@ -21,7 +21,9 @@ export interface WsMessage {
 	type: string;
 	event_id?: string;
 	card_id?: string;
+	entity_id?: string;
 	session_id?: string;
+	summary?: GroupSummary;
 	payload: Record<string, unknown>;
 }
 
@@ -256,6 +258,9 @@ export interface Settings {
 		confidence_threshold: number;
 		auto_confirm_threshold: number;
 	};
+	group_summaries?: {
+		enabled: boolean;
+	};
 }
 
 /** Staged output attached to an action card */
@@ -320,6 +325,19 @@ export interface ActionCard {
 	last_error?: string;
 }
 
+/** Rolling LLM-generated summary for an entity group */
+export interface GroupSummary {
+	entity_id: string;
+	headline: string;
+	summary: string;
+	key_events?: string[];
+	current_status?: string;
+	pending_actions?: string[];
+	card_count: number;
+	card_ids: string[];
+	updated_at?: string;
+}
+
 /** A group of cards sharing the same entity or semantic context */
 export interface CardGroup {
 	entity_id: string;
@@ -335,6 +353,8 @@ export interface CardGroup {
 	context_id?: string;
 	context_label?: string;
 	platforms?: string[];
+	group_summary?: GroupSummary;
+	sub_groups?: CardGroup[];
 }
 
 /** Response from GET /cards/grouped */

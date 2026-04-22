@@ -16,7 +16,7 @@ from laya.agents.session_manager import cancel_sessions_for_card
 from laya.api.websocket import manager
 from laya.db.sqlite import get_db
 from laya.llm.client import log_to_audit
-from laya.models.card import CardGroup, CardResponse, CardsListResponse, GroupedCardsResponse, StagedOutput, SuggestedAction
+from laya.models.card import CardGroup, CardResponse, CardsListResponse, GroupedCardsResponse, GroupSummaryResponse, StagedOutput, SuggestedAction
 from laya.pipeline.summarize import trigger_summary_status_update
 
 log = structlog.get_logger()
@@ -292,12 +292,41 @@ async def get_grouped_cards(
                 if cr["label"]:
                     context_labels[cr["context_id"]] = cr["label"]
 
+    # Batch-fetch group summaries for all entity_ids present
+    all_entity_ids = set()
+    for entity_rows in groups.values():
+        for r in entity_rows:
+            eid = r["entity_id"]
+            if eid:
+                all_entity_ids.add(eid)
+    summary_map: dict[str, GroupSummaryResponse] = {}
+    if all_entity_ids:
+        placeholders = ",".join("?" * len(all_entity_ids))
+        summary_rows = await db.execute_fetchall(
+            f"SELECT * FROM group_summaries WHERE entity_id IN ({placeholders})",
+            list(all_entity_ids),
+        )
+        for sr in summary_rows:
+            summary_map[sr["entity_id"]] = GroupSummaryResponse(
+                entity_id=sr["entity_id"],
+                headline=sr["headline"],
+                summary=sr["summary"],
+                key_events=json.loads(sr["key_events"] or "null"),
+                current_status=sr["current_status"],
+                pending_actions=json.loads(sr["pending_actions"] or "null"),
+                card_count=sr["card_count"],
+                card_ids=json.loads(sr["card_ids"] or "[]"),
+                updated_at=sr["updated_at"],
+            )
+
     result: list[CardGroup] = []
     for group_key, entity_rows in groups.items():
+        is_context_group = group_key.startswith("ctx_")
+
         # For context (linked) groups, ensure cards are sorted by created_at
         # descending (latest first) regardless of entity_id, so the most
         # recent card always appears on top.
-        if group_key.startswith("ctx_"):
+        if is_context_group:
             entity_rows.sort(key=lambda r: r["created_at"] or "", reverse=True)
         cards = [_row_to_card(r) for r in entity_rows]
         meta = event_meta.get(entity_rows[0]["event_id"], {})
@@ -309,7 +338,6 @@ async def get_grouped_cards(
         has_pending = any(c.status in ("pending", "ready", "requires_approval") for c in cards)
 
         # Resolve context group metadata
-        is_context_group = group_key.startswith("ctx_")
         context_id = group_key if is_context_group else None
         context_label = context_labels.get(group_key) if is_context_group else None
 
@@ -325,6 +353,11 @@ async def get_grouped_cards(
         # regardless of link direction.
         platforms_list: list[str] | None = None
         group_platform = meta.get("source_platform", "")
+
+        # Build sub_groups for context groups: nest entity-level groups inside
+        sub_groups: list[CardGroup] | None = None
+        group_summary: GroupSummaryResponse | None = None
+
         if is_context_group:
             seen_platforms: set[str] = set()
             ordered_platforms: list[str] = []
@@ -338,6 +371,44 @@ async def get_grouped_cards(
             # Use the top (latest) card's platform as primary
             top_eid = entity_rows[0]["entity_id"] or ""
             group_platform = top_eid.split(":")[0] if ":" in top_eid else group_platform
+
+            # Build nested entity sub-groups within the context group
+            entity_sub: dict[str, list] = {}
+            for r in entity_rows:
+                eid = r["entity_id"] or f"singleton:{r['card_id']}"
+                entity_sub.setdefault(eid, []).append(r)
+
+            sub_groups_list: list[CardGroup] = []
+            for sub_eid, sub_rows in entity_sub.items():
+                sub_cards = [_row_to_card(r) for r in sub_rows]
+                sub_meta = event_meta.get(sub_rows[0]["event_id"], {})
+                sub_top_priority = min(
+                    (c.priority for c in sub_cards),
+                    key=lambda p: _PRIORITY_ORDER.get(p, 99),
+                )
+                sub_latest = max((c.created_at or "") for c in sub_cards)
+                sub_has_pending = any(c.status in ("pending", "ready", "requires_approval") for c in sub_cards)
+                sub_platform = sub_eid.split(":")[0] if ":" in sub_eid else sub_meta.get("source_platform", "")
+                sub_groups_list.append(
+                    CardGroup(
+                        entity_id=sub_eid,
+                        entity_title=sub_meta.get("subject_title") or sub_eid,
+                        entity_url=sub_meta.get("subject_url"),
+                        platform=sub_platform,
+                        card_count=len(sub_cards),
+                        top_priority=sub_top_priority,
+                        latest_at=sub_latest,
+                        has_pending=sub_has_pending,
+                        cards=sub_cards,
+                        group_summary=summary_map.get(sub_eid) if len(sub_cards) >= 2 else None,
+                    )
+                )
+            # Sort sub-groups by latest_at descending
+            sub_groups_list.sort(key=lambda g: g.latest_at, reverse=True)
+            sub_groups = sub_groups_list if sub_groups_list else None
+        else:
+            # Entity group: attach summary if available
+            group_summary = summary_map.get(entity_id_val) if len(cards) >= 2 else None
 
         result.append(
             CardGroup(
@@ -353,6 +424,8 @@ async def get_grouped_cards(
                 context_id=context_id,
                 context_label=context_label,
                 platforms=platforms_list,
+                group_summary=group_summary,
+                sub_groups=sub_groups,
             )
         )
 
@@ -2125,3 +2198,46 @@ async def merge_cards(body: MergeCardsRequest):
     log.info("context_group_merged", context_id=context_id, card_count=len(cards))
     await manager.broadcast({"type": "context_group_merged", "payload": {"context_id": context_id}})
     return {"status": "merged", "context_id": context_id, "card_count": len(cards)}
+
+
+# ---------------------------------------------------------------------------
+# Group summary endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/cards/groups/{entity_id:path}/summary")
+async def get_group_summary(entity_id: str):
+    """Return the rolling summary for an entity group."""
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT * FROM group_summaries WHERE entity_id = ?",
+        (entity_id,),
+    )
+    row = rows[0] if rows else None
+    if not row:
+        raise HTTPException(status_code=404, detail="No summary for this entity group")
+    return GroupSummaryResponse(
+        entity_id=row["entity_id"],
+        headline=row["headline"],
+        summary=row["summary"],
+        key_events=json.loads(row["key_events"] or "null"),
+        current_status=row["current_status"],
+        pending_actions=json.loads(row["pending_actions"] or "null"),
+        card_count=row["card_count"],
+        card_ids=json.loads(row["card_ids"] or "[]"),
+        updated_at=row["updated_at"],
+    )
+
+
+@router.post("/cards/groups/{entity_id:path}/summary/regenerate")
+async def regenerate_summary(entity_id: str):
+    """Force full regeneration of a group summary from all cards."""
+    from laya.pipeline.group_summary import regenerate_group_summary
+
+    result = await regenerate_group_summary(entity_id)
+    if not result:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not generate summary — entity group may have fewer than 2 cards or LLM call failed",
+        )
+    return result

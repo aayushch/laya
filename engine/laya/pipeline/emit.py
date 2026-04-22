@@ -413,7 +413,21 @@ async def run_emit(
             }
         )
 
-    # 8. Trigger daily summary update (async, non-blocking).
+    # 8. Group summary: generate or update rolling summary for entity group
+    from laya.pipeline.group_summary import trigger_group_summary_update
+    async with db.execute(
+        "SELECT COUNT(*) AS cnt FROM action_cards WHERE entity_id = ?",
+        (entity_id,),
+    ) as _cnt_cursor:
+        _cnt_row = await _cnt_cursor.fetchone()
+    if _cnt_row and _cnt_row[0] >= 2:
+        from laya.tasks import create_task as _create_summary_task
+        _create_summary_task(
+            trigger_group_summary_update(entity_id, card_id, space_id),
+            name=f"group_summary_{entity_id}",
+        )
+
+    # 9. Trigger daily summary update (async, non-blocking).
     # Space metadata is hydrated inside summarize.py via a DB join on card_id,
     # so we no longer pre-resolve space name/color here.
     from laya.tasks import create_task as create_tracked_task
