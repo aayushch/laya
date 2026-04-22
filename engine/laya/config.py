@@ -95,6 +95,9 @@ DEFAULT_SETTINGS = {
         "max_concurrent_events": 4,
         "queue_poll_interval": 2,
     },
+    "group_summaries": {
+        "enabled": True,
+    },
     "smart_grouping": {
         "context_association": True,
         "smart_display": True,
