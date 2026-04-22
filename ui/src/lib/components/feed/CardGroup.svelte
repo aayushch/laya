@@ -147,15 +147,15 @@
 	];
 
 	const groupStatusStyle: Record<string, string> = {
-		pending:            'bg-amber-950/55  border-amber-800/30  hover:border-amber-700/45  card-pulse-amber',
-		ready:              'bg-amber-950/55  border-amber-800/30  hover:border-amber-700/45',
-		requires_approval:  'bg-violet-950/55 border-violet-800/25 hover:border-violet-700/40',
-		done:               'bg-emerald-950/50 border-emerald-800/20 hover:border-emerald-700/35',
-		failed:             'bg-rose-950/60   border-rose-800/35   hover:border-rose-700/50',
-		dismissed:          'bg-surface-800/40 border-surface-700/25 hover:border-surface-600/40',
-		archived:           'bg-surface-800/40 border-surface-700/25 hover:border-surface-600/40',
-		agent_running:      'bg-violet-950/55 border-violet-800/25 hover:border-violet-700/40 card-pulse-violet',
-		awaiting_input:     'bg-amber-950/55  border-amber-800/30  hover:border-amber-700/45  card-pulse-amber',
+		pending:            'bg-amber-950/55  border-transparent  hover:border-amber-700/45  card-pulse-amber',
+		ready:              'bg-amber-950/55  border-transparent  hover:border-amber-700/45',
+		requires_approval:  'bg-violet-950/55 border-transparent hover:border-violet-700/40',
+		done:               'bg-emerald-950/50 border-transparent hover:border-emerald-700/35',
+		failed:             'bg-rose-950/60   border-transparent   hover:border-rose-700/50',
+		dismissed:          'bg-surface-800/40 border-transparent hover:border-surface-600/40',
+		archived:           'bg-surface-800/40 border-transparent hover:border-surface-600/40',
+		agent_running:      'bg-violet-950/55 border-transparent hover:border-violet-700/40 card-pulse-violet',
+		awaiting_input:     'bg-amber-950/55  border-transparent  hover:border-amber-700/45  card-pulse-amber',
 	};
 
 	// Determine dominant status across all cards in the group
@@ -167,14 +167,14 @@
 		return group.cards[0]?.status ?? 'pending';
 	});
 
-	const neutralGroupStyle = 'bg-surface-800 border-surface-700 hover:border-surface-600';
+	const neutralGroupStyle = 'bg-surface-800 border-transparent hover:border-surface-600';
 
 	const allArchived = $derived(group.cards.every(c => c.status === 'archived'));
 	const groupStyle = $derived(
 		allArchived
-			? 'bg-surface-900/60 border-dashed border-surface-700/50 opacity-50 hover:opacity-80'
+			? 'bg-surface-900/60 border-transparent opacity-50 hover:opacity-80'
 			: $cardColors
-				? (groupStatusStyle[dominantStatus] ?? 'bg-surface-900 border-surface-600 hover:border-laya-orange/30')
+				? (groupStatusStyle[dominantStatus] ?? 'bg-surface-900 border-transparent hover:border-laya-orange/30')
 				: neutralGroupStyle
 	);
 
@@ -277,15 +277,15 @@
 
 	// Ghost strip styles for smart groups — matches original styling exactly
 	const ghostBorderStyle: Record<string, string> = {
-		pending:            'border-amber-800/20',
-		ready:              'border-amber-800/20',
-		requires_approval:  'border-violet-800/15',
-		done:               'border-emerald-800/12',
-		failed:             'border-rose-800/25',
-		dismissed:          'border-surface-700/20',
-		archived:           'border-surface-700/20',
-		agent_running:      'border-violet-800/15',
-		awaiting_input:     'border-amber-800/20',
+		pending:            'border-amber-900/25',
+		ready:              'border-amber-900/25',
+		requires_approval:  'border-violet-900/20',
+		done:               'border-emerald-900/18',
+		failed:             'border-rose-900/30',
+		dismissed:          'border-surface-700/25',
+		archived:           'border-surface-700/25',
+		agent_running:      'border-violet-900/20',
+		awaiting_input:     'border-amber-900/25',
 	};
 	const ghostBgStyle: Record<string, string> = {
 		pending:            'bg-amber-950/30',
@@ -293,24 +293,24 @@
 		requires_approval:  'bg-violet-950/30',
 		done:               'bg-emerald-950/25',
 		failed:             'bg-rose-950/35',
-		dismissed:          'bg-surface-800/30',
-		archived:           'bg-surface-800/30',
+		dismissed:          'bg-surface-900/40',
+		archived:           'bg-surface-900/40',
 		agent_running:      'bg-violet-950/30',
 		awaiting_input:     'bg-amber-950/30',
 	};
 	const ghostBorder = $derived(
 		allArchived
-			? 'border-dashed border-surface-700/50'
+			? 'ghost-strip border-dashed border-surface-700/40'
 			: $cardColors
-				? (ghostBorderStyle[dominantStatus] ?? 'border-surface-700')
-				: 'border-surface-700'
+				? 'ghost-strip ' + (ghostBorderStyle[dominantStatus] ?? 'border-surface-700/30')
+				: 'ghost-strip border-surface-800'
 	);
 	const ghostBg = $derived(
 		allArchived
 			? 'bg-surface-900/40'
 			: $cardColors
 				? (ghostBgStyle[dominantStatus] ?? 'bg-surface-950')
-				: 'bg-surface-850'
+				: 'bg-surface-800'
 	);
 	const ghostCount = $derived(isSmartGroup ? Math.min(extraCount, 2) : 0);
 
@@ -328,8 +328,14 @@
 		expanded = !expanded;
 	}
 
+	let menuPos = $state({ top: 0, right: 0 });
+
 	function toggleGroupMenu(e: Event) {
 		e.stopPropagation();
+		if (!groupMenuOpen && menuEl) {
+			const rect = menuEl.getBoundingClientRect();
+			menuPos = { top: rect.bottom + 4, right: window.innerWidth - rect.right };
+		}
 		groupMenuOpen = !groupMenuOpen;
 	}
 
@@ -387,13 +393,11 @@
 <!-- Single persistent DOM — morphs between collapsed card and expanded list -->
 <div
 	bind:this={wrapperEl}
-	class="relative rounded-xl transition-opacity duration-200 {isDimmed ? 'opacity-45 hover:opacity-70' : ''}
-		{isGroupLastViewed ? ($cardColors ? 'card-last-viewed' : 'card-last-viewed-highlight') : ''}"
+	class="relative rounded-xl transition-opacity duration-200 {isDimmed ? 'opacity-45 hover:opacity-70' : ''}"
 	style="padding-bottom: {!expanded && ghostCount > 0 ? 12 : 0}px; transition: padding-bottom 200ms ease;"
 	data-card-id={topCard.card_id}
 	data-group-entity={group.entity_id}
 >
-	{#if isGroupLastViewed}<div class="card-corner-bottom"></div>{/if}
 
 	<!-- Ghost strip 2 — furthest back (smart groups only) -->
 	{#if ghostCount >= 2}
@@ -417,12 +421,14 @@
 		 the header out of view and leaving empty space at the bottom. clip visually
 		 clips the same way but does NOT create a scroll container. -->
 	<div
-		class="relative rounded-xl border shadow-lg transition-all duration-200 {expanded ? '' : 'overflow-clip group/card'}
+		class="relative rounded-xl border shadow-lg transition-all duration-200 {expanded ? '' : 'group/card'}
 			{expanded
 				? 'border-surface-600 bg-surface-900'
-				: groupStyle}"
+				: groupStyle} {!expanded && ghostCount > 0 ? 'ghost-strip-shadow' : ''}
+			{isGroupLastViewed ? ($cardColors ? 'card-last-viewed' : 'card-last-viewed-highlight') : ''}"
 		style="z-index: 3;"
 	>
+		{#if isGroupLastViewed}<div class="card-corner-bottom"></div>{/if}
 		<!-- Header — shared between collapsed and expanded -->
 		<div
 			role="button"
@@ -473,23 +479,19 @@
 							</svg>
 						</span>
 					{/if}
-					<span class="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase {priorityColors[group.top_priority] ?? priorityColors.MEDIUM}">
-						{priorityLabel[group.top_priority] ?? group.top_priority}
-					</span>
 					<!-- Card count badge (expanded only — collapsed uses footer indicator) -->
 					{#if expanded}
-						<span class="whitespace-nowrap rounded-full border border-surface-600 bg-surface-700 px-2 py-0.5 text-[10px] font-semibold text-surface-300">
+						<span class="whitespace-nowrap rounded-full bg-laya-orange/10 px-2 py-0.5 text-[10px] font-semibold text-laya-orange">
 							{group.card_count} cards
 						</span>
 					{/if}
-					{#if expanded && hasAnyAction}
-						<!-- Three-dot group actions menu (expanded only) -->
-						<div class="group-menu relative" bind:this={menuEl}>
+					{#if hasAnyAction}
+						<!-- Three-dot group actions menu -->
+						<div class="group-menu group/actions relative" bind:this={menuEl}>
 							<button
 								onclick={toggleGroupMenu}
 								disabled={bulkActionRunning}
-								class="flex h-6 w-6 items-center justify-center rounded-full text-surface-500 transition-colors hover:bg-surface-700 hover:text-surface-300 disabled:opacity-50"
-								title="Group actions"
+								class="flex h-6 w-6 items-center justify-center rounded-full text-laya-orange/70 transition-colors hover:bg-laya-orange/15 hover:text-laya-orange disabled:opacity-50"
 							>
 								{#if bulkActionRunning}
 									<svg class="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -502,71 +504,14 @@
 									</svg>
 								{/if}
 							</button>
-							{#if groupMenuOpen}
-								<div
-									class="absolute right-0 top-full z-50 mt-1 w-40 rounded-lg border border-surface-600 bg-surface-800 p-1 shadow-xl shadow-black/30"
-									role="menu"
-								>
-									{#if canApproveAll}
-										<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-violet-400" role="menuitem" onclick={(e) => bulkAction('approve', e)}>
-											<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-											Approve All
-										</button>
-									{/if}
-									{#if canCompleteAll}
-										<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-green-400" role="menuitem" onclick={(e) => bulkAction('complete', e)}>
-											<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
-											Complete All
-										</button>
-									{/if}
-									{#if canDismissAll}
-										<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400" role="menuitem" onclick={(e) => bulkAction('dismiss', e)}>
-											<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
-											Dismiss All
-										</button>
-									{/if}
-									{#if canReopenAll}
-										<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-laya-orange" role="menuitem" onclick={(e) => bulkAction('reopen', e)}>
-											<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-											Reopen All
-										</button>
-									{/if}
-									{#if canArchiveAll}
-										<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-surface-400" role="menuitem" onclick={(e) => bulkAction('archive', e)}>
-											<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
-											Archive All
-										</button>
-									{/if}
-									{#if canUnarchiveAll}
-										<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-laya-orange" role="menuitem" onclick={(e) => bulkAction('unarchive', e)}>
-											<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4l3 3m0 0l3-3m-3 3V9" /></svg>
-											Unarchive All
-										</button>
-									{/if}
-									<div class="my-1 border-t border-surface-700"></div>
-									<button
-										class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-laya-orange"
-										role="menuitem"
-										onclick={(e) => { e.stopPropagation(); groupMenuOpen = false; onlink?.(group); }}
-									>
-										<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-										Link to...
-									</button>
-									{#if isSmartGroup}
-										<button
-											class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400"
-											role="menuitem"
-											disabled={unlinking}
-											onclick={unlinkGroup}
-										>
-											<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /><line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
-											{unlinking ? 'Unlinking...' : 'Unlink Group'}
-										</button>
-									{/if}
-								</div>
+							{#if !groupMenuOpen}
+								<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/actions:opacity-100">Group actions</span>
 							{/if}
 						</div>
 					{/if}
+					<span class="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase {priorityColors[group.top_priority] ?? priorityColors.MEDIUM}">
+						{priorityLabel[group.top_priority] ?? group.top_priority}
+					</span>
 					<!-- Chevron — expand/collapse toggle (independent of body click) -->
 					<button
 						class="shrink-0 rounded p-0.5 transition-colors hover:bg-surface-700/50"
@@ -705,6 +650,72 @@
 		{/if}
 	</div>
 </div>
+
+{#if groupMenuOpen}
+	<!-- Rendered outside wrapper to escape parent opacity/overflow -->
+	<div
+		class="fixed z-[100] w-40 rounded-lg border border-surface-600 bg-surface-900 p-1 shadow-xl shadow-black/50"
+		style="top: {menuPos.top}px; right: {menuPos.right}px;"
+		role="menu"
+	>
+		{#if canApproveAll}
+			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-violet-400" role="menuitem" onclick={(e) => bulkAction('approve', e)}>
+				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+				Approve All
+			</button>
+		{/if}
+		{#if canCompleteAll}
+			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-green-400" role="menuitem" onclick={(e) => bulkAction('complete', e)}>
+				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+				Complete All
+			</button>
+		{/if}
+		{#if canDismissAll}
+			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400" role="menuitem" onclick={(e) => bulkAction('dismiss', e)}>
+				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+				Dismiss All
+			</button>
+		{/if}
+		{#if canReopenAll}
+			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-laya-orange" role="menuitem" onclick={(e) => bulkAction('reopen', e)}>
+				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+				Reopen All
+			</button>
+		{/if}
+		{#if canArchiveAll}
+			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-surface-400" role="menuitem" onclick={(e) => bulkAction('archive', e)}>
+				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
+				Archive All
+			</button>
+		{/if}
+		{#if canUnarchiveAll}
+			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-laya-orange" role="menuitem" onclick={(e) => bulkAction('unarchive', e)}>
+				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4l3 3m0 0l3-3m-3 3V9" /></svg>
+				Unarchive All
+			</button>
+		{/if}
+		<div class="my-1 border-t border-surface-700"></div>
+		<button
+			class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-laya-orange"
+			role="menuitem"
+			onclick={(e) => { e.stopPropagation(); groupMenuOpen = false; onlink?.(group); }}
+		>
+			<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+			Link to...
+		</button>
+		{#if isSmartGroup}
+			<button
+				class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400"
+				role="menuitem"
+				disabled={unlinking}
+				onclick={unlinkGroup}
+			>
+				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /><line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+				{unlinking ? 'Unlinking...' : 'Unlink Group'}
+			</button>
+		{/if}
+	</div>
+{/if}
 
 {#if hoveredTooltip}
 	<span

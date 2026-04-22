@@ -131,12 +131,18 @@
 	}
 
 
-	// When switching views, scroll selected card into view.
+	// When switching views, scroll the active card/group into view.
 	$effect(() => {
-		const mode = $feedViewMode;
-		if (selectedCard) {
-			tick().then(() => scrollToCard(selectedCard!.card_id));
-		}
+		const _mode = $feedViewMode;
+		tick().then(() => {
+			if (selectedCard) {
+				scrollToCard(selectedCard.card_id);
+			} else if (lastViewedEntityId) {
+				scrollToGroupElement(lastViewedEntityId);
+			} else if (lastViewedCardId) {
+				scrollToCard(lastViewedCardId);
+			}
+		});
 	});
 
 	// Auto-open detail panel when a card is selected (skip FLIP — scroll will follow)
@@ -614,8 +620,9 @@
 					const el = document.querySelector(`[data-group-entity="${entityId}"]`);
 					if (el) {
 						scrollElToCenter(el);
-						el.classList.add('card-highlight-fade');
-						el.addEventListener('animationend', () => el.classList.remove('card-highlight-fade'), { once: true });
+						const rowEl = document.querySelector(`[data-group-row="${entityId}"]`) ?? el;
+						rowEl.classList.add('card-highlight-fade');
+						rowEl.addEventListener('animationend', () => rowEl.classList.remove('card-highlight-fade'), { once: true });
 					} else if (tries > 0) {
 						attempt(tries - 1);
 					}
@@ -681,6 +688,7 @@
 		lastViewedEntityId = group.entity_id;
 		sessionStorage.removeItem(SELECTED_CARD_KEY);
 		openDetailPanel(true);
+		scrollToGroupElement(group.entity_id);
 	}
 
 	function closeDetail() {
@@ -989,7 +997,7 @@
 		if (immediateTargetId) {
 			requestAnimationFrame(() => {
 				const el = lastEntityId
-					? document.querySelector(`[data-group-entity="${lastEntityId}"]`)
+					? (document.querySelector(`[data-group-row="${lastEntityId}"]`) ?? document.querySelector(`[data-group-entity="${lastEntityId}"]`))
 					: findCardElement(immediateTargetId);
 				if (el) {
 					el.classList.add('card-highlight-fade');
@@ -1662,6 +1670,7 @@
 									if (el) el.dispatchEvent(new CustomEvent('expand'));
 								}
 							}}
+							ongotogroup={(entityId) => scrollToGroupElement(entityId)}
 							ongenerate={(entityId) => {
 								generatingEntityIds.add(entityId);
 								generatingEntityIds = new Set(generatingEntityIds);

@@ -488,12 +488,29 @@
 
 	<!-- Scrollable content -->
 	<div class="flex-1 overflow-y-auto px-5 py-4">
-		<!-- Source platform + actor info -->
+		<!-- Source platform + subject ID + actor info -->
 		{#if card.entity_id || card.actor_name || card.actor_email}
 			<div class="mb-3 flex flex-col gap-0.5">
 				{#if card.entity_id}
-					<div class="mb-1 flex items-center">
+					<div class="mb-1 flex items-center gap-1.5 min-w-0">
 						<PlatformBadge platform={card.entity_id.split(':')[0]} />
+						{#if card.source_ref}
+							{#if card.source_url}
+								<a
+									href={card.source_url}
+									target="_blank"
+									rel="noopener noreferrer"
+									class="inline-flex items-center gap-1 text-xs font-medium text-laya-orange hover:text-laya-peach transition-colors min-w-0 truncate"
+								>
+									<span class="truncate">{card.source_ref}</span>
+									<svg class="h-2.5 w-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+									</svg>
+								</a>
+							{:else}
+								<span class="text-xs font-medium text-surface-400 truncate">{card.source_ref}</span>
+							{/if}
+						{/if}
 					</div>
 				{/if}
 				{#if card.actor_name}
@@ -701,30 +718,6 @@
 				{#if executeError}
 					<p class="mt-2 text-xs text-red-400">{executeError}</p>
 				{/if}
-			</div>
-		{/if}
-
-		<!-- Source reference -->
-		{#if card.source_ref}
-			<div class="mt-4 border-t border-surface-700 pt-3">
-				<h3 class="mb-1.5 text-xs font-semibold uppercase tracking-wider text-surface-400">Source</h3>
-				<div class="flex items-center gap-2 min-w-0 overflow-hidden">
-					{#if card.source_url}
-						<a
-							href={card.source_url}
-							target="_blank"
-							rel="noopener noreferrer"
-							class="inline-flex items-center gap-1 text-sm font-medium text-laya-orange hover:text-laya-peach transition-colors min-w-0"
-						>
-							<span class="truncate">{card.source_ref}</span>
-							<svg class="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-							</svg>
-						</a>
-					{:else}
-						<span class="text-sm font-medium text-surface-200 truncate">{card.source_ref}</span>
-					{/if}
-				</div>
 			</div>
 		{/if}
 

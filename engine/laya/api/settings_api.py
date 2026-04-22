@@ -139,6 +139,19 @@ async def update_settings(body: dict) -> dict:
             current[key] = {**current[key], **value}
         else:
             current[key] = value
+
+    # Clamp omni.event_threshold to [0, 100]. 0 disables the trigger entirely
+    # (for users who only want scheduled/rolling). Above 100 would let card
+    # volume between runs grow unbounded — past ~100 the LLM's ability to
+    # aggregate usefully degrades, so we cap it.
+    omni_cfg = current.get("omni")
+    if isinstance(omni_cfg, dict) and "event_threshold" in omni_cfg:
+        try:
+            et = int(omni_cfg["event_threshold"])
+        except (TypeError, ValueError):
+            et = 50
+        omni_cfg["event_threshold"] = max(0, min(100, et))
+
     save_settings(current)
     log.info("settings_updated")
     return {"status": "updated"}

@@ -75,15 +75,15 @@
 		archived: 'bg-surface-600'
 	};
 	const statusRowStyle: Record<string, string> = {
-		pending:            'bg-amber-950/55  hover:bg-amber-950/70',
-		ready:              'bg-amber-950/55  hover:bg-amber-950/70',
-		requires_approval:  'bg-violet-950/55 hover:bg-violet-950/70',
-		agent_running:      'bg-violet-950/55 hover:bg-violet-950/70',
-		awaiting_input:     'bg-amber-950/55  hover:bg-amber-950/70',
-		done:               'bg-emerald-950/50 hover:bg-emerald-950/65',
-		failed:             'bg-rose-950/60   hover:bg-rose-950/75',
-		dismissed:          'bg-surface-800/40 hover:bg-surface-800/60',
-		archived:           'bg-surface-900/60 hover:bg-surface-900/80',
+		pending:            'bg-amber-950/55',
+		ready:              'bg-amber-950/55',
+		requires_approval:  'bg-violet-950/55',
+		agent_running:      'bg-violet-950/55',
+		awaiting_input:     'bg-amber-950/55',
+		done:               'bg-emerald-950/50',
+		failed:             'bg-rose-950/60',
+		dismissed:          'bg-surface-800/40',
+		archived:           'bg-surface-900/60',
 	};
 	const statusLabel: Record<string, string> = {
 		pending: 'Processing',
@@ -200,8 +200,8 @@
 
 	<div
 		data-card-id={card.card_id}
-		class="group/row flex flex-1 min-w-0 items-center rounded-lg px-3 py-1.5 text-left transition-colors cursor-pointer
-			border border-transparent {$cardColors ? (statusRowStyle[card.status] ?? 'hover:bg-surface-800/60') : 'hover:bg-surface-800/60'}
+		class="group/row list-row-hover flex flex-1 min-w-0 items-center rounded-lg px-3 py-1.5 text-left transition-colors cursor-pointer
+			border border-transparent {$cardColors ? (statusRowStyle[card.status] ?? '') : ''}
 			{isArchived ? 'opacity-50 hover:opacity-75' : isDimmed ? 'opacity-45 hover:opacity-70' : ''}
 			{isLastViewed ? ($cardColors ? 'card-last-viewed card-last-viewed--compact' : 'card-last-viewed-highlight') : ''}"
 		style="{isLastViewed ? '--corner-radius: 0.5rem' : ''}"
@@ -215,7 +215,7 @@
 		<button
 			onclick={toggleBookmark}
 			aria-label={card.bookmarked_at ? 'Remove bookmark' : 'Bookmark card'}
-			class="w-5 shrink-0 flex items-center justify-center transition-colors {indented ? 'ml-1' : ''} {card.bookmarked_at ? 'text-laya-orange' : 'text-surface-600 hover:text-laya-orange'}"
+			class="w-5 shrink-0 flex items-center justify-center transition-colors {card.bookmarked_at ? 'text-laya-orange' : 'text-surface-600 hover:text-laya-orange'}"
 			disabled={bookmarking}
 		>
 			<svg class="h-3.5 w-3.5" fill={card.bookmarked_at ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
@@ -224,7 +224,7 @@
 		</button>
 
 		<!-- Source — fixed width -->
-	<span class="w-[60px] shrink-0 text-[11px] font-semibold uppercase tracking-wider text-surface-500 truncate" title={platform}>
+	<span class="w-[76px] shrink-0 text-[11px] font-semibold uppercase tracking-wider text-surface-500 truncate" title={platform}>
 		{platform}
 	</span>
 
@@ -261,7 +261,7 @@
 
 	<!-- Status — fixed width / Approve button for requires_approval -->
 	{#if card.status === 'requires_approval'}
-		<span class="w-[70px] shrink-0 flex items-center ml-2">
+		<span class="w-[70px] shrink-0 flex items-center justify-center ml-2">
 			<button
 				class="flex items-center gap-1 rounded-full bg-violet-500/20 px-2 py-0.5 text-[10px] font-medium text-violet-400 transition-colors hover:bg-violet-500/30 disabled:opacity-40"
 				onclick={approveAgent}
