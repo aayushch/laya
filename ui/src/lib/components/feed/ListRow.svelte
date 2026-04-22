@@ -3,6 +3,7 @@
 	import { engineApi } from '$lib/api/engine';
 	import { goto } from '$app/navigation';
 	import { cardColors } from '$lib/stores/cardColors';
+	import { glassTheme } from '$lib/stores/glassTheme';
 	import StatusDot from './StatusDot.svelte';
 
 	let {
@@ -74,7 +75,7 @@
 		dismissed: 'bg-surface-500',
 		archived: 'bg-surface-600'
 	};
-	const statusRowStyle: Record<string, string> = {
+	const solidRowStyle: Record<string, string> = {
 		pending:            'bg-amber-950/55',
 		ready:              'bg-amber-950/55',
 		requires_approval:  'bg-violet-950/55',
@@ -85,6 +86,18 @@
 		dismissed:          'bg-surface-800/40',
 		archived:           'bg-surface-900/60',
 	};
+	const glassRowStyle: Record<string, string> = {
+		pending:            'glass-card-flat bg-amber-950/45',
+		ready:              'glass-card-flat bg-amber-950/45',
+		requires_approval:  'glass-card-flat bg-violet-950/45',
+		agent_running:      'glass-card-flat bg-violet-950/45',
+		awaiting_input:     'glass-card-flat bg-amber-950/45',
+		done:               'glass-card-flat bg-emerald-950/40',
+		failed:             'glass-card-flat bg-rose-950/50',
+		dismissed:          'glass-card-flat bg-surface-800/30',
+		archived:           'glass-card-flat bg-surface-900/35',
+	};
+	const statusRowStyle = $derived($glassTheme ? glassRowStyle : solidRowStyle);
 	const statusLabel: Record<string, string> = {
 		pending: 'Processing',
 		ready: 'Ready',
@@ -200,7 +213,7 @@
 
 	<div
 		data-card-id={card.card_id}
-		class="group/row list-row-hover flex flex-1 min-w-0 items-center rounded-lg px-3 py-1.5 text-left transition-colors cursor-pointer
+		class="group/row list-row-hover relative flex flex-1 min-w-0 items-center rounded-lg px-3 py-1.5 text-left transition-colors cursor-pointer hover:z-20
 			border border-transparent {$cardColors ? (statusRowStyle[card.status] ?? '') : ''}
 			{isArchived ? 'opacity-50 hover:opacity-75' : isDimmed ? 'opacity-45 hover:opacity-70' : ''}
 			{isLastViewed ? ($cardColors ? 'card-last-viewed card-last-viewed--compact' : 'card-last-viewed-highlight') : ''}"
@@ -239,7 +252,7 @@
 			{card.actor_name ?? ''}
 		</span>
 		{#if actorTruncated}
-			<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/actor:opacity-100">
+			<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-transparent bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/actor:opacity-100">
 				{card.actor_name}
 			</span>
 		{/if}
@@ -253,7 +266,7 @@
 			{card.header}
 		</span>
 		{#if subjectTruncated}
-			<span class="pointer-events-none absolute top-full left-0 z-10 mt-1 max-w-xs whitespace-normal rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/subject:opacity-100">
+			<span class="pointer-events-none absolute top-full left-0 z-10 mt-1 max-w-xs whitespace-normal rounded-md border border-transparent bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/subject:opacity-100">
 				{card.header}
 			</span>
 		{/if}
@@ -285,77 +298,77 @@
 				<button aria-label="Mark as Done" class="h-5 w-5 flex items-center justify-center rounded text-green-400/60 hover:bg-green-500/15 hover:text-green-400 disabled:opacity-40" onclick={markDone} disabled={markingDone}>
 					<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
 				</button>
-				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Done</span>
+				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-transparent bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">Done</span>
 			</div>
 			<div class="group/act relative">
 				<button aria-label="Dismiss" class="h-5 w-5 flex items-center justify-center rounded text-surface-500 hover:bg-surface-500/15 hover:text-surface-300 disabled:opacity-40" onclick={dismiss} disabled={dismissing}>
 					<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12" /></svg>
 				</button>
-				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Dismiss</span>
+				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-transparent bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">Dismiss</span>
 			</div>
 			<div class="group/act relative">
 				<button aria-label="Archive" class="h-5 w-5 flex items-center justify-center rounded text-red-400/60 hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40" onclick={archive} disabled={archiving}>
 					<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
 				</button>
-				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
+				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-transparent bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
 			</div>
 		{:else if card.status === 'requires_approval'}
 			<div class="group/act relative">
 				<button aria-label="Mark as Done" class="h-5 w-5 flex items-center justify-center rounded text-green-400/60 hover:bg-green-500/15 hover:text-green-400 disabled:opacity-40" onclick={markDone} disabled={markingDone}>
 					<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
 				</button>
-				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Done</span>
+				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-transparent bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">Done</span>
 			</div>
 			<div class="group/act relative">
 				<button aria-label="Dismiss" class="h-5 w-5 flex items-center justify-center rounded text-surface-500 hover:bg-surface-500/15 hover:text-surface-300 disabled:opacity-40" onclick={dismiss} disabled={dismissing}>
 					<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12" /></svg>
 				</button>
-				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Dismiss</span>
+				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-transparent bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">Dismiss</span>
 			</div>
 			<div class="group/act relative">
 				<button aria-label="Archive" class="h-5 w-5 flex items-center justify-center rounded text-red-400/60 hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40" onclick={archive} disabled={archiving}>
 					<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
 				</button>
-				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
+				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-transparent bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
 			</div>
 		{:else if card.status === 'dismissed' || card.status === 'done'}
 			<div class="group/act relative">
 				<button aria-label="Reopen" class="h-5 w-5 flex items-center justify-center rounded text-laya-orange/60 hover:bg-laya-orange/15 hover:text-laya-orange disabled:opacity-40" onclick={reopen} disabled={reopening}>
 					<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 010 10H9m-6-10l4-4m-4 4l4 4" /></svg>
 				</button>
-				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Reopen</span>
+				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-transparent bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">Reopen</span>
 			</div>
 			<div class="group/act relative">
 				<button aria-label="Archive" class="h-5 w-5 flex items-center justify-center rounded text-red-400/60 hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40" onclick={archive} disabled={archiving}>
 					<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
 				</button>
-				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
+				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-transparent bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
 			</div>
 		{:else if card.status === 'archived'}
 			<div class="group/act relative">
 				<button aria-label="Unarchive" class="h-5 w-5 flex items-center justify-center rounded text-laya-orange/60 hover:bg-laya-orange/15 hover:text-laya-orange disabled:opacity-40" onclick={reopen} disabled={reopening}>
 					<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 010 10H9m-6-10l4-4m-4 4l4 4" /></svg>
 				</button>
-				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Unarchive</span>
+				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-transparent bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">Unarchive</span>
 			</div>
 			<div class="group/act relative">
 				<button aria-label="Delete" class="h-5 w-5 flex items-center justify-center rounded text-red-400/60 hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40" onclick={(e) => { e.stopPropagation(); showDeleteConfirm = true; }} disabled={deleting}>
 					<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
 				</button>
-				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Delete</span>
+				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-transparent bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">Delete</span>
 			</div>
 		{:else if card.status === 'failed'}
 			<div class="group/act relative">
 				<button aria-label="Retry" class="h-5 w-5 flex items-center justify-center rounded text-laya-orange/60 hover:bg-laya-orange/15 hover:text-laya-orange disabled:opacity-40" onclick={reopen} disabled={reopening}>
 					<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M1 4v6h6" /><path stroke-linecap="round" stroke-linejoin="round" d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>
 				</button>
-				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Retry</span>
+				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-transparent bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">Retry</span>
 			</div>
 			<div class="group/act relative">
 				<button aria-label="Archive" class="h-5 w-5 flex items-center justify-center rounded text-surface-500 hover:bg-surface-500/15 hover:text-surface-300 disabled:opacity-40" onclick={archive} disabled={archiving}>
 					<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
 				</button>
-				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
+				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-transparent bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
 			</div>
 		{/if}
 		{#if card.has_workspace}
@@ -363,7 +376,7 @@
 				<a href="/workspace/{card.card_id}" aria-label="Workspace" class="h-5 w-5 flex items-center justify-center rounded text-violet-400/60 hover:bg-violet-500/15 hover:text-violet-400" onclick={(e) => { e.preventDefault(); e.stopPropagation(); goto(`/workspace/${card.card_id}`); }}>
 					<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
 				</a>
-				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Workspace</span>
+				<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-transparent bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">Workspace</span>
 			</div>
 		{/if}
 	</div>

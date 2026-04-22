@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { chatOpen, chatInputPreset } from '$lib/stores/chat';
 	import { cardColors } from '$lib/stores/cardColors';
+	import { glassTheme } from '$lib/stores/glassTheme';
 	import { feedDate } from '$lib/stores/feedFilters';
 	import StatusDot from './StatusDot.svelte';
 
@@ -24,15 +25,29 @@
 	let actionMenuEl: HTMLElement | undefined = $state();
 	let bookmarking = $state(false);
 
-	// Truncation detection for conditional tooltips
+	// Fixed-position tooltip — rendered outside the glass-card stacking context
 	let headerEl: HTMLElement | undefined = $state();
 	let summaryEl: HTMLElement | undefined = $state();
 	let srcRefEl: HTMLElement | undefined = $state();
 	let actorEl: HTMLElement | undefined = $state();
-	let headerTruncated = $state(false);
-	let summaryTruncated = $state(false);
-	let srcRefTruncated = $state(false);
-	let actorTruncated = $state(false);
+
+	let fixedTooltip = $state<{ text: string; top: number; left: number; maxWidth?: number } | null>(null);
+
+	function showTooltip(el: HTMLElement, text: string, opts?: { maxWidth?: number }) {
+		const rect = el.getBoundingClientRect();
+		fixedTooltip = { text, top: rect.bottom + 4, left: rect.left, maxWidth: opts?.maxWidth };
+	}
+
+	function showTooltipIfTruncated(el: HTMLElement | undefined, text: string, opts?: { checkHeight?: boolean; maxWidth?: number }) {
+		if (!el) return;
+		const isTruncated = opts?.checkHeight
+			? el.scrollHeight > el.clientHeight
+			: el.scrollWidth > el.clientWidth;
+		if (!isTruncated) { fixedTooltip = null; return; }
+		showTooltip(el, text, opts);
+	}
+
+	function hideTooltip() { fixedTooltip = null; }
 
 	// Close action overflow menu on outside click — swallow the event so it
 	// doesn't propagate to the card and trigger a selection.  Uses element
@@ -110,7 +125,18 @@
 		laya:      'Laya'
 	};
 
-	const statusCardStyle: Record<string, string> = {
+	const glassStatusCardStyle: Record<string, string> = {
+		pending:            'glass-card bg-amber-950/45  border-transparent  hover:border-amber-700/30  card-pulse-amber',
+		ready:              'glass-card bg-amber-950/45  border-transparent  hover:border-amber-700/30',
+		requires_approval:  'glass-card bg-violet-950/45 border-transparent hover:border-violet-700/30',
+		agent_running:      'glass-card bg-violet-950/45 border-transparent hover:border-violet-700/30 card-pulse-violet',
+		awaiting_input:     'glass-card bg-amber-950/45  border-transparent  hover:border-amber-700/30  card-pulse-amber',
+		done:               'glass-card bg-emerald-950/40 border-transparent hover:border-emerald-700/25',
+		failed:             'glass-card bg-rose-950/50   border-transparent   hover:border-rose-700/35',
+		dismissed:          'glass-card bg-surface-800/30 border-transparent hover:border-surface-600/30 opacity-50 hover:opacity-75',
+	};
+
+	const solidStatusCardStyle: Record<string, string> = {
 		pending:            'bg-amber-950/55  border-transparent  hover:border-amber-700/45  card-pulse-amber',
 		ready:              'bg-amber-950/55  border-transparent  hover:border-amber-700/45',
 		requires_approval:  'bg-violet-950/55 border-transparent hover:border-violet-700/40',
@@ -121,13 +147,14 @@
 		dismissed:          'bg-surface-800/40 border-transparent hover:border-surface-600/40 opacity-50 hover:opacity-75',
 	};
 
-	const neutralCardStyle = 'bg-surface-800 border-transparent hover:border-surface-600';
+	const statusCardStyle = $derived($glassTheme ? glassStatusCardStyle : solidStatusCardStyle);
+	const neutralCardStyle = $derived($glassTheme ? 'glass-card bg-surface-800/40 border-transparent hover:border-laya-orange/20' : 'bg-surface-800 border-transparent hover:border-surface-600');
 
 	const baseCardStyle = $derived(
 		isArchived
-			? 'bg-surface-900/60 border-transparent opacity-50 hover:opacity-80'
+			? ($glassTheme ? 'glass-card bg-surface-900/30 border-transparent opacity-50 hover:opacity-80' : 'bg-surface-900/60 border-transparent opacity-50 hover:opacity-80')
 			: $cardColors
-				? (statusCardStyle[card.status] ?? 'bg-surface-800 border-transparent hover:border-laya-orange/30')
+				? (statusCardStyle[card.status] ?? ($glassTheme ? 'glass-card bg-surface-800/40 border-transparent hover:border-laya-orange/20' : 'bg-surface-800 border-transparent hover:border-laya-orange/30'))
 				: neutralCardStyle
 	);
 
@@ -266,7 +293,7 @@
 	role="button"
 	tabindex="0"
 	data-card-id={card.card_id}
-	class="group/card flex min-h-0 w-full cursor-pointer flex-col rounded-xl border shadow-lg px-4 pb-2 pt-3 text-left transition-colors {cardStyle}"
+	class="group/card relative flex min-h-0 w-full cursor-pointer flex-col rounded-xl border px-4 pb-2 pt-3 text-left transition-colors hover:z-20 {cardStyle}"
 	onclick={() => onselect(card)}
 	onkeydown={(e) => e.key === 'Enter' && onselect(card)}
 >
@@ -277,7 +304,8 @@
 		<div class="flex items-center gap-1">
 			{#if card.status === 'ready'}
 				<!-- Mark as Done -->
-				<div class="group/act relative">
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="relative" onmouseenter={(e) => showTooltip(e.currentTarget, 'Mark as Done')} onmouseleave={hideTooltip}>
 					<button
 						aria-label="Mark as Done"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-green-400/60 transition-all hover:bg-green-500/15 hover:text-green-400 disabled:opacity-40"
@@ -288,10 +316,10 @@
 							<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Mark as Done</span>
 				</div>
 				<!-- Dismiss -->
-				<div class="group/act relative">
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="relative" onmouseenter={(e) => showTooltip(e.currentTarget, 'Dismiss')} onmouseleave={hideTooltip}>
 					<button
 						aria-label="Dismiss"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-surface-500 transition-all hover:bg-surface-500/15 hover:text-surface-300 disabled:opacity-40"
@@ -302,7 +330,6 @@
 							<path stroke-linecap="round" d="M6 18L18 6M6 6l12 12" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Dismiss</span>
 				</div>
 				{#if card.has_workspace}
 					<!-- Overflow: Archive + Workspace -->
@@ -340,7 +367,8 @@
 					</div>
 				{:else}
 					<!-- No workspace — Archive fits as 3rd button -->
-					<div class="group/act relative">
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="relative" onmouseenter={(e) => showTooltip(e.currentTarget, 'Archive')} onmouseleave={hideTooltip}>
 						<button
 							aria-label="Archive"
 							class="flex h-6 w-6 items-center justify-center rounded-md text-red-400/60 transition-all hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40"
@@ -351,12 +379,12 @@
 								<path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
 							</svg>
 						</button>
-						<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
 					</div>
 				{/if}
 			{:else if card.status === 'requires_approval'}
 				<!-- Done -->
-				<div class="group/act relative">
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="relative" onmouseenter={(e) => showTooltip(e.currentTarget, 'Done')} onmouseleave={hideTooltip}>
 					<button
 						aria-label="Mark as Done"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-green-400/60 transition-all hover:bg-green-500/15 hover:text-green-400 disabled:opacity-40"
@@ -365,10 +393,10 @@
 					>
 						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
 					</button>
-					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Done</span>
 				</div>
 				<!-- Dismiss -->
-				<div class="group/act relative">
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="relative" onmouseenter={(e) => showTooltip(e.currentTarget, 'Dismiss')} onmouseleave={hideTooltip}>
 					<button
 						aria-label="Dismiss"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-surface-500 transition-all hover:bg-surface-500/15 hover:text-surface-300 disabled:opacity-40"
@@ -377,7 +405,6 @@
 					>
 						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12" /></svg>
 					</button>
-					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Dismiss</span>
 				</div>
 				{#if card.has_workspace}
 					<!-- Overflow: Archive + Workspace -->
@@ -415,7 +442,8 @@
 					</div>
 				{:else}
 					<!-- No workspace — Archive fits as 3rd button -->
-					<div class="group/act relative">
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="relative" onmouseenter={(e) => showTooltip(e.currentTarget, 'Archive')} onmouseleave={hideTooltip}>
 						<button
 							aria-label="Archive"
 							class="flex h-6 w-6 items-center justify-center rounded-md text-red-400/60 transition-all hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40"
@@ -426,12 +454,12 @@
 								<path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
 							</svg>
 						</button>
-						<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
 					</div>
 				{/if}
 			{:else if card.status === 'dismissed'}
 				<!-- Reopen -->
-				<div class="group/act relative">
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="relative" onmouseenter={(e) => showTooltip(e.currentTarget, 'Reopen')} onmouseleave={hideTooltip}>
 					<button
 						aria-label="Reopen"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-laya-orange/60 transition-all hover:bg-laya-orange/15 hover:text-laya-orange disabled:opacity-40"
@@ -442,10 +470,10 @@
 							<path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 010 10H9m-6-10l4-4m-4 4l4 4" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Reopen</span>
 				</div>
 				<!-- Archive -->
-				<div class="group/act relative">
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="relative" onmouseenter={(e) => showTooltip(e.currentTarget, 'Archive')} onmouseleave={hideTooltip}>
 					<button
 						aria-label="Archive"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-red-400/60 transition-all hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40"
@@ -456,11 +484,11 @@
 							<path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
 				</div>
 			{:else if card.status === 'archived'}
 				<!-- Unarchive -->
-				<div class="group/act relative">
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="relative" onmouseenter={(e) => showTooltip(e.currentTarget, 'Unarchive')} onmouseleave={hideTooltip}>
 					<button
 						aria-label="Unarchive"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-laya-orange/60 transition-all hover:bg-laya-orange/15 hover:text-laya-orange disabled:opacity-40"
@@ -471,10 +499,10 @@
 							<path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 010 10H9m-6-10l4-4m-4 4l4 4" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Unarchive</span>
 				</div>
 				<!-- Delete -->
-				<div class="group/act relative">
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="relative" onmouseenter={(e) => showTooltip(e.currentTarget, 'Delete')} onmouseleave={hideTooltip}>
 					<button
 						aria-label="Delete"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-red-400/60 transition-all hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40"
@@ -485,11 +513,11 @@
 							<path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-red-500/30 bg-surface-800 px-2 py-1 text-[10px] font-medium text-red-400 opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Delete</span>
 				</div>
 			{:else if card.status === 'done'}
 				<!-- Reopen -->
-				<div class="group/act relative">
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="relative" onmouseenter={(e) => showTooltip(e.currentTarget, 'Reopen')} onmouseleave={hideTooltip}>
 					<button
 						aria-label="Reopen"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-laya-orange/60 transition-all hover:bg-laya-orange/15 hover:text-laya-orange disabled:opacity-40"
@@ -500,10 +528,10 @@
 							<path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 010 10H9m-6-10l4-4m-4 4l4 4" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Reopen</span>
 				</div>
 				<!-- Archive -->
-				<div class="group/act relative">
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="relative" onmouseenter={(e) => showTooltip(e.currentTarget, 'Archive')} onmouseleave={hideTooltip}>
 					<button
 						aria-label="Archive"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-red-400/60 transition-all hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40"
@@ -514,11 +542,11 @@
 							<path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
 				</div>
 			{:else if card.status === 'failed'}
 				<!-- Retry -->
-				<div class="group/act relative">
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="relative" onmouseenter={(e) => showTooltip(e.currentTarget, 'Retry')} onmouseleave={hideTooltip}>
 					<button
 						aria-label="Retry"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-laya-orange/60 transition-all hover:bg-laya-orange/15 hover:text-laya-orange disabled:opacity-40"
@@ -530,10 +558,10 @@
 							<path stroke-linecap="round" stroke-linejoin="round" d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Retry</span>
 				</div>
 				<!-- Archive -->
-				<div class="group/act relative">
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="relative" onmouseenter={(e) => showTooltip(e.currentTarget, 'Archive')} onmouseleave={hideTooltip}>
 					<button
 						aria-label="Archive"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-surface-500 transition-all hover:bg-surface-500/15 hover:text-surface-300 disabled:opacity-40"
@@ -544,11 +572,11 @@
 							<path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
 				</div>
 			{:else if card.status === 'awaiting_input'}
 				<!-- Archive -->
-				<div class="group/act relative">
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="relative" onmouseenter={(e) => showTooltip(e.currentTarget, 'Archive')} onmouseleave={hideTooltip}>
 					<button
 						aria-label="Archive"
 						class="flex h-6 w-6 items-center justify-center rounded-md text-red-400/60 transition-all hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40"
@@ -559,12 +587,12 @@
 							<path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Archive</span>
 				</div>
 			{/if}
 			{#if card.has_workspace && card.status !== 'ready' && card.status !== 'requires_approval'}
 				<!-- Open Workspace — shown as standalone button only for statuses with ≤2 actions -->
-				<div class="group/act relative">
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="relative" onmouseenter={(e) => showTooltip(e.currentTarget, 'Open Workspace')} onmouseleave={hideTooltip}>
 					<a
 						href="/workspace/{card.card_id}"
 						aria-label="Open Workspace"
@@ -575,7 +603,6 @@
 							<path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
 						</svg>
 					</a>
-					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-violet-500/30 bg-surface-800 px-2 py-1 text-[10px] font-medium text-violet-400 opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Open Workspace</span>
 				</div>
 			{/if}
 		</div>
@@ -584,7 +611,8 @@
 		<div class="flex items-center gap-0.5 min-w-0">
 			<!-- Link to (only for standalone cards, not cards inside groups) -->
 			{#if onlink}
-				<div class="group/act relative">
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="relative" onmouseenter={(e) => showTooltip(e.currentTarget, 'Link to...')} onmouseleave={hideTooltip}>
 					<span
 						role="button"
 						tabindex="0"
@@ -597,11 +625,11 @@
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
 						</svg>
 					</span>
-					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">Link to...</span>
 				</div>
 			{/if}
 			<!-- Bookmark -->
-			<div class="group/act relative">
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="relative" onmouseenter={(e) => showTooltip(e.currentTarget, card.bookmarked_at ? 'Remove Bookmark' : 'Bookmark')} onmouseleave={hideTooltip}>
 				<span
 					role="button"
 					tabindex="0"
@@ -616,7 +644,6 @@
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
 					</svg>
 				</span>
-				<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/act:opacity-100">{card.bookmarked_at ? 'Remove Bookmark' : 'Bookmark'}</span>
 			</div>
 			{#if card.has_workspace}
 				<span class="ml-1 shrink-0 text-violet-400/60" title="Has Workspace">
@@ -655,8 +682,9 @@
 		</span>
 		{#if card.source_ref}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="group/srcref relative min-w-0 truncate"
-				onmouseenter={() => { if (srcRefEl) srcRefTruncated = srcRefEl.scrollWidth > srcRefEl.clientWidth; }}
+			<div class="relative min-w-0 truncate"
+				onmouseenter={() => showTooltipIfTruncated(srcRefEl, card.source_ref ?? '')}
+				onmouseleave={hideTooltip}
 			>
 				{#if card.source_url}
 					<a
@@ -670,39 +698,26 @@
 				{:else}
 					<span bind:this={srcRefEl} class="block truncate text-[10px] font-medium text-surface-400">{card.source_ref}</span>
 				{/if}
-				{#if srcRefTruncated}
-					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/srcref:opacity-100">
-						{card.source_ref}
-					</span>
-				{/if}
 			</div>
 		{/if}
 	</div>
 
 	<!-- Row 3: Title (2-line clamp) -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="group/header relative mb-1.5"
-		onmouseenter={() => { if (headerEl) headerTruncated = headerEl.scrollHeight > headerEl.clientHeight; }}
+	<div class="relative mb-1.5"
+		onmouseenter={() => showTooltipIfTruncated(headerEl, card.header, { checkHeight: true, maxWidth: 300 })}
+		onmouseleave={hideTooltip}
 	>
 		<h3 bind:this={headerEl} class="line-clamp-2 text-sm font-semibold leading-snug text-surface-50">{card.header}</h3>
-		{#if headerTruncated}
-			<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 max-w-xs whitespace-normal rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/header:opacity-100">
-				{card.header}
-			</span>
-		{/if}
 	</div>
 
 	<!-- Row 4: Summary (2-line clamp) -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="group/summary relative"
-		onmouseenter={() => { if (summaryEl) summaryTruncated = summaryEl.scrollHeight > summaryEl.clientHeight; }}
+	<div class="relative"
+		onmouseenter={() => showTooltipIfTruncated(summaryEl, card.summary, { checkHeight: true, maxWidth: 300 })}
+		onmouseleave={hideTooltip}
 	>
 		<p bind:this={summaryEl} class="line-clamp-2 text-xs leading-relaxed text-surface-400">{card.summary}</p>
-		{#if summaryTruncated}
-			<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 max-w-xs whitespace-normal rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/summary:opacity-100">
-				{card.summary}
-			</span>
-		{/if}
 	</div>
 
 	<!-- Row 5: Footer — space · actor name (left) · persona · category · workspace · time (right) -->
@@ -718,17 +733,13 @@
 		{/if}
 		{#if card.actor_name}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<span class="group/actor relative truncate text-[10px] text-surface-500"
-				onmouseenter={() => { if (actorEl) actorTruncated = actorEl.scrollWidth > actorEl.clientWidth; }}
+			<span class="relative truncate text-[10px] text-surface-500"
+				onmouseenter={() => showTooltipIfTruncated(actorEl, card.actor_name ?? '')}
+				onmouseleave={hideTooltip}
 			>
 				<span bind:this={actorEl} class="block truncate">
 					{card.actor_name}
 				</span>
-				{#if actorTruncated}
-					<span class="pointer-events-none absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/actor:opacity-100">
-						{card.actor_name}
-					</span>
-				{/if}
 			</span>
 		{/if}
 		<span class="ml-auto shrink-0 text-[10px] font-medium {personaColors[card.persona] ?? personaColors.ENGINEER}">{card.persona}</span>
@@ -740,6 +751,15 @@
 		<span class="shrink-0 whitespace-nowrap text-[10px] text-surface-500">{timeAgo(card.created_at)}</span>
 	</div>
 </div>
+
+{#if fixedTooltip}
+	<span
+		class="pointer-events-none fixed z-[100] rounded-md border border-transparent glass-card bg-surface-800/40 px-2 py-1 text-[10px] font-medium text-laya-orange"
+		style="top: {fixedTooltip.top}px; left: {fixedTooltip.left}px;{fixedTooltip.maxWidth ? ` max-width: ${fixedTooltip.maxWidth}px; white-space: normal;` : ' white-space: nowrap;'}"
+	>
+		{fixedTooltip.text}
+	</span>
+{/if}
 
 {#if showDeleteConfirm}
 	<div

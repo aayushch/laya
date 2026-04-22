@@ -36,7 +36,7 @@
 							></div>
 						</div>
 						<!-- Instant tooltip on row hover, positioned above the bar -->
-						<div class="pointer-events-none absolute -top-8 left-1/2 z-10 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover:block group-hover:opacity-100">
+						<div class="pointer-events-none absolute -top-8 left-1/2 z-10 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-card bg-surface-800/40 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover:block group-hover:opacity-100">
 							{item.label}: {item.value}
 						</div>
 					</div>

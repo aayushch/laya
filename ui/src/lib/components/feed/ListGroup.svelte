@@ -3,6 +3,7 @@
 	import { engineApi } from '$lib/api/engine';
 	import { slide } from 'svelte/transition';
 	import { cardColors } from '$lib/stores/cardColors';
+	import { glassTheme } from '$lib/stores/glassTheme';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import ListRow from './ListRow.svelte';
 
@@ -124,7 +125,7 @@
 		'pending', 'ready', 'done', 'dismissed', 'archived'
 	];
 
-	const groupRowStyle: Record<string, string> = {
+	const solidGroupRowStyle: Record<string, string> = {
 		pending:            'bg-amber-950/55',
 		ready:              'bg-amber-950/55',
 		requires_approval:  'bg-violet-950/55',
@@ -135,6 +136,18 @@
 		dismissed:          'bg-surface-800/40',
 		archived:           'bg-surface-900/60',
 	};
+	const glassGroupRowStyle: Record<string, string> = {
+		pending:            'glass-card-flat bg-amber-950/45',
+		ready:              'glass-card-flat bg-amber-950/45',
+		requires_approval:  'glass-card-flat bg-violet-950/45',
+		agent_running:      'glass-card-flat bg-violet-950/45',
+		awaiting_input:     'glass-card-flat bg-amber-950/45',
+		done:               'glass-card-flat bg-emerald-950/40',
+		failed:             'glass-card-flat bg-rose-950/50',
+		dismissed:          'glass-card-flat bg-surface-800/30',
+		archived:           'glass-card-flat bg-surface-900/35',
+	};
+	const groupRowStyle = $derived($glassTheme ? glassGroupRowStyle : solidGroupRowStyle);
 
 	const dominantStatus = $derived.by(() => {
 		const statuses = new Set(group.cards.map(c => c.status));
@@ -148,7 +161,7 @@
 
 	const groupBgStyle = $derived(
 		allArchived
-			? 'bg-surface-900/60 opacity-50 hover:opacity-80'
+			? ($glassTheme ? 'glass-card-flat bg-surface-900/30 opacity-50 hover:opacity-80' : 'bg-surface-900/60 opacity-50 hover:opacity-80')
 			: $cardColors
 				? (groupRowStyle[dominantStatus] ?? '')
 				: ''
@@ -278,7 +291,7 @@
 			</div>
 		{/if}
 
-		<div data-group-row={group.entity_id} class="flex-1 min-w-0 border {expanded ? 'rounded-t-lg border-transparent bg-surface-900' : 'list-row-hover rounded-lg border-transparent ' + groupBgStyle} transition-colors
+		<div data-group-row={group.entity_id} class="relative flex-1 min-w-0 border hover:z-20 {expanded ? ($glassTheme ? 'rounded-t-lg border-transparent glass-card-flat bg-surface-900/50' : 'rounded-t-lg border-transparent bg-surface-900') : 'list-row-hover rounded-lg border-transparent ' + groupBgStyle} transition-colors
 			{isGroupLastViewed ? ($cardColors ? 'card-last-viewed card-last-viewed--compact rounded-lg' : 'card-last-viewed-highlight rounded-lg') : ''}">
 			<!-- Group header row -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -313,7 +326,7 @@
 		<div class="group/tip relative w-3 shrink-0 ml-2 flex items-center justify-center">
 			{#if isSmartGroup}
 				<svg class="h-3 w-3 text-laya-orange/60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-				<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">Linked</span>
+				<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100">Linked</span>
 			{/if}
 		</div>
 		<span class="w-[90px] shrink-0 ml-1 text-[11px] font-medium text-laya-orange/70 truncate">
@@ -333,7 +346,7 @@
 				</svg>
 			{/if}
 			{#if subjectTruncated}
-				<span class="pointer-events-none absolute top-full left-0 z-10 mt-1 max-w-xs whitespace-normal rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/subject:opacity-100">
+				<span class="pointer-events-none absolute top-full left-0 z-10 mt-1 max-w-xs whitespace-normal rounded-md border border-transparent bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/subject:opacity-100">
 					{group.entity_title}
 				</span>
 			{/if}
@@ -348,7 +361,7 @@
 			>
 				{isSmartGroup ? `${group.sub_groups?.length ?? group.card_count} groups` : `${group.card_count} cards`}
 			</button>
-			<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/count:opacity-100">
+			<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-transparent bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/count:opacity-100">
 				{statusSummaryTooltip}
 			</span>
 		</div>

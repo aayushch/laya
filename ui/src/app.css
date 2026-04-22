@@ -140,16 +140,16 @@ html, body {
 
 /* List row hover — inset overlay lightens whatever the base status color is.
    When combined with card-last-viewed ring, stack both shadows so the ring isn't replaced. */
-.list-row-hover { transition: box-shadow 150ms ease; }
+.list-row-hover { transition: box-shadow 0ms; }
 .list-row-hover:hover { box-shadow: inset 0 0 0 100px rgb(255 255 255 / 0.04); }
 .list-row-hover.card-last-viewed:hover,
 .list-row-hover.card-last-viewed--compact:hover {
-	box-shadow: inset 0 0 0 1px var(--last-viewed-accent), inset 0 0 0 100px rgb(255 255 255 / 0.04);
+	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.08), 0 8px 32px -8px rgb(0 0 0 / 0.25), inset 0 0 0 1px var(--last-viewed-accent), inset 0 0 0 100px rgb(255 255 255 / 0.04);
 }
 [data-theme='light'] .list-row-hover:hover { box-shadow: inset 0 0 0 100px rgb(0 0 0 / 0.05); }
 [data-theme='light'] .list-row-hover.card-last-viewed:hover,
 [data-theme='light'] .list-row-hover.card-last-viewed--compact:hover {
-	box-shadow: inset 0 0 0 1px var(--last-viewed-accent), inset 0 0 0 100px rgb(0 0 0 / 0.05);
+	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.6), 0 8px 32px -8px rgb(0 0 0 / 0.08), inset 0 0 0 1px var(--last-viewed-accent), inset 0 0 0 100px rgb(0 0 0 / 0.05);
 }
 
 /* Last-viewed accent — white in dark, black in light */
@@ -243,12 +243,59 @@ html, body {
    Darken light-on-dark utility text for cream backgrounds.
    ───────────────────────────────────────────────────────────── */
 /* ─────────────────────────────────────────────────────────────
+   GLASS MORPHISM — frosted glass card surfaces
+   backdrop-blur creates the frosted effect; reduced-opacity
+   backgrounds let the blur show through. The inner glow
+   (ring) gives the glass edge a subtle reflective highlight.
+   ───────────────────────────────────────────────────────────── */
+.glass-card {
+	-webkit-backdrop-filter: blur(16px) saturate(1.3);
+	backdrop-filter: blur(16px) saturate(1.3);
+	box-shadow:
+		inset 0 0.5px 0 0 rgb(255 255 255 / 0.08),
+		0 8px 32px -8px rgb(0 0 0 / 0.25);
+}
+.glass-card-flat {
+	-webkit-backdrop-filter: blur(16px) saturate(1.3);
+	backdrop-filter: blur(16px) saturate(1.3);
+	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.06);
+}
+[data-theme='light'] .glass-card {
+	-webkit-backdrop-filter: blur(16px) saturate(1.4);
+	backdrop-filter: blur(16px) saturate(1.4);
+	box-shadow:
+		inset 0 0.5px 0 0 rgb(255 255 255 / 0.6),
+		0 8px 32px -8px rgb(0 0 0 / 0.08);
+}
+/* Feed background mesh — subtle gradient orbs that give
+   the backdrop-blur something to diffuse through cards. */
+.feed-glass-bg {
+	position: relative;
+}
+.feed-glass-bg::before {
+	content: '';
+	position: fixed;
+	inset: 0;
+	z-index: -1;
+	background:
+		radial-gradient(ellipse 600px 400px at 15% 20%, oklch(0.30 0.06 55 / 0.4), transparent),
+		radial-gradient(ellipse 500px 500px at 80% 30%, oklch(0.25 0.05 285 / 0.3), transparent),
+		radial-gradient(ellipse 700px 350px at 50% 75%, oklch(0.28 0.04 145 / 0.25), transparent);
+}
+[data-theme='light'] .feed-glass-bg::before {
+	background:
+		radial-gradient(ellipse 600px 400px at 15% 20%, oklch(0.92 0.04 65 / 0.5), transparent),
+		radial-gradient(ellipse 500px 500px at 80% 30%, oklch(0.90 0.03 285 / 0.35), transparent),
+		radial-gradient(ellipse 700px 350px at 50% 75%, oklch(0.93 0.03 145 / 0.3), transparent);
+}
+
+/* ─────────────────────────────────────────────────────────────
    CARD PULSE GLOW — subtle breathing glow for active statuses
    Uses box-shadow so it won't cause layout reflow.
    ───────────────────────────────────────────────────────────── */
 @keyframes card-pulse-glow {
-	0%, 100% { box-shadow: 0 0 8px 1px var(--card-pulse-base); }
-	50%      { box-shadow: 0 0 18px 4px var(--card-pulse-color); }
+	0%, 100% { box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.08), 0 8px 32px -8px rgb(0 0 0 / 0.25), 0 0 8px 1px var(--card-pulse-base); }
+	50%      { box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.08), 0 8px 32px -8px rgb(0 0 0 / 0.25), 0 0 18px 4px var(--card-pulse-color); }
 }
 
 .card-pulse-violet {
@@ -280,7 +327,7 @@ html, body {
 .card-last-viewed {
 	position: relative;
 	--last-viewed-accent: oklch(0.75 0.18 55 / 0.7);
-	box-shadow: inset 0 0 0 1px var(--last-viewed-accent);
+	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.08), 0 8px 32px -8px rgb(0 0 0 / 0.25), inset 0 0 0 1px var(--last-viewed-accent);
 }
 /* Hide corner pseudo-elements — full border replaces them */
 .card-last-viewed::before,
@@ -315,8 +362,8 @@ html, body {
    used to draw attention to a card after layout changes.
    ───────────────────────────────────────────────────────────── */
 @keyframes card-highlight-fade {
-	0%   { box-shadow: inset 0 0 0 100px oklch(0.75 0.18 55 / 0.15); }
-	100% { box-shadow: inset 0 0 0 100px oklch(0.75 0.18 55 / 0); }
+	0%   { box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.08), 0 8px 32px -8px rgb(0 0 0 / 0.25), inset 0 0 0 100px oklch(0.75 0.18 55 / 0.15); }
+	100% { box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.08), 0 8px 32px -8px rgb(0 0 0 / 0.25), inset 0 0 0 100px oklch(0.75 0.18 55 / 0); }
 }
 
 .card-highlight-fade {
@@ -328,8 +375,8 @@ html, body {
    animation so the ring persists throughout the background fade-out.
    Without this, the animation's box-shadow replaces the ring's box-shadow. */
 @keyframes card-highlight-fade-with-ring {
-	0%   { box-shadow: inset 0 0 0 1px var(--last-viewed-accent), inset 0 0 0 100px oklch(0.75 0.18 55 / 0.15); }
-	100% { box-shadow: inset 0 0 0 1px var(--last-viewed-accent), inset 0 0 0 100px oklch(0.75 0.18 55 / 0); }
+	0%   { box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.08), 0 8px 32px -8px rgb(0 0 0 / 0.25), inset 0 0 0 1px var(--last-viewed-accent), inset 0 0 0 100px oklch(0.75 0.18 55 / 0.15); }
+	100% { box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.08), 0 8px 32px -8px rgb(0 0 0 / 0.25), inset 0 0 0 1px var(--last-viewed-accent), inset 0 0 0 100px oklch(0.75 0.18 55 / 0); }
 }
 .card-last-viewed.card-highlight-fade {
 	animation: card-highlight-fade-with-ring 1.5s ease-out forwards;

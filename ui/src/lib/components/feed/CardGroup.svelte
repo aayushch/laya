@@ -8,6 +8,7 @@
 	// Self-import for nested rendering of context sub-groups
 	import CardGroupComponent from './CardGroup.svelte';
 	import { cardColors } from '$lib/stores/cardColors';
+	import { glassTheme } from '$lib/stores/glassTheme';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 
 	let {
@@ -146,7 +147,19 @@
 		'pending', 'ready', 'done', 'dismissed', 'archived'
 	];
 
-	const groupStatusStyle: Record<string, string> = {
+	const glassGroupStatusStyle: Record<string, string> = {
+		pending:            'glass-card bg-amber-950/45  border-transparent  hover:border-amber-700/30  card-pulse-amber',
+		ready:              'glass-card bg-amber-950/45  border-transparent  hover:border-amber-700/30',
+		requires_approval:  'glass-card bg-violet-950/45 border-transparent hover:border-violet-700/30',
+		done:               'glass-card bg-emerald-950/40 border-transparent hover:border-emerald-700/25',
+		failed:             'glass-card bg-rose-950/50   border-transparent   hover:border-rose-700/35',
+		dismissed:          'glass-card bg-surface-800/30 border-transparent hover:border-surface-600/30',
+		archived:           'glass-card bg-surface-800/30 border-transparent hover:border-surface-600/30',
+		agent_running:      'glass-card bg-violet-950/45 border-transparent hover:border-violet-700/30 card-pulse-violet',
+		awaiting_input:     'glass-card bg-amber-950/45  border-transparent  hover:border-amber-700/30  card-pulse-amber',
+	};
+
+	const solidGroupStatusStyle: Record<string, string> = {
 		pending:            'bg-amber-950/55  border-transparent  hover:border-amber-700/45  card-pulse-amber',
 		ready:              'bg-amber-950/55  border-transparent  hover:border-amber-700/45',
 		requires_approval:  'bg-violet-950/55 border-transparent hover:border-violet-700/40',
@@ -158,6 +171,8 @@
 		awaiting_input:     'bg-amber-950/55  border-transparent  hover:border-amber-700/45  card-pulse-amber',
 	};
 
+	const groupStatusStyle = $derived($glassTheme ? glassGroupStatusStyle : solidGroupStatusStyle);
+
 	// Determine dominant status across all cards in the group
 	const dominantStatus = $derived.by(() => {
 		const statuses = new Set(group.cards.map(c => c.status));
@@ -167,14 +182,14 @@
 		return group.cards[0]?.status ?? 'pending';
 	});
 
-	const neutralGroupStyle = 'bg-surface-800 border-transparent hover:border-surface-600';
+	const neutralGroupStyle = $derived($glassTheme ? 'glass-card bg-surface-800/40 border-transparent hover:border-laya-orange/20' : 'bg-surface-800 border-transparent hover:border-surface-600');
 
 	const allArchived = $derived(group.cards.every(c => c.status === 'archived'));
 	const groupStyle = $derived(
 		allArchived
-			? 'bg-surface-900/60 border-transparent opacity-50 hover:opacity-80'
+			? ($glassTheme ? 'glass-card bg-surface-900/30 border-transparent opacity-50 hover:opacity-80' : 'bg-surface-900/60 border-transparent opacity-50 hover:opacity-80')
 			: $cardColors
-				? (groupStatusStyle[dominantStatus] ?? 'bg-surface-900 border-transparent hover:border-laya-orange/30')
+				? (groupStatusStyle[dominantStatus] ?? ($glassTheme ? 'glass-card bg-surface-800/40 border-transparent hover:border-laya-orange/20' : 'bg-surface-900 border-transparent hover:border-laya-orange/30'))
 				: neutralGroupStyle
 	);
 
@@ -393,7 +408,7 @@
 <!-- Single persistent DOM — morphs between collapsed card and expanded list -->
 <div
 	bind:this={wrapperEl}
-	class="relative rounded-xl transition-opacity duration-200 {isDimmed ? 'opacity-45 hover:opacity-70' : ''}"
+	class="relative rounded-xl transition-opacity duration-200 hover:z-20 {isDimmed ? 'opacity-45 hover:opacity-70' : ''}"
 	style="padding-bottom: {!expanded && ghostCount > 0 ? 12 : 0}px; transition: padding-bottom 200ms ease;"
 	data-card-id={topCard.card_id}
 	data-group-entity={group.entity_id}
@@ -421,9 +436,9 @@
 		 the header out of view and leaving empty space at the bottom. clip visually
 		 clips the same way but does NOT create a scroll container. -->
 	<div
-		class="relative rounded-xl border shadow-lg transition-all duration-200 {expanded ? '' : 'group/card'}
+		class="relative rounded-xl border transition-all duration-200 {expanded ? '' : 'group/card'}
 			{expanded
-				? 'border-surface-600 bg-surface-900'
+				? ($glassTheme ? 'glass-card border-transparent bg-surface-900/50' : 'border-surface-600 bg-surface-900')
 				: groupStyle} {!expanded && ghostCount > 0 ? 'ghost-strip-shadow' : ''}
 			{isGroupLastViewed ? ($cardColors ? 'card-last-viewed' : 'card-last-viewed-highlight') : ''}"
 		style="z-index: 3;"
@@ -459,9 +474,9 @@
 					{/if}
 				</div>
 				{#if isSmartGroup}
-					<div class="group/tip relative">
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div class="relative" onmouseenter={(e) => { const r = e.currentTarget.getBoundingClientRect(); hoveredTooltip = { text: 'Linked', top: r.bottom + 4, left: r.left + r.width / 2 }; }} onmouseleave={() => { hoveredTooltip = null; }}>
 						<svg class="h-3 w-3 text-laya-orange/60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-						<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">Linked</span>
 					</div>
 				{:else if subjectId}
 					<span class="text-[10px] font-medium text-laya-orange/70 truncate max-w-[120px]">{subjectId}</span>
@@ -505,7 +520,8 @@
 								{/if}
 							</button>
 							{#if !groupMenuOpen}
-								<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/actions:opacity-100">Group actions</span>
+								<!-- svelte-ignore a11y_no_static_element_interactions -->
+								<div class="absolute inset-0" onmouseenter={(e) => { const r = e.currentTarget.getBoundingClientRect(); hoveredTooltip = { text: 'Group actions', top: r.bottom + 4, left: r.left + r.width / 2 }; }} onmouseleave={() => { hoveredTooltip = null; }}></div>
 							{/if}
 						</div>
 					{/if}
@@ -719,7 +735,7 @@
 
 {#if hoveredTooltip}
 	<span
-		class="pointer-events-none fixed z-50 rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange shadow-lg"
+		class="pointer-events-none fixed z-50 rounded-md border border-transparent glass-card bg-surface-800/40 px-2 py-1 text-[10px] font-medium text-laya-orange"
 		style="top: {hoveredTooltip.top}px; left: {hoveredTooltip.left}px;{hoveredTooltip.maxWidth ? ` max-width: ${hoveredTooltip.maxWidth}px; white-space: normal;` : ' white-space: nowrap; transform: translateX(-100%);'}"
 	>
 		{hoveredTooltip.text}

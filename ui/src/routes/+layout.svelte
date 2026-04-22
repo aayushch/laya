@@ -13,6 +13,7 @@
 	import { fontScale } from '$lib/stores/fontScale';
 	import { accessibleColors } from '$lib/stores/accessibleColors';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
+	import { glassTheme } from '$lib/stores/glassTheme';
 	import { fly } from 'svelte/transition';
 	import { budgetPaused, loadBudgetStatus, handleBudgetWsMessage, costAmount, budgetLabel, budgetRatio } from '$lib/stores/budget';
 	import { feedFilters, loadFeedFilters, saveFeedFilters, filtersLoaded, feedDate, feedPrevDate, feedNextDate, localToday } from '$lib/stores/feedFilters';
@@ -149,6 +150,15 @@
 			document.documentElement.setAttribute('data-reduced-motion', '');
 		} else {
 			document.documentElement.removeAttribute('data-reduced-motion');
+		}
+	});
+
+	// Apply glass theme attribute on <html> for CSS-based glass styling
+	$effect(() => {
+		if ($glassTheme) {
+			document.documentElement.setAttribute('data-glass-theme', '');
+		} else {
+			document.documentElement.removeAttribute('data-glass-theme');
 		}
 	});
 
@@ -483,7 +493,7 @@
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
 				</svg>
 			</button>
-			<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">Chat</span>
+			<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-card bg-surface-800/40 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100">Chat</span>
 		</div>
 		{/if}
 
@@ -502,7 +512,7 @@
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
 				</svg>
 			</a>
-			<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">Settings</span>
+			<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-card bg-surface-800/40 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100">Settings</span>
 		</div>
 
 		<!-- Health badge -->
@@ -510,7 +520,7 @@
 			<a href="/status" class="block rounded-lg px-1.5 py-1 transition-colors hover:bg-surface-800" aria-label="System status">
 				<HealthBadge />
 			</a>
-			<span class="pointer-events-none absolute right-0 top-full z-50 mt-1.5 whitespace-nowrap rounded-md border border-laya-orange/20 bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 shadow-lg transition-opacity duration-75 group-hover/tip:opacity-100">Status</span>
+			<span class="pointer-events-none absolute right-0 top-full z-50 mt-1.5 whitespace-nowrap rounded-md border border-transparent glass-card bg-surface-800/40 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100">Status</span>
 		</div>
 	{/snippet}
 </Titlebar>
@@ -536,7 +546,7 @@
 		<UpdateBanner />
 
 		<!-- Main content — add right padding when chat sidebar is open so content isn't hidden behind it -->
-		<main class="flex-1 overflow-auto p-4 transition-[padding] duration-250 {$chatOpen ? 'pr-[476px]' : ''}">
+		<main class="{$glassTheme ? 'feed-glass-bg' : ''} flex-1 overflow-auto p-4 transition-[padding] duration-250 {$chatOpen ? 'pr-[476px]' : ''}">
 			{#key page.url.pathname}
 				<div
 					class="h-full"
