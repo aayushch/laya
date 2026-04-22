@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import sqlite3
 import time
 import uuid
 from collections.abc import AsyncGenerator
@@ -50,10 +51,14 @@ async def _get_space_model(role: str, space_id: str) -> str | None:
     from laya.db.sqlite import get_db
 
     db = await get_db()
-    rows = await db.execute_fetchall(
-        f"SELECT {role}_model FROM spaces WHERE space_id = ?",
-        (space_id,),
-    )
+    try:
+        rows = await db.execute_fetchall(
+            f"SELECT {role}_model FROM spaces WHERE space_id = ?",
+            (space_id,),
+        )
+    except sqlite3.OperationalError:
+        # Role doesn't have a per-space column (e.g. group_summary)
+        return None
     if rows and rows[0][f"{role}_model"]:
         return rows[0][f"{role}_model"]
     return None
@@ -81,12 +86,23 @@ def _get_model_for_role(role: str) -> str:
     """Look up the configured model for a given role (router, stager, chat).
 
     Adds provider prefix if not already present.
+    Roles that share a model with another role (e.g. group_summary → router)
+    fall back to that role's model before the global default.
     """
+    _ROLE_FALLBACKS = {
+        "group_summary": "router",
+    }
+
     settings = load_settings()
     models = settings.get("models", {})
-    model_name = models.get(role, "claude-haiku-4-5")
+    model_name = models.get(role)
 
-    # If the model string already has a provider prefix, use as-is
+    if not model_name and role in _ROLE_FALLBACKS:
+        model_name = models.get(_ROLE_FALLBACKS[role])
+
+    if not model_name:
+        model_name = "claude-haiku-4-5"
+
     if "/" in model_name:
         return model_name
 

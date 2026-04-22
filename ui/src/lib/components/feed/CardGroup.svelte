@@ -4,26 +4,41 @@
 	import { slide } from 'svelte/transition';
 	import ActionCardComponent from './ActionCard.svelte';
 	import StatusDot from './StatusDot.svelte';
+
+	// Self-import for nested rendering of context sub-groups
+	import CardGroupComponent from './CardGroup.svelte';
 	import { cardColors } from '$lib/stores/cardColors';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 
 	let {
 		group,
 		onselect,
+		onselectgroup,
 		ondelete,
 		onlink,
 		selectedCardId = '',
+		selectedEntityId = '',
 		hasSelection = false,
 		lastViewedCardId = '',
+		lastViewedEntityId = '',
 		scrollToCardId = null,
-		detailPanelOpen = false
-	}: { group: CardGroup; onselect: (card: ActionCard) => void; ondelete?: (cardId: string) => void; onlink?: (group: CardGroup) => void; selectedCardId?: string; hasSelection?: boolean; lastViewedCardId?: string; scrollToCardId?: string | null; detailPanelOpen?: boolean } = $props();
+		detailPanelOpen = false,
+		nested = false
+	}: { group: CardGroup; onselect: (card: ActionCard) => void; onselectgroup?: (group: CardGroup) => void; ondelete?: (cardId: string) => void; onlink?: (group: CardGroup) => void; selectedCardId?: string; selectedEntityId?: string; hasSelection?: boolean; lastViewedCardId?: string; lastViewedEntityId?: string; scrollToCardId?: string | null; detailPanelOpen?: boolean; nested?: boolean } = $props();
 
 	let expanded = $state(false);
+	let wrapperEl = $state<HTMLElement | null>(null);
 	let bulkActionRunning = $state(false);
 	let groupMenuOpen = $state(false);
 	let menuEl: HTMLElement | undefined = $state();
 	let unlinking = $state(false);
+
+	$effect(() => {
+		if (!wrapperEl) return;
+		const handler = () => { expanded = true; };
+		wrapperEl.addEventListener('expand', handler);
+		return () => wrapperEl?.removeEventListener('expand', handler);
+	});
 
 	const isSmartGroup = $derived(!!group.context_id);
 
@@ -97,8 +112,6 @@
 
 	const topCard = $derived(group.cards.find((c) => c.status === 'pending') ?? group.cards[0]);
 	const extraCount = $derived(group.card_count - 1);
-	// Show up to 2 ghost strips behind the front card
-	const ghostCount = $derived(Math.min(extraCount, 2));
 
 	// Status summary for collapsed view
 	const statusSummary = $derived.by(() => {
@@ -145,30 +158,6 @@
 		awaiting_input:     'bg-amber-950/55  border-amber-800/30  hover:border-amber-700/45  card-pulse-amber',
 	};
 
-	const ghostBorderStyle: Record<string, string> = {
-		pending:            'border-amber-800/20',
-		ready:              'border-amber-800/20',
-		requires_approval:  'border-violet-800/15',
-		done:               'border-emerald-800/12',
-		failed:             'border-rose-800/25',
-		dismissed:          'border-surface-700/20',
-		archived:           'border-surface-700/20',
-		agent_running:      'border-violet-800/15',
-		awaiting_input:     'border-amber-800/20',
-	};
-
-	const ghostBgStyle: Record<string, string> = {
-		pending:            'bg-amber-950/30',
-		ready:              'bg-amber-950/30',
-		requires_approval:  'bg-violet-950/30',
-		done:               'bg-emerald-950/25',
-		failed:             'bg-rose-950/35',
-		dismissed:          'bg-surface-900/40',
-		archived:           'bg-surface-900/40',
-		agent_running:      'bg-violet-950/30',
-		awaiting_input:     'bg-amber-950/30',
-	};
-
 	// Determine dominant status across all cards in the group
 	const dominantStatus = $derived.by(() => {
 		const statuses = new Set(group.cards.map(c => c.status));
@@ -179,8 +168,6 @@
 	});
 
 	const neutralGroupStyle = 'bg-surface-800 border-surface-700 hover:border-surface-600';
-	const neutralGhostBorder = 'border-surface-700';
-	const neutralGhostBg = 'bg-surface-850';
 
 	const allArchived = $derived(group.cards.every(c => c.status === 'archived'));
 	const groupStyle = $derived(
@@ -189,20 +176,6 @@
 			: $cardColors
 				? (groupStatusStyle[dominantStatus] ?? 'bg-surface-900 border-surface-600 hover:border-laya-orange/30')
 				: neutralGroupStyle
-	);
-	const ghostBorder = $derived(
-		allArchived
-			? 'border-dashed border-surface-700/50'
-			: $cardColors
-				? (ghostBorderStyle[dominantStatus] ?? 'border-surface-700')
-				: neutralGhostBorder
-	);
-	const ghostBg = $derived(
-		allArchived
-			? 'bg-surface-900/40'
-			: $cardColors
-				? (ghostBgStyle[dominantStatus] ?? 'bg-surface-950')
-				: neutralGhostBg
 	);
 
 	const priorityColors: Record<string, string> = {
@@ -290,10 +263,56 @@
 
 	const groupHasWorkspace = $derived(group.cards.some((c) => c.has_workspace));
 	const hasBookmark = $derived(group.cards.some((c) => c.bookmarked_at));
-	const isGroupSelected = $derived(group.cards.some((c) => c.card_id === selectedCardId));
-	// Show last-viewed accent on the group header when collapsed and it contains the last-viewed card
-	const isGroupLastViewed = $derived(!expanded && !isGroupSelected && !hasSelection && !!lastViewedCardId && group.cards.some(c => c.card_id === lastViewedCardId));
+	const isGroupSelected = $derived(
+		group.cards.some((c) => c.card_id === selectedCardId) ||
+		(!!selectedEntityId && group.entity_id === selectedEntityId)
+	);
+	const isGroupLastViewed = $derived(
+		!expanded && !isGroupSelected && !hasSelection && (
+			(!!lastViewedCardId && group.cards.some(c => c.card_id === lastViewedCardId)) ||
+			(!!lastViewedEntityId && group.entity_id === lastViewedEntityId)
+		)
+	);
 	const isDimmed = $derived(hasSelection && !isGroupSelected);
+
+	// Ghost strip styles for smart groups — matches original styling exactly
+	const ghostBorderStyle: Record<string, string> = {
+		pending:            'border-amber-800/20',
+		ready:              'border-amber-800/20',
+		requires_approval:  'border-violet-800/15',
+		done:               'border-emerald-800/12',
+		failed:             'border-rose-800/25',
+		dismissed:          'border-surface-700/20',
+		archived:           'border-surface-700/20',
+		agent_running:      'border-violet-800/15',
+		awaiting_input:     'border-amber-800/20',
+	};
+	const ghostBgStyle: Record<string, string> = {
+		pending:            'bg-amber-950/30',
+		ready:              'bg-amber-950/30',
+		requires_approval:  'bg-violet-950/30',
+		done:               'bg-emerald-950/25',
+		failed:             'bg-rose-950/35',
+		dismissed:          'bg-surface-800/30',
+		archived:           'bg-surface-800/30',
+		agent_running:      'bg-violet-950/30',
+		awaiting_input:     'bg-amber-950/30',
+	};
+	const ghostBorder = $derived(
+		allArchived
+			? 'border-dashed border-surface-700/50'
+			: $cardColors
+				? (ghostBorderStyle[dominantStatus] ?? 'border-surface-700')
+				: 'border-surface-700'
+	);
+	const ghostBg = $derived(
+		allArchived
+			? 'bg-surface-900/40'
+			: $cardColors
+				? (ghostBgStyle[dominantStatus] ?? 'bg-surface-950')
+				: 'bg-surface-850'
+	);
+	const ghostCount = $derived(isSmartGroup ? Math.min(extraCount, 2) : 0);
 
 	// Bulk action menu visibility — only show actions that apply to at least one card
 	const canApproveAll = $derived(group.cards.some(c => c.status === 'requires_approval'));
@@ -365,14 +384,18 @@
 	}
 </script>
 
-<!-- Single persistent DOM — morphs between collapsed stack and expanded list -->
+<!-- Single persistent DOM — morphs between collapsed card and expanded list -->
 <div
-	class="relative rounded-xl transition-opacity duration-200 {isDimmed ? 'opacity-45 hover:opacity-70' : ''}"
+	bind:this={wrapperEl}
+	class="relative rounded-xl transition-opacity duration-200 {isDimmed ? 'opacity-45 hover:opacity-70' : ''}
+		{isGroupLastViewed ? ($cardColors ? 'card-last-viewed' : 'card-last-viewed-highlight') : ''}"
 	style="padding-bottom: {!expanded && ghostCount > 0 ? 12 : 0}px; transition: padding-bottom 200ms ease;"
 	data-card-id={topCard.card_id}
 	data-group-entity={group.entity_id}
 >
-	<!-- Ghost strip 2 — furthest back -->
+	{#if isGroupLastViewed}<div class="card-corner-bottom"></div>{/if}
+
+	<!-- Ghost strip 2 — furthest back (smart groups only) -->
 	{#if ghostCount >= 2}
 		<div
 			class="absolute bottom-0 rounded-b-xl border-x border-b transition-opacity duration-200 {ghostBorder} {ghostBg} {expanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
@@ -380,7 +403,7 @@
 		></div>
 	{/if}
 
-	<!-- Ghost strip 1 — one step back -->
+	<!-- Ghost strip 1 — one step back (smart groups only) -->
 	{#if ghostCount >= 1}
 		<div
 			class="absolute rounded-b-xl border-x border-b transition-opacity duration-200 {ghostBorder} {ghostBg} {expanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
@@ -397,19 +420,25 @@
 		class="relative rounded-xl border shadow-lg transition-all duration-200 {expanded ? '' : 'overflow-clip group/card'}
 			{expanded
 				? 'border-surface-600 bg-surface-900'
-				: groupStyle}
-			{isGroupLastViewed ? ($cardColors ? 'card-last-viewed' : 'card-last-viewed-highlight') : ''}"
+				: groupStyle}"
 		style="z-index: 3;"
 	>
-		{#if isGroupLastViewed}<div class="card-corner-bottom"></div>{/if}
 		<!-- Header — shared between collapsed and expanded -->
 		<div
 			role="button"
 			tabindex="0"
 			class="flex w-full cursor-pointer flex-col gap-1.5 px-4 pt-3 text-left transition-colors
 				{expanded ? 'pb-2' : 'pb-0'}"
-			onclick={toggle}
-			onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}
+			onclick={() => {
+				if (isSmartGroup) {
+					toggle();
+				} else if (onselectgroup) {
+					onselectgroup(group);
+				} else {
+					onselect(topCard);
+				}
+			}}
+			onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (isSmartGroup) { toggle(); } else if (onselectgroup) { onselectgroup(group); } else { onselect(topCard); } } }}
 		>
 			<!-- Top row: source · priority · count/menu · chevron -->
 			<div class="flex items-center gap-2">
@@ -447,10 +476,12 @@
 					<span class="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase {priorityColors[group.top_priority] ?? priorityColors.MEDIUM}">
 						{priorityLabel[group.top_priority] ?? group.top_priority}
 					</span>
-					<!-- Card count badge (always visible) -->
-					<span class="whitespace-nowrap rounded-full border border-surface-600 bg-surface-700 px-2 py-0.5 text-[10px] font-semibold text-surface-300">
-						{expanded ? `${group.card_count} cards` : `+${extraCount}`}
-					</span>
+					<!-- Card count badge (expanded only — collapsed uses footer indicator) -->
+					{#if expanded}
+						<span class="whitespace-nowrap rounded-full border border-surface-600 bg-surface-700 px-2 py-0.5 text-[10px] font-semibold text-surface-300">
+							{group.card_count} cards
+						</span>
+					{/if}
 					{#if expanded && hasAnyAction}
 						<!-- Three-dot group actions menu (expanded only) -->
 						<div class="group-menu relative" bind:this={menuEl}>
@@ -536,10 +567,16 @@
 							{/if}
 						</div>
 					{/if}
-					<!-- Chevron — rotates between collapsed/expanded -->
-					<svg class="h-3.5 w-3.5 shrink-0 text-surface-500 transition-transform duration-200 {expanded ? 'rotate-0' : '-rotate-90'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-					</svg>
+					<!-- Chevron — expand/collapse toggle (independent of body click) -->
+					<button
+						class="shrink-0 rounded p-0.5 transition-colors hover:bg-surface-700/50"
+						title={expanded ? 'Collapse' : 'Expand cards'}
+						onclick={(e) => { e.stopPropagation(); expanded = !expanded; }}
+					>
+						<svg class="h-3.5 w-3.5 text-surface-500 transition-transform duration-200 {expanded ? 'rotate-0' : '-rotate-90'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+						</svg>
+					</button>
 				</div>
 			</div>
 
@@ -551,7 +588,15 @@
 
 		<!-- Collapsed-only content: summary + status footer (instant show/hide) -->
 		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-		<div class="overflow-hidden cursor-pointer {expanded ? 'hidden' : ''}" role="button" tabindex="0" onclick={toggle}>
+		<div class="overflow-hidden cursor-pointer {expanded ? 'hidden' : ''}" role="button" tabindex="0" onclick={() => {
+			if (isSmartGroup) {
+				expanded = !expanded;
+			} else if (onselectgroup) {
+				onselectgroup(group);
+			} else {
+				onselect(topCard);
+			}
+		}}>
 			<div class="px-4 pb-2">
 				<!-- Top card preview summary -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -587,22 +632,75 @@
 								</span>
 							{/each}
 						</div>
-						<span class="text-[10px] text-surface-600 shrink-0 whitespace-nowrap">
-							{group.card_count} cards
-						</span>
+						{#if isSmartGroup}
+							<!-- Smart group: show group count -->
+							<button
+								class="shrink-0 rounded-md bg-surface-700/50 px-1.5 py-0.5 text-[10px] font-medium text-surface-400 transition-colors hover:bg-surface-600/50 hover:text-surface-300"
+								title="Show all groups"
+								onclick={(e) => { e.stopPropagation(); expanded = true; }}
+							>
+								{group.sub_groups?.length ?? group.card_count} groups
+							</button>
+						{:else}
+							<!-- Entity group: stacked-cards icon + count -->
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<div class="group/stack relative flex items-center gap-1 shrink-0 rounded-md px-1 py-0.5 cursor-pointer transition-colors hover:bg-surface-600/40"
+								role="button" tabindex="0"
+								onclick={(e) => { e.stopPropagation(); expanded = true; }}
+								onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); expanded = true; } }}
+								onmouseenter={(e) => {
+									const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+									hoveredTooltip = { text: `Show ${group.card_count} cards`, top: rect.bottom + 4, left: rect.left + rect.width / 2 };
+								}}
+								onmouseleave={hideTooltip}
+							>
+								<svg class="h-3.5 w-3.5 text-laya-orange" viewBox="0 0 20 20" fill="none">
+									<!-- Back card -->
+									<rect x="5" y="1" width="11" height="14" rx="2" fill="currentColor" opacity="0.45" stroke="currentColor" stroke-width="1.4" />
+									<!-- Front card -->
+									<rect x="2" y="4" width="11" height="14" rx="2" fill="currentColor" opacity="0.8" stroke="currentColor" stroke-width="1.4" />
+								</svg>
+								<span class="text-[10px] font-bold text-laya-orange">{group.card_count}</span>
+							</div>
+						{/if}
 					</div>
 				</div>
 			</div>
 		</div>
 
-		<!-- Expanded-only content: card list (slides in/out) -->
+		<!-- Expanded-only content: card list or nested sub-groups (slides in/out) -->
 		{#if expanded}
 			<div class="space-y-2 px-3 pb-3 pt-1" transition:slide={{ duration: (skipCollapseTransition || $reducedMotion) ? 0 : 200 }}
 				onoutroend={() => { skipCollapseTransition = false; }}
 			>
-				{#each group.cards as card (card.card_id)}
-					<ActionCardComponent {card} onselect={onselect} {ondelete} {selectedCardId} {hasSelection} {lastViewedCardId} />
-				{/each}
+				{#if group.sub_groups && group.sub_groups.length > 0}
+					<!-- Context group: show nested entity sub-groups -->
+					{#each group.sub_groups as subGroup (subGroup.entity_id)}
+						{#if subGroup.card_count === 1}
+							<ActionCardComponent card={subGroup.cards[0]} onselect={onselect} {ondelete} {selectedCardId} {hasSelection} {lastViewedCardId} />
+						{:else}
+							<CardGroupComponent
+								group={subGroup}
+								{onselect}
+								{onselectgroup}
+								{ondelete}
+								{selectedCardId}
+								{selectedEntityId}
+								{hasSelection}
+								{lastViewedCardId}
+								{lastViewedEntityId}
+								{scrollToCardId}
+								{detailPanelOpen}
+								nested={true}
+							/>
+						{/if}
+					{/each}
+				{:else}
+					<!-- Regular entity group: show individual cards -->
+					{#each group.cards as card (card.card_id)}
+						<ActionCardComponent {card} onselect={onselect} {ondelete} {selectedCardId} {hasSelection} {lastViewedCardId} />
+					{/each}
+				{/if}
 			</div>
 		{/if}
 	</div>
