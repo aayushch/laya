@@ -5,6 +5,7 @@
 	import { chatOpen, chatInputPreset } from '$lib/stores/chat';
 	import { cardColors } from '$lib/stores/cardColors';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { portal } from '$lib/actions/portal';
 	import { feedDate } from '$lib/stores/feedFilters';
 	import StatusDot from './StatusDot.svelte';
 
@@ -23,6 +24,7 @@
 	let deleting = $state(false);
 	let actionMenuOpen = $state(false);
 	let actionMenuEl: HTMLElement | undefined = $state();
+	let actionMenuPos = $state({ top: 0, left: 0 });
 	let bookmarking = $state(false);
 
 	// Fixed-position tooltip — rendered outside the glass-card stacking context
@@ -293,7 +295,7 @@
 	role="button"
 	tabindex="0"
 	data-card-id={card.card_id}
-	class="group/card relative flex min-h-0 w-full cursor-pointer flex-col rounded-xl border px-4 pb-2 pt-3 text-left transition-colors hover:z-20 {cardStyle}"
+	class="group/card relative flex min-h-0 w-full cursor-pointer flex-col rounded-xl border {$glassTheme ? '' : 'shadow-lg'} px-4 pb-2 pt-3 text-left transition-colors hover:z-20 {cardStyle}"
 	onclick={() => onselect(card)}
 	onkeydown={(e) => e.key === 'Enter' && onselect(card)}
 >
@@ -336,7 +338,7 @@
 					<div class="action-overflow-menu relative" bind:this={actionMenuEl}>
 						<button
 							class="flex h-6 w-6 items-center justify-center rounded-md text-surface-500 transition-all hover:bg-surface-700/50 hover:text-surface-300"
-							onclick={(e) => { e.stopPropagation(); actionMenuOpen = !actionMenuOpen; }}
+							onclick={(e) => { e.stopPropagation(); if (!actionMenuOpen && actionMenuEl) { const r = actionMenuEl.getBoundingClientRect(); actionMenuPos = { top: r.bottom + 4, left: r.left }; } actionMenuOpen = !actionMenuOpen; }}
 							aria-label="More actions"
 						>
 							<svg class="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20">
@@ -344,7 +346,7 @@
 							</svg>
 						</button>
 						{#if actionMenuOpen}
-							<div class="absolute left-0 top-full z-50 mt-1 w-40 rounded-lg border border-surface-600 bg-surface-800 p-1 shadow-xl shadow-black/30" role="menu">
+							<div use:portal class="fixed z-[100] w-40 rounded-lg border p-1 {$glassTheme ? 'glass-menu' : 'border-surface-600 bg-surface-800 shadow-xl shadow-black/30'}" style="top: {actionMenuPos.top}px; left: {actionMenuPos.left}px;" role="menu">
 								<button
 									class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400 disabled:opacity-40"
 									role="menuitem"
@@ -411,7 +413,7 @@
 					<div class="action-overflow-menu relative" bind:this={actionMenuEl}>
 						<button
 							class="flex h-6 w-6 items-center justify-center rounded-md text-surface-500 transition-all hover:bg-surface-700/50 hover:text-surface-300"
-							onclick={(e) => { e.stopPropagation(); actionMenuOpen = !actionMenuOpen; }}
+							onclick={(e) => { e.stopPropagation(); if (!actionMenuOpen && actionMenuEl) { const r = actionMenuEl.getBoundingClientRect(); actionMenuPos = { top: r.bottom + 4, left: r.left }; } actionMenuOpen = !actionMenuOpen; }}
 							aria-label="More actions"
 						>
 							<svg class="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20">
@@ -419,7 +421,7 @@
 							</svg>
 						</button>
 						{#if actionMenuOpen}
-							<div class="absolute left-0 top-full z-50 mt-1 w-40 rounded-lg border border-surface-600 bg-surface-800 p-1 shadow-xl shadow-black/30" role="menu">
+							<div use:portal class="fixed z-[100] w-40 rounded-lg border p-1 {$glassTheme ? 'glass-menu' : 'border-surface-600 bg-surface-800 shadow-xl shadow-black/30'}" style="top: {actionMenuPos.top}px; left: {actionMenuPos.left}px;" role="menu">
 								<button
 									class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400 disabled:opacity-40"
 									role="menuitem"
@@ -754,7 +756,7 @@
 
 {#if fixedTooltip}
 	<span
-		class="pointer-events-none fixed z-[100] rounded-md border border-transparent glass-card bg-surface-800/40 px-2 py-1 text-[10px] font-medium text-laya-orange"
+		class="pointer-events-none fixed z-[100] rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium"
 		style="top: {fixedTooltip.top}px; left: {fixedTooltip.left}px;{fixedTooltip.maxWidth ? ` max-width: ${fixedTooltip.maxWidth}px; white-space: normal;` : ' white-space: nowrap;'}"
 	>
 		{fixedTooltip.text}

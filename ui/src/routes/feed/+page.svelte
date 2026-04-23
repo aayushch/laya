@@ -19,9 +19,14 @@
 	import { pendingCardId } from '$lib/stores/chat';
 	import { spaces } from '$lib/stores/spaces';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
+	import { glassTheme } from '$lib/stores/glassTheme';
+	import { portal } from '$lib/actions/portal';
 
 	// Filter toolbar state
 	let filterPopoverOpen = $state(false);
+	let filterBtnEl: HTMLElement | undefined = $state();
+	let filterMenuEl: HTMLElement | undefined = $state();
+	let filterMenuPos = $state({ top: 0, left: 0 });
 	const activeStatusCount = $derived($feedFilters.statusFilters.length);
 	const activePriorityCount = $derived($feedFilters.priorityFilters.length);
 	const activeSpaceCount = $derived($feedFilters.spaceFilter.length);
@@ -34,7 +39,7 @@
 	function closeFilterDropdown(e: MouseEvent) {
 		const target = e.target as HTMLElement;
 		if (!target.isConnected) return;
-		if (!target.closest('.filter-dropdown')) {
+		if (!target.closest('.filter-dropdown') && !filterMenuEl?.contains(target)) {
 			filterPopoverOpen = false;
 		}
 	}
@@ -1167,9 +1172,9 @@
 		<div class="flex-1"></div>
 
 		<!-- Filter popover -->
-		<div class="filter-dropdown relative">
+		<div class="filter-dropdown relative" bind:this={filterBtnEl}>
 			<button
-				onclick={() => (filterPopoverOpen = !filterPopoverOpen)}
+				onclick={() => { if (!filterPopoverOpen && filterBtnEl) { const r = filterBtnEl.getBoundingClientRect(); filterMenuPos = { top: r.bottom + 6, left: r.left }; } filterPopoverOpen = !filterPopoverOpen; }}
 				class="relative flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors
 					{hasActiveFilters
 						? 'border-laya-orange/30 bg-laya-orange/10 text-laya-orange'
@@ -1185,7 +1190,7 @@
 			</button>
 
 			{#if filterPopoverOpen}
-				<div class="absolute left-0 top-full z-50 mt-1.5 w-64 rounded-xl border border-surface-600 bg-surface-800 p-3 shadow-xl shadow-black/30">
+				<div use:portal bind:this={filterMenuEl} class="fixed z-[100] w-64 rounded-xl border p-3 {$glassTheme ? 'glass-menu' : 'border-surface-600 bg-surface-800 shadow-xl shadow-black/30'}" style="top: {filterMenuPos.top}px; left: {filterMenuPos.left}px;">
 					<!-- Sort -->
 					<div class="mb-3">
 						<div class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Sort</div>
@@ -1425,7 +1430,7 @@
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
 					</svg>
 				</button>
-				<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-card bg-surface-800/40 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100">Card View</span>
+				<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100">Card View</span>
 			</div>
 			<div class="group/tip relative">
 				<button
@@ -1437,7 +1442,7 @@
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
 					</svg>
 				</button>
-				<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-card bg-surface-800/40 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100">List View</span>
+				<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100">List View</span>
 			</div>
 		</div>
 	</div>
