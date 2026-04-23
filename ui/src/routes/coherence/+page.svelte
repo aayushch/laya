@@ -537,7 +537,7 @@
 
 {#if tooltip}
 	<div
-		class="fixed z-50 px-2 py-1 rounded-md border border-transparent glass-card bg-surface-800/40 text-[10px] font-medium text-laya-orange pointer-events-none -translate-x-1/2 -translate-y-full max-w-[400px] break-words"
+		class="fixed z-50 px-2 py-1 rounded-md border border-transparent glass-tooltip text-[10px] font-medium pointer-events-none -translate-x-1/2 -translate-y-full max-w-[400px] break-words"
 		style="left: {tooltip.x}px; top: {tooltip.y}px;"
 	>
 		{tooltip.text}

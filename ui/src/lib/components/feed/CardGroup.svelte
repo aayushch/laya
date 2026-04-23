@@ -10,6 +10,7 @@
 	import { cardColors } from '$lib/stores/cardColors';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
+	import { portal } from '$lib/actions/portal';
 
 	let {
 		group,
@@ -436,7 +437,7 @@
 		 the header out of view and leaving empty space at the bottom. clip visually
 		 clips the same way but does NOT create a scroll container. -->
 	<div
-		class="relative rounded-xl border transition-all duration-200 {expanded ? '' : 'group/card'}
+		class="relative rounded-xl border {$glassTheme ? '' : 'shadow-lg'} transition-all duration-200 {expanded ? '' : 'group/card'}
 			{expanded
 				? ($glassTheme ? 'glass-card border-transparent bg-surface-900/50' : 'border-surface-600 bg-surface-900')
 				: groupStyle} {!expanded && ghostCount > 0 ? 'ghost-strip-shadow' : ''}
@@ -502,7 +503,11 @@
 					{/if}
 					{#if hasAnyAction}
 						<!-- Three-dot group actions menu -->
-						<div class="group-menu group/actions relative" bind:this={menuEl}>
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div class="group-menu relative" bind:this={menuEl}
+							onmouseenter={(e) => { if (!groupMenuOpen) { const r = e.currentTarget.getBoundingClientRect(); hoveredTooltip = { text: 'Group actions', top: r.bottom + 4, left: r.left + r.width / 2 }; } }}
+							onmouseleave={() => { hoveredTooltip = null; }}
+						>
 							<button
 								onclick={toggleGroupMenu}
 								disabled={bulkActionRunning}
@@ -519,10 +524,6 @@
 									</svg>
 								{/if}
 							</button>
-							{#if !groupMenuOpen}
-								<!-- svelte-ignore a11y_no_static_element_interactions -->
-								<div class="absolute inset-0" onmouseenter={(e) => { const r = e.currentTarget.getBoundingClientRect(); hoveredTooltip = { text: 'Group actions', top: r.bottom + 4, left: r.left + r.width / 2 }; }} onmouseleave={() => { hoveredTooltip = null; }}></div>
-							{/if}
 						</div>
 					{/if}
 					<span class="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase {priorityColors[group.top_priority] ?? priorityColors.MEDIUM}">
@@ -670,7 +671,8 @@
 {#if groupMenuOpen}
 	<!-- Rendered outside wrapper to escape parent opacity/overflow -->
 	<div
-		class="fixed z-[100] w-40 rounded-lg border border-surface-600 bg-surface-900 p-1 shadow-xl shadow-black/50"
+		use:portal
+		class="fixed z-[100] w-40 rounded-lg border p-1 {$glassTheme ? 'glass-menu' : 'border-surface-600 bg-surface-900 shadow-xl shadow-black/50'}"
 		style="top: {menuPos.top}px; right: {menuPos.right}px;"
 		role="menu"
 	>
@@ -735,7 +737,7 @@
 
 {#if hoveredTooltip}
 	<span
-		class="pointer-events-none fixed z-50 rounded-md border border-transparent glass-card bg-surface-800/40 px-2 py-1 text-[10px] font-medium text-laya-orange"
+		class="pointer-events-none fixed z-50 rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium"
 		style="top: {hoveredTooltip.top}px; left: {hoveredTooltip.left}px;{hoveredTooltip.maxWidth ? ` max-width: ${hoveredTooltip.maxWidth}px; white-space: normal;` : ' white-space: nowrap; transform: translateX(-100%);'}"
 	>
 		{hoveredTooltip.text}

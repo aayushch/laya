@@ -149,11 +149,14 @@ html, body {
 [data-theme='light'] .list-row-hover:hover { box-shadow: inset 0 0 0 100px rgb(0 0 0 / 0.05); }
 [data-theme='light'] .list-row-hover.card-last-viewed:hover,
 [data-theme='light'] .list-row-hover.card-last-viewed--compact:hover {
-	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.6), 0 8px 32px -8px rgb(0 0 0 / 0.08), inset 0 0 0 1px var(--last-viewed-accent), inset 0 0 0 100px rgb(0 0 0 / 0.05);
+	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.5), 0 4px 16px -4px rgb(0 0 0 / 0.06), inset 0 0 0 1px var(--last-viewed-accent), inset 0 0 0 100px rgb(0 0 0 / 0.05);
 }
 
-/* Last-viewed accent — white in dark, black in light */
-[data-theme='light'] .card-last-viewed { --last-viewed-accent: oklch(0.75 0.18 55 / 0.7); }
+/* Last-viewed accent — white in dark, orange in light */
+[data-theme='light'] .card-last-viewed {
+	--last-viewed-accent: oklch(0.75 0.18 55 / 0.7);
+	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.7), 0 4px 16px -4px rgb(0 0 0 / 0.06), inset 0 0 0 1px var(--last-viewed-accent);
+}
 
 /* Subtle action button bg adjustments */
 [data-theme='light'] .bg-green-700\/30,
@@ -229,6 +232,65 @@ html, body {
 [data-theme='light'] .hover\:border-teal-700\/35:hover { border-color: oklch(0.64 0.10 185 / 55%); }
 
 /* ─────────────────────────────────────────────────────────────
+   LIGHT THEME — glass card tints
+   Glass uses different opacity values than solid cards.
+   Override them to the same warm pastel tints used by solid.
+   ───────────────────────────────────────────────────────────── */
+[data-theme='light'] .bg-amber-950\/45   { background-color: oklch(0.94 0.045 75); }
+[data-theme='light'] .bg-violet-950\/45  { background-color: oklch(0.94 0.04 285); }
+[data-theme='light'] .bg-emerald-950\/40 { background-color: oklch(0.97 0.015 162); }
+[data-theme='light'] .bg-rose-950\/50    { background-color: oklch(0.94 0.045 25); }
+[data-theme='light'] .bg-rose-950\/35    { background-color: oklch(0.96 0.025 25); }
+/* Tooltip — solid by default, frosted glass when glass theme is on */
+.glass-tooltip {
+	background-color: oklch(0.22 0.008 50);
+	color: oklch(0.775 0.130 63);
+	box-shadow: 0 4px 12px -2px rgb(0 0 0 / 0.4);
+}
+[data-theme='light'] .glass-tooltip {
+	background-color: oklch(0.96 0.005 72);
+	color: oklch(0.35 0.14 50);
+	box-shadow: 0 4px 12px -2px rgb(0 0 0 / 0.1);
+}
+[data-glass-theme] .glass-tooltip {
+	-webkit-backdrop-filter: blur(16px) saturate(1.3);
+	backdrop-filter: blur(16px) saturate(1.3);
+	background-color: oklch(0.22 0.008 50 / 0.45);
+	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.08), 0 8px 24px -6px rgb(0 0 0 / 0.25);
+}
+[data-theme='light'][data-glass-theme] .glass-tooltip {
+	-webkit-backdrop-filter: blur(16px) saturate(1.4);
+	backdrop-filter: blur(16px) saturate(1.4);
+	background-color: oklch(0.98 0.004 72 / 0.45);
+	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.7), 0 4px 16px -4px rgb(0 0 0 / 0.08);
+}
+
+/* Glass menu — for overflow/action menus when glass theme is on */
+.glass-menu {
+	-webkit-backdrop-filter: blur(24px) saturate(1.5);
+	backdrop-filter: blur(24px) saturate(1.5);
+	background-color: oklch(0.18 0.007 48 / 0.45);
+	border-color: rgb(255 255 255 / 0.10);
+	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.08), 0 12px 40px -8px rgb(0 0 0 / 0.5);
+}
+[data-theme='light'] .glass-menu {
+	background-color: oklch(0.97 0.004 72 / 0.45);
+	border-color: rgb(0 0 0 / 0.08);
+	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.7), 0 8px 32px -8px rgb(0 0 0 / 0.12);
+}
+[data-theme='light'] .bg-surface-900\/30 { background-color: oklch(0.96 0.004 74); }
+[data-theme='light'] .bg-surface-900\/35 { background-color: oklch(0.955 0.004 74); }
+[data-theme='light'] .bg-surface-900\/50 { background-color: oklch(0.95 0.005 74); }
+
+/* Light-theme glass hover borders — darken for cream bg */
+[data-theme='light'] .hover\:border-amber-700\/30:hover  { border-color: oklch(0.72 0.10 65 / 50%); }
+[data-theme='light'] .hover\:border-violet-700\/30:hover { border-color: oklch(0.64 0.10 285 / 50%); }
+[data-theme='light'] .hover\:border-emerald-700\/25:hover { border-color: oklch(0.72 0.06 162 / 40%); }
+[data-theme='light'] .hover\:border-rose-700\/35:hover   { border-color: oklch(0.64 0.12 25 / 55%); }
+[data-theme='light'] .hover\:border-surface-600\/30:hover { border-color: oklch(0.68 0.010 55 / 45%); }
+[data-theme='light'] .hover\:border-laya-orange\/20:hover { border-color: oklch(0.72 0.12 63 / 40%); }
+
+/* ─────────────────────────────────────────────────────────────
    LIGHT THEME — card group ghost strips (stacked card effect)
    Ghost strips use lower-opacity *-950 bg variants that are
    too dark against the cream background in light mode. Override
@@ -264,8 +326,13 @@ html, body {
 	-webkit-backdrop-filter: blur(16px) saturate(1.4);
 	backdrop-filter: blur(16px) saturate(1.4);
 	box-shadow:
-		inset 0 0.5px 0 0 rgb(255 255 255 / 0.6),
-		0 8px 32px -8px rgb(0 0 0 / 0.08);
+		inset 0 0.5px 0 0 rgb(255 255 255 / 0.7),
+		0 4px 16px -4px rgb(0 0 0 / 0.06);
+}
+[data-theme='light'] .glass-card-flat {
+	-webkit-backdrop-filter: blur(16px) saturate(1.4);
+	backdrop-filter: blur(16px) saturate(1.4);
+	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.5);
 }
 /* Feed background mesh — subtle gradient orbs that give
    the backdrop-blur something to diffuse through cards. */
@@ -284,9 +351,9 @@ html, body {
 }
 [data-theme='light'] .feed-glass-bg::before {
 	background:
-		radial-gradient(ellipse 600px 400px at 15% 20%, oklch(0.92 0.04 65 / 0.5), transparent),
-		radial-gradient(ellipse 500px 500px at 80% 30%, oklch(0.90 0.03 285 / 0.35), transparent),
-		radial-gradient(ellipse 700px 350px at 50% 75%, oklch(0.93 0.03 145 / 0.3), transparent);
+		radial-gradient(ellipse 600px 400px at 15% 20%, oklch(0.95 0.02 65 / 0.35), transparent),
+		radial-gradient(ellipse 500px 500px at 80% 30%, oklch(0.94 0.015 285 / 0.25), transparent),
+		radial-gradient(ellipse 700px 350px at 50% 75%, oklch(0.95 0.015 145 / 0.2), transparent);
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -309,13 +376,19 @@ html, body {
 	animation: card-pulse-glow 2.5s ease-in-out infinite;
 }
 
+@keyframes card-pulse-glow-light {
+	0%, 100% { box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.7), 0 4px 16px -4px rgb(0 0 0 / 0.06), 0 0 8px 1px var(--card-pulse-base); }
+	50%      { box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.7), 0 4px 16px -4px rgb(0 0 0 / 0.06), 0 0 18px 4px var(--card-pulse-color); }
+}
 [data-theme='light'] .card-pulse-violet {
 	--card-pulse-base: oklch(0.60 0.22 25 / 0.30);
 	--card-pulse-color: oklch(0.60 0.22 25 / 0.50);
+	animation: card-pulse-glow-light 2.5s ease-in-out infinite;
 }
 [data-theme='light'] .card-pulse-amber {
 	--card-pulse-base: oklch(0.55 0.24 70 / 0.30);
 	--card-pulse-color: oklch(0.55 0.24 70 / 0.45);
+	animation: card-pulse-glow-light 2.5s ease-in-out infinite;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -389,6 +462,22 @@ html, body {
 }
 .card-last-viewed-highlight.card-highlight-fade::after {
 	animation: card-highlight-ring-glow 1.5s ease-out forwards;
+}
+
+/* Light-theme highlight-fade: use light glass shadow base */
+@keyframes card-highlight-fade-light {
+	0%   { box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.7), 0 4px 16px -4px rgb(0 0 0 / 0.06), inset 0 0 0 100px oklch(0.75 0.18 55 / 0.12); }
+	100% { box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.7), 0 4px 16px -4px rgb(0 0 0 / 0.06), inset 0 0 0 100px oklch(0.75 0.18 55 / 0); }
+}
+@keyframes card-highlight-fade-with-ring-light {
+	0%   { box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.7), 0 4px 16px -4px rgb(0 0 0 / 0.06), inset 0 0 0 1px var(--last-viewed-accent), inset 0 0 0 100px oklch(0.75 0.18 55 / 0.12); }
+	100% { box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.7), 0 4px 16px -4px rgb(0 0 0 / 0.06), inset 0 0 0 1px var(--last-viewed-accent), inset 0 0 0 100px oklch(0.75 0.18 55 / 0); }
+}
+[data-theme='light'] .card-highlight-fade {
+	animation: card-highlight-fade-light 1.5s ease-out forwards;
+}
+[data-theme='light'] .card-last-viewed.card-highlight-fade {
+	animation: card-highlight-fade-with-ring-light 1.5s ease-out forwards;
 }
 
 /* ─────────────────────────────────────────────────────────────

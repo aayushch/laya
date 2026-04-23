@@ -5,6 +5,7 @@
 	import { cardColors } from '$lib/stores/cardColors';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
+	import { portal } from '$lib/actions/portal';
 	import ListRow from './ListRow.svelte';
 
 	let {
@@ -215,7 +216,15 @@
 	}
 
 	function toggle() { expanded = !expanded; }
-	function toggleGroupMenu(e: Event) { e.stopPropagation(); groupMenuOpen = !groupMenuOpen; }
+	let menuPos = $state({ top: 0, right: 0 });
+	function toggleGroupMenu(e: Event) {
+		e.stopPropagation();
+		if (!groupMenuOpen && menuEl) {
+			const rect = menuEl.getBoundingClientRect();
+			menuPos = { top: rect.bottom + 4, right: window.innerWidth - rect.right };
+		}
+		groupMenuOpen = !groupMenuOpen;
+	}
 
 	// Bulk actions
 	const canApproveAll = $derived(group.cards.some((c) => c.status === 'requires_approval'));
@@ -387,48 +396,6 @@
 							</svg>
 						{/if}
 					</button>
-					{#if groupMenuOpen}
-						<div class="absolute right-0 top-full z-50 mt-1 w-40 rounded-lg border border-surface-600 bg-surface-800 p-1 shadow-xl shadow-black/30" role="menu">
-							{#if canApproveAll}
-								<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-violet-400" role="menuitem" onclick={(e) => bulkAction('approve', e)}>Approve All</button>
-							{/if}
-							{#if canCompleteAll}
-								<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-green-400" role="menuitem" onclick={(e) => bulkAction('complete', e)}>Complete All</button>
-							{/if}
-							{#if canDismissAll}
-								<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-red-400" role="menuitem" onclick={(e) => bulkAction('dismiss', e)}>Dismiss All</button>
-							{/if}
-							{#if canReopenAll}
-								<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-laya-orange" role="menuitem" onclick={(e) => bulkAction('reopen', e)}>Reopen All</button>
-							{/if}
-							{#if canArchiveAll}
-								<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-surface-400" role="menuitem" onclick={(e) => bulkAction('archive', e)}>Archive All</button>
-							{/if}
-							{#if canUnarchiveAll}
-								<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-laya-orange" role="menuitem" onclick={(e) => bulkAction('unarchive', e)}>Unarchive All</button>
-							{/if}
-							<div class="my-1 border-t border-surface-700"></div>
-							<button
-								class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-laya-orange"
-								role="menuitem"
-								onclick={(e) => { e.stopPropagation(); groupMenuOpen = false; onlink?.(group); }}
-							>
-								<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-								Link to...
-							</button>
-							{#if isSmartGroup}
-								<button
-									class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-red-400"
-									role="menuitem"
-									disabled={unlinking}
-									onclick={unlinkGroup}
-								>
-									<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /><line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
-									{unlinking ? 'Unlinking...' : 'Unlink Group'}
-								</button>
-							{/if}
-						</div>
-					{/if}
 				</div>
 			{/if}
 		</div>
@@ -496,3 +463,53 @@
 		</div>
 	{/if}
 </div>
+
+{#if groupMenuOpen}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		use:portal
+		class="fixed z-[100] w-40 rounded-lg border p-1 {$glassTheme ? 'glass-menu' : 'border-surface-600 bg-surface-800 shadow-xl shadow-black/30'}"
+		style="top: {menuPos.top}px; right: {menuPos.right}px;"
+		role="menu"
+		onclick={(e) => e.stopPropagation()}
+	>
+		{#if canApproveAll}
+			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-violet-400" role="menuitem" onclick={(e) => bulkAction('approve', e)}>Approve All</button>
+		{/if}
+		{#if canCompleteAll}
+			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-green-400" role="menuitem" onclick={(e) => bulkAction('complete', e)}>Complete All</button>
+		{/if}
+		{#if canDismissAll}
+			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-red-400" role="menuitem" onclick={(e) => bulkAction('dismiss', e)}>Dismiss All</button>
+		{/if}
+		{#if canReopenAll}
+			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-laya-orange" role="menuitem" onclick={(e) => bulkAction('reopen', e)}>Reopen All</button>
+		{/if}
+		{#if canArchiveAll}
+			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-surface-400" role="menuitem" onclick={(e) => bulkAction('archive', e)}>Archive All</button>
+		{/if}
+		{#if canUnarchiveAll}
+			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-laya-orange" role="menuitem" onclick={(e) => bulkAction('unarchive', e)}>Unarchive All</button>
+		{/if}
+		<div class="my-1 border-t border-surface-700"></div>
+		<button
+			class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-laya-orange"
+			role="menuitem"
+			onclick={(e) => { e.stopPropagation(); groupMenuOpen = false; onlink?.(group); }}
+		>
+			<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+			Link to...
+		</button>
+		{#if isSmartGroup}
+			<button
+				class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-red-400"
+				role="menuitem"
+				disabled={unlinking}
+				onclick={unlinkGroup}
+			>
+				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /><line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+				{unlinking ? 'Unlinking...' : 'Unlink Group'}
+			</button>
+		{/if}
+	</div>
+{/if}
