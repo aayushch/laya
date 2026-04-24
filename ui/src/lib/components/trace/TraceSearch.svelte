@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { searchFocusSignal } from '$lib/stores/searchFocus';
+
 	let {
 		onsubmit,
 		loading = false,
@@ -14,6 +16,14 @@
 	} = $props();
 
 	let query = $state('');
+	let searchInputEl: HTMLInputElement | undefined = $state();
+
+	$effect(() => {
+		if ($searchFocusSignal && searchInputEl) {
+			searchInputEl.focus();
+			searchInputEl.select();
+		}
+	});
 
 	// Advanced search settings — defaults match the backend defaults
 	let showAdvanced = $state(false);
@@ -94,6 +104,7 @@
 			{/if}
 		</div>
 		<input
+			bind:this={searchInputEl}
 			type="text"
 			bind:value={query}
 			onkeydown={handleKeydown}

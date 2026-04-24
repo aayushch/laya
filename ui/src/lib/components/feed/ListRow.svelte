@@ -67,7 +67,7 @@
 	const statusDot: Record<string, string> = {
 		pending: 'bg-yellow-400 animate-pulse',
 		ready: 'bg-amber-400',
-		requires_approval: 'bg-violet-400',
+		requires_approval: 'bg-sky-400',
 		agent_running: 'bg-violet-400 animate-pulse',
 		awaiting_input: 'bg-yellow-400 animate-pulse',
 		done: 'bg-green-500',
@@ -78,7 +78,7 @@
 	const solidRowStyle: Record<string, string> = {
 		pending:            'bg-amber-950/55',
 		ready:              'bg-amber-950/55',
-		requires_approval:  'bg-violet-950/55',
+		requires_approval:  'bg-sky-950/55',
 		agent_running:      'bg-violet-950/55',
 		awaiting_input:     'bg-amber-950/55',
 		done:               'bg-emerald-950/50',
@@ -89,7 +89,7 @@
 	const glassRowStyle: Record<string, string> = {
 		pending:            'glass-card-flat bg-amber-950/45',
 		ready:              'glass-card-flat bg-amber-950/45',
-		requires_approval:  'glass-card-flat bg-violet-950/45',
+		requires_approval:  'glass-card-flat bg-sky-950/45',
 		agent_running:      'glass-card-flat bg-violet-950/45',
 		awaiting_input:     'glass-card-flat bg-amber-950/45',
 		done:               'glass-card-flat bg-emerald-950/40',

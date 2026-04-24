@@ -21,6 +21,9 @@
 	import { compose } from '$lib/stores/compose';
 	import ComposeModal from '$lib/components/egress/ComposeModal.svelte';
 	import { agentDialog } from '$lib/stores/agentDialog';
+	import { summaryModalOpen } from '$lib/stores/summaryModal';
+	import { recentDrawerOpen } from '$lib/stores/recentCards';
+	import { triggerSearchFocus } from '$lib/stores/searchFocus';
 	import RunAgentModal from '$lib/components/agent/RunAgentModal.svelte';
 	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
 	import Titlebar from '$lib/components/Titlebar.svelte';
@@ -266,6 +269,102 @@
 		}
 		document.addEventListener('keydown', handleAgentShortcut);
 
+		// Keyboard shortcut: press 's' (not in input/textarea) to toggle summary modal
+		function handleSummaryShortcut(e: KeyboardEvent) {
+			if (e.key === 's' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+				const tag = (e.target as HTMLElement)?.tagName;
+				if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable) return;
+				e.preventDefault();
+				summaryModalOpen.update(v => !v);
+			}
+		}
+		document.addEventListener('keydown', handleSummaryShortcut);
+
+		// Keyboard shortcut: press 'l' (not in input/textarea) to toggle chat panel
+		function handleChatShortcut(e: KeyboardEvent) {
+			if (e.key === 'l' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+				const tag = (e.target as HTMLElement)?.tagName;
+				if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable) return;
+				e.preventDefault();
+				e.stopImmediatePropagation();
+				let current = false;
+				chatOpen.subscribe(v => { current = v; })();
+				if (current) {
+					chatOpen.set(false);
+				} else {
+					chatListOpen.set(true);
+					chatOpen.set(true);
+				}
+			}
+		}
+		document.addEventListener('keydown', handleChatShortcut);
+
+		// Keyboard shortcut: press 'r' to toggle recent items drawer
+		function handleRecentShortcut(e: KeyboardEvent) {
+			if (e.key === 'r' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+				const tag = (e.target as HTMLElement)?.tagName;
+				if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable) return;
+				e.preventDefault();
+				recentDrawerOpen.update(v => !v);
+			}
+		}
+		document.addEventListener('keydown', handleRecentShortcut);
+
+		// Keyboard shortcut: press 'b' to toggle bookmarks filter
+		function handleBookmarkShortcut(e: KeyboardEvent) {
+			if (e.key === 'b' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+				const tag = (e.target as HTMLElement)?.tagName;
+				if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable) return;
+				e.preventDefault();
+				feedFilters.update(f => ({ ...f, showBookmarked: !f.showBookmarked }));
+			}
+		}
+		document.addEventListener('keydown', handleBookmarkShortcut);
+
+		// Keyboard shortcut: Cmd+F (macOS) / Ctrl+F to focus feed search box
+		function handleSearchShortcut(e: KeyboardEvent) {
+			if (e.key === 'f' && (e.metaKey || e.ctrlKey) && !e.altKey) {
+				if (page.url.pathname === '/feed' || page.url.pathname === '/') {
+					e.preventDefault();
+					triggerSearchFocus();
+				}
+			}
+		}
+		document.addEventListener('keydown', handleSearchShortcut);
+
+		// Keyboard shortcut: Cmd+S (macOS) / Ctrl+S to navigate to Coherence and focus search
+		function handleCoherenceShortcut(e: KeyboardEvent) {
+			if (e.key === 's' && (e.metaKey || e.ctrlKey) && !e.altKey) {
+				e.preventDefault();
+				goto('/coherence').then(() => {
+					requestAnimationFrame(() => triggerSearchFocus());
+				});
+			}
+		}
+		document.addEventListener('keydown', handleCoherenceShortcut);
+
+		// Keyboard shortcut: press 'p' to navigate to Pulse (feed)
+		function handlePulseShortcut(e: KeyboardEvent) {
+			if (e.key === 'p' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+				const tag = (e.target as HTMLElement)?.tagName;
+				if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable) return;
+				e.preventDefault();
+				goto('/feed');
+			}
+		}
+		document.addEventListener('keydown', handlePulseShortcut);
+
+		// Keyboard shortcut: press 'o' to navigate to Omni
+		function handleOmniShortcut(e: KeyboardEvent) {
+			if (e.key === 'o' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+				const tag = (e.target as HTMLElement)?.tagName;
+				if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable) return;
+				e.preventDefault();
+				goto('/omni');
+			}
+		}
+		document.addEventListener('keydown', handleOmniShortcut);
+
 		// Auto-advance feedDate at midnight so "Today"/"Yesterday" labels stay correct
 		function scheduleMidnightUpdate() {
 			const now = Date.now();
@@ -280,6 +379,14 @@
 		return () => {
 			document.removeEventListener('keydown', handleComposeShortcut);
 			document.removeEventListener('keydown', handleAgentShortcut);
+			document.removeEventListener('keydown', handleSummaryShortcut);
+			document.removeEventListener('keydown', handleChatShortcut);
+			document.removeEventListener('keydown', handleRecentShortcut);
+			document.removeEventListener('keydown', handleBookmarkShortcut);
+			document.removeEventListener('keydown', handleSearchShortcut);
+			document.removeEventListener('keydown', handleCoherenceShortcut);
+			document.removeEventListener('keydown', handlePulseShortcut);
+			document.removeEventListener('keydown', handleOmniShortcut);
 			clearTimeout(midnightTimer);
 			stopHealthPolling();
 			closeWebSocket();
@@ -546,7 +653,7 @@
 		<UpdateBanner />
 
 		<!-- Main content — add right padding when chat sidebar is open so content isn't hidden behind it -->
-		<main class="{$glassTheme ? 'feed-glass-bg' : ''} flex-1 overflow-auto p-4 transition-[padding] duration-250 {$chatOpen ? 'pr-[476px]' : ''}">
+		<main class="{$glassTheme ? 'feed-glass-bg' : ''} flex-1 overflow-auto p-4 {$chatOpen ? 'pr-[476px]' : ''}">
 			{#key page.url.pathname}
 				<div
 					class="h-full"
@@ -558,7 +665,7 @@
 		</main>
 
 		<!-- Footer -->
-		<footer class="relative flex items-center justify-between border-t border-surface-700/60 bg-surface-900/95 px-5 py-1.5 text-[11px] text-surface-500 backdrop-blur-sm {$chatOpen ? 'pr-[476px]' : ''} transition-[padding] duration-250">
+		<footer class="relative flex items-center justify-between border-t border-surface-700/60 bg-surface-900/95 px-5 py-1.5 text-[11px] text-surface-500 backdrop-blur-sm {$chatOpen ? 'pr-[476px]' : ''}">
 			<!-- Left: Date widget -->
 			<div class="flex items-center gap-2 text-surface-600">
 				<span class="tabular-nums">{new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>

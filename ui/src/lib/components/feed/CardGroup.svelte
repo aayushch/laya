@@ -9,6 +9,7 @@
 	import CardGroupComponent from './CardGroup.svelte';
 	import { cardColors } from '$lib/stores/cardColors';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { cardDescriptions } from '$lib/stores/cardDescriptions';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { portal } from '$lib/actions/portal';
 
@@ -151,7 +152,7 @@
 	const glassGroupStatusStyle: Record<string, string> = {
 		pending:            'glass-card bg-amber-950/45  border-transparent  hover:border-amber-700/30  card-pulse-amber',
 		ready:              'glass-card bg-amber-950/45  border-transparent  hover:border-amber-700/30',
-		requires_approval:  'glass-card bg-violet-950/45 border-transparent hover:border-violet-700/30',
+		requires_approval:  'glass-card bg-sky-950/45 border-transparent hover:border-sky-700/30',
 		done:               'glass-card bg-emerald-950/40 border-transparent hover:border-emerald-700/25',
 		failed:             'glass-card bg-rose-950/50   border-transparent   hover:border-rose-700/35',
 		dismissed:          'glass-card bg-surface-800/30 border-transparent hover:border-surface-600/30',
@@ -163,7 +164,7 @@
 	const solidGroupStatusStyle: Record<string, string> = {
 		pending:            'bg-amber-950/55  border-transparent  hover:border-amber-700/45  card-pulse-amber',
 		ready:              'bg-amber-950/55  border-transparent  hover:border-amber-700/45',
-		requires_approval:  'bg-violet-950/55 border-transparent hover:border-violet-700/40',
+		requires_approval:  'bg-sky-950/55 border-transparent hover:border-sky-700/40',
 		done:               'bg-emerald-950/50 border-transparent hover:border-emerald-700/35',
 		failed:             'bg-rose-950/60   border-transparent   hover:border-rose-700/50',
 		dismissed:          'bg-surface-800/40 border-transparent hover:border-surface-600/40',
@@ -295,7 +296,7 @@
 	const ghostBorderStyle: Record<string, string> = {
 		pending:            'border-amber-900/25',
 		ready:              'border-amber-900/25',
-		requires_approval:  'border-violet-900/20',
+		requires_approval:  'border-sky-900/20',
 		done:               'border-emerald-900/18',
 		failed:             'border-rose-900/30',
 		dismissed:          'border-surface-700/25',
@@ -306,7 +307,7 @@
 	const ghostBgStyle: Record<string, string> = {
 		pending:            'bg-amber-950/30',
 		ready:              'bg-amber-950/30',
-		requires_approval:  'bg-violet-950/30',
+		requires_approval:  'bg-sky-950/30',
 		done:               'bg-emerald-950/25',
 		failed:             'bg-rose-950/35',
 		dismissed:          'bg-surface-900/40',
@@ -439,7 +440,7 @@
 	<div
 		class="relative rounded-xl border {$glassTheme ? '' : 'shadow-lg'} transition-all duration-200 {expanded ? '' : 'group/card'}
 			{expanded
-				? ($glassTheme ? 'glass-card border-transparent bg-surface-900/50' : 'border-surface-600 bg-surface-900')
+				? ($glassTheme ? 'glass-card border-laya-orange/15 bg-surface-900/50' : 'border-surface-600 bg-surface-900')
 				: groupStyle} {!expanded && ghostCount > 0 ? 'ghost-strip-shadow' : ''}
 			{isGroupLastViewed ? ($cardColors ? 'card-last-viewed' : 'card-last-viewed-highlight') : ''}"
 		style="z-index: 3;"
@@ -561,15 +562,17 @@
 		}}>
 			<div class="px-4 pb-2">
 				<!-- Top card preview summary -->
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<div class="mb-1.5"
-					onmouseenter={() => showTooltipIfTruncated(summaryEl, topCard.summary, { checkHeight: true, maxWidth: 280 })}
-					onmouseleave={hideTooltip}
-				>
-					<p bind:this={summaryEl} class="line-clamp-2 text-xs leading-relaxed text-surface-400">
-						{topCard.summary}
-					</p>
-				</div>
+				{#if $cardDescriptions}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div class="mb-1.5"
+						onmouseenter={() => showTooltipIfTruncated(summaryEl, topCard.summary, { checkHeight: true, maxWidth: 280 })}
+						onmouseleave={hideTooltip}
+					>
+						<p bind:this={summaryEl} class="line-clamp-2 text-xs leading-relaxed text-surface-400">
+							{topCard.summary}
+						</p>
+					</div>
+				{/if}
 
 				<!-- Status summary footer -->
 				<div class="flex items-center gap-2">
@@ -737,7 +740,8 @@
 
 {#if hoveredTooltip}
 	<span
-		class="pointer-events-none fixed z-50 rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium"
+		use:portal
+		class="pointer-events-none fixed z-[100] rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium"
 		style="top: {hoveredTooltip.top}px; left: {hoveredTooltip.left}px;{hoveredTooltip.maxWidth ? ` max-width: ${hoveredTooltip.maxWidth}px; white-space: normal;` : ' white-space: nowrap; transform: translateX(-100%);'}"
 	>
 		{hoveredTooltip.text}

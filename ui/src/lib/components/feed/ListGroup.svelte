@@ -43,8 +43,17 @@
 	let expanded = $state(false);
 	let groupMenuOpen = $state(false);
 	let menuEl: HTMLElement | undefined = $state();
+	let wrapperEl: HTMLElement | undefined = $state();
 	let bulkActionRunning = $state(false);
 	let unlinking = $state(false);
+
+	// Listen for programmatic 'expand' event (e.g. "Show all cards" in GroupSummaryDetail)
+	$effect(() => {
+		if (!wrapperEl) return;
+		const handler = () => { expanded = true; };
+		wrapperEl.addEventListener('expand', handler);
+		return () => wrapperEl?.removeEventListener('expand', handler);
+	});
 
 	async function unlinkGroup(e: Event) {
 		e.stopPropagation();
@@ -129,7 +138,7 @@
 	const solidGroupRowStyle: Record<string, string> = {
 		pending:            'bg-amber-950/55',
 		ready:              'bg-amber-950/55',
-		requires_approval:  'bg-violet-950/55',
+		requires_approval:  'bg-sky-950/55',
 		agent_running:      'bg-violet-950/55',
 		awaiting_input:     'bg-amber-950/55',
 		done:               'bg-emerald-950/50',
@@ -140,7 +149,7 @@
 	const glassGroupRowStyle: Record<string, string> = {
 		pending:            'glass-card-flat bg-amber-950/45',
 		ready:              'glass-card-flat bg-amber-950/45',
-		requires_approval:  'glass-card-flat bg-violet-950/45',
+		requires_approval:  'glass-card-flat bg-sky-950/45',
 		agent_running:      'glass-card-flat bg-violet-950/45',
 		awaiting_input:     'glass-card-flat bg-amber-950/45',
 		done:               'glass-card-flat bg-emerald-950/40',
@@ -270,7 +279,7 @@
 	}
 </script>
 
-<div class="transition-opacity {isDimmed ? 'opacity-45 hover:opacity-70' : ''}" data-group-entity={group.entity_id}>
+<div bind:this={wrapperEl} class="transition-opacity {isDimmed ? 'opacity-45 hover:opacity-70' : ''}" data-group-entity={group.entity_id}>
 	<!-- Group header: checkbox in gutter + bordered row -->
 	<div class="flex items-center {onbulktoggle ? 'gap-1.5' : ''}">
 		<!-- Bulk selection checkbox (group-level) — in the gutter -->

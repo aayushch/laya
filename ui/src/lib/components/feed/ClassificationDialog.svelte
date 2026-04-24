@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { ActionCard } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
+	import { glassTheme } from '$lib/stores/glassTheme';
 
 	let {
 		card,
@@ -71,9 +72,9 @@
 	onclick={(e) => { if (e.target === e.currentTarget) onclose(); }}
 	onkeydown={(e) => { if (e.key === 'Escape') onclose(); }}
 >
-	<div class="mx-4 w-full max-w-lg rounded-xl border border-surface-700 bg-surface-800 shadow-2xl">
+	<div class="mx-4 w-full max-w-lg rounded-xl border {$glassTheme ? 'glass-card border-surface-700/40 bg-surface-900/40' : 'border-surface-700 bg-surface-800 shadow-2xl'}">
 		<!-- Header -->
-		<div class="border-b border-surface-700 px-5 py-4">
+		<div class="border-b px-5 py-4 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
 			<h3 class="text-sm font-semibold text-surface-50">Adjust Classification</h3>
 			<p class="mt-1 text-xs text-surface-400">Correct the priority or persona for this card. Your changes help Laya learn.</p>
 		</div>
@@ -135,14 +136,14 @@
 					id="classification-rule"
 					bind:value={ruleText}
 					placeholder='e.g., "Always treat emails from legal@acme.com as HIGH priority"'
-					class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500"
+					class="w-full rounded-lg border px-3 py-2 text-sm text-surface-50 placeholder-surface-500 {$glassTheme ? 'border-surface-600/40 bg-surface-800/40 backdrop-blur-sm' : 'border-surface-600 bg-surface-900'}"
 				/>
 				<p class="mt-1 text-[10px] text-surface-500">Rules are applied to all future cards and can be managed in Settings → Rules.</p>
 			</div>
 		</div>
 
 		<!-- Footer -->
-		<div class="flex justify-end gap-2 border-t border-surface-700 px-5 py-3">
+		<div class="flex justify-end gap-2 border-t px-5 py-3 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
 			<button
 				class="rounded-md px-3 py-1.5 text-xs text-surface-400 transition-colors hover:text-surface-200"
 				onclick={onclose}

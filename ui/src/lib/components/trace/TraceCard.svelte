@@ -44,7 +44,7 @@
 	const statusColors: Record<string, string> = {
 		pending: 'text-yellow-400',
 		ready: 'text-amber-400',
-		requires_approval: 'text-violet-400',
+		requires_approval: 'text-sky-400',
 		agent_running: 'text-violet-400',
 		awaiting_input: 'text-yellow-400',
 		done: 'text-green-400',

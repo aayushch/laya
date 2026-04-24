@@ -20,6 +20,8 @@
 	import { spaces } from '$lib/stores/spaces';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { summaryModalOpen as summaryModalStore } from '$lib/stores/summaryModal';
+	import { searchFocusSignal } from '$lib/stores/searchFocus';
 	import { portal } from '$lib/actions/portal';
 
 	// Filter toolbar state
@@ -157,9 +159,21 @@
 
 	// Search state (ephemeral — resets on date change)
 	let searchQuery = $state('');
+	let searchInputEl: HTMLInputElement | undefined = $state();
 
-	// Summary modal state
+	$effect(() => {
+		if ($searchFocusSignal && searchInputEl) {
+			searchInputEl.focus();
+			searchInputEl.select();
+		}
+	});
+
+	// Summary modal state — backed by global store so keyboard shortcut can toggle it
 	let summaryModalOpen = $state(false);
+	$effect(() => { summaryModalOpen = $summaryModalStore; });
+	function setSummaryModalOpen(v: boolean) { summaryModalOpen = v; summaryModalStore.set(v); }
+	// Load summary when opened via keyboard shortcut
+	$effect(() => { if ($summaryModalStore) loadSummary(); });
 	let daySummary = $state<DaySummary | null>(null);
 	let summaryUpdatedAt = $state<string | null>(null);
 	let summaryLoading = $state(false);
@@ -711,6 +725,11 @@
 		sessionStorage.removeItem(SELECTED_CARD_KEY);
 	}
 
+	// Dismiss the active group summary without closing the panel (X button in GroupSummaryDetail)
+	function dismissActiveGroupSummary() {
+		selectedGroupSummary = null;
+	}
+
 	function handleDelete(cardId: string) {
 		if (selectedCard?.card_id === cardId) {
 			selectedCard = null;
@@ -724,7 +743,7 @@
 
 	function handleSummaryGotoCard(cardId: string) {
 		// Close the summary modal and navigate to the card
-		summaryModalOpen = false;
+		setSummaryModalOpen(false);
 		// Find the card in groups
 		for (const g of groups) {
 			const found = g.cards.find((c) => c.card_id === cardId);
@@ -1033,6 +1052,32 @@
 					}
 				});
 			}
+		}, 350);
+	}
+
+	const RECENT_DRAWER_WIDTH = 260;
+
+	function toggleRecentDrawer() {
+		if (!containerEl) {
+			$recentDrawerOpen = !$recentDrawerOpen;
+			return;
+		}
+		const currentWidth = getContentWidth();
+		const opening = !$recentDrawerOpen;
+		const finalWidth = opening
+			? currentWidth - RECENT_DRAWER_WIDTH - COL_GAP
+			: currentWidth + RECENT_DRAWER_WIDTH + COL_GAP;
+		const finalCols = Math.max(1, Math.floor((finalWidth + COL_GAP) / (CARD_WIDTH + COL_GAP)));
+
+		panelTransitioning = true;
+		flipColumns(finalCols, true);
+		$recentDrawerOpen = opening;
+
+		setTimeout(() => {
+			panelTransitioning = false;
+			const w = getContentWidth();
+			const correctCols = Math.max(1, Math.floor((w + COL_GAP) / (CARD_WIDTH + COL_GAP)));
+			if (correctCols !== numColumns) flipColumns(correctCols, true);
 		}, 350);
 	}
 
@@ -1367,7 +1412,7 @@
 
 		<!-- Recent Cards toggle -->
 		<button
-			onclick={() => ($recentDrawerOpen = !$recentDrawerOpen)}
+			onclick={toggleRecentDrawer}
 			class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors
 				{$recentDrawerOpen
 					? 'border-laya-orange/30 bg-laya-orange/10 text-laya-orange'
@@ -1381,7 +1426,7 @@
 
 		<!-- Summary button -->
 		<button
-			onclick={() => { summaryModalOpen = true; loadSummary(); }}
+			onclick={() => { setSummaryModalOpen(true); loadSummary(); }}
 			class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors
 				{summaryModalOpen
 					? 'border-laya-orange/30 bg-laya-orange/10 text-laya-orange'
@@ -1401,6 +1446,7 @@
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
 			</svg>
 			<input
+				bind:this={searchInputEl}
 				type="text"
 				bind:value={searchQuery}
 				placeholder="Search"
@@ -1468,7 +1514,7 @@
 						{/if}
 						<button
 							class="rounded p-0.5 text-surface-600 transition-colors hover:text-surface-300"
-							onclick={() => ($recentDrawerOpen = false)}
+							onclick={toggleRecentDrawer}
 							title="Close"
 						>
 							<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1668,6 +1714,7 @@
 							group={selectedGroupSummary.group}
 							generating={generatingEntityIds.has(selectedGroupSummary.group.entity_id)}
 							onclose={closeDetailPanel}
+							ondismiss={dismissActiveGroupSummary}
 							onshowcards={() => {
 								const entityId = selectedGroupSummary?.group.entity_id;
 								if (entityId) {
@@ -1765,12 +1812,12 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-		onclick={(e) => { if (e.target === e.currentTarget) summaryModalOpen = false; }}
-		onkeydown={(e) => { if (e.key === 'Escape') summaryModalOpen = false; }}
+		onclick={(e) => { if (e.target === e.currentTarget) setSummaryModalOpen(false); }}
+		onkeydown={(e) => { if (e.key === 'Escape') setSummaryModalOpen(false); }}
 	>
-		<div class="relative mx-4 flex max-h-[90vh] w-full max-w-6xl flex-col rounded-xl border border-surface-700 bg-surface-800 shadow-2xl">
+		<div class="relative mx-4 flex max-h-[90vh] w-full max-w-6xl flex-col rounded-xl border {$glassTheme ? 'glass-card border-surface-700/40 bg-surface-900/40' : 'border-surface-700 bg-surface-800 shadow-2xl'}">
 			<!-- Header -->
-			<div class="flex items-center justify-between border-b border-surface-700 px-6 py-4">
+			<div class="flex items-center justify-between border-b px-6 py-4 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
 				<div class="flex items-center gap-2">
 					<svg class="h-4 w-4 text-laya-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
@@ -1778,7 +1825,7 @@
 					<h2 class="text-sm font-semibold text-surface-100">Day Summary — {formatDateLabel($feedDate)}</h2>
 				</div>
 				<button
-					onclick={() => summaryModalOpen = false}
+					onclick={() => setSummaryModalOpen(false)}
 					class="text-surface-500 hover:text-surface-300 transition-colors"
 					aria-label="Close"
 				>

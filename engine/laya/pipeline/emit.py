@@ -338,23 +338,9 @@ async def run_emit(
             platform=event.source.platform,
         )
         if context_id:
-            # Save original group_active_at before context linking overwrites it,
-            # so it can be restored if the user unlinks the group later.
-            await db.execute(
-                """UPDATE action_cards
-                   SET pre_context_group_active_at = group_active_at
-                   WHERE context_id IS NULL
-                     AND pre_context_group_active_at IS NULL
-                     AND (card_id = ? OR context_id = ?)""",
-                (card_id, context_id),
-            )
             await db.execute(
                 "UPDATE action_cards SET context_id = ? WHERE card_id = ?",
                 (context_id, card_id),
-            )
-            await db.execute(
-                "UPDATE action_cards SET group_active_at = ? WHERE context_id = ?",
-                (now_ts, context_id),
             )
             await db.commit()
             log.info("context_group_assigned", card_id=card_id, context_id=context_id)

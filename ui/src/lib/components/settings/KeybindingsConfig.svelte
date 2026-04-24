@@ -1,7 +1,18 @@
 <script lang="ts">
+	const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent);
+	const mod = isMac ? '⌘' : 'Ctrl+';
+
 	const keybindings = [
 		{ key: 'A', description: 'Open run agent dialog', scope: 'Global', note: 'Only when not focused on an input field' },
+		{ key: 'B', description: 'Toggle bookmarks filter', scope: 'Global', note: 'Only when not focused on an input field' },
 		{ key: 'C', description: 'Open compose modal', scope: 'Global', note: 'Only when not focused on an input field' },
+		{ key: 'L', description: 'Toggle chat panel', scope: 'Global', note: 'Only when not focused on an input field' },
+		{ key: 'O', description: 'Go to Omni', scope: 'Global', note: 'Only when not focused on an input field' },
+		{ key: 'P', description: 'Go to Pulse (feed)', scope: 'Global', note: 'Only when not focused on an input field' },
+		{ key: 'R', description: 'Toggle recent items', scope: 'Global', note: 'Only when not focused on an input field' },
+		{ key: 'S', description: 'Toggle day summary', scope: 'Global', note: 'Only when not focused on an input field' },
+		{ key: `${mod}F`, description: 'Focus search box', scope: 'Feed', note: '' },
+		{ key: `${mod}S`, description: 'Go to Coherence and focus search', scope: 'Global', note: '' },
 	];
 </script>
 
