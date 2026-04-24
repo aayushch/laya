@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { compose } from '$lib/stores/compose';
 	import { engineApi } from '$lib/api/engine';
+	import { glassTheme } from '$lib/stores/glassTheme';
 	import type { EgressConnection } from '$lib/api/types';
 
 	let connections = $state<EgressConnection[]>([]);
@@ -268,9 +269,11 @@
 	}
 
 	// Common input styles
-	const inputClass = 'w-full rounded-md border border-surface-600 bg-surface-800 px-3 py-2 text-sm text-surface-200 placeholder-surface-600 focus:border-laya-orange/50 focus:outline-none focus:ring-1 focus:ring-laya-orange/30';
+	const glassInputBase = 'border-surface-600/40 bg-surface-800/40 backdrop-blur-sm';
+	const solidInputBase = 'border-surface-600 bg-surface-800';
+	const inputClass = $derived(`w-full rounded-md border ${$glassTheme ? glassInputBase : solidInputBase} px-3 py-2 text-sm text-surface-200 placeholder-surface-600 focus:border-laya-orange/50 focus:outline-none focus:ring-1 focus:ring-laya-orange/30`);
 	const labelClass = 'block text-xs font-medium text-surface-400 mb-1';
-	const selectClass = 'rounded-md border border-surface-600 bg-surface-800 px-3 py-2 text-sm text-surface-200 focus:border-laya-orange/50 focus:outline-none focus:ring-1 focus:ring-laya-orange/30';
+	const selectClass = $derived(`rounded-md border ${$glassTheme ? glassInputBase : solidInputBase} px-3 py-2 text-sm text-surface-200 focus:border-laya-orange/50 focus:outline-none focus:ring-1 focus:ring-laya-orange/30`);
 </script>
 
 {#if $compose.isOpen}
@@ -283,9 +286,9 @@
 		onclick={handleBackdrop}
 		onkeydown={handleKeydown}
 	>
-		<div class="mx-4 w-full max-w-2xl rounded-xl border border-surface-700 bg-surface-900 shadow-2xl">
+		<div class="mx-4 w-full max-w-2xl rounded-xl border {$glassTheme ? 'glass-card border-surface-700/40' : 'border-surface-700 bg-surface-900 shadow-2xl'}">
 			<!-- Header -->
-			<div class="flex items-center justify-between border-b border-surface-700 px-5 py-3">
+			<div class="flex items-center justify-between border-b px-5 py-3 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
 				<h2 class="text-sm font-semibold text-surface-50">Compose</h2>
 				<button
 					class="rounded p-1 text-surface-400 transition-colors hover:text-surface-200"
@@ -299,7 +302,7 @@
 			</div>
 
 			<!-- Platform tabs -->
-			<div class="flex gap-0.5 border-b border-surface-700 px-5 pt-2">
+			<div class="flex gap-0.5 border-b px-5 pt-2 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
 				{#each connectedPlatforms as tab}
 					<button
 						class="inline-flex items-center gap-1.5 rounded-t-md px-3 py-2 text-xs font-medium transition-colors
@@ -456,7 +459,7 @@
 
 			<!-- Footer -->
 			{#if !success}
-				<div class="flex items-center justify-between border-t border-surface-700 px-5 py-3">
+				<div class="flex items-center justify-between border-t px-5 py-3 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
 					<button
 						class="inline-flex items-center gap-1.5 rounded-md bg-surface-800 px-3 py-1.5 text-xs font-medium transition-colors
 							{aiAssisting ? 'text-laya-orange cursor-wait' : 'text-surface-400 hover:text-laya-orange hover:bg-surface-700'}"

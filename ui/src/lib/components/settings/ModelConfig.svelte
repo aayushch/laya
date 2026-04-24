@@ -6,11 +6,16 @@
 	import ModelSelect from './ModelSelect.svelte';
 
 	const roles = [
-		{ id: 'router', label: 'Router', hint: 'Classifies incoming events' },
-		{ id: 'stager', label: 'Stager', hint: 'Synthesises action cards' },
-		{ id: 'chat', label: 'Chat', hint: 'Conversational responses' },
-		{ id: 'trace', label: 'Coherence', hint: 'Generates trace narratives' },
-		{ id: 'omni', label: 'Omni', hint: 'Resynthesises rolling summaries' }
+		{ id: 'router', label: 'Router', hint: 'Classifies incoming events',
+			guide: 'Classifies each incoming event by persona (Engineer/Comms/Ops) and priority. Output is structured JSON, not prose. A small, fast model works well here.' },
+		{ id: 'stager', label: 'Stager', hint: 'Synthesises action cards',
+			guide: 'Reads the classified event and writes the action card: headline, summary, suggested actions, and draft replies. Quality of card content scales directly with model capability — use a stronger model if you want richer summaries.' },
+		{ id: 'chat', label: 'Chat', hint: 'Conversational responses',
+			guide: 'Powers the chat panel where you ask questions about your cards, events, and workspace. A capable model gives better conversational and reasoning quality.' },
+		{ id: 'trace', label: 'Coherence', hint: 'Generates trace narratives',
+			guide: 'Generates narrative summaries when you search for related activity across platforms. The heavy lifting is semantic search — the model just synthesises results into prose. A smaller model is usually sufficient.' },
+		{ id: 'omni', label: 'Omni', hint: 'Resynthesises rolling summaries',
+			guide: 'Periodically compresses your rolling cross-platform summary into a concise digest. Needs to merge and deduplicate information across many events. A mid-tier model balances cost and coherence well.' }
 	];
 
 	const cloudProviders = [
@@ -702,10 +707,19 @@
 			</div>
 			<div class="space-y-4">
 				{#each roles as role}
-					<div class="grid grid-cols-[140px_1fr] items-center gap-3">
+					<div class="grid grid-cols-[140px_auto_1fr] items-center gap-2">
 						<div>
 							<label for="{role.id}-model" class="text-sm text-surface-400">{role.label}</label>
 							<p class="text-[10px] text-surface-500">{role.hint}</p>
+						</div>
+						<div class="group/tip relative">
+							<svg class="h-3.5 w-3.5 shrink-0 text-surface-600 transition-colors group-hover/tip:text-laya-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01" />
+								<circle cx="12" cy="12" r="10" stroke-width="2" />
+							</svg>
+							<div class="pointer-events-none absolute left-1/2 top-full z-30 mt-2 w-64 -translate-x-1/2 rounded-lg border border-surface-600 bg-surface-800 px-3 py-2.5 text-[11px] leading-relaxed text-surface-300 opacity-0 shadow-lg transition-opacity duration-150 group-hover/tip:pointer-events-auto group-hover/tip:opacity-100">
+								{role.guide}
+							</div>
 						</div>
 						<ModelSelect
 							id="{role.id}-model"

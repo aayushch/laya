@@ -4,6 +4,7 @@
 	import { accessibleColors } from '$lib/stores/accessibleColors';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { cardDescriptions } from '$lib/stores/cardDescriptions';
 	import { fontScale, type FontScale } from '$lib/stores/fontScale';
 
 	const fontSteps: FontScale[] = [12, 13, 14, 15];
@@ -178,6 +179,27 @@
 			>
 				<span
 					class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform {$glassTheme ? 'translate-x-5' : 'translate-x-0'}"
+				></span>
+			</button>
+		</div>
+	</div>
+
+	<!-- Show Card Descriptions toggle -->
+	<div class="rounded-xl border border-surface-700 bg-surface-800 p-6">
+		<div class="flex items-center justify-between">
+			<div>
+				<h3 class="mb-1 font-semibold text-surface-50">Show Card Descriptions</h3>
+				<p class="text-sm text-surface-400">Show summary text on cards in the feed. Turning this off makes cards more compact.</p>
+			</div>
+			<button
+				class="relative h-6 w-11 shrink-0 rounded-full transition-colors {$cardDescriptions ? 'bg-laya-orange' : 'bg-surface-600'}"
+				onclick={() => cardDescriptions.set(!$cardDescriptions)}
+				role="switch"
+				aria-checked={$cardDescriptions}
+				aria-label="Toggle card descriptions"
+			>
+				<span
+					class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform {$cardDescriptions ? 'translate-x-5' : 'translate-x-0'}"
 				></span>
 			</button>
 		</div>

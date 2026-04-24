@@ -918,6 +918,15 @@ async def delete_card(card_id: str) -> dict:
     except Exception as e:
         log.warning("card_embed_delete_failed", card_id=card_id, error=str(e))
 
+    # Clean up research directory if it exists (best-effort)
+    research_dir = LAYA_HOME / "tmp" / "research" / card_id
+    if research_dir.exists():
+        try:
+            import shutil
+            shutil.rmtree(research_dir)
+        except Exception as e:
+            log.warning("research_dir_cleanup_failed", card_id=card_id, error=str(e))
+
     await manager.broadcast({"type": "card_deleted", "card_id": card_id})
     log.info("card_deleted", card_id=card_id)
     return {"status": "deleted", "card_id": card_id}
@@ -2074,14 +2083,9 @@ async def unlink_context_group(context_id: str):
         "UPDATE context_groups SET user_split = TRUE WHERE context_id = ?",
         (context_id,),
     )
-    # Restore original group_active_at and remove context_id from all member cards.
-    # Cards revert to their pre-linking feed date.
+    # Remove context_id from all member cards.
     await db.execute(
-        """UPDATE action_cards
-           SET context_id = NULL,
-               group_active_at = COALESCE(pre_context_group_active_at, group_active_at),
-               pre_context_group_active_at = NULL
-           WHERE context_id = ?""",
+        "UPDATE action_cards SET context_id = NULL WHERE context_id = ?",
         (context_id,),
     )
 

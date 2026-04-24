@@ -60,6 +60,12 @@ html, body {
 [data-theme='dark'] .bg-violet-950\/55  { background-color: oklch(0.26 0.15 285 / 53%); }
 [data-theme='dark'] .bg-violet-950\/70  { background-color: oklch(0.26 0.15 285 / 66%); }
 [data-theme='dark'] .bg-violet-950\/30  { background-color: oklch(0.26 0.15 285 / 30%); }
+[data-theme='dark'] .bg-sky-950\/55     { background-color: oklch(0.26 0.10 295 / 55%); }
+[data-theme='dark'] .bg-sky-950\/45     { background-color: oklch(0.26 0.10 295 / 45%); }
+[data-theme='dark'] .bg-sky-950\/30     { background-color: oklch(0.26 0.10 295 / 30%); }
+[data-theme='dark'] .hover\:border-sky-700\/30:hover { border-color: oklch(0.50 0.12 295 / 30%); }
+[data-theme='dark'] .hover\:border-sky-700\/40:hover { border-color: oklch(0.50 0.12 295 / 40%); }
+[data-theme='dark'] .border-sky-900\/20  { border-color: oklch(0.35 0.08 295 / 20%); }
 
 /* Lift amber row backgrounds in dark mode — default Tailwind amber-950 has
    low chroma (~0.065) and at low opacity reads nearly identical to rose-950
@@ -89,6 +95,7 @@ html, body {
 	--color-surface-800: oklch(0.935 0.006 72);   /* card bg */
 	--color-surface-900: oklch(0.970 0.005 74);   /* page bg — warm cream */
 	--color-surface-950: oklch(0.990 0.003 78);   /* pure warm white */
+	scrollbar-color: oklch(0.78 0.006 68) transparent;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -108,6 +115,7 @@ html, body {
 [data-theme='light'] .text-blue-400     { color: oklch(0.40 0.18 240); }
 [data-theme='light'] .text-violet-300   { color: oklch(0.40 0.20 285); }
 [data-theme='light'] .text-violet-400   { color: oklch(0.38 0.20 285); }
+[data-theme='light'] .text-sky-400      { color: oklch(0.38 0.14 295); }
 [data-theme='light'] .text-emerald-400  { color: oklch(0.38 0.18 160); }
 [data-theme='light'] .text-amber-400    { color: oklch(0.44 0.18 70);  }
 
@@ -119,11 +127,13 @@ html, body {
 .status-dot-green  { color: oklch(0.72 0.19 145); }
 .status-dot-red    { color: oklch(0.55 0.22 27);  }
 .status-dot-violet { color: oklch(0.65 0.20 285); }
+.status-dot-sky    { color: oklch(0.68 0.14 295); }
 [data-theme='light'] .status-dot-amber  { color: oklch(0.70 0.17 65);  }
 [data-theme='light'] .status-dot-yellow { color: oklch(0.72 0.16 90);  }
 [data-theme='light'] .status-dot-green  { color: oklch(0.50 0.19 145); }
 [data-theme='light'] .status-dot-red    { color: oklch(0.50 0.22 27);  }
 [data-theme='light'] .status-dot-violet { color: oklch(0.55 0.20 285); }
+[data-theme='light'] .status-dot-sky    { color: oklch(0.45 0.14 295); }
 
 /* Priority badge text - ensure contrast in light mode */
 [data-theme='light'] .bg-red-600      { background-color: oklch(0.50 0.22 27);  }
@@ -226,6 +236,14 @@ html, body {
 [data-theme='light'] .border-violet-800\/25 { border-color: oklch(0.74 0.07 285 / 45%); }
 [data-theme='light'] .hover\:border-violet-700\/40:hover { border-color: oklch(0.64 0.10 285 / 60%); }
 
+/* Requires Approval — warm muted purple */
+[data-theme='light'] .bg-sky-950\/55    { background-color: oklch(0.94 0.04 295); }
+[data-theme='light'] .bg-sky-950\/45    { background-color: oklch(0.94 0.04 295); }
+[data-theme='light'] .bg-sky-950\/30    { background-color: oklch(0.96 0.02 295); }
+[data-theme='light'] .hover\:border-sky-700\/30:hover { border-color: oklch(0.55 0.10 295 / 50%); }
+[data-theme='light'] .hover\:border-sky-700\/40:hover { border-color: oklch(0.55 0.10 295 / 60%); }
+[data-theme='light'] .border-sky-900\/20 { border-color: oklch(0.74 0.07 295 / 40%); }
+
 /* Staged — soft teal */
 [data-theme='light'] .bg-teal-950\/50    { background-color: oklch(0.94 0.04 185); }
 [data-theme='light'] .border-teal-800\/20 { border-color: oklch(0.74 0.07 185 / 40%); }
@@ -253,10 +271,10 @@ html, body {
 	box-shadow: 0 4px 12px -2px rgb(0 0 0 / 0.1);
 }
 [data-glass-theme] .glass-tooltip {
-	-webkit-backdrop-filter: blur(16px) saturate(1.3);
-	backdrop-filter: blur(16px) saturate(1.3);
-	background-color: oklch(0.22 0.008 50 / 0.45);
-	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.08), 0 8px 24px -6px rgb(0 0 0 / 0.25);
+	-webkit-backdrop-filter: blur(20px) saturate(1.4);
+	backdrop-filter: blur(20px) saturate(1.4);
+	background-color: oklch(0.20 0.008 50 / 0.75);
+	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.08), 0 8px 24px -6px rgb(0 0 0 / 0.35);
 }
 [data-theme='light'][data-glass-theme] .glass-tooltip {
 	-webkit-backdrop-filter: blur(16px) saturate(1.4);
@@ -560,10 +578,12 @@ html, body {
    ACCESSIBLE COLORS — colorblind-safe palette
    Activated via data-accessible-colors attribute on <html>.
    Hue remapping:
-     Violet (285°) → Blue (240°)  — approval/running, Engineer persona
+     Violet (285°) → Blue (240°)      — agent_running, Engineer persona
+     Sky/Purple (295°) → Indigo (265°) — requires_approval
      Emerald/Green (145-160°) → Teal (195°) — done, Comms persona
      Rose/Red (25°) → Warm vermillion (40°) — failed, brighter for protanopia
      Amber (68-75°) — unchanged (universally visible)
+   Status dot shapes provide redundant encoding for each status.
    All overrides preserve the original opacity and lightness ratios
    to stay close to the Laya pastel warmth.
    ═══════════════════════════════════════════════════════════════ */
@@ -655,8 +675,18 @@ html, body {
 [data-accessible-colors] .border-red-800\/40 { border-color: oklch(0.50 0.14 40 / 40%); }
 [data-accessible-colors] .border-red-800     { border-color: oklch(0.50 0.14 40); }
 
+/* ─── DARK MODE: Sky → Indigo (requires_approval) ────────────── */
+[data-accessible-colors] .bg-sky-950\/55    { background-color: oklch(0.22 0.09 265 / 55%); }
+[data-accessible-colors] .bg-sky-950\/45    { background-color: oklch(0.22 0.09 265 / 45%); }
+[data-accessible-colors] .bg-sky-950\/30    { background-color: oklch(0.22 0.09 265 / 30%); }
+[data-accessible-colors] .hover\:border-sky-700\/30:hover { border-color: oklch(0.50 0.12 265 / 30%); }
+[data-accessible-colors] .hover\:border-sky-700\/40:hover { border-color: oklch(0.50 0.12 265 / 40%); }
+[data-accessible-colors] .border-sky-900\/20 { border-color: oklch(0.45 0.10 265 / 20%); }
+[data-accessible-colors] .text-sky-400      { color: oklch(0.68 0.14 265); }
+
 /* ─── Status dot overrides ──────────────────────────────────── */
 [data-accessible-colors] .status-dot-violet  { color: oklch(0.68 0.16 240); }
+[data-accessible-colors] .status-dot-sky     { color: oklch(0.72 0.12 265); }
 [data-accessible-colors] .status-dot-green   { color: oklch(0.72 0.12 195); }
 [data-accessible-colors] .status-dot-red     { color: oklch(0.62 0.18 40);  }
 
@@ -680,6 +710,12 @@ html, body {
 [data-theme='light'][data-accessible-colors] .hover\:bg-rose-950\/75:hover { background-color: oklch(0.92 0.055 40); }
 [data-theme='light'][data-accessible-colors] .border-rose-800\/35 { border-color: oklch(0.74 0.08 40 / 55%); }
 [data-theme='light'][data-accessible-colors] .hover\:border-rose-700\/50:hover { border-color: oklch(0.64 0.12 40 / 65%); }
+
+/* Light — sky (requires_approval) */
+[data-theme='light'][data-accessible-colors] .bg-sky-950\/55    { background-color: oklch(0.94 0.03 265); }
+[data-theme='light'][data-accessible-colors] .bg-sky-950\/45    { background-color: oklch(0.94 0.03 265); }
+[data-theme='light'][data-accessible-colors] .bg-sky-950\/30    { background-color: oklch(0.96 0.02 265); }
+[data-theme='light'][data-accessible-colors] .status-dot-sky    { color: oklch(0.52 0.12 265); }
 
 /* Light ghost strips */
 [data-theme='light'][data-accessible-colors] .bg-violet-950\/30  { background-color: oklch(0.95 0.02 240); }

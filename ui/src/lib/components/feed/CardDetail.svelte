@@ -8,6 +8,7 @@
 	import { marked } from 'marked';
 	import ClassificationDialog from './ClassificationDialog.svelte';
 	import PlatformBadge from '$lib/components/PlatformBadge.svelte';
+	import { glassTheme } from '$lib/stores/glassTheme';
 
 	let {
 		card,
@@ -116,7 +117,7 @@
 	const statusColors: Record<string, string> = {
 		pending: 'text-yellow-400',
 		ready: 'text-amber-400',
-		requires_approval: 'text-violet-400',
+		requires_approval: 'text-sky-400',
 		agent_running: 'text-violet-400',
 		awaiting_input: 'text-yellow-400',
 		done: 'text-green-500',
@@ -400,9 +401,9 @@
 	}
 </script>
 
-<div class="flex h-full flex-col overflow-hidden rounded-xl border border-surface-700 bg-surface-800">
+<div class="flex h-full flex-col overflow-hidden rounded-xl border {$glassTheme ? 'glass-card border-surface-700/40 bg-surface-900/40' : 'border-surface-700 bg-surface-800'}">
 	<!-- Header bar -->
-	<div class="flex items-center justify-between border-b border-surface-700 px-5 py-4">
+	<div class="flex items-center justify-between border-b px-5 py-4 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
 		<div class="flex items-center gap-2">
 			<span class="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase {priorityColors[card.priority] ?? priorityColors.MEDIUM}">
 				{priorityLabel[card.priority] ?? card.priority}
@@ -722,7 +723,7 @@
 		{/if}
 
 		<!-- Metadata -->
-		<div class="mt-4 border-t border-surface-700 pt-3">
+		<div class="mt-4 border-t pt-3 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
 			<div class="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-surface-500">
 				{#if card.confidence}
 					<span>Confidence: {Math.round(card.confidence * 100)}%</span>
@@ -746,7 +747,7 @@
 	</div>
 
 	<!-- Footer -->
-	<div class="border-t border-surface-700 px-5 py-2">
+	<div class="border-t px-5 py-2 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
 		<!-- Secondary actions -->
 		<div class="flex items-center justify-end gap-1">
 			{#if card.has_workspace}

@@ -4,12 +4,14 @@
 	import { chatOpen, chatInputPreset } from '$lib/stores/chat';
 	import PlatformBadge from '$lib/components/PlatformBadge.svelte';
 	import StatusDot from './StatusDot.svelte';
+	import { glassTheme } from '$lib/stores/glassTheme';
 
 	let {
 		summary,
 		group,
 		generating = false,
 		onclose,
+		ondismiss,
 		onshowcards,
 		ongotocard,
 		ongotogroup,
@@ -19,6 +21,7 @@
 		group: CardGroup;
 		generating?: boolean;
 		onclose: () => void;
+		ondismiss?: () => void;
 		onshowcards?: () => void;
 		ongotocard?: (cardId: string) => void;
 		ongotogroup?: (entityId: string) => void;
@@ -113,9 +116,9 @@
 	}
 </script>
 
-<div class="flex h-full flex-col overflow-hidden rounded-xl border border-surface-700 bg-surface-800">
+<div class="flex h-full flex-col overflow-hidden rounded-xl border {$glassTheme ? 'glass-card border-surface-700/40 bg-surface-900/40' : 'border-surface-700 bg-surface-800'}">
 	<!-- Header bar -->
-	<div class="flex items-center justify-between border-b border-surface-700 px-5 py-4">
+	<div class="flex items-center justify-between border-b px-5 py-4 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
 		<div class="flex items-center gap-2">
 			<span class="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase {priorityColors[group.top_priority] ?? priorityColors.MEDIUM}">
 				{priorityLabel[group.top_priority] ?? group.top_priority}
@@ -151,7 +154,7 @@
 				</button>
 				<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">Chat about group</span>
 			</div>
-			<button aria-label="Close" class="rounded p-1.5 text-surface-400 transition-colors hover:text-surface-100" onclick={onclose}>
+			<button aria-label="Close" class="rounded p-1.5 text-surface-400 transition-colors hover:text-surface-100" onclick={() => ondismiss ? ondismiss() : onclose()}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
 				</svg>
@@ -280,10 +283,10 @@
 	</div>
 
 	<!-- Footer actions -->
-	<div class="flex flex-col gap-2 border-t border-surface-700 px-5 py-4">
+	<div class="flex flex-col gap-2 border-t px-5 py-4 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
 		{#if onshowcards}
 			<button
-				class="flex items-center justify-center gap-2 rounded-lg border border-surface-600 bg-surface-800 px-4 py-2.5 text-sm font-medium text-laya-orange transition-colors hover:bg-surface-700"
+				class="flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium text-laya-orange transition-colors {$glassTheme ? 'glass-card-flat border-surface-600/40 hover:border-laya-orange/20' : 'border-surface-600 bg-surface-800 hover:bg-surface-700'}"
 				onclick={onshowcards}
 			>
 				Show all {group.card_count} cards

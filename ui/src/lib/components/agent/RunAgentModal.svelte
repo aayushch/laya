@@ -2,6 +2,7 @@
 	import { agentDialog } from '$lib/stores/agentDialog';
 	import { engineApi } from '$lib/api/engine';
 	import { goto } from '$app/navigation';
+	import { glassTheme } from '$lib/stores/glassTheme';
 
 	const agents = [
 		{ value: 'claude_code', label: 'Claude Code', modes: ['plan', 'acceptEdits'] },
@@ -387,8 +388,11 @@
 		}
 	}
 
-	const inputClass =
-		'w-full rounded-md border border-surface-600 bg-surface-800 px-3 py-2 text-sm text-surface-200 placeholder-surface-600 focus:border-laya-orange/50 focus:outline-none focus:ring-1 focus:ring-laya-orange/30';
+	const inputClass = $derived(
+		$glassTheme
+			? 'w-full rounded-md border border-surface-600/40 bg-surface-800/40 backdrop-blur-sm px-3 py-2 text-sm text-surface-200 placeholder-surface-600 focus:border-laya-orange/50 focus:outline-none focus:ring-1 focus:ring-laya-orange/30'
+			: 'w-full rounded-md border border-surface-600 bg-surface-800 px-3 py-2 text-sm text-surface-200 placeholder-surface-600 focus:border-laya-orange/50 focus:outline-none focus:ring-1 focus:ring-laya-orange/30'
+	);
 	const labelClass = 'block text-xs font-medium text-surface-400 mb-1';
 </script>
 
@@ -404,12 +408,12 @@
 	>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
-			class="mx-4 w-full max-w-2xl rounded-xl border border-surface-700 bg-surface-900 shadow-2xl max-h-[90vh] flex flex-col"
+			class="mx-4 w-full max-w-2xl rounded-xl border max-h-[90vh] flex flex-col {$glassTheme ? 'glass-card border-surface-700/40' : 'border-surface-700 bg-surface-900 shadow-2xl'}"
 			onclick={handleModalClick}
 		>
 			<!-- Header -->
 			<div
-				class="flex items-center justify-between border-b border-surface-700 px-5 py-3 shrink-0"
+				class="flex items-center justify-between border-b px-5 py-3 shrink-0 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}"
 			>
 				<div class="flex items-center gap-2">
 					<svg
@@ -514,7 +518,7 @@
 					{#if dirDropdownOpen}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
-							class="absolute z-50 mt-1 w-full rounded-md border border-surface-600 bg-surface-800 shadow-lg"
+							class="absolute z-50 mt-1 w-full rounded-md border {$glassTheme ? 'border-surface-600/40 bg-surface-900/95 backdrop-blur-md shadow-lg shadow-black/30' : 'border-surface-600 bg-surface-800 shadow-lg'}"
 							onkeydown={(e) => { if (e.key === 'Escape') dirDropdownOpen = false; }}
 						>
 							<div class="max-h-48 overflow-y-auto py-1">
@@ -779,7 +783,7 @@
 
 			<!-- Footer -->
 			<div
-				class="flex items-center justify-end gap-2 border-t border-surface-700 px-5 py-3 shrink-0"
+				class="flex items-center justify-end gap-2 border-t px-5 py-3 shrink-0 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}"
 			>
 				<button
 					class="rounded-md px-3 py-1.5 text-xs text-surface-400 transition-colors hover:text-surface-200"

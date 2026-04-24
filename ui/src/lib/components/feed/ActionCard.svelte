@@ -5,6 +5,7 @@
 	import { chatOpen, chatInputPreset } from '$lib/stores/chat';
 	import { cardColors } from '$lib/stores/cardColors';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { cardDescriptions } from '$lib/stores/cardDescriptions';
 	import { portal } from '$lib/actions/portal';
 	import { feedDate } from '$lib/stores/feedFilters';
 	import StatusDot from './StatusDot.svelte';
@@ -96,7 +97,7 @@
 	const statusDot: Record<string, string> = {
 		pending:            'bg-yellow-400 animate-pulse',
 		ready:              'bg-amber-400',
-		requires_approval:  'bg-violet-400',
+		requires_approval:  'bg-sky-400',
 		agent_running:      'bg-violet-400 animate-pulse',
 		awaiting_input:     'bg-yellow-400 animate-pulse',
 		done:               'bg-green-500',
@@ -130,7 +131,7 @@
 	const glassStatusCardStyle: Record<string, string> = {
 		pending:            'glass-card bg-amber-950/45  border-transparent  hover:border-amber-700/30  card-pulse-amber',
 		ready:              'glass-card bg-amber-950/45  border-transparent  hover:border-amber-700/30',
-		requires_approval:  'glass-card bg-violet-950/45 border-transparent hover:border-violet-700/30',
+		requires_approval:  'glass-card bg-sky-950/45 border-transparent hover:border-sky-700/30',
 		agent_running:      'glass-card bg-violet-950/45 border-transparent hover:border-violet-700/30 card-pulse-violet',
 		awaiting_input:     'glass-card bg-amber-950/45  border-transparent  hover:border-amber-700/30  card-pulse-amber',
 		done:               'glass-card bg-emerald-950/40 border-transparent hover:border-emerald-700/25',
@@ -141,7 +142,7 @@
 	const solidStatusCardStyle: Record<string, string> = {
 		pending:            'bg-amber-950/55  border-transparent  hover:border-amber-700/45  card-pulse-amber',
 		ready:              'bg-amber-950/55  border-transparent  hover:border-amber-700/45',
-		requires_approval:  'bg-violet-950/55 border-transparent hover:border-violet-700/40',
+		requires_approval:  'bg-sky-950/55 border-transparent hover:border-sky-700/40',
 		agent_running:      'bg-violet-950/55 border-transparent hover:border-violet-700/40 card-pulse-violet',
 		awaiting_input:     'bg-amber-950/55  border-transparent  hover:border-amber-700/45  card-pulse-amber',
 		done:               'bg-emerald-950/50 border-transparent hover:border-emerald-700/35',
@@ -714,13 +715,15 @@
 	</div>
 
 	<!-- Row 4: Summary (2-line clamp) -->
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="relative"
-		onmouseenter={() => showTooltipIfTruncated(summaryEl, card.summary, { checkHeight: true, maxWidth: 300 })}
-		onmouseleave={hideTooltip}
-	>
-		<p bind:this={summaryEl} class="line-clamp-2 text-xs leading-relaxed text-surface-400">{card.summary}</p>
-	</div>
+	{#if $cardDescriptions}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="relative"
+			onmouseenter={() => showTooltipIfTruncated(summaryEl, card.summary, { checkHeight: true, maxWidth: 300 })}
+			onmouseleave={hideTooltip}
+		>
+			<p bind:this={summaryEl} class="line-clamp-2 text-xs leading-relaxed text-surface-400">{card.summary}</p>
+		</div>
+	{/if}
 
 	<!-- Row 5: Footer — space · actor name (left) · persona · category · workspace · time (right) -->
 	<div class="flex items-center gap-1.5 min-w-0 mt-3">
@@ -756,6 +759,7 @@
 
 {#if fixedTooltip}
 	<span
+		use:portal
 		class="pointer-events-none fixed z-[100] rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium"
 		style="top: {fixedTooltip.top}px; left: {fixedTooltip.left}px;{fixedTooltip.maxWidth ? ` max-width: ${fixedTooltip.maxWidth}px; white-space: normal;` : ' white-space: nowrap;'}"
 	>

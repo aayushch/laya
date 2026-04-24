@@ -8,7 +8,7 @@
 	const colors: Record<string, string> = {
 		pending:            'status-dot-yellow',
 		ready:              'status-dot-amber',
-		requires_approval:  'status-dot-violet',
+		requires_approval:  'status-dot-sky',
 		agent_running:      'status-dot-violet',
 		awaiting_input:     'status-dot-yellow',
 		done:               'status-dot-green',

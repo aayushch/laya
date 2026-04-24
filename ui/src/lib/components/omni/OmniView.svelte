@@ -66,14 +66,19 @@
 						<svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
 					</span>
 				{/if}
-				<h3 class="text-sm font-semibold text-surface-200">
-					{meta.title}{#if hasCustomLabel} <span class="font-normal text-surface-400">({section.label})</span>{/if}
-				</h3>
-				{#if section.items.length > 0}
-					<span class="rounded-full bg-surface-800 px-1.5 py-0.5 text-[10px] text-surface-400">
-						{section.items.length}
-					</span>
-				{/if}
+				<div class="flex flex-col">
+					<div class="flex items-center gap-2">
+						<h3 class="text-sm font-semibold text-surface-200">{meta.title}</h3>
+						{#if section.items.length > 0}
+							<span class="rounded-full bg-surface-800 px-1.5 py-0.5 text-[10px] text-surface-400">
+								{section.items.length}
+							</span>
+						{/if}
+					</div>
+					{#if hasCustomLabel}
+						<span class="text-[10px] text-surface-500">{section.label}</span>
+					{/if}
+				</div>
 			</div>
 
 			<!-- Items -->

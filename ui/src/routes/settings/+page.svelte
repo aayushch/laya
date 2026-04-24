@@ -88,26 +88,30 @@
 	}
 </script>
 
-<div class="mx-auto max-w-4xl space-y-6">
-	<div>
-		<h2 class="text-2xl font-semibold">Settings</h2>
-		<p class="text-sm text-surface-400">Manage your team, rules, models, repos, and coding agent</p>
+<div class="mx-auto max-w-4xl">
+	<div class="sticky -top-4 z-20 space-y-4 bg-surface-900 pb-4 -mx-4 px-4 pt-4">
+		<div>
+			<h2 class="text-2xl font-semibold">Settings</h2>
+			<p class="text-sm text-surface-400">Manage your team, rules, models, repos, and coding agent</p>
+		</div>
+
+		<!-- Tab bar -->
+		<div class="flex justify-between rounded-lg border border-surface-700 bg-surface-800 p-1">
+			{#each tabs as tab}
+				<button
+					class="rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors
+						{activeTab === tab.id
+							? 'bg-laya-orange/15 text-laya-orange'
+							: 'text-surface-400 hover:text-surface-200'}"
+					onclick={() => switchTab(tab.id as TabId)}
+				>
+					{tab.label}
+				</button>
+			{/each}
+		</div>
 	</div>
 
-	<!-- Tab bar -->
-	<div class="flex justify-between rounded-lg border border-surface-700 bg-surface-800 p-1">
-		{#each tabs as tab}
-			<button
-				class="rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors
-					{activeTab === tab.id
-						? 'bg-laya-orange/15 text-laya-orange'
-						: 'text-surface-400 hover:text-surface-200'}"
-				onclick={() => switchTab(tab.id as TabId)}
-			>
-				{tab.label}
-			</button>
-		{/each}
-	</div>
+	<div class="space-y-6">
 
 	{#if activeTab === 'team'}
 		<TeamEditor />
@@ -145,5 +149,6 @@
 		>
 			{exporting ? 'Exporting...' : 'Export Diagnostics'}
 		</button>
+	</div>
 	</div>
 </div>
