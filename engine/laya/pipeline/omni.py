@@ -628,33 +628,18 @@ async def _resynthesize_space(
         for row in pin_rows
     ]
 
-    # 3. Query recent cards (since last resynthesis of any type)
+    # 3. Query recent cards (since last successful resynthesis)
     last_synth_row = await db.execute_fetchall(
         """SELECT generated_at FROM omni_snapshots
            WHERE space_id = ? AND snapshot_type IN ('scheduled', 'rolling', 'manual')
            ORDER BY version DESC LIMIT 1""",
         (space_id,),
     )
-    last_attempt_row = await db.execute_fetchall(
-        "SELECT last_attempt_at FROM omni_last_attempt WHERE space_id = ?",
-        (space_id,),
-    )
 
     # Normalize ISO 'T' separator to space to match SQLite CURRENT_TIMESTAMP format,
     # otherwise string comparison fails (space 0x20 < 'T' 0x54).
-    def _norm(ts: str | None) -> str | None:
-        if not ts:
-            return None
-        return ts.replace("T", " ").split("+")[0]
-
-    # Since = max(last successful snapshot, last attempt watermark). The
-    # watermark is advanced on every run (including LLM failures) so failed
-    # cards don't re-accumulate into the next run's batch.
-    since_candidates = [
-        _norm(last_synth_row[0]["generated_at"]) if last_synth_row else None,
-        _norm(last_attempt_row[0]["last_attempt_at"]) if last_attempt_row else None,
-    ]
-    since = max([c for c in since_candidates if c] or ["2000-01-01 00:00:00"])
+    raw = last_synth_row[0]["generated_at"] if last_synth_row else None
+    since = raw.replace("T", " ").split("+")[0] if raw else "2000-01-01 00:00:00"
 
     # Fetch cap scales with event_threshold so users who tolerate larger
     # per-run batches get proportional headroom for failure recovery. Floor
@@ -712,19 +697,6 @@ async def _resynthesize_space(
             event_threshold=event_threshold,
             since=since,
         )
-
-    # Watermark write: advance `last_attempt_at` to "now" BEFORE the LLM call
-    # so that if the LLM fails (or the engine crashes mid-synthesis) the next
-    # run doesn't re-fetch this batch. Cards in this batch are already in
-    # current_snapshot via the incremental path, so no information is lost.
-    attempt_ts = datetime.now(timezone.utc).isoformat()
-    await db.execute(
-        """INSERT INTO omni_last_attempt (space_id, last_attempt_at)
-           VALUES (?, ?)
-           ON CONFLICT(space_id) DO UPDATE SET last_attempt_at = excluded.last_attempt_at""",
-        (space_id, attempt_ts),
-    )
-    await db.commit()
 
     # 5. Build LLM prompt
     messages = build_omni_resynthesis_messages(

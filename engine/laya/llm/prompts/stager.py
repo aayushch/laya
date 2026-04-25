@@ -105,6 +105,9 @@ Privacy tier guidelines:
 If worker findings are empty or missing, synthesize directly from the event and router \
 output. Always produce a useful card even with limited information.
 
+Never use emoji or icon characters (e.g., 🔴, ✅, 📌, ⚠️) in any field — headers, \
+summaries, intelligence bullets, or drafted content. Use plain text only.
+
 ## Update Events vs New Events
 
 When existing cards are listed for the same entity, you are generating an UPDATE card, \

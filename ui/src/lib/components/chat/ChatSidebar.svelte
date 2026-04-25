@@ -18,6 +18,7 @@
 	import { fly } from 'svelte/transition';
 	import { tick } from 'svelte';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
+	import { glassTheme } from '$lib/stores/glassTheme';
 
 	let input = $state('');
 	let sending = $state(false);
@@ -352,12 +353,12 @@
 	>
 	<!-- Inner container: top margin aligns with main content padding (p-4 = 1rem) so the panel
 	     starts at the same height as the feed toolbar / page header controls -->
-	<div class="flex flex-1 flex-col overflow-hidden mt-4 mr-4 rounded-xl border border-surface-700 bg-surface-900">
+	<div class="flex flex-1 flex-col overflow-hidden mt-4 mr-4 rounded-xl {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-900'}">
 		{#if showList}
 			<ChatConversationList />
 		{:else}
 			<!-- Active Chat Header -->
-			<div class="flex items-center justify-between border-b border-surface-700 px-4 py-3">
+			<div class="flex items-center justify-between border-b {$glassTheme ? 'border-white/[0.06]' : 'border-surface-700'} px-4 py-3">
 				<div class="group flex items-center gap-2 min-w-0">
 					<button
 						onclick={goBackToList}
@@ -376,14 +377,14 @@
 							onblur={commitRename}
 							maxlength={100}
 							aria-label="Rename conversation"
-							class="min-w-0 flex-1 rounded border border-laya-orange/40 bg-surface-800 px-1.5 py-0.5 text-sm font-semibold text-surface-100 focus:border-laya-orange focus:outline-none"
+							class="min-w-0 flex-1 rounded border border-laya-orange/40 {$glassTheme ? 'bg-white/[0.05]' : 'bg-surface-800'} px-1.5 py-0.5 text-sm font-semibold text-surface-100 focus:border-laya-orange focus:outline-none"
 						/>
 					{:else}
 						<button
 							type="button"
 							onclick={startRename}
 							disabled={!$activeConversationId}
-							class="flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors enabled:hover:bg-surface-800 disabled:cursor-default"
+							class="flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors {$glassTheme ? 'enabled:hover:bg-white/[0.05]' : 'enabled:hover:bg-surface-800'} disabled:cursor-default"
 							title={$activeConversationId ? 'Rename conversation' : ''}
 						>
 							<h3 class="truncate text-sm font-semibold">{conversationTitle()}</h3>
@@ -426,7 +427,7 @@
 				<!-- Tool calling indicator -->
 				{#if $activeTools.length > 0}
 					<div class="flex justify-start">
-						<div class="rounded-xl bg-surface-800 px-3.5 py-2 text-xs text-surface-400 ring-1 ring-surface-600">
+						<div class="rounded-xl {$glassTheme ? 'bg-white/[0.05] ring-1 ring-white/[0.08]' : 'bg-surface-800 ring-1 ring-surface-600'} px-3.5 py-2 text-xs text-surface-400">
 							<span class="mr-1.5 inline-block h-2 w-2 animate-pulse rounded-full bg-laya-orange"></span>
 							Looking up: {$activeTools.join(', ')}
 						</div>
@@ -436,7 +437,7 @@
 				<!-- Waiting indicator (before stream starts) -->
 				{#if sending && !$streamingMessageId && $activeTools.length === 0}
 					<div class="flex justify-start">
-						<div class="rounded-xl bg-surface-700 px-3.5 py-2.5 text-laya-base text-surface-400">
+						<div class="rounded-xl {$glassTheme ? 'bg-white/[0.06]' : 'bg-surface-700'} px-3.5 py-2.5 text-laya-base text-surface-400">
 							<span class="inline-flex gap-1">
 								<span class="animate-bounce">.</span>
 								<span class="animate-bounce" style="animation-delay: 0.1s">.</span>
@@ -448,7 +449,7 @@
 			</div>
 
 			<!-- Input -->
-			<div class="border-t border-surface-700 p-4">
+			<div class="border-t {$glassTheme ? 'border-white/[0.06]' : 'border-surface-700'} p-4">
 				<div class="relative">
 					<textarea
 						bind:this={textareaEl}
@@ -457,7 +458,7 @@
 						placeholder="Ask something..."
 						rows={3}
 						style="min-height: 4.5rem; overflow-y: auto;"
-						class="w-full resize-none rounded-lg border border-surface-600 bg-surface-800 py-2 pl-3 pr-10 text-laya-base text-surface-200 placeholder-surface-500 focus:border-laya-orange/50 focus:outline-none"
+						class="w-full resize-none rounded-lg border {$glassTheme ? 'border-white/[0.08] bg-white/[0.04]' : 'border-surface-600 bg-surface-800'} py-2 pl-3 pr-10 text-laya-base text-surface-200 placeholder-surface-500 focus:border-laya-orange/50 focus:outline-none"
 					></textarea>
 					<button
 						onclick={send}

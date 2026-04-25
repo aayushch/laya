@@ -5,6 +5,7 @@
 	import { goto } from '$app/navigation';
 	import { slide } from 'svelte/transition';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
+	import { portal } from '$lib/actions/portal';
 	import TraceTimeline from './TraceTimeline.svelte';
 
 	let {
@@ -134,7 +135,8 @@
 
 {#if tooltip}
 	<div
-		class="fixed z-50 px-2 py-1 rounded-md border border-transparent glass-tooltip text-[10px] font-medium pointer-events-none -translate-x-1/2 -translate-y-full max-w-[400px] break-words"
+		use:portal
+		class="fixed z-[100] px-2 py-1 rounded-md border border-transparent glass-tooltip text-[10px] font-medium pointer-events-none -translate-x-1/2 -translate-y-full max-w-[400px] break-words"
 		style="left: {tooltip.x}px; top: {tooltip.y}px;"
 	>
 		{tooltip.text}
@@ -157,10 +159,16 @@
 		onclick={() => (expanded = !expanded)}
 		class="absolute left-[5px] top-[4px] w-[13px] h-[13px] flex items-center justify-center
 		       border border-surface-600 bg-surface-800 hover:border-surface-500
-		       text-surface-400 hover:text-surface-200 transition-colors cursor-pointer
-		       text-[9px] leading-none z-10"
+		       text-surface-400 hover:text-surface-200 transition-colors cursor-pointer z-10"
 	>
-		{expanded ? '−' : '+'}
+		<svg class="w-[7px] h-[7px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 12 12">
+			{#if expanded}
+				<line x1="1" y1="6" x2="11" y2="6" />
+			{:else}
+				<line x1="1" y1="6" x2="11" y2="6" />
+				<line x1="6" y1="1" x2="6" y2="11" />
+			{/if}
+		</svg>
 	</button>
 
 	<!-- CLUSTER ROW -->
@@ -386,7 +394,7 @@
 
 				<!-- Expand/collapse all control -->
 				{#if cluster.timeline.length > 1}
-					<div class="relative pl-5 h-[22px] flex items-center">
+					<div class="relative pl-5 h-[22px] flex items-center justify-end pr-2">
 						<div class="absolute left-0 top-0 bottom-0 w-px bg-surface-700/40"></div>
 						<div class="flex items-center gap-2 text-[10px] text-surface-500">
 							{#if cardsExpanded}

@@ -26,7 +26,8 @@ or Codex CLI) can execute in the target repository. The prompt should:
 - Include related context from past events
 - Specify what the expected output is (investigation findings, a fix, a review summary)
 
-Be specific and actionable. The coding agent will work in the repository directory."""
+Be specific and actionable. The coding agent will work in the repository directory.
+Never use emoji or icon characters in your output."""
 
 
 def build_engineer_messages(

@@ -8,6 +8,7 @@
 		chatOpen
 	} from '$lib/stores/chat';
 	import type { Conversation } from '$lib/api/types';
+	import { glassTheme } from '$lib/stores/glassTheme';
 
 	let loading = $state(true);
 	let deletingId = $state<string | null>(null);
@@ -153,14 +154,14 @@
 
 <div class="flex h-full flex-col">
 	<!-- Header -->
-	<div class="flex items-center justify-between border-b border-surface-700 px-4 py-3">
+	<div class="flex items-center justify-between border-b {$glassTheme ? 'border-white/[0.06]' : 'border-surface-700'} px-4 py-3">
 		<h3 class="text-sm font-semibold">Conversations</h3>
 		<div class="flex items-center gap-1">
 			<!-- New Chat -->
 			<button
 				onclick={startNewChat}
 				aria-label="New chat"
-				class="rounded-md p-1 text-surface-400 transition-colors hover:bg-surface-800 hover:text-laya-orange"
+				class="rounded-md p-1 text-surface-400 transition-colors {$glassTheme ? 'glass-hover' : 'hover:bg-surface-800'} hover:text-laya-orange"
 				title="New chat"
 			>
 				<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -205,7 +206,7 @@
 						tabindex="0"
 						onclick={() => openConversation(conv)}
 						onkeydown={(e) => { if (e.key === 'Enter') openConversation(conv); }}
-						class="group flex w-full cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-surface-800"
+						class="group flex w-full cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors {$glassTheme ? 'glass-hover' : 'hover:bg-surface-800'}"
 					>
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center justify-between gap-2">
@@ -218,7 +219,7 @@
 										onblur={() => commitEdit(conv.conversation_id)}
 										maxlength={100}
 										aria-label="Rename conversation"
-										class="min-w-0 flex-1 rounded border border-laya-orange/40 bg-surface-800 px-1.5 py-0.5 text-sm font-medium text-surface-100 focus:border-laya-orange focus:outline-none"
+										class="min-w-0 flex-1 rounded border border-laya-orange/40 {$glassTheme ? 'bg-white/[0.05]' : 'bg-surface-800'} px-1.5 py-0.5 text-sm font-medium text-surface-100 focus:border-laya-orange focus:outline-none"
 									/>
 								{:else}
 									<span class="truncate text-sm font-medium text-surface-200">{conv.title}</span>
@@ -261,7 +262,7 @@
 									opacity-0 transition-opacity duration-75 group-hover/del:opacity-100
 									{deletingId === conv.conversation_id
 										? 'border-red-400/30 bg-red-950 text-red-300'
-										: 'border-surface-600 bg-surface-800 text-surface-400'}">
+										: $glassTheme ? 'border-white/[0.08] bg-white/[0.06] text-surface-400' : 'border-surface-600 bg-surface-800 text-surface-400'}">
 									{deletingId === conv.conversation_id ? 'Click again to confirm' : 'Double-click to delete'}
 								</span>
 							</div>

@@ -141,7 +141,10 @@ that contributed (e.g., ["bitbucket", "jira", "calendar"] for a cross-cutting it
 compression boundaries. A closed sprint becomes a period aggregate or milestone.
 
 11. **Be specific with numbers.** "8 PRs merged — 3 in auth module, 2 in payments, \
-3 minor fixes" is useful. "Several PRs were merged" is useless and FORBIDDEN."""
+3 minor fixes" is useful. "Several PRs were merged" is useless and FORBIDDEN.
+
+12. **No emoji or icons.** Never use emoji or icon characters (e.g., 🔴, ✅, 📌, ⚠️) \
+anywhere in your output. Use plain text only."""
 
 
 def _density_instructions(density: str) -> str:

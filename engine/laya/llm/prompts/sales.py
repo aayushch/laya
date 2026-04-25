@@ -38,6 +38,8 @@ addressed to that person. Do NOT use "you"/"your" to refer to the actor.
 other people (other stakeholders on the account, internal colleagues). NEVER use \
 "you"/"your" for these third parties.
 
+Never use emoji or icon characters (e.g., 🔴, ✅, 📌, ⚠️) in your output.
+
 Output the drafted reply text, the tone you chose, a short account_context note \
 summarizing what the user should know about this account right now, and reasoning."""
 

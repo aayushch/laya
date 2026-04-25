@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { searchFocusSignal } from '$lib/stores/searchFocus';
+	import { glassTheme } from '$lib/stores/glassTheme';
+	import { portal } from '$lib/actions/portal';
 
 	let {
 		onsubmit,
@@ -82,7 +84,8 @@
 <!-- Fixed-position tooltip -->
 {#if tooltip}
 	<div
-		class="fixed z-50 px-2.5 py-1 rounded-md bg-surface-700 text-surface-100 text-xs font-medium shadow-lg pointer-events-none -translate-x-1/2 -translate-y-full"
+		use:portal
+		class="fixed z-[100] px-2.5 py-1 rounded-md border border-transparent glass-tooltip text-xs font-medium shadow-lg pointer-events-none -translate-x-1/2 -translate-y-full"
 		style="left: {tooltip.x}px; top: {tooltip.y}px;"
 	>
 		{tooltip.text}
@@ -110,7 +113,8 @@
 			onkeydown={handleKeydown}
 			placeholder="Trace an entity across your tools — tickets, PRs, threads, deploys..."
 			disabled={loading}
-			class="w-full pl-12 pr-28 py-4 rounded-xl bg-surface-800 border border-surface-700
+			class="w-full pl-12 pr-28 py-4 rounded-xl
+			       {$glassTheme ? 'bg-white/[0.04] border border-white/[0.08]' : 'bg-surface-800 border border-surface-700'}
 			       text-surface-50 placeholder-surface-500 text-laya-base
 			       focus:outline-none focus:border-laya-orange/50 focus:ring-1 focus:ring-laya-orange/30
 			       disabled:opacity-50 transition-colors"
@@ -126,7 +130,9 @@
 				class="p-1.5 rounded-lg transition-colors
 				       {showAdvanced || hasCustomSettings
 					? 'bg-laya-orange/20 text-laya-orange border border-laya-orange/40'
-					: 'bg-surface-700/60 text-surface-400 border border-transparent hover:text-surface-300 hover:bg-surface-700'}"
+					: $glassTheme
+						? 'bg-white/[0.04] text-surface-400 border border-transparent hover:text-surface-300 glass-hover'
+						: 'bg-surface-700/60 text-surface-400 border border-transparent hover:text-surface-300 hover:bg-surface-700'}"
 			>
 				<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 					<path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
@@ -147,7 +153,7 @@
 
 	<!-- Search Settings Panel -->
 	{#if showAdvanced}
-		<div class="mt-2 rounded-xl border border-surface-700 bg-surface-800/80 p-4">
+		<div class="mt-2 rounded-xl p-4 {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-800/80'}">
 			<div class="flex items-center justify-between mb-3">
 				<h4 class="text-xs font-semibold uppercase tracking-wider text-surface-400">Search Settings</h4>
 				{#if hasCustomSettings}

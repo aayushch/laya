@@ -2,6 +2,8 @@
 	import type { TraceListItem } from '$lib/api/types';
 	import { slide } from 'svelte/transition';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
+	import { glassTheme } from '$lib/stores/glassTheme';
+	import { portal } from '$lib/actions/portal';
 	import PlatformBadge from '$lib/components/PlatformBadge.svelte';
 
 	let {
@@ -37,7 +39,8 @@
 <!-- Fixed-position tooltip -->
 {#if tooltip}
 	<div
-		class="fixed z-50 px-2.5 py-1 rounded-md bg-surface-700 text-surface-100 text-xs font-medium shadow-lg pointer-events-none -translate-x-1/2 -translate-y-full"
+		use:portal
+		class="fixed z-[100] px-2.5 py-1 rounded-md border border-transparent glass-tooltip text-xs font-medium shadow-lg pointer-events-none -translate-x-1/2 -translate-y-full"
 		style="left: {tooltip.x}px; top: {tooltip.y}px;"
 	>
 		{tooltip.text}
@@ -57,8 +60,10 @@
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
 				out:slide={{ duration: $reducedMotion ? 0 : 250 }}
-				class="w-full text-left rounded-lg border border-surface-700/60 bg-surface-800/60
-				       hover:border-surface-600 hover:bg-surface-800 p-4 transition-colors group cursor-pointer"
+				class="w-full text-left rounded-lg p-4 transition-colors group cursor-pointer
+				       {$glassTheme
+				         ? 'glass-card border border-transparent hover:border-white/[0.1]'
+				         : 'border border-surface-700/60 bg-surface-800/60 hover:border-surface-600 hover:bg-surface-800'}"
 				onclick={() => onselect(trace.trace_id)}
 				onkeydown={(e) => { if (e.key === 'Enter') onselect(trace.trace_id); }}
 				role="button"
@@ -102,7 +107,7 @@
 								onmouseenter={(e) => showTooltip(e, 'Re-run')}
 								onmouseleave={hideTooltip}
 								aria-label="Re-run"
-								class="p-1.5 rounded text-surface-400 hover:text-surface-200 hover:bg-surface-700 transition-colors"
+								class="p-1.5 rounded text-surface-400 hover:text-surface-200 {$glassTheme ? 'glass-hover' : 'hover:bg-surface-700'} transition-colors"
 							>
 								<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 									<path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
@@ -115,7 +120,7 @@
 								onmouseenter={(e) => showTooltip(e, 'Delete')}
 								onmouseleave={hideTooltip}
 								aria-label="Delete"
-								class="p-1.5 rounded text-surface-400 hover:text-red-400 hover:bg-surface-700 transition-colors"
+								class="p-1.5 rounded text-surface-400 hover:text-red-400 {$glassTheme ? 'glass-hover' : 'hover:bg-surface-700'} transition-colors"
 							>
 								<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 									<path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />

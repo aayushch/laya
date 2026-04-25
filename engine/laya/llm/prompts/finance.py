@@ -26,7 +26,8 @@ Produce a brief that covers:
 
 Be precise with numbers. Never invent figures the event does not provide. Flag anything \
 that looks anomalous (unusually large amount, budget overrun, missing approval, policy \
-concern) in the briefing."""
+concern) in the briefing.
+Never use emoji or icon characters (e.g., 🔴, ✅, 📌, ⚠️) anywhere in your output."""
 
 
 def build_finance_messages(
