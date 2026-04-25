@@ -37,6 +37,8 @@ addressed to that person. Do NOT use "you"/"your" to refer to the actor.
 - **CRITICAL — "you"/"your" ONLY refers to the Laya user**: Candidates, teammates, and \
 third parties mentioned in the body are not the Laya user.
 
+Never use emoji or icon characters (e.g., 🔴, ✅, 📌, ⚠️) in your output.
+
 Output the drafted reply text, the tone you chose, a sensitivity_note flagging any \
 confidentiality concerns (or "none" if the content is routine), and reasoning."""
 

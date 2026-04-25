@@ -58,7 +58,9 @@ embed it, or any other identifier / bracketed token, in the `text` field.
 space names, hex color codes, or any structural metadata to it.
     - Wrong: "Review PR-58 [card_abc123] [space_xyz] [Work] [#3B82F6]"
     - Right: "Review PR-58 (SDK-714) for GCS Stream Seeking Fix"
-- Order items by priority/importance within each section."""
+- Order items by priority/importance within each section.
+- Never use emoji or icon characters (e.g., 🔴, ✅, 📌, ⚠️) in the `text` field or \
+anywhere else in your output. Use plain text only."""
 
 SUMMARIZER_STATUS_CHANGE_PROMPT = """\
 You are the Daily Summarizer for Laya. A card's status has changed. Update the running \

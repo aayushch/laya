@@ -6,6 +6,7 @@
 	import type { ActionCard, ChatMessage as ChatMessageType } from '$lib/api/types';
 	import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
 	import { marked } from 'marked';
+	import { glassTheme } from '$lib/stores/glassTheme';
 
 	let cards = $state<ActionCard[]>([]);
 	let loading = $state(true);
@@ -407,9 +408,9 @@
 								{outputTypeLabels[card.staged_output.type] ?? 'Output'}
 							</h3>
 							{#if card.staged_output.type === 'code_fix'}
-								<pre class="overflow-x-auto rounded-lg bg-surface-900 p-3 text-xs text-surface-200">{card.staged_output.content}</pre>
+								<pre class="overflow-x-auto rounded-lg p-3 text-xs text-surface-200 {$glassTheme ? 'bg-white/[0.04] border border-white/[0.06]' : 'bg-surface-900'}">{card.staged_output.content}</pre>
 							{:else}
-								<div class="prose-plan overflow-y-auto overflow-x-auto rounded-lg border border-surface-700 bg-surface-900/50 p-4 text-laya-base text-surface-200">
+								<div class="prose-plan overflow-y-auto overflow-x-auto rounded-lg p-4 text-laya-base text-surface-200 {$glassTheme ? 'border border-white/[0.06] bg-white/[0.04]' : 'border border-surface-700 bg-surface-900/50'}">
 									{@html marked(card.staged_output.content)}
 								</div>
 							{/if}
@@ -429,7 +430,7 @@
 								<!-- Action payload preview with edit capability -->
 								{#if editableField}
 									{@const isEditing = editingActionId === action.action_id}
-									<div class="mb-2 rounded-lg border border-surface-700 bg-surface-900/50 p-3">
+									<div class="mb-2 rounded-lg p-3 {$glassTheme ? 'border border-white/[0.06] bg-white/[0.04]' : 'border border-surface-700 bg-surface-900/50'}">
 										{#if !isEditing}
 											<!-- Read-only view of editable fields -->
 											{#each Object.entries(payload) as [key, value]}
@@ -542,7 +543,7 @@
 		</div>
 
 		<!-- Right: Chat panel — rounded container aligned with cards -->
-		<div class="flex flex-col my-6 mr-6 rounded-xl border border-surface-700 bg-surface-800/50 overflow-hidden" style="width: {chatWidth}px; min-width: {MIN_CHAT}px; max-width: {MAX_CHAT}px;">
+		<div class="flex flex-col my-6 mr-6 rounded-xl overflow-hidden {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-800/50'}" style="width: {chatWidth}px; min-width: {MIN_CHAT}px; max-width: {MAX_CHAT}px;">
 			<!-- Chat header -->
 			<div class="flex items-center gap-2 px-4 py-3">
 				<svg class="h-4 w-4 text-surface-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">

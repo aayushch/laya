@@ -52,4 +52,5 @@ Subject: {header}
 - Provide sources and references where possible
 - Write your findings as a structured document in the current working directory
 - IMPORTANT: Only write files inside the current working directory — do not modify files outside of it
+- Never use emoji or icon characters in your output
 """

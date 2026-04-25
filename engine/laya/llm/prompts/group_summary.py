@@ -41,6 +41,7 @@ Return a JSON object with these fields:
 - Reference specific details (PR numbers, ticket IDs, dates, branch names).
 - pending_actions should only list genuinely open items, not completed ones.
 - If all activity is resolved (merged, closed, completed), set pending_actions to null.
+- Never use emoji or icon characters (e.g., 🔴, ✅, 📌, ⚠️) anywhere in your output.
 """
 
 GROUP_SUMMARY_ROLLING_SYSTEM_PROMPT = """\
@@ -64,6 +65,7 @@ Integrate the new event into the existing summary:
   If there are more than 7 items, prune the least significant older entries.
 - Don't just append — **synthesize** into a coherent narrative.
 - pending_actions: remove items that are now resolved, add new ones if applicable.
+- Never use emoji or icon characters anywhere in your output.
 
 ## OUTPUT FORMAT (JSON)
 

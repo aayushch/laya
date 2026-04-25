@@ -25,6 +25,7 @@ Rules:
 - Be specific: include ticket IDs, PR numbers, people's names, and dates.
 - If there are pending actions or blockers, mention them at the end.
 - Do NOT include preamble like "Here is a summary" — just start narrating.
+- Never use emoji or icon characters (e.g., 🔴, ✅, 📌, ⚠️) anywhere in your output.
 
 ## User Identity
 
@@ -57,6 +58,7 @@ Rules:
 - Mention the platforms involved and the time span.
 - Be specific: include identifiers, names, and dates.
 - Do NOT include preamble like "Here is a summary" — start narrating directly.
+- Never use emoji or icon characters (e.g., 🔴, ✅, 📌, ⚠️) anywhere in your output.
 
 ## User Identity
 

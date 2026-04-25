@@ -71,8 +71,8 @@ class TestEventThresholdClamp:
 
 
 @pytest.mark.asyncio
-class TestResynthesisFailureWatermark:
-    """An LLM failure advances omni_last_attempt so the next run skips the failed batch."""
+class TestResynthesisFailureRetry:
+    """An LLM failure does NOT advance the watermark — the next run retries the full batch."""
 
     async def _seed_cards(self, db, count: int, space_id: str = "default", prefix: str = "fail"):
         """Insert `count` cards with increasing created_at timestamps."""
@@ -85,14 +85,13 @@ class TestResynthesisFailureWatermark:
                 event_id=f"evt_{prefix}_{i}",
                 space_id=space_id,
             )
-            # Backfill created_at to a known time ordering
             await db.execute(
                 "UPDATE action_cards SET created_at = ? WHERE card_id = ?",
                 (ts, f"card_{prefix}_{i}"),
             )
         await db.commit()
 
-    async def test_watermark_written_on_llm_failure(self, db):
+    async def test_failure_returns_none(self, db):
         from laya.pipeline import omni as omni_pipeline
 
         await self._seed_cards(db, count=3)
@@ -104,19 +103,13 @@ class TestResynthesisFailureWatermark:
                 db, "default", density="compact", snapshot_type="manual", event_threshold=50
             )
 
-        assert result is None  # failure returns None
+        assert result is None
 
-        watermark = await db.execute_fetchall(
-            "SELECT last_attempt_at FROM omni_last_attempt WHERE space_id = ?", ("default",)
-        )
-        assert watermark, "watermark row must be written even on LLM failure"
-        assert watermark[0]["last_attempt_at"]
-
-    async def test_next_run_skips_failed_batch(self, db):
-        """After a failure, the next attempt only sees cards created AFTER the watermark."""
+    async def test_next_run_retries_failed_batch(self, db):
+        """After a failure, the next attempt re-includes ALL cards since last success."""
         from laya.pipeline import omni as omni_pipeline
 
-        # Batch 1: 3 cards, LLM fails — watermark advances past them.
+        # Batch 1: 3 cards, LLM fails.
         await self._seed_cards(db, count=3, prefix="batch1")
 
         with patch.object(
@@ -126,8 +119,8 @@ class TestResynthesisFailureWatermark:
                 db, "default", density="compact", snapshot_type="manual", event_threshold=50
             )
 
-        # Batch 2: 2 new cards created AFTER batch1. Succeed this time and assert
-        # that only the 2 new cards were passed to the LLM.
+        # Batch 2: 2 new cards. Succeed this time and assert that ALL 5 cards
+        # (batch1 + batch2) are passed to the LLM.
         later = (datetime.now(timezone.utc) + timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
         for i in range(2):
             await insert_test_card(
@@ -142,7 +135,6 @@ class TestResynthesisFailureWatermark:
         captured = {}
 
         async def fake_llm_call(**kwargs):
-            # Capture the user message to count cards passed through.
             msgs = kwargs.get("messages", [])
             captured["user"] = next((m["content"] for m in msgs if m["role"] == "user"), "")
 
@@ -159,10 +151,9 @@ class TestResynthesisFailureWatermark:
             )
 
         user_msg = captured.get("user", "")
-        # Batch 1 card_ids must NOT appear in the prompt.
+        # Both batches must appear — failed batch is retried.
         for i in range(3):
-            assert f"card_batch1_{i}" not in user_msg
-        # Batch 2 card_ids must appear.
+            assert f"card_batch1_{i}" in user_msg
         for i in range(2):
             assert f"card_batch2_{i}" in user_msg
 

@@ -37,6 +37,8 @@ user. NEVER use "you"/"your" for these third parties. For example, if a ticket i
 assigned to "Alex" and Alex is not the Laya user, write "assigned to Alex" — \
 NOT "assigned to you". Only use "you"/"your" when the person IS the Laya user.
 
+Never use emoji or icon characters (e.g., 🔴, ✅, 📌, ⚠️) in your output.
+
 Output the drafted reply text, the tone you chose, and a brief explanation of your approach."""
 
 

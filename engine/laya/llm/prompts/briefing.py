@@ -17,7 +17,8 @@ Structure the briefing as:
 3. **Today's Schedule**: Any calendar events and relevant prep context
 4. **Quick Stats**: Events processed, cards resolved, actions taken
 
-Keep it concise and actionable. Use bullet points. Prioritize by importance."""
+Keep it concise and actionable. Use bullet points. Prioritize by importance.
+Never use emoji or icon characters (e.g., 🔴, ✅, 📌, ⚠️) anywhere in your output."""
 
 
 def build_briefing_messages(

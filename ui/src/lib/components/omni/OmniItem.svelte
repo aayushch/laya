@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { OmniItem } from '$lib/api/types';
 	import PlatformBadge from '$lib/components/PlatformBadge.svelte';
+	import { glassTheme } from '$lib/stores/glassTheme';
 
 	let { item, onPin, onUnpin, onDrillDown, onBookmark }: {
 		item: OmniItem;
@@ -21,7 +22,7 @@
 </script>
 
 <div
-	class="group flex items-start gap-2 rounded-lg px-3 py-2 transition-colors hover:bg-surface-800/60"
+	class="group flex items-start gap-2 rounded-lg px-3 py-2 transition-colors {$glassTheme ? 'glass-hover' : 'hover:bg-surface-800/60'}"
 	data-omni-item={item.source_cards[0] ?? ''}
 >
 	<!-- Priority dot -->

@@ -3,6 +3,7 @@
 	import { marked } from 'marked';
 	import { goto } from '$app/navigation';
 	import { pendingCardId } from '$lib/stores/chat';
+	import { glassTheme } from '$lib/stores/glassTheme';
 
 	let { message, streaming = false }: { message: ChatMessage; streaming?: boolean } = $props();
 
@@ -88,7 +89,7 @@
 	<div
 		class="group max-w-[95%] rounded-xl px-3.5 py-2.5 text-laya-base {isUser
 			? 'bg-laya-orange/20 text-surface-100 ring-1 ring-laya-orange/30'
-			: 'bg-surface-700 text-surface-200'}"
+			: $glassTheme ? 'bg-white/[0.06] text-surface-200 ring-1 ring-white/[0.06]' : 'bg-surface-700 text-surface-200'}"
 	>
 		{#if isUser}
 			<!-- eslint-disable-next-line svelte/no-at-html-tags -->

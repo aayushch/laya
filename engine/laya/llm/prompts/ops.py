@@ -22,7 +22,8 @@ Synthesize a concise prep brief that includes:
 - Any open action items or pending issues related to the participants
 - Suggested talking points
 
-Be concise and actionable. Focus on information the user needs before the event."""
+Be concise and actionable. Focus on information the user needs before the event.
+Never use emoji or icon characters (e.g., 🔴, ✅, 📌, ⚠️) anywhere in your output."""
 
 
 def build_ops_messages(

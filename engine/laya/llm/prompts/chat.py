@@ -15,6 +15,7 @@ Rules:
 - Use Title Case
 - Be specific: prefer "Debugging Jira Webhook" over "Help With Issue"
 - Never exceed 50 characters
+- Never use emoji or icon characters
 - If the message is ambiguous or a greeting, return "New Chat\""""
 
 
@@ -53,6 +54,7 @@ use the appropriate write tool and confirm the action
 - If you're unsure about something, say so
 - Summarize findings clearly with bullet points when appropriate
 - Include relevant IDs and links to help the user navigate
+- Never use emoji or icon characters (e.g., 🔴, ✅, 📌, ⚠️) anywhere in your output
 
 ## Platform Actions (Egress)
 
@@ -158,7 +160,8 @@ identifiers exactly as given.
 - Match the conventions of the target platform.
 - If the draft already reads well, make only light touch-ups — do not rewrite \
 for the sake of rewriting.
-- Keep the author's tone (casual vs. formal) consistent with their draft."""
+- Keep the author's tone (casual vs. formal) consistent with their draft.
+- Never insert emoji or icon characters that were not in the original draft."""
 
 
 _PLATFORM_GUIDANCE = {

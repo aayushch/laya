@@ -19,6 +19,8 @@ _last_housekeeping_date: str | None = None
 _last_budget_month: str | None = None
 _last_learn_check: datetime | None = None
 _last_context_learn_check: datetime | None = None
+_threshold_cooldowns: dict[str, datetime] = {}
+_THRESHOLD_COOLDOWN_MINUTES = 10
 
 # Statuses that are safe to auto-delete (never auto-delete active/in-progress cards)
 _HOUSEKEEPING_STATUSES = ("archived", "dismissed", "done", "failed")
@@ -326,7 +328,12 @@ async def _scheduler_loop() -> None:
                             if "default" not in _space_ids:
                                 _space_ids.append("default")
 
+                            _cooldown_delta = timedelta(minutes=_THRESHOLD_COOLDOWN_MINUTES)
                             for _sid in _space_ids:
+                                _cd = _threshold_cooldowns.get(_sid)
+                                if _cd and (now_utc - _cd) < _cooldown_delta:
+                                    continue
+
                                 _last_synth = await _db.execute_fetchall(
                                     """SELECT generated_at FROM omni_snapshots
                                        WHERE snapshot_type IN ('scheduled', 'rolling', 'manual')
@@ -370,7 +377,9 @@ async def _scheduler_loop() -> None:
                             try:
                                 snapshot_ids = await run_omni_resynthesis(space_id=_sid, snapshot_type="rolling")
                                 log.info("scheduler_omni_resynthesis_complete", trigger=f"threshold_space_{_sid}", snapshots=len(snapshot_ids))
+                                _threshold_cooldowns.pop(_sid, None)
                             except Exception as e:
+                                _threshold_cooldowns[_sid] = now_utc
                                 log.error("scheduler_omni_resynthesis_failed", trigger=f"threshold_space_{_sid}", error=str(e))
 
             # --- Housekeeping (once per day at ~00:00 UTC) ---
