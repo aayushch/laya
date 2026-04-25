@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
+	import { glassTheme } from '$lib/stores/glassTheme';
 	import PlatformCard from './PlatformCard.svelte';
 	import ConnectModal from './ConnectModal.svelte';
 	import N8nAdvancedSection from './N8nAdvancedSection.svelte';
@@ -184,7 +185,7 @@
 		{/each}
 
 		<!-- n8n Advanced Section -->
-		<div class="rounded-lg border border-surface-700 bg-surface-800">
+		<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'}">
 			<button
 				onclick={() => (showN8nAdvanced = !showN8nAdvanced)}
 				class="flex w-full items-center justify-between p-4 text-left transition-colors hover:bg-surface-700/50"

@@ -91,6 +91,7 @@ class TraceResponse(BaseModel):
     search_metadata: SearchMetadata
     created_at: str
     summary: str | None = None
+    space_id: str | None = None
 
 
 class TraceListItem(BaseModel):

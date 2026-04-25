@@ -6,9 +6,10 @@
 	import { cardColors } from '$lib/stores/cardColors';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { cardDescriptions } from '$lib/stores/cardDescriptions';
+	import { cardSize } from '$lib/stores/cardSize';
 	import { portal } from '$lib/actions/portal';
-	import { feedDate } from '$lib/stores/feedFilters';
 	import StatusDot from './StatusDot.svelte';
+	import { platformDotColor, platformKey, actorInitials, actorAvatarColor } from '$lib/utils/cardVisuals';
 
 	let { card, onselect, ondelete, onlink, selectedCardId = '', hasSelection = false, lastViewedCardId = '' }: { card: ActionCard; onselect: (card: ActionCard) => void; ondelete?: (cardId: string) => void; onlink?: (card: ActionCard) => void; selectedCardId?: string; hasSelection?: boolean; lastViewedCardId?: string } = $props();
 
@@ -33,6 +34,7 @@
 	let summaryEl: HTMLElement | undefined = $state();
 	let srcRefEl: HTMLElement | undefined = $state();
 	let actorEl: HTMLElement | undefined = $state();
+	let timeEl: HTMLElement | undefined = $state();
 
 	let fixedTooltip = $state<{ text: string; top: number; left: number; maxWidth?: number } | null>(null);
 
@@ -73,9 +75,9 @@
 
 	const priorityColors: Record<string, string> = {
 		CRITICAL: 'bg-red-600 text-red-50',
-		HIGH:     'bg-orange-500 text-orange-50',
-		MEDIUM:   'bg-laya-coral/20 text-laya-coral',
-		LOW:      'bg-laya-gold/25 text-laya-amber'
+		HIGH:     'bg-rose-500/25 text-rose-300',
+		MEDIUM:   'bg-amber-500/20 text-amber-300',
+		LOW:      'bg-surface-700/40 text-surface-400'
 	};
 
 	const priorityLabel: Record<string, string> = {
@@ -163,8 +165,11 @@
 
 	const isDimmed = $derived(!isSelected && hasSelection && !isArchived);
 
+	const dimClass = $derived(isDimmed ? ($glassTheme ? ' glass-dim' : ' opacity-45 hover:opacity-70') : '');
+	const focusClass = $derived(isSelected && hasSelection && $glassTheme ? ' glass-focus' : '');
+
 	const cardStyle = $derived(
-		`${baseCardStyle}${isDimmed ? ' opacity-45 hover:opacity-70' : ''}${isLastViewed ? ($cardColors ? ' card-last-viewed' : ' card-last-viewed-highlight') : ''}`
+		`${baseCardStyle}${dimClass}${focusClass}${isLastViewed ? ($cardColors ? ' card-last-viewed' : ' card-last-viewed-highlight') : ''}`
 	);
 
 	const platform = $derived(
@@ -173,16 +178,10 @@
 			: ''
 	);
 
-	// Show a date badge when this card was created on a different day than the feed date
-	// (i.e. it was carried forward from a previous day's entity group)
-	const carriedForwardDate = $derived.by(() => {
-		if (!card.created_at) return null;
-		const utcStr = card.created_at.endsWith('Z') || card.created_at.includes('+') ? card.created_at : card.created_at + 'Z';
-		const d = new Date(utcStr);
-		const localDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-		if (localDate === $feedDate) return null;
-		return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-	});
+	// Compact mode collapses metadata rows into the footer and tightens internal
+	// spacing. The platform/source row, the standalone space row, and the footer
+	// hairline all disappear; their information moves inline next to the actor.
+	const compact = $derived($cardSize === 'compact');
 
 	function timeAgo(dateStr?: string): string {
 		if (!dateStr) return '';
@@ -193,7 +192,19 @@
 		if (mins < 60) return `${mins}m ago`;
 		const hours = Math.floor(mins / 60);
 		if (hours < 24) return `${hours}h ago`;
-		return `${Math.floor(hours / 24)}d ago`;
+		const days = Math.floor(hours / 24);
+		if (days < 7) return `${days}d ago`;
+		return `${Math.floor(days / 7)}w ago`;
+	}
+
+	function fullDate(dateStr?: string): string {
+		if (!dateStr) return '';
+		const utcStr = dateStr.endsWith('Z') || dateStr.includes('+') ? dateStr : dateStr + 'Z';
+		const d = new Date(utcStr);
+		return d.toLocaleString(undefined, {
+			month: 'short', day: 'numeric', year: 'numeric',
+			hour: 'numeric', minute: '2-digit'
+		});
 	}
 
 	async function markDone(e: Event) {
@@ -296,15 +307,27 @@
 	role="button"
 	tabindex="0"
 	data-card-id={card.card_id}
+	data-status={$glassTheme && $cardColors && !isArchived ? card.status : undefined}
 	class="group/card relative flex min-h-0 w-full cursor-pointer flex-col rounded-xl border {$glassTheme ? '' : 'shadow-lg'} px-4 pb-2 pt-3 text-left transition-colors hover:z-20 {cardStyle}"
 	onclick={() => onselect(card)}
 	onkeydown={(e) => e.key === 'Enter' && onselect(card)}
 >
 	{#if isLastViewed}<div class="card-corner-bottom"></div>{/if}
-	<!-- Row 1: Action icons (left) + utility icons (right) -->
-	<div class="mb-2 flex items-center justify-between">
-		<!-- Action icons -->
-		<div class="flex items-center gap-1">
+	<!-- Row 1: Time (rest) ⇄ Action icons (hover) on left, utility icons + status + priority on right.
+	     Layered swap: both children absolutely positioned in a 100px-wide / 24px-tall slot so the
+	     right-side cluster never shifts when the swap happens. -->
+	<div class="{compact ? 'mb-1' : 'mb-2'} flex items-center justify-between">
+		<div class="relative w-[100px] h-6 shrink-0">
+			<!-- Time at rest — plain text, no icon -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<span
+				bind:this={timeEl}
+				class="absolute inset-0 flex items-center text-[11px] text-surface-400/75 opacity-100 transition-opacity duration-[180ms] ease-out group-hover/card:opacity-0 group-hover/card:pointer-events-none"
+				onmouseenter={() => timeEl && showTooltip(timeEl, fullDate(card.created_at))}
+				onmouseleave={hideTooltip}
+			>{timeAgo(card.created_at)}</span>
+			<!-- Action icons revealed on hover -->
+			<div class="absolute inset-0 flex items-center gap-1 opacity-0 pointer-events-none transition-opacity duration-[180ms] ease-out group-hover/card:opacity-100 group-hover/card:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto">
 			{#if card.status === 'ready'}
 				<!-- Mark as Done -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -609,6 +632,7 @@
 				</div>
 			{/if}
 		</div>
+		</div>
 
 		<!-- Right: utility icons (appear on hover) + priority chip -->
 		<div class="flex items-center gap-0.5 min-w-0">
@@ -678,40 +702,43 @@
 		</div>
 	</div>
 
-	<!-- Row 2: Platform · source ref -->
-	<div class="mb-1.5 flex items-center gap-1.5 min-w-0">
-		<span class="text-[10px] font-semibold uppercase tracking-widest text-surface-500 shrink-0">
-			{platform}
-		</span>
-		{#if card.source_ref}
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="relative min-w-0 truncate"
-				onmouseenter={() => showTooltipIfTruncated(srcRefEl, card.source_ref ?? '')}
-				onmouseleave={hideTooltip}
-			>
-				{#if card.source_url}
-					<a
-						bind:this={srcRefEl}
-						href={card.source_url}
-						target="_blank"
-						rel="noopener noreferrer"
-						onclick={(e) => e.stopPropagation()}
-						class="block truncate text-[10px] font-medium text-laya-orange/80 hover:text-laya-orange transition-colors"
-					>{card.source_ref}</a>
-				{:else}
-					<span bind:this={srcRefEl} class="block truncate text-[10px] font-medium text-surface-400">{card.source_ref}</span>
-				{/if}
-			</div>
-		{/if}
-	</div>
+	<!-- Row 2: Platform · source ref (relaxed only — compact pulls platform inline into the footer) -->
+	{#if !compact}
+		<div class="mb-1.5 flex items-center gap-1.5 min-w-0">
+			<span class="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-surface-500 shrink-0">
+				<span class="h-1 w-1 rounded-full shrink-0" style="background-color: {platformDotColor(platformKey(card.entity_id))}"></span>
+				{platform}
+			</span>
+			{#if card.source_ref}
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="relative min-w-0 truncate"
+					onmouseenter={() => showTooltipIfTruncated(srcRefEl, card.source_ref ?? '')}
+					onmouseleave={hideTooltip}
+				>
+					{#if card.source_url}
+						<a
+							bind:this={srcRefEl}
+							href={card.source_url}
+							target="_blank"
+							rel="noopener noreferrer"
+							onclick={(e) => e.stopPropagation()}
+							class="block truncate text-[10px] font-medium text-laya-orange/80 hover:text-laya-orange transition-colors"
+						>{card.source_ref}</a>
+					{:else}
+						<span bind:this={srcRefEl} class="block truncate text-[10px] font-medium text-surface-400">{card.source_ref}</span>
+					{/if}
+				</div>
+			{/if}
+		</div>
+	{/if}
 
-	<!-- Row 3: Title (2-line clamp) -->
+	<!-- Row 3: Title (2-line clamp). Compact tightens leading from snug (1.375) to tight (1.25). -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="relative mb-1.5"
+	<div class="relative {compact ? 'mb-1' : 'mb-1.5'}"
 		onmouseenter={() => showTooltipIfTruncated(headerEl, card.header, { checkHeight: true, maxWidth: 300 })}
 		onmouseleave={hideTooltip}
 	>
-		<h3 bind:this={headerEl} class="line-clamp-2 text-sm font-semibold leading-snug text-surface-50">{card.header}</h3>
+		<h3 bind:this={headerEl} class="line-clamp-2 text-sm font-semibold {compact ? 'leading-tight' : 'leading-snug'} text-surface-50">{card.header}</h3>
 	</div>
 
 	<!-- Row 4: Summary (2-line clamp) -->
@@ -725,35 +752,50 @@
 		</div>
 	{/if}
 
-	<!-- Row 5: Footer — space · actor name (left) · persona · category · workspace · time (right) -->
-	<div class="flex items-center gap-1.5 min-w-0 mt-3">
-		{#if card.space_name}
-			<span class="flex items-center gap-1 shrink-0 text-[10px] text-surface-500">
-				<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {card.space_color ?? '#F97316'}"></span>
-				{card.space_name}
-			</span>
-			{#if card.actor_name}
-				<span class="text-[10px] text-surface-600">·</span>
-			{/if}
-		{/if}
+	<!-- Row 5a: Space identifier — own row in relaxed mode only. Compact inlines it into the footer. -->
+	{#if !compact && card.space_name}
+		<div class="mt-3 flex items-center gap-1 text-[10px] text-surface-500">
+			<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {card.space_color ?? '#F97316'}"></span>
+			<span class="truncate">{card.space_name}</span>
+		</div>
+	{/if}
+
+	<!-- Row 5b: Footer.
+	     Relaxed: hairline divider above + avatar/actor + persona. Space sits on its own row above.
+	     Compact: no hairline, tighter top margin, and the platform + space identifier are inlined
+	     between actor and persona separated by · so all metadata lives on a single line. -->
+	<div class="flex items-center gap-1.5 min-w-0 {compact ? 'mt-1.5' : (card.space_name ? 'mt-1.5 pt-2 border-t border-surface-500/30' : 'mt-3 pt-2 border-t border-surface-500/30')}">
 		{#if card.actor_name}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<span class="relative truncate text-[10px] text-surface-500"
+			<span class="relative flex items-center gap-1.5 min-w-0 text-[10px] text-surface-500"
 				onmouseenter={() => showTooltipIfTruncated(actorEl, card.actor_name ?? '')}
 				onmouseleave={hideTooltip}
 			>
+				<span
+					class="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[9px] font-semibold leading-none text-white/95"
+					style="background-color: {actorAvatarColor(card.actor_name)}"
+					aria-hidden="true"
+				>{actorInitials(card.actor_name)}</span>
 				<span bind:this={actorEl} class="block truncate">
 					{card.actor_name}
 				</span>
 			</span>
 		{/if}
-		<span class="ml-auto shrink-0 text-[10px] font-medium {personaColors[card.persona] ?? personaColors.ENGINEER}">{card.persona}</span>
-		{#if carriedForwardDate}
-			<span class="shrink-0 whitespace-nowrap rounded bg-surface-800/60 px-1 text-[10px] text-surface-400">
-				{carriedForwardDate}
+		{#if compact && card.space_name}
+			<span class="text-[10px] text-surface-600 shrink-0">·</span>
+			<span class="flex items-center gap-1 shrink-0 text-[10px] text-surface-500 truncate">
+				<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {card.space_color ?? '#F97316'}"></span>
+				<span class="truncate">{card.space_name}</span>
 			</span>
 		{/if}
-		<span class="shrink-0 whitespace-nowrap text-[10px] text-surface-500">{timeAgo(card.created_at)}</span>
+		{#if compact && platform}
+			<span class="text-[10px] text-surface-600 shrink-0">·</span>
+			<span class="flex items-center gap-1 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-surface-500">
+				<span class="h-1 w-1 rounded-full shrink-0" style="background-color: {platformDotColor(platformKey(card.entity_id))}"></span>
+				{platform}
+			</span>
+		{/if}
+		<span class="ml-auto shrink-0 text-[10px] font-medium {personaColors[card.persona] ?? personaColors.ENGINEER}">{card.persona}</span>
 	</div>
 </div>
 

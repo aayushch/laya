@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
+	import { glassTheme } from '$lib/stores/glassTheme';
 	import type { TeamMember } from '$lib/api/types';
 
 	const roles: TeamMember['role'][] = ['self', 'manager', 'teammate', 'external', 'bot'];
@@ -144,9 +145,9 @@
 	{/if}
 
 	<!-- Member table -->
-	<div class="overflow-hidden rounded-xl border border-surface-700">
+	<div class="overflow-hidden {$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700'}">
 		<table class="w-full text-sm">
-			<thead class="bg-surface-800 text-left text-xs uppercase tracking-wider text-surface-400">
+			<thead class="{$glassTheme ? 'bg-white/[0.03]' : 'bg-surface-800'} text-left text-xs uppercase tracking-wider text-surface-400">
 				<tr>
 					<th class="px-4 py-3">Name</th>
 					<th class="px-4 py-3">Email</th>
@@ -155,9 +156,9 @@
 					<th class="px-4 py-3 text-right">Actions</th>
 				</tr>
 			</thead>
-			<tbody class="divide-y divide-surface-700">
+			<tbody class="divide-y {$glassTheme ? 'divide-white/[0.05]' : 'divide-surface-700'}">
 				{#each members as member, i}
-					<tr class={member.role === 'self' ? 'bg-laya-orange/5 hover:bg-laya-orange/10' : 'bg-surface-900 hover:bg-surface-800'}>
+					<tr class={member.role === 'self' ? 'bg-laya-orange/5 hover:bg-laya-orange/10' : $glassTheme ? 'bg-white/[0.02] hover:bg-white/[0.05]' : 'bg-surface-900 hover:bg-surface-800'}>
 						<td class="px-4 py-3 font-medium">{member.name}</td>
 						<td class="px-4 py-3 text-surface-300">
 							{member.email}
@@ -194,7 +195,7 @@
 
 	<!-- Add/Edit form -->
 	{#if showAddForm || editingIndex !== null}
-		<div class="rounded-xl border border-surface-700 bg-surface-800 p-4">
+		<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-4">
 			<h3 class="mb-3 text-sm font-medium">
 				{#if editingIndex !== null}
 					{isSelfForm ? 'Edit Your Identity' : 'Edit Member'}

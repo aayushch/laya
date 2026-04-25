@@ -10,6 +10,11 @@ export interface FeedFilters {
 	showBookmarked: boolean;
 	hasWorkspace: boolean;
 	spaceFilter: string[];
+	// Transient (not persisted) — related cards filter mode
+	showRelated: boolean;
+	relatedEntityIds: string[];
+	relatedSourceHeader: string;
+	relatedSourceCardId: string;
 }
 
 /** Local date in YYYY-MM-DD format (respects the user's timezone, unlike toISOString which is UTC). */
@@ -31,7 +36,11 @@ const defaults: FeedFilters = {
 	showArchived: false,
 	showBookmarked: false,
 	hasWorkspace: false,
-	spaceFilter: []
+	spaceFilter: [],
+	showRelated: false,
+	relatedEntityIds: [],
+	relatedSourceHeader: '',
+	relatedSourceCardId: ''
 };
 
 export const feedFilters = writable<FeedFilters>({ ...defaults });
@@ -58,7 +67,11 @@ export async function loadFeedFilters(): Promise<void> {
 				showArchived: prefs.showArchived ?? defaults.showArchived,
 				showBookmarked: prefs.showBookmarked ?? defaults.showBookmarked,
 				hasWorkspace: prefs.hasWorkspace ?? defaults.hasWorkspace,
-				spaceFilter: Array.isArray(prefs.spaceFilter) ? prefs.spaceFilter : prefs.spaceFilter ? [prefs.spaceFilter] : defaults.spaceFilter
+				spaceFilter: Array.isArray(prefs.spaceFilter) ? prefs.spaceFilter : prefs.spaceFilter ? [prefs.spaceFilter] : defaults.spaceFilter,
+				showRelated: false,
+				relatedEntityIds: [],
+				relatedSourceHeader: '',
+				relatedSourceCardId: ''
 			});
 		}
 		_loaded = true;
@@ -75,8 +88,8 @@ export function saveFeedFilters(): void {
 	_saveTimer = setTimeout(async () => {
 		_saveTimer = null;
 		try {
-			const current = get(feedFilters);
-			await engineApi.updateSettings({ feed_preferences: current } as Partial<import('$lib/api/types').Settings>);
+			const { showRelated, relatedEntityIds, relatedSourceHeader, relatedSourceCardId, ...persistable } = get(feedFilters);
+			await engineApi.updateSettings({ feed_preferences: persistable } as Partial<import('$lib/api/types').Settings>);
 		} catch {
 			// Silently fail — don't disrupt UX
 		}

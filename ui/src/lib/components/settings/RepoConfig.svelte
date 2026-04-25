@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { invoke } from '@tauri-apps/api/core';
 	import { engineApi } from '$lib/api/engine';
+	import { glassTheme } from '$lib/stores/glassTheme';
 	import type { Repo } from '$lib/api/types';
 
 	interface RepoDetection {
@@ -121,9 +122,9 @@
 	{/if}
 
 	<!-- Repo table -->
-	<div class="overflow-hidden rounded-xl border border-surface-700">
+	<div class="overflow-hidden {$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700'}">
 		<table class="w-full text-sm">
-			<thead class="bg-surface-800 text-left text-xs uppercase tracking-wider text-surface-400">
+			<thead class="{$glassTheme ? 'bg-white/[0.03]' : 'bg-surface-800'} text-left text-xs uppercase tracking-wider text-surface-400">
 				<tr>
 					<th class="px-4 py-3">Name</th>
 					<th class="px-4 py-3">Path</th>
@@ -132,9 +133,9 @@
 					<th class="px-4 py-3 text-right">Actions</th>
 				</tr>
 			</thead>
-			<tbody class="divide-y divide-surface-700">
+			<tbody class="divide-y {$glassTheme ? 'divide-white/[0.05]' : 'divide-surface-700'}">
 				{#each repos as repo, i}
-					<tr class="bg-surface-900 hover:bg-surface-800">
+					<tr class="{$glassTheme ? 'bg-white/[0.02] hover:bg-white/[0.05]' : 'bg-surface-900 hover:bg-surface-800'}">
 						<td class="px-4 py-3 font-medium">{repo.name}</td>
 						<td class="px-4 py-3 font-mono text-xs text-surface-300">{repo.path}</td>
 						<td class="px-4 py-3">
@@ -160,7 +161,7 @@
 
 	<!-- Add/Edit form -->
 	{#if showAddForm || editingIndex !== null}
-		<div class="rounded-xl border border-surface-700 bg-surface-800 p-4">
+		<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-4">
 			<h3 class="mb-3 text-sm font-medium">{editingIndex !== null ? 'Edit Repository' : 'Add Repository'}</h3>
 			<div class="mb-3 flex items-center gap-3">
 				<button

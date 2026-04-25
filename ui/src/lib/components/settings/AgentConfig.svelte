@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
+	import { glassTheme } from '$lib/stores/glassTheme';
 
 	const agents = [
 		{ value: 'none', label: 'None', description: 'No coding agent — handle code tasks manually' },
@@ -94,7 +95,7 @@
 		<div class="rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-sm text-red-300">{error}</div>
 	{/if}
 
-	<div class="rounded-xl border border-surface-700 bg-surface-800 p-4">
+	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-4">
 		<h3 class="mb-1 text-sm font-medium">Coding Agent</h3>
 		<p class="mb-4 text-xs text-surface-400">Select which CLI coding agent Laya uses for ENGINEER tasks</p>
 
@@ -104,7 +105,7 @@
 					class="flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors
 						{selected === agent.value
 							? 'border-laya-orange bg-laya-orange/10'
-							: 'border-surface-600 bg-surface-900 hover:border-surface-500'}"
+							: $glassTheme ? 'border-white/[0.06] bg-white/[0.03] hover:border-white/[0.12]' : 'border-surface-600 bg-surface-900 hover:border-surface-500'}"
 					onclick={() => selectAgent(agent.value)}
 					disabled={saving}
 				>
@@ -133,7 +134,7 @@
 	</div>
 
 	<!-- Agent Binary Paths -->
-	<div class="mt-4 rounded-xl border border-surface-700 bg-surface-800 p-4 {!hasAgent ? 'opacity-50' : ''}">
+	<div class="mt-4 {$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-4 {!hasAgent ? 'opacity-50' : ''}">
 		<div class="mb-3 flex items-center justify-between">
 			<div>
 				<h3 class="text-sm font-medium">Agent Binary Path</h3>
@@ -176,7 +177,7 @@
 	</div>
 
 	<!-- Execution Mode -->
-	<div class="mt-4 rounded-xl border border-surface-700 bg-surface-800 p-4 {!hasAgent ? 'opacity-50' : ''}">
+	<div class="mt-4 {$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-4 {!hasAgent ? 'opacity-50' : ''}">
 		<h3 class="mb-1 text-sm font-medium">Agent Execution Mode</h3>
 		<p class="mb-4 text-xs text-surface-400">
 			{#if hasAgent}

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
+	import { glassTheme } from '$lib/stores/glassTheme';
 	import type { Rule, RuleCondition, SimpleCondition, ClassificationRule } from '$lib/api/types';
 
 	const operators: SimpleCondition['operator'][] = ['equals', 'not_equals', 'contains', 'starts_with', 'ends_with', 'in'];
@@ -312,7 +313,7 @@
 		{:else}
 			<div class="space-y-3">
 				{#each rules as rule, i}
-					<div class="rounded-xl border border-surface-700 bg-surface-800 p-4">
+					<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-4">
 						<div class="flex items-start justify-between">
 							<div class="flex-1">
 								<div class="flex items-center gap-3">
@@ -339,7 +340,7 @@
 					</div>
 				{/each}
 				{#if rules.length === 0}
-					<div class="rounded-xl border border-surface-700 bg-surface-800 p-6 text-center text-surface-500">
+					<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-6 text-center text-surface-500">
 						No filter rules configured
 					</div>
 				{/if}
@@ -347,7 +348,7 @@
 
 			<!-- Add/Edit form (filter rules) -->
 			{#if showAddForm || editingIndex !== null}
-				<div class="rounded-xl border border-surface-700 bg-surface-800 p-4">
+				<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-4">
 					<h3 class="mb-3 text-sm font-medium">{editingIndex !== null ? 'Edit Rule' : 'Add Rule'}</h3>
 					<div class="space-y-3">
 						<div class="flex gap-3">
@@ -498,7 +499,7 @@
 							</div>
 						</div>
 					{:else}
-						<div class="rounded-xl border border-surface-700 bg-surface-800 p-4">
+						<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-4">
 							<div class="flex items-start justify-between gap-3">
 								<div class="flex items-start gap-3 flex-1">
 									<button
@@ -530,7 +531,7 @@
 					{/if}
 				{/each}
 				{#if clsRules.length === 0}
-					<div class="rounded-xl border border-surface-700 bg-surface-800 p-6 text-center text-surface-500">
+					<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-6 text-center text-surface-500">
 						No classification rules yet. Add one below or use "Adjust classification" on any card.
 					</div>
 				{/if}
@@ -538,7 +539,7 @@
 
 			<!-- Add form (classification rules) -->
 			{#if showClsAddForm}
-				<div class="rounded-xl border border-surface-700 bg-surface-800 p-4 space-y-3">
+				<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-4 space-y-3">
 					<div class="flex gap-3">
 						<input
 							bind:value={clsFormText}

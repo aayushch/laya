@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
+	import { glassTheme } from '$lib/stores/glassTheme';
 	import type { AuditLogEntry, DeadEvent } from '$lib/api/types';
 
 	// ── Audit log state ──
@@ -185,9 +186,9 @@
 			</div>
 
 			{#if deadExpanded}
-				<div class="mt-3 overflow-visible rounded-lg border border-surface-700">
+				<div class="mt-3 overflow-visible {$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700'}">
 					<table class="w-full table-fixed text-left text-xs">
-						<thead class="border-b border-surface-700 bg-surface-800 text-surface-400">
+						<thead class="border-b {$glassTheme ? 'border-white/[0.06] bg-white/[0.03]' : 'border-surface-700 bg-surface-800'} text-surface-400">
 							<tr>
 								<th class="w-[18%] px-3 py-2">Time</th>
 								<th class="w-[10%] px-3 py-2">Platform</th>
@@ -197,7 +198,7 @@
 								<th class="w-[10%] px-3 py-2">Action</th>
 							</tr>
 						</thead>
-						<tbody class="divide-y divide-surface-700/50">
+						<tbody class="divide-y {$glassTheme ? 'divide-white/[0.04]' : 'divide-surface-700/50'}">
 							{#each deadEvents as evt (evt.event_id)}
 								<tr class="transition-all duration-300 ease-out hover:bg-surface-800/50 {dismissing.has(evt.event_id) ? 'opacity-0 translate-x-4' : 'opacity-100 translate-x-0'}">
 									<td class="whitespace-nowrap px-3 py-2 text-surface-300">
@@ -295,9 +296,9 @@
 	{:else if entries.length === 0}
 		<p class="py-8 text-center text-sm text-surface-500">No audit log entries found.</p>
 	{:else}
-		<div class="overflow-x-auto rounded-lg border border-surface-700">
+		<div class="overflow-x-auto {$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700'}">
 			<table class="w-full text-left text-xs">
-				<thead class="border-b border-surface-700 bg-surface-800 text-surface-400">
+				<thead class="border-b {$glassTheme ? 'border-white/[0.06] bg-white/[0.03]' : 'border-surface-700 bg-surface-800'} text-surface-400">
 					<tr>
 						<th class="px-3 py-2">Time</th>
 						<th class="px-3 py-2">Step</th>
@@ -307,7 +308,7 @@
 						<th class="px-3 py-2">Status</th>
 					</tr>
 				</thead>
-				<tbody class="divide-y divide-surface-700/50">
+				<tbody class="divide-y {$glassTheme ? 'divide-white/[0.04]' : 'divide-surface-700/50'}">
 					{#each entries as entry (entry.log_id)}
 						<tr class="transition-colors hover:bg-surface-800/50 {entry.success ? '' : 'bg-red-900/10'}">
 							<td class="whitespace-nowrap px-3 py-2 text-surface-300">{formatTime(entry.timestamp)}</td>

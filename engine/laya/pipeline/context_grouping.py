@@ -185,8 +185,8 @@ async def resolve_context_group(
         # Join existing context group
         context_id = best["context_id"]
         await db.execute(
-            "INSERT OR IGNORE INTO context_group_members (context_id, entity_id, confidence, link_method) VALUES (?, ?, ?, ?)",
-            (context_id, entity_id, 1.0 - best["distance"], "semantic"),
+            "INSERT OR IGNORE INTO context_group_members (context_id, card_id, confidence, link_method) VALUES (?, ?, ?, ?)",
+            (context_id, card_id, 1.0 - best["distance"], "semantic"),
         )
         await db.commit()
     else:
@@ -203,14 +203,14 @@ async def resolve_context_group(
             "INSERT INTO context_groups (context_id, label) VALUES (?, ?)",
             (context_id, group_label),
         )
-        # Add both entity_ids as members
+        # Add both cards as members
         await db.execute(
-            "INSERT OR IGNORE INTO context_group_members (context_id, entity_id, confidence, link_method) VALUES (?, ?, ?, ?)",
-            (context_id, best["entity_id"], 1.0 - best["distance"], "semantic"),
+            "INSERT OR IGNORE INTO context_group_members (context_id, card_id, confidence, link_method) VALUES (?, ?, ?, ?)",
+            (context_id, best["card_id"], 1.0 - best["distance"], "semantic"),
         )
         await db.execute(
-            "INSERT OR IGNORE INTO context_group_members (context_id, entity_id, confidence, link_method) VALUES (?, ?, ?, ?)",
-            (context_id, entity_id, 1.0 - best["distance"], "semantic"),
+            "INSERT OR IGNORE INTO context_group_members (context_id, card_id, confidence, link_method) VALUES (?, ?, ?, ?)",
+            (context_id, card_id, 1.0 - best["distance"], "semantic"),
         )
         # Assign context_id to the matched card too
         await db.execute(

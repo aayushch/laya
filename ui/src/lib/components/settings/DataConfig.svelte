@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { engineApi } from '$lib/api/engine';
+	import { glassTheme } from '$lib/stores/glassTheme';
 
 	type Section = 'card' | 'chat' | 'audit' | 'omni';
 
@@ -58,7 +59,7 @@
 </script>
 
 <div class="space-y-6">
-	<div class="rounded-lg border border-surface-700 bg-surface-800 p-5">
+	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 		<h3 class="mb-1 font-medium">Card Retention</h3>
 		<p class="mb-4 text-sm text-surface-400">
 			Cards in archived, dismissed, completed, or failed states that are older than the retention
@@ -102,7 +103,7 @@
 		{/if}
 	</div>
 
-	<div class="rounded-lg border border-surface-700 bg-surface-800 p-5">
+	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 		<h3 class="mb-1 font-medium">Chat Retention</h3>
 		<p class="mb-4 text-sm text-surface-400">
 			Conversations that have been idle for longer than the retention period are automatically
@@ -144,7 +145,7 @@
 		{/if}
 	</div>
 
-	<div class="rounded-lg border border-surface-700 bg-surface-800 p-5">
+	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 		<h3 class="mb-1 font-medium">Audit Log Retention</h3>
 		<p class="mb-4 text-sm text-surface-400">
 			LLM call audit logs older than the retention period are automatically deleted each day.
@@ -181,7 +182,7 @@
 		{/if}
 	</div>
 
-	<div class="rounded-lg border border-surface-700 bg-surface-800 p-5">
+	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 		<h3 class="mb-1 font-medium">Omni Retention</h3>
 		<p class="mb-4 text-sm text-surface-400">
 			Omni timeline snapshots older than the retention period are automatically deleted each day.
@@ -219,7 +220,7 @@
 		{/if}
 	</div>
 
-	<div class="rounded-lg border border-surface-700 bg-surface-800 p-5">
+	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 		<h3 class="mb-1 font-medium">Manual Deletion</h3>
 		<p class="text-sm text-surface-400">
 			To delete a card manually, first <span class="text-surface-300">archive</span> it — a trash

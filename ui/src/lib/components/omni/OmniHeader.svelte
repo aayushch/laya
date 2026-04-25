@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { TimelineSegment, TimelineEntry, OmniStats, Space } from '$lib/api/types';
+	import { glassTheme } from '$lib/stores/glassTheme';
 
 	let {
 		version,
@@ -300,7 +301,7 @@
 					<span class="text-surface-700">|</span>
 					<span>{activeLabel}</span>
 					{#if activeType}
-						<span class="rounded bg-surface-800 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-surface-400">
+						<span class="rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider {$glassTheme ? 'glass-icon--accent text-current border-0' : 'bg-surface-800 text-surface-400'}">
 							{activeType}
 						</span>
 					{/if}
@@ -402,7 +403,7 @@
 {#if totalEntryCount > 1}
 	{@const widths = segmentWidths}
 	{@const nonEmptySegments = segments.filter(s => s.entries.length > 0)}
-	<div class="mt-3 rounded-lg border border-surface-700 bg-surface-800 px-4 py-3">
+	<div class="mt-3 rounded-lg px-4 py-3 {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-800'}">
 		<!-- Header row -->
 		<div class="flex items-center justify-between mb-2">
 			<span class="text-[11px] font-medium text-surface-400">

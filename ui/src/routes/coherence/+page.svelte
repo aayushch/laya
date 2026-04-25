@@ -13,6 +13,7 @@
 	import { get } from 'svelte/store';
 	import { slide, fade } from 'svelte/transition';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
+	import { glassTheme } from '$lib/stores/glassTheme';
 	import TraceSearch from '$lib/components/trace/TraceSearch.svelte';
 	import TraceHeader from '$lib/components/trace/TraceHeader.svelte';
 	import TraceHistory from '$lib/components/trace/TraceHistory.svelte';
@@ -544,7 +545,7 @@
 	</div>
 {/if}
 
-<div class="min-h-screen bg-surface-900 p-6">
+<div class="min-h-screen p-6 {$glassTheme ? 'bg-transparent' : 'bg-surface-900'}">
 	<div class="max-w-5xl mx-auto">
 
 		<!-- Header -->
@@ -602,7 +603,7 @@
 		<!-- Active trace: tree view -->
 		{#if trace && visibleClusters.length > 0}
 			<!-- Summary bar -->
-			<div class="flex items-center justify-between rounded-md bg-surface-800/60 border border-surface-700/50 px-3 py-2 mb-4">
+			<div class="flex items-center justify-between px-3 py-2 mb-4 {$glassTheme ? 'glass-section rounded-lg' : 'rounded-md bg-surface-800/60 border border-surface-700/50'}">
 				<div class="flex items-center gap-2 text-[11px] text-surface-400">
 					<span class="text-surface-200 font-medium">{totalCards} cards</span>
 					<span class="text-surface-600">·</span>
@@ -717,7 +718,7 @@
 			{/if}
 
 			<!-- Tree structure -->
-			<div class="rounded-md border border-surface-700/50 bg-surface-800/30 px-4 py-2.5 overflow-hidden">
+			<div class="px-4 py-2.5 overflow-hidden {$glassTheme ? 'glass-section' : 'rounded-md border border-surface-700/50 bg-surface-800/30'}">
 				<!-- Root node -->
 				<div class="flex items-center gap-1.5 pb-2 mb-1 border-b border-surface-700/30">
 					<span class="text-laya-orange text-[13px]">◆</span>
@@ -836,7 +837,7 @@
 
 		<!-- Loading progress -->
 		{#if loading && !trace && !showHistoryDuringSearch}
-			<div class="mt-6 rounded-xl border border-surface-700/50 bg-surface-800/40 p-6" in:fade={{ duration: $reducedMotion ? 0 : 200 }}>
+			<div class="mt-6 p-6 {$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700/50 bg-surface-800/40'}" in:fade={{ duration: $reducedMotion ? 0 : 200 }}>
 				<!-- Query title -->
 				<div class="flex items-center gap-2 mb-5">
 					<span class="text-laya-orange text-sm">◆</span>

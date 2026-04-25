@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
+	import { glassTheme } from '$lib/stores/glassTheme';
 	import type { Space, Source, AvailableWorkflow, Repo, ProviderModels } from '$lib/api/types';
 	import ModelSelect from './ModelSelect.svelte';
 
@@ -19,6 +20,10 @@
 		{ value: 'gemini_cli', label: 'Gemini CLI' },
 		{ value: 'codex_cli', label: 'Codex CLI' }
 	];
+
+	function integrationDisplayName(name: string): string {
+		return name.replace(/ \((Ingestion|Executor)\)$/i, '');
+	}
 
 	const platformIcons: Record<string, string> = {
 		github: '⚙',
@@ -50,6 +55,8 @@
 	let formRouterModel = $state('');
 	let formStagerModel = $state('');
 	let formChatModel = $state('');
+	let formTraceModel = $state('');
+	let formOmniModel = $state('');
 	let formCodingAgent = $state('');
 	let saving = $state(false);
 
@@ -118,6 +125,8 @@
 		formRouterModel = '';
 		formStagerModel = '';
 		formChatModel = '';
+		formTraceModel = '';
+		formOmniModel = '';
 		formCodingAgent = '';
 	}
 
@@ -131,6 +140,8 @@
 		formRouterModel = space.router_model || '';
 		formStagerModel = space.stager_model || '';
 		formChatModel = space.chat_model || '';
+		formTraceModel = space.trace_model || '';
+		formOmniModel = space.omni_model || '';
 		formCodingAgent = space.coding_agent || '';
 	}
 
@@ -151,6 +162,8 @@
 					router_model: formRouterModel || undefined,
 					stager_model: formStagerModel || undefined,
 					chat_model: formChatModel || undefined,
+					trace_model: formTraceModel || undefined,
+					omni_model: formOmniModel || undefined,
 					coding_agent: formCodingAgent || undefined
 				});
 			} else {
@@ -161,6 +174,8 @@
 					router_model: formRouterModel || undefined,
 					stager_model: formStagerModel || undefined,
 					chat_model: formChatModel || undefined,
+					trace_model: formTraceModel || undefined,
+					omni_model: formOmniModel || undefined,
 					coding_agent: formCodingAgent || undefined
 				});
 			}
@@ -224,8 +239,7 @@
 				seenConnections.add(connId);
 				// Collect all workflow IDs for this connection
 				const pairIds = all.filter(w => w.connection_id === connId).map(w => w.workflow_id);
-				// Clean display name (remove Ingestion/Executor suffix)
-				const displayName = wf.name.replace(/ \((Ingestion|Executor)\)$/, '');
+				const displayName = integrationDisplayName(wf.name);
 				grouped.push({ ...wf, name: displayName, workflow_ids: pairIds });
 			} else {
 				grouped.push({ ...wf, workflow_ids: [wf.workflow_id] });
@@ -381,8 +395,53 @@
 	}
 
 	// Helpers
+	interface SourceGroup {
+		displayName: string;
+		platform: string;
+		sources: Source[];
+	}
+
 	function sourcesForSpace(spaceId: string): Source[] {
 		return sources.filter((s) => s.space_id === spaceId);
+	}
+
+	function groupedSourcesForSpace(spaceId: string): SourceGroup[] {
+		const spaceSrcs = sources.filter((s) => s.space_id === spaceId);
+		const groups = new Map<string, SourceGroup>();
+
+		for (const src of spaceSrcs) {
+			const displayName = integrationDisplayName(src.name);
+			const key = `${src.platform}::${displayName}`;
+
+			if (!groups.has(key)) {
+				groups.set(key, { displayName, platform: src.platform, sources: [] });
+			}
+			groups.get(key)!.sources.push(src);
+		}
+
+		return Array.from(groups.values()).sort((a, b) => a.displayName.localeCompare(b.displayName));
+	}
+
+	async function reassignSourceGroup(group: SourceGroup, newSpaceId: string) {
+		try {
+			for (const src of group.sources) {
+				await engineApi.reassignSource(src.source_id, newSpaceId);
+			}
+			await loadData();
+		} catch (e) {
+			console.error('Failed to reassign sources:', e);
+		}
+	}
+
+	async function removeSourceGroup(group: SourceGroup) {
+		try {
+			for (const src of group.sources) {
+				await engineApi.deleteSource(src.source_id);
+			}
+			await loadData();
+		} catch (e) {
+			console.error('Failed to remove sources:', e);
+		}
 	}
 
 	function toggleExpand(spaceId: string) {
@@ -439,7 +498,7 @@
 
 		<!-- Create Form (top-level, only for new spaces) -->
 		{#if showCreateForm}
-			<div class="rounded-lg border border-laya-orange/30 bg-surface-800 p-5">
+			<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-laya-orange/30 bg-surface-800'} p-5">
 				<h4 class="mb-4 font-medium">New Space</h4>
 
 				{@render spaceForm(false)}
@@ -449,10 +508,11 @@
 		<!-- Spaces List -->
 		{#each spaces as space (space.space_id)}
 			{@const spaceSources = sourcesForSpace(space.space_id)}
+			{@const groupedSources = groupedSourcesForSpace(space.space_id)}
 			{@const isEditing = editingSpaceId === space.space_id}
 			{@const isExpanded = expandedSpaceId === space.space_id}
-			<div class="rounded-lg border bg-surface-800 transition-colors
-				{space.paused ? 'border-laya-amber/30 border-dashed' : isEditing ? 'border-laya-orange/30' : isExpanded ? 'border-laya-orange/30' : 'border-surface-700'}">
+			<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border bg-surface-800'} transition-colors
+				{!$glassTheme && (space.paused ? 'border-laya-amber/30 border-dashed' : isEditing ? 'border-laya-orange/30' : isExpanded ? 'border-laya-orange/30' : 'border-surface-700')}">
 				<!-- Space Header -->
 				<button
 					onclick={() => toggleExpand(space.space_id)}
@@ -498,8 +558,8 @@
 						{/if}
 					</div>
 					<div class="flex items-center gap-2.5 text-xs text-surface-400">
-						<span>{spaceSources.length} source{spaceSources.length !== 1 ? 's' : ''}</span>
-						{#if space.router_model || space.stager_model || space.chat_model}
+						<span>{groupedSources.length} source{groupedSources.length !== 1 ? 's' : ''}</span>
+						{#if space.router_model || space.stager_model || space.chat_model || space.trace_model || space.omni_model}
 							<span class="rounded bg-surface-700 px-1.5 py-0.5 text-[11px]">Custom models</span>
 						{/if}
 						{#if space.coding_agent}
@@ -536,18 +596,17 @@
 										+ Assign workflows
 									</button>
 								</div>
-								{#if spaceSources.length === 0}
+								{#if groupedSources.length === 0}
 									<p class="text-sm text-surface-500 italic">No sources assigned. Click "Assign workflows" to add n8n ingestion workflows to this space.</p>
 								{:else}
 									<div class="space-y-1">
-										{#each spaceSources as source (source.source_id)}
+										{#each groupedSources as group (`${group.platform}::${group.displayName}`)}
 											<div class="flex items-center gap-2 rounded-md bg-surface-700/50 px-3 py-2 text-sm">
-												<span class="flex-1 truncate">{source.name}</span>
-												<span class="text-xs text-surface-500">{source.platform}</span>
-												<!-- Reassign dropdown -->
+												<span class="flex-1 truncate">{group.displayName}</span>
+												<span class="text-xs text-surface-500">{group.platform}</span>
 												<select
-													value={source.space_id}
-													onchange={(e) => reassignSource(source.source_id, (e.target as HTMLSelectElement).value)}
+													value={group.sources[0].space_id}
+													onchange={(e) => reassignSourceGroup(group, (e.target as HTMLSelectElement).value)}
 													class="rounded border border-surface-600 bg-surface-700 px-2 py-0.5 text-xs text-surface-300"
 												>
 													{#each spaces as s}
@@ -555,7 +614,7 @@
 													{/each}
 												</select>
 												<button
-													onclick={() => removeSource(source.source_id)}
+													onclick={() => removeSourceGroup(group)}
 													class="text-xs text-red-400/60 hover:text-red-400 transition-colors"
 													title="Unregister source"
 												>
@@ -601,25 +660,54 @@
 								</div>
 							{/if}
 
-							<!-- Model overrides summary -->
+							<!-- Model & Agent Configuration -->
 							<div>
-								<h5 class="text-sm font-semibold text-surface-200 mb-2">Model & Agent Configuration</h5>
-								<div class="grid grid-cols-4 gap-2">
-									<div class="rounded-lg bg-surface-700/50 p-2.5">
-										<span class="text-xs text-surface-500">Router</span>
-										<p class="text-sm text-surface-300">{modelLabel(space.router_model)}</p>
+								<h5 class="text-sm font-semibold text-surface-200 mb-3">Model & Agent Configuration</h5>
+								<div class="{$glassTheme ? 'rounded-lg border border-white/[0.06] divide-y divide-white/[0.05]' : 'rounded-lg border border-surface-700 divide-y divide-surface-700'}">
+									<!-- Pipeline Models -->
+									<div class="px-4 py-2.5 flex items-center justify-between">
+										<div>
+											<span class="text-sm text-surface-200">Router</span>
+											<p class="text-xs text-surface-500">Classifies incoming events</p>
+										</div>
+										<span class="text-sm text-surface-400">{modelLabel(space.router_model)}</span>
 									</div>
-									<div class="rounded-lg bg-surface-700/50 p-2.5">
-										<span class="text-xs text-surface-500">Stager</span>
-										<p class="text-sm text-surface-300">{modelLabel(space.stager_model)}</p>
+									<div class="px-4 py-2.5 flex items-center justify-between">
+										<div>
+											<span class="text-sm text-surface-200">Stager</span>
+											<p class="text-xs text-surface-500">Stages actions from events</p>
+										</div>
+										<span class="text-sm text-surface-400">{modelLabel(space.stager_model)}</span>
 									</div>
-									<div class="rounded-lg bg-surface-700/50 p-2.5">
-										<span class="text-xs text-surface-500">Chat</span>
-										<p class="text-sm text-surface-300">{modelLabel(space.chat_model)}</p>
+									<!-- Interactive Models -->
+									<div class="px-4 py-2.5 flex items-center justify-between">
+										<div>
+											<span class="text-sm text-surface-200">Chat</span>
+											<p class="text-xs text-surface-500">Conversational assistant</p>
+										</div>
+										<span class="text-sm text-surface-400">{modelLabel(space.chat_model)}</span>
 									</div>
-									<div class="rounded-lg bg-surface-700/50 p-2.5">
-										<span class="text-xs text-surface-500">Agent</span>
-										<p class="text-sm text-surface-300">{agentLabel(space.coding_agent)}</p>
+									<div class="px-4 py-2.5 flex items-center justify-between">
+										<div>
+											<span class="text-sm text-surface-200">Coherence</span>
+											<p class="text-xs text-surface-500">Narratives & summaries</p>
+										</div>
+										<span class="text-sm text-surface-400">{modelLabel(space.trace_model)}</span>
+									</div>
+									<div class="px-4 py-2.5 flex items-center justify-between">
+										<div>
+											<span class="text-sm text-surface-200">Omni</span>
+											<p class="text-xs text-surface-500">Cross-platform digest</p>
+										</div>
+										<span class="text-sm text-surface-400">{modelLabel(space.omni_model)}</span>
+									</div>
+									<!-- Agent -->
+									<div class="px-4 py-2.5 flex items-center justify-between">
+										<div>
+											<span class="text-sm text-surface-200">Coding Agent</span>
+											<p class="text-xs text-surface-500">CLI agent for engineer tasks</p>
+										</div>
+										<span class="text-sm text-surface-400">{agentLabel(space.coding_agent)}</span>
 									</div>
 								</div>
 							</div>
@@ -822,58 +910,107 @@
 			</div>
 		</div>
 
-		<!-- Model Overrides -->
+		<!-- Model & Agent Configuration -->
 		<div>
 			<!-- svelte-ignore a11y_label_has_associated_control -->
-			<label class="mb-2 block text-sm text-surface-400">Model Overrides</label>
-			<div class="grid grid-cols-3 gap-3">
-				<div>
-					<span class="mb-1 block text-xs text-surface-500">Router</span>
-					<ModelSelect
-						bind:value={formRouterModel}
-						providers={availableModels}
-						onchange={(v) => (formRouterModel = v)}
-						allowEmpty={true}
-						emptyLabel="Use default"
-					/>
+			<label class="mb-3 block text-sm text-surface-400">Model & Agent Configuration</label>
+			<div class="{$glassTheme ? 'rounded-lg border border-white/[0.06] divide-y divide-white/[0.05]' : 'rounded-lg border border-surface-700 divide-y divide-surface-700'}">
+				<!-- Pipeline Models -->
+				<div class="px-4 py-3 flex items-center gap-4">
+					<div class="min-w-0 flex-1">
+						<span class="text-sm text-surface-200">Router</span>
+						<p class="text-xs text-surface-500">Classifies incoming events</p>
+					</div>
+					<div class="w-48 shrink-0">
+						<ModelSelect
+							bind:value={formRouterModel}
+							providers={availableModels}
+							onchange={(v) => (formRouterModel = v)}
+							allowEmpty={true}
+							emptyLabel="Use default"
+						/>
+					</div>
 				</div>
-				<div>
-					<span class="mb-1 block text-xs text-surface-500">Stager</span>
-					<ModelSelect
-						bind:value={formStagerModel}
-						providers={availableModels}
-						onchange={(v) => (formStagerModel = v)}
-						allowEmpty={true}
-						emptyLabel="Use default"
-					/>
+				<div class="px-4 py-3 flex items-center gap-4">
+					<div class="min-w-0 flex-1">
+						<span class="text-sm text-surface-200">Stager</span>
+						<p class="text-xs text-surface-500">Stages actions from events</p>
+					</div>
+					<div class="w-48 shrink-0">
+						<ModelSelect
+							bind:value={formStagerModel}
+							providers={availableModels}
+							onchange={(v) => (formStagerModel = v)}
+							allowEmpty={true}
+							emptyLabel="Use default"
+						/>
+					</div>
 				</div>
-				<div>
-					<span class="mb-1 block text-xs text-surface-500">Chat</span>
-					<ModelSelect
-						bind:value={formChatModel}
-						providers={availableModels}
-						onchange={(v) => (formChatModel = v)}
-						allowEmpty={true}
-						emptyLabel="Use default"
-					/>
+				<!-- Interactive Models -->
+				<div class="px-4 py-3 flex items-center gap-4">
+					<div class="min-w-0 flex-1">
+						<span class="text-sm text-surface-200">Chat</span>
+						<p class="text-xs text-surface-500">Conversational assistant</p>
+					</div>
+					<div class="w-48 shrink-0">
+						<ModelSelect
+							bind:value={formChatModel}
+							providers={availableModels}
+							onchange={(v) => (formChatModel = v)}
+							allowEmpty={true}
+							emptyLabel="Use default"
+						/>
+					</div>
+				</div>
+				<div class="px-4 py-3 flex items-center gap-4">
+					<div class="min-w-0 flex-1">
+						<span class="text-sm text-surface-200">Coherence</span>
+						<p class="text-xs text-surface-500">Narratives & summaries</p>
+					</div>
+					<div class="w-48 shrink-0">
+						<ModelSelect
+							bind:value={formTraceModel}
+							providers={availableModels}
+							onchange={(v) => (formTraceModel = v)}
+							allowEmpty={true}
+							emptyLabel="Use default"
+						/>
+					</div>
+				</div>
+				<div class="px-4 py-3 flex items-center gap-4">
+					<div class="min-w-0 flex-1">
+						<span class="text-sm text-surface-200">Omni</span>
+						<p class="text-xs text-surface-500">Cross-platform digest</p>
+					</div>
+					<div class="w-48 shrink-0">
+						<ModelSelect
+							bind:value={formOmniModel}
+							providers={availableModels}
+							onchange={(v) => (formOmniModel = v)}
+							allowEmpty={true}
+							emptyLabel="Use default"
+						/>
+					</div>
+				</div>
+				<!-- Coding Agent -->
+				<div class="px-4 py-3 flex items-center gap-4">
+					<div class="min-w-0 flex-1">
+						<span class="text-sm text-surface-200">Coding Agent</span>
+						<p class="text-xs text-surface-500">CLI agent for engineer tasks</p>
+					</div>
+					<div class="w-48 shrink-0">
+						<select
+							value={formCodingAgent}
+							onchange={(e) => (formCodingAgent = (e.target as HTMLSelectElement).value)}
+							class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100"
+						>
+							{#each agentOptions as opt}
+								<option value={opt.value}>{opt.label}</option>
+							{/each}
+						</select>
+					</div>
 				</div>
 			</div>
-		</div>
-
-		<!-- Coding Agent Override -->
-		<div>
-			<label for="space-agent" class="mb-2 block text-sm text-surface-400">Coding Agent</label>
-			<select
-				id="space-agent"
-				value={formCodingAgent}
-				onchange={(e) => (formCodingAgent = (e.target as HTMLSelectElement).value)}
-				class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100"
-			>
-				{#each agentOptions as opt}
-					<option value={opt.value}>{opt.label}</option>
-				{/each}
-			</select>
-			<p class="mt-1 text-xs text-surface-500">CLI agent used for ENGINEER tasks in this space</p>
 		</div>
 
 		<!-- Actions -->

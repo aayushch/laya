@@ -15,6 +15,8 @@ class SpaceCreate(BaseModel):
     router_model: str | None = None
     stager_model: str | None = None
     chat_model: str | None = None
+    trace_model: str | None = None
+    omni_model: str | None = None
     coding_agent: str | None = None
 
 
@@ -28,6 +30,8 @@ class SpaceUpdate(BaseModel):
     router_model: str | None = None
     stager_model: str | None = None
     chat_model: str | None = None
+    trace_model: str | None = None
+    omni_model: str | None = None
     coding_agent: str | None = None
 
 
@@ -42,6 +46,8 @@ class SpaceResponse(BaseModel):
     router_model: str | None = None
     stager_model: str | None = None
     chat_model: str | None = None
+    trace_model: str | None = None
+    omni_model: str | None = None
     coding_agent: str | None = None
     is_default: bool = False
     paused: bool = False
