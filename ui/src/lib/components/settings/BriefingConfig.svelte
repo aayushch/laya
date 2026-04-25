@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { engineApi } from '$lib/api/engine';
+	import { glassTheme } from '$lib/stores/glassTheme';
 
 	let enabled = $state(true);
 	let time = $state('07:00');
@@ -22,7 +23,6 @@
 
 	// Context Association settings
 	let contextAssociationEnabled = $state(true);
-	let smartDisplayEnabled = $state(true);
 	let contextSaving = $state(false);
 	let contextSaved = $state(false);
 	let contextError = $state('');
@@ -87,8 +87,6 @@
 			omniEventThreshold = s.omni?.event_threshold ?? 50;
 
 			contextAssociationEnabled = s.smart_grouping?.context_association ?? true;
-			smartDisplayEnabled = s.smart_grouping?.smart_display ?? true;
-
 			groupSummariesEnabled = s.group_summaries?.enabled ?? true;
 			loading = false;
 		});
@@ -196,15 +194,6 @@
 
 	function handleContextAssociationToggle() {
 		contextAssociationEnabled = !contextAssociationEnabled;
-		// When disabling context association, also disable smart display
-		if (!contextAssociationEnabled) {
-			smartDisplayEnabled = false;
-		}
-		saveContextSettings();
-	}
-
-	function handleSmartDisplayToggle() {
-		smartDisplayEnabled = !smartDisplayEnabled;
 		saveContextSettings();
 	}
 
@@ -215,7 +204,6 @@
 			await engineApi.updateSettings({
 				smart_grouping: {
 					context_association: contextAssociationEnabled,
-					smart_display: smartDisplayEnabled,
 					confidence_threshold: 0.30,
 					auto_confirm_threshold: 0.20,
 				}
@@ -249,7 +237,7 @@
 </script>
 
 <div class="space-y-6">
-	<div class="rounded-lg border border-surface-700 bg-surface-800 p-5">
+	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 		<h3 class="mb-1 font-medium">Daily Briefing</h3>
 		<p class="mb-4 text-sm text-surface-400">
 			Laya generates a daily briefing card summarising overnight activity, pending cards, and your
@@ -333,7 +321,7 @@
 	</div>
 
 	<!-- Context Association -->
-	<div class="rounded-lg border border-surface-700 bg-surface-800 p-5">
+	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 		<div class="flex items-center gap-2 mb-1">
 			<h3 class="font-medium">Context Association</h3>
 			<span class="rounded-full border border-laya-orange/30 bg-laya-orange/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-laya-orange">Beta</span>
@@ -364,38 +352,11 @@
 						</button>
 					</div>
 
-					<!-- Smart Grouping — nested sub-setting -->
-					<div class="border-t border-surface-600/50 ml-4 mr-3 py-2.5 pl-3 pr-1 transition-opacity
-						{contextAssociationEnabled ? '' : 'opacity-40 pointer-events-none'}">
-						<div class="flex items-center justify-between">
-							<div>
-								<div class="flex items-center gap-2">
-									<span class="text-xs font-medium {contextAssociationEnabled ? 'text-surface-200' : 'text-surface-500'}">Smart grouping</span>
-									<span class="rounded-full border border-laya-orange/30 bg-laya-orange/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wider text-laya-orange">Beta</span>
-								</div>
-								<p class="text-[11px] {contextAssociationEnabled ? 'text-surface-500' : 'text-surface-600'}">
-									Group related cards by shared context in the feed
-								</p>
-							</div>
-							<button
-								class="relative h-5 w-9 shrink-0 rounded-full transition-colors {smartDisplayEnabled && contextAssociationEnabled ? 'bg-laya-orange' : 'bg-surface-600'}"
-								onclick={handleSmartDisplayToggle}
-								role="switch"
-								aria-checked={smartDisplayEnabled}
-								aria-label="Toggle smart grouping"
-								disabled={!contextAssociationEnabled}
-							>
-								<span class="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform {smartDisplayEnabled && contextAssociationEnabled ? 'translate-x-4' : ''}"></span>
-							</button>
-						</div>
-					</div>
-
-					<!-- Warning when disabling -->
+					<!-- Info when disabled -->
 					{#if !contextAssociationEnabled}
 						<div class="border-t border-surface-600/50 px-4 py-2">
-							<p class="text-[11px] text-laya-amber/80 flex items-center gap-1.5">
-								<svg class="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
-								Smart grouping is disabled when context association is off.
+							<p class="text-[11px] text-surface-500 flex items-center gap-1.5">
+								Related cards detection is disabled.
 							</p>
 						</div>
 					{/if}
@@ -414,7 +375,7 @@
 	</div>
 
 	<!-- Group Summaries -->
-	<div class="rounded-lg border border-surface-700 bg-surface-800 p-5">
+	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 		<div class="flex items-center gap-2 mb-1">
 			<h3 class="font-medium">Group Summaries</h3>
 			<span class="rounded-full border border-laya-orange/30 bg-laya-orange/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-laya-orange">Beta</span>
@@ -455,7 +416,7 @@
 	</div>
 
 	<!-- Omni settings -->
-	<div class="rounded-lg border border-surface-700 bg-surface-800 p-5">
+	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 		<h3 class="mb-1 font-medium">Omni</h3>
 		<p class="mb-4 text-sm text-surface-400">
 			Omni maintains a rolling cross-platform summary of your professional activity.

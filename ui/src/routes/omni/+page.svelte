@@ -8,6 +8,7 @@
 	import { goto } from '$app/navigation';
 	import { onMount, onDestroy, tick } from 'svelte'; // tick used for scroll restore
 	import { get } from 'svelte/store';
+	import { glassTheme } from '$lib/stores/glassTheme';
 	import type { Unsubscriber } from 'svelte/store';
 	import { omniSpace } from '$lib/stores/omniSpace';
 	import { resynthesizingSpaces, markResynthesizing, clearResynthesizing } from '$lib/stores/omniResynthesis';
@@ -234,7 +235,7 @@
 	<title>Omni - Laya</title>
 </svelte:head>
 
-<div class="relative min-h-screen bg-surface-900 p-6">
+<div class="relative min-h-screen p-6 {$glassTheme ? 'bg-transparent' : 'bg-surface-900'}">
 <div class="max-w-5xl mx-auto">
 	<!-- Loading overlay -->
 	{#if loading && !snapshot}

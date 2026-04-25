@@ -160,6 +160,7 @@ async def _llm_relevance_filter(
     seeds: list[dict],
     all_cards: list[CardResponse],
     trace_id: str | None = None,
+    space_id: str | None = None,
 ) -> tuple[list[dict], int]:
     """Batch LLM call to judge whether each non-identifier seed is relevant.
 
@@ -205,6 +206,7 @@ async def _llm_relevance_filter(
             step="trace_filter",
             temperature=0.0,
             max_tokens=2000,
+            space_id=space_id,
         )
         # Race the LLM call against the cancel event so abort is near-instant
         response = await (_cancellable(llm_coro, trace_id) if trace_id else llm_coro)
@@ -417,7 +419,7 @@ async def _run_trace_inner(
     # Phase 2.5 — LLM relevance filter (remove false positives before clustering)
     await _progress("Analyzing connections", 5, total_steps)
     if request.enable_llm_filter:
-        seeds, removed_count = await _llm_relevance_filter(request.query, seeds, all_cards, trace_id=trace_id)
+        seeds, removed_count = await _llm_relevance_filter(request.query, seeds, all_cards, trace_id=trace_id, space_id=request.space_id)
         meta.seeds_filtered = removed_count
     else:
         removed_count = 0
@@ -474,6 +476,7 @@ async def _run_trace_inner(
         clusters=clusters,
         search_metadata=meta,
         created_at=now,
+        space_id=request.space_id,
     )
 
     # Persist trace to DB
@@ -1182,9 +1185,7 @@ async def _save_trace(response: TraceResponse) -> None:
             json.dumps(cluster_data),
             json.dumps(card_ids),
             response.search_metadata.model_dump_json(),
-            response.clusters[0].status_summary.platforms_involved[0]
-            if response.clusters and response.clusters[0].status_summary.platforms_involved
-            else None,
+            response.space_id,
         ),
     )
     await db.commit()
@@ -1220,7 +1221,7 @@ async def _update_cluster_narrative(
 
 
 async def _stream_cluster_narrative(
-    trace_id: str, cluster: TraceCluster
+    trace_id: str, cluster: TraceCluster, space_id: str | None = None
 ) -> None:
     """Generate and stream a narrative for a single cluster via WebSocket.
 
@@ -1229,11 +1230,11 @@ async def _stream_cluster_narrative(
     """
     sem = _get_semaphore()
     async with sem:
-        await _stream_cluster_narrative_inner(trace_id, cluster)
+        await _stream_cluster_narrative_inner(trace_id, cluster, space_id=space_id)
 
 
 async def _stream_cluster_narrative_inner(
-    trace_id: str, cluster: TraceCluster
+    trace_id: str, cluster: TraceCluster, space_id: str | None = None
 ) -> None:
     """Inner narrative generation (called under semaphore)."""
     cluster_id = cluster.cluster_id
@@ -1253,6 +1254,7 @@ async def _stream_cluster_narrative_inner(
             step="trace",
             temperature=0.3,
             max_tokens=32000,
+            space_id=space_id,
         ):
             if event.type == "chunk" and event.content:
                 full_narrative += event.content
@@ -1290,19 +1292,22 @@ async def _stream_cluster_narrative_inner(
     )
 
 
-async def stream_trace_narrative(trace_id: str, clusters: list[TraceCluster]) -> None:
+async def stream_trace_narrative(
+    trace_id: str, clusters: list[TraceCluster], space_id: str | None = None
+) -> None:
     """Generate and stream narratives for each cluster independently."""
     try:
         # Run narratives for all clusters concurrently
         await asyncio.gather(
-            *(_stream_cluster_narrative(trace_id, c) for c in clusters)
+            *(_stream_cluster_narrative(trace_id, c, space_id=space_id) for c in clusters)
         )
     except Exception as e:
         log.error("trace_narrative_failed", trace_id=trace_id, error=str(e))
 
 
 async def stream_trace_summary(
-    trace_id: str, query: str, clusters: list[TraceCluster]
+    trace_id: str, query: str, clusters: list[TraceCluster],
+    space_id: str | None = None,
 ) -> None:
     """Generate and stream an overall summary across all clusters via WebSocket."""
     sem = _get_semaphore()
@@ -1324,6 +1329,7 @@ async def stream_trace_summary(
                 step="trace_summary",
                 temperature=0.3,
                 max_tokens=32000,
+                space_id=space_id,
             ):
                 if event.type == "chunk" and event.content:
                     full_text += event.content

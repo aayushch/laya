@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
+	import { glassTheme } from '$lib/stores/glassTheme';
 	import type { ProviderModels, CustomProvider, CustomProviderTestResult, DiscoveredModel, PipelineSettings, BudgetConfig, MonthlyCostEntry } from '$lib/api/types';
 	import { budgetPaused, loadBudgetStatus } from '$lib/stores/budget';
 	import ModelSelect from './ModelSelect.svelte';
@@ -396,7 +397,7 @@
 {:else}
 	<div class="space-y-8">
 		<!-- API Keys -->
-		<div class="rounded-lg border border-surface-700 bg-surface-800 p-5">
+		<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 			<h3 class="mb-4 text-lg font-medium">API Keys</h3>
 			<p class="mb-4 text-sm text-surface-400">
 				Keys are stored securely in your OS keychain. They are never sent to the UI.
@@ -442,7 +443,7 @@
 		</div>
 
 		<!-- Local Providers -->
-		<div class="rounded-lg border border-surface-700 bg-surface-800 p-5">
+		<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 			<div class="mb-4 flex items-center justify-between">
 				<div>
 					<h3 class="mb-1 text-lg font-medium">Local Providers</h3>
@@ -683,7 +684,7 @@
 		</div>
 
 		<!-- Model Selection -->
-		<div class="rounded-lg border border-surface-700 bg-surface-800 p-5">
+		<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 			<div class="mb-4 flex items-center justify-between">
 				<div>
 					<h3 class="mb-1 text-lg font-medium">Model Selection</h3>
@@ -736,7 +737,7 @@
 		</div>
 
 		<!-- Cost Control -->
-		<div id="cost-control" class="rounded-lg border border-surface-700 bg-surface-800 p-5">
+		<div id="cost-control" class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 			<div class="mb-4">
 				<h3 class="mb-1 text-lg font-medium">Cost Control</h3>
 				<p class="text-xs text-surface-500">Set a monthly budget to automatically pause workflows when the limit is reached.</p>
@@ -878,7 +879,7 @@
 		</div>
 
 		<!-- Advanced Pipeline Settings -->
-		<div class="rounded-lg border border-surface-700 bg-surface-800">
+		<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'}">
 			<button
 				onclick={() => { showAdvanced = !showAdvanced; }}
 				class="flex w-full items-center justify-between p-5 text-left"

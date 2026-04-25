@@ -5,13 +5,13 @@
 	import ActionCardComponent from './ActionCard.svelte';
 	import StatusDot from './StatusDot.svelte';
 
-	// Self-import for nested rendering of context sub-groups
-	import CardGroupComponent from './CardGroup.svelte';
 	import { cardColors } from '$lib/stores/cardColors';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { cardDescriptions } from '$lib/stores/cardDescriptions';
+	import { cardSize } from '$lib/stores/cardSize';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { portal } from '$lib/actions/portal';
+	import { platformDotColor } from '$lib/utils/cardVisuals';
 
 	let {
 		group,
@@ -25,38 +25,20 @@
 		lastViewedCardId = '',
 		lastViewedEntityId = '',
 		scrollToCardId = null,
-		detailPanelOpen = false,
-		nested = false
-	}: { group: CardGroup; onselect: (card: ActionCard) => void; onselectgroup?: (group: CardGroup) => void; ondelete?: (cardId: string) => void; onlink?: (group: CardGroup) => void; selectedCardId?: string; selectedEntityId?: string; hasSelection?: boolean; lastViewedCardId?: string; lastViewedEntityId?: string; scrollToCardId?: string | null; detailPanelOpen?: boolean; nested?: boolean } = $props();
+		detailPanelOpen = false
+	}: { group: CardGroup; onselect: (card: ActionCard) => void; onselectgroup?: (group: CardGroup) => void; ondelete?: (cardId: string) => void; onlink?: (group: CardGroup) => void; selectedCardId?: string; selectedEntityId?: string; hasSelection?: boolean; lastViewedCardId?: string; lastViewedEntityId?: string; scrollToCardId?: string | null; detailPanelOpen?: boolean } = $props();
 
 	let expanded = $state(false);
 	let wrapperEl = $state<HTMLElement | null>(null);
 	let bulkActionRunning = $state(false);
 	let groupMenuOpen = $state(false);
 	let menuEl: HTMLElement | undefined = $state();
-	let unlinking = $state(false);
-
 	$effect(() => {
 		if (!wrapperEl) return;
 		const handler = () => { expanded = true; };
 		wrapperEl.addEventListener('expand', handler);
 		return () => wrapperEl?.removeEventListener('expand', handler);
 	});
-
-	const isSmartGroup = $derived(!!group.context_id);
-
-	async function unlinkGroup(e: Event) {
-		e.stopPropagation();
-		groupMenuOpen = false;
-		if (!group.context_id) return;
-		unlinking = true;
-		try {
-			await engineApi.unlinkContextGroup(group.context_id);
-			// Trigger feed refresh via WebSocket broadcast from backend
-		} finally {
-			unlinking = false;
-		}
-	}
 
 	// Truncation detection for conditional tooltips (fixed positioning to escape overflow-hidden)
 	let summaryEl: HTMLElement | undefined = $state();
@@ -89,7 +71,7 @@
 
 	// Auto-collapse when the detail panel slides out (detailPanelOpen goes from true → false).
 	// Skip the slide transition to avoid jarring back-to-back animations with scroll-into-view.
-	let prevDetailPanelOpen = $state(detailPanelOpen);
+	let prevDetailPanelOpen = $state(false);
 	let skipCollapseTransition = $state(false);
 	$effect(() => {
 		if (prevDetailPanelOpen && !detailPanelOpen && expanded) {
@@ -253,30 +235,17 @@
 		if (mins < 60) return `${mins}m ago`;
 		const hours = Math.floor(mins / 60);
 		if (hours < 24) return `${hours}h ago`;
-		return `${Math.floor(hours / 24)}d ago`;
+		const days = Math.floor(hours / 24);
+		if (days < 7) return `${days}d ago`;
+		return `${Math.floor(days / 7)}w ago`;
 	}
 
 	// Extract subject ID from entity_id (e.g., "jira:ticket:FERR-1056" → "FERR-1056")
-	// For linked groups, use the top card's entity_id instead of the context_id
-	const effectiveEntityId = $derived(
-		group.context_id && group.cards[0]?.entity_id
-			? group.cards[0].entity_id
-			: group.entity_id
-	);
-	const subjectId = $derived(effectiveEntityId?.includes(':') ? effectiveEntityId.split(':').pop() : effectiveEntityId);
+	const subjectId = $derived(group.entity_id?.includes(':') ? group.entity_id.split(':').pop() : group.entity_id);
+	const sourceLabel = $derived(platformLabel[group.platform] ?? group.platform);
 
-	// Linked group source display: "Multiple" if mixed platforms, else the single platform name
-	const isMultiPlatform = $derived(isSmartGroup && (group.platforms?.length ?? 0) > 1);
-	const sourceLabel = $derived(
-		isSmartGroup && isMultiPlatform
-			? 'Multiple'
-			: (platformLabel[group.platform] ?? group.platform)
-	);
-	const sourcesDetail = $derived(
-		isSmartGroup && group.platforms
-			? group.platforms.map(p => platformLabel[p] ?? p).join(', ')
-			: ''
-	);
+	// Compact mode: drop the identity row above the title and inline platform/identifier into the footer.
+	const compact = $derived($cardSize === 'compact');
 
 	const groupHasWorkspace = $derived(group.cards.some((c) => c.has_workspace));
 	const hasBookmark = $derived(group.cards.some((c) => c.bookmarked_at));
@@ -292,45 +261,6 @@
 	);
 	const isDimmed = $derived(hasSelection && !isGroupSelected);
 
-	// Ghost strip styles for smart groups — matches original styling exactly
-	const ghostBorderStyle: Record<string, string> = {
-		pending:            'border-amber-900/25',
-		ready:              'border-amber-900/25',
-		requires_approval:  'border-sky-900/20',
-		done:               'border-emerald-900/18',
-		failed:             'border-rose-900/30',
-		dismissed:          'border-surface-700/25',
-		archived:           'border-surface-700/25',
-		agent_running:      'border-violet-900/20',
-		awaiting_input:     'border-amber-900/25',
-	};
-	const ghostBgStyle: Record<string, string> = {
-		pending:            'bg-amber-950/30',
-		ready:              'bg-amber-950/30',
-		requires_approval:  'bg-sky-950/30',
-		done:               'bg-emerald-950/25',
-		failed:             'bg-rose-950/35',
-		dismissed:          'bg-surface-900/40',
-		archived:           'bg-surface-900/40',
-		agent_running:      'bg-violet-950/30',
-		awaiting_input:     'bg-amber-950/30',
-	};
-	const ghostBorder = $derived(
-		allArchived
-			? 'ghost-strip border-dashed border-surface-700/40'
-			: $cardColors
-				? 'ghost-strip ' + (ghostBorderStyle[dominantStatus] ?? 'border-surface-700/30')
-				: 'ghost-strip border-surface-800'
-	);
-	const ghostBg = $derived(
-		allArchived
-			? 'bg-surface-900/40'
-			: $cardColors
-				? (ghostBgStyle[dominantStatus] ?? 'bg-surface-950')
-				: 'bg-surface-800'
-	);
-	const ghostCount = $derived(isSmartGroup ? Math.min(extraCount, 2) : 0);
-
 	// Bulk action menu visibility — only show actions that apply to at least one card
 	const canApproveAll = $derived(group.cards.some(c => c.status === 'requires_approval'));
 	const canCompleteAll = $derived(group.cards.some(c => c.status !== 'done' && !['dismissed', 'archived', 'failed'].includes(c.status)));
@@ -339,7 +269,7 @@
 	const canReopenAll = $derived(group.cards.some(c => ['dismissed', 'archived', 'done'].includes(c.status)));
 	const canUnarchiveAll = $derived(group.cards.some(c => c.status === 'archived'));
 
-	const hasAnyAction = $derived(canApproveAll || canCompleteAll || canDismissAll || canArchiveAll || canReopenAll || canUnarchiveAll || isSmartGroup);
+	const hasAnyAction = $derived(canApproveAll || canCompleteAll || canDismissAll || canArchiveAll || canReopenAll || canUnarchiveAll);
 
 	function toggle() {
 		expanded = !expanded;
@@ -410,40 +340,23 @@
 <!-- Single persistent DOM — morphs between collapsed card and expanded list -->
 <div
 	bind:this={wrapperEl}
-	class="relative rounded-xl transition-opacity duration-200 hover:z-20 {isDimmed ? 'opacity-45 hover:opacity-70' : ''}"
-	style="padding-bottom: {!expanded && ghostCount > 0 ? 12 : 0}px; transition: padding-bottom 200ms ease;"
+	class="relative rounded-xl transition-opacity duration-200 hover:z-20 {isDimmed ? ($glassTheme ? 'glass-dim' : 'opacity-45 hover:opacity-70') : isGroupSelected && hasSelection && $glassTheme ? 'glass-focus' : ''}"
 	data-card-id={topCard.card_id}
 	data-group-entity={group.entity_id}
 >
-
-	<!-- Ghost strip 2 — furthest back (smart groups only) -->
-	{#if ghostCount >= 2}
-		<div
-			class="absolute bottom-0 rounded-b-xl border-x border-b transition-opacity duration-200 {ghostBorder} {ghostBg} {expanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
-			style="left: 16px; right: 16px; height: 5px; z-index: 1;"
-		></div>
-	{/if}
-
-	<!-- Ghost strip 1 — one step back (smart groups only) -->
-	{#if ghostCount >= 1}
-		<div
-			class="absolute rounded-b-xl border-x border-b transition-opacity duration-200 {ghostBorder} {ghostBg} {expanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
-			style="bottom: 5px; left: 8px; right: 8px; height: 8px; z-index: 2;"
-		></div>
-	{/if}
-
 	<!-- Main card / container -->
 	<!-- overflow-clip instead of overflow-hidden: hidden creates a scroll container,
 		 so scrollIntoView on a selected card can internally scroll this div, pushing
 		 the header out of view and leaving empty space at the bottom. clip visually
 		 clips the same way but does NOT create a scroll container. -->
 	<div
+		data-status={$glassTheme && $cardColors && !allArchived && !expanded ? dominantStatus : undefined}
 		class="relative rounded-xl border {$glassTheme ? '' : 'shadow-lg'} transition-all duration-200 {expanded ? '' : 'group/card'}
 			{expanded
 				? ($glassTheme ? 'glass-card border-laya-orange/15 bg-surface-900/50' : 'border-surface-600 bg-surface-900')
-				: groupStyle} {!expanded && ghostCount > 0 ? 'ghost-strip-shadow' : ''}
+				: groupStyle}
 			{isGroupLastViewed ? ($cardColors ? 'card-last-viewed' : 'card-last-viewed-highlight') : ''}"
-		style="z-index: 3;"
+		style="z-index: 1;"
 	>
 		{#if isGroupLastViewed}<div class="card-corner-bottom"></div>{/if}
 		<!-- Header — shared between collapsed and expanded -->
@@ -453,36 +366,22 @@
 			class="flex w-full cursor-pointer flex-col gap-1.5 px-4 pt-3 text-left transition-colors
 				{expanded ? 'pb-2' : 'pb-0'}"
 			onclick={() => {
-				if (isSmartGroup) {
-					toggle();
+				if (expanded) {
+					expanded = false;
 				} else if (onselectgroup) {
 					onselectgroup(group);
 				} else {
 					onselect(topCard);
 				}
 			}}
-			onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (isSmartGroup) { toggle(); } else if (onselectgroup) { onselectgroup(group); } else { onselect(topCard); } } }}
+			onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (expanded) { expanded = false; } else if (onselectgroup) { onselectgroup(group); } else { onselect(topCard); } } }}
 		>
-			<!-- Top row: source · priority · count/menu · chevron -->
+			<!-- Top row: time (left) · utility cluster (right). Time uses latest_at so groups
+			     sort coherently against regular cards by most-recent activity. -->
 			<div class="flex items-center gap-2">
-				<div class="flex flex-col">
-					<span class="text-[10px] font-semibold uppercase tracking-widest text-surface-500">
-						{sourceLabel}
-					</span>
-					{#if isSmartGroup && sourcesDetail}
-						<span class="group/sources relative max-w-[140px] truncate text-[8px] text-surface-600" title={sourcesDetail}>
-							{sourcesDetail}
-						</span>
-					{/if}
-				</div>
-				{#if isSmartGroup}
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div class="relative" onmouseenter={(e) => { const r = e.currentTarget.getBoundingClientRect(); hoveredTooltip = { text: 'Linked', top: r.bottom + 4, left: r.left + r.width / 2 }; }} onmouseleave={() => { hoveredTooltip = null; }}>
-						<svg class="h-3 w-3 text-laya-orange/60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-					</div>
-				{:else if subjectId}
-					<span class="text-[10px] font-medium text-laya-orange/70 truncate max-w-[120px]">{subjectId}</span>
-				{/if}
+				<span class="text-[11px] text-surface-400/75 shrink-0">
+					{timeAgo(group.latest_at)}
+				</span>
 				<div class="ml-auto flex items-center gap-1.5">
 					{#if hasBookmark}
 						<svg class="h-3 w-3 text-laya-orange/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -543,18 +442,32 @@
 				</div>
 			</div>
 
-			<!-- Entity title (context label for smart groups) -->
+			<!-- Identity row: subject ID always lives here (close to the header). Relaxed mode
+			     also shows the brand dot + source label inline; compact mode hoists the
+			     platform down into the footer for vertical compression. -->
+			{#if !compact || subjectId}
+				<div class="flex items-center gap-1.5 min-w-0">
+					{#if !compact}
+						<span class="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-surface-500 shrink-0">
+							<span class="h-1 w-1 rounded-full shrink-0" style="background-color: {platformDotColor(group.platform)}"></span>
+							{sourceLabel}
+						</span>
+					{/if}
+					{#if subjectId}
+						<span class="text-[10px] font-medium text-laya-orange/70 truncate">{subjectId}</span>
+					{/if}
+				</div>
+			{/if}
+
 			<span class="line-clamp-2 text-sm font-semibold leading-snug {expanded ? 'text-surface-100' : 'text-surface-50'}">
-				{group.context_label ?? group.entity_title}
+				{group.entity_title}
 			</span>
 		</div>
 
 		<!-- Collapsed-only content: summary + status footer (instant show/hide) -->
 		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 		<div class="overflow-hidden cursor-pointer {expanded ? 'hidden' : ''}" role="button" tabindex="0" onclick={() => {
-			if (isSmartGroup) {
-				expanded = !expanded;
-			} else if (onselectgroup) {
+			if (onselectgroup) {
 				onselectgroup(group);
 			} else {
 				onselect(topCard);
@@ -576,11 +489,20 @@
 
 				<!-- Status summary footer -->
 				<div class="flex items-center gap-2">
-					<div class="flex items-center gap-2 shrink-0">
+					<div class="flex items-center gap-2 shrink-0 min-w-0">
 						{#if topCard.space_name}
 							<span class="flex items-center gap-1 shrink-0 text-[10px] text-surface-500">
 								<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {topCard.space_color ?? '#F97316'}"></span>
 								{topCard.space_name}
+							</span>
+						{/if}
+						{#if compact}
+							{#if topCard.space_name}
+								<span class="text-[10px] text-surface-600 shrink-0">·</span>
+							{/if}
+							<span class="flex items-center gap-1 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-surface-500">
+								<span class="h-1 w-1 rounded-full shrink-0" style="background-color: {platformDotColor(group.platform)}"></span>
+								{sourceLabel}
 							</span>
 						{/if}
 					</div>
@@ -597,75 +519,38 @@
 								</span>
 							{/each}
 						</div>
-						{#if isSmartGroup}
-							<!-- Smart group: show group count -->
-							<button
-								class="shrink-0 rounded-md bg-surface-700/50 px-1.5 py-0.5 text-[10px] font-medium text-surface-400 transition-colors hover:bg-surface-600/50 hover:text-surface-300"
-								title="Show all groups"
-								onclick={(e) => { e.stopPropagation(); expanded = true; }}
-							>
-								{group.sub_groups?.length ?? group.card_count} groups
-							</button>
-						{:else}
-							<!-- Entity group: stacked-cards icon + count -->
-							<!-- svelte-ignore a11y_no_static_element_interactions -->
-							<div class="group/stack relative flex items-center gap-1 shrink-0 rounded-md px-1 py-0.5 cursor-pointer transition-colors hover:bg-surface-600/40"
-								role="button" tabindex="0"
-								onclick={(e) => { e.stopPropagation(); expanded = true; }}
-								onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); expanded = true; } }}
-								onmouseenter={(e) => {
-									const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-									hoveredTooltip = { text: `Show ${group.card_count} cards`, top: rect.bottom + 4, left: rect.left + rect.width / 2 };
-								}}
-								onmouseleave={hideTooltip}
-							>
-								<svg class="h-3.5 w-3.5 text-laya-orange" viewBox="0 0 20 20" fill="none">
-									<!-- Back card -->
-									<rect x="5" y="1" width="11" height="14" rx="2" fill="currentColor" opacity="0.45" stroke="currentColor" stroke-width="1.4" />
-									<!-- Front card -->
-									<rect x="2" y="4" width="11" height="14" rx="2" fill="currentColor" opacity="0.8" stroke="currentColor" stroke-width="1.4" />
-								</svg>
-								<span class="text-[10px] font-bold text-laya-orange">{group.card_count}</span>
-							</div>
-						{/if}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div class="group/stack relative flex items-center gap-1 shrink-0 rounded-md px-1 py-0.5 cursor-pointer transition-colors hover:bg-surface-600/40"
+							role="button" tabindex="0"
+							onclick={(e) => { e.stopPropagation(); expanded = true; }}
+							onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); expanded = true; } }}
+							onmouseenter={(e) => {
+								const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+								hoveredTooltip = { text: `Show ${group.card_count} cards`, top: rect.bottom + 4, left: rect.left + rect.width / 2 };
+							}}
+							onmouseleave={hideTooltip}
+						>
+							<svg class="h-3.5 w-3.5 text-laya-orange" viewBox="0 0 20 20" fill="none">
+								<!-- Back card -->
+								<rect x="5" y="1" width="11" height="14" rx="2" fill="currentColor" opacity="0.45" stroke="currentColor" stroke-width="1.4" />
+								<!-- Front card -->
+								<rect x="2" y="4" width="11" height="14" rx="2" fill="currentColor" opacity="0.8" stroke="currentColor" stroke-width="1.4" />
+							</svg>
+							<span class="text-[10px] font-bold text-laya-orange">{group.card_count}</span>
+						</div>
 					</div>
 				</div>
 			</div>
 		</div>
 
-		<!-- Expanded-only content: card list or nested sub-groups (slides in/out) -->
+		<!-- Expanded-only content: card list (slides in/out) -->
 		{#if expanded}
 			<div class="space-y-2 px-3 pb-3 pt-1" transition:slide={{ duration: (skipCollapseTransition || $reducedMotion) ? 0 : 200 }}
 				onoutroend={() => { skipCollapseTransition = false; }}
 			>
-				{#if group.sub_groups && group.sub_groups.length > 0}
-					<!-- Context group: show nested entity sub-groups -->
-					{#each group.sub_groups as subGroup (subGroup.entity_id)}
-						{#if subGroup.card_count === 1}
-							<ActionCardComponent card={subGroup.cards[0]} onselect={onselect} {ondelete} {selectedCardId} {hasSelection} {lastViewedCardId} />
-						{:else}
-							<CardGroupComponent
-								group={subGroup}
-								{onselect}
-								{onselectgroup}
-								{ondelete}
-								{selectedCardId}
-								{selectedEntityId}
-								{hasSelection}
-								{lastViewedCardId}
-								{lastViewedEntityId}
-								{scrollToCardId}
-								{detailPanelOpen}
-								nested={true}
-							/>
-						{/if}
-					{/each}
-				{:else}
-					<!-- Regular entity group: show individual cards -->
-					{#each group.cards as card (card.card_id)}
-						<ActionCardComponent {card} onselect={onselect} {ondelete} {selectedCardId} {hasSelection} {lastViewedCardId} />
-					{/each}
-				{/if}
+				{#each group.cards as card (card.card_id)}
+					<ActionCardComponent {card} onselect={onselect} {ondelete} {selectedCardId} {hasSelection} {lastViewedCardId} />
+				{/each}
 			</div>
 		{/if}
 	</div>
@@ -724,17 +609,6 @@
 			<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
 			Link to...
 		</button>
-		{#if isSmartGroup}
-			<button
-				class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400"
-				role="menuitem"
-				disabled={unlinking}
-				onclick={unlinkGroup}
-			>
-				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /><line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
-				{unlinking ? 'Unlinking...' : 'Unlink Group'}
-			</button>
-		{/if}
 	</div>
 {/if}
 

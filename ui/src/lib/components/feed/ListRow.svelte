@@ -5,6 +5,7 @@
 	import { cardColors } from '$lib/stores/cardColors';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import StatusDot from './StatusDot.svelte';
+	import { platformDotColor, platformKey } from '$lib/utils/cardVisuals';
 
 	let {
 		card,
@@ -46,9 +47,9 @@
 
 	const priorityColors: Record<string, string> = {
 		CRITICAL: 'bg-red-600 text-red-50',
-		HIGH: 'bg-orange-500 text-orange-50',
-		MEDIUM: 'bg-laya-coral/20 text-laya-coral',
-		LOW: 'bg-laya-gold/25 text-laya-amber'
+		HIGH: 'bg-rose-500/25 text-rose-300',
+		MEDIUM: 'bg-amber-500/20 text-amber-300',
+		LOW: 'bg-surface-700/40 text-surface-400'
 	};
 	const priorityLabel: Record<string, string> = {
 		CRITICAL: 'CRIT',
@@ -213,9 +214,10 @@
 
 	<div
 		data-card-id={card.card_id}
+		data-status={$glassTheme && $cardColors && !isArchived ? card.status : undefined}
 		class="group/row list-row-hover relative flex flex-1 min-w-0 items-center rounded-lg px-3 py-1.5 text-left transition-colors cursor-pointer hover:z-20
 			border border-transparent {$cardColors ? (statusRowStyle[card.status] ?? '') : ''}
-			{isArchived ? 'opacity-50 hover:opacity-75' : isDimmed ? 'opacity-45 hover:opacity-70' : ''}
+			{isArchived ? 'opacity-50 hover:opacity-75' : isDimmed ? ($glassTheme ? 'glass-dim' : 'opacity-45 hover:opacity-70') : ''}
 			{isLastViewed ? ($cardColors ? 'card-last-viewed card-last-viewed--compact' : 'card-last-viewed-highlight') : ''}"
 		style="{isLastViewed ? '--corner-radius: 0.5rem' : ''}"
 		onclick={() => onselect(card)}
@@ -236,9 +238,10 @@
 			</svg>
 		</button>
 
-		<!-- Source — fixed width -->
-	<span class="w-[76px] shrink-0 text-[11px] font-semibold uppercase tracking-wider text-surface-500 truncate" title={platform}>
-		{platform}
+		<!-- Source — fixed width, brand-colored dot prefix for at-a-glance scanning -->
+	<span class="w-[76px] shrink-0 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-surface-500 truncate" title={platform}>
+		<span class="h-1 w-1 rounded-full shrink-0" style="background-color: {platformDotColor(platformKey(card.entity_id))}"></span>
+		<span class="truncate">{platform}</span>
 	</span>
 
 	<!-- Icon spacer — matches ListGroup linked icon slot -->

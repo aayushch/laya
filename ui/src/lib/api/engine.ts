@@ -155,6 +155,7 @@ export const engineApi = {
 		space_id?: string;
 		bookmarked?: boolean;
 		has_workspace?: boolean;
+		related_entity_ids?: string;
 	}) => {
 		const searchParams = new URLSearchParams();
 		if (params?.status) searchParams.set('status', params.status);
@@ -166,6 +167,7 @@ export const engineApi = {
 		if (params?.space_id) searchParams.set('space_id', params.space_id);
 		if (params?.bookmarked) searchParams.set('bookmarked', 'true');
 		if (params?.has_workspace) searchParams.set('has_workspace', 'true');
+		if (params?.related_entity_ids) searchParams.set('related_entity_ids', params.related_entity_ids);
 		searchParams.set('tz', Intl.DateTimeFormat().resolvedOptions().timeZone);
 		const qs = searchParams.toString();
 		return request<GroupedCardsResponse>(`/cards/grouped${qs ? '?' + qs : ''}`);
@@ -214,6 +216,11 @@ export const engineApi = {
 		request<{ status: string; card_id: string }>(`/cards/${cardId}/reopen`, {
 			method: 'POST'
 		}),
+	// Related cards
+	getRelatedCards: (cardId: string) =>
+		request<{ card_id: string; related_cards: Array<{ card_id: string; header: string; entity_id: string; status: string; context_id: string; context_label: string; confidence: number; link_method: string }>; total_related_cards: number }>(`/cards/${cardId}/related`),
+	unlinkRelatedCard: (cardId: string) =>
+		request<{ status: string; card_id: string }>(`/cards/${cardId}/unlink-related`, { method: 'POST' }),
 	// Context group management
 	getContextGroup: (contextId: string) =>
 		request<{ context_id: string; label: string; user_confirmed: boolean; user_split: boolean; members: Array<{ entity_id: string; confidence: number; link_method: string }>; cards: Array<{ card_id: string; header: string; entity_id: string; status: string }> }>(`/cards/groups/${contextId}`),
@@ -429,13 +436,13 @@ export const engineApi = {
 	// Spaces
 	getSpaces: () => request<SpacesResponse>('/spaces'),
 
-	createSpace: (space: { name: string; description?: string; icon?: string; color?: string; router_model?: string; stager_model?: string; chat_model?: string; coding_agent?: string }) =>
+	createSpace: (space: { name: string; description?: string; icon?: string; color?: string; router_model?: string; stager_model?: string; chat_model?: string; trace_model?: string; omni_model?: string; coding_agent?: string }) =>
 		request<Space>('/spaces', {
 			method: 'POST',
 			body: JSON.stringify(space)
 		}),
 
-	updateSpace: (spaceId: string, updates: Partial<{ name: string; description: string; icon: string; color: string; router_model: string; stager_model: string; chat_model: string; coding_agent: string }>) =>
+	updateSpace: (spaceId: string, updates: Partial<{ name: string; description: string; icon: string; color: string; router_model: string; stager_model: string; chat_model: string; trace_model: string; omni_model: string; coding_agent: string }>) =>
 		request<{ status: string; space_id: string }>(`/spaces/${spaceId}`, {
 			method: 'PUT',
 			body: JSON.stringify(updates)

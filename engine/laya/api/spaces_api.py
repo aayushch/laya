@@ -60,6 +60,8 @@ async def list_spaces() -> dict:
             router_model=r["router_model"],
             stager_model=r["stager_model"],
             chat_model=r["chat_model"],
+            trace_model=r["trace_model"],
+            omni_model=r["omni_model"],
             coding_agent=r["coding_agent"],
             is_default=bool(r["is_default"]),
             paused=bool(r["paused"]),
@@ -84,10 +86,12 @@ async def create_space(body: SpaceCreate) -> SpaceResponse:
     try:
         await db.execute(
             """INSERT INTO spaces (space_id, name, description, icon, color,
-                                   router_model, stager_model, chat_model, coding_agent, position)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                   router_model, stager_model, chat_model, trace_model,
+                                   omni_model, coding_agent, position)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (space_id, body.name, body.description, body.icon, body.color,
-             body.router_model, body.stager_model, body.chat_model, body.coding_agent, position),
+             body.router_model, body.stager_model, body.chat_model, body.trace_model,
+             body.omni_model, body.coding_agent, position),
         )
         await db.commit()
     except Exception as e:
@@ -105,6 +109,8 @@ async def create_space(body: SpaceCreate) -> SpaceResponse:
         router_model=body.router_model,
         stager_model=body.stager_model,
         chat_model=body.chat_model,
+        trace_model=body.trace_model,
+        omni_model=body.omni_model,
         coding_agent=body.coding_agent,
         position=position,
         source_count=0,
@@ -124,7 +130,7 @@ async def update_space(space_id: str, body: SpaceUpdate) -> dict:
 
     updates: list[str] = []
     params: list = []
-    for field in ("name", "description", "icon", "color", "router_model", "stager_model", "chat_model", "coding_agent"):
+    for field in ("name", "description", "icon", "color", "router_model", "stager_model", "chat_model", "trace_model", "omni_model", "coding_agent"):
         value = getattr(body, field, None)
         if value is not None:
             updates.append(f"{field} = ?")

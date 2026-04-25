@@ -5,12 +5,23 @@ const initial: boolean = browser
 	? (localStorage.getItem('laya-card-descriptions') ?? 'true') === 'true'
 	: true;
 
-const { subscribe, set } = writable<boolean>(initial);
+const { subscribe, set, update } = writable<boolean>(initial);
+
+function persist(value: boolean) {
+	if (browser) localStorage.setItem('laya-card-descriptions', String(value));
+}
 
 export const cardDescriptions = {
 	subscribe,
 	set(value: boolean) {
 		set(value);
-		if (browser) localStorage.setItem('laya-card-descriptions', String(value));
+		persist(value);
+	},
+	toggle() {
+		update((v) => {
+			const next = !v;
+			persist(next);
+			return next;
+		});
 	}
 };

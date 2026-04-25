@@ -13,6 +13,7 @@
 	import BriefingConfig from '$lib/components/settings/BriefingConfig.svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { glassTheme } from '$lib/stores/glassTheme';
 
 	type TabId = 'team' | 'rules' | 'models' | 'repos' | 'agent' | 'integrations' | 'spaces' | 'scheduling' | 'audit' | 'appearance' | 'keybindings' | 'data';
 	const validTabs = new Set<string>(['team', 'rules', 'models', 'repos', 'agent', 'integrations', 'spaces', 'scheduling', 'audit', 'appearance', 'keybindings', 'data']);
@@ -89,14 +90,14 @@
 </script>
 
 <div class="mx-auto max-w-4xl">
-	<div class="sticky -top-4 z-20 space-y-4 bg-surface-900 pb-4 -mx-4 px-4 pt-4">
+	<div class="sticky -top-4 z-20 space-y-4 pb-4 -mx-4 px-4 pt-4 {$glassTheme ? 'bg-transparent backdrop-blur-xl' : 'bg-surface-900'}">
 		<div>
 			<h2 class="text-2xl font-semibold">Settings</h2>
 			<p class="text-sm text-surface-400">Manage your team, rules, models, repos, and coding agent</p>
 		</div>
 
 		<!-- Tab bar -->
-		<div class="flex justify-between rounded-lg border border-surface-700 bg-surface-800 p-1">
+		<div class="flex justify-between rounded-lg p-1 {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-800'}">
 			{#each tabs as tab}
 				<button
 					class="rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors

@@ -173,7 +173,7 @@ async def generate_cluster_narrative(trace_id: str, cluster_id: str) -> dict:
     # Fire-and-forget: stream narrative via WebSocket
     from laya.tasks import create_task as create_tracked_task
     create_tracked_task(
-        stream_trace_narrative(trace_id, [cluster]),
+        stream_trace_narrative(trace_id, [cluster], space_id=trace.space_id),
         name=f"trace_narrative_{trace_id}_{cluster_id}",
     )
 
@@ -196,7 +196,7 @@ async def generate_trace_summary(trace_id: str) -> dict:
 
     from laya.tasks import create_task as create_tracked_task
     create_tracked_task(
-        stream_trace_summary(trace_id, trace.query, trace.clusters),
+        stream_trace_summary(trace_id, trace.query, trace.clusters, space_id=trace.space_id),
         name=f"trace_summary_{trace_id}",
     )
 
@@ -470,6 +470,7 @@ async def _reconstruct_trace(db, row) -> TraceResponse:
         search_metadata=SearchMetadata(**search_meta_raw),
         created_at=row["created_at"],
         summary=row["summary"] if "summary" in row.keys() else None,
+        space_id=row["space_id"] if "space_id" in row.keys() else None,
     )
 
 

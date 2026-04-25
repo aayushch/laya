@@ -32,7 +32,7 @@
 	const activeStatusCount = $derived($feedFilters.statusFilters.length);
 	const activePriorityCount = $derived($feedFilters.priorityFilters.length);
 	const activeSpaceCount = $derived($feedFilters.spaceFilter.length);
-	const hasActiveFilters = $derived(activeStatusCount > 0 || activePriorityCount > 0 || $feedFilters.showArchived || $feedFilters.showBookmarked || $feedFilters.hasWorkspace || activeSpaceCount > 0);
+	const hasActiveFilters = $derived(activeStatusCount > 0 || activePriorityCount > 0 || $feedFilters.showArchived || $feedFilters.hasWorkspace || activeSpaceCount > 0);
 
 	function toggleFilter(arr: string[], value: string): string[] {
 		return arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value];
@@ -137,6 +137,42 @@
 		linkSourceGroup = syntheticGroup;
 	}
 
+	async function handleShowRelated(card: ActionCard) {
+		try {
+			const data = await engineApi.getRelatedCards(card.card_id);
+			if (data.total_related_cards === 0) return;
+			const entityIds = [...new Set([
+				card.entity_id,
+				...data.related_cards.map((r: { entity_id: string }) => r.entity_id)
+			].filter(Boolean))] as string[];
+			$feedFilters.showRelated = true;
+			$feedFilters.relatedEntityIds = entityIds;
+			$feedFilters.relatedSourceHeader = card.header;
+			$feedFilters.relatedSourceCardId = card.card_id;
+		} catch {
+			// Silently fail
+		}
+	}
+
+	function clearRelatedFilter() {
+		_scrollToCardId = selectedCard?.card_id ?? lastDetailCardId ?? lastViewedCardId ?? null;
+		_skipNextFlip = true;
+		$feedFilters.showRelated = false;
+		$feedFilters.relatedEntityIds = [];
+		$feedFilters.relatedSourceHeader = '';
+		$feedFilters.relatedSourceCardId = '';
+	}
+
+	function handleUnlinked(cardId: string, entityId: string) {
+		if (!$feedFilters.showRelated) return;
+		const updated = $feedFilters.relatedEntityIds.filter(eid => eid !== entityId);
+		if (updated.length <= 1) {
+			clearRelatedFilter();
+		} else {
+			$feedFilters.relatedEntityIds = updated;
+		}
+	}
+
 
 	// When switching views, scroll the active card/group into view.
 	$effect(() => {
@@ -207,6 +243,7 @@
 
 	// Promise that resolves when any in-progress FLIP animation finishes
 	let _flipSettled: Promise<void> = Promise.resolve();
+	let _skipNextFlip = false;
 
 	// Capture card positions for FLIP animation before data changes
 	function captureCardPositions(): Map<string, DOMRect> {
@@ -279,9 +316,10 @@
 				sort: f.sortBy,
 				sort_asc: f.sortAsc || undefined,
 				show_archived: f.showArchived || undefined,
-				date: f.showBookmarked ? undefined : $feedDate,
+				date: (f.showBookmarked || f.showRelated) ? undefined : $feedDate,
 				space_id: f.spaceFilter.length ? f.spaceFilter.join(',') : undefined,
 				bookmarked: f.showBookmarked || undefined,
+				related_entity_ids: f.showRelated ? f.relatedEntityIds.join(',') : undefined,
 				has_workspace: f.hasWorkspace || undefined
 			});
 			if (id !== _fetchId) return;
@@ -305,13 +343,18 @@
 				}
 			}
 
-			// Scroll to card if gotoCard was triggered (e.g. after date navigation)
+			// FLIP animate existing cards + fade in new ones.
+			// Must run before scrollToCard so that scrollToCard captures the
+			// new _flipSettled promise and waits for the animation to finish
+			// before attempting to scroll.
+			const skipFlip = _skipNextFlip;
+			_skipNextFlip = false;
+			animateFlip(oldPositions, skipFlip);
+
+			// Scroll to card if requested (e.g. gotoCard, clearRelatedFilter)
 			if (_scrollToCardId) {
 				scrollToCard(_scrollToCardId);
 			}
-
-			// FLIP animate existing cards + fade in new ones
-			animateFlip(oldPositions);
 		} catch {
 			if (id !== _fetchId) return;
 			error = 'Failed to load cards';
@@ -1155,6 +1198,8 @@
 	}
 </script>
 
+<svelte:window onkeydown={(e) => { if (e.key === 'Escape' && $feedFilters.showRelated) { clearRelatedFilter(); e.preventDefault(); } }} />
+
 <div class="flex h-full flex-col">
 	<!-- Feed toolbar -->
 	<div class="flex items-center gap-1.5 pb-2">
@@ -1230,7 +1275,7 @@
 				</svg>
 				Filters
 				{#if hasActiveFilters}
-					<span class="flex h-4 w-4 items-center justify-center rounded-full bg-laya-orange text-[9px] font-bold text-surface-900">{activeStatusCount + activePriorityCount + activeSpaceCount + ($feedFilters.showArchived ? 1 : 0) + ($feedFilters.showBookmarked ? 1 : 0) + ($feedFilters.hasWorkspace ? 1 : 0)}</span>
+					<span class="flex h-4 w-4 items-center justify-center rounded-full bg-laya-orange text-[9px] font-bold text-surface-900">{activeStatusCount + activePriorityCount + activeSpaceCount + ($feedFilters.showArchived ? 1 : 0) + ($feedFilters.hasWorkspace ? 1 : 0)}</span>
 				{/if}
 			</button>
 
@@ -1386,6 +1431,10 @@
 									$feedFilters.showBookmarked = false;
 									$feedFilters.hasWorkspace = false;
 									$feedFilters.spaceFilter = [];
+									$feedFilters.showRelated = false;
+									$feedFilters.relatedEntityIds = [];
+									$feedFilters.relatedSourceHeader = '';
+									$feedFilters.relatedSourceCardId = '';
 								}}
 							>
 								Clear all filters
@@ -1558,6 +1607,25 @@
 		</div>
 		<!-- Cards / Summary / List section -->
 		<div bind:this={containerEl} class="flex min-w-0 flex-1 flex-col overflow-y-auto p-3">
+			{#if $feedFilters.showRelated}
+				<div class="mb-3 flex items-center gap-2 rounded-lg border border-laya-orange/30 bg-laya-orange/10 px-3 py-2">
+					<svg class="h-4 w-4 shrink-0 text-laya-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+					</svg>
+					<span class="min-w-0 flex-1 truncate text-xs text-laya-orange">
+						Related to "<span class="font-medium">{$feedFilters.relatedSourceHeader}</span>"
+					</span>
+					<button
+						onclick={clearRelatedFilter}
+						class="shrink-0 rounded p-0.5 text-laya-orange/70 transition-colors hover:bg-laya-orange/20 hover:text-laya-orange"
+						aria-label="Clear related cards filter"
+					>
+						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
+			{/if}
 			{#if loading && groups.length === 0}
 				<div class="py-12 text-center text-surface-400">Loading cards...</div>
 			{:else if error}
@@ -1566,9 +1634,11 @@
 				</div>
 			{:else if groups.length === 0}
 				<div class="py-12 text-center text-surface-500">
-					<p class="text-lg">{$feedFilters.showBookmarked ? 'No bookmarked cards' : `No cards for ${formatDateLabel($feedDate)}`}</p>
+					<p class="text-lg">{$feedFilters.showRelated ? 'No related cards found' : $feedFilters.showBookmarked ? 'No bookmarked cards' : `No cards for ${formatDateLabel($feedDate)}`}</p>
 					<p class="mt-1 text-sm">
-						{#if $feedFilters.showBookmarked}
+						{#if $feedFilters.showRelated}
+							<button class="text-laya-orange hover:underline" onclick={clearRelatedFilter}>Back to feed</button>
+						{:else if $feedFilters.showBookmarked}
 							Bookmark cards to save them for later
 						{:else if $feedPrevDate}
 							<button class="text-laya-orange hover:underline" onclick={() => { if ($feedPrevDate) $feedDate = $feedPrevDate; }}>
@@ -1727,9 +1797,10 @@
 								generatingEntityIds.add(entityId);
 								generatingEntityIds = new Set(generatingEntityIds);
 							}}
+							onshowrelated={handleShowRelated}
 						/>
 					{:else if selectedCard}
-						<CardDetail card={selectedCard} onclose={closeDetailPanel} ondismiss={dismissActiveCard} ongotocard={gotoCard} onlink={selectedCardIsStandalone ? handleLinkCard : undefined} />
+						<CardDetail card={selectedCard} onclose={closeDetailPanel} ondismiss={dismissActiveCard} ongotocard={gotoCard} onlink={handleLinkCard} onshowrelated={handleShowRelated} onunlinked={handleUnlinked} />
 					{:else}
 						<div class="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-surface-700 text-surface-600">
 							<svg class="mb-2 h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">

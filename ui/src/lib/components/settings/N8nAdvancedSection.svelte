@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
+	import { glassTheme } from '$lib/stores/glassTheme';
 	import PlatformIcon from './PlatformIcon.svelte';
 	import type {
 		N8nTestResult,
@@ -289,7 +290,7 @@
 		{/if}
 
 		<!-- Section 1: n8n Status Bar -->
-		<div class="rounded-lg border border-surface-700 bg-surface-800 p-5">
+		<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 			<div class="flex items-center justify-between">
 				<div class="flex items-center gap-3">
 					<div class="flex items-center gap-2">
@@ -485,9 +486,9 @@
 						<h3 class="mb-3 text-xs font-semibold uppercase tracking-wider text-surface-400">
 							{group.label}
 						</h3>
-						<div class="overflow-hidden rounded-xl border border-surface-700">
+						<div class="overflow-hidden {$glassTheme ? 'rounded-xl border border-white/[0.06]' : 'rounded-xl border border-surface-700'}">
 							<table class="w-full text-sm">
-								<thead class="bg-surface-900 text-left text-xs uppercase tracking-wider text-surface-500">
+								<thead class="{$glassTheme ? 'bg-white/[0.03]' : 'bg-surface-900'} text-left text-xs uppercase tracking-wider text-surface-500">
 									<tr>
 										<th class="px-4 py-2.5">Workflow</th>
 										<th class="px-4 py-2.5">Platform</th>
@@ -557,7 +558,7 @@
 		{/if}
 
 		<!-- Section 3: Webhook Mappings (collapsed) -->
-		<div class="rounded-lg border border-surface-700 bg-surface-800">
+		<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'}">
 			<button
 				onclick={() => (showWebhooks = !showWebhooks)}
 				class="flex w-full items-center justify-between p-4 text-left transition-colors hover:bg-surface-700/50"
@@ -594,10 +595,10 @@
 						>
 					</p>
 
-					<div class="overflow-hidden rounded-xl border border-surface-700">
+					<div class="overflow-hidden {$glassTheme ? 'rounded-xl border border-white/[0.06]' : 'rounded-xl border border-surface-700'}">
 						<table class="w-full text-sm">
 							<thead
-								class="bg-surface-900 text-left text-xs uppercase tracking-wider text-surface-400"
+								class="{$glassTheme ? 'bg-white/[0.03]' : 'bg-surface-900'} text-left text-xs uppercase tracking-wider text-surface-400"
 							>
 								<tr>
 									<th class="px-4 py-3">Platform</th>

@@ -170,12 +170,19 @@ async def get_grouped_cards(
     tz: str | None = None,
     bookmarked: bool = False,
     has_workspace: bool = False,
+    related_entity_ids: str | None = None,
 ) -> GroupedCardsResponse:
     """Return cards grouped by entity_id, filtered by date and space."""
     db = await get_db()
 
     conditions: list[str] = []
     params: list[Any] = []
+    if related_entity_ids:
+        eids = [e.strip() for e in related_entity_ids.split(",") if e.strip()]
+        if eids:
+            placeholders = ",".join("?" for _ in eids)
+            conditions.append(f"c.entity_id IN ({placeholders})")
+            params.extend(eids)
     if bookmarked:
         conditions.append("c.bookmarked_at IS NOT NULL")
     if space_id:
@@ -187,7 +194,7 @@ async def get_grouped_cards(
             placeholders = ",".join("?" for _ in space_ids)
             conditions.append(f"c.space_id IN ({placeholders})")
             params.extend(space_ids)
-    if date and not bookmarked:
+    if date and not bookmarked and not related_entity_ids:
         if tz:
             try:
                 local_tz = ZoneInfo(tz)
@@ -252,17 +259,9 @@ async def get_grouped_cards(
         params,
     )
 
-    # Determine grouping mode: context_id (smart grouping) vs entity_id
-    from laya.config import load_settings
-    settings = load_settings()
-    smart_grouping = settings.get("smart_grouping", {}).get("smart_display", True)
-
     groups: dict[str, list] = {}
     for row in rows:
-        if smart_grouping:
-            group_key = row["context_id"] or row["entity_id"] or f"singleton:{row['card_id']}"
-        else:
-            group_key = row["entity_id"] or f"singleton:{row['card_id']}"
+        group_key = row["entity_id"] or f"singleton:{row['card_id']}"
         if group_key not in groups:
             groups[group_key] = []
         groups[group_key].append(row)
@@ -277,20 +276,6 @@ async def get_grouped_cards(
         )
         for ev in ev_rows:
             event_meta[ev["event_id"]] = dict(ev)
-
-    # Pre-fetch context group labels for smart grouping
-    context_labels: dict[str, str] = {}
-    if smart_grouping:
-        context_ids = [k for k in groups if k.startswith("ctx_")]
-        if context_ids:
-            placeholders = ",".join("?" * len(context_ids))
-            ctx_rows = await db.execute_fetchall(
-                f"SELECT context_id, label FROM context_groups WHERE context_id IN ({placeholders})",
-                context_ids,
-            )
-            for cr in ctx_rows:
-                if cr["label"]:
-                    context_labels[cr["context_id"]] = cr["label"]
 
     # Batch-fetch group summaries for all entity_ids present
     all_entity_ids = set()
@@ -321,13 +306,6 @@ async def get_grouped_cards(
 
     result: list[CardGroup] = []
     for group_key, entity_rows in groups.items():
-        is_context_group = group_key.startswith("ctx_")
-
-        # For context (linked) groups, ensure cards are sorted by created_at
-        # descending (latest first) regardless of entity_id, so the most
-        # recent card always appears on top.
-        if is_context_group:
-            entity_rows.sort(key=lambda r: r["created_at"] or "", reverse=True)
         cards = [_row_to_card(r) for r in entity_rows]
         meta = event_meta.get(entity_rows[0]["event_id"], {})
         top_priority = min(
@@ -337,78 +315,10 @@ async def get_grouped_cards(
         latest_at = max((c.created_at or "") for c in cards)
         has_pending = any(c.status in ("pending", "ready", "requires_approval") for c in cards)
 
-        # Resolve context group metadata
-        context_id = group_key if is_context_group else None
-        context_label = context_labels.get(group_key) if is_context_group else None
-
-        # For context groups, use the context_id as the group's entity_id
-        # to guarantee uniqueness — the first card's entity_id may collide
-        # with a traditional entity group for the same entity.
-        entity_id_val = group_key if is_context_group else (entity_rows[0]["entity_id"] or group_key)
-        entity_title = context_label or meta.get("subject_title") or entity_id_val
-
-        # For linked groups, collect all distinct platforms (order-preserving)
-        # and use the top card's platform as the primary.  This makes the
-        # display idempotent — the latest card's platform is always primary,
-        # regardless of link direction.
-        platforms_list: list[str] | None = None
+        entity_id_val = entity_rows[0]["entity_id"] or group_key
+        entity_title = meta.get("subject_title") or entity_id_val
         group_platform = meta.get("source_platform", "")
-
-        # Build sub_groups for context groups: nest entity-level groups inside
-        sub_groups: list[CardGroup] | None = None
-        group_summary: GroupSummaryResponse | None = None
-
-        if is_context_group:
-            seen_platforms: set[str] = set()
-            ordered_platforms: list[str] = []
-            for r in entity_rows:
-                eid = r["entity_id"] or ""
-                plat = eid.split(":")[0] if ":" in eid else ""
-                if plat and plat not in seen_platforms:
-                    seen_platforms.add(plat)
-                    ordered_platforms.append(plat)
-            platforms_list = ordered_platforms or None
-            # Use the top (latest) card's platform as primary
-            top_eid = entity_rows[0]["entity_id"] or ""
-            group_platform = top_eid.split(":")[0] if ":" in top_eid else group_platform
-
-            # Build nested entity sub-groups within the context group
-            entity_sub: dict[str, list] = {}
-            for r in entity_rows:
-                eid = r["entity_id"] or f"singleton:{r['card_id']}"
-                entity_sub.setdefault(eid, []).append(r)
-
-            sub_groups_list: list[CardGroup] = []
-            for sub_eid, sub_rows in entity_sub.items():
-                sub_cards = [_row_to_card(r) for r in sub_rows]
-                sub_meta = event_meta.get(sub_rows[0]["event_id"], {})
-                sub_top_priority = min(
-                    (c.priority for c in sub_cards),
-                    key=lambda p: _PRIORITY_ORDER.get(p, 99),
-                )
-                sub_latest = max((c.created_at or "") for c in sub_cards)
-                sub_has_pending = any(c.status in ("pending", "ready", "requires_approval") for c in sub_cards)
-                sub_platform = sub_eid.split(":")[0] if ":" in sub_eid else sub_meta.get("source_platform", "")
-                sub_groups_list.append(
-                    CardGroup(
-                        entity_id=sub_eid,
-                        entity_title=sub_meta.get("subject_title") or sub_eid,
-                        entity_url=sub_meta.get("subject_url"),
-                        platform=sub_platform,
-                        card_count=len(sub_cards),
-                        top_priority=sub_top_priority,
-                        latest_at=sub_latest,
-                        has_pending=sub_has_pending,
-                        cards=sub_cards,
-                        group_summary=summary_map.get(sub_eid) if len(sub_cards) >= 2 else None,
-                    )
-                )
-            # Sort sub-groups by latest_at descending
-            sub_groups_list.sort(key=lambda g: g.latest_at, reverse=True)
-            sub_groups = sub_groups_list if sub_groups_list else None
-        else:
-            # Entity group: attach summary if available
-            group_summary = summary_map.get(entity_id_val) if len(cards) >= 2 else None
+        group_summary = summary_map.get(entity_id_val) if len(cards) >= 2 else None
 
         result.append(
             CardGroup(
@@ -421,11 +331,7 @@ async def get_grouped_cards(
                 latest_at=latest_at,
                 has_pending=has_pending,
                 cards=cards,
-                context_id=context_id,
-                context_label=context_label,
-                platforms=platforms_list,
                 group_summary=group_summary,
-                sub_groups=sub_groups,
             )
         )
 
@@ -2037,7 +1943,7 @@ async def get_context_group(context_id: str):
         raise HTTPException(status_code=404, detail="Context group not found")
 
     members = await db.execute_fetchall(
-        "SELECT entity_id, confidence, link_method, added_at FROM context_group_members WHERE context_id = ?",
+        "SELECT card_id, confidence, link_method, added_at FROM context_group_members WHERE context_id = ?",
         (context_id,),
     )
     cards = await db.execute_fetchall(
@@ -2054,6 +1960,116 @@ async def get_context_group(context_id: str):
         "members": [dict(m) for m in members],
         "cards": [{"card_id": c["card_id"], "header": c["header"], "entity_id": c["entity_id"], "status": c["status"]} for c in cards],
     }
+
+
+@router.get("/cards/{card_id}/related")
+async def get_related_cards(card_id: str):
+    """Return individual cards related to this card via context association."""
+    db = await get_db()
+
+    card_row = await db.execute_fetchall(
+        "SELECT entity_id, context_id FROM action_cards WHERE card_id = ?", (card_id,),
+    )
+    if not card_row:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    # Find all non-split context groups containing this card
+    ctx_rows = await db.execute_fetchall(
+        """SELECT m.context_id, g.label
+           FROM context_group_members m
+           JOIN context_groups g ON g.context_id = m.context_id
+           WHERE m.card_id = ? AND g.user_split = FALSE""",
+        (card_id,),
+    )
+    if not ctx_rows:
+        return {"card_id": card_id, "related_cards": [], "total_related_cards": 0}
+
+    ctx_ids = list({r["context_id"] for r in ctx_rows})
+    ctx_labels = {r["context_id"]: r["label"] for r in ctx_rows}
+
+    # Get all OTHER card_ids in those context groups
+    placeholders = ",".join("?" * len(ctx_ids))
+    member_rows = await db.execute_fetchall(
+        f"""SELECT m.card_id, m.context_id, m.confidence, m.link_method
+            FROM context_group_members m
+            WHERE m.context_id IN ({placeholders}) AND m.card_id != ?""",
+        ctx_ids + [card_id],
+    )
+    if not member_rows:
+        return {"card_id": card_id, "related_cards": [], "total_related_cards": 0}
+
+    # Fetch card details
+    related_card_ids = list({r["card_id"] for r in member_rows})
+    cp = ",".join("?" * len(related_card_ids))
+    card_rows = await db.execute_fetchall(
+        f"SELECT card_id, header, entity_id, status FROM action_cards WHERE card_id IN ({cp})",
+        related_card_ids,
+    )
+
+    member_info: dict[str, dict] = {}
+    for r in member_rows:
+        cid = r["card_id"]
+        if cid not in member_info or r["confidence"] > member_info[cid].get("confidence", 0):
+            member_info[cid] = {"context_id": r["context_id"], "confidence": r["confidence"], "link_method": r["link_method"]}
+
+    related = []
+    for c in card_rows:
+        info = member_info.get(c["card_id"], {})
+        related.append({
+            "card_id": c["card_id"],
+            "header": c["header"],
+            "entity_id": c["entity_id"],
+            "status": c["status"],
+            "context_id": info.get("context_id", ""),
+            "context_label": ctx_labels.get(info.get("context_id", ""), ""),
+            "confidence": info.get("confidence", 0),
+            "link_method": info.get("link_method", ""),
+        })
+
+    related.sort(key=lambda x: x["confidence"], reverse=True)
+
+    return {
+        "card_id": card_id,
+        "related_cards": related,
+        "total_related_cards": len(related),
+    }
+
+
+@router.post("/cards/{card_id}/unlink-related")
+async def unlink_related_card(card_id: str):
+    """Remove a single card from all its context groups."""
+    db = await get_db()
+
+    row = await db.execute_fetchall(
+        "SELECT entity_id FROM action_cards WHERE card_id = ?", (card_id,),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    # Find all context groups this card belongs to
+    memberships = await db.execute_fetchall(
+        "SELECT context_id FROM context_group_members WHERE card_id = ?", (card_id,),
+    )
+    affected_ctx_ids = [r["context_id"] for r in memberships]
+
+    # Remove the card from all context groups
+    await db.execute("DELETE FROM context_group_members WHERE card_id = ?", (card_id,))
+    await db.execute("UPDATE action_cards SET context_id = NULL WHERE card_id = ?", (card_id,))
+
+    # Dissolve context groups that have <=1 member remaining
+    for ctx_id in affected_ctx_ids:
+        remaining = await db.execute_fetchall(
+            "SELECT COUNT(*) AS cnt FROM context_group_members WHERE context_id = ?", (ctx_id,),
+        )
+        if remaining[0]["cnt"] <= 1:
+            await db.execute(
+                "UPDATE context_groups SET user_split = TRUE WHERE context_id = ?", (ctx_id,),
+            )
+
+    await db.commit()
+    log.info("card_unlinked_related", card_id=card_id, groups=affected_ctx_ids)
+    await manager.broadcast({"type": "context_group_unlinked", "payload": {"card_id": card_id}})
+    return {"status": "unlinked", "card_id": card_id}
 
 
 @router.post("/cards/groups/{context_id}/unlink")
@@ -2165,17 +2181,16 @@ async def merge_cards(body: MergeCardsRequest):
             (context_id, label),
         )
 
-    # Assign context_id to all cards and register entity memberships
+    # Assign context_id to all cards and register card-level memberships
     for c in cards:
         await db.execute(
             "UPDATE action_cards SET context_id = ? WHERE card_id = ?",
             (context_id, c["card_id"]),
         )
-        if c["entity_id"]:
-            await db.execute(
-                "INSERT OR IGNORE INTO context_group_members (context_id, entity_id, confidence, link_method) VALUES (?, ?, 1.0, 'user')",
-                (context_id, c["entity_id"]),
-            )
+        await db.execute(
+            "INSERT OR IGNORE INTO context_group_members (context_id, card_id, confidence, link_method) VALUES (?, ?, 1.0, 'user')",
+            (context_id, c["card_id"]),
+        )
     await db.commit()
 
     # Record link corrections for learning (anchor-based: first card paired with each other)

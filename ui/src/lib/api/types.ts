@@ -660,6 +660,8 @@ export interface Space {
 	router_model?: string;
 	stager_model?: string;
 	chat_model?: string;
+	trace_model?: string;
+	omni_model?: string;
 	coding_agent?: string;
 	is_default: boolean;
 	paused: boolean;

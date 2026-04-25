@@ -9,14 +9,17 @@
 	import ClassificationDialog from './ClassificationDialog.svelte';
 	import PlatformBadge from '$lib/components/PlatformBadge.svelte';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { portal } from '$lib/actions/portal';
 
 	let {
 		card,
 		onclose,
 		ondismiss,
 		ongotocard,
-		onlink
-	}: { card: ActionCard; onclose: () => void; ondismiss?: () => void; ongotocard?: (card: ActionCard) => void; onlink?: (card: ActionCard) => void } = $props();
+		onlink,
+		onshowrelated,
+		onunlinked
+	}: { card: ActionCard; onclose: () => void; ondismiss?: () => void; ongotocard?: (card: ActionCard) => void; onlink?: (card: ActionCard) => void; onshowrelated?: (card: ActionCard) => void; onunlinked?: (cardId: string, entityId: string) => void } = $props();
 
 	let markingDone = $state(false);
 	let approvingAgent = $state(false);
@@ -47,6 +50,45 @@
 	let startingResearch = $state(false);
 	let actorTruncated = $state(false);
 	let emailTruncated = $state(false);
+	let relatedCount = $state<number | null>(null);
+	let loadingRelated = $state(false);
+	let overflowMenuOpen = $state(false);
+	let overflowBtnEl: HTMLElement | undefined = $state();
+	let overflowMenuEl: HTMLElement | undefined = $state();
+	let overflowMenuPos = $state({ top: 0, right: 0 });
+	const hasRelated = $derived(relatedCount != null && relatedCount > 0);
+
+	$effect(() => {
+		const cardId = card.card_id;
+		relatedCount = null;
+		if (!onshowrelated) return;
+		loadingRelated = true;
+		engineApi.getRelatedCards(cardId).then((data) => {
+			if (card.card_id === cardId) {
+				relatedCount = data.total_related_cards;
+			}
+		}).catch(() => {}).finally(() => { loadingRelated = false; });
+	});
+
+	$effect(() => {
+		if (!overflowMenuOpen) return;
+		function handleClick(e: MouseEvent) {
+			const target = e.target as HTMLElement;
+			if (!overflowMenuEl?.contains(target) && !overflowBtnEl?.contains(target)) {
+				overflowMenuOpen = false;
+			}
+		}
+		document.addEventListener('click', handleClick, true);
+		return () => document.removeEventListener('click', handleClick, true);
+	});
+
+	function toggleOverflowMenu() {
+		if (overflowMenuOpen) { overflowMenuOpen = false; return; }
+		if (!overflowBtnEl) return;
+		const rect = overflowBtnEl.getBoundingClientRect();
+		overflowMenuPos = { top: rect.top - 4, right: window.innerWidth - rect.right };
+		overflowMenuOpen = true;
+	}
 
 	// Watches an element for text overflow and reports the result via callback.
 	// The text param is included so the action's `update` re-runs (and re-measures)
@@ -68,10 +110,13 @@
 	}
 
 	async function unlinkCard() {
-		if (!card.context_id) return;
 		unlinkingCard = true;
 		try {
-			await engineApi.unlinkContextGroup(card.context_id);
+			await engineApi.unlinkRelatedCard(card.card_id);
+			const entityId = card.entity_id ?? '';
+			relatedCount = null;
+			overflowMenuOpen = false;
+			onunlinked?.(card.card_id, entityId);
 		} finally {
 			unlinkingCard = false;
 		}
@@ -767,23 +812,13 @@
 				<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
 				Classify
 			</button>
-			{#if onlink}
+			{#if onshowrelated && hasRelated}
 				<button
-					class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-surface-200"
-					onclick={() => onlink(card)}
+					class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-laya-orange"
+					onclick={() => onshowrelated(card)}
 				>
-					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-					Link
-				</button>
-			{/if}
-			{#if card.context_id}
-				<button
-					class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-red-400 disabled:opacity-50"
-					onclick={unlinkCard}
-					disabled={unlinkingCard}
-				>
-					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /><line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
-					{unlinkingCard ? '...' : 'Unlink'}
+					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="5" cy="12" r="2" stroke-width="2" /><circle cx="19" cy="6" r="2" stroke-width="2" /><circle cx="19" cy="18" r="2" stroke-width="2" /><path stroke-linecap="round" stroke-width="2" d="M7 11l10-4M7 13l10 4" /></svg>
+					Related ({relatedCount})
 				</button>
 			{/if}
 			{#if researchEligible}
@@ -795,16 +830,19 @@
 					Research
 				</button>
 			{/if}
-			{#if card.status === 'archived'}
+			<!-- Overflow menu: Link / Unlink / Delete -->
+			<div class="relative">
 				<button
-					class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-red-400 disabled:opacity-50"
-					onclick={() => (showDeleteConfirm = true)}
-					disabled={deleting}
+					bind:this={overflowBtnEl}
+					class="flex items-center justify-center rounded-md px-1.5 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-surface-200"
+					onclick={toggleOverflowMenu}
+					aria-label="More actions"
 				>
-					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-					Delete
+					<svg class="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20">
+						<path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM18 10a2 2 0 11-4 0 2 2 0 014 0z" />
+					</svg>
 				</button>
-			{/if}
+			</div>
 		</div>
 
 		<!-- Primary actions -->
@@ -993,4 +1031,47 @@
 		{card}
 		onclose={() => (showClassificationDialog = false)}
 	/>
+{/if}
+
+{#if overflowMenuOpen}
+	<div
+		bind:this={overflowMenuEl}
+		use:portal
+		class="fixed z-[100] w-36 rounded-lg border p-1 {$glassTheme ? 'glass-menu' : 'border-surface-600 bg-surface-900 shadow-xl shadow-black/50'}"
+		style="top: {overflowMenuPos.top}px; right: {overflowMenuPos.right}px; transform: translateY(-100%);"
+		role="menu"
+	>
+		{#if onlink}
+			<button
+				class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-surface-200"
+				role="menuitem"
+				onclick={() => { overflowMenuOpen = false; onlink(card); }}
+			>
+				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+				Link to...
+			</button>
+		{/if}
+		{#if hasRelated}
+			<button
+				class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400 disabled:opacity-50"
+				role="menuitem"
+				disabled={unlinkingCard}
+				onclick={unlinkCard}
+			>
+				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /><line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+				{unlinkingCard ? 'Unlinking...' : 'Unlink'}
+			</button>
+		{/if}
+		{#if card.status === 'archived'}
+			<button
+				class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400 disabled:opacity-50"
+				role="menuitem"
+				disabled={deleting}
+				onclick={() => { overflowMenuOpen = false; showDeleteConfirm = true; }}
+			>
+				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+				Delete
+			</button>
+		{/if}
+	</div>
 {/if}

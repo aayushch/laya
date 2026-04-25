@@ -14,6 +14,9 @@
 	import { accessibleColors } from '$lib/stores/accessibleColors';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { cardDescriptions } from '$lib/stores/cardDescriptions';
+	import { cardSize } from '$lib/stores/cardSize';
+	import { feedViewMode } from '$lib/stores/feedView';
 	import { fly } from 'svelte/transition';
 	import { budgetPaused, loadBudgetStatus, handleBudgetWsMessage, costAmount, budgetLabel, budgetRatio } from '$lib/stores/budget';
 	import { feedFilters, loadFeedFilters, saveFeedFilters, filtersLoaded, feedDate, feedPrevDate, feedNextDate, localToday } from '$lib/stores/feedFilters';
@@ -163,6 +166,11 @@
 		} else {
 			document.documentElement.removeAttribute('data-glass-theme');
 		}
+	});
+
+	// Sync feed view mode to <html> for CSS-based mesh gradient switching
+	$effect(() => {
+		document.documentElement.setAttribute('data-feed-view', $feedViewMode);
 	});
 
 	// Persist when filters change (only after initial load to avoid overwriting saved prefs with defaults)
@@ -365,6 +373,27 @@
 		}
 		document.addEventListener('keydown', handleOmniShortcut);
 
+		// Keyboard shortcut: Cmd+D (macOS) / Ctrl+D toggles card descriptions globally.
+		// preventDefault stops the browser bookmark dialog (irrelevant in Tauri but
+		// matters for web preview).
+		function handleCardDescriptionsShortcut(e: KeyboardEvent) {
+			if (e.key === 'd' && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
+				e.preventDefault();
+				cardDescriptions.toggle();
+			}
+		}
+		document.addEventListener('keydown', handleCardDescriptionsShortcut);
+
+		// Keyboard shortcut: Cmd+Shift+D (macOS) / Ctrl+Shift+D toggles compact / relaxed card layout.
+		// e.key with Shift held is uppercase 'D' on most layouts; check both for safety.
+		function handleCardSizeShortcut(e: KeyboardEvent) {
+			if ((e.key === 'd' || e.key === 'D') && (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey) {
+				e.preventDefault();
+				cardSize.toggle();
+			}
+		}
+		document.addEventListener('keydown', handleCardSizeShortcut);
+
 		// Auto-advance feedDate at midnight so "Today"/"Yesterday" labels stay correct
 		function scheduleMidnightUpdate() {
 			const now = Date.now();
@@ -387,6 +416,8 @@
 			document.removeEventListener('keydown', handleCoherenceShortcut);
 			document.removeEventListener('keydown', handlePulseShortcut);
 			document.removeEventListener('keydown', handleOmniShortcut);
+			document.removeEventListener('keydown', handleCardDescriptionsShortcut);
+			document.removeEventListener('keydown', handleCardSizeShortcut);
 			clearTimeout(midnightTimer);
 			stopHealthPolling();
 			closeWebSocket();
@@ -490,6 +521,13 @@
 									</svg>
 									<span class="text-xs font-medium text-laya-orange whitespace-nowrap">Bookmarked</span>
 								</div>
+							{:else if $feedFilters.showRelated}
+								<div class="flex items-center gap-1.5 px-2 py-1">
+									<svg class="h-3.5 w-3.5 text-laya-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+									</svg>
+									<span class="text-xs font-medium text-laya-orange whitespace-nowrap">Related</span>
+								</div>
 							{:else}
 								<div class="flex items-center gap-1">
 									<button
@@ -536,6 +574,13 @@
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
 					</svg>
 					<span class="text-xs font-medium text-laya-orange whitespace-nowrap">Bookmarked</span>
+				</div>
+			{:else if $feedFilters.showRelated}
+				<div data-titlebar-center class="flex items-center gap-1.5">
+					<svg class="h-3.5 w-3.5 text-laya-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+					</svg>
+					<span class="text-xs font-medium text-laya-orange whitespace-nowrap">Related</span>
 				</div>
 			{:else}
 				<div data-titlebar-center class="flex items-center gap-1">
@@ -637,7 +682,7 @@
 {:else if isSetupRoute}
 	{@render children()}
 {:else}
-	<div class="flex h-screen flex-col bg-surface-900 pt-[38px] text-surface-50">
+	<div class="flex h-screen flex-col {$glassTheme ? 'bg-transparent' : 'bg-surface-900'} pt-[38px] text-surface-50">
 		<!-- Budget paused banner -->
 		{#if $budgetPaused}
 			<div class="flex items-center justify-center gap-2 bg-red-500/15 border-b border-red-500/30 px-4 py-1.5">
@@ -653,7 +698,7 @@
 		<UpdateBanner />
 
 		<!-- Main content — add right padding when chat sidebar is open so content isn't hidden behind it -->
-		<main class="{$glassTheme ? 'feed-glass-bg' : ''} flex-1 overflow-auto p-4 {$chatOpen ? 'pr-[476px]' : ''}">
+		<main class="flex-1 overflow-auto p-4 {$chatOpen ? 'pr-[476px]' : ''}">
 			{#key page.url.pathname}
 				<div
 					class="h-full"

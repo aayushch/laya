@@ -7,6 +7,7 @@
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { portal } from '$lib/actions/portal';
 	import ListRow from './ListRow.svelte';
+	import { platformDotColor } from '$lib/utils/cardVisuals';
 
 	let {
 		group,
@@ -45,8 +46,6 @@
 	let menuEl: HTMLElement | undefined = $state();
 	let wrapperEl: HTMLElement | undefined = $state();
 	let bulkActionRunning = $state(false);
-	let unlinking = $state(false);
-
 	// Listen for programmatic 'expand' event (e.g. "Show all cards" in GroupSummaryDetail)
 	$effect(() => {
 		if (!wrapperEl) return;
@@ -55,26 +54,8 @@
 		return () => wrapperEl?.removeEventListener('expand', handler);
 	});
 
-	async function unlinkGroup(e: Event) {
-		e.stopPropagation();
-		groupMenuOpen = false;
-		if (!group.context_id) return;
-		unlinking = true;
-		try {
-			await engineApi.unlinkContextGroup(group.context_id);
-		} finally {
-			unlinking = false;
-		}
-	}
-
 	// Extract subject ID from entity_id (e.g., "jira:ticket:FERR-1056" → "FERR-1056")
-	// For linked groups, use the top card's entity_id instead of the context_id
-	const effectiveEntityId = $derived(
-		group.context_id && group.cards[0]?.entity_id
-			? group.cards[0].entity_id
-			: group.entity_id
-	);
-	const subjectId = $derived(effectiveEntityId?.includes(':') ? effectiveEntityId.split(':').pop() : effectiveEntityId);
+	const subjectId = $derived(group.entity_id?.includes(':') ? group.entity_id.split(':').pop() : group.entity_id);
 
 	const hasBookmark = $derived(group.cards.some((c) => c.bookmarked_at));
 	const isGroupSelected = $derived(
@@ -114,18 +95,7 @@
 		bitbucket: 'Bitbucket', calendar: 'Calendar', github: 'GitHub', laya: 'Laya'
 	};
 
-	const isSmartGroup = $derived(!!group.context_id);
-	const isMultiPlatform = $derived(isSmartGroup && (group.platforms?.length ?? 0) > 1);
-	const sourceLabel = $derived(
-		isSmartGroup && isMultiPlatform
-			? 'Multiple'
-			: (platformLabel[group.platform] ?? group.platform)
-	);
-	const sourcesDetail = $derived(
-		isSmartGroup && group.platforms
-			? group.platforms.map(p => platformLabel[p] ?? p).join(', ')
-			: ''
-	);
+	const sourceLabel = $derived(platformLabel[group.platform] ?? group.platform);
 
 	const topCard = $derived(group.cards[0]);
 
@@ -279,7 +249,7 @@
 	}
 </script>
 
-<div bind:this={wrapperEl} class="transition-opacity {isDimmed ? 'opacity-45 hover:opacity-70' : ''}" data-group-entity={group.entity_id}>
+<div bind:this={wrapperEl} class="transition-opacity {isDimmed ? ($glassTheme ? 'glass-dim' : 'opacity-45 hover:opacity-70') : ''}" data-group-entity={group.entity_id}>
 	<!-- Group header: checkbox in gutter + bordered row -->
 	<div class="flex items-center {onbulktoggle ? 'gap-1.5' : ''}">
 		<!-- Bulk selection checkbox (group-level) — in the gutter -->
@@ -309,44 +279,50 @@
 			</div>
 		{/if}
 
-		<div data-group-row={group.entity_id} class="relative flex-1 min-w-0 border hover:z-20 {expanded ? ($glassTheme ? 'rounded-t-lg border-transparent glass-card-flat bg-surface-900/50' : 'rounded-t-lg border-transparent bg-surface-900') : 'list-row-hover rounded-lg border-transparent ' + groupBgStyle} transition-colors
+		<div data-group-row={group.entity_id} data-status={$glassTheme && $cardColors && !allArchived && !expanded ? dominantStatus : undefined} class="relative flex-1 min-w-0 border hover:z-20 {expanded ? ($glassTheme ? 'rounded-t-lg border-transparent glass-card-flat bg-surface-900/50' : 'rounded-t-lg border-transparent bg-surface-900') : 'list-row-hover rounded-lg border-transparent ' + groupBgStyle} transition-colors
 			{isGroupLastViewed ? ($cardColors ? 'card-last-viewed card-last-viewed--compact rounded-lg' : 'card-last-viewed-highlight rounded-lg') : ''}">
 			<!-- Group header row -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
 				class="group/grow flex min-w-0 items-center px-3 py-1.5 cursor-pointer transition-colors"
 				onclick={() => {
-					if (isSmartGroup) {
-						toggle();
+					if (expanded) {
+						expanded = false;
 					} else if (onselectgroup) {
 						onselectgroup(group);
 					} else {
 						onselect(topCard);
 					}
 				}}
-				onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (isSmartGroup) { toggle(); } else if (onselectgroup) { onselectgroup(group); } else { onselect(topCard); } } }}
+				onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (expanded) { expanded = false; } else if (onselectgroup) { onselectgroup(group); } else { onselect(topCard); } } }}
 				role="button"
 				tabindex="0"
 			>
-				<!-- Expand/collapse chevron — same w-5 as card spacer -->
-				<button aria-label="{expanded ? 'Collapse' : 'Expand'} group" class="w-5 shrink-0 flex items-center justify-center rounded text-surface-500 hover:text-surface-300" onclick={(e) => { e.stopPropagation(); toggle(); }}>
-					<svg class="h-3 w-3 transition-transform {expanded ? '' : '-rotate-90'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<!-- Expand/collapse chevron — visual stays w-5 (matches ListRow bookmark column).
+				     Click target overflows vertically into the row's py-1.5 padding and leftward
+				     into the row's px-3 padding, but stops at the right edge so the hover bg
+				     doesn't bleed into the source dot. -->
+				<div class="group/chev relative w-5 shrink-0 flex items-center justify-center">
+					<button
+						aria-label="{expanded ? 'Collapse' : 'Expand'} group"
+						class="absolute inset-0 -my-1.5 -ml-2 rounded transition-colors hover:bg-surface-700/40"
+						onclick={(e) => { e.stopPropagation(); toggle(); }}
+					></button>
+					<svg
+						class="pointer-events-none relative h-3 w-3 transition-transform text-surface-500 group-hover/chev:text-surface-300 {expanded ? '' : '-rotate-90'}"
+						fill="none" stroke="currentColor" viewBox="0 0 24 24"
+					>
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
 					</svg>
-				</button>
+				</div>
 
-				<!-- Source — fixed width, matches ListRow -->
-		<span class="w-[76px] shrink-0 text-[11px] font-semibold uppercase tracking-wider text-surface-500 truncate" title={isSmartGroup && sourcesDetail ? sourcesDetail : sourceLabel}>
-			{sourceLabel}
+				<!-- Source — fixed width, matches ListRow; brand dot prefix mirrors ListRow -->
+		<span class="w-[76px] shrink-0 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-surface-500 truncate" title={sourceLabel}>
+			<span class="h-1 w-1 rounded-full shrink-0" style="background-color: {platformDotColor(group.platform)}"></span>
+			<span class="truncate">{sourceLabel}</span>
 		</span>
-
-		<!-- Linked icon (fixed slot) + Subject ID -->
-		<div class="group/tip relative w-3 shrink-0 ml-2 flex items-center justify-center">
-			{#if isSmartGroup}
-				<svg class="h-3 w-3 text-laya-orange/60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-				<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100">Linked</span>
-			{/if}
-		</div>
+		<!-- Spacer slot — mirrors ListRow's icon spacer so subjectId aligns with ListRow's actor column -->
+		<span class="w-3 shrink-0 ml-2"></span>
 		<span class="w-[90px] shrink-0 ml-1 text-[11px] font-medium text-laya-orange/70 truncate">
 			{subjectId ?? ''}
 		</span>
@@ -374,10 +350,10 @@
 		<div class="group/count relative w-[70px] shrink-0 flex items-center ml-2">
 			<button
 				class="rounded-full bg-laya-orange/10 px-2 py-0.5 text-[10px] font-semibold text-laya-orange hover:bg-laya-orange/20 transition-colors whitespace-nowrap"
-				title={isSmartGroup ? 'Show all groups' : 'Show all cards'}
+				title="Show all cards"
 				onclick={(e) => { e.stopPropagation(); expanded = !expanded; }}
 			>
-				{isSmartGroup ? `${group.sub_groups?.length ?? group.card_count} groups` : `${group.card_count} cards`}
+				{group.card_count} cards
 			</button>
 			<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-transparent bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/count:opacity-100">
 				{statusSummaryTooltip}
@@ -474,13 +450,14 @@
 </div>
 
 {#if groupMenuOpen}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		use:portal
 		class="fixed z-[100] w-40 rounded-lg border p-1 {$glassTheme ? 'glass-menu' : 'border-surface-600 bg-surface-800 shadow-xl shadow-black/30'}"
 		style="top: {menuPos.top}px; right: {menuPos.right}px;"
 		role="menu"
+		tabindex="-1"
 		onclick={(e) => e.stopPropagation()}
+		onkeydown={(e) => { if (e.key === 'Escape') groupMenuOpen = false; }}
 	>
 		{#if canApproveAll}
 			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-violet-400" role="menuitem" onclick={(e) => bulkAction('approve', e)}>Approve All</button>
@@ -509,16 +486,5 @@
 			<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
 			Link to...
 		</button>
-		{#if isSmartGroup}
-			<button
-				class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-red-400"
-				role="menuitem"
-				disabled={unlinking}
-				onclick={unlinkGroup}
-			>
-				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /><line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
-				{unlinking ? 'Unlinking...' : 'Unlink Group'}
-			</button>
-		{/if}
 	</div>
 {/if}

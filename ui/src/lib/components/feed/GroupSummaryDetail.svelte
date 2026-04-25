@@ -6,6 +6,8 @@
 	import StatusDot from './StatusDot.svelte';
 	import { glassTheme } from '$lib/stores/glassTheme';
 
+	import type { ActionCard } from '$lib/api/types';
+
 	let {
 		summary,
 		group,
@@ -16,6 +18,7 @@
 		ongotocard,
 		ongotogroup,
 		ongenerate,
+		onshowrelated,
 	}: {
 		summary: GroupSummary | null;
 		group: CardGroup;
@@ -26,9 +29,22 @@
 		ongotocard?: (cardId: string) => void;
 		ongotogroup?: (entityId: string) => void;
 		ongenerate?: (entityId: string) => void;
+		onshowrelated?: (card: ActionCard) => void;
 	} = $props();
 
 	let regenerateError = $state<string | null>(null);
+	let relatedCount = $state<number | null>(null);
+
+	$effect(() => {
+		const firstCard = group.cards[0];
+		relatedCount = null;
+		if (!onshowrelated || !firstCard) return;
+		engineApi.getRelatedCards(firstCard.card_id).then((data) => {
+			if (group.cards[0]?.card_id === firstCard.card_id) {
+				relatedCount = data.total_related_cards;
+			}
+		}).catch(() => {});
+	});
 
 	function chatAboutGroup() {
 		const lines = [
@@ -282,30 +298,41 @@
 		{/if}
 	</div>
 
-	<!-- Footer actions -->
-	<div class="flex flex-col gap-2 border-t px-5 py-4 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
-		{#if onshowcards}
-			<button
-				class="flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium text-laya-orange transition-colors {$glassTheme ? 'glass-card-flat border-surface-600/40 hover:border-laya-orange/20' : 'border-surface-600 bg-surface-800 hover:bg-surface-700'}"
-				onclick={onshowcards}
-			>
-				Show all {group.card_count} cards
-				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-				</svg>
-			</button>
-		{/if}
-		{#if summary}
-			<button
-				class="flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-xs text-surface-500 transition-colors hover:text-surface-300 disabled:opacity-50"
-				disabled={generating}
-				onclick={regenerate}
-			>
-				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-				</svg>
-				{generating ? 'Regenerating...' : 'Regenerate summary'}
-			</button>
-		{/if}
+	<!-- Footer -->
+	<div class="border-t px-5 py-2 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
+		<div class="flex items-center justify-end gap-1">
+			{#if onshowcards}
+				<button
+					class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-laya-orange"
+					onclick={onshowcards}
+				>
+					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+					</svg>
+					Show all ({group.card_count})
+				</button>
+			{/if}
+			{#if onshowrelated && relatedCount && relatedCount > 0}
+				<button
+					class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-laya-orange"
+					onclick={() => onshowrelated(group.cards[0])}
+				>
+					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="5" cy="12" r="2" stroke-width="2" /><circle cx="19" cy="6" r="2" stroke-width="2" /><circle cx="19" cy="18" r="2" stroke-width="2" /><path stroke-linecap="round" stroke-width="2" d="M7 11l10-4M7 13l10 4" /></svg>
+					Related ({relatedCount})
+				</button>
+			{/if}
+			{#if summary}
+				<button
+					class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-surface-200 disabled:opacity-50"
+					disabled={generating}
+					onclick={regenerate}
+				>
+					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+					</svg>
+					{generating ? '...' : 'Regenerate'}
+				</button>
+			{/if}
+		</div>
 	</div>
 </div>

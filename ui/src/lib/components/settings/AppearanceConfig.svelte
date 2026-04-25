@@ -5,6 +5,7 @@
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { cardDescriptions } from '$lib/stores/cardDescriptions';
+	import { cardSize } from '$lib/stores/cardSize';
 	import { fontScale, type FontScale } from '$lib/stores/fontScale';
 
 	const fontSteps: FontScale[] = [12, 13, 14, 15];
@@ -20,7 +21,7 @@
 <div class="space-y-8">
 
 	<!-- Theme toggle -->
-	<div class="rounded-xl border border-surface-700 bg-surface-800 p-6">
+	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-6">
 		<h3 class="mb-1 font-semibold text-surface-50">Appearance</h3>
 		<p class="mb-5 text-sm text-surface-400">Choose between dark and light interface themes.</p>
 
@@ -95,10 +96,31 @@
 		</div>
 	</div>
 
+	<!-- Glass Theme toggle -->
+	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-6">
+		<div class="flex items-center justify-between">
+			<div>
+				<h3 class="mb-1 font-semibold text-surface-50">Glass Theme</h3>
+				<p class="text-sm text-surface-400">Frosted glass effect on cards and list rows. Adds backdrop blur and translucent surfaces.</p>
+			</div>
+			<button
+				class="relative h-6 w-11 shrink-0 rounded-full transition-colors {$glassTheme ? 'bg-laya-orange' : 'bg-surface-600'}"
+				onclick={() => glassTheme.set(!$glassTheme)}
+				role="switch"
+				aria-checked={$glassTheme}
+				aria-label="Toggle glass theme"
+			>
+				<span
+					class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform {$glassTheme ? 'translate-x-5' : 'translate-x-0'}"
+				></span>
+			</button>
+		</div>
+	</div>
+
 	<!-- Status Colors — parent toggle with Accessible Colors as a nested sub-setting.
 	     The sub-setting is dimmed/disabled when the parent is off, since accessible
 	     colors only shift the status palette and has no effect without it. -->
-	<div class="rounded-xl border border-surface-700 bg-surface-800 p-6">
+	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-6">
 		<div class="flex items-center justify-between">
 			<div>
 				<h3 class="mb-1 font-semibold text-surface-50">Status Colors</h3>
@@ -163,50 +185,8 @@
 		</div>
 	</div>
 
-	<!-- Glass Theme toggle -->
-	<div class="rounded-xl border border-surface-700 bg-surface-800 p-6">
-		<div class="flex items-center justify-between">
-			<div>
-				<h3 class="mb-1 font-semibold text-surface-50">Glass Theme</h3>
-				<p class="text-sm text-surface-400">Frosted glass effect on cards and list rows. Adds backdrop blur and translucent surfaces.</p>
-			</div>
-			<button
-				class="relative h-6 w-11 shrink-0 rounded-full transition-colors {$glassTheme ? 'bg-laya-orange' : 'bg-surface-600'}"
-				onclick={() => glassTheme.set(!$glassTheme)}
-				role="switch"
-				aria-checked={$glassTheme}
-				aria-label="Toggle glass theme"
-			>
-				<span
-					class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform {$glassTheme ? 'translate-x-5' : 'translate-x-0'}"
-				></span>
-			</button>
-		</div>
-	</div>
-
-	<!-- Show Card Descriptions toggle -->
-	<div class="rounded-xl border border-surface-700 bg-surface-800 p-6">
-		<div class="flex items-center justify-between">
-			<div>
-				<h3 class="mb-1 font-semibold text-surface-50">Show Card Descriptions</h3>
-				<p class="text-sm text-surface-400">Show summary text on cards in the feed. Turning this off makes cards more compact.</p>
-			</div>
-			<button
-				class="relative h-6 w-11 shrink-0 rounded-full transition-colors {$cardDescriptions ? 'bg-laya-orange' : 'bg-surface-600'}"
-				onclick={() => cardDescriptions.set(!$cardDescriptions)}
-				role="switch"
-				aria-checked={$cardDescriptions}
-				aria-label="Toggle card descriptions"
-			>
-				<span
-					class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform {$cardDescriptions ? 'translate-x-5' : 'translate-x-0'}"
-				></span>
-			</button>
-		</div>
-	</div>
-
-	<!-- Reduce motion toggle -->
-	<div class="rounded-xl border border-surface-700 bg-surface-800 p-6">
+	<!-- Reduce motion toggle — grouped with Status Colors as accessibility settings -->
+	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-6">
 		<div class="flex items-center justify-between">
 			<div>
 				<h3 class="mb-1 font-semibold text-surface-50">Reduce Motion</h3>
@@ -226,8 +206,53 @@
 		</div>
 	</div>
 
+	<!-- Show Card Descriptions toggle -->
+	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-6">
+		<div class="flex items-center justify-between">
+			<div>
+				<h3 class="mb-1 font-semibold text-surface-50">Show Card Descriptions</h3>
+				<p class="text-sm text-surface-400">Show summary text on cards in the feed. Turning this off makes cards more compact.</p>
+			</div>
+			<button
+				class="relative h-6 w-11 shrink-0 rounded-full transition-colors {$cardDescriptions ? 'bg-laya-orange' : 'bg-surface-600'}"
+				onclick={() => cardDescriptions.set(!$cardDescriptions)}
+				role="switch"
+				aria-checked={$cardDescriptions}
+				aria-label="Toggle card descriptions"
+			>
+				<span
+					class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform {$cardDescriptions ? 'translate-x-5' : 'translate-x-0'}"
+				></span>
+			</button>
+		</div>
+	</div>
+
+	<!-- Card size segmented control — controls vertical density of feed cards -->
+	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-6">
+		<div class="flex items-center justify-between gap-6">
+			<div>
+				<h3 class="mb-1 font-semibold text-surface-50">Card Size</h3>
+				<p class="text-sm text-surface-400">Compact stacks more cards per screen by inlining metadata and tightening spacing. Relaxed shows the full layout.</p>
+			</div>
+			<div role="radiogroup" aria-label="Card size" class="inline-flex shrink-0 rounded-lg border border-surface-700 bg-surface-900/50 p-0.5">
+				<button
+					role="radio"
+					aria-checked={$cardSize === 'compact'}
+					class="rounded-md px-3 py-1 text-xs font-medium transition-colors {$cardSize === 'compact' ? 'bg-laya-orange text-white' : 'text-surface-400 hover:text-surface-200'}"
+					onclick={() => cardSize.set('compact')}
+				>Compact</button>
+				<button
+					role="radio"
+					aria-checked={$cardSize === 'relaxed'}
+					class="rounded-md px-3 py-1 text-xs font-medium transition-colors {$cardSize === 'relaxed' ? 'bg-laya-orange text-white' : 'text-surface-400 hover:text-surface-200'}"
+					onclick={() => cardSize.set('relaxed')}
+				>Relaxed</button>
+			</div>
+		</div>
+	</div>
+
 	<!-- Font scale -->
-	<div class="rounded-xl border border-surface-700 bg-surface-800 p-6">
+	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-6">
 		<h3 class="mb-1 font-semibold text-surface-50">Text Size</h3>
 		<p class="mb-5 text-sm text-surface-400">Adjust the base font size for chat messages and card content.</p>
 
