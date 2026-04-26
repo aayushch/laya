@@ -124,23 +124,16 @@ async def run_emit(
                 log.debug("gmail_entity_resolved_via_reverse_lookup", entity_id=entity_id)
 
     # Build a human-readable source reference for linking back to the origin
+    from laya.egress.registry import format_source_ref
+
     source_url = event.subject.url or None
-    _platform = event.source.platform
-    _subj_id = event.subject.id
-    if _platform == "github":
-        source_ref = f"PR #{_subj_id}" if event.subject.type == "pull_request" else f"#{_subj_id}"
-    elif _platform == "jira":
-        source_ref = _subj_id  # already "PROJ-123"
-    elif _platform == "gmail":
-        source_ref = event.subject.title or _subj_id
-    elif _platform == "slack":
-        source_ref = event.subject.title or _subj_id
-    elif _platform == "outlook":
-        source_ref = event.subject.title or _subj_id
-        if not source_url and _subj_id:
-            source_url = f"https://outlook.office365.com/mail/inbox/id/{_subj_id}"
-    else:
-        source_ref = _subj_id or None
+    source_ref, source_url = format_source_ref(
+        event.source.platform,
+        event.subject.id,
+        event.subject.type,
+        event.subject.title,
+        source_url,
+    )
 
     # 1. Detect has_workspace and resolve card status from worker results
     has_workspace = False

@@ -949,14 +949,7 @@ _CHAPTER_LABELS = {
     "pr_declined": "Declined",
 }
 
-_PLATFORM_CHAPTER_DEFAULTS = {
-    "jira": "Update",
-    "github": "Code",
-    "bitbucket": "Code",
-    "slack": "Discussion",
-    "gmail": "Email",
-    "calendar": "Meeting",
-}
+from laya.egress.registry import get_chapter_default as _get_chapter_default
 
 
 def _build_clusters(
@@ -1147,7 +1140,7 @@ def _infer_chapter_label(card: CardResponse, is_first: bool = False) -> str:
         return "Archived"
 
     # Use platform defaults
-    return _PLATFORM_CHAPTER_DEFAULTS.get(platform, "Update")
+    return _get_chapter_default(platform)
 
 
 # ---------------------------------------------------------------------------

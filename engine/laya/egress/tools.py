@@ -6,6 +6,14 @@ actions via natural language in Laya chat.
 
 from __future__ import annotations
 
+from laya.egress.registry import (
+    get_composable_platforms,
+    get_email_platforms,
+    get_pr_platforms,
+    get_ticket_platforms,
+    get_transition_platforms,
+)
+
 
 def get_egress_tool_definitions() -> list[dict]:
     """Return egress tool definitions in OpenAI function-calling format."""
@@ -18,11 +26,13 @@ def get_egress_tool_definitions() -> list[dict]:
         _send_slack_message(),
         _open_compose(),
         _confirm_egress(),
+        _find_contact(),
     ]
 
 
-# Tool name set for routing in executor.py
-EGRESS_TOOL_NAMES = frozenset({
+# Tools that go through the preview/confirm/execute flow via handle_egress_tool.
+# open_compose, confirm_egress, and find_contact have dedicated handlers.
+PREVIEWABLE_EGRESS_TOOLS = frozenset({
     "send_email",
     "comment_on_ticket",
     "transition_ticket",
@@ -73,7 +83,7 @@ def _send_email() -> dict:
                     },
                     "platform": {
                         "type": "string",
-                        "enum": ["gmail", "outlook", "smtp"],
+                        "enum": get_email_platforms(),
                         "description": "Email platform. Infer from event source_platform.",
                     },
                 },
@@ -98,7 +108,7 @@ def _comment_on_ticket() -> dict:
                 "properties": {
                     "platform": {
                         "type": "string",
-                        "enum": ["jira", "github", "linear"],
+                        "enum": get_ticket_platforms(),
                         "description": "Platform hosting the ticket.",
                     },
                     "ticket_id": {
@@ -134,7 +144,7 @@ def _transition_ticket() -> dict:
                 "properties": {
                     "platform": {
                         "type": "string",
-                        "enum": ["jira", "linear"],
+                        "enum": get_transition_platforms(),
                     },
                     "ticket_id": {
                         "type": "string",
@@ -173,7 +183,7 @@ def _create_ticket() -> dict:
                 "properties": {
                     "platform": {
                         "type": "string",
-                        "enum": ["jira", "github", "linear"],
+                        "enum": get_ticket_platforms(),
                     },
                     "project": {
                         "type": "string",
@@ -228,7 +238,7 @@ def _pr_action() -> dict:
                 "properties": {
                     "platform": {
                         "type": "string",
-                        "enum": ["github", "bitbucket"],
+                        "enum": get_pr_platforms(),
                     },
                     "pr_id": {
                         "type": "string",
@@ -310,7 +320,7 @@ def _open_compose() -> dict:
                 "properties": {
                     "platform": {
                         "type": "string",
-                        "enum": ["gmail", "outlook", "smtp", "slack", "jira", "github", "bitbucket"],
+                        "enum": get_composable_platforms(),
                     },
                     "action_type": {
                         "type": "string",
@@ -345,6 +355,35 @@ def _open_compose() -> dict:
             },
         },
     }
+
+
+def _find_contact() -> dict:
+    return {
+        "type": "function",
+        "function": {
+            "name": "find_contact",
+            "description": (
+                "Look up a contact's email address by name, handle, or partial email. "
+                "Use this when the user mentions a person by name and you need their "
+                "email address for the To or CC field."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Person's name, handle, or partial email to search for.",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    }
+
+
+def get_find_contact_tool() -> dict:
+    """Return the find_contact tool definition (used by ai-assist endpoint)."""
+    return _find_contact()
 
 
 def _confirm_egress() -> dict:

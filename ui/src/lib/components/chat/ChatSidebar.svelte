@@ -458,7 +458,7 @@
 						placeholder="Ask something..."
 						rows={3}
 						style="min-height: 4.5rem; overflow-y: auto;"
-						class="w-full resize-none rounded-lg border {$glassTheme ? 'border-white/[0.08] bg-white/[0.04]' : 'border-surface-600 bg-surface-800'} py-2 pl-3 pr-10 text-laya-base text-surface-200 placeholder-surface-500 focus:border-laya-orange/50 focus:outline-none"
+						class="w-full resize-none rounded-lg border {$glassTheme ? 'border-white/[0.08] bg-white/[0.04]' : 'border-surface-500 bg-surface-800'} py-2 pl-3 pr-10 text-laya-base text-surface-200 placeholder-surface-500 focus:border-laya-orange/50 focus:outline-none"
 					></textarea>
 					<button
 						onclick={send}
