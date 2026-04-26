@@ -13,9 +13,11 @@
 	let stepIndex = $derived(fontSteps.indexOf($fontScale));
 
 	// Mockup color hues — shift when accessible mode is on
-	const hDone = $derived($accessibleColors ? 195 : 162);    // emerald → teal
-	const hApproval = $derived($accessibleColors ? 240 : 285); // violet → blue
-	const hFailed = $derived($accessibleColors ? 40 : 25);     // rose → warm vermillion
+	const hPending = $derived($accessibleColors ? 230 : 68);   // amber → cyan-blue
+	const hDone = $derived($accessibleColors ? 88 : 162);      // emerald → yellow
+	const hApproval = $derived($accessibleColors ? 302 : 285); // violet → purple
+	const hFailed = $derived($accessibleColors ? 257 : 25);    // rose → slate
+	const cFailed = $derived($accessibleColors ? 0.01 : 0.05); // low chroma for slate
 </script>
 
 <div class="space-y-8">
@@ -43,12 +45,12 @@
 					</div>
 					<div class="flex gap-1.5 p-2">
 						<div class="flex flex-1 flex-col gap-1">
-							<div class="h-10 rounded-md" style="border:1px solid {$cardColors ? 'oklch(0.51 0.077 68 / 30%)' : 'oklch(0.34 0.009 52)'}; background:{$cardColors ? 'oklch(0.21 0.039 68 / 55%)' : 'oklch(0.265 0.008 50)'}"></div>
+							<div class="h-10 rounded-md" style="border:1px solid {$cardColors ? `oklch(0.51 0.077 ${hPending} / 30%)` : 'oklch(0.34 0.009 52)'}; background:{$cardColors ? `oklch(0.21 0.039 ${hPending} / 55%)` : 'oklch(0.265 0.008 50)'}"></div>
 							<div class="h-10 rounded-md" style="border:1px solid {$cardColors ? `oklch(0.51 0.14 ${hDone} / 20%)` : 'oklch(0.34 0.009 52)'}; background:{$cardColors ? `oklch(0.21 0.04 ${hDone} / 50%)` : 'oklch(0.265 0.008 50)'}"></div>
 						</div>
 						<div class="flex flex-1 flex-col gap-1">
 							<div class="h-14 rounded-md" style="border:1px solid {$cardColors ? `oklch(0.51 0.1 ${hApproval} / 25%)` : 'oklch(0.34 0.009 52)'}; background:{$cardColors ? `oklch(0.21 0.06 ${hApproval} / 55%)` : 'oklch(0.265 0.008 50)'}"></div>
-							<div class="h-6 rounded-md" style="border:1px solid {$cardColors ? `oklch(0.51 0.1 ${hFailed} / 35%)` : 'oklch(0.34 0.009 52)'}; background:{$cardColors ? `oklch(0.21 0.05 ${hFailed} / 60%)` : 'oklch(0.265 0.008 50)'}"></div>
+							<div class="h-6 rounded-md" style="border:1px solid {$cardColors ? `oklch(0.51 ${cFailed} ${hFailed} / 35%)` : 'oklch(0.34 0.009 52)'}; background:{$cardColors ? `oklch(0.21 ${cFailed} ${hFailed} / 60%)` : 'oklch(0.265 0.008 50)'}"></div>
 						</div>
 					</div>
 				</div>
@@ -77,12 +79,12 @@
 					</div>
 					<div class="flex gap-1.5 p-2">
 						<div class="flex flex-1 flex-col gap-1">
-							<div class="h-10 rounded-md" style="border:1px solid {$cardColors ? 'oklch(0.80 0.07 70 / 55%)' : 'oklch(0.88 0.006 70)'}; background:{$cardColors ? 'oklch(0.94 0.045 75)' : 'oklch(0.935 0.006 72)'}"></div>
+							<div class="h-10 rounded-md" style="border:1px solid {$cardColors ? `oklch(0.80 0.07 ${hPending} / 55%)` : 'oklch(0.88 0.006 70)'}; background:{$cardColors ? `oklch(0.94 0.045 ${hPending})` : 'oklch(0.935 0.006 72)'}"></div>
 							<div class="h-10 rounded-md" style="border:1px solid {$cardColors ? `oklch(0.82 0.04 ${hDone} / 30%)` : 'oklch(0.88 0.006 70)'}; background:{$cardColors ? `oklch(0.97 0.015 ${hDone})` : 'oklch(0.935 0.006 72)'}"></div>
 						</div>
 						<div class="flex flex-1 flex-col gap-1">
 							<div class="h-14 rounded-md" style="border:1px solid {$cardColors ? `oklch(0.74 0.07 ${hApproval} / 45%)` : 'oklch(0.88 0.006 70)'}; background:{$cardColors ? `oklch(0.94 0.04 ${hApproval})` : 'oklch(0.935 0.006 72)'}"></div>
-							<div class="h-6 rounded-md" style="border:1px solid {$cardColors ? `oklch(0.74 0.08 ${hFailed} / 55%)` : 'oklch(0.88 0.006 70)'}; background:{$cardColors ? `oklch(0.94 0.045 ${hFailed})` : 'oklch(0.935 0.006 72)'}"></div>
+							<div class="h-6 rounded-md" style="border:1px solid {$cardColors ? `oklch(0.74 ${cFailed} ${hFailed} / 55%)` : 'oklch(0.88 0.006 70)'}; background:{$cardColors ? `oklch(0.94 ${cFailed} ${hFailed})` : 'oklch(0.935 0.006 72)'}"></div>
 						</div>
 					</div>
 				</div>
@@ -165,19 +167,19 @@
 			{#if $accessibleColors && $cardColors}
 				<div class="mt-3 flex flex-wrap gap-3 text-[11px] text-surface-400">
 					<div class="flex items-center gap-1.5">
-						<span class="h-2.5 w-2.5 rounded-full" style="background: oklch(0.75 0.17 65)"></span>
+						<span class="h-2.5 w-2.5 rounded-full" style="background: oklch(0.69 0.15 230)"></span>
 						Pending
 					</div>
 					<div class="flex items-center gap-1.5">
-						<span class="h-2.5 w-2.5 rounded-full" style="background: oklch(0.68 0.16 240)"></span>
+						<span class="h-2.5 w-2.5 rounded-full" style="background: oklch(0.59 0.23 302)"></span>
 						Approval
 					</div>
 					<div class="flex items-center gap-1.5">
-						<span class="h-2.5 w-2.5 rounded-full" style="background: oklch(0.72 0.12 195)"></span>
+						<span class="h-2.5 w-2.5 rounded-full" style="background: oklch(0.79 0.17 88)"></span>
 						Done
 					</div>
 					<div class="flex items-center gap-1.5">
-						<span class="h-2.5 w-2.5 rounded-full" style="background: oklch(0.62 0.18 40)"></span>
+						<span class="h-2.5 w-2.5 rounded-full" style="background: oklch(0.715 0.02 252)"></span>
 						Failed
 					</div>
 				</div>

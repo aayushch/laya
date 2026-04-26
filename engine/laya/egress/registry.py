@@ -426,6 +426,259 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
 }
 
 
+_COMPOSE_GUIDANCE: dict[str, str] = {
+    "gmail": (
+        "You are composing an EMAIL. Field requirements:\n"
+        "- 'to': MUST be a valid email address (user@domain.com). Never put a name or handle here.\n"
+        "- 'cc': MUST be valid email addresses (comma-separated). Never put names or handles here.\n"
+        "- 'subject': concise email subject line.\n"
+        "- 'body': email body with greeting and signature."
+    ),
+    "outlook": (
+        "You are composing an EMAIL. Field requirements:\n"
+        "- 'to': MUST be a valid email address (user@domain.com). Never put a name or handle here.\n"
+        "- 'cc': MUST be valid email addresses (comma-separated). Never put names or handles here.\n"
+        "- 'subject': concise email subject line.\n"
+        "- 'body': email body with greeting and signature."
+    ),
+    "slack": (
+        "You are composing a SLACK MESSAGE. Field requirements:\n"
+        "- 'channel': Slack channel name or ID (e.g. '#general', 'C01234'). Not a person's name.\n"
+        "- 'message': message text (supports mrkdwn formatting)."
+    ),
+    "jira": (
+        "You are composing a JIRA ISSUE or COMMENT. Field requirements:\n"
+        "- 'project': uppercase Jira project key (e.g. 'PROJ', 'ENG'). Not a full project name.\n"
+        "- 'summary': concise one-line issue title.\n"
+        "- 'description': full issue/comment body text."
+    ),
+    "linear": (
+        "You are composing a LINEAR ISSUE or COMMENT. Field requirements:\n"
+        "- 'team_id': Linear team identifier.\n"
+        "- 'title': concise one-line issue title.\n"
+        "- 'body': full issue/comment body text."
+    ),
+    "github": (
+        "You are composing a GITHUB ISSUE, PR, or COMMENT. Field requirements:\n"
+        "- 'repo': repository in owner/repo format (e.g. 'acme/backend').\n"
+        "- 'title': concise one-line issue/PR title.\n"
+        "- 'body': full body text (supports markdown)."
+    ),
+    "bitbucket": (
+        "You are composing a BITBUCKET PR or COMMENT. Field requirements:\n"
+        "- 'repo': repository in workspace/repo format.\n"
+        "- 'title': concise one-line PR title.\n"
+        "- 'body': full body text (supports markdown)."
+    ),
+    "notion": (
+        "You are composing a NOTION PAGE or COMMENT. Field requirements:\n"
+        "- 'title': page title.\n"
+        "- 'body': page or comment body text."
+    ),
+    "calendar": (
+        "You are creating a CALENDAR EVENT. Field requirements:\n"
+        "- 'title': event title.\n"
+        "- 'start': start date/time.\n"
+        "- 'end': end date/time.\n"
+        "- 'description': event description (optional).\n"
+        "- 'attendees': attendee email addresses (optional)."
+    ),
+    "outlook_calendar": (
+        "You are creating an OUTLOOK CALENDAR EVENT. Field requirements:\n"
+        "- 'title': event title.\n"
+        "- 'start': start date/time.\n"
+        "- 'end': end date/time.\n"
+        "- 'description': event description (optional).\n"
+        "- 'attendees': attendee email addresses (optional)."
+    ),
+}
+
+_PLATFORM_HINTS: dict[str, str] = {
+    "gmail": "a professional email",
+    "outlook": "a professional email",
+    "smtp": "a professional email",
+    "slack": "a Slack message",
+    "jira": "a Jira issue or comment",
+    "linear": "a Linear issue or comment",
+    "github": "a GitHub issue, PR, or comment",
+    "bitbucket": "a Bitbucket PR or comment",
+    "notion": "a Notion page or comment",
+    "calendar": "a calendar event",
+    "outlook_calendar": "an Outlook calendar event",
+}
+
+
+_DEFAULT_DRAFT_SCHEMA: dict = {
+    "name": "draft_output",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "body": {
+                "type": "string",
+                "description": "The drafted message body text.",
+            },
+        },
+        "required": ["body"],
+        "additionalProperties": False,
+    },
+}
+
+_DRAFT_SCHEMAS: dict[str, dict] = {
+    "gmail": {
+        "name": "email_draft",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "to": {
+                    "type": "string",
+                    "description": (
+                        "Recipient email address in user@domain.com format. "
+                        "MUST be a valid email address — never a plain name or handle. "
+                        "Call find_contact to resolve names/handles to email addresses. "
+                        "Empty string if unknown."
+                    ),
+                },
+                "cc": {
+                    "type": "string",
+                    "description": (
+                        "CC email addresses in user@domain.com format (comma-separated if multiple). "
+                        "MUST be valid email addresses — never plain names or handles. "
+                        "Call find_contact to resolve names/handles to email addresses. "
+                        "Empty string if none."
+                    ),
+                },
+                "subject": {
+                    "type": "string",
+                    "description": "Email subject line. Empty string if already provided in context.",
+                },
+                "body": {
+                    "type": "string",
+                    "description": "The email body text, ready to send. Include greeting and signature.",
+                },
+            },
+            "required": ["to", "cc", "subject", "body"],
+            "additionalProperties": False,
+        },
+    },
+    "slack": {
+        "name": "slack_draft",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "channel": {
+                    "type": "string",
+                    "description": (
+                        "Slack channel name or ID (e.g. '#general', 'C01234'). "
+                        "Empty string if unknown."
+                    ),
+                },
+                "message": {
+                    "type": "string",
+                    "description": "The Slack message text (supports mrkdwn formatting).",
+                },
+            },
+            "required": ["channel", "message"],
+            "additionalProperties": False,
+        },
+    },
+    "jira": {
+        "name": "jira_draft",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "project": {
+                    "type": "string",
+                    "description": (
+                        "Jira project key (e.g. 'PROJ', 'ENG'). "
+                        "Must be an uppercase project key, not a full name. "
+                        "Empty string if unknown."
+                    ),
+                },
+                "summary": {
+                    "type": "string",
+                    "description": "Issue summary/title — a concise one-line description. Empty string if not applicable.",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Issue or comment body text with full details.",
+                },
+            },
+            "required": ["project", "summary", "description"],
+            "additionalProperties": False,
+        },
+    },
+    "github": {
+        "name": "github_draft",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": (
+                        "Repository in owner/repo format (e.g. 'acme/backend'). "
+                        "Empty string if unknown."
+                    ),
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Issue or PR title — a concise one-line description. Empty string if not applicable.",
+                },
+                "body": {
+                    "type": "string",
+                    "description": "Issue/PR/comment body text (supports markdown).",
+                },
+            },
+            "required": ["repo", "title", "body"],
+            "additionalProperties": False,
+        },
+    },
+}
+# Platforms that share a schema with another
+_DRAFT_SCHEMAS["outlook"] = _DRAFT_SCHEMAS["gmail"]
+_DRAFT_SCHEMAS["smtp"] = _DRAFT_SCHEMAS["gmail"]
+_DRAFT_SCHEMAS["bitbucket"] = _DRAFT_SCHEMAS["github"]
+
+
+def get_draft_schema(platform: str) -> dict:
+    """Return the structured output JSON schema for composing on a platform."""
+    return _DRAFT_SCHEMAS.get(platform, _DEFAULT_DRAFT_SCHEMA)
+
+
+_BODY_FIELD: dict[str, str] = {
+    "gmail": "body",
+    "outlook": "body",
+    "smtp": "body",
+    "slack": "message",
+    "jira": "description",
+    "linear": "body",
+    "github": "body",
+    "bitbucket": "body",
+    "notion": "body",
+    "calendar": "description",
+    "outlook_calendar": "description",
+}
+
+
+def get_body_field(platform: str) -> str:
+    """Return the name of the primary text/body field for a platform."""
+    return _BODY_FIELD.get(platform, "body")
+
+
+def get_compose_guidance(platform: str) -> str:
+    """Return LLM compose guidance for a platform, or empty string if unknown."""
+    return _COMPOSE_GUIDANCE.get(platform, "")
+
+
+def get_platform_hint(platform: str) -> str:
+    """Return a short human-readable description like 'a professional email'."""
+    return _PLATFORM_HINTS.get(platform, f"a {platform} message")
+
+
 def get_capabilities(platform: str) -> list[EgressCapability]:
     """Return the list of capabilities for a platform."""
     return _CAPABILITIES.get(platform, [])

@@ -250,7 +250,7 @@ class TestActionPayloadPolish:
         """POST /cards/:id/action-payload/polish writes polished text back to the action."""
         await insert_test_card(db, status="ready")
 
-        fake_response = type("R", (), {"content": "Polished reply body."})()
+        fake_response = type("R", (), {"content": "Polished reply body.", "parsed": {"polished": "Polished reply body."}})()
         from laya.main import app
 
         with patch("laya.llm.client.llm_call", new=AsyncMock(return_value=fake_response)):

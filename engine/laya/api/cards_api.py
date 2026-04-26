@@ -1120,6 +1120,22 @@ async def _run_polish(
     from laya.llm.client import llm_call
     from laya.llm.prompts.chat import build_polish_messages
 
+    polish_schema = {
+        "name": "polish_output",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "polished": {
+                    "type": "string",
+                    "description": "The polished/rewritten text.",
+                },
+            },
+            "required": ["polished"],
+            "additionalProperties": False,
+        },
+    }
+
     polished_text: str | None = None
     error_message: str | None = None
     try:
@@ -1131,8 +1147,12 @@ async def _run_polish(
             max_tokens=2000,
             card_id=card_id,
             space_id=space_id,
+            response_schema=polish_schema,
         )
-        polished_text = _strip_fence_wrap((response.content or "").strip())
+        if response.parsed and isinstance(response.parsed, dict):
+            polished_text = response.parsed.get("polished", "")
+        else:
+            polished_text = _strip_fence_wrap((response.content or "").strip())
         if not polished_text:
             error_message = "Polish returned empty response"
     except Exception as exc:  # noqa: BLE001 — surface any LLM failure to the user

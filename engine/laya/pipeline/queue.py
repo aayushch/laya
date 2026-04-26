@@ -260,11 +260,22 @@ async def process_event(event_id: str) -> None:
             }
         )
 
+        # Check for existing card from a prior failed attempt (retry scenario).
+        # Reuse the same card_id so emit UPDATEs instead of INSERTing a duplicate.
+        existing_card_id = None
+        db = await get_db()
+        _existing_rows = await db.execute_fetchall(
+            "SELECT card_id FROM action_cards WHERE event_id = ? LIMIT 1",
+            (event_id,),
+        )
+        if _existing_rows:
+            existing_card_id = _existing_rows[0]["card_id"]
+
         # WORKERS → STAGER → EMIT (inline, not background fire-and-forget)
         if router_output and router_output.requires_research:
-            await _run_workers_pipeline(event, router_output, space_id, user_identity=user_identity, actor_relationship=actor_relationship, participant_roles=participant_roles)
+            await _run_workers_pipeline(event, router_output, space_id, user_identity=user_identity, actor_relationship=actor_relationship, participant_roles=participant_roles, existing_card_id=existing_card_id)
         elif router_output:
-            await _run_simple_pipeline(event, router_output, space_id, user_identity=user_identity, actor_relationship=actor_relationship, participant_roles=participant_roles)
+            await _run_simple_pipeline(event, router_output, space_id, user_identity=user_identity, actor_relationship=actor_relationship, participant_roles=participant_roles, existing_card_id=existing_card_id)
 
         await _mark_completed(event_id)
 
@@ -286,6 +297,7 @@ async def _run_workers_pipeline(
     user_identity: dict | None = None,
     actor_relationship: str = "external",
     participant_roles: dict | None = None,
+    existing_card_id: str | None = None,
 ) -> None:
     """Workers → Stager → Emit with pre-created card."""
     import uuid as _uuid
@@ -295,49 +307,72 @@ async def _run_workers_pipeline(
     from laya.pipeline.stager import run_stager
     from laya.pipeline.workers import run_workers
 
-    card_id = f"card_{_uuid.uuid4().hex[:12]}"
-    entity_id = f"{event.source.platform}:{event.subject.type}:{event.subject.id}"
-    db = await get_db()
-    now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    await db.execute(
-        """INSERT INTO action_cards
-           (card_id, event_id, priority, persona, category, header, summary,
-            status, privacy_tier, has_workspace, entity_id, space_id, group_active_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            card_id,
-            event.event_id,
-            router_output.priority.value,
-            router_output.persona.value,
-            router_output.category.value,
-            event.subject.title,
-            "Researching\u2026",
-            "pending",
-            2,
-            False,
-            entity_id,
-            space_id,
-            now_ts,
-        ),
-    )
-    await db.commit()
-
-    await manager.broadcast(
-        {
-            "type": "card_created",
-            "card_id": card_id,
-            "payload": {
-                "header": event.subject.title,
-                "summary": "Researching\u2026",
-                "priority": router_output.priority.value,
-                "persona": router_output.persona.value,
-                "category": router_output.category.value,
-                "status": "pending",
-                "has_workspace": False,
-                "privacy_tier": 2,
-            },
-        }
-    )
+    if existing_card_id:
+        # Retry: reuse the existing card, reset it to provisional state
+        card_id = existing_card_id
+        db = await get_db()
+        await db.execute(
+            """UPDATE action_cards SET
+               status='pending', header=?, summary='Researching\u2026',
+               failed_stage=NULL, updated_at=CURRENT_TIMESTAMP
+               WHERE card_id=?""",
+            (event.subject.title, card_id),
+        )
+        await db.commit()
+        await manager.broadcast(
+            {
+                "type": "card_updated",
+                "card_id": card_id,
+                "payload": {
+                    "header": event.subject.title,
+                    "summary": "Researching\u2026",
+                    "status": "pending",
+                },
+            }
+        )
+    else:
+        card_id = f"card_{_uuid.uuid4().hex[:12]}"
+        entity_id = f"{event.source.platform}:{event.subject.type}:{event.subject.id}"
+        db = await get_db()
+        now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        await db.execute(
+            """INSERT INTO action_cards
+               (card_id, event_id, priority, persona, category, header, summary,
+                status, privacy_tier, has_workspace, entity_id, space_id, group_active_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                card_id,
+                event.event_id,
+                router_output.priority.value,
+                router_output.persona.value,
+                router_output.category.value,
+                event.subject.title,
+                "Researching\u2026",
+                "pending",
+                2,
+                False,
+                entity_id,
+                space_id,
+                now_ts,
+            ),
+        )
+        await db.commit()
+        await manager.broadcast(
+            {
+                "type": "card_created",
+                "card_id": card_id,
+                "payload": {
+                    "header": event.subject.title,
+                    "summary": "Researching\u2026",
+                    "priority": router_output.priority.value,
+                    "persona": router_output.persona.value,
+                    "category": router_output.category.value,
+                    "status": "pending",
+                    "has_workspace": False,
+                    "privacy_tier": 2,
+                },
+            }
+        )
 
     try:
         results = await run_workers(event, router_output, card_id=card_id, space_id=space_id, user_identity=user_identity, actor_relationship=actor_relationship, participant_roles=participant_roles)
@@ -362,13 +397,14 @@ async def _run_simple_pipeline(
     user_identity: dict | None = None,
     actor_relationship: str = "external",
     participant_roles: dict | None = None,
+    existing_card_id: str | None = None,
 ) -> None:
     """Stager → Emit for simple events."""
     from laya.pipeline.emit import run_emit
     from laya.pipeline.stager import run_stager
 
     stager_output = await run_stager(event, router_output, worker_results=None, space_id=space_id, user_identity=user_identity, actor_relationship=actor_relationship, participant_roles=participant_roles)
-    await run_emit(event, router_output, stager_output, space_id=space_id)
+    await run_emit(event, router_output, stager_output, space_id=space_id, card_id=existing_card_id)
 
 
 # ── recovery & watchdog ───────────────────────────────────────────────────

@@ -177,16 +177,22 @@
 				context: buildPayload()
 			});
 			const draft = result.draft;
-			// Apply drafted fields back to the form
 			if (activePlatform === 'gmail') {
 				if (draft.body) emailBody = draft.body;
 				if (draft.subject && !emailSubject) emailSubject = draft.subject;
+				if (draft.to && !emailTo) emailTo = draft.to;
+				if (draft.cc && !emailCc) { emailCc = draft.cc; showCc = true; }
 			} else if (activePlatform === 'slack') {
 				if (draft.message) slackMessage = draft.message;
+				if (draft.channel && !slackChannel) slackChannel = draft.channel;
 			} else if (activePlatform === 'jira') {
 				if (draft.description) jiraDescription = draft.description;
+				if (draft.summary && !jiraSummary) jiraSummary = draft.summary;
+				if (draft.project && !jiraProject) jiraProject = draft.project;
 			} else if (activePlatform === 'github') {
 				if (draft.body) ghBody = draft.body;
+				if (draft.title && !ghTitle) ghTitle = draft.title;
+				if (draft.repo && !ghRepo) ghRepo = draft.repo;
 			}
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'AI assist failed';
