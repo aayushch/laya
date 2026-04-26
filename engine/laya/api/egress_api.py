@@ -117,37 +117,46 @@ def _clean_ai_draft(raw: str) -> str:
             text = text[:-3]
         text = text.strip()
 
-    # Strip common reasoning headers: "Thinking Process:", "## Analysis", etc.
-    # Find where the actual draft starts — look for patterns that signal end of reasoning
+    # Defense-in-depth: strip <think> blocks (also done in llm_call)
+    if "<think>" in text:
+        text = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL).strip()
+
+    lines = text.split("\n")
+    first_line_lower = lines[0].strip().lower() if lines else ""
+
+    # Detect reasoning preamble — models sometimes dump chain-of-thought as plain text
     thinking_patterns = [
         r"^(?:#{1,3}\s*)?(?:thinking|thought|analysis|reasoning|approach|plan|evaluation|step)\s*(?:process)?:?\s*$",
         r"^\*{1,2}(?:thinking|thought|analysis|reasoning)\s*(?:process)?:?\*{1,2}\s*$",
         r"^(?:let me|i will|i need to|first,? let)",
+        r"^here'?s\s+(?:a|my|the)\s+(?:thinking|thought|analysis|reasoning|approach|plan|draft)",
+        r"^\d+\.\s+\*{0,2}(?:analyze|identify|draft|refine|check|review|evaluate|understand|consider|step)\b",
     ]
-    lines = text.split("\n")
 
-    # Check if the first line looks like reasoning
-    first_line_lower = lines[0].strip().lower() if lines else ""
     is_thinking = any(re.match(pat, first_line_lower) for pat in thinking_patterns)
 
     if is_thinking:
-        # Try to find the actual draft after reasoning.
-        # Common markers: a greeting like "Hi", "Hello", "Dear", or double newlines
-        # followed by text that looks like a message body.
         draft_start_patterns = [
             r"^(?:hi|hello|hey|dear|good morning|good afternoon|good evening)\b",
             r"^(?:subject|re):\s",
+            r"^(?:thanks|thank you|i hope|i wanted|just wanted|following up|as discussed|per our|please find)\b",
         ]
+        # Find the last blank-line-separated block that starts with a draft
+        # pattern. Earlier blocks may be examples inside the reasoning itself.
+        block_starts: list[int] = []
         for i, line in enumerate(lines):
-            stripped = line.strip().lower()
             if i == 0:
                 continue
+            stripped = line.strip().lower()
             if any(re.match(pat, stripped) for pat in draft_start_patterns):
-                text = "\n".join(lines[i:]).strip()
-                break
+                # Only count if preceded by a blank line (= start of a new block)
+                if i > 0 and lines[i - 1].strip() == "":
+                    block_starts.append(i)
+
+        if block_starts:
+            text = "\n".join(lines[block_starts[-1]:]).strip()
         else:
-            # No clear draft start found — take everything after last "---" or
-            # double blank line as a fallback
+            # Fallback: take everything after last "---" or double blank line
             for i in range(len(lines) - 1, 0, -1):
                 if lines[i].strip() == "---" or (
                     i > 0 and lines[i - 1].strip() == "" and lines[i].strip() == ""
@@ -174,20 +183,85 @@ class AiAssistRequest(BaseModel):
     context: dict
 
 
+
+
+
+
+_FIND_CONTACT_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "find_contact",
+        "description": (
+            "Look up a contact's email address by name, handle, or partial email. "
+            "Use this when the user mentions a person by name and you need their "
+            "email address for the To or CC field."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Person's name, handle, or partial email to search for.",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+_MAX_TOOL_ROUNDS = 3
+
+
+def _build_ai_assist_system_prompt(kind: str, platform: str) -> str:
+    from laya.config import get_self_user
+    from laya.egress.registry import get_compose_guidance
+
+    identity_block = ""
+    self_user = get_self_user()
+    if self_user:
+        identity_block = (
+            f"\nSENDER IDENTITY:\n"
+            f"- Name: {self_user['name']}\n"
+            f"- Email: {self_user['email']}\n"
+            f"Use this name in the email signature (e.g. 'Best regards,\\n{self_user['name']}').\n"
+        )
+
+    guidance = get_compose_guidance(platform)
+    platform_block = f"\nPLATFORM:\n{guidance}\n" if guidance else ""
+
+    tool_block = (
+        "\nCONTACT LOOKUP:\n"
+        "You have access to a find_contact tool. When the user mentions a person by "
+        "name, handle, or alias, you MUST call find_contact to resolve their details "
+        "(email address, Slack handle, etc.) before producing your final response. "
+        "You may call it multiple times for different people. "
+        "Never guess or fabricate contact details — always use the tool.\n"
+    )
+
+    return (
+        f"You are a writing assistant. Draft {kind} based on the context below.\n"
+        f"{identity_block}{platform_block}{tool_block}\n"
+        "RULES:\n"
+        "- The body/message/description field must contain ONLY the message body text.\n"
+        "- Do NOT include headers like 'Subject:', 'To:', or 'From:' inside the body.\n"
+        "- Fill in every field you can. Use empty string for fields you truly cannot determine.\n"
+        "- Match the tone of the user's draft if one exists.\n"
+        "- Be concise and ready to send."
+    )
+
+
 @router.post("/egress/ai-assist")
 async def ai_assist(body: AiAssistRequest) -> dict:
     """Use LLM to draft content for the compose editor."""
+    import json as _json
+
     from laya.llm.client import llm_call
+    from laya.llm.tools.contact_tools import find_contact
 
-    platform_hints = {
-        "gmail": "a professional email",
-        "slack": "a Slack message",
-        "jira": "a Jira issue description",
-        "github": "a GitHub issue body",
-    }
-    kind = platform_hints.get(body.platform, f"a {body.platform} message")
+    from laya.egress.registry import get_platform_hint
 
-    # Build a concise prompt from whatever context the UI provides
+    kind = get_platform_hint(body.platform)
+
     ctx_parts: list[str] = []
     for key in ("to", "subject", "channel", "repo", "project", "summary", "title"):
         if val := body.context.get(key):
@@ -197,52 +271,121 @@ async def ai_assist(body: AiAssistRequest) -> dict:
 
     ctx_block = "\n".join(ctx_parts) if ctx_parts else "(no context provided)"
 
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                f"You are a writing assistant. Draft {kind} based on the context below.\n\n"
-                "RULES:\n"
-                "- Output ONLY the message body text, nothing else.\n"
-                "- Do NOT include any thinking, reasoning, analysis, or preamble.\n"
-                "- Do NOT include headers like 'Subject:', 'To:', or 'From:'.\n"
-                "- Do NOT wrap in quotes or markdown.\n"
-                "- Match the tone of the user's draft if one exists.\n"
-                "- Be concise and ready to send."
-            ),
-        },
+    system_prompt = _build_ai_assist_system_prompt(kind, body.platform)
+    messages: list[dict] = [
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": ctx_block},
     ]
 
+    tools = [_FIND_CONTACT_TOOL]
+    from laya.egress.registry import get_draft_schema
+
+    schema = get_draft_schema(body.platform)
+
     try:
-        response = await llm_call(
-            role="stager",
-            messages=messages,
-            step="egress_draft",
-            temperature=0.4,
-            max_tokens=1000,
-        )
-        draft_text = _clean_ai_draft(response.content)
+        for iteration in range(_MAX_TOOL_ROUNDS + 1):
+            response = await llm_call(
+                role="stager",
+                messages=messages,
+                step="egress_draft",
+                temperature=0.4,
+                max_tokens=1000,
+                response_schema=schema,
+                tools=tools if iteration < _MAX_TOOL_ROUNDS else None,
+            )
+
+            if not response.tool_calls:
+                break
+
+            messages.append(response.raw_message_dict)
+
+            for tc in response.tool_calls:
+                if tc.name == "find_contact":
+                    query = tc.arguments.get("query", "")
+                    result = await find_contact(query)
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": _json.dumps(result),
+                    })
+                else:
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": _json.dumps({"error": f"Unknown tool: {tc.name}"}),
+                    })
+
+        from laya.egress.registry import get_body_field
+
+        body_field = get_body_field(body.platform)
+
+        if response.parsed and isinstance(response.parsed, dict):
+            draft: dict[str, str] = {
+                k: v for k, v in response.parsed.items()
+                if isinstance(v, str) and v.strip()
+            }
+            if body_field != "body" and body_field not in draft and "body" in draft:
+                draft[body_field] = draft.pop("body")
+        else:
+            draft_text = _clean_ai_draft(response.content)
+            draft = {body_field: draft_text}
     except Exception as exc:
         log.error("ai_assist_failed", error=str(exc))
         raise HTTPException(status_code=502, detail="AI assist failed — check LLM configuration") from exc
 
-    # Return platform-appropriate field mapping
-    if body.platform == "gmail":
-        draft = {"body": draft_text}
-        # If no subject was provided, try to generate one
-        if not body.context.get("subject"):
-            draft["subject"] = draft_text.split("\n")[0][:80]
-    elif body.platform == "slack":
-        draft = {"message": draft_text}
-    elif body.platform == "jira":
-        draft = {"description": draft_text}
-    elif body.platform == "github":
-        draft = {"body": draft_text}
-    else:
-        draft = {"body": draft_text}
-
     return {"draft": draft}
+
+
+class PolishRequest(BaseModel):
+    text: str
+    platform: str
+
+
+_POLISH_SCHEMA = {
+    "name": "polish_output",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "polished": {
+                "type": "string",
+                "description": "The polished/rewritten text.",
+            },
+        },
+        "required": ["polished"],
+        "additionalProperties": False,
+    },
+}
+
+
+@router.post("/egress/polish")
+async def polish_text(body: PolishRequest) -> dict:
+    """Polish/rewrite user-drafted text for the compose editor."""
+    from laya.llm.client import llm_call
+    from laya.llm.prompts.chat import build_polish_messages
+
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Text is empty")
+
+    try:
+        response = await llm_call(
+            role="chat",
+            messages=build_polish_messages(text, body.platform),
+            step="compose_polish",
+            temperature=0.4,
+            max_tokens=2000,
+            response_schema=_POLISH_SCHEMA,
+        )
+        if response.parsed and isinstance(response.parsed, dict):
+            polished = response.parsed.get("polished", "")
+        else:
+            polished = _clean_ai_draft(response.content)
+    except Exception as exc:
+        log.error("compose_polish_failed", error=str(exc))
+        raise HTTPException(status_code=502, detail="Polish failed — check LLM configuration") from exc
+
+    return {"polished": polished}
 
 
 @router.get("/egress/capabilities/{platform}")

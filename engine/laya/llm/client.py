@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 import sqlite3
 import time
 import uuid
@@ -17,6 +18,18 @@ from laya.config import load_settings
 from laya.db.sqlite import get_db
 
 log = structlog.get_logger()
+
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>\s*", flags=re.DOTALL)
+
+
+def _strip_think_blocks(text: str) -> str:
+    """Remove <think>...</think> blocks that thinking models embed in content."""
+    if "<think>" not in text:
+        return text
+    result = _THINK_BLOCK_RE.sub("", text).strip()
+    if result.startswith("<think>"):
+        result = result[len("<think>"):].strip()
+    return result
 
 
 @dataclass
@@ -430,7 +443,7 @@ async def llm_call(
         # is generated entirely within <think> tags.  LMStudio separates
         # these into distinct fields in the API response.  Fall back to
         # reasoning_content when content is empty.
-        content = response.choices[0].message.content or ""
+        content = _strip_think_blocks(response.choices[0].message.content or "")
         if not content:
             content = getattr(response.choices[0].message, "reasoning_content", None) or ""
         finish_reason = response.choices[0].finish_reason or "stop"
@@ -455,7 +468,7 @@ async def llm_call(
             response = await _call_with_retry()
             elapsed_ms += int((time.monotonic() - retry_start) * 1000)
 
-            content = response.choices[0].message.content or ""
+            content = _strip_think_blocks(response.choices[0].message.content or "")
             if not content:
                 content = getattr(response.choices[0].message, "reasoning_content", None) or ""
             finish_reason = response.choices[0].finish_reason or "stop"

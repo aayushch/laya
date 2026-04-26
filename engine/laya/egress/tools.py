@@ -320,11 +320,20 @@ def _open_compose() -> dict:
                     "prefill": {
                         "type": "object",
                         "description": (
-                            "Pre-filled fields for the editor. Varies by platform:\n"
-                            "Email: {to, subject, body, thread_id, cc}\n"
-                            "Slack: {channel, message, thread_ts}\n"
-                            "Jira/GitHub: {ticket_id, comment}\n"
-                            "Bitbucket: {pr_id, comment}"
+                            "Pre-filled fields for the editor. ALWAYS fill in as many fields "
+                            "as you can from context (especially recipient/channel info). "
+                            "Fields by platform:\n"
+                            "Email (gmail/outlook): {to, cc, subject, body} — ALWAYS set 'to' "
+                            "when replying (use sender of the original email). Set 'subject' "
+                            "with 'Re: ...' for replies, 'Fwd: ...' for forwards.\n"
+                            "Slack: {channel, message, thread_ts} — set 'channel' to the "
+                            "channel name/ID from the original message. Set 'thread_ts' when "
+                            "replying to a specific thread.\n"
+                            "Jira: {project, type, summary, description, priority} — set "
+                            "'project' to the project key (e.g. 'PROJ'). For comments on "
+                            "existing issues, include the issue key in 'summary'.\n"
+                            "GitHub: {repo, title, body, labels} — set 'repo' as 'owner/repo'.\n"
+                            "Bitbucket: {repo, title, body}"
                         ),
                     },
                     "source_card_id": {

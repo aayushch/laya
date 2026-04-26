@@ -275,14 +275,14 @@ html, body {
 [data-glass-theme] .glass-tooltip {
 	-webkit-backdrop-filter: blur(24px) saturate(1.6);
 	backdrop-filter: blur(24px) saturate(1.6);
-	background-color: oklch(0.18 0.008 50 / 0.55);
+	background-color: oklch(0.18 0.008 50 / 0.42);
 	border: 0.5px solid rgb(255 255 255 / 0.1);
 	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.1), 0 8px 24px -6px rgb(0 0 0 / 0.4);
 }
 [data-theme='light'][data-glass-theme] .glass-tooltip {
 	-webkit-backdrop-filter: blur(16px) saturate(1.4);
 	backdrop-filter: blur(16px) saturate(1.4);
-	background-color: oklch(0.98 0.004 72 / 0.45);
+	background-color: oklch(0.98 0.004 72 / 0.35);
 	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.7), 0 4px 16px -4px rgb(0 0 0 / 0.08);
 }
 
@@ -747,93 +747,150 @@ html, body {
 [data-theme='light'] .text-violet-300    { color: oklch(0.42 0.18 285); }
 [data-theme='light'] .text-sky-300       { color: oklch(0.42 0.14 230); }
 
+
 /* ═══════════════════════════════════════════════════════════════
-   ACCESSIBLE COLORS — colorblind-safe palette
+   ACCESSIBLE COLORS — blue-yellow axis colorblind-safe palette
    Activated via data-accessible-colors attribute on <html>.
-   Hue remapping:
-     Violet (285°) → Blue (240°)      — agent_running, Engineer persona
-     Sky/Purple (295°) → Indigo (265°) — requires_approval
-     Emerald/Green (145-160°) → Teal (195°) — done, Comms persona
-     Rose/Red (25°) → Warm vermillion (40°) — failed, brighter for protanopia
-     Amber (68-75°) — unchanged (universally visible)
-   Status dot shapes provide redundant encoding for each status.
-   All overrides preserve the original opacity and lightness ratios
-   to stay close to the Laya pastel warmth.
+
+   Status palette (maximizes blue-yellow axis distance):
+     Ready/Pending  → Cyan-blue  #0EA5E9
+     Done           → Yellow     #EAB308
+     Approve/Agent  → Purple     #A855F7
+     Failed         → Slate      #475569 (luminance signal)
+
+   Persona text shifts:
+     Violet → Purple-magenta (302°) — Engineer
+     Sky    → Indigo (265°)         — Sales
+     Emerald → Teal (195°)          — Comms
+     Red    → Warm vermillion (40°) — HR
    ═══════════════════════════════════════════════════════════════ */
 
-/* ─── DARK MODE: Violet → Blue (status backgrounds) ─────────── */
-[data-accessible-colors] .bg-violet-950\/55  { background-color: oklch(0.22 0.09 240 / 55%); }
-[data-accessible-colors] .bg-violet-950\/70  { background-color: oklch(0.22 0.09 240 / 70%); }
-[data-accessible-colors] .bg-violet-950\/45  { background-color: oklch(0.22 0.09 240 / 45%); }
-[data-accessible-colors] .bg-violet-950\/30  { background-color: oklch(0.22 0.09 240 / 30%); }
-[data-accessible-colors] .hover\:bg-violet-950\/70:hover { background-color: oklch(0.22 0.09 240 / 70%); }
-[data-accessible-colors] .hover\:bg-violet-950\/60:hover { background-color: oklch(0.22 0.09 240 / 60%); }
+/* ─── Glass card --status-rgb overrides ────────────────────── */
+[data-accessible-colors] [data-status="pending"]           { --status-rgb: 14 165 233; }
+[data-accessible-colors] [data-status="ready"]             { --status-rgb: 14 165 233; }
+[data-accessible-colors] [data-status="awaiting_input"]    { --status-rgb: 14 165 233; }
+[data-accessible-colors] [data-status="requires_approval"] { --status-rgb: 168 85 247; }
+[data-accessible-colors] [data-status="agent_running"]     { --status-rgb: 168 85 247; }
+[data-accessible-colors] [data-status="done"]              { --status-rgb: 234 179 8; }
+[data-accessible-colors] [data-status="failed"]            { --status-rgb: 71 85 105; }
 
-/* ─── DARK MODE: Violet → Blue (borders) ────────────────────── */
-[data-accessible-colors] .border-violet-800\/25  { border-color: oklch(0.45 0.12 240 / 25%); }
-[data-accessible-colors] .border-violet-800\/22  { border-color: oklch(0.45 0.12 240 / 22%); }
-[data-accessible-colors] .border-violet-800\/15  { border-color: oklch(0.45 0.12 240 / 15%); }
-[data-accessible-colors] .border-violet-800\/12  { border-color: oklch(0.45 0.12 240 / 12%); }
-[data-accessible-colors] .border-violet-500\/20  { border-color: oklch(0.60 0.15 240 / 20%); }
-[data-accessible-colors] .border-violet-500      { border-color: oklch(0.60 0.15 240); }
-[data-accessible-colors] .hover\:border-violet-700\/40:hover { border-color: oklch(0.50 0.14 240 / 40%); }
-[data-accessible-colors] .hover\:border-violet-700\/35:hover { border-color: oklch(0.50 0.14 240 / 35%); }
+/* Failed dark: 0.55 alpha for luminance contrast — the darkest card. */
+[data-accessible-colors][data-theme='dark'] .glass-card[data-status="failed"],
+[data-accessible-colors][data-theme='dark'] .glass-card-flat[data-status="failed"] {
+	background: rgb(71 85 105 / 0.55);
+	border-color: rgb(148 163 184 / 0.5);
+	box-shadow:
+		0 8px 32px -8px rgb(0 0 0 / 0.4),
+		inset 0 1px 0 rgb(255 255 255 / 0.07);
+}
+[data-accessible-colors][data-theme='dark'] .glass-card[data-status="failed"]:hover,
+[data-accessible-colors][data-theme='dark'] .glass-card-flat[data-status="failed"]:hover {
+	border-color: rgb(148 163 184 / 0.65);
+}
+/* Failed light: heavier cool-gray tint, the only non-warm card. */
+[data-accessible-colors][data-theme='light'] .glass-card[data-status="failed"],
+[data-accessible-colors][data-theme='light'] .glass-card-flat[data-status="failed"] {
+	background:
+		linear-gradient(rgb(71 85 105 / 0.18), rgb(71 85 105 / 0.18)),
+		rgb(255 255 255 / 0.20);
+	border-color: rgb(71 85 105 / 0.5);
+	box-shadow:
+		0 8px 28px -10px rgb(71 85 105 / 0.28),
+		inset 0 1px 0 rgb(255 255 255 / 0.65);
+}
+/* Done light: higher yellow alpha to prevent washout on cream. */
+[data-accessible-colors][data-theme='light'] .glass-card[data-status="done"],
+[data-accessible-colors][data-theme='light'] .glass-card-flat[data-status="done"] {
+	background:
+		linear-gradient(rgb(234 179 8 / 0.18), rgb(234 179 8 / 0.18)),
+		rgb(255 255 255 / 0.20);
+	border-color: rgb(234 179 8 / 0.45);
+}
 
-/* ─── DARK MODE: Violet → Blue (text & dots) ────────────────── */
-[data-accessible-colors] .text-violet-400    { color: oklch(0.68 0.16 240); }
-[data-accessible-colors] .text-violet-300    { color: oklch(0.74 0.14 240); }
-[data-accessible-colors] .text-violet-400\/60 { color: oklch(0.68 0.16 240 / 60%); }
-[data-accessible-colors] .text-violet-400\/80 { color: oklch(0.68 0.16 240 / 80%); }
-[data-accessible-colors] .hover\:text-violet-400:hover { color: oklch(0.68 0.16 240); }
-[data-accessible-colors] .hover\:text-violet-300:hover { color: oklch(0.74 0.14 240); }
-[data-accessible-colors] .bg-violet-400      { background-color: oklch(0.68 0.16 240); }
-[data-accessible-colors] .bg-violet-500\/10  { background-color: oklch(0.60 0.15 240 / 10%); }
-[data-accessible-colors] .bg-violet-700\/40  { background-color: oklch(0.45 0.14 240 / 40%); }
-[data-accessible-colors] .hover\:bg-violet-700\/60:hover { background-color: oklch(0.45 0.14 240 / 60%); }
-[data-accessible-colors] .hover\:bg-violet-500\/15:hover { background-color: oklch(0.60 0.15 240 / 15%); }
+/* ─── DARK: Amber → Cyan-blue (pending/ready/awaiting cards) ── */
+[data-accessible-colors] .bg-amber-950\/55  { background-color: oklch(0.22 0.06 230 / 55%); }
+[data-accessible-colors] .bg-amber-950\/45  { background-color: oklch(0.22 0.06 230 / 45%); }
+[data-accessible-colors] .bg-amber-400      { background-color: oklch(0.69 0.15 230); }
+[data-accessible-colors] .bg-yellow-400     { background-color: oklch(0.69 0.15 230); }
+[data-accessible-colors] .hover\:border-amber-700\/45:hover { border-color: oklch(0.50 0.12 230 / 45%); }
+[data-accessible-colors] .hover\:border-amber-700\/30:hover { border-color: oklch(0.50 0.12 230 / 30%); }
 
-/* ─── DARK MODE: Emerald/Green → Teal (status backgrounds) ──── */
-[data-accessible-colors] .bg-emerald-950\/50 { background-color: oklch(0.22 0.06 195 / 50%); }
-[data-accessible-colors] .bg-emerald-950\/25 { background-color: oklch(0.22 0.06 195 / 25%); }
-[data-accessible-colors] .hover\:bg-emerald-950\/65:hover { background-color: oklch(0.22 0.06 195 / 65%); }
+/* ─── DARK: Violet → Purple (agent_running + Engineer) ──────── */
+[data-accessible-colors] .bg-violet-950\/55  { background-color: oklch(0.22 0.09 302 / 55%); }
+[data-accessible-colors] .bg-violet-950\/70  { background-color: oklch(0.22 0.09 302 / 70%); }
+[data-accessible-colors] .bg-violet-950\/45  { background-color: oklch(0.22 0.09 302 / 45%); }
+[data-accessible-colors] .bg-violet-950\/30  { background-color: oklch(0.22 0.09 302 / 30%); }
+[data-accessible-colors] .hover\:bg-violet-950\/70:hover { background-color: oklch(0.22 0.09 302 / 70%); }
+[data-accessible-colors] .hover\:bg-violet-950\/60:hover { background-color: oklch(0.22 0.09 302 / 60%); }
 
-/* ─── DARK MODE: Emerald/Green → Teal (borders) ─────────────── */
-[data-accessible-colors] .border-emerald-800\/20 { border-color: oklch(0.45 0.10 195 / 20%); }
-[data-accessible-colors] .border-emerald-800\/12 { border-color: oklch(0.45 0.10 195 / 12%); }
+/* ─── DARK: Violet → Purple (borders) ──────────────────────── */
+[data-accessible-colors] .border-violet-800\/25  { border-color: oklch(0.45 0.14 302 / 25%); }
+[data-accessible-colors] .border-violet-800\/22  { border-color: oklch(0.45 0.14 302 / 22%); }
+[data-accessible-colors] .border-violet-800\/15  { border-color: oklch(0.45 0.14 302 / 15%); }
+[data-accessible-colors] .border-violet-800\/12  { border-color: oklch(0.45 0.14 302 / 12%); }
+[data-accessible-colors] .border-violet-500\/20  { border-color: oklch(0.60 0.18 302 / 20%); }
+[data-accessible-colors] .border-violet-500      { border-color: oklch(0.60 0.18 302); }
+[data-accessible-colors] .hover\:border-violet-700\/40:hover { border-color: oklch(0.50 0.16 302 / 40%); }
+[data-accessible-colors] .hover\:border-violet-700\/35:hover { border-color: oklch(0.50 0.16 302 / 35%); }
+[data-accessible-colors] .hover\:border-violet-700\/30:hover { border-color: oklch(0.50 0.16 302 / 30%); }
+
+/* ─── DARK: Violet → Purple (text & UI) ────────────────────── */
+[data-accessible-colors] .text-violet-400    { color: oklch(0.68 0.20 302); }
+[data-accessible-colors] .text-violet-300    { color: oklch(0.74 0.16 302); }
+[data-accessible-colors] .text-violet-400\/60 { color: oklch(0.68 0.20 302 / 60%); }
+[data-accessible-colors] .text-violet-400\/80 { color: oklch(0.68 0.20 302 / 80%); }
+[data-accessible-colors] .hover\:text-violet-400:hover { color: oklch(0.68 0.20 302); }
+[data-accessible-colors] .hover\:text-violet-300:hover { color: oklch(0.74 0.16 302); }
+[data-accessible-colors] .bg-violet-400      { background-color: oklch(0.68 0.20 302); }
+[data-accessible-colors] .bg-violet-500\/10  { background-color: oklch(0.60 0.18 302 / 10%); }
+[data-accessible-colors] .bg-violet-700\/40  { background-color: oklch(0.45 0.16 302 / 40%); }
+[data-accessible-colors] .hover\:bg-violet-700\/60:hover { background-color: oklch(0.45 0.16 302 / 60%); }
+[data-accessible-colors] .hover\:bg-violet-500\/15:hover { background-color: oklch(0.60 0.18 302 / 15%); }
+
+/* ─── DARK: Emerald → Yellow (done card backgrounds) ──────── */
+[data-accessible-colors] .bg-emerald-950\/50 { background-color: oklch(0.24 0.06 88 / 50%); }
+[data-accessible-colors] .bg-emerald-950\/40 { background-color: oklch(0.24 0.06 88 / 40%); }
+[data-accessible-colors] .bg-emerald-950\/25 { background-color: oklch(0.24 0.06 88 / 25%); }
+[data-accessible-colors] .hover\:bg-emerald-950\/65:hover { background-color: oklch(0.24 0.06 88 / 65%); }
+
+/* ─── DARK: Emerald → Yellow (done card borders) ─────────── */
+[data-accessible-colors] .border-emerald-800\/20 { border-color: oklch(0.50 0.10 88 / 20%); }
+[data-accessible-colors] .border-emerald-800\/12 { border-color: oklch(0.50 0.10 88 / 12%); }
 [data-accessible-colors] .border-emerald-500\/20 { border-color: oklch(0.60 0.12 195 / 20%); }
 [data-accessible-colors] .border-emerald-500     { border-color: oklch(0.60 0.12 195); }
-[data-accessible-colors] .hover\:border-emerald-700\/35:hover { border-color: oklch(0.50 0.11 195 / 35%); }
+[data-accessible-colors] .hover\:border-emerald-700\/35:hover { border-color: oklch(0.55 0.12 88 / 35%); }
+[data-accessible-colors] .hover\:border-emerald-700\/25:hover { border-color: oklch(0.55 0.12 88 / 25%); }
 
-/* ─── DARK MODE: Emerald/Green → Teal (text & dots) ─────────── */
+/* ─── Emerald text — teal for Comms persona ────────────────── */
 [data-accessible-colors] .text-emerald-400   { color: oklch(0.72 0.12 195); }
 [data-accessible-colors] .bg-emerald-400     { background-color: oklch(0.72 0.12 195); }
 [data-accessible-colors] .bg-emerald-500\/10 { background-color: oklch(0.60 0.12 195 / 10%); }
-[data-accessible-colors] .bg-green-500       { background-color: oklch(0.68 0.13 195); }
-[data-accessible-colors] .bg-green-400       { background-color: oklch(0.72 0.12 195); }
-[data-accessible-colors] .text-green-500     { color: oklch(0.68 0.13 195); }
-[data-accessible-colors] .text-green-400     { color: oklch(0.72 0.12 195); }
-[data-accessible-colors] .text-green-300     { color: oklch(0.76 0.10 195); }
-[data-accessible-colors] .text-green-200     { color: oklch(0.80 0.08 195); }
-[data-accessible-colors] .hover\:text-green-400:hover { color: oklch(0.72 0.12 195); }
-[data-accessible-colors] .bg-green-700\/30   { background-color: oklch(0.40 0.10 195 / 30%); }
-[data-accessible-colors] .bg-green-700\/40   { background-color: oklch(0.40 0.10 195 / 40%); }
-[data-accessible-colors] .bg-green-700\/60   { background-color: oklch(0.40 0.10 195 / 60%); }
-[data-accessible-colors] .hover\:bg-green-700\/60:hover { background-color: oklch(0.40 0.10 195 / 60%); }
 
-/* ─── DARK MODE: Rose/Red → Warm vermillion (status backgrounds)
-   Shifted from hue 25 to 40 and brightened so protanopes perceive
-   it clearly. Higher chroma compensates for reduced red sensitivity. */
-[data-accessible-colors] .bg-rose-950\/60    { background-color: oklch(0.24 0.08 40 / 60%); }
-[data-accessible-colors] .bg-rose-950\/35    { background-color: oklch(0.24 0.08 40 / 35%); }
-[data-accessible-colors] .hover\:bg-rose-950\/75:hover { background-color: oklch(0.24 0.08 40 / 75%); }
+/* ─── Green → Yellow (done status indicators & actions) ──── */
+[data-accessible-colors] .bg-green-500       { background-color: oklch(0.79 0.17 88); }
+[data-accessible-colors] .bg-green-400       { background-color: oklch(0.79 0.15 88); }
+[data-accessible-colors] .text-green-500     { color: oklch(0.79 0.17 88); }
+[data-accessible-colors] .text-green-400     { color: oklch(0.79 0.15 88); }
+[data-accessible-colors] .text-green-300     { color: oklch(0.83 0.12 88); }
+[data-accessible-colors] .text-green-200     { color: oklch(0.83 0.09 88); }
+[data-accessible-colors] .hover\:text-green-400:hover { color: oklch(0.79 0.15 88); }
+[data-accessible-colors] .bg-green-700\/30   { background-color: oklch(0.45 0.12 88 / 30%); }
+[data-accessible-colors] .bg-green-700\/40   { background-color: oklch(0.45 0.12 88 / 40%); }
+[data-accessible-colors] .bg-green-700\/60   { background-color: oklch(0.45 0.12 88 / 60%); }
+[data-accessible-colors] .hover\:bg-green-700\/60:hover { background-color: oklch(0.45 0.12 88 / 60%); }
 
-/* ─── DARK MODE: Rose/Red → Warm vermillion (borders) ────────── */
-[data-accessible-colors] .border-rose-800\/35 { border-color: oklch(0.50 0.14 40 / 35%); }
-[data-accessible-colors] .border-rose-800\/25 { border-color: oklch(0.50 0.14 40 / 25%); }
-[data-accessible-colors] .hover\:border-rose-700\/50:hover { border-color: oklch(0.55 0.16 40 / 50%); }
+/* ─── DARK: Rose → Slate (failed card backgrounds) ─────────── */
+[data-accessible-colors] .bg-rose-950\/60    { background-color: oklch(0.20 0.01 257 / 60%); }
+[data-accessible-colors] .bg-rose-950\/50    { background-color: oklch(0.20 0.01 257 / 50%); }
+[data-accessible-colors] .bg-rose-950\/35    { background-color: oklch(0.20 0.01 257 / 35%); }
+[data-accessible-colors] .hover\:bg-rose-950\/75:hover { background-color: oklch(0.20 0.01 257 / 75%); }
+[data-accessible-colors] .border-rose-800\/35 { border-color: oklch(0.50 0.02 257 / 35%); }
+[data-accessible-colors] .border-rose-800\/25 { border-color: oklch(0.50 0.02 257 / 25%); }
+[data-accessible-colors] .hover\:border-rose-700\/50:hover { border-color: oklch(0.55 0.02 257 / 50%); }
+[data-accessible-colors] .hover\:border-rose-700\/35:hover { border-color: oklch(0.55 0.02 257 / 35%); }
 
-/* ─── DARK MODE: Red → Warm vermillion (text, dots, UI) ──────── */
-[data-accessible-colors] .bg-red-500         { background-color: oklch(0.62 0.18 40); }
+/* ─── Red → Warm vermillion (HR persona, CRITICAL priority) ── */
+[data-accessible-colors] .bg-red-500         { background-color: oklch(0.715 0.02 252); }
 [data-accessible-colors] .text-red-500       { color: oklch(0.62 0.18 40); }
 [data-accessible-colors] .text-red-400       { color: oklch(0.68 0.17 40); }
 [data-accessible-colors] .text-red-300       { color: oklch(0.74 0.14 40); }
@@ -848,85 +905,118 @@ html, body {
 [data-accessible-colors] .border-red-800\/40 { border-color: oklch(0.50 0.14 40 / 40%); }
 [data-accessible-colors] .border-red-800     { border-color: oklch(0.50 0.14 40); }
 
-/* ─── DARK MODE: Sky → Indigo (requires_approval) ────────────── */
-[data-accessible-colors] .bg-sky-950\/55    { background-color: oklch(0.22 0.09 265 / 55%); }
-[data-accessible-colors] .bg-sky-950\/45    { background-color: oklch(0.22 0.09 265 / 45%); }
-[data-accessible-colors] .bg-sky-950\/30    { background-color: oklch(0.22 0.09 265 / 30%); }
-[data-accessible-colors] .hover\:border-sky-700\/30:hover { border-color: oklch(0.50 0.12 265 / 30%); }
-[data-accessible-colors] .hover\:border-sky-700\/40:hover { border-color: oklch(0.50 0.12 265 / 40%); }
-[data-accessible-colors] .border-sky-900\/20 { border-color: oklch(0.45 0.10 265 / 20%); }
+/* ─── DARK: Sky → Purple (requires_approval card backgrounds) ── */
+[data-accessible-colors] .bg-sky-950\/55    { background-color: oklch(0.22 0.09 302 / 55%); }
+[data-accessible-colors] .bg-sky-950\/45    { background-color: oklch(0.22 0.09 302 / 45%); }
+[data-accessible-colors] .bg-sky-950\/30    { background-color: oklch(0.22 0.09 302 / 30%); }
+[data-accessible-colors] .bg-sky-400        { background-color: oklch(0.59 0.23 302); }
+[data-accessible-colors] .hover\:border-sky-700\/30:hover { border-color: oklch(0.50 0.16 302 / 30%); }
+[data-accessible-colors] .hover\:border-sky-700\/40:hover { border-color: oklch(0.50 0.16 302 / 40%); }
+[data-accessible-colors] .border-sky-900\/20 { border-color: oklch(0.45 0.14 302 / 20%); }
 [data-accessible-colors] .text-sky-400      { color: oklch(0.68 0.14 265); }
 
+/* ─── Priority pill: HIGH → Slate (luminance signal) ──────── */
+[data-accessible-colors] .bg-rose-500\/25    { background-color: oklch(0.50 0.02 257 / 25%); }
+[data-accessible-colors] .text-rose-300      { color: oklch(0.72 0.02 252); }
+
 /* ─── Status dot overrides ──────────────────────────────────── */
-[data-accessible-colors] .status-dot-violet  { color: oklch(0.68 0.16 240); }
-[data-accessible-colors] .status-dot-sky     { color: oklch(0.72 0.12 265); }
-[data-accessible-colors] .status-dot-green   { color: oklch(0.72 0.12 195); }
-[data-accessible-colors] .status-dot-red     { color: oklch(0.62 0.18 40);  }
+[data-accessible-colors] .status-dot-amber   { color: oklch(0.69 0.15 230); }
+[data-accessible-colors] .status-dot-yellow  { color: oklch(0.69 0.15 230); }
+[data-accessible-colors] .status-dot-violet  { color: oklch(0.59 0.23 302); }
+[data-accessible-colors] .status-dot-sky     { color: oklch(0.59 0.23 302); }
+[data-accessible-colors] .status-dot-green   { color: oklch(0.79 0.17 88);  }
+[data-accessible-colors] .status-dot-red     { color: oklch(0.715 0.02 252); }
 
 /* ─── Card pulse glow overrides ─────────────────────────────── */
 [data-accessible-colors] .card-pulse-violet {
-	--card-pulse-base: oklch(0.60 0.16 240 / 0.25);
-	--card-pulse-color: oklch(0.60 0.16 240 / 0.45);
+	--card-pulse-base: oklch(0.59 0.20 302 / 0.25);
+	--card-pulse-color: oklch(0.59 0.20 302 / 0.45);
+}
+[data-accessible-colors] .card-pulse-amber {
+	--card-pulse-base: oklch(0.60 0.14 230 / 0.25);
+	--card-pulse-color: oklch(0.60 0.14 230 / 0.45);
 }
 
-/* ─── LIGHT MODE + ACCESSIBLE: status card tints ────────────── */
-[data-theme='light'][data-accessible-colors] .bg-violet-950\/55  { background-color: oklch(0.94 0.03 240); }
-[data-theme='light'][data-accessible-colors] .border-violet-800\/25 { border-color: oklch(0.74 0.07 240 / 45%); }
-[data-theme='light'][data-accessible-colors] .hover\:border-violet-700\/40:hover { border-color: oklch(0.64 0.10 240 / 60%); }
+/* ─── LIGHT MODE + ACCESSIBLE ──────────────────────────────── */
 
-[data-theme='light'][data-accessible-colors] .bg-emerald-950\/50 { background-color: oklch(0.97 0.015 195); }
-[data-theme='light'][data-accessible-colors] .border-emerald-800\/20 { border-color: oklch(0.74 0.07 195 / 30%); }
-[data-theme='light'][data-accessible-colors] .hover\:border-emerald-700\/35:hover { border-color: oklch(0.64 0.08 195 / 45%); }
+/* Light: Amber → Cyan-blue (pending/ready) */
+[data-theme='light'][data-accessible-colors] .bg-amber-950\/55  { background-color: oklch(0.94 0.03 230); }
+[data-theme='light'][data-accessible-colors] .bg-amber-950\/45  { background-color: oklch(0.94 0.03 230); }
+[data-theme='light'][data-accessible-colors] .bg-amber-400      { background-color: oklch(0.50 0.14 230); }
+[data-theme='light'][data-accessible-colors] .bg-yellow-400     { background-color: oklch(0.50 0.14 230); }
 
-[data-theme='light'][data-accessible-colors] .bg-rose-950\/60    { background-color: oklch(0.94 0.045 40); }
-[data-theme='light'][data-accessible-colors] .bg-rose-950\/35    { background-color: oklch(0.96 0.025 40); }
-[data-theme='light'][data-accessible-colors] .hover\:bg-rose-950\/75:hover { background-color: oklch(0.92 0.055 40); }
-[data-theme='light'][data-accessible-colors] .border-rose-800\/35 { border-color: oklch(0.74 0.08 40 / 55%); }
-[data-theme='light'][data-accessible-colors] .hover\:border-rose-700\/50:hover { border-color: oklch(0.64 0.12 40 / 65%); }
+/* Light: Violet → Purple */
+[data-theme='light'][data-accessible-colors] .bg-violet-950\/55  { background-color: oklch(0.94 0.04 302); }
+[data-theme='light'][data-accessible-colors] .border-violet-800\/25 { border-color: oklch(0.74 0.08 302 / 45%); }
+[data-theme='light'][data-accessible-colors] .hover\:border-violet-700\/40:hover { border-color: oklch(0.64 0.12 302 / 60%); }
 
-/* Light — sky (requires_approval) */
-[data-theme='light'][data-accessible-colors] .bg-sky-950\/55    { background-color: oklch(0.94 0.03 265); }
-[data-theme='light'][data-accessible-colors] .bg-sky-950\/45    { background-color: oklch(0.94 0.03 265); }
-[data-theme='light'][data-accessible-colors] .bg-sky-950\/30    { background-color: oklch(0.96 0.02 265); }
-[data-theme='light'][data-accessible-colors] .status-dot-sky    { color: oklch(0.52 0.12 265); }
+/* Light: Emerald → Yellow (done) */
+[data-theme='light'][data-accessible-colors] .bg-emerald-950\/50 { background-color: oklch(0.95 0.04 88); }
+[data-theme='light'][data-accessible-colors] .bg-emerald-950\/40 { background-color: oklch(0.96 0.03 88); }
+[data-theme='light'][data-accessible-colors] .border-emerald-800\/20 { border-color: oklch(0.74 0.08 88 / 30%); }
+[data-theme='light'][data-accessible-colors] .hover\:border-emerald-700\/35:hover { border-color: oklch(0.64 0.10 88 / 45%); }
+[data-theme='light'][data-accessible-colors] .hover\:border-emerald-700\/25:hover { border-color: oklch(0.64 0.10 88 / 35%); }
+
+/* Light: Rose → Slate (failed) */
+[data-theme='light'][data-accessible-colors] .bg-rose-950\/60    { background-color: oklch(0.90 0.01 257); }
+[data-theme='light'][data-accessible-colors] .bg-rose-950\/50    { background-color: oklch(0.92 0.008 257); }
+[data-theme='light'][data-accessible-colors] .bg-rose-950\/35    { background-color: oklch(0.94 0.005 257); }
+[data-theme='light'][data-accessible-colors] .hover\:bg-rose-950\/75:hover { background-color: oklch(0.88 0.015 257); }
+[data-theme='light'][data-accessible-colors] .border-rose-800\/35 { border-color: oklch(0.60 0.02 257 / 55%); }
+[data-theme='light'][data-accessible-colors] .hover\:border-rose-700\/50:hover { border-color: oklch(0.50 0.02 257 / 65%); }
+[data-theme='light'][data-accessible-colors] .hover\:border-rose-700\/35:hover { border-color: oklch(0.50 0.02 257 / 50%); }
+
+/* Light: Sky → Purple (requires_approval) */
+[data-theme='light'][data-accessible-colors] .bg-sky-950\/55    { background-color: oklch(0.94 0.04 302); }
+[data-theme='light'][data-accessible-colors] .bg-sky-950\/45    { background-color: oklch(0.94 0.04 302); }
+[data-theme='light'][data-accessible-colors] .bg-sky-950\/30    { background-color: oklch(0.96 0.03 302); }
+[data-theme='light'][data-accessible-colors] .bg-sky-400        { background-color: oklch(0.45 0.20 302); }
 
 /* Light ghost strips */
-[data-theme='light'][data-accessible-colors] .bg-violet-950\/30  { background-color: oklch(0.95 0.02 240); }
-[data-theme='light'][data-accessible-colors] .bg-emerald-950\/25 { background-color: oklch(0.97 0.010 195); }
+[data-theme='light'][data-accessible-colors] .bg-violet-950\/30  { background-color: oklch(0.95 0.03 302); }
+[data-theme='light'][data-accessible-colors] .bg-emerald-950\/25 { background-color: oklch(0.97 0.015 88); }
 
-/* Light mode text overrides for accessible colors */
-[data-theme='light'][data-accessible-colors] .text-violet-400 { color: oklch(0.42 0.18 240); }
-[data-theme='light'][data-accessible-colors] .text-violet-300 { color: oklch(0.46 0.16 240); }
+/* Light mode text overrides */
+[data-theme='light'][data-accessible-colors] .text-violet-400 { color: oklch(0.42 0.20 302); }
+[data-theme='light'][data-accessible-colors] .text-violet-300 { color: oklch(0.46 0.18 302); }
 [data-theme='light'][data-accessible-colors] .text-emerald-400 { color: oklch(0.42 0.14 195); }
-[data-theme='light'][data-accessible-colors] .text-green-400  { color: oklch(0.44 0.13 195); }
-[data-theme='light'][data-accessible-colors] .text-green-300  { color: oklch(0.42 0.12 195); }
-[data-theme='light'][data-accessible-colors] .text-green-200  { color: oklch(0.40 0.11 195); }
+[data-theme='light'][data-accessible-colors] .text-green-400  { color: oklch(0.50 0.15 88); }
+[data-theme='light'][data-accessible-colors] .text-green-300  { color: oklch(0.48 0.14 88); }
+[data-theme='light'][data-accessible-colors] .text-green-200  { color: oklch(0.46 0.12 88); }
 [data-theme='light'][data-accessible-colors] .text-red-400    { color: oklch(0.46 0.16 40); }
 [data-theme='light'][data-accessible-colors] .text-red-300    { color: oklch(0.48 0.14 40); }
 
-/* Light mode status dots */
-[data-theme='light'][data-accessible-colors] .status-dot-violet { color: oklch(0.58 0.16 240); }
-[data-theme='light'][data-accessible-colors] .status-dot-green  { color: oklch(0.52 0.12 195); }
-[data-theme='light'][data-accessible-colors] .status-dot-red    { color: oklch(0.52 0.18 40);  }
+/* Light mode status dots — darker for contrast */
+[data-theme='light'][data-accessible-colors] .status-dot-amber  { color: oklch(0.50 0.14 230); }
+[data-theme='light'][data-accessible-colors] .status-dot-yellow { color: oklch(0.50 0.14 230); }
+[data-theme='light'][data-accessible-colors] .status-dot-violet { color: oklch(0.45 0.20 302); }
+[data-theme='light'][data-accessible-colors] .status-dot-sky    { color: oklch(0.45 0.20 302); }
+[data-theme='light'][data-accessible-colors] .status-dot-green  { color: oklch(0.55 0.15 88); }
+[data-theme='light'][data-accessible-colors] .status-dot-red    { color: oklch(0.45 0.02 252); }
 
 /* Light mode action button bgs */
 [data-theme='light'][data-accessible-colors] .bg-green-700\/30,
 [data-theme='light'][data-accessible-colors] .bg-green-700\/40,
 [data-theme='light'][data-accessible-colors] .bg-green-700\/60 {
-	background-color: oklch(0.88 0.06 195 / 60%);
+	background-color: oklch(0.88 0.06 88 / 60%);
 }
 [data-theme='light'][data-accessible-colors] .bg-violet-900\/40,
 [data-theme='light'][data-accessible-colors] .bg-violet-900\/60 {
-	background-color: oklch(0.88 0.06 240 / 60%);
+	background-color: oklch(0.88 0.06 302 / 60%);
 }
 [data-theme='light'][data-accessible-colors] .bg-red-900\/30 { background-color: oklch(0.92 0.05 40 / 60%); }
 [data-theme='light'][data-accessible-colors] .bg-red-900\/50 { background-color: oklch(0.88 0.06 40 / 60%); }
 [data-theme='light'][data-accessible-colors] .bg-red-600     { background-color: oklch(0.52 0.19 40); }
+[data-theme='light'][data-accessible-colors] .bg-red-500     { background-color: oklch(0.45 0.02 252); }
 
 /* Light mode card pulse */
 [data-theme='light'][data-accessible-colors] .card-pulse-violet {
-	--card-pulse-base: oklch(0.55 0.18 240 / 0.30);
-	--card-pulse-color: oklch(0.55 0.18 240 / 0.50);
+	--card-pulse-base: oklch(0.55 0.20 302 / 0.30);
+	--card-pulse-color: oklch(0.55 0.20 302 / 0.50);
+}
+[data-theme='light'][data-accessible-colors] .card-pulse-amber {
+	--card-pulse-base: oklch(0.55 0.14 230 / 0.30);
+	--card-pulse-color: oklch(0.55 0.14 230 / 0.50);
 }
 
 /* ═══════════════════════════════════════════════════════════════

@@ -697,6 +697,12 @@ export const engineApi = {
 			body: JSON.stringify(data)
 		}),
 
+	egressPolish: (text: string, platform: string) =>
+		request<{ polished: string }>('/egress/polish', {
+			method: 'POST',
+			body: JSON.stringify({ text, platform })
+		}),
+
 	getConnectionNames: (platform: string) =>
 		request<{ names: string[] }>(`/egress/connections/names/${platform}`),
 
