@@ -187,27 +187,7 @@ class AiAssistRequest(BaseModel):
 
 
 
-_FIND_CONTACT_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "find_contact",
-        "description": (
-            "Look up a contact's email address by name, handle, or partial email. "
-            "Use this when the user mentions a person by name and you need their "
-            "email address for the To or CC field."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "Person's name, handle, or partial email to search for.",
-                },
-            },
-            "required": ["query"],
-        },
-    },
-}
+from laya.egress.tools import get_find_contact_tool
 
 _MAX_TOOL_ROUNDS = 3
 
@@ -277,21 +257,24 @@ async def ai_assist(body: AiAssistRequest) -> dict:
         {"role": "user", "content": ctx_block},
     ]
 
-    tools = [_FIND_CONTACT_TOOL]
+    tools = [get_find_contact_tool()]
     from laya.egress.registry import get_draft_schema
 
     schema = get_draft_schema(body.platform)
 
     try:
-        for iteration in range(_MAX_TOOL_ROUNDS + 1):
+        # Phase 1: Tool-calling rounds (no response_schema).
+        # Passing response_schema alongside tools causes the model to skip
+        # tool calls and produce structured output directly, hallucinating
+        # contact details instead of calling find_contact.
+        for iteration in range(_MAX_TOOL_ROUNDS):
             response = await llm_call(
                 role="stager",
                 messages=messages,
                 step="egress_draft",
                 temperature=0.4,
-                max_tokens=1000,
-                response_schema=schema,
-                tools=tools if iteration < _MAX_TOOL_ROUNDS else None,
+                max_tokens=65536,
+                tools=tools,
             )
 
             if not response.tool_calls:
@@ -314,6 +297,16 @@ async def ai_assist(body: AiAssistRequest) -> dict:
                         "tool_call_id": tc.id,
                         "content": _json.dumps({"error": f"Unknown tool: {tc.name}"}),
                     })
+
+        # Phase 2: Final structured output (no tools).
+        response = await llm_call(
+            role="stager",
+            messages=messages,
+            step="egress_draft",
+            temperature=0.4,
+            max_tokens=65536,
+            response_schema=schema,
+        )
 
         from laya.egress.registry import get_body_field
 

@@ -75,6 +75,11 @@ Never skip confirmation for actions that send messages or modify external state.
 If the user gives a clear direct command ("approve PR 23", "close PROJ-123", \
 "post this comment"), use the direct action tools instead.
 
+7. **Resolve contacts before composing**: When the user mentions a person by name, \
+handle, or alias and you need their email address (e.g., for To or CC fields), call \
+find_contact to look up their email BEFORE calling open_compose or send_email. \
+Never guess or fabricate email addresses.
+
 4. **Smart resolution**: If a ticket/PR/email ID doesn't match exactly, search for \
 close matches and present options to the user. Never execute on an unverified target.
 
@@ -164,20 +169,11 @@ for the sake of rewriting.
 - Never insert emoji or icon characters that were not in the original draft."""
 
 
-_PLATFORM_GUIDANCE = {
-    "gmail": "Email — keep any existing greeting and sign-off; use paragraph breaks; professional but warm.",
-    "outlook": "Email — keep any existing greeting and sign-off; use paragraph breaks; professional but warm.",
-    "jira": "Jira comment — technical tone, direct, concise; preserve any @mentions and ticket IDs.",
-    "linear": "Linear comment — technical tone, direct, concise; preserve any @mentions and issue IDs.",
-    "github": "GitHub comment — technical tone, direct; preserve code blocks, @mentions, and issue/PR references.",
-    "bitbucket": "Bitbucket comment — technical tone, direct; preserve code blocks, @mentions, and PR references.",
-    "slack": "Slack message — conversational and concise; preserve any @mentions, channel refs, and links.",
-}
-
-
 def build_polish_messages(draft_text: str, platform: str | None) -> list[dict[str, str]]:
     """Build messages for the Chat LLM to polish a user's edited draft."""
-    guidance = _PLATFORM_GUIDANCE.get((platform or "").lower(), "General professional correspondence.")
+    from laya.egress.registry import get_polish_guidance
+
+    guidance = get_polish_guidance(platform)
     user_content = (
         f"Platform: {guidance}\n\n"
         f"Draft to polish:\n---\n{draft_text}\n---\n\n"

@@ -700,3 +700,178 @@ def get_capability(platform: str, action_type: str) -> EgressCapability | None:
         if cap.action_type == action_type:
             return cap
     return None
+
+
+# ---------------------------------------------------------------------------
+# Platform keywords — used to detect platform from n8n workflow names
+# ---------------------------------------------------------------------------
+
+_PLATFORM_KEYWORDS: dict[str, str] = {
+    "github": "github",
+    "gmail": "gmail",
+    "jira": "jira",
+    "slack": "slack",
+    "bitbucket": "bitbucket",
+    "calendar": "calendar",
+    "outlook": "outlook",
+    "linear": "linear",
+    "notion": "notion",
+    "discord": "discord",
+    "gitlab": "gitlab",
+}
+
+
+def get_platform_keywords() -> dict[str, str]:
+    """Return keyword→platform mapping for workflow name parsing."""
+    return dict(_PLATFORM_KEYWORDS)
+
+
+# ---------------------------------------------------------------------------
+# Chapter defaults — default trace chapter label per platform
+# ---------------------------------------------------------------------------
+
+_PLATFORM_CHAPTER_DEFAULTS: dict[str, str] = {
+    "jira": "Update",
+    "github": "Code",
+    "bitbucket": "Code",
+    "slack": "Discussion",
+    "gmail": "Email",
+    "outlook": "Email",
+    "calendar": "Meeting",
+    "outlook_calendar": "Meeting",
+    "linear": "Update",
+    "notion": "Note",
+}
+
+
+def get_chapter_default(platform: str) -> str:
+    """Return the default trace chapter label for a platform."""
+    return _PLATFORM_CHAPTER_DEFAULTS.get(platform, "Update")
+
+
+# ---------------------------------------------------------------------------
+# Polish guidance — LLM tone/style guidance for draft polishing
+# ---------------------------------------------------------------------------
+
+_POLISH_GUIDANCE: dict[str, str] = {
+    "gmail": "Email — keep any existing greeting and sign-off; use paragraph breaks; professional but warm.",
+    "outlook": "Email — keep any existing greeting and sign-off; use paragraph breaks; professional but warm.",
+    "jira": "Jira comment — technical tone, direct, concise; preserve any @mentions and ticket IDs.",
+    "linear": "Linear comment — technical tone, direct, concise; preserve any @mentions and issue IDs.",
+    "github": "GitHub comment — technical tone, direct; preserve code blocks, @mentions, and issue/PR references.",
+    "bitbucket": "Bitbucket comment — technical tone, direct; preserve code blocks, @mentions, and PR references.",
+    "slack": "Slack message — conversational and concise; preserve any @mentions, channel refs, and links.",
+    "notion": "Notion page — clear and structured; preserve any @mentions and links.",
+}
+
+
+def get_polish_guidance(platform: str) -> str:
+    """Return LLM polish tone guidance for a platform."""
+    return _POLISH_GUIDANCE.get((platform or "").lower(), "General professional correspondence.")
+
+
+# ---------------------------------------------------------------------------
+# Legacy platform map — pre-Spaces hardcoded connection_id values
+# ---------------------------------------------------------------------------
+
+_LEGACY_PLATFORM_MAP: dict[str, str] = {
+    "gmail_main": "gmail",
+    "jira_main": "jira",
+    "slack_main": "slack",
+    "calendar_main": "calendar",
+    "bb_main": "bitbucket",
+    "outlook_main": "outlook",
+    "outlook_calendar_main": "outlook_calendar",
+}
+
+
+def resolve_legacy_platform(connection_id: str) -> str | None:
+    """Map a legacy hardcoded connection_id to its platform, or None."""
+    return _LEGACY_PLATFORM_MAP.get(connection_id)
+
+
+# ---------------------------------------------------------------------------
+# Source reference formatting — how to display subject IDs per platform
+# ---------------------------------------------------------------------------
+
+_SOURCE_REF_CONFIG: dict[str, dict] = {
+    "github": {"pr_format": "PR #{id}", "default_format": "#{id}"},
+    "jira": {"default_format": "{id}"},
+    "gmail": {"use_title": True},
+    "slack": {"use_title": True},
+    "outlook": {"use_title": True, "url_template": "https://outlook.office365.com/mail/inbox/id/{id}"},
+    "linear": {"default_format": "{id}"},
+    "bitbucket": {"pr_format": "PR #{id}", "default_format": "#{id}"},
+    "notion": {"use_title": True},
+    "calendar": {"use_title": True},
+}
+
+
+def format_source_ref(
+    platform: str,
+    subject_id: str,
+    subject_type: str | None,
+    subject_title: str | None,
+    source_url: str | None,
+) -> tuple[str | None, str | None]:
+    """Format a source reference and URL for display.
+
+    Returns (source_ref, source_url) — either may be None.
+    """
+    config = _SOURCE_REF_CONFIG.get(platform, {})
+
+    if config.get("use_title"):
+        ref = subject_title or subject_id
+    elif subject_type == "pull_request" and "pr_format" in config:
+        ref = config["pr_format"].replace("{id}", subject_id)
+    elif "default_format" in config:
+        ref = config["default_format"].replace("{id}", subject_id)
+    else:
+        ref = subject_id or None
+
+    if not source_url and "url_template" in config and subject_id:
+        source_url = config["url_template"].replace("{id}", subject_id)
+
+    return ref, source_url
+
+
+# ---------------------------------------------------------------------------
+# Platform groups — derive from capabilities for tool enum lists
+# ---------------------------------------------------------------------------
+
+
+def get_email_platforms() -> list[str]:
+    """Platforms that support send_email action."""
+    result = [p for p, caps in _CAPABILITIES.items() if any(c.action_type == "send_email" for c in caps)]
+    if "smtp" not in result:
+        result.append("smtp")
+    return result
+
+
+def get_ticket_platforms() -> list[str]:
+    """Platforms that support comment or create_issue actions."""
+    return [
+        p for p, caps in _CAPABILITIES.items()
+        if any(c.action_type in ("comment", "create_issue") for c in caps)
+    ]
+
+
+def get_transition_platforms() -> list[str]:
+    """Platforms that support status transitions."""
+    return [
+        p for p, caps in _CAPABILITIES.items()
+        if any(c.action_type in ("transition", "update_status") for c in caps)
+    ]
+
+
+def get_pr_platforms() -> list[str]:
+    """Platforms that support PR actions (approve, merge, etc.)."""
+    return [
+        p for p, caps in _CAPABILITIES.items()
+        if any(c.action_type in ("approve_pr", "merge_pr") for c in caps)
+    ]
+
+
+def get_composable_platforms() -> list[str]:
+    """Platforms that can be used with the open_compose tool."""
+    return list(_CAPABILITIES.keys())

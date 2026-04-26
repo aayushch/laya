@@ -10,17 +10,7 @@ from laya.db.sqlite import get_db
 
 log = structlog.get_logger()
 
-# Legacy hardcoded connection_id values from pre-Spaces workflows.
-# Used as fallback when workflow hasn't been updated to use $workflow.id yet.
-_LEGACY_PLATFORM_MAP = {
-    "gmail_main": "gmail",
-    "jira_main": "jira",
-    "slack_main": "slack",
-    "calendar_main": "calendar",
-    "bb_main": "bitbucket",
-    "outlook_main": "outlook",
-    "outlook_calendar_main": "outlook_calendar",
-}
+from laya.egress.registry import resolve_legacy_platform as _resolve_legacy
 
 
 async def resolve_space(event_id: str, connection_id: str | None, platform: str) -> str | None:
@@ -50,8 +40,8 @@ async def resolve_space(event_id: str, connection_id: str | None, platform: str)
         return space_id
 
     # 2. Legacy fallback — check if this is a known hardcoded value
-    if connection_id in _LEGACY_PLATFORM_MAP:
-        legacy_platform = _LEGACY_PLATFORM_MAP[connection_id]
+    legacy_platform = _resolve_legacy(connection_id)
+    if legacy_platform:
         # Auto-register as a source in the default space
         source_id = f"src_{uuid.uuid4().hex[:12]}"
         source_name = f"{legacy_platform.title()} (default)"

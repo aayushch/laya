@@ -16,7 +16,7 @@ import structlog
 
 import laya.egress as egress
 from laya.egress.models import EgressRequest
-from laya.egress.tools import EGRESS_TOOL_NAMES
+
 
 log = structlog.get_logger()
 

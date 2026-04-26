@@ -8,12 +8,11 @@ from typing import Any
 import structlog
 
 from laya.egress.tool_handlers import (
-    EGRESS_TOOL_NAMES,
     handle_confirm_egress,
     handle_egress_tool,
     handle_open_compose,
 )
-from laya.egress.tools import EGRESS_TOOL_NAMES as _EGRESS_NAMES
+from laya.egress.tools import PREVIEWABLE_EGRESS_TOOLS
 from laya.llm.tools import card_tools, entity_tools, event_tools, search_tools, settings_tools
 
 log = structlog.get_logger()
@@ -79,7 +78,12 @@ async def execute_tool(
         return await handle_open_compose(arguments, space_id)
     if name == "confirm_egress":
         return await handle_confirm_egress(arguments, space_id)
-    if name in _EGRESS_NAMES:
+    if name == "find_contact":
+        from laya.llm.tools.contact_tools import find_contact
+        query = arguments.get("query", "")
+        result = await find_contact(query)
+        return json.dumps(result, default=str)
+    if name in PREVIEWABLE_EGRESS_TOOLS:
         return await handle_egress_tool(name, arguments, space_id)
 
     handler = _TOOL_HANDLERS.get(name)

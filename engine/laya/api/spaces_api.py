@@ -628,20 +628,12 @@ async def bulk_assign_sources(space_id: str, body: dict) -> dict:
 # Helpers
 # ---------------------------------------------------------------------------
 
-_PLATFORM_KEYWORDS = {
-    "github": "github",
-    "gmail": "gmail",
-    "jira": "jira",
-    "slack": "slack",
-    "bitbucket": "bitbucket",
-    "calendar": "calendar",
-}
-
-
 def _parse_platform_from_name(name: str) -> str:
     """Extract platform from workflow name like 'Laya - GitHub Ingestion'."""
+    from laya.egress.registry import get_platform_keywords
+
     lower = name.lower()
-    for keyword, platform in _PLATFORM_KEYWORDS.items():
+    for keyword, platform in get_platform_keywords().items():
         if keyword in lower:
             return platform
     return "unknown"
