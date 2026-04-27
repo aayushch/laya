@@ -2,6 +2,7 @@
 	import type { ActionCard, WorkspaceEvent, WorkspaceSession } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
 	import { sendMessage } from '$lib/stores/websocket';
+	import { glassTheme } from '$lib/stores/glassTheme';
 	import { tick } from 'svelte';
 	import { marked } from 'marked';
 
@@ -307,9 +308,9 @@
 	}
 </script>
 
-<div class="flex h-full flex-1 min-w-0 flex-col border-l border-surface-700 bg-surface-900">
-	<!-- Header bar — bg-surface-900 prevents title clipping during macOS elastic overscroll -->
-	<div class="relative z-10 flex h-11 items-center justify-between border-b border-surface-700 bg-surface-900 px-4 gap-3">
+<div class="flex h-full flex-1 min-w-0 flex-col border-l border-t {$glassTheme ? 'glass-panel border-white/[0.06]' : 'border-surface-700 bg-surface-900'}">
+	<!-- Header bar — solid bg in non-glass mode prevents title clipping during macOS elastic overscroll -->
+	<div class="relative z-10 flex h-11 items-center justify-between border-b {$glassTheme ? 'border-white/[0.06]' : 'border-surface-700 bg-surface-900'} px-4 gap-3">
 		<div class="flex min-w-0 flex-1 items-center gap-1.5">
 			{#if ontoggletime}
 				<button
@@ -337,12 +338,12 @@
 				<div class="ml-1 flex gap-1">
 					{#if session.status === 'paused'}
 						<button
-							class="rounded px-2 py-1 text-[11px] text-surface-300 hover:bg-surface-700"
+							class="rounded px-2 py-1 text-[11px] text-surface-300 {$glassTheme ? 'hover:bg-white/[0.06]' : 'hover:bg-surface-700'}"
 							onclick={() => controlSession('resume')}
 						>Resume</button>
 					{:else}
 						<button
-							class="rounded px-2 py-1 text-[11px] text-surface-300 hover:bg-surface-700"
+							class="rounded px-2 py-1 text-[11px] text-surface-300 {$glassTheme ? 'hover:bg-white/[0.06]' : 'hover:bg-surface-700'}"
 							onclick={() => controlSession('pause')}
 						>Pause</button>
 					{/if}
@@ -360,7 +361,7 @@
 		{#if hiddenCount > 0}
 			<div class="flex justify-center">
 				<button
-					class="rounded-lg border border-surface-600 bg-surface-800 px-3 py-1.5 text-[11px] text-surface-400 transition-colors hover:bg-surface-700 hover:text-surface-200"
+					class="rounded-lg border {$glassTheme ? 'border-white/[0.08] bg-white/[0.04] hover:bg-white/[0.06]' : 'border-surface-600 bg-surface-800 hover:bg-surface-700'} px-3 py-1.5 text-[11px] text-surface-400 transition-colors hover:text-surface-200"
 					onclick={() => (showAll = true)}
 				>
 					Show {hiddenCount} older messages
@@ -373,7 +374,7 @@
 				{@const event = segment.event}
 				{@const isUser = event.actor === 'user'}
 				<div id="event-{event.event_id}" class="flex {isUser ? 'justify-end' : 'justify-start'}">
-					<div class="max-w-[80%] rounded-lg px-3 py-2 {isUser ? 'bg-laya-orange/10 text-surface-100' : event.event_type === 'error' ? 'bg-red-900/20 text-red-200' : 'bg-surface-800 text-surface-200'}">
+					<div class="max-w-[80%] rounded-lg px-3 py-2 {isUser ? 'bg-laya-orange/10 text-surface-100' : event.event_type === 'error' ? 'bg-red-900/20 text-red-200' : ($glassTheme ? 'bg-white/[0.04] text-surface-200' : 'bg-surface-800 text-surface-200')}">
 
 						{#if event.event_type === 'approval_request' && event.content.ask_user_question}
 							<!-- AskUserQuestion — interactive multi-question form -->
@@ -564,12 +565,12 @@
 
 	<!-- Input bar — seamless bottom area, no extra borders around the field -->
 	{#if session}
-		<div class="flex gap-2 bg-surface-900 px-4 py-3">
+		<div class="flex gap-2 px-4 py-3 {$glassTheme ? '' : 'bg-surface-900'}">
 			<textarea
 				bind:value={userInput}
 				placeholder={isAgentActive ? 'Agent is working...' : 'Send a message to the agent...'}
 				rows="1"
-				class="flex-1 resize-none rounded-lg bg-surface-800 px-3 py-2 text-sm text-surface-100 placeholder-surface-500 focus:outline-none focus:ring-1 focus:ring-laya-orange/40 disabled:opacity-50 disabled:cursor-not-allowed"
+				class="flex-1 resize-none rounded-lg px-3 py-2 text-sm text-surface-100 placeholder-surface-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed {$glassTheme ? 'glass-input' : 'border border-transparent bg-surface-800 focus:ring-1 focus:ring-laya-orange/40'}"
 				onkeydown={handleKeydown}
 				disabled={isAgentActive || sendingPrompt}
 			></textarea>

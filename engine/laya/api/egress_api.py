@@ -389,6 +389,40 @@ async def get_compose_platforms() -> dict:
     return {"platforms": get_compose_platforms_data()}
 
 
+@router.get("/egress/email-suggestions")
+async def email_suggestions(q: str = "") -> dict:
+    """Search known email addresses from events and team config."""
+    query = q.strip().lower()
+    if len(query) < 2:
+        return {"suggestions": []}
+
+    from laya.db.sqlite import get_db
+
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        """SELECT DISTINCT actor_email FROM events
+           WHERE actor_email IS NOT NULL AND actor_email != ''
+             AND LOWER(actor_email) LIKE ?
+           ORDER BY actor_email LIMIT 10""",
+        (f"%{query}%",),
+    )
+    emails = [r["actor_email"] for r in rows]
+
+    try:
+        team = load_team()
+        for m in team.get("members", []):
+            email = m.get("email", "")
+            if email and query in email.lower() and email not in emails:
+                emails.append(email)
+            for alias in m.get("aliases", []):
+                if alias and query in alias.lower() and alias not in emails:
+                    emails.append(alias)
+    except Exception:
+        pass
+
+    return {"suggestions": emails[:15]}
+
+
 @router.get("/egress/capabilities/{platform}")
 async def get_capabilities(platform: str) -> dict:
     """Get available actions for a platform."""

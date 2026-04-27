@@ -244,6 +244,12 @@ class N8nBackend(EgressBackend):
             except Exception:
                 pass  # Non-fatal — workflow falls back to placeholder URL
 
+        # Gmail send_email: build the raw MIME message + base64url in Python
+        # so the n8n workflow doesn't need a fragile JS expression.
+        if request.platform == "gmail" and request.action_type == "send_email":
+            from laya.egress.platforms.gmail import build_api_payload
+            payload = build_api_payload(request.action_type, payload)
+
         return {
             "action_id": f"egr_{request.source_card_id or 'direct'}",
             "source_event_id": request.source_event_id,

@@ -377,7 +377,8 @@
 	});
 
 	function handleBackdrop(e: MouseEvent) {
-		if (e.target === e.currentTarget) close();
+		// Intentionally no-op: modal only closes via close button or ESC key.
+		// Backdrop kept as event sink so clicks outside the card don't bleed through.
 	}
 
 	// Close directory dropdown when clicking anywhere else in the modal

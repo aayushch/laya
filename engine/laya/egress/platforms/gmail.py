@@ -115,6 +115,50 @@ def normalize_payload(action_type: str, payload: dict) -> dict:
     return p
 
 
+def build_api_payload(action_type: str, payload: dict) -> dict:
+    """Convert normalized payload to Gmail API-ready format.
+
+    For send_email, builds a raw RFC 2822 MIME message and base64url-encodes
+    it so the n8n workflow can pass it straight to gmail.googleapis.com without
+    any expression-side string manipulation.
+    """
+    if action_type != "send_email":
+        return payload
+
+    import base64
+
+    to = payload.get("to", "")
+    subject = payload.get("subject", "")
+    body_text = payload.get("body", "")
+    in_reply_to = payload.get("in_reply_to", "")
+    references = payload.get("references", "")
+    thread_id = payload.get("thread_id", "")
+
+    headers = [
+        f"To: {to}",
+        f"Subject: {subject}",
+    ]
+    if in_reply_to:
+        headers.append(f"In-Reply-To: {in_reply_to}")
+    if references:
+        headers.append(f"References: {references}")
+    headers.extend([
+        "MIME-Version: 1.0",
+        'Content-Type: text/plain; charset="UTF-8"',
+        "Content-Transfer-Encoding: 7bit",
+        "",
+        body_text,
+    ])
+
+    mime = "\r\n".join(headers)
+    raw = base64.urlsafe_b64encode(mime.encode("utf-8")).decode("ascii").rstrip("=")
+
+    result: dict = {"raw": raw}
+    if thread_id:
+        result["threadId"] = thread_id
+    return result
+
+
 def validate_payload(action_type: str, payload: dict) -> list[str]:
     """Return list of validation errors (empty if valid)."""
     errors = []

@@ -191,8 +191,7 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="flex min-w-0 items-center {onbulktoggle ? 'gap-1.5' : ''}">
-	<!-- Bulk selection checkbox — outside the row -->
+<div class="flex items-center {indented ? 'pl-6' : ''} {onbulktoggle ? 'gap-1.5' : ''}">
 	{#if onbulktoggle}
 		<div class="w-5 shrink-0 flex items-center justify-center">
 			<button
@@ -215,11 +214,16 @@
 	<div
 		data-card-id={card.card_id}
 		data-status={$glassTheme && $cardColors && !isArchived ? card.status : undefined}
-		class="group/row list-row-hover relative flex flex-1 min-w-0 items-center rounded-lg px-3 py-1.5 text-left transition-colors cursor-pointer hover:z-20
+		class="group/row list-row-hover relative flex flex-1 min-w-0 items-center rounded-lg transition-colors hover:z-20
 			border border-transparent {$cardColors ? (statusRowStyle[card.status] ?? '') : ''}
 			{isArchived ? 'opacity-50 hover:opacity-75' : isDimmed ? ($glassTheme ? 'glass-dim' : 'opacity-45 hover:opacity-70') : ''}
 			{isLastViewed ? ($cardColors ? 'card-last-viewed card-last-viewed--compact' : 'card-last-viewed-highlight') : ''}"
 		style="{isLastViewed ? '--corner-radius: 0.5rem' : ''}"
+	>
+		{#if isLastViewed}<div class="card-corner-bottom"></div>{/if}
+
+	<div
+		class="flex flex-1 min-w-0 items-center px-3 py-1.5 text-left cursor-pointer"
 		onclick={() => onselect(card)}
 		onkeydown={(e) => e.key === 'Enter' && onselect(card)}
 		role="button"
@@ -407,6 +411,7 @@
 	<!-- Time — fixed width -->
 	<span class="w-[52px] shrink-0 text-right text-[10px] text-surface-500 whitespace-nowrap">{timeAgo(card.created_at)}</span>
 	</div>
+</div>
 </div>
 
 {#if showDeleteConfirm}

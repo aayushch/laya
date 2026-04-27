@@ -2,6 +2,7 @@
 	import { compose } from '$lib/stores/compose';
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { tick } from 'svelte';
 	import type { EgressConnection, ComposePlatform, ComposeAction, ComposeField } from '$lib/api/types';
 
 	let connections = $state<EgressConnection[]>([]);
@@ -25,6 +26,78 @@
 	let activePlatform = $state('');
 	let selectedActionType = $state('');
 	let initialSyncDone = $state(false);
+
+	// Email autocomplete
+	let emailSuggestions = $state<string[]>([]);
+	let emailDropdownField = $state<string | null>(null);
+	let emailDebounceTimer = $state<ReturnType<typeof setTimeout> | null>(null);
+	let emailHighlightIndex = $state(-1);
+	let emailListEl = $state<HTMLDivElement | undefined>();
+
+	function handleEmailInput(fieldName: string, value: string) {
+		formValues[fieldName] = value;
+		if (emailDebounceTimer) clearTimeout(emailDebounceTimer);
+		if (value.trim().length < 2) {
+			emailSuggestions = [];
+			emailDropdownField = null;
+			return;
+		}
+		emailDebounceTimer = setTimeout(async () => {
+			try {
+				const resp = await engineApi.emailSuggestions(value.trim());
+				emailSuggestions = resp.suggestions;
+				emailDropdownField = resp.suggestions.length > 0 ? fieldName : null;
+				emailHighlightIndex = -1;
+			} catch {
+				emailSuggestions = [];
+				emailDropdownField = null;
+			}
+		}, 250);
+	}
+
+	function selectEmailSuggestion(fieldName: string, email: string) {
+		formValues[fieldName] = email;
+		emailSuggestions = [];
+		emailDropdownField = null;
+		emailHighlightIndex = -1;
+	}
+
+	async function scrollHighlightedIntoView() {
+		await tick();
+		if (!emailListEl || emailHighlightIndex < 0) return;
+		const items = emailListEl.querySelectorAll('[data-email-item]');
+		items[emailHighlightIndex]?.scrollIntoView({ block: 'nearest' });
+	}
+
+	function handleEmailKeydown(e: KeyboardEvent, fieldName: string) {
+		if (emailDropdownField !== fieldName || emailSuggestions.length === 0) return;
+		if (e.key === 'ArrowDown') {
+			e.preventDefault();
+			emailHighlightIndex = emailHighlightIndex < emailSuggestions.length - 1
+				? emailHighlightIndex + 1
+				: 0;
+			scrollHighlightedIntoView();
+		} else if (e.key === 'ArrowUp') {
+			e.preventDefault();
+			emailHighlightIndex = emailHighlightIndex > 0
+				? emailHighlightIndex - 1
+				: emailSuggestions.length - 1;
+			scrollHighlightedIntoView();
+		} else if (e.key === 'Enter') {
+			e.preventDefault();
+			if (emailHighlightIndex >= 0) {
+				selectEmailSuggestion(fieldName, emailSuggestions[emailHighlightIndex]);
+			}
+		} else if (e.key === 'Escape') {
+			e.preventDefault();
+			emailSuggestions = [];
+			emailDropdownField = null;
+			emailHighlightIndex = -1;
+		} else if (e.key === 'Tab' && emailHighlightIndex >= 0) {
+			e.preventDefault();
+			selectEmailSuggestion(fieldName, emailSuggestions[emailHighlightIndex]);
+		}
+	}
 
 	// Derived: platforms filtered by connected status
 	const visiblePlatforms = $derived(
@@ -223,6 +296,14 @@
 
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') close();
+		// Cmd+Enter (mac) / Ctrl+Enter (win/linux) submits the compose form. Mirrors
+		// the submit button's disabled state so a fast keystroke can't double-fire
+		// while a send is in flight or the success splash is up.
+		if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
+			if (sending || success) return;
+			e.preventDefault();
+			submit();
+		}
 	}
 
 	$effect(() => {
@@ -232,7 +313,8 @@
 	});
 
 	function handleBackdrop(e: MouseEvent) {
-		if (e.target === e.currentTarget) close();
+		// Intentionally no-op: modal only closes via close button or ESC key.
+		// Backdrop kept as event sink so clicks outside the card don't bleed through.
 	}
 
 	// Common input styles
@@ -357,10 +439,49 @@
 										<option value={opt}>{opt}</option>
 									{/each}
 								</select>
+							{:else if field.type === 'email'}
+								<div class="relative">
+									<input
+										id="compose-{field.name}"
+										type="email"
+										value={formValues[field.name] ?? ''}
+										oninput={(e) => handleEmailInput(field.name, (e.target as HTMLInputElement).value)}
+										onkeydown={(e) => handleEmailKeydown(e, field.name)}
+										onfocusout={(e) => {
+											const related = (e as FocusEvent).relatedTarget as HTMLElement | null;
+											if (related?.closest('[data-email-dropdown]')) return;
+											setTimeout(() => { emailDropdownField = null; emailHighlightIndex = -1; }, 100);
+										}}
+										class={inputClass}
+										placeholder={field.placeholder}
+										autocomplete="off"
+									/>
+									{#if emailDropdownField === field.name && emailSuggestions.length > 0}
+										<!-- svelte-ignore a11y_no_static_element_interactions -->
+										<div
+											data-email-dropdown
+											class="absolute z-50 mt-1 w-full rounded-md border {$glassTheme ? 'border-surface-600/40 bg-surface-900/95 backdrop-blur-md shadow-lg shadow-black/30' : 'border-surface-600 bg-surface-800 shadow-lg'}"
+										>
+											<div bind:this={emailListEl} class="max-h-40 overflow-y-auto py-1">
+												{#each emailSuggestions as suggestion, i}
+													<button
+														type="button"
+														data-email-item
+														class="flex w-full px-3 py-1.5 text-left text-xs transition-colors {i === emailHighlightIndex ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-300 hover:bg-surface-700'}"
+														onmousedown={(e) => { e.preventDefault(); selectEmailSuggestion(field.name, suggestion); }}
+														onmouseenter={() => { emailHighlightIndex = i; }}
+													>
+														{suggestion}
+													</button>
+												{/each}
+											</div>
+										</div>
+									{/if}
+								</div>
 							{:else}
 								<input
 									id="compose-{field.name}"
-									type={field.type === 'email' ? 'email' : 'text'}
+									type="text"
 									bind:value={formValues[field.name]}
 									class={inputClass}
 									placeholder={field.placeholder}

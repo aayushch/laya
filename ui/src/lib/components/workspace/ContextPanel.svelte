@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { ActionCard, WorkspaceEvent, WorkspaceSession, Repo } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
+	import { glassTheme } from '$lib/stores/glassTheme';
+	import { goto } from '$app/navigation';
 	import { marked } from 'marked';
 
 	let {
@@ -145,15 +147,25 @@
 	const researchPlan = $derived((context.research_plan as string[]) ?? []);
 </script>
 
-<div class="flex h-full w-80 flex-col border-l border-surface-700 bg-surface-850">
-	<div class="flex h-11 shrink-0 items-center border-b border-surface-700 px-4">
+<div class="flex h-full w-80 flex-col border-l border-t {$glassTheme ? 'glass-panel border-white/[0.06]' : 'border-surface-700 bg-surface-850'}">
+	<div class="flex h-11 shrink-0 items-center justify-between border-b {$glassTheme ? 'border-white/[0.06]' : 'border-surface-700'} px-4">
 		<h2 class="text-xs font-semibold uppercase tracking-wider text-surface-400">Context</h2>
+		<button
+			class="rounded-md p-1 text-surface-400 transition-colors {$glassTheme ? 'glass-hover' : 'hover:bg-surface-800'} hover:text-surface-200"
+			onclick={() => goto('/feed')}
+			aria-label="Close workspace"
+			title="Close workspace"
+		>
+			<svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+			</svg>
+		</button>
 	</div>
 
 	<div class="flex-1 overflow-y-auto space-y-4 p-4">
 		<!-- Session outcome -->
 		{#if session && isTerminal}
-			<div class="rounded-lg border border-surface-700 bg-surface-800 p-3">
+			<div class="rounded-lg p-3 {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-800'}">
 				<h3 class="mb-2 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Session Outcome</h3>
 				<div class="space-y-1.5 text-xs">
 					<div class="flex justify-between">
@@ -190,7 +202,7 @@
 
 		<!-- Working Directory -->
 		{#if session?.repo_path}
-			<div class="rounded-lg border border-surface-700 bg-surface-800 p-3">
+			<div class="rounded-lg p-3 {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-800'}">
 				<div class="mb-1.5 flex items-center justify-between">
 					<h3 class="text-[10px] font-semibold uppercase tracking-wider text-surface-500">Working Directory</h3>
 					{#if isResearch && filesLoaded}
@@ -291,7 +303,7 @@
 		{/if}
 
 		<!-- Card metadata -->
-		<div class="rounded-lg border border-surface-700 bg-surface-800 p-3">
+		<div class="rounded-lg p-3 {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-800'}">
 			<h3 class="mb-2 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Card Info</h3>
 			<div class="space-y-1.5 text-xs">
 				<div class="flex justify-between">
@@ -321,7 +333,7 @@
 
 		<!-- Staged output -->
 		{#if card.staged_output}
-			<div class="rounded-lg border border-surface-700 bg-surface-800 p-3">
+			<div class="rounded-lg p-3 {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-800'}">
 				<h3 class="mb-2 text-[10px] font-semibold uppercase tracking-wider text-surface-500">
 					{card.staged_output.type === 'code_fix' ? 'Code Fix' : card.staged_output.type === 'draft_reply' ? 'Draft Reply' : card.staged_output.type === 'briefing' ? 'Briefing' : card.staged_output.type === 'agent_result' ? 'Agent Result' : card.staged_output.type === 'agent_plan' ? 'Implementation Plan' : 'Output'}
 				</h3>
@@ -335,7 +347,7 @@
 
 		<!-- Related entities -->
 		{#if relatedEntities.length > 0}
-			<div class="rounded-lg border border-surface-700 bg-surface-800 p-3">
+			<div class="rounded-lg p-3 {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-800'}">
 				<h3 class="mb-2 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Related Entities</h3>
 				<div class="flex flex-wrap gap-1.5">
 					{#each relatedEntities as entity}
@@ -347,7 +359,7 @@
 
 		<!-- Research plan -->
 		{#if researchPlan.length > 0}
-			<div class="rounded-lg border border-surface-700 bg-surface-800 p-3">
+			<div class="rounded-lg p-3 {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-800'}">
 				<h3 class="mb-2 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Research Plan</h3>
 				<ol class="space-y-1">
 					{#each researchPlan as step, i}
@@ -362,7 +374,7 @@
 
 		<!-- Intelligence -->
 		{#if card.intelligence && card.intelligence.length > 0}
-			<div class="rounded-lg border border-surface-700 bg-surface-800 p-3">
+			<div class="rounded-lg p-3 {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-800'}">
 				<h3 class="mb-2 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Intelligence</h3>
 				<ul class="space-y-1">
 					{#each card.intelligence as point}
@@ -377,7 +389,7 @@
 
 		<!-- Suggested actions -->
 		{#if card.suggested_actions && card.suggested_actions.length > 0}
-			<div class="rounded-lg border border-surface-700 bg-surface-800 p-3">
+			<div class="rounded-lg p-3 {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-800'}">
 				<h3 class="mb-2 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Actions</h3>
 				<div class="space-y-1.5">
 					{#each card.suggested_actions as action}
