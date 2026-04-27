@@ -915,6 +915,32 @@ export interface EgressCapabilitiesResponse {
 	capabilities: EgressCapability[];
 }
 
+export interface ComposeField {
+	name: string;
+	required: boolean;
+	type: 'text' | 'email' | 'textarea' | 'select';
+	label: string;
+	placeholder: string;
+	options?: string[];
+}
+
+export interface ComposeAction {
+	action_type: string;
+	label: string;
+	fields: ComposeField[];
+}
+
+export interface ComposePlatform {
+	id: string;
+	label: string;
+	icon: string;
+	actions: ComposeAction[];
+}
+
+export interface ComposePlatformsResponse {
+	platforms: ComposePlatform[];
+}
+
 /** An egress connection */
 export interface EgressConnection {
 	connection_id: string;

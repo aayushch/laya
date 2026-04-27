@@ -38,6 +38,7 @@ import type {
 	EgressExecuteResponse,
 	EgressPreviewResponse,
 	EgressCapabilitiesResponse,
+	ComposePlatformsResponse,
 	EgressConnectionsResponse,
 	EgressConnectRequest,
 	EgressConnectResponse,
@@ -688,6 +689,9 @@ export const engineApi = {
 
 	getEgressCapabilities: (platform: string) =>
 		request<EgressCapabilitiesResponse>(`/egress/capabilities/${platform}`),
+
+	getComposePlatforms: () =>
+		request<ComposePlatformsResponse>('/egress/compose-platforms'),
 
 	listEgressConnections: () => request<EgressConnectionsResponse>('/egress/connections'),
 
