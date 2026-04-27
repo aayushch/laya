@@ -249,10 +249,10 @@
 	}
 </script>
 
-<div bind:this={wrapperEl} class="transition-opacity {isDimmed ? ($glassTheme ? 'glass-dim' : 'opacity-45 hover:opacity-70') : ''}" data-group-entity={group.entity_id}>
-	<!-- Group header: checkbox in gutter + bordered row -->
+<div bind:this={wrapperEl} class="transition-opacity
+		{expanded ? ($glassTheme ? 'rounded-lg glass-card-flat bg-surface-900/50' : 'rounded-lg bg-surface-900') : ''}
+		{isDimmed ? ($glassTheme ? 'glass-dim' : 'opacity-45 hover:opacity-70') : ''}" data-group-entity={group.entity_id}>
 	<div class="flex items-center {onbulktoggle ? 'gap-1.5' : ''}">
-		<!-- Bulk selection checkbox (group-level) — in the gutter -->
 		{#if onbulktoggle}
 			<div class="w-5 shrink-0 flex items-center justify-center">
 				<button
@@ -279,12 +279,18 @@
 			</div>
 		{/if}
 
-		<div data-group-row={group.entity_id} data-status={$glassTheme && $cardColors && !allArchived && !expanded ? dominantStatus : undefined} class="relative flex-1 min-w-0 border hover:z-20 {expanded ? ($glassTheme ? 'rounded-t-lg border-transparent glass-card-flat bg-surface-900/50' : 'rounded-t-lg border-transparent bg-surface-900') : 'list-row-hover rounded-lg border-transparent ' + groupBgStyle} transition-colors
-			{isGroupLastViewed ? ($cardColors ? 'card-last-viewed card-last-viewed--compact rounded-lg' : 'card-last-viewed-highlight rounded-lg') : ''}">
-			<!-- Group header row -->
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div
-				class="group/grow flex min-w-0 items-center px-3 py-1.5 cursor-pointer transition-colors"
+		<div data-group-row={group.entity_id}
+			data-status={$glassTheme && $cardColors && !allArchived && !expanded ? dominantStatus : undefined}
+			class="relative flex flex-1 items-center rounded-lg border hover:z-20 transition-colors
+				{expanded
+					? 'border-transparent'
+					: 'list-row-hover border-transparent ' + groupBgStyle}
+				{isGroupLastViewed ? ($cardColors ? 'card-last-viewed card-last-viewed--compact' : 'card-last-viewed-highlight') : ''}">
+
+		<!-- Group header row -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="group/grow flex flex-1 min-w-0 items-center px-3 py-1.5 cursor-pointer transition-colors"
 				onclick={() => {
 					if (expanded) {
 						expanded = false;
@@ -305,11 +311,11 @@
 				<div class="group/chev relative w-5 shrink-0 flex items-center justify-center">
 					<button
 						aria-label="{expanded ? 'Collapse' : 'Expand'} group"
-						class="absolute inset-0 -my-1.5 -ml-2 rounded transition-colors hover:bg-surface-700/40"
+						class="absolute inset-0 -my-1.5 -ml-2 rounded"
 						onclick={(e) => { e.stopPropagation(); toggle(); }}
 					></button>
 					<svg
-						class="pointer-events-none relative h-3 w-3 transition-transform text-surface-500 group-hover/chev:text-surface-300 {expanded ? '' : '-rotate-90'}"
+						class="pointer-events-none relative h-3 w-3 transition-colors text-surface-500 group-hover/chev:text-laya-orange {expanded ? '' : '-rotate-90'}"
 						fill="none" stroke="currentColor" viewBox="0 0 24 24"
 					>
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -404,47 +410,17 @@
 		<!-- Time — fixed width, matches ListRow -->
 		<span class="w-[52px] shrink-0 text-right text-[10px] text-surface-500 whitespace-nowrap">{timeAgo(group.latest_at)}</span>
 	</div>
-
-		</div>
+	</div>
 	</div>
 
-	<!-- Expanded: child card rows — checkboxes in gutter, cards in container -->
 	{#if expanded}
-		<div transition:slide={{ duration: $reducedMotion ? 0 : 200 }}>
-			<div class="flex {onbulktoggle ? 'gap-1.5' : ''}">
-				<!-- Gutter spacer to align container with header -->
-				{#if onbulktoggle}
-					<div class="w-5 shrink-0"></div>
-				{/if}
-				<div class="flex-1 min-w-0 rounded-b-lg bg-surface-900 pt-1 pb-0 pl-4">
-					{#each group.cards as card (card.card_id)}
-						<div class="flex items-center">
-							<!-- Checkbox pulled into the gutter via negative margin -->
-							{#if onbulktoggle}
-								<div class="w-5 shrink-0 flex items-center justify-center -ml-[26px] mr-[6px]">
-									<button
-										class="h-3.5 w-3.5 rounded border flex items-center justify-center transition-colors
-											{bulkSelectedIds?.has(card.card_id)
-												? 'bg-laya-orange border-laya-orange'
-												: 'border-surface-500 hover:border-surface-300 bg-transparent'}"
-										onclick={(e) => { e.stopPropagation(); onbulktoggle(card.card_id, e); }}
-										aria-label="{bulkSelectedIds?.has(card.card_id) ? 'Deselect' : 'Select'} card"
-									>
-										{#if bulkSelectedIds?.has(card.card_id)}
-											<svg class="h-2.5 w-2.5 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
-												<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-											</svg>
-										{/if}
-									</button>
-								</div>
-							{/if}
-							<div class="flex-1 min-w-0">
-								<ListRow {card} {onselect} {ondelete} {selectedCardId} indented={true} {hasSelection} {lastViewedCardId} />
-							</div>
-						</div>
-					{/each}
-				</div>
-			</div>
+		<div transition:slide={{ duration: $reducedMotion ? 0 : 200 }} class="flex flex-col gap-0.5 pt-1">
+			{#each group.cards as card (card.card_id)}
+				<ListRow {card} {onselect} {ondelete} {selectedCardId} indented={true}
+					{hasSelection} {lastViewedCardId}
+					bulkSelected={bulkSelectedIds?.has(card.card_id) ?? false}
+					{onbulktoggle} />
+			{/each}
 		</div>
 	{/if}
 </div>

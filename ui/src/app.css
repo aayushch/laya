@@ -496,6 +496,35 @@ html, body {
 		0 4px 18px -10px rgb(0 0 0 / 0.10),
 		inset 0 1px 0 rgb(255 255 255 / 0.4);
 }
+/* Glass panel — same diffusion as glass-section but rectangular,
+   for full-height columns that shouldn't have rounded corners. */
+.glass-panel {
+	-webkit-backdrop-filter: blur(14px) saturate(1.6);
+	backdrop-filter: blur(14px) saturate(1.6);
+	background: rgb(255 255 255 / 0.035);
+}
+[data-theme='light'] .glass-panel {
+	background: rgb(255 255 255 / 0.28);
+}
+
+/* Glass input — frosted look for textareas/inputs in glass mode. Uses a
+   warm-tinted border in light mode so it's visible against the cream bg. */
+.glass-input {
+	-webkit-backdrop-filter: blur(10px) saturate(1.4);
+	backdrop-filter: blur(10px) saturate(1.4);
+	background: rgb(255 255 255 / 0.06);
+	border: 1px solid rgb(255 255 255 / 0.14);
+}
+[data-theme='light'] .glass-input {
+	background: rgb(255 255 255 / 0.45);
+	border: 1px solid rgb(110 60 25 / 0.22);
+}
+.glass-input:focus,
+.glass-input:focus-within {
+	border-color: rgb(246 172 105 / 0.55);
+	outline: none;
+}
+
 /* Tinted icon chip — semantic glass accent */
 .glass-icon {
 	width: 22px;
@@ -516,6 +545,18 @@ html, body {
 [data-theme='light'] .glass-icon--time   { color: #633806; border-color: rgb(239 159 39 / 0.4); }
 [data-theme='light'] .glass-icon--info   { color: #0C447C; border-color: rgb(55 138 221 / 0.35); }
 [data-theme='light'] .glass-icon--accent { color: #633806; border-color: rgb(234 179 8 / 0.35); }
+
+.glass-badge {
+	-webkit-backdrop-filter: blur(8px);
+	backdrop-filter: blur(8px);
+	background: rgb(255 255 255 / 0.07);
+	border: 0.5px solid rgb(255 255 255 / 0.12);
+	border-radius: 9999px;
+}
+[data-theme='light'] .glass-badge {
+	background: rgb(255 255 255 / 0.35);
+	border-color: rgb(255 255 255 / 0.5);
+}
 
 /* Glass theme mesh gradient — warm radial orbs on body that
    give backdrop-blur cards something to diffuse through. */
@@ -600,6 +641,34 @@ html, body {
 
 /* Compact variant for list rows / list groups — thinner border */
 .card-last-viewed--compact { box-shadow: inset 0 0 0 1px var(--last-viewed-accent); }
+
+/* Glass-mode override — when card-last-viewed is on a .glass-card or .glass-card-flat,
+   the glass card's own box-shadow wins on specificity and erases the ring after the
+   highlight-fade animation ends. Use an ::after overlay so the ring persists.
+   Suppress ::after WHILE `.card-highlight-fade` is running (`:not(.card-highlight-fade)`)
+   so we don't render a second ring on top of the keyframe's ring during the 1.5s fade —
+   the keyframe carries the visual until it ends, then ::after takes over seamlessly. */
+.glass-card.card-last-viewed:not(.card-highlight-fade)::after,
+.glass-card-flat.card-last-viewed:not(.card-highlight-fade)::after,
+.glass-card.card-last-viewed--compact:not(.card-highlight-fade)::after,
+.glass-card-flat.card-last-viewed--compact:not(.card-highlight-fade)::after {
+	content: '';
+	display: block;
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	border: 1.5px solid oklch(0.78 0.16 55 / 0.7);
+	box-shadow: 0 0 14px oklch(0.78 0.16 55 / 0.28);
+	z-index: 10;
+	pointer-events: none;
+}
+[data-theme='light'] .glass-card.card-last-viewed:not(.card-highlight-fade)::after,
+[data-theme='light'] .glass-card-flat.card-last-viewed:not(.card-highlight-fade)::after,
+[data-theme='light'] .glass-card.card-last-viewed--compact:not(.card-highlight-fade)::after,
+[data-theme='light'] .glass-card-flat.card-last-viewed--compact:not(.card-highlight-fade)::after {
+	border-color: oklch(0.65 0.18 55 / 0.7);
+	box-shadow: 0 0 14px oklch(0.65 0.18 55 / 0.22);
+}
 
 /* Highlight variant — used when card status colors are off.
    Uses a ::after pseudo-element with high z-index so it paints above

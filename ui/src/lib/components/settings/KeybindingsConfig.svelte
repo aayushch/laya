@@ -15,6 +15,7 @@
 		{ key: 'S', description: 'Toggle day summary', scope: 'Global', note: 'Only when not focused on an input field' },
 		{ key: `${mod}D`, description: 'Toggle card descriptions', scope: 'Global', note: '' },
 		{ key: `${isMac ? '⇧⌘' : 'Ctrl+Shift+'}D`, description: 'Toggle compact / relaxed card layout', scope: 'Global', note: '' },
+		{ key: `${mod}↵`, description: 'Send compose form', scope: 'Compose modal', note: '' },
 		{ key: `${mod}F`, description: 'Focus search box', scope: 'Feed', note: '' },
 		{ key: `${mod}S`, description: 'Go to Coherence and focus search', scope: 'Global', note: '' },
 	];

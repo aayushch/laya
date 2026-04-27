@@ -215,7 +215,10 @@
 		return null;
 	}
 
-	function startEditing(action: { action_id: string; payload: Record<string, unknown> }) {
+	function startEditing(
+		action: { action_id: string; payload: Record<string, unknown> },
+		fallbackBody?: string
+	) {
 		editingActionId = action.action_id;
 		const p = action.payload;
 		// Extract all string fields for editing — works for email (to/subject/body),
@@ -228,6 +231,14 @@
 			if (typeof value === 'string' && value.length > 0) {
 				editedPayload[key] = value;
 			}
+		}
+		// When the engine couldn't parse the LLM's payload (it arrives as
+		// `{raw: "subject"}` because the model emitted a non-JSON string), the
+		// action has no body/comment field but the actual draft text still lives
+		// in staged_output.content. Seed `body` so the user can edit + save and
+		// the next executor pass has something usable to send.
+		if (fallbackBody && !editedPayload.body && !editedPayload.comment && !editedPayload.message && !editedPayload.description) {
+			editedPayload.body = fallbackBody;
 		}
 	}
 
@@ -607,8 +618,10 @@
 			</div>
 		{/if}
 
-		<!-- Staged output -->
-		{#if card.staged_output}
+		<!-- Staged output. Skipped for draft_reply when there's a suggested action —
+		     the editable preview below renders the same draft text with Edit/Polish
+		     controls, so we'd otherwise duplicate the same content. -->
+		{#if card.staged_output && !(card.staged_output.type === 'draft_reply' && (card.suggested_actions?.length ?? 0) > 0)}
 			<div class="mb-5">
 				<h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-surface-400">
 					{outputTypeLabels[card.staged_output.type] ?? 'Output'}
@@ -634,26 +647,34 @@
 				{#each card.suggested_actions as action}
 					{@const isSelected = card.selected_action_id === action.action_id}
 					{@const payload = action.payload}
-					{@const editableField = payload ? getEditableTextField(payload) : null}
+					{@const detectedField = payload ? getEditableTextField(payload) : null}
+					{@const isDraftReply = card.staged_output?.type === 'draft_reply'}
+					{@const fallbackText = isDraftReply ? (card.staged_output?.content ?? '') : ''}
+					{@const editableField = detectedField ?? (fallbackText ? 'body' : null)}
+					{@const displayText = (detectedField ? (payload[detectedField] as string) : fallbackText) ?? ''}
 
-					<!-- Action payload preview — works for any action with editable text (email body, PR comment, Slack message, etc.) -->
-					{#if editableField}
+					<!-- Action payload preview — works for any action with editable text (email body, PR comment, Slack message, etc.).
+					     When the engine couldn't parse the LLM's payload (it landed as `{raw: "..."}` because the model
+					     emitted a non-JSON string), `detectedField` is null but the actual draft still lives in
+					     `staged_output.content` for draft_reply cards — fall back to it so Edit/Polish stay available. -->
+					{#if editableField && displayText}
 						{@const isEditing = editingActionId === action.action_id}
 						{@const isPolishing = polishingActionIds.has(action.action_id)}
 						{@const hasEdits = payload._edited === true}
 						{@const polishErrorMsg = polishErrors[action.action_id]}
 						<div class="relative mb-2 rounded-lg border border-surface-700 bg-surface-900/50 p-3">
 							{#if !isEditing}
-								<!-- Read-only view: show metadata fields, then the main text -->
+								<!-- Read-only view: show metadata fields, then the main text. Skip `raw`
+								     since it's an engine-side fallback marker, not user content. -->
 								{#each Object.entries(payload) as [key, value]}
-									{#if !key.startsWith('_') && typeof value === 'string' && value.length > 0 && key !== editableField}
+									{#if !key.startsWith('_') && typeof value === 'string' && value.length > 0 && key !== editableField && key !== 'raw'}
 										<div class="mb-1.5 flex items-center gap-1.5 text-[11px]">
 											<span class="font-medium text-surface-500 capitalize">{key}:</span>
 											<span class="text-surface-300">{value}</span>
 										</div>
 									{/if}
 								{/each}
-								<div class="max-h-48 overflow-y-auto whitespace-pre-wrap text-laya-base text-surface-200">{payload[editableField]}</div>
+								<div class="max-h-48 overflow-y-auto whitespace-pre-wrap text-laya-base text-surface-200">{displayText}</div>
 							{:else}
 								<!-- Edit mode: inputs for metadata, textarea for main text -->
 								{#each Object.entries(editedPayload) as [key]}
@@ -695,7 +716,7 @@
 									{#if !isEditing}
 										<button
 											class="text-[11px] text-surface-400 hover:text-laya-orange transition-colors disabled:opacity-40 disabled:hover:text-surface-400"
-											onclick={() => startEditing(action)}
+											onclick={() => startEditing(action, detectedField ? undefined : fallbackText)}
 											disabled={isPolishing}
 										>
 											Edit draft

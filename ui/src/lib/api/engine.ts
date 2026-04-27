@@ -707,6 +707,9 @@ export const engineApi = {
 			body: JSON.stringify({ text, platform })
 		}),
 
+	emailSuggestions: (q: string) =>
+		request<{ suggestions: string[] }>(`/egress/email-suggestions?q=${encodeURIComponent(q)}`),
+
 	getConnectionNames: (platform: string) =>
 		request<{ names: string[] }>(`/egress/connections/names/${platform}`),
 

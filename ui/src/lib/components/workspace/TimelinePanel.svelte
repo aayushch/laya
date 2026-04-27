@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { WorkspaceEvent } from '$lib/api/types';
+	import { glassTheme } from '$lib/stores/glassTheme';
 
 	let { events, onselect }: { events: WorkspaceEvent[]; onselect?: (event: WorkspaceEvent) => void } = $props();
 
@@ -67,8 +68,8 @@
 	}
 </script>
 
-<div class="flex h-full w-72 flex-col bg-surface-850">
-	<div class="flex h-11 items-center gap-2 border-b border-surface-700 px-4">
+<div class="flex h-full w-72 flex-col border-t {$glassTheme ? 'glass-panel border-white/[0.06]' : 'border-surface-700 bg-surface-850'}">
+	<div class="flex h-11 items-center gap-2 border-b {$glassTheme ? 'border-white/[0.06]' : 'border-surface-700'} px-4">
 		<h2 class="text-xs font-semibold uppercase tracking-wider text-surface-400">Timeline</h2>
 		<span class="text-[10px] text-surface-500">{events.length} events</span>
 	</div>
@@ -76,7 +77,7 @@
 	<div class="flex-1 overflow-y-auto">
 		{#if hiddenCount > 0}
 			<button
-				class="flex w-full items-center justify-center gap-1 border-b border-surface-700 px-3 py-2 text-[11px] text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-200"
+				class="flex w-full items-center justify-center gap-1 border-b {$glassTheme ? 'border-white/[0.06] hover:bg-white/[0.04]' : 'border-surface-700 hover:bg-surface-800'} px-3 py-2 text-[11px] text-surface-400 transition-colors hover:text-surface-200"
 				onclick={() => (showAll = true)}
 			>
 				Show {hiddenCount} older events
@@ -85,7 +86,7 @@
 
 		{#each visibleEvents as event (event.event_id)}
 			<button
-				class="group flex w-full items-start gap-2 border-l-2 px-3 py-2 text-left transition-colors hover:bg-surface-800 {typeColors[event.event_type] ?? 'border-surface-600'}"
+				class="group flex w-full items-start gap-2 border-l-2 px-3 py-2 text-left transition-colors {$glassTheme ? 'hover:bg-white/[0.04]' : 'hover:bg-surface-800'} {typeColors[event.event_type] ?? 'border-surface-600'}"
 				onclick={() => onselect?.(event)}
 			>
 				<svg class="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-surface-400" viewBox="0 0 24 24" fill="currentColor">
