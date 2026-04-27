@@ -2,11 +2,15 @@
 	import { compose } from '$lib/stores/compose';
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
-	import type { EgressConnection } from '$lib/api/types';
+	import type { EgressConnection, ComposePlatform, ComposeAction, ComposeField } from '$lib/api/types';
 
 	let connections = $state<EgressConnection[]>([]);
 	let connectionsLoaded = $state(false);
 	let selectedConnectionId = $state<string>('');
+
+	// Registry-driven platform/action data
+	let allPlatforms = $state<ComposePlatform[]>([]);
+	let platformsLoaded = $state(false);
 
 	// Form state
 	let sending = $state(false);
@@ -15,59 +19,72 @@
 	let resultUrl = $state<string | null>(null);
 	let error = $state<string | null>(null);
 
-	// Email fields
-	let emailTo = $state('');
-	let emailCc = $state('');
-	let showCc = $state(false);
-	let emailSubject = $state('');
-	let emailBody = $state('');
+	// Generic form values keyed by field name
+	let formValues: Record<string, string> = $state({});
 
-	// Slack fields
-	let slackChannel = $state('');
-	let slackMessage = $state('');
-	let slackThreadReply = $state(false);
-	let slackThreadTs = $state('');
+	let activePlatform = $state('');
+	let selectedActionType = $state('');
+	let initialSyncDone = $state(false);
 
-	// Jira fields
-	let jiraProject = $state('');
-	let jiraType = $state('Task');
-	let jiraSummary = $state('');
-	let jiraDescription = $state('');
-	let jiraPriority = $state('Medium');
-
-	// GitHub fields
-	let ghRepo = $state('');
-	let ghTitle = $state('');
-	let ghBody = $state('');
-	let ghLabels = $state('');
-
-	const platformTabs = [
-		{ id: 'gmail', label: 'Gmail', icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
-		{ id: 'slack', label: 'Slack', icon: 'M14.5 10c-.83 0-1.5-.67-1.5-1.5v-5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5zm0 0H20m-9.5 0c.83 0 1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5S9 17.33 9 16.5v-5c0-.83.67-1.5 1.5-1.5zm0 0H4' },
-		{ id: 'jira', label: 'Jira', icon: 'M12 2L2 12l10 10 10-10L12 2z' },
-		{ id: 'github', label: 'GitHub', icon: 'M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22' }
-	];
-
-	const connectedPlatforms = $derived(
-		connectionsLoaded
-			? platformTabs.filter((t) => connections.some((c) => c.platform === t.id && c.status === 'connected'))
-			: platformTabs
+	// Derived: platforms filtered by connected status
+	const visiblePlatforms = $derived(
+		connectionsLoaded && platformsLoaded
+			? allPlatforms.filter((p) => connections.some((c) => c.platform === p.id && c.status === 'connected'))
+			: allPlatforms
 	);
 
+	// Derived: connections for the active platform
 	const platformConnections = $derived(
 		connections.filter((c) => c.platform === activePlatform && c.status === 'connected')
 	);
 
-	let activePlatform = $state('');
+	// Derived: current platform object
+	const currentPlatform = $derived(
+		allPlatforms.find((p) => p.id === activePlatform)
+	);
 
-	// Sync activePlatform from compose store
+	// Derived: available actions for current platform
+	const availableActions = $derived(currentPlatform?.actions ?? []);
+
+	// Derived: current action object
+	const currentAction = $derived(
+		availableActions.find((a) => a.action_type === selectedActionType) ?? availableActions[0]
+	);
+
+	// Derived: fields to render
+	const activeFields = $derived(currentAction?.fields ?? []);
+
+	// Sync state from compose store when modal opens
 	$effect(() => {
 		if ($compose.isOpen) {
-			activePlatform = $compose.platform || connectedPlatforms[0]?.id || 'gmail';
-			prefillFields();
+			loadPlatforms();
 			loadConnections();
 		}
 	});
+
+	// Set initial platform/action/prefill once when data is ready
+	$effect(() => {
+		if ($compose.isOpen && platformsLoaded && !initialSyncDone) {
+			activePlatform = $compose.platform || visiblePlatforms[0]?.id || '';
+			syncActionType();
+			prefillFields();
+			initialSyncDone = true;
+		}
+	});
+
+	function syncActionType() {
+		const storeAction = $compose.actionType;
+		const platform = allPlatforms.find((p) => p.id === activePlatform);
+		if (!platform) return;
+
+		// Try to match store action to an available action_type
+		const match = platform.actions.find((a) => a.action_type === storeAction);
+		if (match) {
+			selectedActionType = match.action_type;
+		} else if (platform.actions.length > 0) {
+			selectedActionType = platform.actions[0].action_type;
+		}
+	}
 
 	// Auto-select first connection when platform connections change
 	$effect(() => {
@@ -78,28 +95,25 @@
 
 	function prefillFields() {
 		const pf = $compose.prefill;
-		// Email
-		emailTo = String(pf.to ?? '');
-		emailCc = String(pf.cc ?? '');
-		emailSubject = String(pf.subject ?? '');
-		emailBody = String(pf.body ?? '');
-		showCc = !!pf.cc;
-		// Slack
-		slackChannel = String(pf.channel ?? '');
-		slackMessage = String(pf.message ?? pf.body ?? '');
-		slackThreadReply = !!pf.thread_ts;
-		slackThreadTs = String(pf.thread_ts ?? '');
-		// Jira
-		jiraProject = String(pf.project ?? '');
-		jiraType = String(pf.type ?? 'Task');
-		jiraSummary = String(pf.summary ?? '');
-		jiraDescription = String(pf.description ?? pf.body ?? '');
-		jiraPriority = String(pf.priority ?? 'Medium');
-		// GitHub
-		ghRepo = String(pf.repo ?? '');
-		ghTitle = String(pf.title ?? '');
-		ghBody = String(pf.body ?? '');
-		ghLabels = String(pf.labels ?? '');
+		const newValues: Record<string, string> = {};
+		for (const [key, val] of Object.entries(pf)) {
+			if (val != null && val !== '') {
+				newValues[key] = String(val);
+			}
+		}
+		formValues = newValues;
+	}
+
+	async function loadPlatforms() {
+		if (platformsLoaded) return;
+		try {
+			const resp = await engineApi.getComposePlatforms();
+			allPlatforms = resp.platforms;
+		} catch {
+			// Silently fail
+		} finally {
+			platformsLoaded = true;
+		}
 	}
 
 	async function loadConnections() {
@@ -115,56 +129,34 @@
 	}
 
 	function buildPayload(): Record<string, unknown> {
-		switch (activePlatform) {
-			case 'gmail':
-				return {
-					to: emailTo,
-					...(emailCc ? { cc: emailCc } : {}),
-					subject: emailSubject,
-					body: emailBody
-				};
-			case 'slack': {
-				const p: Record<string, unknown> = { channel: slackChannel, body: slackMessage };
-				if (slackThreadReply && slackThreadTs) p.thread_ts = slackThreadTs;
-				return p;
+		const payload: Record<string, unknown> = {};
+		for (const [key, val] of Object.entries(formValues)) {
+			if (val && val.trim()) {
+				payload[key] = val;
 			}
-			case 'jira':
-				return {
-					project: jiraProject,
-					type: jiraType,
-					summary: jiraSummary,
-					description: jiraDescription,
-					priority: jiraPriority
-				};
-			case 'github':
-				return {
-					repo: ghRepo,
-					title: ghTitle,
-					body: ghBody,
-					...(ghLabels ? { labels: ghLabels.split(',').map((l) => l.trim()).filter(Boolean) } : {})
-				};
-			default:
-				return {};
 		}
+		return payload;
 	}
 
-	function actionType(): string {
-		const storeAction = $compose.actionType;
-		switch (activePlatform) {
-			case 'gmail':
-				if (storeAction === 'reply') return 'reply';
-				if (storeAction === 'forward') return 'forward';
-				return 'send_email';
-			case 'slack':
-				return slackThreadReply ? 'reply_thread' : 'send_message';
-			case 'jira': return 'create_issue';
-			case 'github': return 'create_issue';
-			default: return storeAction || 'send_email';
+	function switchPlatform(platformId: string) {
+		activePlatform = platformId;
+		error = null;
+		const platform = allPlatforms.find((p) => p.id === platformId);
+		if (platform && platform.actions.length > 0) {
+			selectedActionType = platform.actions[0].action_type;
 		}
+		formValues = {};
+	}
+
+	function switchAction(actionType: string) {
+		selectedActionType = actionType;
+		formValues = {};
 	}
 
 	const submitLabel = $derived(
-		activePlatform === 'jira' || activePlatform === 'github' ? 'Create' : 'Send'
+		currentAction?.label?.startsWith('Create') ? 'Create'
+		: currentAction?.label?.startsWith('Send') ? 'Send'
+		: currentAction?.label ?? 'Send'
 	);
 
 	async function aiAssist() {
@@ -173,26 +165,14 @@
 		try {
 			const result = await engineApi.egressAiAssist({
 				platform: activePlatform,
-				action_type: actionType(),
+				action_type: selectedActionType,
 				context: buildPayload()
 			});
 			const draft = result.draft;
-			if (activePlatform === 'gmail') {
-				if (draft.body) emailBody = draft.body;
-				if (draft.subject && !emailSubject) emailSubject = draft.subject;
-				if (draft.to && !emailTo) emailTo = draft.to;
-				if (draft.cc && !emailCc) { emailCc = draft.cc; showCc = true; }
-			} else if (activePlatform === 'slack') {
-				if (draft.message) slackMessage = draft.message;
-				if (draft.channel && !slackChannel) slackChannel = draft.channel;
-			} else if (activePlatform === 'jira') {
-				if (draft.description) jiraDescription = draft.description;
-				if (draft.summary && !jiraSummary) jiraSummary = draft.summary;
-				if (draft.project && !jiraProject) jiraProject = draft.project;
-			} else if (activePlatform === 'github') {
-				if (draft.body) ghBody = draft.body;
-				if (draft.title && !ghTitle) ghTitle = draft.title;
-				if (draft.repo && !ghRepo) ghRepo = draft.repo;
+			for (const [key, val] of Object.entries(draft)) {
+				if (val && (!formValues[key] || !formValues[key].trim())) {
+					formValues[key] = String(val);
+				}
 			}
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'AI assist failed';
@@ -207,7 +187,7 @@
 		try {
 			const result = await engineApi.egressExecute({
 				platform: activePlatform,
-				action_type: actionType(),
+				action_type: selectedActionType,
 				payload: buildPayload(),
 				connection_id: selectedConnectionId || undefined,
 				source_card_id: $compose.sourceCardId ?? undefined
@@ -232,24 +212,8 @@
 		sending = false;
 		aiAssisting = false;
 		selectedConnectionId = '';
-		emailTo = '';
-		emailCc = '';
-		emailSubject = '';
-		emailBody = '';
-		showCc = false;
-		slackChannel = '';
-		slackMessage = '';
-		slackThreadReply = false;
-		slackThreadTs = '';
-		jiraProject = '';
-		jiraType = 'Task';
-		jiraSummary = '';
-		jiraDescription = '';
-		jiraPriority = 'Medium';
-		ghRepo = '';
-		ghTitle = '';
-		ghBody = '';
-		ghLabels = '';
+		formValues = {};
+		initialSyncDone = false;
 	}
 
 	function close() {
@@ -261,9 +225,6 @@
 		if (e.key === 'Escape') close();
 	}
 
-	// Window-level listener: the backdrop div only receives keydown when focus
-	// is inside it, but the modal typically opens with focus on the trigger
-	// button outside. Listen on window while open so ESC always closes.
 	$effect(() => {
 		if (!$compose.isOpen) return;
 		window.addEventListener('keydown', handleKeydown);
@@ -308,19 +269,19 @@
 			</div>
 
 			<!-- Platform tabs -->
-			<div class="flex gap-0.5 border-b px-5 pt-2 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
-				{#each connectedPlatforms as tab}
+			<!-- scrollbar-none: Tailwind v4 utility that hides scrollbar across browsers -->
+			<div class="flex gap-0.5 overflow-x-auto scrollbar-none border-b px-5 pt-2 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}"
+				style="-ms-overflow-style: none; scrollbar-width: none;"
+			>
+				{#each visiblePlatforms as platform}
 					<button
-						class="inline-flex items-center gap-1.5 rounded-t-md px-3 py-2 text-xs font-medium transition-colors
-							{activePlatform === tab.id
+						class="inline-flex shrink-0 items-center gap-1.5 rounded-t-md px-3 py-2 text-xs font-medium transition-colors
+							{activePlatform === platform.id
 								? 'bg-surface-800 text-laya-orange border-b-2 border-laya-orange'
 								: 'text-surface-400 hover:text-surface-200 hover:bg-surface-800/50'}"
-						onclick={() => { activePlatform = tab.id; error = null; }}
+						onclick={() => switchPlatform(platform.id)}
 					>
-						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={tab.icon} />
-						</svg>
-						{tab.label}
+						{platform.label}
 					</button>
 				{/each}
 			</div>
@@ -344,122 +305,73 @@
 							</a>
 						{/if}
 					</div>
-				{:else if activePlatform === 'gmail'}
-					<!-- Email form -->
-					<div>
-						<label class={labelClass} for="compose-from">From</label>
-						{#if platformConnections.length > 1}
-							<select id="compose-from" bind:value={selectedConnectionId} class="{selectClass} w-full">
+				{:else}
+					<!-- Connection selector (when multiple connections for this platform) -->
+					{#if platformConnections.length > 1}
+						<div>
+							<label class={labelClass} for="compose-connection">Account</label>
+							<select id="compose-connection" bind:value={selectedConnectionId} class="{selectClass} w-full">
 								{#each platformConnections as conn}
 									<option value={conn.connection_id}>{conn.name}</option>
 								{/each}
 							</select>
-						{:else if platformConnections.length === 1}
+						</div>
+					{:else if platformConnections.length === 1}
+						<div>
+							<label class={labelClass}>Account</label>
 							<p class="text-sm text-surface-300 px-3 py-2">{platformConnections[0].name}</p>
-						{:else}
-							<p class="text-sm text-surface-500 italic px-3 py-2">
-								{connectionsLoaded ? 'No email accounts connected' : 'Loading accounts...'}
-							</p>
-						{/if}
-					</div>
-					<div>
-						<label class={labelClass} for="compose-to">To</label>
-						<input id="compose-to" type="email" bind:value={emailTo} class={inputClass} placeholder="recipient@example.com" />
-					</div>
-					{#if showCc}
-						<div>
-							<label class={labelClass} for="compose-cc">CC</label>
-							<input id="compose-cc" type="text" bind:value={emailCc} class={inputClass} placeholder="cc@example.com" />
-						</div>
-					{:else}
-						<button class="text-xs text-surface-500 hover:text-surface-300 transition-colors" onclick={() => (showCc = true)}>
-							+ Add CC
-						</button>
-					{/if}
-					<div>
-						<label class={labelClass} for="compose-subject">Subject</label>
-						<input id="compose-subject" type="text" bind:value={emailSubject} class={inputClass} placeholder="Subject" />
-					</div>
-					<div>
-						<label class={labelClass} for="compose-email-body">Body</label>
-						<textarea id="compose-email-body" bind:value={emailBody} rows="8" class="{inputClass} font-mono resize-y" placeholder="Write your email..."></textarea>
-					</div>
-				{:else if activePlatform === 'slack'}
-					<!-- Slack form -->
-					<div>
-						<label class={labelClass} for="compose-channel">Channel</label>
-						<input id="compose-channel" type="text" bind:value={slackChannel} class={inputClass} placeholder="#general" />
-					</div>
-					<div>
-						<label class={labelClass} for="compose-slack-msg">Message</label>
-						<textarea id="compose-slack-msg" bind:value={slackMessage} rows="6" class="{inputClass} resize-y" placeholder="Write your message..."></textarea>
-					</div>
-					<div class="flex items-center gap-2">
-						<input id="compose-thread" type="checkbox" bind:checked={slackThreadReply} class="rounded border-surface-600 bg-surface-800 text-laya-orange focus:ring-laya-orange/30" />
-						<label for="compose-thread" class="text-xs text-surface-400">Reply to thread</label>
-					</div>
-					{#if slackThreadReply}
-						<div>
-							<label class={labelClass} for="compose-thread-ts">Thread timestamp</label>
-							<input id="compose-thread-ts" type="text" bind:value={slackThreadTs} class={inputClass} placeholder="1234567890.123456" />
 						</div>
 					{/if}
-				{:else if activePlatform === 'jira'}
-					<!-- Jira form -->
-					<div class="grid grid-cols-2 gap-3">
+
+					<!-- Action type selector (when platform has multiple composable actions) -->
+					{#if availableActions.length > 1}
 						<div>
-							<label class={labelClass} for="compose-jira-project">Project</label>
-							<input id="compose-jira-project" type="text" bind:value={jiraProject} class={inputClass} placeholder="PROJ" />
-						</div>
-						<div>
-							<label class={labelClass} for="compose-jira-type">Type</label>
-							<select id="compose-jira-type" bind:value={jiraType} class="{selectClass} w-full">
-								<option value="Bug">Bug</option>
-								<option value="Task">Task</option>
-								<option value="Story">Story</option>
+							<label class={labelClass} for="compose-action">Action</label>
+							<select id="compose-action" bind:value={selectedActionType} class="{selectClass} w-full" onchange={(e) => switchAction((e.target as HTMLSelectElement).value)}>
+								{#each availableActions as action}
+									<option value={action.action_type}>{action.label}</option>
+								{/each}
 							</select>
 						</div>
-					</div>
-					<div>
-						<label class={labelClass} for="compose-jira-summary">Summary</label>
-						<input id="compose-jira-summary" type="text" bind:value={jiraSummary} class={inputClass} placeholder="Issue summary" />
-					</div>
-					<div>
-						<label class={labelClass} for="compose-jira-desc">Description</label>
-						<textarea id="compose-jira-desc" bind:value={jiraDescription} rows="6" class="{inputClass} resize-y" placeholder="Describe the issue..."></textarea>
-					</div>
-					<div>
-						<label class={labelClass} for="compose-jira-priority">Priority</label>
-						<select id="compose-jira-priority" bind:value={jiraPriority} class="{selectClass} w-full">
-							<option value="Highest">Highest</option>
-							<option value="High">High</option>
-							<option value="Medium">Medium</option>
-							<option value="Low">Low</option>
-							<option value="Lowest">Lowest</option>
-						</select>
-					</div>
-				{:else if activePlatform === 'github'}
-					<!-- GitHub form -->
-					<div>
-						<label class={labelClass} for="compose-gh-repo">Repository</label>
-						<input id="compose-gh-repo" type="text" bind:value={ghRepo} class={inputClass} placeholder="owner/repo" />
-					</div>
-					<div>
-						<label class={labelClass} for="compose-gh-title">Title</label>
-						<input id="compose-gh-title" type="text" bind:value={ghTitle} class={inputClass} placeholder="Issue title" />
-					</div>
-					<div>
-						<label class={labelClass} for="compose-gh-body">Body</label>
-						<textarea id="compose-gh-body" bind:value={ghBody} rows="6" class="{inputClass} resize-y" placeholder="Describe the issue..."></textarea>
-					</div>
-					<div>
-						<label class={labelClass} for="compose-gh-labels">Labels</label>
-						<input id="compose-gh-labels" type="text" bind:value={ghLabels} class={inputClass} placeholder="bug, enhancement (comma-separated)" />
-					</div>
-				{/if}
+					{/if}
 
-				{#if error}
-					<p class="text-xs text-red-400">{error}</p>
+					<!-- Dynamic fields from registry -->
+					{#each activeFields as field (field.name)}
+						<div>
+							<label class={labelClass} for="compose-{field.name}">{field.label}</label>
+							{#if field.type === 'textarea'}
+								<textarea
+									id="compose-{field.name}"
+									bind:value={formValues[field.name]}
+									rows="6"
+									class="{inputClass} resize-y"
+									placeholder={field.placeholder}
+								></textarea>
+							{:else if field.type === 'select' && field.options}
+								<select
+									id="compose-{field.name}"
+									bind:value={formValues[field.name]}
+									class="{selectClass} w-full"
+								>
+									{#each field.options as opt}
+										<option value={opt}>{opt}</option>
+									{/each}
+								</select>
+							{:else}
+								<input
+									id="compose-{field.name}"
+									type={field.type === 'email' ? 'email' : 'text'}
+									bind:value={formValues[field.name]}
+									class={inputClass}
+									placeholder={field.placeholder}
+								/>
+							{/if}
+						</div>
+					{/each}
+
+					{#if error}
+						<p class="text-xs text-red-400">{error}</p>
+					{/if}
 				{/if}
 			</div>
 

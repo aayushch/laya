@@ -381,6 +381,14 @@ async def polish_text(body: PolishRequest) -> dict:
     return {"polished": polished}
 
 
+@router.get("/egress/compose-platforms")
+async def get_compose_platforms() -> dict:
+    """Return all platforms with their composable capabilities for the compose UI."""
+    from laya.egress.registry import get_compose_platforms_data
+
+    return {"platforms": get_compose_platforms_data()}
+
+
 @router.get("/egress/capabilities/{platform}")
 async def get_capabilities(platform: str) -> dict:
     """Get available actions for a platform."""

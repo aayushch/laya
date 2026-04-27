@@ -875,3 +875,165 @@ def get_pr_platforms() -> list[str]:
 def get_composable_platforms() -> list[str]:
     """Platforms that can be used with the open_compose tool."""
     return list(_CAPABILITIES.keys())
+
+
+# ---------------------------------------------------------------------------
+# Compose UI — field metadata for dynamic form rendering
+# ---------------------------------------------------------------------------
+
+_FIELD_META: dict[str, dict] = {
+    # Email
+    "to": {"label": "To", "type": "email", "placeholder": "recipient@example.com"},
+    "cc": {"label": "CC", "type": "email", "placeholder": "cc@example.com"},
+    "bcc": {"label": "BCC", "type": "email", "placeholder": "bcc@example.com"},
+    "subject": {"label": "Subject", "type": "text", "placeholder": "Subject"},
+    "body": {"label": "Body", "type": "textarea", "placeholder": "Write your message..."},
+    # Slack
+    "channel": {"label": "Channel", "type": "text", "placeholder": "#general"},
+    "message": {"label": "Message", "type": "textarea", "placeholder": "Write your message..."},
+    "thread_ts": {"label": "Thread Timestamp", "type": "text", "placeholder": "1234567890.123456"},
+    # Jira
+    "issue_key": {"label": "Issue Key", "type": "text", "placeholder": "PROJ-123"},
+    "project": {"label": "Project", "type": "text", "placeholder": "PROJ"},
+    "summary": {"label": "Summary", "type": "text", "placeholder": "Issue summary"},
+    "priority": {"label": "Priority", "type": "select", "options": ["Highest", "High", "Medium", "Low", "Lowest"]},
+    "type": {"label": "Type", "type": "select", "options": ["Bug", "Task", "Story"]},
+    # GitHub / Bitbucket
+    "repo": {"label": "Repository", "type": "text", "placeholder": "owner/repo"},
+    "issue_number": {"label": "Issue #", "type": "text", "placeholder": "123"},
+    "pr_number": {"label": "PR #", "type": "text", "placeholder": "456"},
+    "pr_id": {"label": "PR ID", "type": "text", "placeholder": "123"},
+    # Linear
+    "issue_id": {"label": "Issue ID", "type": "text", "placeholder": "Issue ID"},
+    "team_id": {"label": "Team", "type": "text", "placeholder": "Team key or ID"},
+    "state_id": {"label": "State", "type": "text", "placeholder": "State ID"},
+    "assignee_id": {"label": "Assignee", "type": "text", "placeholder": "User ID"},
+    # Notion
+    "page_id": {"label": "Page ID", "type": "text", "placeholder": "Notion page ID"},
+    "parent_id": {"label": "Parent ID", "type": "text", "placeholder": "Notion parent page/database ID"},
+    "property_name": {"label": "Property", "type": "text", "placeholder": "Property name"},
+    "property_value": {"label": "Value", "type": "text", "placeholder": "New value"},
+    "text": {"label": "Text", "type": "textarea", "placeholder": "Write your text..."},
+    # Shared
+    "title": {"label": "Title", "type": "text", "placeholder": "Title"},
+    "description": {"label": "Description", "type": "textarea", "placeholder": "Describe..."},
+    "comment": {"label": "Comment", "type": "textarea", "placeholder": "Write your comment..."},
+    "target_status": {"label": "Target Status", "type": "text", "placeholder": "Done"},
+    "labels": {"label": "Labels", "type": "text", "placeholder": "bug, enhancement (comma-separated)"},
+    "assignee": {"label": "Assignee", "type": "text", "placeholder": "Username or email"},
+    "assignees": {"label": "Assignees", "type": "text", "placeholder": "Usernames (comma-separated)"},
+    "emoji": {"label": "Emoji", "type": "text", "placeholder": ":thumbsup:"},
+    "merge_method": {"label": "Merge Method", "type": "select", "options": ["squash", "merge", "rebase"]},
+    "commit_title": {"label": "Commit Title", "type": "text", "placeholder": "Merge commit title"},
+    # Calendar
+    "start": {"label": "Start", "type": "text", "placeholder": "2026-01-15T09:00"},
+    "end": {"label": "End", "type": "text", "placeholder": "2026-01-15T10:00"},
+    "location": {"label": "Location", "type": "text", "placeholder": "Room / URL"},
+    "attendees": {"label": "Attendees", "type": "text", "placeholder": "email@example.com (comma-separated)"},
+}
+
+# Fields that are never shown in the composer — engine-internal IDs or
+# fields derived from another visible field (e.g. owner from repo).
+_COMPOSE_HIDDEN_FIELDS = {
+    "gmail_id",             # internal Gmail message ID
+    "outlook_id",           # internal Outlook message ID
+    "timestamp",            # Slack reaction timestamp
+    "owner",                # derived from repo field (owner/repo format)
+    "workspace",            # derived from repo field (workspace/repo format)
+    "parent_type",          # Notion internal
+    "children",             # Notion internal (JSON block array)
+    "properties",           # Notion internal (JSON properties)
+    "block_type",           # Notion internal
+    "close_source_branch",  # Bitbucket merge option
+    "conversation_id",      # Outlook thread ID
+    "merge_strategy",       # Bitbucket merge variant (use merge_method)
+    "visibility",           # Jira comment visibility (rarely used manually)
+}
+
+_NON_COMPOSABLE_ACTIONS = {
+    "archive", "star", "mark_read", "react",
+    "archive_page",
+    "forward",      # needs original email ID from event context
+    "decline_pr",   # destructive — not a compose action
+}
+
+
+def get_compose_fields(platform: str, action_type: str) -> list[dict]:
+    """Return the ordered field list for a compose action.
+
+    Shows ALL required and optional fields except engine-internal ones
+    listed in _COMPOSE_HIDDEN_FIELDS. This ensures the composer has
+    every field the user needs to fill for manual composition.
+    """
+    cap = get_capability(platform, action_type)
+    if not cap:
+        return []
+
+    seen: set[str] = set()
+    fields: list[dict] = []
+
+    def _add(name: str, required: bool) -> None:
+        if name in seen or name in _COMPOSE_HIDDEN_FIELDS:
+            return
+        seen.add(name)
+        meta = _FIELD_META.get(name, {
+            "label": name.replace("_", " ").title(),
+            "type": "text",
+            "placeholder": "",
+        })
+        entry: dict = {
+            "name": name,
+            "required": required,
+            "type": meta["type"],
+            "label": meta["label"],
+            "placeholder": meta.get("placeholder", ""),
+        }
+        if "options" in meta:
+            entry["options"] = meta["options"]
+        fields.append(entry)
+
+    for f in cap.requires_fields:
+        _add(f, True)
+
+    for f in cap.optional_fields:
+        _add(f, False)
+
+    return fields
+
+
+def get_compose_platforms_data() -> list[dict]:
+    """Assemble the full compose-platforms response for the UI.
+
+    Returns a list of platform dicts, each with id, label, icon, and actions.
+    """
+    from laya.integrations.platforms import PLATFORMS
+
+    result: list[dict] = []
+
+    for platform_id, caps in _CAPABILITIES.items():
+        composable_actions = [
+            c for c in caps if c.action_type not in _NON_COMPOSABLE_ACTIONS
+        ]
+        if not composable_actions:
+            continue
+
+        meta = PLATFORMS.get(platform_id, {})
+        label = meta.get("label", platform_id.title())
+        icon = meta.get("icon", platform_id)
+
+        actions = []
+        for cap in composable_actions:
+            actions.append({
+                "action_type": cap.action_type,
+                "label": cap.label,
+                "fields": get_compose_fields(platform_id, cap.action_type),
+            })
+
+        result.append({
+            "id": platform_id,
+            "label": label,
+            "icon": icon,
+            "actions": actions,
+        })
+
+    return result
