@@ -26,7 +26,7 @@ log = structlog.get_logger()
 CARD_REF_PATTERN = re.compile(r"\[card:([^\]]+)\]")
 EVENT_REF_PATTERN = re.compile(r"\[event:([^\]]+)\]")
 
-MAX_TOOL_ITERATIONS = 5
+MAX_TOOL_ITERATIONS = 20
 
 # Common English stopwords to skip in keyword search
 _STOPWORDS = frozenset({
@@ -181,9 +181,6 @@ async def _generate_title_background(
     """
     try:
         messages = build_title_generation_messages(user_message)
-        # Hint for Qwen 3+ to skip reasoning (harmless for other models).
-        if messages and messages[-1]["role"] == "user":
-            messages[-1] = {**messages[-1], "content": messages[-1]["content"] + " /no_think"}
         response = await llm_call(
             role="router",
             messages=messages,

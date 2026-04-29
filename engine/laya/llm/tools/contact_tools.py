@@ -6,10 +6,9 @@ import structlog
 
 from laya.config import load_team
 from laya.db.sqlite import get_db
+from laya.llm.tools.constants import CONTACT_SEARCH_MAX
 
 log = structlog.get_logger()
-
-_MAX_RESULTS_PER_QUERY = 20
 
 
 async def find_contact(query: str | list[str]) -> dict[str, list[dict]]:
@@ -230,4 +229,4 @@ def _merge_and_dedup(
     ]
     # More data points → higher relevance
     result.sort(key=lambda c: len(c["names"]) + len(c["platforms"]), reverse=True)
-    return result[:_MAX_RESULTS_PER_QUERY]
+    return result[:CONTACT_SEARCH_MAX]

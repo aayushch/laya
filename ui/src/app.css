@@ -285,6 +285,22 @@ html, body {
 	background-color: oklch(0.98 0.004 72 / 0.35);
 	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.7), 0 4px 16px -4px rgb(0 0 0 / 0.08);
 }
+/* Dense variant — for tooltips inside glass containers where backdrop-filter
+   can't reach through to real content (e.g. chat bubbles). Higher opacity
+   compensates while keeping the frosted border/shadow aesthetic. */
+[data-glass-theme] .glass-tooltip-dense {
+	-webkit-backdrop-filter: blur(24px) saturate(1.6);
+	backdrop-filter: blur(24px) saturate(1.6);
+	background-color: oklch(0.18 0.008 50 / 0.82);
+	border: 0.5px solid rgb(255 255 255 / 0.12);
+	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.1), 0 8px 24px -6px rgb(0 0 0 / 0.4);
+}
+[data-theme='light'][data-glass-theme] .glass-tooltip-dense {
+	-webkit-backdrop-filter: blur(16px) saturate(1.4);
+	backdrop-filter: blur(16px) saturate(1.4);
+	background-color: oklch(0.98 0.004 72 / 0.75);
+	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.7), 0 4px 16px -4px rgb(0 0 0 / 0.08);
+}
 
 /* Glass menu — for overflow/action menus when glass theme is on */
 .glass-menu {
@@ -841,11 +857,8 @@ html, body {
 .card-last-viewed--compact { box-shadow: inset 0 0 0 1px var(--last-viewed-accent); }
 
 /* Glass-mode override — when card-last-viewed is on a .glass-card or .glass-card-flat,
-   the glass card's own box-shadow wins on specificity and erases the ring after the
-   highlight-fade animation ends. Use an ::after overlay so the ring persists.
-   Suppress ::after WHILE `.card-highlight-fade` is running (`:not(.card-highlight-fade)`)
-   so we don't render a second ring on top of the keyframe's ring during the 1.5s fade —
-   the keyframe carries the visual until it ends, then ::after takes over seamlessly. */
+   the glass card's own box-shadow wins on specificity and erases the ring.
+   Use an ::after overlay so the ring persists independently. */
 .glass-card.card-last-viewed:not(.card-highlight-fade)::after,
 .glass-card-flat.card-last-viewed:not(.card-highlight-fade)::after,
 .glass-card.card-last-viewed--compact:not(.card-highlight-fade)::after,
@@ -889,28 +902,32 @@ html, body {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   CARD HIGHLIGHT FADE — orange background flash that fades out,
+   CARD HIGHLIGHT FADE — orange overlay flash that fades out,
    used to draw attention to a card after layout changes.
+   Uses a ::before pseudo-element so the card's own box-shadow
+   (glass-focus, status glow, etc.) is never touched.
    ───────────────────────────────────────────────────────────── */
-@keyframes card-highlight-fade {
-	0%   { box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.08), 0 8px 32px -8px rgb(0 0 0 / 0.25), inset 0 0 0 100px oklch(0.75 0.18 55 / 0.15); }
-	100% { box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.08), 0 8px 32px -8px rgb(0 0 0 / 0.25), inset 0 0 0 100px oklch(0.75 0.18 55 / 0); }
+@keyframes highlight-overlay-fade {
+	0%   { opacity: 1; }
+	100% { opacity: 0; }
 }
 
 .card-highlight-fade {
-	animation: card-highlight-fade 1.5s ease-out forwards;
-	overflow: clip;
+	position: relative;
 }
-
-/* When both the ring border AND the highlight fade are active, use a compound
-   animation so the ring persists throughout the background fade-out.
-   Without this, the animation's box-shadow replaces the ring's box-shadow. */
-@keyframes card-highlight-fade-with-ring {
-	0%   { box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.08), 0 8px 32px -8px rgb(0 0 0 / 0.25), inset 0 0 0 1px var(--last-viewed-accent), inset 0 0 0 100px oklch(0.75 0.18 55 / 0.15); }
-	100% { box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.08), 0 8px 32px -8px rgb(0 0 0 / 0.25), inset 0 0 0 1px var(--last-viewed-accent), inset 0 0 0 100px oklch(0.75 0.18 55 / 0); }
+.card-highlight-fade::before {
+	content: '';
+	display: block;
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	background: oklch(0.75 0.18 55 / 0.15);
+	z-index: 5;
+	pointer-events: none;
+	animation: highlight-overlay-fade 1.5s ease-out forwards;
 }
-.card-last-viewed.card-highlight-fade {
-	animation: card-highlight-fade-with-ring 1.5s ease-out forwards;
+[data-theme='light'] .card-highlight-fade::before {
+	background: oklch(0.75 0.18 55 / 0.12);
 }
 
 /* No-colors variant: animate the ::after ring with a glow that settles */
@@ -920,22 +937,6 @@ html, body {
 }
 .card-last-viewed-highlight.card-highlight-fade::after {
 	animation: card-highlight-ring-glow 1.5s ease-out forwards;
-}
-
-/* Light-theme highlight-fade: use light glass shadow base */
-@keyframes card-highlight-fade-light {
-	0%   { box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.7), 0 4px 16px -4px rgb(0 0 0 / 0.06), inset 0 0 0 100px oklch(0.75 0.18 55 / 0.12); }
-	100% { box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.7), 0 4px 16px -4px rgb(0 0 0 / 0.06), inset 0 0 0 100px oklch(0.75 0.18 55 / 0); }
-}
-@keyframes card-highlight-fade-with-ring-light {
-	0%   { box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.7), 0 4px 16px -4px rgb(0 0 0 / 0.06), inset 0 0 0 1px var(--last-viewed-accent), inset 0 0 0 100px oklch(0.75 0.18 55 / 0.12); }
-	100% { box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.7), 0 4px 16px -4px rgb(0 0 0 / 0.06), inset 0 0 0 1px var(--last-viewed-accent), inset 0 0 0 100px oklch(0.75 0.18 55 / 0); }
-}
-[data-theme='light'] .card-highlight-fade {
-	animation: card-highlight-fade-light 1.5s ease-out forwards;
-}
-[data-theme='light'] .card-last-viewed.card-highlight-fade {
-	animation: card-highlight-fade-with-ring-light 1.5s ease-out forwards;
 }
 
 /* ─────────────────────────────────────────────────────────────

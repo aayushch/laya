@@ -6,13 +6,20 @@ import json
 from typing import Any
 
 from laya.db.sqlite import get_db
+from laya.llm.tools.constants import (
+    CHAT_SEARCH_DEFAULT,
+    CHAT_SEARCH_MAX,
+    RECENT_ACTIVITY_DEFAULT,
+    RECENT_ACTIVITY_MAX,
+)
 
 
 async def search_events(
     query: str | None = None,
     platform: str | None = None,
     actor: str | None = None,
-    limit: int = 10,
+    limit: int = CHAT_SEARCH_DEFAULT,
+    offset: int = 0,
     space_id: str | None = None,
 ) -> dict[str, Any]:
     """Search events by keyword, platform, or actor."""
@@ -39,14 +46,20 @@ async def search_events(
         params.append(space_id)
 
     where = " AND ".join(conditions) if conditions else "1=1"
-    params.append(min(limit, 25))
 
+    count_rows = await db.execute_fetchall(
+        f"SELECT COUNT(*) as cnt FROM events WHERE {where}",
+        params,
+    )
+    total = count_rows[0]["cnt"] if count_rows else 0
+
+    capped_limit = min(limit, CHAT_SEARCH_MAX)
     rows = await db.execute_fetchall(
         f"""SELECT event_id, timestamp, source_platform, actor_name, actor_email,
                    subject_title, subject_url, space_id
             FROM events WHERE {where}
-            ORDER BY timestamp DESC LIMIT ?""",
-        params,
+            ORDER BY timestamp DESC LIMIT ? OFFSET ?""",
+        [*params, capped_limit, offset],
     )
 
     return {
@@ -64,6 +77,9 @@ async def search_events(
             for r in rows
         ],
         "count": len(rows),
+        "total": total,
+        "offset": offset,
+        "has_more": offset + len(rows) < total,
     }
 
 
@@ -114,32 +130,47 @@ async def get_event(event_id: str) -> dict[str, Any]:
 
 async def get_recent_activity(
     hours: int = 24,
-    limit: int = 10,
+    limit: int = RECENT_ACTIVITY_DEFAULT,
+    offset: int = 0,
     space_id: str | None = None,
 ) -> dict[str, Any]:
     """Get recent events and cards from the last N hours."""
     db = await get_db()
     space_filter = "AND space_id = ?" if space_id else ""
     space_params: list[Any] = [space_id] if space_id else []
+    capped_limit = min(limit, RECENT_ACTIVITY_MAX)
+    time_filter = f"datetime('now', '-{int(hours)} hours')"
+
+    # Counts
+    event_count_rows = await db.execute_fetchall(
+        f"SELECT COUNT(*) as cnt FROM events WHERE timestamp >= {time_filter} {space_filter}",
+        space_params,
+    )
+    card_count_rows = await db.execute_fetchall(
+        f"SELECT COUNT(*) as cnt FROM action_cards WHERE created_at >= {time_filter} {space_filter}",
+        space_params,
+    )
+    total_events = event_count_rows[0]["cnt"] if event_count_rows else 0
+    total_cards = card_count_rows[0]["cnt"] if card_count_rows else 0
 
     # Recent events
     event_rows = await db.execute_fetchall(
         f"""SELECT event_id, timestamp, source_platform, actor_name, subject_title
             FROM events
-            WHERE timestamp >= datetime('now', '-{int(hours)} hours')
+            WHERE timestamp >= {time_filter}
             {space_filter}
-            ORDER BY timestamp DESC LIMIT ?""",
-        [*space_params, min(limit, 25)],
+            ORDER BY timestamp DESC LIMIT ? OFFSET ?""",
+        [*space_params, capped_limit, offset],
     )
 
     # Recent cards
     card_rows = await db.execute_fetchall(
         f"""SELECT card_id, header, summary, status, priority, created_at
             FROM action_cards
-            WHERE created_at >= datetime('now', '-{int(hours)} hours')
+            WHERE created_at >= {time_filter}
             {space_filter}
-            ORDER BY created_at DESC LIMIT ?""",
-        [*space_params, min(limit, 25)],
+            ORDER BY created_at DESC LIMIT ? OFFSET ?""",
+        [*space_params, capped_limit, offset],
     )
 
     return {
@@ -167,4 +198,9 @@ async def get_recent_activity(
         ],
         "event_count": len(event_rows),
         "card_count": len(card_rows),
+        "total_events": total_events,
+        "total_cards": total_cards,
+        "offset": offset,
+        "has_more_events": offset + len(event_rows) < total_events,
+        "has_more_cards": offset + len(card_rows) < total_cards,
     }

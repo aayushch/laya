@@ -1,5 +1,6 @@
 """Tests for the n8n egress backend — payload building and webhook resolution."""
 
+import base64
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -241,14 +242,19 @@ class TestBuildPayload:
                 payload = await backend._build_payload(request)
 
             p = payload["payload"]
-            assert p["thread_id"] == "thread-abc"
-            assert p["in_reply_to"] == "<msg-1@mail.gmail.com>"
-            assert p["references"] == "<root@x> <msg-1@mail.gmail.com>"
-            assert p["subject"] == "Re: Weekly sync notes"
-            assert p["to"] == "sender@example.com"
-            assert p["body"] == "Thanks!"
-            # Internal signalling field should not leak into the outbound payload.
-            assert "original_subject" not in p
+            # _build_payload runs build_api_payload for Gmail send_email,
+            # which encodes headers into a raw MIME message + threadId.
+            assert p["threadId"] == "thread-abc"
+            assert "raw" in p
+
+            # Decode the MIME message and verify threading headers.
+            raw_padded = p["raw"] + "=" * (-len(p["raw"]) % 4)
+            mime = base64.urlsafe_b64decode(raw_padded).decode("utf-8")
+            assert "In-Reply-To: <msg-1@mail.gmail.com>" in mime
+            assert "References: <root@x> <msg-1@mail.gmail.com>" in mime
+            assert "Subject: Re: Weekly sync notes" in mime
+            assert "To: sender@example.com" in mime
+            assert mime.endswith("Thanks!")
 
     @pytest.mark.asyncio
     async def test_no_event_passes_payload_through(self, backend):

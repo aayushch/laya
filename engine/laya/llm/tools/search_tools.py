@@ -5,16 +5,17 @@ from __future__ import annotations
 from typing import Any
 
 from laya.db.chromadb_store import memory_search
+from laya.llm.tools.constants import SEMANTIC_SEARCH_DEFAULT, SEMANTIC_SEARCH_MAX
 
 
 async def semantic_search(
     query: str,
-    n_results: int = 10,
+    n_results: int = SEMANTIC_SEARCH_DEFAULT,
     space_id: str | None = None,
 ) -> dict[str, Any]:
     """Perform semantic search across all stored content."""
     where = {"space_id": space_id} if space_id else None
-    results = await memory_search(query, n_results=min(n_results, 20), where=where)
+    results = await memory_search(query, n_results=min(n_results, SEMANTIC_SEARCH_MAX), where=where)
 
     return {
         "results": [
