@@ -188,7 +188,7 @@
 		<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'}">
 			<button
 				onclick={() => (showN8nAdvanced = !showN8nAdvanced)}
-				class="flex w-full items-center justify-between p-4 text-left transition-colors hover:bg-surface-700/50"
+				class="flex w-full items-center justify-between p-4 text-left transition-colors {$glassTheme ? 'hover:bg-white/[0.04]' : 'hover:bg-surface-700/50'}"
 			>
 				<div>
 					<span class="text-sm font-medium text-surface-300">Advanced: n8n Workflow Engine</span>

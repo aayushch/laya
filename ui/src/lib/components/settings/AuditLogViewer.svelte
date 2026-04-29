@@ -264,7 +264,7 @@
 				id="step-filter"
 				bind:value={filterStep}
 				placeholder="e.g. router"
-				class="rounded-lg border border-surface-600 bg-surface-800 px-3 py-1.5 text-sm text-surface-200 placeholder-surface-500 focus:border-blue-500 focus:outline-none"
+				class="rounded-lg border px-3 py-1.5 text-sm text-surface-200 placeholder-surface-500 focus:outline-none {$glassTheme ? 'glass-input focus:border-laya-orange/50' : 'border-surface-600 bg-surface-800 focus:border-blue-500'}"
 			/>
 		</div>
 		<div>
@@ -272,7 +272,7 @@
 			<select
 				id="success-filter"
 				bind:value={filterSuccess}
-				class="rounded-lg border border-surface-600 bg-surface-800 px-3 py-1.5 text-sm text-surface-200 focus:border-blue-500 focus:outline-none"
+				class="rounded-lg border px-3 py-1.5 text-sm text-surface-200 focus:outline-none {$glassTheme ? 'glass-input focus:border-laya-orange/50' : 'border-surface-600 bg-surface-800 focus:border-blue-500'}"
 			>
 				<option value="">All</option>
 				<option value="true">Success</option>
@@ -281,7 +281,7 @@
 		</div>
 		<button
 			onclick={applyFilter}
-			class="rounded-lg bg-surface-700 px-4 py-1.5 text-sm font-medium text-surface-200 transition-colors hover:bg-surface-600"
+			class="rounded-lg px-4 py-1.5 text-sm font-medium text-surface-200 transition-colors {$glassTheme ? 'bg-white/[0.08] hover:bg-white/[0.14]' : 'bg-surface-700 hover:bg-surface-600'}"
 		>
 			Apply
 		</button>

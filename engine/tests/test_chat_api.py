@@ -324,9 +324,9 @@ class TestTitleGenerationBackground:
 
         assert await self._get_title(db, conv_id) == "New Chat"
         assert mock.await_count == 2
-        # First attempt uses 2048; retry doubles to 4096.
-        assert mock.await_args_list[0].kwargs["max_tokens"] == 2048
-        assert mock.await_args_list[1].kwargs["max_tokens"] == 4096
+        # First attempt uses 8192; retry escalates to 16384.
+        assert mock.await_args_list[0].kwargs["max_tokens"] == 8192
+        assert mock.await_args_list[1].kwargs["max_tokens"] == 16384
 
     async def test_retry_succeeds_and_title_is_saved(self, db):
         """If the first call truncates but the retry returns a clean title, persist it."""

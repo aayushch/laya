@@ -79,21 +79,22 @@ async def get_entity(entity_id: str) -> dict[str, Any]:
         "link_method": r["link_method"],
     }
 
-    # Find related cards via entity name in card headers/summaries
-    name = r["canonical_name"]
+    # Find related cards via the entity_id FK on action_cards
     related_cards = await db.execute_fetchall(
-        """SELECT card_id, header, status, priority, created_at
+        """SELECT card_id, header, summary, status, priority, created_at
            FROM action_cards
-           WHERE header LIKE ? OR summary LIKE ?
-           ORDER BY created_at DESC LIMIT 10""",
-        (f"%{name}%", f"%{name}%"),
+           WHERE entity_id = ?
+           ORDER BY created_at DESC LIMIT 20""",
+        (entity_id,),
     )
     entity["related_cards"] = [
         {
             "card_id": c["card_id"],
             "header": c["header"],
+            "summary": c["summary"],
             "status": c["status"],
             "priority": c["priority"],
+            "created_at": c["created_at"],
         }
         for c in related_cards
     ]

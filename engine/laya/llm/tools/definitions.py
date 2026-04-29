@@ -231,6 +231,37 @@ def _read_tools() -> list[dict]:
         {
             "type": "function",
             "function": {
+                "name": "get_cards_by_entity",
+                "description": (
+                    "Get all action cards belonging to a specific entity_id. "
+                    "Use this when you have an entity_id (from a card or entity search) "
+                    "and want to see every card related to that entity (e.g., all review "
+                    "comments on a PR, all updates to a Jira ticket)."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {
+                            "type": "string",
+                            "description": (
+                                "The entity ID to look up cards for. "
+                                "Format: 'platform:subject_type:subject_id' "
+                                "(e.g., 'bitbucket:pullrequest:repo/123')."
+                            ),
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max results to return (default 25).",
+                            "default": 25,
+                        },
+                    },
+                    "required": ["entity_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "semantic_search",
                 "description": (
                     "Perform a semantic (meaning-based) search across all stored content. "

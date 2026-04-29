@@ -96,6 +96,18 @@
 									minute: '2-digit'
 								})}
 							</span>
+							{#if trace.enable_semantic}
+								<span class="px-1.5 py-0.5 rounded bg-laya-orange/10 text-laya-orange text-[9px] font-medium">Semantic</span>
+							{/if}
+							{#if trace.enable_text}
+								<span class="px-1.5 py-0.5 rounded bg-laya-gold/10 text-laya-gold text-[9px] font-medium">Text</span>
+							{/if}
+							{#if trace.enable_llm_filter}
+								<span class="px-1.5 py-0.5 rounded bg-laya-peach/10 text-laya-peach text-[9px] font-medium">AI Filter</span>
+							{/if}
+							{#if trace.fuzzy_search}
+								<span class="px-1.5 py-0.5 rounded bg-laya-coral/10 text-laya-coral text-[9px] font-medium">Fuzzy</span>
+							{/if}
 						</div>
 					</div>
 

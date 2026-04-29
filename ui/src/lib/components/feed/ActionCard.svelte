@@ -153,13 +153,13 @@
 	};
 
 	const statusCardStyle = $derived($glassTheme ? glassStatusCardStyle : solidStatusCardStyle);
-	const neutralCardStyle = $derived($glassTheme ? 'glass-card bg-surface-800/40 border-transparent hover:border-laya-orange/20' : 'bg-surface-800 border-transparent hover:border-surface-600');
+	const neutralCardStyle = $derived($glassTheme ? 'glass-card bg-surface-800/40 border-transparent hover:border-laya-orange/35' : 'bg-surface-800 border-transparent hover:border-surface-600');
 
 	const baseCardStyle = $derived(
 		isArchived
 			? ($glassTheme ? 'glass-card bg-surface-900/30 border-transparent opacity-50 hover:opacity-80' : 'bg-surface-900/60 border-transparent opacity-50 hover:opacity-80')
 			: $cardColors
-				? (statusCardStyle[card.status] ?? ($glassTheme ? 'glass-card bg-surface-800/40 border-transparent hover:border-laya-orange/20' : 'bg-surface-800 border-transparent hover:border-laya-orange/30'))
+				? (statusCardStyle[card.status] ?? ($glassTheme ? 'glass-card bg-surface-800/40 border-transparent hover:border-laya-orange/35' : 'bg-surface-800 border-transparent hover:border-laya-orange/30'))
 				: neutralCardStyle
 	);
 

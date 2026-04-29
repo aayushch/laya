@@ -44,8 +44,8 @@ async def search_cards(
     params.append(min(limit, 25))
 
     rows = await db.execute_fetchall(
-        f"""SELECT card_id, event_id, header, summary, status, priority,
-                   persona, category, created_at, space_id
+        f"""SELECT card_id, event_id, entity_id, context_id, header, summary,
+                   status, priority, persona, category, created_at, space_id
             FROM action_cards WHERE {where}
             ORDER BY created_at DESC LIMIT ?""",
         params,
@@ -56,6 +56,8 @@ async def search_cards(
             {
                 "card_id": r["card_id"],
                 "event_id": r["event_id"],
+                "entity_id": r["entity_id"],
+                "context_id": r["context_id"],
                 "header": r["header"],
                 "summary": r["summary"],
                 "status": r["status"],
@@ -75,8 +77,8 @@ async def get_card(card_id: str) -> dict[str, Any]:
     """Get full details of a specific card."""
     db = await get_db()
     rows = await db.execute_fetchall(
-        """SELECT card_id, event_id, header, summary, intelligence,
-                  staged_output, suggested_actions, status, priority,
+        """SELECT card_id, event_id, entity_id, context_id, header, summary,
+                  intelligence, staged_output, suggested_actions, status, priority,
                   persona, category, created_at, resolved_at,
                   confidence, space_id, has_workspace
            FROM action_cards WHERE card_id = ?""",
@@ -89,6 +91,8 @@ async def get_card(card_id: str) -> dict[str, Any]:
     card: dict[str, Any] = {
         "card_id": r["card_id"],
         "event_id": r["event_id"],
+        "entity_id": r["entity_id"],
+        "context_id": r["context_id"],
         "header": r["header"],
         "summary": r["summary"],
         "intelligence": r["intelligence"],
@@ -155,7 +159,8 @@ async def get_cards_for_event(event_id: str) -> dict[str, Any]:
     """Get all cards generated from a specific event."""
     db = await get_db()
     rows = await db.execute_fetchall(
-        """SELECT card_id, header, summary, status, priority, persona, category, created_at
+        """SELECT card_id, entity_id, context_id, header, summary, status,
+                  priority, persona, category, created_at
            FROM action_cards WHERE event_id = ?
            ORDER BY created_at DESC""",
         (event_id,),
@@ -165,8 +170,56 @@ async def get_cards_for_event(event_id: str) -> dict[str, Any]:
         "cards": [
             {
                 "card_id": r["card_id"],
+                "entity_id": r["entity_id"],
+                "context_id": r["context_id"],
                 "header": r["header"],
                 "summary": r["summary"],
+                "status": r["status"],
+                "priority": r["priority"],
+                "persona": r["persona"],
+                "category": r["category"],
+                "created_at": r["created_at"],
+            }
+            for r in rows
+        ],
+        "count": len(rows),
+    }
+
+
+async def get_cards_by_entity(
+    entity_id: str,
+    limit: int = 25,
+    space_id: str | None = None,
+) -> dict[str, Any]:
+    """Get all action cards that belong to a specific entity."""
+    db = await get_db()
+    if space_id:
+        rows = await db.execute_fetchall(
+            """SELECT card_id, event_id, entity_id, context_id, header, summary,
+                      intelligence, status, priority, persona, category, created_at
+               FROM action_cards WHERE entity_id = ? AND space_id = ?
+               ORDER BY created_at DESC LIMIT ?""",
+            (entity_id, space_id, min(limit, 50)),
+        )
+    else:
+        rows = await db.execute_fetchall(
+            """SELECT card_id, event_id, entity_id, context_id, header, summary,
+                      intelligence, status, priority, persona, category, created_at
+               FROM action_cards WHERE entity_id = ?
+               ORDER BY created_at DESC LIMIT ?""",
+            (entity_id, min(limit, 50)),
+        )
+    return {
+        "entity_id": entity_id,
+        "cards": [
+            {
+                "card_id": r["card_id"],
+                "event_id": r["event_id"],
+                "entity_id": r["entity_id"],
+                "context_id": r["context_id"],
+                "header": r["header"],
+                "summary": r["summary"],
+                "intelligence": r["intelligence"],
                 "status": r["status"],
                 "priority": r["priority"],
                 "persona": r["persona"],

@@ -853,6 +853,9 @@ export interface TraceListItem {
 	total_cards: number;
 	platforms: string[];
 	fuzzy_search: boolean;
+	enable_semantic: boolean;
+	enable_text: boolean;
+	enable_llm_filter: boolean;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { ProviderModels } from '$lib/api/types';
+	import { glassTheme } from '$lib/stores/glassTheme';
 
 	interface Props {
 		id?: string;
@@ -134,7 +135,7 @@
 		{id}
 		onclick={toggle}
 		onkeydown={handleKeydown}
-		class="flex w-full items-center justify-between rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-left text-sm text-surface-100 transition-colors hover:border-surface-500"
+		class="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm text-surface-100 transition-colors {$glassTheme ? 'glass-input hover:border-white/25' : 'border-surface-600 bg-surface-700 hover:border-surface-500'}"
 	>
 		<span class="truncate {!value && !allowEmpty ? 'text-surface-500' : ''}">{displayLabel}</span>
 		<svg
@@ -152,17 +153,17 @@
 	<!-- Dropdown panel -->
 	{#if open}
 		<div
-			class="absolute z-50 mt-1 w-full rounded-md border border-surface-600 bg-surface-800 shadow-lg"
+			class="absolute z-50 mt-1 w-full rounded-md border shadow-lg {$glassTheme ? 'glass-dropdown border-white/15' : 'border-surface-600 bg-surface-800'}"
 		>
 			<!-- Search input -->
-			<div class="border-b border-surface-700 p-2">
+			<div class="border-b {$glassTheme ? 'border-white/[0.08]' : 'border-surface-700'} p-2">
 				<input
 					bind:this={searchRef}
 					bind:value={search}
 					onkeydown={handleKeydown}
 					type="text"
 					placeholder="Search models..."
-					class="w-full rounded border border-surface-600 bg-surface-700 px-2 py-1.5 text-sm text-surface-100 placeholder:text-surface-500 focus:border-surface-500 focus:outline-none"
+					class="w-full rounded border px-2 py-1.5 text-sm text-surface-100 placeholder:text-surface-500 focus:outline-none {$glassTheme ? 'glass-input' : 'border-surface-600 bg-surface-700 focus:border-surface-500'}"
 				/>
 			</div>
 
@@ -173,8 +174,8 @@
 						type="button"
 						onclick={() => select('')}
 						class="w-full px-3 py-1.5 text-left text-sm transition-colors {value === ''
-							? 'bg-surface-600 text-surface-100'
-							: 'text-surface-400 hover:bg-surface-700'}"
+							? ($glassTheme ? 'bg-white/10 text-surface-100' : 'bg-surface-600 text-surface-100')
+							: ($glassTheme ? 'text-surface-400 hover:bg-white/8' : 'text-surface-400 hover:bg-surface-700')}"
 					>
 						{emptyLabel}
 					</button>
@@ -191,10 +192,10 @@
 							onclick={() => select(model.id)}
 							class="w-full truncate px-3 py-1.5 text-left text-sm transition-colors
 								{model.id === value
-								? 'bg-surface-600 text-surface-100 font-medium'
+								? ($glassTheme ? 'bg-white/[0.12] text-surface-100 font-medium' : 'bg-surface-600 text-surface-100 font-medium')
 								: flatIdx === highlightIndex
-									? 'bg-surface-700 text-surface-100'
-									: 'text-surface-300 hover:bg-surface-700'}"
+									? ($glassTheme ? 'bg-white/[0.08] text-surface-100' : 'bg-surface-700 text-surface-100')
+									: ($glassTheme ? 'text-surface-300 hover:bg-white/[0.06]' : 'text-surface-300 hover:bg-surface-700')}"
 						>
 							{model.name}
 						</button>

@@ -48,15 +48,24 @@ TRACE_SUMMARY_SYSTEM = """\
 You are Laya's Trace analyst. Given the clusters discovered by a coherence search, \
 write a comprehensive summary that ties together the full picture across all clusters.
 
+Your summary must cover two dimensions:
+
+1. THEMATIC COVERAGE — What these tasks collectively represent as a body of work. \
+Synthesize the subject areas, themes, and deliverables across all clusters. Be specific \
+(name data types, features, components, patterns, etc.) but aggregate — do not list every \
+item individually. Example: "These 28 tasks investigate false positives and false negatives \
+across 15+ PII data types including credit card numbers, driver licenses, DEA numbers, and \
+phone numbers, as part of the Counterfact Dataset Improvement initiative."
+
+2. OPERATIONAL STATE — The current status of this body of work. What is resolved vs \
+still open/blocked, cross-cluster dependencies, risk areas (stale tickets, PRs waiting \
+for review, threads with no resolution), and any items needing attention.
+
 Rules:
-- Write a professional executive summary (5-10 sentences).
-- Start with the overarching theme or connection between these clusters.
-- Highlight cross-cluster dependencies and patterns (e.g., "the same PR appears in \
-  both the Jira ticket and the Slack discussion").
-- Call out which items are resolved vs still open/blocked.
-- Note any risk areas: stale tickets, PRs waiting for review, threads with no resolution.
+- Write 8-15 sentences of professional prose. No bullet lists, no markdown headers.
+- Start with the thematic overview, then transition to operational state.
+- Be specific: include identifiers, names, and dates where they add clarity.
 - Mention the platforms involved and the time span.
-- Be specific: include identifiers, names, and dates.
 - Do NOT include preamble like "Here is a summary" — start narrating directly.
 - Never use emoji or icon characters (e.g., 🔴, ✅, 📌, ⚠️) anywhere in your output.
 
@@ -92,6 +101,58 @@ def _identity_block(user_identity: dict[str, str] | None) -> str:
     )
 
 
+def _build_cluster_topic(
+    cards: list,
+    budget: int = 600,
+) -> str:
+    """Build a middle-truncated topic string from card summaries.
+
+    First and last card summaries are always kept in full. Middle summaries
+    are uniformly sampled to fit within *budget* characters.
+    """
+    summaries = [c.summary for c in cards if c.summary]
+    if not summaries:
+        return ""
+    if len(summaries) == 1:
+        return summaries[0]
+
+    first = summaries[0]
+    last = summaries[-1]
+    middle = summaries[1:-1]
+
+    reserved = len(first) + len(last)
+    remaining_budget = budget - reserved
+    if remaining_budget < 0:
+        remaining_budget = 0
+
+    if not middle:
+        return f"{first} | {last}"
+
+    middle_combined = " | ".join(middle)
+    if len(middle_combined) <= remaining_budget:
+        return f"{first} | {middle_combined} | {last}"
+
+    # Uniformly sample middle summaries that fit within budget
+    kept: list[str] = []
+    # Try progressively fewer samples until they fit
+    for sample_count in range(len(middle), 0, -1):
+        step = len(middle) / sample_count
+        candidates = [middle[int(i * step)] for i in range(sample_count)]
+        total = sum(len(s) for s in candidates) + (sample_count - 1) * 3  # " | " separators
+        if total <= remaining_budget:
+            kept = candidates
+            break
+
+    dropped = len(middle) - len(kept)
+    if kept:
+        middle_str = " | ".join(kept)
+        if dropped > 0:
+            middle_str += f" [... {dropped} more updates ...]"
+        return f"{first} | {middle_str} | {last}"
+    else:
+        return f"{first} [... {len(middle)} more updates ...] {last}"
+
+
 def build_summary_messages(
     query: str, clusters: list[TraceCluster],
     user_identity: dict[str, str] | None = None,
@@ -115,16 +176,25 @@ def build_summary_messages(
         if cluster.narrative:
             parts.append(f"Narrative: {cluster.narrative[:300]}")
 
-        # Include a few card headlines for context
-        for card in cluster.timeline[:5]:
-            actor = f" by {card.actor_name}" if card.actor_name else ""
-            parts.append(f"  - [{card.created_at or '?'}] {card.header}{actor}")
+        # Deduplicated headers
+        seen_headers: set[str] = set()
+        unique_headers: list[str] = []
+        for card in cluster.timeline:
+            if card.header not in seen_headers:
+                seen_headers.add(card.header)
+                unique_headers.append(card.header)
+        parts.append(f"Headers: {' | '.join(unique_headers)}")
+
+        # Thematic topic from card summaries (middle-truncated)
+        topic = _build_cluster_topic(cluster.timeline)
+        if topic:
+            parts.append(f"Topic: {topic}")
 
         parts.append("")
 
     user_content = "\n".join(parts)
-    if len(user_content) > 6000:
-        user_content = user_content[:6000] + "\n\n[... additional data truncated]"
+    if len(user_content) > 12000:
+        user_content = user_content[:12000] + "\n\n[... additional data truncated]"
 
     return [
         {"role": "system", "content": TRACE_SUMMARY_SYSTEM},

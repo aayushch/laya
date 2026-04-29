@@ -526,7 +526,7 @@
 						<div class="flex items-center gap-2">
 							<span class="text-sm font-semibold text-surface-100">{space.name}</span>
 							{#if space.is_default}
-								<span class="rounded bg-surface-600 px-1.5 py-0.5 text-[11px] font-medium text-surface-400">DEFAULT</span>
+								<span class="rounded {$glassTheme ? 'bg-white/[0.08]' : 'bg-surface-600'} px-1.5 py-0.5 text-[11px] font-medium text-surface-400">DEFAULT</span>
 							{/if}
 							{#if space.paused}
 								<span class="rounded bg-laya-amber/20 px-1.5 py-0.5 text-[11px] font-semibold text-laya-amber">PAUSED</span>
@@ -539,7 +539,7 @@
 									class="rounded-md px-2 py-0.5 text-[11px] font-medium cursor-pointer transition-colors
 										{space.paused
 											? 'bg-laya-orange/15 text-laya-orange hover:bg-laya-orange/25'
-											: 'bg-surface-700 text-surface-400 hover:bg-surface-600 hover:text-surface-200'}
+											: $glassTheme ? 'bg-white/[0.08] text-surface-400 hover:bg-white/[0.14] hover:text-surface-200' : 'bg-surface-700 text-surface-400 hover:bg-surface-600 hover:text-surface-200'}
 										{togglingPause === space.space_id ? ' opacity-50 pointer-events-none' : ''}"
 									title={space.paused ? 'Resume all ingestion workflows' : 'Pause all ingestion workflows'}
 								>
@@ -560,13 +560,13 @@
 					<div class="flex items-center gap-2.5 text-xs text-surface-400">
 						<span>{groupedSources.length} source{groupedSources.length !== 1 ? 's' : ''}</span>
 						{#if space.router_model || space.stager_model || space.chat_model || space.trace_model || space.omni_model}
-							<span class="rounded bg-surface-700 px-1.5 py-0.5 text-[11px]">Custom models</span>
+							<span class="rounded {$glassTheme ? 'bg-white/[0.08]' : 'bg-surface-700'} px-1.5 py-0.5 text-[11px]">Custom models</span>
 						{/if}
 						{#if space.coding_agent}
-							<span class="rounded bg-surface-700 px-1.5 py-0.5 text-[11px]">{agentLabel(space.coding_agent)}</span>
+							<span class="rounded {$glassTheme ? 'bg-white/[0.08]' : 'bg-surface-700'} px-1.5 py-0.5 text-[11px]">{agentLabel(space.coding_agent)}</span>
 						{/if}
 						{#if spaceRepoNames[space.space_id]?.length}
-							<span class="rounded bg-surface-700 px-1.5 py-0.5 text-[11px]">{spaceRepoNames[space.space_id].length} repo{spaceRepoNames[space.space_id].length !== 1 ? 's' : ''}</span>
+							<span class="rounded {$glassTheme ? 'bg-white/[0.08]' : 'bg-surface-700'} px-1.5 py-0.5 text-[11px]">{spaceRepoNames[space.space_id].length} repo{spaceRepoNames[space.space_id].length !== 1 ? 's' : ''}</span>
 						{/if}
 						<svg
 							class="h-4 w-4 transition-transform {isExpanded ? 'rotate-180' : ''}"
@@ -579,7 +579,7 @@
 
 				<!-- Expanded Detail -->
 				{#if isExpanded}
-					<div class="border-t border-surface-700 p-4 space-y-5">
+					<div class="border-t {$glassTheme ? 'border-white/[0.06]' : 'border-surface-700'} p-4 space-y-5">
 						{#if isEditing}
 							<!-- Inline edit form -->
 							{@render spaceForm(true)}
@@ -601,13 +601,13 @@
 								{:else}
 									<div class="space-y-1">
 										{#each groupedSources as group (`${group.platform}::${group.displayName}`)}
-											<div class="flex items-center gap-2 rounded-md bg-surface-700/50 px-3 py-2 text-sm">
+											<div class="flex items-center gap-2 rounded-md {$glassTheme ? 'bg-white/[0.05]' : 'bg-surface-700/50'} px-3 py-2 text-sm">
 												<span class="flex-1 truncate">{group.displayName}</span>
 												<span class="text-xs text-surface-500">{group.platform}</span>
 												<select
 													value={group.sources[0].space_id}
 													onchange={(e) => reassignSourceGroup(group, (e.target as HTMLSelectElement).value)}
-													class="rounded border border-surface-600 bg-surface-700 px-2 py-0.5 text-xs text-surface-300"
+													class="rounded border {$glassTheme ? 'bg-white/[0.06] border-white/[0.12]' : 'border-surface-600 bg-surface-700'} px-2 py-0.5 text-xs text-surface-300"
 												>
 													{#each spaces as s}
 														<option value={s.space_id}>{s.name}</option>
@@ -644,7 +644,7 @@
 												class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors
 													{isAssigned
 														? 'bg-laya-orange/15 text-laya-orange'
-														: 'hover:bg-surface-700 text-surface-300'}"
+														: $glassTheme ? 'hover:bg-white/[0.06] text-surface-300' : 'hover:bg-surface-700 text-surface-300'}"
 											>
 												<span class="h-4 w-4 shrink-0 rounded border text-center text-xs leading-4
 													{isAssigned ? 'border-laya-orange bg-laya-orange text-white' : 'border-surface-500'}">
@@ -789,7 +789,7 @@
 		{#if assigningSpaceId}
 			{@const targetSpace = spaces.find((s) => s.space_id === assigningSpaceId)}
 			<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-				<div class="mx-4 w-full max-w-lg rounded-xl border border-surface-600 bg-surface-800 p-5 shadow-xl">
+				<div class="mx-4 w-full max-w-lg rounded-xl border p-5 shadow-xl {$glassTheme ? 'glass-dropdown border-white/[0.12]' : 'border-surface-600 bg-surface-800'}">
 					<h4 class="mb-1 text-base font-semibold text-surface-50">Assign Integrations to {targetSpace?.name}</h4>
 					<p class="mb-4 text-sm text-surface-400">Select integrations to assign to this space.</p>
 
@@ -822,8 +822,8 @@
 										{selectedWorkflows.has(wf.workflow_ids[0])
 											? 'bg-laya-orange/15 text-laya-orange'
 											: isOwnedByTarget
-												? 'bg-surface-700/30 text-surface-500'
-												: 'hover:bg-surface-700 text-surface-300'}"
+												? ($glassTheme ? 'bg-white/[0.04] text-surface-500' : 'bg-surface-700/30 text-surface-500')
+												: ($glassTheme ? 'hover:bg-white/[0.06] text-surface-300' : 'hover:bg-surface-700 text-surface-300')}"
 								>
 									<div class="min-w-0 flex-1">
 										<p class="truncate">{wf.name}</p>

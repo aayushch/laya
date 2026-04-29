@@ -110,19 +110,24 @@ _THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
 
 async def _should_generate_title(db, conversation_id: str) -> bool:
-    """True when a conversation still uses the placeholder title and has no user messages yet."""
+    """True when a conversation still has the placeholder title and is recent enough to retry.
+
+    Allows up to 3 retries (gated on assistant message count) so that a single
+    failure from a reasoning model doesn't permanently leave the title as
+    "New Chat".
+    """
     rows = await db.execute_fetchall(
         """SELECT c.title,
                   (SELECT COUNT(*) FROM chat_messages m
                    WHERE m.conversation_id = c.conversation_id
-                     AND m.role = 'user') AS user_msg_count
+                     AND m.role = 'assistant') AS assistant_msg_count
            FROM chat_conversations c
            WHERE c.conversation_id = ?""",
         (conversation_id,),
     )
     if not rows:
         return False
-    return rows[0]["title"] == "New Chat" and (rows[0]["user_msg_count"] or 0) == 0
+    return rows[0]["title"] == "New Chat" and (rows[0]["assistant_msg_count"] or 0) <= 3
 
 
 def _sanitize_generated_title(raw: str) -> str:
@@ -143,8 +148,10 @@ def _sanitize_generated_title(raw: str) -> str:
         if title.startswith(prefix):
             title = title[len(prefix):].strip()
             break
-    # Collapse to a single line and remove trailing punctuation
-    title = title.splitlines()[0].strip() if title else ""
+    # Take the last non-empty line — reasoning models (regardless of vendor)
+    # typically think first and output the answer on the final line.
+    lines = [ln.strip() for ln in title.splitlines() if ln.strip()] if title else []
+    title = lines[-1] if lines else ""
     title = title.rstrip(".!?,;: ")
     if len(title) > 50:
         title = title[:50].rstrip()
@@ -174,24 +181,24 @@ async def _generate_title_background(
     """
     try:
         messages = build_title_generation_messages(user_message)
+        # Hint for Qwen 3+ to skip reasoning (harmless for other models).
+        if messages and messages[-1]["role"] == "user":
+            messages[-1] = {**messages[-1], "content": messages[-1]["content"] + " /no_think"}
         response = await llm_call(
             role="router",
             messages=messages,
             step="chat_title",
             temperature=0.3,
-            max_tokens=2048,
+            max_tokens=8192,
             space_id=space_id,
         )
         if response.finish_reason == "length":
-            # First attempt hit the cap mid-reasoning — retry once with double
-            # the budget. Mirrors the structured-output retry in
-            # ``llm/client.py`` but applies to plain-text title generation.
             response = await llm_call(
                 role="router",
                 messages=messages,
                 step="chat_title",
                 temperature=0.3,
-                max_tokens=4096,
+                max_tokens=16384,
                 space_id=space_id,
             )
         if response.finish_reason == "length":
