@@ -125,9 +125,10 @@
 		dateMenuOpen = false;
 	});
 
-	// Set header height CSS variable for chat sidebar positioning (fixed titlebar height)
+	// Set header/footer height CSS variables for chat sidebar positioning
 	$effect(() => {
 		document.documentElement.style.setProperty('--header-h', '38px');
+		document.documentElement.style.setProperty('--footer-h', '33px');
 	});
 
 	// Apply theme to <html> so CSS [data-theme] selectors work globally
@@ -724,7 +725,7 @@
 		</main>
 
 		<!-- Footer -->
-		<footer class="relative flex items-center justify-between border-t border-surface-700/60 bg-surface-900/95 px-5 py-1.5 text-[11px] text-surface-500 backdrop-blur-sm {$chatOpen ? 'pr-[476px]' : ''}">
+		<footer class="relative flex items-center justify-between border-t border-surface-700/60 bg-surface-900/95 px-5 py-1.5 text-[11px] text-surface-500 backdrop-blur-sm">
 			<!-- Left: Date widget -->
 			<div class="flex items-center gap-2 text-surface-600">
 				<span class="tabular-nums">{new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>

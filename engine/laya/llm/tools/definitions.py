@@ -23,7 +23,7 @@ def _read_tools() -> list[dict]:
                 "name": "search_cards",
                 "description": (
                     "Search action cards by keyword, status, priority, or category. "
-                    "Use this to find cards matching the user's query."
+                    "Returns paginated results — check 'has_more' and use 'offset' to retrieve additional pages."
                 ),
                 "parameters": {
                     "type": "object",
@@ -48,8 +48,13 @@ def _read_tools() -> list[dict]:
                         },
                         "limit": {
                             "type": "integer",
-                            "description": "Max results to return (default 10).",
-                            "default": 10,
+                            "description": "Max results to return (default 20, max 200).",
+                            "default": 20,
+                        },
+                        "offset": {
+                            "type": "integer",
+                            "description": "Starting position for pagination (default 0). Use with 'total' and 'has_more' from results to page through all matches.",
+                            "default": 0,
                         },
                     },
                     "required": [],
@@ -79,7 +84,7 @@ def _read_tools() -> list[dict]:
                 "name": "search_events",
                 "description": (
                     "Search raw events by keyword, platform, or actor. "
-                    "Use this to find events from Jira, Slack, Gmail, Bitbucket, Calendar, etc."
+                    "Returns paginated results — check 'has_more' and use 'offset' to retrieve additional pages."
                 ),
                 "parameters": {
                     "type": "object",
@@ -98,8 +103,13 @@ def _read_tools() -> list[dict]:
                         },
                         "limit": {
                             "type": "integer",
-                            "description": "Max results to return (default 10).",
-                            "default": 10,
+                            "description": "Max results to return (default 20, max 200).",
+                            "default": 20,
+                        },
+                        "offset": {
+                            "type": "integer",
+                            "description": "Starting position for pagination (default 0). Use with 'total' and 'has_more' from results to page through all matches.",
+                            "default": 0,
                         },
                     },
                     "required": [],
@@ -129,7 +139,7 @@ def _read_tools() -> list[dict]:
                 "name": "search_entities",
                 "description": (
                     "Search cross-platform entities (people, projects, tickets, repos, threads). "
-                    "Use this to find entity correlations across platforms."
+                    "Returns paginated results — check 'has_more' and use 'offset' to retrieve additional pages."
                 ),
                 "parameters": {
                     "type": "object",
@@ -145,8 +155,13 @@ def _read_tools() -> list[dict]:
                         },
                         "limit": {
                             "type": "integer",
-                            "description": "Max results to return (default 10).",
+                            "description": "Max results to return (default 10, max 200).",
                             "default": 10,
+                        },
+                        "offset": {
+                            "type": "integer",
+                            "description": "Starting position for pagination (default 0). Use with 'total' and 'has_more' from results to page through all matches.",
+                            "default": 0,
                         },
                     },
                     "required": [],
@@ -191,7 +206,7 @@ def _read_tools() -> list[dict]:
                 "name": "get_recent_activity",
                 "description": (
                     "Get the most recent events and cards across all platforms. "
-                    "Use when the user asks about what's new or recent activity."
+                    "Returns paginated results — check 'has_more_events'/'has_more_cards' and use 'offset' to page."
                 ),
                 "parameters": {
                     "type": "object",
@@ -203,8 +218,13 @@ def _read_tools() -> list[dict]:
                         },
                         "limit": {
                             "type": "integer",
-                            "description": "Max results per category (default 10).",
+                            "description": "Max results per category (default 10, max 200).",
                             "default": 10,
+                        },
+                        "offset": {
+                            "type": "integer",
+                            "description": "Starting position for pagination (default 0).",
+                            "default": 0,
                         },
                     },
                     "required": [],
@@ -234,9 +254,7 @@ def _read_tools() -> list[dict]:
                 "name": "get_cards_by_entity",
                 "description": (
                     "Get all action cards belonging to a specific entity_id. "
-                    "Use this when you have an entity_id (from a card or entity search) "
-                    "and want to see every card related to that entity (e.g., all review "
-                    "comments on a PR, all updates to a Jira ticket)."
+                    "Returns paginated results — check 'has_more' and use 'offset' to retrieve additional pages."
                 ),
                 "parameters": {
                     "type": "object",
@@ -251,8 +269,13 @@ def _read_tools() -> list[dict]:
                         },
                         "limit": {
                             "type": "integer",
-                            "description": "Max results to return (default 25).",
+                            "description": "Max results to return (default 25, max 200).",
                             "default": 25,
+                        },
+                        "offset": {
+                            "type": "integer",
+                            "description": "Starting position for pagination (default 0). Use with 'total' and 'has_more' from results to page through all matches.",
+                            "default": 0,
                         },
                     },
                     "required": ["entity_id"],

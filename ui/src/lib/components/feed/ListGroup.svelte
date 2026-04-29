@@ -101,8 +101,8 @@
 
 	// Status priority for group color: highest-priority status wins
 	const statusPriority: string[] = [
-		'awaiting_input', 'failed', 'agent_running', 'requires_approval',
-		'pending', 'ready', 'done', 'dismissed', 'archived'
+		'pending', 'awaiting_input', 'agent_running', 'failed', 'requires_approval',
+		'ready', 'done', 'dismissed', 'archived'
 	];
 
 	const solidGroupRowStyle: Record<string, string> = {

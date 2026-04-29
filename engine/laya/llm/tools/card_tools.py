@@ -8,13 +8,20 @@ from typing import Any
 
 from laya.api.websocket import manager
 from laya.db.sqlite import get_db
+from laya.llm.tools.constants import (
+    CARDS_BY_ENTITY_DEFAULT,
+    CARDS_BY_ENTITY_MAX,
+    CHAT_SEARCH_DEFAULT,
+    CHAT_SEARCH_MAX,
+)
 
 
 async def search_cards(
     query: str | None = None,
     status: str | None = None,
     priority: str | None = None,
-    limit: int = 10,
+    limit: int = CHAT_SEARCH_DEFAULT,
+    offset: int = 0,
     space_id: str | None = None,
 ) -> dict[str, Any]:
     """Search action cards by keyword, status, priority."""
@@ -41,14 +48,20 @@ async def search_cards(
         params.append(space_id)
 
     where = " AND ".join(conditions) if conditions else "1=1"
-    params.append(min(limit, 25))
 
+    count_rows = await db.execute_fetchall(
+        f"SELECT COUNT(*) as cnt FROM action_cards WHERE {where}",
+        params,
+    )
+    total = count_rows[0]["cnt"] if count_rows else 0
+
+    capped_limit = min(limit, CHAT_SEARCH_MAX)
     rows = await db.execute_fetchall(
         f"""SELECT card_id, event_id, entity_id, context_id, header, summary,
                    status, priority, persona, category, created_at, space_id
             FROM action_cards WHERE {where}
-            ORDER BY created_at DESC LIMIT ?""",
-        params,
+            ORDER BY created_at DESC LIMIT ? OFFSET ?""",
+        [*params, capped_limit, offset],
     )
 
     return {
@@ -70,6 +83,9 @@ async def search_cards(
             for r in rows
         ],
         "count": len(rows),
+        "total": total,
+        "offset": offset,
+        "has_more": offset + len(rows) < total,
     }
 
 
@@ -188,27 +204,40 @@ async def get_cards_for_event(event_id: str) -> dict[str, Any]:
 
 async def get_cards_by_entity(
     entity_id: str,
-    limit: int = 25,
+    limit: int = CARDS_BY_ENTITY_DEFAULT,
+    offset: int = 0,
     space_id: str | None = None,
 ) -> dict[str, Any]:
     """Get all action cards that belong to a specific entity."""
     db = await get_db()
+    capped_limit = min(limit, CARDS_BY_ENTITY_MAX)
+
     if space_id:
+        count_rows = await db.execute_fetchall(
+            "SELECT COUNT(*) as cnt FROM action_cards WHERE entity_id = ? AND space_id = ?",
+            (entity_id, space_id),
+        )
         rows = await db.execute_fetchall(
             """SELECT card_id, event_id, entity_id, context_id, header, summary,
                       intelligence, status, priority, persona, category, created_at
                FROM action_cards WHERE entity_id = ? AND space_id = ?
-               ORDER BY created_at DESC LIMIT ?""",
-            (entity_id, space_id, min(limit, 50)),
+               ORDER BY created_at DESC LIMIT ? OFFSET ?""",
+            (entity_id, space_id, capped_limit, offset),
         )
     else:
+        count_rows = await db.execute_fetchall(
+            "SELECT COUNT(*) as cnt FROM action_cards WHERE entity_id = ?",
+            (entity_id,),
+        )
         rows = await db.execute_fetchall(
             """SELECT card_id, event_id, entity_id, context_id, header, summary,
                       intelligence, status, priority, persona, category, created_at
                FROM action_cards WHERE entity_id = ?
-               ORDER BY created_at DESC LIMIT ?""",
-            (entity_id, min(limit, 50)),
+               ORDER BY created_at DESC LIMIT ? OFFSET ?""",
+            (entity_id, capped_limit, offset),
         )
+
+    total = count_rows[0]["cnt"] if count_rows else 0
     return {
         "entity_id": entity_id,
         "cards": [
@@ -229,6 +258,9 @@ async def get_cards_by_entity(
             for r in rows
         ],
         "count": len(rows),
+        "total": total,
+        "offset": offset,
+        "has_more": offset + len(rows) < total,
     }
 
 

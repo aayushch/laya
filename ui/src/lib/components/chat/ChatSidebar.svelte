@@ -347,13 +347,13 @@
 
 {#if $chatOpen}
 	<aside
-		class="fixed bottom-0 right-0 z-40 flex w-[460px] flex-col"
-		style="top: var(--header-h, 45px);"
+		class="fixed right-0 z-40 flex w-[460px] flex-col"
+		style="top: var(--header-h, 45px); bottom: var(--footer-h, 33px);"
 		transition:fly={{ x: 460, duration: $reducedMotion ? 0 : 250, opacity: 1 }}
 	>
-	<!-- Inner container: top margin aligns with main content padding (p-4 = 1rem) so the panel
-	     starts at the same height as the feed toolbar / page header controls -->
-	<div class="flex flex-1 flex-col overflow-hidden mt-4 mr-4 rounded-xl {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-900'}">
+	<!-- Inner container: margins align with main content padding so the panel
+	     floats above the footer with consistent spacing -->
+	<div class="flex flex-1 flex-col overflow-hidden my-4 mr-4 rounded-xl {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-900'}">
 		{#if showList}
 			<ChatConversationList />
 		{:else}

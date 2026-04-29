@@ -6,17 +6,20 @@ from laya.llm.prompts import current_timestamp_line
 
 
 TITLE_GENERATION_SYSTEM_PROMPT = """\
-You generate concise titles for chat conversations. Given the user's first \
-message, produce a short title (2-6 words, max 50 characters) that captures \
-the topic.
+Summarize the user's message as a short Title Case label.
 
-Rules:
-- Return ONLY the title text — no quotes, no punctuation at the end, no prefix like "Title:"
-- Use Title Case
-- Be specific: prefer "Debugging Jira Webhook" over "Help With Issue"
-- Never exceed 50 characters
-- Never use emoji or icon characters
-- If the message is ambiguous or a greeting, return "New Chat\""""
+Examples:
+User: "My Jira webhook keeps returning error after I rotate the token"
+Title: Jira Webhook Error After Rotation
+
+User: "Hey!"
+Title: New Chat
+
+User: "Can you convert this CSV to a pandas dataframe and plot the revenue column?"
+Title: CSV to Pandas Revenue Plot
+
+User: "What's the difference between useMemo and useCallback in React?"
+Title: useMemo vs useCallback in React"""
 
 
 def build_title_generation_messages(user_message: str) -> list[dict[str, str]]:

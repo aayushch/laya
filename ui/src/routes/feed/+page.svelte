@@ -156,6 +156,9 @@
 
 	function clearRelatedFilter() {
 		_scrollToCardId = selectedCard?.card_id ?? lastDetailCardId ?? lastViewedCardId ?? null;
+		if (!_scrollToCardId) {
+			_scrollToGroupEntityId = selectedGroupSummary?.group.entity_id ?? lastDetailEntityId ?? lastViewedEntityId ?? null;
+		}
 		_skipNextFlip = true;
 		$feedFilters.showRelated = false;
 		$feedFilters.relatedEntityIds = [];
@@ -219,8 +222,9 @@
 	let summaryUpdatedAt = $state<string | null>(null);
 	let summaryLoading = $state(false);
 
-	// Persist selected card ID across webview navigations (e.g. external link → back)
+	// Persist selected card/group ID across webview navigations (e.g. external link → back)
 	const SELECTED_CARD_KEY = 'laya_feed_selected_card';
+	const SELECTED_GROUP_KEY = 'laya_feed_selected_group';
 
 	function formatDateLabel(dateStr: string): string {
 		const today = localToday();
@@ -337,13 +341,23 @@
 			$feedPrevDate = data.prev_date ?? null;
 			$feedNextDate = data.next_date ?? null;
 
-			// Restore selected card after navigating back from an external page
-			if (!selectedCard) {
-				const savedId = sessionStorage.getItem(SELECTED_CARD_KEY);
-				if (savedId) {
+			// Restore selected card or group after navigating back from an external page
+			if (!selectedCard && !selectedGroupSummary) {
+				const savedCardId = sessionStorage.getItem(SELECTED_CARD_KEY);
+				const savedGroupId = sessionStorage.getItem(SELECTED_GROUP_KEY);
+				if (savedCardId) {
 					for (const g of data.groups) {
-						const found = g.cards.find((c) => c.card_id === savedId);
+						const found = g.cards.find((c) => c.card_id === savedCardId);
 						if (found) { selectedCard = found; break; }
+					}
+				} else if (savedGroupId) {
+					const g = data.groups.find((g) => g.entity_id === savedGroupId);
+					if (g) {
+						selectedGroupSummary = { summary: g.group_summary ?? null, group: g };
+						lastDetailEntityId = g.entity_id;
+						lastViewedEntityId = g.entity_id;
+						openDetailPanel(true);
+						_scrollToGroupEntityId = g.entity_id;
 					}
 				}
 			}
@@ -356,9 +370,12 @@
 			_skipNextFlip = false;
 			animateFlip(oldPositions, skipFlip);
 
-			// Scroll to card if requested (e.g. gotoCard, clearRelatedFilter)
+			// Scroll to card/group if requested (e.g. gotoCard, clearRelatedFilter)
 			if (_scrollToCardId) {
 				scrollToCard(_scrollToCardId);
+			} else if (_scrollToGroupEntityId) {
+				scrollToGroupElement(_scrollToGroupEntityId);
+				_scrollToGroupEntityId = null;
 			}
 		} catch {
 			if (id !== _fetchId) return;
@@ -594,6 +611,8 @@
 
 	// ID of card to scroll into view after next render (set by gotoCard)
 	let _scrollToCardId = $state<string | null>(null);
+	// Entity ID of group to scroll into view after next render (set by clearRelatedFilter for groups)
+	let _scrollToGroupEntityId = $state<string | null>(null);
 
 	function gotoCard(card: ActionCard) {
 		let cardDate: string | null = null;
@@ -732,6 +751,7 @@
 		lastDetailCardId = card.card_id;
 		lastViewedCardId = card.card_id;
 		sessionStorage.setItem(SELECTED_CARD_KEY, card.card_id);
+		sessionStorage.removeItem(SELECTED_GROUP_KEY);
 		trackCardVisit(card);
 		// Fetch full card from API to ensure suggested_actions and other fields
 		// that may be missing from WS-patched data are present.
@@ -753,6 +773,7 @@
 		lastViewedCardId = null;
 		lastViewedEntityId = group.entity_id;
 		sessionStorage.removeItem(SELECTED_CARD_KEY);
+		sessionStorage.setItem(SELECTED_GROUP_KEY, group.entity_id);
 		openDetailPanel(true);
 		scrollToGroupElement(group.entity_id);
 	}
@@ -764,6 +785,7 @@
 		lastDetailCardId = null;
 		lastDetailEntityId = null;
 		sessionStorage.removeItem(SELECTED_CARD_KEY);
+		sessionStorage.removeItem(SELECTED_GROUP_KEY);
 	}
 
 	// Dismiss the active card without closing the panel (X button in CardDetail)
@@ -775,6 +797,7 @@
 	// Dismiss the active group summary without closing the panel (X button in GroupSummaryDetail)
 	function dismissActiveGroupSummary() {
 		selectedGroupSummary = null;
+		sessionStorage.removeItem(SELECTED_GROUP_KEY);
 	}
 
 	function handleDelete(cardId: string) {

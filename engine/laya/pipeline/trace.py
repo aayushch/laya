@@ -24,6 +24,14 @@ from laya.db.chromadb_store import memory_search
 from laya.db.sqlite import get_db
 from laya.config import get_self_user
 from laya.llm.client import llm_call, llm_call_streaming
+from laya.llm.tools.constants import (
+    TRACE_ENTITY_SEARCH_MAX,
+    TRACE_EVENT_SEARCH_MAX,
+    TRACE_FUZZY_SEARCH_MAX,
+    TRACE_IDENTIFIER_SEARCH_MAX,
+    TRACE_SEMANTIC_SEARCH_MAX,
+    TRACE_TEXT_SEARCH_MAX,
+)
 from laya.llm.prompts.trace import build_narrative_messages, build_summary_messages
 from laya.llm.prompts.trace_filter import (
     RELEVANCE_FILTER_SCHEMA,
@@ -298,19 +306,19 @@ async def _run_trace_inner(
     signal_labels: list[str] = []
 
     if request.enable_identifier:
-        coros.append(_identifier_search(request.query, request.space_id, n=30))
+        coros.append(_identifier_search(request.query, request.space_id, n=TRACE_IDENTIFIER_SEARCH_MAX))
         signal_labels.append("identifier")
     if request.enable_semantic:
-        coros.append(_semantic_search(request.query, request.space_id, n=30))
+        coros.append(_semantic_search(request.query, request.space_id, n=TRACE_SEMANTIC_SEARCH_MAX))
         signal_labels.append("semantic")
     if request.enable_entity:
-        coros.append(_entity_table_search(request.query, n=20))
+        coros.append(_entity_table_search(request.query, n=TRACE_ENTITY_SEARCH_MAX))
         signal_labels.append("entity")
 
     # Text search: strict phrase-match LIKE on card content only.
     if request.enable_text:
         coros.append(_card_text_search(
-            request.query, request.space_id, n=200,
+            request.query, request.space_id, n=TRACE_TEXT_SEARCH_MAX,
             include_archived=request.include_archived,
         ))
         signal_labels.append("text")
@@ -318,10 +326,10 @@ async def _run_trace_inner(
     # Fuzzy search: keyword-split LIKE on cards + events — broader but noisier.
     if request.fuzzy_search:
         coros.append(_card_fuzzy_search(
-            request.query, request.space_id, n=30,
+            request.query, request.space_id, n=TRACE_FUZZY_SEARCH_MAX,
             include_archived=request.include_archived,
         ))
-        coros.append(_event_keyword_search(request.query, request.space_id, n=20))
+        coros.append(_event_keyword_search(request.query, request.space_id, n=TRACE_EVENT_SEARCH_MAX))
         signal_labels.extend(["fuzzy", "event"])
 
     results = await _cancellable(

@@ -6,12 +6,14 @@ import json
 from typing import Any
 
 from laya.db.sqlite import get_db
+from laya.llm.tools.constants import ENTITY_SEARCH_DEFAULT, ENTITY_SEARCH_MAX
 
 
 async def search_entities(
     query: str | None = None,
     entity_type: str | None = None,
-    limit: int = 10,
+    limit: int = ENTITY_SEARCH_DEFAULT,
+    offset: int = 0,
 ) -> dict[str, Any]:
     """Search cross-platform entities."""
     db = await get_db()
@@ -29,13 +31,19 @@ async def search_entities(
         params.append(entity_type)
 
     where = " AND ".join(conditions) if conditions else "1=1"
-    params.append(min(limit, 25))
 
+    count_rows = await db.execute_fetchall(
+        f"SELECT COUNT(*) as cnt FROM entities WHERE {where}",
+        params,
+    )
+    total = count_rows[0]["cnt"] if count_rows else 0
+
+    capped_limit = min(limit, ENTITY_SEARCH_MAX)
     rows = await db.execute_fetchall(
         f"""SELECT entity_id, entity_type, canonical_name, platform_refs, confidence
             FROM entities WHERE {where}
-            ORDER BY confidence DESC LIMIT ?""",
-        params,
+            ORDER BY confidence DESC LIMIT ? OFFSET ?""",
+        [*params, capped_limit, offset],
     )
 
     return {
@@ -50,6 +58,9 @@ async def search_entities(
             for r in rows
         ],
         "count": len(rows),
+        "total": total,
+        "offset": offset,
+        "has_more": offset + len(rows) < total,
     }
 
 
