@@ -320,7 +320,7 @@
 						{:else}
 							<div class="rounded-md bg-laya-orange/5 border border-laya-orange/15 px-3 py-2">
 								<div class="flex items-center gap-1.5 mb-1">
-									<span class="text-[9px] font-medium uppercase tracking-wider text-laya-orange/70">✦ narrative</span>
+									<span class="text-[9px] font-medium uppercase tracking-wider text-laya-orange/70 inline-flex items-center gap-1"><span class="text-[8px] leading-none -translate-y-px">✦</span> narrative</span>
 									{#if isStreaming}
 										<svg class="h-2.5 w-2.5 animate-spin text-laya-orange/60 shrink-0" fill="none" viewBox="0 0 24 24">
 											<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>

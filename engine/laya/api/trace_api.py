@@ -92,7 +92,7 @@ async def list_traces(limit: int = 20, offset: int = 0) -> list[TraceListItem]:
             search_meta = json.loads(row["search_metadata"]) if row["search_metadata"] else {}
             fuzzy_search = search_meta.get("fuzzy_search", False)
         except json.JSONDecodeError:
-            pass
+            search_meta = {}
 
         items.append(TraceListItem(
             trace_id=row["trace_id"],
@@ -101,6 +101,9 @@ async def list_traces(limit: int = 20, offset: int = 0) -> list[TraceListItem]:
             total_cards=len(card_ids),
             platforms=sorted(set(platforms)),
             fuzzy_search=fuzzy_search,
+            enable_semantic=search_meta.get("enable_semantic", True),
+            enable_text=search_meta.get("enable_text", True),
+            enable_llm_filter=search_meta.get("enable_llm_filter", True),
         ))
 
     return items

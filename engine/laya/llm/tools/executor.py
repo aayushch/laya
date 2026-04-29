@@ -33,6 +33,7 @@ def _register_tools() -> None:
         "get_card": card_tools.get_card,
         "get_card_stats": card_tools.get_card_stats,
         "get_cards_for_event": card_tools.get_cards_for_event,
+        "get_cards_by_entity": card_tools.get_cards_by_entity,
         "search_events": event_tools.search_events,
         "get_event": event_tools.get_event,
         "get_recent_activity": event_tools.get_recent_activity,

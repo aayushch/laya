@@ -103,3 +103,6 @@ class TraceListItem(BaseModel):
     total_cards: int
     platforms: list[str]
     fuzzy_search: bool = False
+    enable_semantic: bool = True
+    enable_text: bool = True
+    enable_llm_filter: bool = True

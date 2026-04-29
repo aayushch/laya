@@ -9,8 +9,8 @@
 		{ key: 'B', description: 'Toggle bookmarks filter', scope: 'Global', note: 'Only when not focused on an input field' },
 		{ key: 'C', description: 'Open compose modal', scope: 'Global', note: 'Only when not focused on an input field' },
 		{ key: 'L', description: 'Toggle chat panel', scope: 'Global', note: 'Only when not focused on an input field' },
-		{ key: 'O', description: 'Go to Omni', scope: 'Global', note: 'Only when not focused on an input field' },
-		{ key: 'P', description: 'Go to Pulse (feed)', scope: 'Global', note: 'Only when not focused on an input field' },
+		{ key: `${mod}O`, description: 'Go to Omni', scope: 'Global', note: '' },
+		{ key: `${mod}P`, description: 'Go to Pulse (feed)', scope: 'Global', note: '' },
 		{ key: 'R', description: 'Toggle recent items', scope: 'Global', note: 'Only when not focused on an input field' },
 		{ key: 'S', description: 'Toggle day summary', scope: 'Global', note: 'Only when not focused on an input field' },
 		{ key: `${mod}D`, description: 'Toggle card descriptions', scope: 'Global', note: '' },
@@ -18,6 +18,8 @@
 		{ key: `${mod}↵`, description: 'Send compose form', scope: 'Compose modal', note: '' },
 		{ key: `${mod}F`, description: 'Focus search box', scope: 'Feed', note: '' },
 		{ key: `${mod}S`, description: 'Go to Coherence and focus search', scope: 'Global', note: '' },
+		{ key: `${mod}[`, description: 'Navigate back', scope: 'Global', note: '' },
+		{ key: `${mod}]`, description: 'Navigate forward', scope: 'Global', note: '' },
 	];
 </script>
 
@@ -39,7 +41,7 @@
 					{#each keybindings as binding, i}
 						<tr class="border-b last:border-0 {$glassTheme ? 'border-white/[0.04]' : 'border-surface-700/50'} {$glassTheme ? (i % 2 === 0 ? 'bg-white/[0.02]' : 'bg-transparent') : (i % 2 === 0 ? 'bg-surface-800' : 'bg-surface-850/30')}">
 							<td class="px-4 py-2.5">
-								<kbd class="inline-flex min-w-[2rem] items-center justify-center rounded-md border border-surface-600 bg-surface-900 px-2 py-0.5 font-mono text-xs text-surface-200">{binding.key}</kbd>
+								<kbd class="inline-flex min-w-[2rem] items-center justify-center rounded-md border px-2 py-0.5 font-mono text-xs text-surface-200 {$glassTheme ? 'border-white/[0.12] bg-white/[0.06]' : 'border-surface-600 bg-surface-900'}">{binding.key}</kbd>
 							</td>
 							<td class="px-4 py-2.5 text-surface-200">
 								{binding.description}
@@ -48,7 +50,7 @@
 								{/if}
 							</td>
 							<td class="px-4 py-2.5">
-								<span class="rounded-full bg-surface-700/50 px-2 py-0.5 text-xs text-surface-400">{binding.scope}</span>
+								<span class="rounded-full {$glassTheme ? 'bg-white/[0.06]' : 'bg-surface-700/50'} px-2 py-0.5 text-xs text-surface-400">{binding.scope}</span>
 							</td>
 						</tr>
 					{/each}

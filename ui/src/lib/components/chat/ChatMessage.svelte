@@ -128,6 +128,12 @@
 				<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div class="prose-plan break-words" onclick={handleClick} onkeydown={handleClick}>{@html renderMarkdown(parsed.response)}{#if streaming}<span class="animate-pulse text-laya-orange">|</span>{/if}</div>
+			{:else if streaming && !parsed.isThinking}
+				<span class="inline-flex gap-1 text-surface-400">
+					<span class="animate-bounce">.</span>
+					<span class="animate-bounce" style="animation-delay: 0.1s">.</span>
+					<span class="animate-bounce" style="animation-delay: 0.2s">.</span>
+				</span>
 			{/if}
 		{/if}
 		{#if !streaming}

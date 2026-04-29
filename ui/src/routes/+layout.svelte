@@ -353,9 +353,7 @@
 
 		// Keyboard shortcut: press 'p' to navigate to Pulse (feed)
 		function handlePulseShortcut(e: KeyboardEvent) {
-			if (e.key === 'p' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-				const tag = (e.target as HTMLElement)?.tagName;
-				if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable) return;
+			if (e.key === 'p' && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
 				e.preventDefault();
 				goto('/feed');
 			}
@@ -364,9 +362,7 @@
 
 		// Keyboard shortcut: press 'o' to navigate to Omni
 		function handleOmniShortcut(e: KeyboardEvent) {
-			if (e.key === 'o' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-				const tag = (e.target as HTMLElement)?.tagName;
-				if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable) return;
+			if (e.key === 'o' && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
 				e.preventDefault();
 				goto('/omni');
 			}
@@ -394,6 +390,22 @@
 		}
 		document.addEventListener('keydown', handleCardSizeShortcut);
 
+		function handleNavBackShortcut(e: KeyboardEvent) {
+			if (e.key === '[' && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
+				e.preventDefault();
+				history.back();
+			}
+		}
+		document.addEventListener('keydown', handleNavBackShortcut);
+
+		function handleNavForwardShortcut(e: KeyboardEvent) {
+			if (e.key === ']' && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
+				e.preventDefault();
+				history.forward();
+			}
+		}
+		document.addEventListener('keydown', handleNavForwardShortcut);
+
 		// Auto-advance feedDate at midnight so "Today"/"Yesterday" labels stay correct
 		function scheduleMidnightUpdate() {
 			const now = Date.now();
@@ -418,6 +430,8 @@
 			document.removeEventListener('keydown', handleOmniShortcut);
 			document.removeEventListener('keydown', handleCardDescriptionsShortcut);
 			document.removeEventListener('keydown', handleCardSizeShortcut);
+			document.removeEventListener('keydown', handleNavBackShortcut);
+			document.removeEventListener('keydown', handleNavForwardShortcut);
 			clearTimeout(midnightTimer);
 			stopHealthPolling();
 			closeWebSocket();

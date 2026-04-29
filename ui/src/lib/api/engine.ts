@@ -594,7 +594,7 @@ export const engineApi = {
 				query,
 				space_id: spaceId || null,
 				include_archived: true,
-				max_results: 50,
+				max_results: 200,
 				fuzzy_search: fuzzySearch,
 				...(opts?.enableSemantic !== undefined && { enable_semantic: opts.enableSemantic }),
 				...(opts?.enableText !== undefined && { enable_text: opts.enableText }),

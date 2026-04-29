@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { engineApi } from '$lib/api/engine';
+	import { glassTheme } from '$lib/stores/glassTheme';
 	import PlatformIcon from './PlatformIcon.svelte';
 	import SmtpSetupForm from './SmtpSetupForm.svelte';
 	import type { FieldDef } from '$lib/api/types';
@@ -218,13 +219,13 @@
 <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onclick={onClose} onkeydown={(e) => { if (e.key === 'Escape') onClose(); }}>
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="w-full max-w-md rounded-xl border border-surface-700 bg-surface-900 shadow-2xl"
+		class="w-full max-w-md rounded-xl border shadow-2xl {$glassTheme ? 'glass-dropdown border-white/[0.12]' : 'border-surface-700 bg-surface-900'}"
 		onclick={(e) => e.stopPropagation()}
 		onkeydown={(e) => e.stopPropagation()}
 	>
 		<!-- Header -->
-		<div class="flex items-center gap-3 border-b border-surface-700 px-6 py-4">
-			<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-800 text-surface-300">
+		<div class="flex items-center gap-3 border-b {$glassTheme ? 'border-white/[0.08]' : 'border-surface-700'} px-6 py-4">
+			<div class="flex h-8 w-8 items-center justify-center rounded-lg {$glassTheme ? 'bg-white/[0.06]' : 'bg-surface-800'} text-surface-300">
 				<PlatformIcon platform={platform} size={18} />
 			</div>
 			<div>

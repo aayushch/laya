@@ -337,6 +337,7 @@ html, body {
 	box-shadow:
 		inset 0 0.5px 0 0 rgb(255 255 255 / 0.08),
 		0 8px 32px -8px rgb(0 0 0 / 0.25);
+	transition: background 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
 }
 .glass-card-flat {
 	-webkit-backdrop-filter: blur(16px) saturate(1.3);
@@ -376,7 +377,13 @@ html, body {
 }
 [data-theme='light'] .glass-card[data-status]:hover,
 [data-theme='light'] .glass-card-flat[data-status]:hover {
-	border-color: rgb(var(--status-rgb) / 0.6);
+	background:
+		linear-gradient(rgb(var(--status-rgb) / 0.18), rgb(var(--status-rgb) / 0.18)),
+		rgb(255 255 255 / 0.24);
+	border-color: rgb(var(--status-rgb) / 0.7);
+	box-shadow:
+		0 8px 28px -10px rgb(var(--status-rgb) / 0.35),
+		inset 0 1px 0 rgb(255 255 255 / 0.65);
 }
 [data-theme='light'] .glass-card[data-status="failed"],
 [data-theme='light'] .glass-card-flat[data-status="failed"] {
@@ -405,7 +412,13 @@ html, body {
 }
 [data-theme='dark'] .glass-card[data-status]:hover,
 [data-theme='dark'] .glass-card-flat[data-status]:hover {
-	border-color: rgb(var(--status-rgb) / 0.55);
+	background: rgb(var(--status-rgb) / 0.19);
+	border-color: rgb(var(--status-rgb) / 0.65);
+	box-shadow:
+		0 8px 32px -8px rgb(0 0 0 / 0.4),
+		inset 0 1px 0 rgb(255 255 255 / 0.08),
+		inset 0 0 24px rgb(var(--status-rgb) / 0.06),
+		0 0 16px rgb(var(--status-rgb) / 0.1);
 }
 [data-status="pending"]           { --status-rgb: 217 119 6; }
 [data-status="ready"]             { --status-rgb: 217 119 6; }
@@ -496,6 +509,23 @@ html, body {
 		0 4px 18px -10px rgb(0 0 0 / 0.10),
 		inset 0 1px 0 rgb(255 255 255 / 0.4);
 }
+/* Glass dropdown — heavier frosting for popover menus so they
+   read as a solid surface floating above glass sections. */
+.glass-dropdown {
+	-webkit-backdrop-filter: blur(28px) saturate(1.8);
+	backdrop-filter: blur(28px) saturate(1.8);
+	background: rgb(20 18 16 / 0.78);
+	box-shadow:
+		0 8px 32px -4px rgb(0 0 0 / 0.5),
+		inset 0 0.5px 0 rgb(255 255 255 / 0.08);
+}
+[data-theme='light'] .glass-dropdown {
+	background: rgb(255 255 255 / 0.82);
+	box-shadow:
+		0 8px 32px -4px rgb(0 0 0 / 0.15),
+		inset 0 1px 0 rgb(255 255 255 / 0.7);
+}
+
 /* Glass panel — same diffusion as glass-section but rectangular,
    for full-height columns that shouldn't have rounded corners. */
 .glass-panel {
@@ -523,6 +553,174 @@ html, body {
 .glass-input:focus-within {
 	border-color: rgb(246 172 105 / 0.55);
 	outline: none;
+}
+
+/* Glass-section form controls — auto-apply frosted styling to inputs,
+   selects, textareas, and number spinners inside glass sections so
+   they don't look like opaque rectangles on a translucent surface. */
+.glass-section input[type="text"],
+.glass-section input[type="password"],
+.glass-section input[type="email"],
+.glass-section input[type="number"],
+.glass-section input[type="url"],
+.glass-section input[type="search"],
+.glass-section input[type="time"],
+.glass-section input:not([type]),
+.glass-section select,
+.glass-section textarea,
+.glass-dropdown input[type="text"],
+.glass-dropdown input[type="password"],
+.glass-dropdown input[type="email"],
+.glass-dropdown input[type="number"],
+.glass-dropdown input[type="url"],
+.glass-dropdown select,
+.glass-dropdown textarea {
+	-webkit-backdrop-filter: blur(10px) saturate(1.4);
+	backdrop-filter: blur(10px) saturate(1.4);
+	background: rgb(255 255 255 / 0.06) !important;
+	border-color: rgb(255 255 255 / 0.14) !important;
+	transition: border-color 180ms ease, background 180ms ease;
+}
+.glass-section input[type="text"]:focus,
+.glass-section input[type="password"]:focus,
+.glass-section input[type="email"]:focus,
+.glass-section input[type="number"]:focus,
+.glass-section input[type="url"]:focus,
+.glass-section input[type="search"]:focus,
+.glass-section input[type="time"]:focus,
+.glass-section input:not([type]):focus,
+.glass-section select:focus,
+.glass-section textarea:focus,
+.glass-dropdown input:focus,
+.glass-dropdown select:focus,
+.glass-dropdown textarea:focus {
+	border-color: rgb(246 172 105 / 0.55) !important;
+	outline: none;
+}
+[data-theme='light'] .glass-section input[type="text"],
+[data-theme='light'] .glass-section input[type="password"],
+[data-theme='light'] .glass-section input[type="email"],
+[data-theme='light'] .glass-section input[type="number"],
+[data-theme='light'] .glass-section input[type="url"],
+[data-theme='light'] .glass-section input[type="search"],
+[data-theme='light'] .glass-section input[type="time"],
+[data-theme='light'] .glass-section input:not([type]),
+[data-theme='light'] .glass-section select,
+[data-theme='light'] .glass-section textarea,
+[data-theme='light'] .glass-dropdown input[type="text"],
+[data-theme='light'] .glass-dropdown input[type="password"],
+[data-theme='light'] .glass-dropdown input[type="email"],
+[data-theme='light'] .glass-dropdown input[type="number"],
+[data-theme='light'] .glass-dropdown input[type="url"],
+[data-theme='light'] .glass-dropdown select,
+[data-theme='light'] .glass-dropdown textarea {
+	background: rgb(255 255 255 / 0.45) !important;
+	border-color: rgb(110 60 25 / 0.22) !important;
+}
+[data-theme='light'] .glass-section input[type="text"]:focus,
+[data-theme='light'] .glass-section input[type="password"]:focus,
+[data-theme='light'] .glass-section input[type="email"]:focus,
+[data-theme='light'] .glass-section input[type="number"]:focus,
+[data-theme='light'] .glass-section input[type="url"]:focus,
+[data-theme='light'] .glass-section input[type="search"]:focus,
+[data-theme='light'] .glass-section input[type="time"]:focus,
+[data-theme='light'] .glass-section input:not([type]):focus,
+[data-theme='light'] .glass-section select:focus,
+[data-theme='light'] .glass-section textarea:focus,
+[data-theme='light'] .glass-dropdown input:focus,
+[data-theme='light'] .glass-dropdown select:focus,
+[data-theme='light'] .glass-dropdown textarea:focus {
+	border-color: rgb(246 172 105 / 0.55) !important;
+}
+/* Table rows inside glass sections */
+.glass-section tbody tr {
+	background: transparent !important;
+}
+.glass-section tbody tr:hover {
+	background: rgb(255 255 255 / 0.05) !important;
+}
+[data-theme='light'] .glass-section tbody tr:hover {
+	background: rgb(0 0 0 / 0.04) !important;
+}
+/* Pagination / small action buttons inside glass sections */
+.glass-section button.hover\:bg-surface-700:hover {
+	background: rgb(255 255 255 / 0.08) !important;
+}
+[data-theme='light'] .glass-section button.hover\:bg-surface-700:hover {
+	background: rgb(0 0 0 / 0.06) !important;
+}
+/* Badge/chip backgrounds inside glass containers */
+.glass-section .bg-surface-700,
+.glass-dropdown .bg-surface-700 {
+	background: rgb(255 255 255 / 0.08) !important;
+}
+.glass-section .bg-surface-900,
+.glass-dropdown .bg-surface-900 {
+	background: rgb(255 255 255 / 0.06) !important;
+}
+.glass-section .bg-surface-600,
+.glass-dropdown .bg-surface-600 {
+	background: rgb(255 255 255 / 0.1) !important;
+}
+[data-theme='light'] .glass-section .bg-surface-700,
+[data-theme='light'] .glass-dropdown .bg-surface-700 {
+	background: rgb(0 0 0 / 0.06) !important;
+}
+[data-theme='light'] .glass-section .bg-surface-900,
+[data-theme='light'] .glass-dropdown .bg-surface-900 {
+	background: rgb(0 0 0 / 0.05) !important;
+}
+[data-theme='light'] .glass-section .bg-surface-600,
+[data-theme='light'] .glass-dropdown .bg-surface-600 {
+	background: rgb(0 0 0 / 0.08) !important;
+}
+/* Tooltip / popover backgrounds inside glass containers */
+.glass-section .bg-surface-800,
+.glass-dropdown .bg-surface-800 {
+	background: rgb(255 255 255 / 0.07) !important;
+	-webkit-backdrop-filter: blur(16px) saturate(1.4);
+	backdrop-filter: blur(16px) saturate(1.4);
+}
+[data-theme='light'] .glass-section .bg-surface-800,
+[data-theme='light'] .glass-dropdown .bg-surface-800 {
+	background: rgb(255 255 255 / 0.6) !important;
+	-webkit-backdrop-filter: blur(16px) saturate(1.4);
+	backdrop-filter: blur(16px) saturate(1.4);
+}
+/* Dividers inside glass containers */
+.glass-section .divide-surface-700 > :not([hidden]) ~ :not([hidden]),
+.glass-section .divide-surface-700\/50 > :not([hidden]) ~ :not([hidden]),
+.glass-dropdown .divide-surface-700 > :not([hidden]) ~ :not([hidden]) {
+	border-color: rgb(255 255 255 / 0.06) !important;
+}
+.glass-section .border-surface-700,
+.glass-section .border-surface-600,
+.glass-dropdown .border-surface-700,
+.glass-dropdown .border-surface-600 {
+	border-color: rgb(255 255 255 / 0.08) !important;
+}
+[data-theme='light'] .glass-section .divide-surface-700 > :not([hidden]) ~ :not([hidden]),
+[data-theme='light'] .glass-section .divide-surface-700\/50 > :not([hidden]) ~ :not([hidden]),
+[data-theme='light'] .glass-dropdown .divide-surface-700 > :not([hidden]) ~ :not([hidden]) {
+	border-color: rgb(0 0 0 / 0.08) !important;
+}
+[data-theme='light'] .glass-section .border-surface-700,
+[data-theme='light'] .glass-section .border-surface-600,
+[data-theme='light'] .glass-dropdown .border-surface-700,
+[data-theme='light'] .glass-dropdown .border-surface-600 {
+	border-color: rgb(0 0 0 / 0.1) !important;
+}
+
+/* Range inputs inside glass sections */
+.glass-section input[type="range"] {
+	accent-color: rgb(249 115 22);
+}
+.glass-section input[type="range"]::-webkit-slider-runnable-track {
+	background: rgb(255 255 255 / 0.1);
+	border-radius: 4px;
+}
+[data-theme='light'] .glass-section input[type="range"]::-webkit-slider-runnable-track {
+	background: rgb(0 0 0 / 0.1);
 }
 
 /* Tinted icon chip — semantic glass accent */

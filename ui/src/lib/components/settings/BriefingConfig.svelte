@@ -249,7 +249,7 @@
 		{:else}
 			<div class="space-y-4">
 				<!-- Enabled toggle -->
-				<div class="flex items-center justify-between rounded-md border border-surface-600 bg-surface-700/40 px-4 py-3">
+				<div class="flex items-center justify-between rounded-md border {$glassTheme ? 'border-white/[0.08] bg-white/[0.04]' : 'border-surface-600 bg-surface-700/40'} px-4 py-3">
 					<div>
 						<span class="text-sm font-medium text-surface-100">Enable daily briefing</span>
 						<p class="text-xs text-surface-400">Generate a briefing card each day at the scheduled time</p>
@@ -335,7 +335,7 @@
 		{#if !loading}
 			<div class="space-y-4">
 				<!-- Context Association main toggle -->
-				<div class="rounded-md border border-surface-600 bg-surface-700/40">
+				<div class="rounded-md border {$glassTheme ? 'border-white/[0.08] bg-white/[0.04]' : 'border-surface-600 bg-surface-700/40'}">
 					<div class="flex items-center justify-between px-4 py-3">
 						<div>
 							<span class="text-sm font-medium text-surface-100">Enable context association</span>
@@ -387,7 +387,7 @@
 
 		{#if !loading}
 			<div class="space-y-4">
-				<div class="flex items-center justify-between rounded-md border border-surface-600 bg-surface-700/40 px-4 py-3">
+				<div class="flex items-center justify-between rounded-md border {$glassTheme ? 'border-white/[0.08] bg-white/[0.04]' : 'border-surface-600 bg-surface-700/40'} px-4 py-3">
 					<div>
 						<span class="text-sm font-medium text-surface-100">Enable group summaries</span>
 						<p class="text-xs text-surface-400">Automatically summarize multi-card entity groups</p>
@@ -426,7 +426,7 @@
 		{#if !loading}
 			<div class="space-y-4">
 				<!-- Enabled toggle -->
-				<div class="flex items-center justify-between rounded-md border border-surface-600 bg-surface-700/40 px-4 py-3">
+				<div class="flex items-center justify-between rounded-md border {$glassTheme ? 'border-white/[0.08] bg-white/[0.04]' : 'border-surface-600 bg-surface-700/40'} px-4 py-3">
 					<div>
 						<span class="text-sm font-medium text-surface-100">Enable Omni</span>
 						<p class="text-xs text-surface-400">Track and summarise activity across all platforms</p>

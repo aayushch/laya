@@ -310,7 +310,7 @@ async def _run_trace_inner(
     # Text search: strict phrase-match LIKE on card content only.
     if request.enable_text:
         coros.append(_card_text_search(
-            request.query, request.space_id, n=30,
+            request.query, request.space_id, n=200,
             include_archived=request.include_archived,
         ))
         signal_labels.append("text")
@@ -375,16 +375,16 @@ async def _run_trace_inner(
     seen: set[str] = set()
     seeds: list[dict] = []
     for item in guaranteed_seeds:
-        uid = item.get("card_id") or item.get("entity_id") or item.get("id") or ""
+        uid = item.get("entity_id") or item.get("card_id") or item.get("id") or ""
         if uid and uid not in seen:
             seen.add(uid)
             seeds.append(item)
     for item in fused:
-        uid = item.get("card_id") or item.get("entity_id") or item.get("id") or ""
+        uid = item.get("entity_id") or item.get("card_id") or item.get("id") or ""
         if uid and uid not in seen:
             seen.add(uid)
             seeds.append(item)
-        if len(seeds) >= 20:
+        if len(seeds) >= request.max_results:
             break
 
     log.info(
@@ -409,7 +409,7 @@ async def _run_trace_inner(
         priority = [s for s in seeds if s.get("entity_id") not in feedback["global_demote"]]
         demoted = [s for s in seeds if s.get("entity_id") in feedback["global_demote"]]
         meta.feedback_demoted = len(demoted)
-        seeds = (priority + demoted)[:20]
+        seeds = (priority + demoted)[:request.max_results]
 
     # Phase 2 — Expansion
     await _progress("Expanding results", 4, total_steps)

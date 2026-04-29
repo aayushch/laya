@@ -21,7 +21,7 @@
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { summaryModalOpen as summaryModalStore } from '$lib/stores/summaryModal';
-	import { searchFocusSignal } from '$lib/stores/searchFocus';
+	import { searchFocusSignal, feedSearchQuery } from '$lib/stores/searchFocus';
 	import { portal } from '$lib/actions/portal';
 
 	// Filter toolbar state
@@ -193,14 +193,19 @@
 		if (selectedCard) openDetailPanel(true);
 	});
 
-	// Search state (ephemeral — resets on date change)
-	let searchQuery = $state('');
+	// Search state — persisted in module-level store so it survives navigation
+	let searchQuery = $state($feedSearchQuery);
 	let searchInputEl: HTMLInputElement | undefined = $state();
+
+	$effect(() => {
+		feedSearchQuery.set(searchQuery);
+	});
 
 	$effect(() => {
 		if ($searchFocusSignal && searchInputEl) {
 			searchInputEl.focus();
 			searchInputEl.select();
+			searchFocusSignal.set(0);
 		}
 	});
 
@@ -388,7 +393,6 @@
 	$effect(() => {
 		$feedDate;
 		$feedFilters;
-		searchQuery = '';
 		loadGroups();
 	});
 

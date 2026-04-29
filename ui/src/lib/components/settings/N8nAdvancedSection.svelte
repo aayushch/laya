@@ -496,13 +496,13 @@
 										<th class="px-4 py-2.5">Source</th>
 									</tr>
 								</thead>
-								<tbody class="divide-y divide-surface-700/50">
+								<tbody class="divide-y {$glassTheme ? 'divide-white/[0.06]' : 'divide-surface-700/50'}">
 									{#each group.items as wf}
 										{@const source = getSourceForWorkflow(wf.workflow_id)}
-										<tr class="bg-surface-800 transition-colors hover:bg-surface-700/50">
+										<tr class="{$glassTheme ? 'bg-white/[0.03] hover:bg-white/[0.07]' : 'bg-surface-800 hover:bg-surface-700/50'} transition-colors">
 											<td class="px-4 py-3">
 												<div class="flex items-center gap-2.5">
-													<div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md {wf.active ? 'bg-green-900/30 text-green-400' : 'bg-surface-700 text-surface-500'}">
+													<div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md {wf.active ? 'bg-green-900/30 text-green-400' : ($glassTheme ? 'bg-white/[0.06] text-surface-500' : 'bg-surface-700 text-surface-500')}">
 														<PlatformIcon platform={wf.platform} size={16} />
 													</div>
 													<div class="min-w-0">
@@ -521,7 +521,7 @@
 													class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors
 														{wf.active
 															? 'bg-green-900/30 text-green-400 hover:bg-green-900/50'
-															: 'bg-surface-700 text-surface-400 hover:bg-surface-600'}
+															: ($glassTheme ? 'bg-white/[0.08] text-surface-400 hover:bg-white/[0.14]' : 'bg-surface-700 text-surface-400 hover:bg-surface-600')}
 														{togglingWorkflow === wf.workflow_id ? 'opacity-50' : ''}"
 													title={wf.active ? 'Click to deactivate' : 'Click to activate'}
 												>
@@ -561,7 +561,7 @@
 		<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'}">
 			<button
 				onclick={() => (showWebhooks = !showWebhooks)}
-				class="flex w-full items-center justify-between p-4 text-left transition-colors hover:bg-surface-700/50"
+				class="flex w-full items-center justify-between p-4 text-left transition-colors {$glassTheme ? 'hover:bg-white/[0.04]' : 'hover:bg-surface-700/50'}"
 			>
 				<div>
 					<span class="text-sm font-medium">Advanced: Webhook Mappings</span>
@@ -606,9 +606,9 @@
 									<th class="px-4 py-3 text-right">Actions</th>
 								</tr>
 							</thead>
-							<tbody class="divide-y divide-surface-700">
+							<tbody class="divide-y {$glassTheme ? 'divide-white/[0.06]' : 'divide-surface-700'}">
 								{#each Object.entries(webhooks) as [platform, path]}
-									<tr class="bg-surface-900 hover:bg-surface-800">
+									<tr class="{$glassTheme ? 'bg-white/[0.03] hover:bg-white/[0.07]' : 'bg-surface-900 hover:bg-surface-800'} transition-colors">
 										<td class="px-4 py-3 font-medium">{platform}</td>
 										<td class="px-4 py-3">
 											{#if editingPlatform === platform}
