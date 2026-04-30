@@ -649,7 +649,7 @@
 					{@const payload = action.payload}
 					{@const detectedField = payload ? getEditableTextField(payload) : null}
 					{@const isDraftReply = card.staged_output?.type === 'draft_reply'}
-					{@const fallbackText = isDraftReply ? (card.staged_output?.content ?? '') : ''}
+					{@const fallbackText = isDraftReply && detectedField === null && payload?.raw ? (card.staged_output?.content ?? '') : ''}
 					{@const editableField = detectedField ?? (fallbackText ? 'body' : null)}
 					{@const displayText = (detectedField ? (payload[detectedField] as string) : fallbackText) ?? ''}
 
