@@ -859,10 +859,10 @@ html, body {
 /* Glass-mode override — when card-last-viewed is on a .glass-card or .glass-card-flat,
    the glass card's own box-shadow wins on specificity and erases the ring.
    Use an ::after overlay so the ring persists independently. */
-.glass-card.card-last-viewed:not(.card-highlight-fade)::after,
-.glass-card-flat.card-last-viewed:not(.card-highlight-fade)::after,
-.glass-card.card-last-viewed--compact:not(.card-highlight-fade)::after,
-.glass-card-flat.card-last-viewed--compact:not(.card-highlight-fade)::after {
+.glass-card.card-last-viewed::after,
+.glass-card-flat.card-last-viewed::after,
+.glass-card.card-last-viewed--compact::after,
+.glass-card-flat.card-last-viewed--compact::after {
 	content: '';
 	display: block;
 	position: absolute;
@@ -873,10 +873,10 @@ html, body {
 	z-index: 10;
 	pointer-events: none;
 }
-[data-theme='light'] .glass-card.card-last-viewed:not(.card-highlight-fade)::after,
-[data-theme='light'] .glass-card-flat.card-last-viewed:not(.card-highlight-fade)::after,
-[data-theme='light'] .glass-card.card-last-viewed--compact:not(.card-highlight-fade)::after,
-[data-theme='light'] .glass-card-flat.card-last-viewed--compact:not(.card-highlight-fade)::after {
+[data-theme='light'] .glass-card.card-last-viewed::after,
+[data-theme='light'] .glass-card-flat.card-last-viewed::after,
+[data-theme='light'] .glass-card.card-last-viewed--compact::after,
+[data-theme='light'] .glass-card-flat.card-last-viewed--compact::after {
 	border-color: oklch(0.65 0.18 55 / 0.7);
 	box-shadow: 0 0 14px oklch(0.65 0.18 55 / 0.22);
 }
