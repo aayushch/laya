@@ -69,49 +69,18 @@
 				role="button"
 				tabindex="0"
 			>
-				<div class="flex items-start justify-between gap-3">
-					<div class="flex-1 min-w-0">
-						<div class="flex items-center gap-2">
-							<h3 class="text-sm font-medium text-surface-100 truncate group-hover:text-laya-orange transition-colors">
-								"{trace.query}"
-							</h3>
-							{#if trace.fuzzy_search}
-								<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-laya-orange/15 text-laya-orange border border-laya-orange/30">
-									Fuzzy
-								</span>
-							{/if}
-						</div>
-						<div class="flex items-center gap-2 mt-1.5">
-							{#each trace.platforms as platform}
-								<PlatformBadge {platform} />
-							{/each}
-							<span class="text-xs text-surface-500">
-								{trace.total_cards} cards
+				<!-- Row 1: Title + action buttons -->
+				<div class="flex items-center justify-between gap-3">
+					<div class="flex items-center gap-2 min-w-0">
+						<h3 class="text-sm font-medium text-surface-100 truncate group-hover:text-laya-orange transition-colors">
+							"{trace.query}"
+						</h3>
+						{#if trace.fuzzy_search}
+							<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-laya-orange/15 text-laya-orange border border-laya-orange/30">
+								Fuzzy
 							</span>
-							<span class="text-xs text-surface-600">
-								{new Date(trace.created_at).toLocaleDateString(undefined, {
-									month: 'short',
-									day: 'numeric',
-									hour: '2-digit',
-									minute: '2-digit'
-								})}
-							</span>
-							{#if trace.enable_semantic}
-								<span class="px-1.5 py-0.5 rounded bg-laya-orange/10 text-laya-orange text-[9px] font-medium">Semantic</span>
-							{/if}
-							{#if trace.enable_text}
-								<span class="px-1.5 py-0.5 rounded bg-laya-gold/10 text-laya-gold text-[9px] font-medium">Text</span>
-							{/if}
-							{#if trace.enable_llm_filter}
-								<span class="px-1.5 py-0.5 rounded bg-laya-peach/10 text-laya-peach text-[9px] font-medium">AI Filter</span>
-							{/if}
-							{#if trace.fuzzy_search}
-								<span class="px-1.5 py-0.5 rounded bg-laya-coral/10 text-laya-coral text-[9px] font-medium">Fuzzy</span>
-							{/if}
-						</div>
+						{/if}
 					</div>
-
-					<!-- Actions -->
 					<div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
 						{#if onrerun}
 							<button
@@ -140,6 +109,39 @@
 							</button>
 						{/if}
 					</div>
+				</div>
+				<!-- Row 2: Metadata + search setting badges -->
+				<div class="flex items-center gap-2 mt-1.5">
+					{#each trace.platforms as platform}
+						<PlatformBadge {platform} />
+					{/each}
+					<span class="text-xs text-surface-500">
+						{trace.total_cards} cards
+					</span>
+					<span class="text-xs text-surface-600">
+						{new Date(trace.created_at).toLocaleDateString(undefined, {
+							month: 'short',
+							day: 'numeric',
+							hour: '2-digit',
+							minute: '2-digit'
+						})}
+					</span>
+					{#if trace.enable_semantic || trace.enable_text || trace.enable_llm_filter || trace.fuzzy_search}
+						<div class="flex items-center gap-1.5 ml-auto">
+							{#if trace.enable_semantic}
+								<span class="px-1.5 py-0.5 rounded bg-laya-orange/10 text-laya-orange text-[9px] font-medium">Semantic</span>
+							{/if}
+							{#if trace.enable_text}
+								<span class="px-1.5 py-0.5 rounded bg-laya-gold/10 text-laya-gold text-[9px] font-medium">Text</span>
+							{/if}
+							{#if trace.enable_llm_filter}
+								<span class="px-1.5 py-0.5 rounded bg-laya-peach/10 text-laya-peach text-[9px] font-medium">AI Filter</span>
+							{/if}
+							{#if trace.fuzzy_search}
+								<span class="px-1.5 py-0.5 rounded bg-laya-coral/10 text-laya-coral text-[9px] font-medium">Fuzzy</span>
+							{/if}
+						</div>
+					{/if}
 				</div>
 			</div>
 		{/each}
