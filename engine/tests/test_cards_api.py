@@ -138,39 +138,6 @@ class TestCardsAPI:
 
         assert resp.status_code == 409
 
-    async def test_approve_agent(self, db):
-        """POST /cards/:card_id/approve-agent transitions requires_approval to agent_running."""
-        await insert_test_card(db, status="requires_approval")
-        # Set agent_prompt so the endpoint doesn't 409
-        await db.execute(
-            "UPDATE action_cards SET agent_prompt = 'Fix the bug' WHERE card_id = 'card_test'"
-        )
-        await db.commit()
-
-        from laya.main import app
-        transport = ASGITransport(app=app)
-        from unittest.mock import AsyncMock, patch
-        with patch("laya.api.cards_api.cancel_sessions_for_card", new_callable=AsyncMock):
-            with patch("laya.workers.engineer.run_engineer_from_prompt", new_callable=AsyncMock):
-                async with AsyncClient(transport=transport, base_url="http://test") as client:
-                    resp = await client.post("/cards/card_test/approve-agent")
-
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["status"] == "agent_running"
-        assert data["card_id"] == "card_test"
-
-    async def test_approve_agent_409_on_wrong_status(self, db):
-        """POST /cards/:card_id/approve-agent returns 409 if card is not requires_approval."""
-        await insert_test_card(db, status="pending")
-
-        from laya.main import app
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/cards/card_test/approve-agent")
-
-        assert resp.status_code == 409
-
     async def test_dismiss_card(self, db):
         """POST /cards/:card_id/dismiss stores feedback and updates status."""
         await insert_test_card(db)

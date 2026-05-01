@@ -52,8 +52,6 @@
 	let { children } = $props();
 	let isSetupRoute = $derived(page.url.pathname.startsWith('/setup'));
 	let isFeedRoute = $derived(page.url.pathname === '/feed' || page.url.pathname === '/');
-	let isOmniInsight = $derived(page.url.pathname.startsWith('/omni/insight'));
-
 	// Responsive titlebar: two-stage collapse using collision detection.
 	// Stage 1: nav links collapse to hamburger when they overlap the center date panel.
 	// Stage 2: date panel collapses to a calendar button when it overlaps the right controls.
@@ -638,8 +636,6 @@
 		{/if}
 	{/snippet}
 	{#snippet right()}
-		<!-- Chat (hidden on Omni insight view which has its own inline chat) -->
-		{#if !isOmniInsight}
 		<div class="group/tip relative">
 			<button
 				onclick={() => {
@@ -662,7 +658,6 @@
 			</button>
 			<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100">Chat</span>
 		</div>
-		{/if}
 
 		<!-- Settings -->
 		<div class="group/tip relative">

@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { GroupSummary, CardGroup } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
-	import { chatOpen, chatInputPreset } from '$lib/stores/chat';
+	import { goto } from '$app/navigation';
+	import { chatOpen, chatCardContext, chatCardIds, chatListOpen } from '$lib/stores/chat';
 	import PlatformBadge from '$lib/components/PlatformBadge.svelte';
 	import StatusDot from './StatusDot.svelte';
 	import { glassTheme } from '$lib/stores/glassTheme';
@@ -19,6 +20,7 @@
 		ongotogroup,
 		ongenerate,
 		onshowrelated,
+		onrunagent,
 	}: {
 		summary: GroupSummary | null;
 		group: CardGroup;
@@ -30,10 +32,33 @@
 		ongotogroup?: (entityId: string) => void;
 		ongenerate?: (entityId: string) => void;
 		onshowrelated?: (card: ActionCard) => void;
+		onrunagent?: (entityId: string) => void;
 	} = $props();
 
 	let regenerateError = $state<string | null>(null);
 	let relatedCount = $state<number | null>(null);
+	let overflowOpen = $state(false);
+	let overflowBtnEl: HTMLElement | undefined = $state();
+
+	const hasWorkspace = $derived(group.cards.some(c => c.has_workspace));
+	const workspaceCardId = $derived(group.cards.find(c => c.has_workspace)?.card_id ?? group.cards[0]?.card_id);
+
+	const footerActions = $derived.by(() => {
+		const actions: string[] = [];
+		if (onshowcards) actions.push('showcards');
+		if (onshowrelated && relatedCount && relatedCount > 0) actions.push('related');
+		if (onrunagent) {
+			if (hasWorkspace) {
+				actions.push('workspace');
+			} else {
+				actions.push('runagent');
+			}
+		}
+		if (summary) actions.push('regenerate');
+		return actions;
+	});
+	const inlineActions = $derived(footerActions.slice(0, 3));
+	const overflowActions = $derived(footerActions.slice(3));
 
 	$effect(() => {
 		const firstCard = group.cards[0];
@@ -48,29 +73,45 @@
 
 	function chatAboutGroup() {
 		const lines = [
-			`I'd like to discuss this group of cards (entity: ${group.entity_id}):`,
+			`The user is viewing a group of ${group.card_count} related cards.`,
 			``,
-			`**Title:** ${group.entity_title}`,
-			`**Platform:** ${group.platform} · **Priority:** ${group.top_priority} · **Cards:** ${group.card_count}`,
+			`Entity: ${group.entity_id}`,
+			`Title: ${group.entity_title}`,
+			`Platform: ${group.platform} | Priority: ${group.top_priority} | Cards: ${group.card_count}`,
 		];
 		if (summary) {
-			lines.push(``, `**Headline:** ${summary.headline}`);
-			lines.push(`**Summary:** ${summary.summary}`);
+			lines.push(``, `Headline: ${summary.headline}`);
+			lines.push(`Summary: ${summary.summary}`);
 			if (summary.key_events?.length) {
-				lines.push(``, `**Key Events:**`);
+				lines.push(``, `Key Events:`);
 				summary.key_events.forEach((e) => lines.push(`- ${e}`));
 			}
 			if (summary.current_status) {
-				lines.push(``, `**Current Status:** ${summary.current_status}`);
+				lines.push(``, `Current Status: ${summary.current_status}`);
 			}
 			if (summary.pending_actions?.length) {
-				lines.push(``, `**Pending Actions:**`);
+				lines.push(``, `Pending Actions:`);
 				summary.pending_actions.forEach((a) => lines.push(`- ${a}`));
 			}
 		}
-		const cardIds = group.cards.map((c) => c.card_id);
-		lines.push(``, `**Card IDs:** ${cardIds.join(', ')}`);
-		chatInputPreset.set(lines.join('\n'));
+		for (const c of group.cards) {
+			const cardLines = [
+				``,
+				`--- Card: ${c.card_id} ---`,
+				`Title: ${c.header}`,
+				`Summary: ${c.summary}`,
+				`Priority: ${c.priority} | Status: ${c.status} | Persona: ${c.persona} | Category: ${c.category}`,
+			];
+			if (c.intelligence?.length) {
+				cardLines.push('Intelligence:');
+				c.intelligence.forEach((p) => cardLines.push(`- ${p}`));
+			}
+			lines.push(...cardLines);
+		}
+		const groupCardIds = group.cards.map((c) => c.card_id);
+		chatCardContext.set(lines.join('\n'));
+		chatCardIds.set(groupCardIds);
+		chatListOpen.set(false);
 		chatOpen.set(true);
 	}
 
@@ -301,38 +342,133 @@
 	<!-- Footer -->
 	<div class="border-t px-5 py-2 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
 		<div class="flex items-center justify-end gap-1">
-			{#if onshowcards}
-				<button
-					class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-laya-orange"
-					onclick={onshowcards}
-				>
-					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-					</svg>
-					Show all ({group.card_count})
-				</button>
-			{/if}
-			{#if onshowrelated && relatedCount && relatedCount > 0}
-				<button
-					class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-laya-orange"
-					onclick={() => onshowrelated(group.cards[0])}
-				>
-					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="5" cy="12" r="2" stroke-width="2" /><circle cx="19" cy="6" r="2" stroke-width="2" /><circle cx="19" cy="18" r="2" stroke-width="2" /><path stroke-linecap="round" stroke-width="2" d="M7 11l10-4M7 13l10 4" /></svg>
-					Related ({relatedCount})
-				</button>
-			{/if}
-			{#if summary}
-				<button
-					class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-surface-200 disabled:opacity-50"
-					disabled={generating}
-					onclick={regenerate}
-				>
-					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-					</svg>
-					{generating ? '...' : 'Regenerate'}
-				</button>
+			{#each inlineActions as key (key)}
+				{@render footerButton(key)}
+			{/each}
+			{#if overflowActions.length > 0}
+				<div class="relative">
+					<button
+						bind:this={overflowBtnEl}
+						class="flex items-center justify-center rounded-md px-1.5 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-surface-200"
+						onclick={() => (overflowOpen = !overflowOpen)}
+						aria-label="More actions"
+					>
+						<svg class="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20">
+							<path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM18 10a2 2 0 11-4 0 2 2 0 014 0z" />
+						</svg>
+					</button>
+					{#if overflowOpen}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div
+							class="absolute bottom-full right-0 mb-1 min-w-[140px] rounded-lg border p-1 shadow-xl z-20 {$glassTheme ? 'glass-card border-surface-700/40 bg-surface-900/80 backdrop-blur-xl' : 'border-surface-600 bg-surface-800'}"
+							onmouseleave={() => (overflowOpen = false)}
+						>
+							{#each overflowActions as key (key)}
+								{@render overflowItem(key)}
+							{/each}
+						</div>
+					{/if}
+				</div>
 			{/if}
 		</div>
 	</div>
 </div>
+
+{#snippet footerButton(key: string)}
+	{#if key === 'showcards'}
+		<button
+			class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-laya-orange"
+			onclick={onshowcards}
+		>
+			<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+			</svg>
+			Show all ({group.card_count})
+		</button>
+	{:else if key === 'related'}
+		<button
+			class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-laya-orange"
+			onclick={() => onshowrelated?.(group.cards[0])}
+		>
+			<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="5" cy="12" r="2" stroke-width="2" /><circle cx="19" cy="6" r="2" stroke-width="2" /><circle cx="19" cy="18" r="2" stroke-width="2" /><path stroke-linecap="round" stroke-width="2" d="M7 11l10-4M7 13l10 4" /></svg>
+			Related ({relatedCount})
+		</button>
+	{:else if key === 'runagent'}
+		<button
+			class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-cyan-400"
+			onclick={() => onrunagent?.(group.entity_id)}
+		>
+			<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+			Run Agent
+		</button>
+	{:else if key === 'workspace'}
+		<button
+			class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-violet-400/80 transition-colors hover:bg-violet-500/10 hover:text-violet-400"
+			onclick={() => goto(`/workspace/${workspaceCardId}`)}
+		>
+			<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+			Workspace
+		</button>
+	{:else if key === 'regenerate'}
+		<button
+			class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-surface-200 disabled:opacity-50"
+			disabled={generating}
+			onclick={regenerate}
+		>
+			<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+			</svg>
+			{generating ? '...' : 'Regenerate'}
+		</button>
+	{/if}
+{/snippet}
+
+{#snippet overflowItem(key: string)}
+	{@const hoverBg = $glassTheme ? 'hover:bg-white/[0.08]' : 'hover:bg-surface-700/50'}
+	{#if key === 'showcards'}
+		<button
+			class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[11px] text-surface-300 transition-colors {hoverBg} hover:text-laya-orange"
+			onclick={() => { overflowOpen = false; onshowcards?.(); }}
+		>
+			<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+			</svg>
+			Show all ({group.card_count})
+		</button>
+	{:else if key === 'related'}
+		<button
+			class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[11px] text-surface-300 transition-colors {hoverBg} hover:text-laya-orange"
+			onclick={() => { overflowOpen = false; onshowrelated?.(group.cards[0]); }}
+		>
+			<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="5" cy="12" r="2" stroke-width="2" /><circle cx="19" cy="6" r="2" stroke-width="2" /><circle cx="19" cy="18" r="2" stroke-width="2" /><path stroke-linecap="round" stroke-width="2" d="M7 11l10-4M7 13l10 4" /></svg>
+			Related ({relatedCount})
+		</button>
+	{:else if key === 'runagent'}
+		<button
+			class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[11px] text-surface-300 transition-colors {hoverBg} hover:text-cyan-400"
+			onclick={() => { overflowOpen = false; onrunagent?.(group.entity_id); }}
+		>
+			<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+			Run Agent
+		</button>
+	{:else if key === 'workspace'}
+		<button
+			class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[11px] text-violet-400/80 transition-colors {hoverBg} hover:text-violet-400"
+			onclick={() => { overflowOpen = false; goto(`/workspace/${workspaceCardId}`); }}
+		>
+			<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+			Workspace
+		</button>
+	{:else if key === 'regenerate'}
+		<button
+			class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[11px] text-surface-300 transition-colors {hoverBg} hover:text-surface-200 disabled:opacity-50"
+			disabled={generating}
+			onclick={() => { overflowOpen = false; regenerate(); }}
+		>
+			<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+			</svg>
+			{generating ? '...' : 'Regenerate'}
+		</button>
+	{/if}
+{/snippet}

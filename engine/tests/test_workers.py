@@ -172,39 +172,33 @@ def mock_llm_finance_worker():
                     yield
 
 
-@pytest.fixture
-def mock_ws_manager():
-    """Mock WebSocket broadcast manager."""
-    with patch("laya.workers.engineer.manager") as mock:
-        mock.broadcast = AsyncMock()
-        yield mock
-
-
 class TestEngineerWorker:
     @pytest.mark.asyncio
     async def test_engineer_returns_findings(
-        self, db, sample_event, mock_llm_worker, mock_memory, mock_repos, mock_ws_manager
+        self, db, sample_event, mock_llm_worker, mock_memory, mock_repos
     ):
         """ENGINEER worker returns WorkerResult with findings (no agent configured)."""
         router_output = RouterOutput(**MOCK_ROUTER_RESPONSE)
         # Default: coding_agent=none, so engineer returns prompt without spawning
-        with patch("laya.workers.engineer.load_settings", return_value={"coding_agent": "none", "agent_execution_mode": "requires_approval"}):
+        with patch("laya.workers.engineer.load_settings", return_value={"coding_agent": "none"}):
             result = await _dispatch_worker(Persona.ENGINEER, sample_event, router_output, card_id="card_test")
 
         assert result.persona == "ENGINEER"
         assert result.error is None
-        # No agent configured → no session spawned, but findings include agent_prompt
-        assert result.findings.get("agent_skipped") is True
+        assert result.findings.get("agent_prompt") is not None
+        assert result.card_status == "ready"
 
     @pytest.mark.asyncio
-    async def test_engineer_no_repo_returns_error(self, db, sample_event, mock_llm_worker, mock_memory, mock_ws_manager):
+    async def test_engineer_no_repo_returns_error(self, db, sample_event, mock_llm_worker, mock_memory):
         """ENGINEER returns error when no repo is configured."""
         router_output = RouterOutput(**MOCK_ROUTER_RESPONSE)
         with patch("laya.workers.engineer.load_repos", return_value={"repos": []}):
-            with patch("laya.workers.engineer.load_settings", return_value={"coding_agent": "claude_code", "agent_execution_mode": "automatic"}):
-                result = await _dispatch_worker(Persona.ENGINEER, sample_event, router_output)
+            with patch("laya.workers.engineer.load_settings", return_value={"coding_agent": "claude_code"}):
+                result = await _dispatch_worker(Persona.ENGINEER, sample_event, router_output, card_id="card_test")
 
-        assert result.error is not None
+        assert result.persona == "ENGINEER"
+        assert result.card_status == "ready"
+        assert result.findings.get("agent_prompt") is not None
 
 
 class TestCommsWorker:
@@ -256,7 +250,7 @@ class TestWorkerOrchestration:
 
     @pytest.mark.asyncio
     async def test_run_workers_primary_and_secondary(
-        self, db, sample_event, mock_llm_worker, mock_llm_comms_worker, mock_memory, mock_repos, mock_session_manager, mock_ws_manager
+        self, db, sample_event, mock_llm_worker, mock_llm_comms_worker, mock_memory, mock_repos, mock_session_manager
     ):
         """run_workers dispatches primary then secondary when secondary_persona is set."""
         from laya.models.workspace import SessionStatus
@@ -328,31 +322,31 @@ class TestResolveRepoPath:
     @pytest.mark.asyncio
     async def test_resolve_repo_by_entity(self, db, mock_repos):
         """_resolve_repo_path matches entity to repo."""
-        from laya.workers.engineer import _resolve_repo_path
+        from laya.workers.engineer import resolve_repo_path
 
         router_output = RouterOutput(**MOCK_ROUTER_RESPONSE)
         router_output.entities = [
             MagicMock(entity_type="repo", value="payments-service"),
         ]
-        path, add_dirs = await _resolve_repo_path(router_output)
+        path, add_dirs = await resolve_repo_path(router_output)
         assert path == "/tmp/test-repo"
 
     @pytest.mark.asyncio
     async def test_resolve_repo_fallback_first(self, db, mock_repos):
         """_resolve_repo_path falls back to first repo when no entity match."""
-        from laya.workers.engineer import _resolve_repo_path
+        from laya.workers.engineer import resolve_repo_path
 
         router_output = RouterOutput(**MOCK_ROUTER_RESPONSE)
         router_output.entities = []
-        path, add_dirs = await _resolve_repo_path(router_output)
+        path, add_dirs = await resolve_repo_path(router_output)
         assert path == "/tmp/test-repo"
 
     @pytest.mark.asyncio
     async def test_resolve_repo_no_repos_returns_none(self, db):
         """_resolve_repo_path returns None when no repos configured."""
-        from laya.workers.engineer import _resolve_repo_path
+        from laya.workers.engineer import resolve_repo_path
 
         router_output = RouterOutput(**MOCK_ROUTER_RESPONSE)
         with patch("laya.workers.engineer.load_repos", return_value={"repos": []}):
-            path, add_dirs = await _resolve_repo_path(router_output)
+            path, add_dirs = await resolve_repo_path(router_output)
         assert path is None

@@ -461,7 +461,7 @@ async def _reconstruct_trace(db, row) -> TraceResponse:
                     "to": timeline[-1].created_at[:10] if timeline[-1].created_at else "",
                 },
                 pending_actions=sum(
-                    1 for c in timeline if c.status in ("pending", "ready", "requires_approval")
+                    1 for c in timeline if c.status in ("pending", "ready")
                 ),
             ),
         ))

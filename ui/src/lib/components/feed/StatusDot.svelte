@@ -8,7 +8,6 @@
 	const colors: Record<string, string> = {
 		pending:            'status-dot-yellow',
 		ready:              'status-dot-amber',
-		requires_approval:  'status-dot-sky',
 		agent_running:      'status-dot-violet',
 		awaiting_input:     'status-dot-yellow',
 		done:               'status-dot-green',
@@ -38,9 +37,6 @@
 	{:else if status === 'failed'}
 		<!-- X mark -->
 		<path d="M2 2 L6 6 M6 2 L2 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-	{:else if status === 'requires_approval'}
-		<!-- Diamond -->
-		<path d="M4 1 L7 4 L4 7 L1 4 Z" fill="currentColor" />
 	{:else if status === 'agent_running'}
 		<!-- Filled circle (pulsing) -->
 		<circle cx="4" cy="4" r="3" fill="currentColor" />

@@ -35,7 +35,7 @@ def _read_tools() -> list[dict]:
                         "status": {
                             "type": "string",
                             "enum": [
-                                "pending", "ready", "requires_approval", "done",
+                                "pending", "ready", "done",
                                 "failed", "dismissed", "archived", "agent_running",
                                 "awaiting_input",
                             ],
@@ -332,23 +332,6 @@ def _write_tools() -> list[dict]:
         {
             "type": "function",
             "function": {
-                "name": "approve_card",
-                "description": "Approve an action card for execution. Use when the user explicitly approves or greenlights a card.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "card_id": {
-                            "type": "string",
-                            "description": "The card ID to approve.",
-                        },
-                    },
-                    "required": ["card_id"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
                 "name": "archive_card",
                 "description": "Archive an action card. Use when the user wants to archive a completed or irrelevant card.",
                 "parameters": {
@@ -580,30 +563,6 @@ def _settings_tools() -> list[dict]:
                         },
                     },
                     "required": [],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "update_agent_execution_mode",
-                "description": (
-                    "Change whether the agent asks for approval before taking actions, "
-                    "or runs autonomously without confirmation."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "mode": {
-                            "type": "string",
-                            "enum": ["auto", "requires_approval"],
-                            "description": (
-                                "'auto' runs actions immediately; "
-                                "'requires_approval' pauses and asks the user first."
-                            ),
-                        },
-                    },
-                    "required": ["mode"],
                 },
             },
         },

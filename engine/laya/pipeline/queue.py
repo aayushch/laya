@@ -447,8 +447,8 @@ async def recover_stalled_cards() -> int:
       be created when the event is reprocessed).
     - 'pending' cards whose event is terminal (dead/completed) → mark failed
       since no retry is coming.
-    - 'agent_running' cards → revert to requires_approval so user can
-      re-approve (agent session is dead after restart).
+    - 'agent_running' cards → revert to ready so user can
+      re-invoke the agent (agent session is dead after restart).
     - 'executing' cards → mark failed since we can't know if the external
       action completed.
     """
@@ -488,10 +488,10 @@ async def recover_stalled_cards() -> int:
         log.warning("stalled_pending_cards_failed", count=failed_pending,
                     reason="event is terminal, no retry coming")
 
-    # -- agent_running → requires_approval --
+    # -- agent_running → ready --
     cursor = await db.execute(
         """UPDATE action_cards
-           SET status = 'requires_approval',
+           SET status = 'ready',
                previous_status = 'agent_running',
                updated_at = CURRENT_TIMESTAMP
            WHERE status = 'agent_running'"""
@@ -500,7 +500,7 @@ async def recover_stalled_cards() -> int:
     total += agent_reset
     if agent_reset:
         log.warning("stalled_agent_cards_reset", count=agent_reset,
-                    reason="agent session dead after restart, reverted to requires_approval")
+                    reason="agent session dead after restart, reverted to ready")
 
     # -- executing → failed --
     cursor = await db.execute(

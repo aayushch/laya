@@ -3,7 +3,8 @@
 	import { engineApi } from '$lib/api/engine';
 	import { goto } from '$app/navigation';
 	import { untrack } from 'svelte';
-	import { chatOpen, chatInputPreset } from '$lib/stores/chat';
+	import { chatOpen, chatCardContext, chatCardIds, chatListOpen } from '$lib/stores/chat';
+	import { buildSingleCardContext } from '$lib/utils/cardContext';
 	import { lastMessage } from '$lib/stores/websocket';
 	import { marked } from 'marked';
 	import ClassificationDialog from './ClassificationDialog.svelte';
@@ -18,11 +19,11 @@
 		ongotocard,
 		onlink,
 		onshowrelated,
-		onunlinked
-	}: { card: ActionCard; onclose: () => void; ondismiss?: () => void; ongotocard?: (card: ActionCard) => void; onlink?: (card: ActionCard) => void; onshowrelated?: (card: ActionCard) => void; onunlinked?: (cardId: string, entityId: string) => void } = $props();
+		onunlinked,
+		onrunagent,
+	}: { card: ActionCard; onclose: () => void; ondismiss?: () => void; ongotocard?: (card: ActionCard) => void; onlink?: (card: ActionCard) => void; onshowrelated?: (card: ActionCard) => void; onunlinked?: (cardId: string, entityId: string) => void; onrunagent?: (entityId: string) => void } = $props();
 
 	let markingDone = $state(false);
-	let approvingAgent = $state(false);
 	let dismissing = $state(false);
 	let archiving = $state(false);
 	let reopening = $state(false);
@@ -45,9 +46,9 @@
 	let showClassificationDialog = $state(false);
 	let bookmarking = $state(false);
 	let unlinkingCard = $state(false);
-	let showResearchInput = $state(false);
-	let researchPrompt = $state('');
-	let startingResearch = $state(false);
+	let showRunAgentInput = $state(false);
+	let runAgentPrompt = $state('');
+	let startingAgent = $state(false);
 	let actorTruncated = $state(false);
 	let emailTruncated = $state(false);
 	let relatedCount = $state<number | null>(null);
@@ -155,14 +156,13 @@
 	};
 
 	const terminalStatuses = new Set(['done', 'failed', 'dismissed', 'archived']);
-	const actionableStatuses = new Set(['ready', 'requires_approval', 'agent_running', 'awaiting_input']);
+	const actionableStatuses = new Set(['ready', 'agent_running', 'awaiting_input']);
 	let isActionable = $derived(actionableStatuses.has(card.status));
 	let isTerminal = $derived(terminalStatuses.has(card.status));
 
 	const statusColors: Record<string, string> = {
 		pending: 'text-yellow-400',
 		ready: 'text-amber-400',
-		requires_approval: 'text-sky-400',
 		agent_running: 'text-violet-400',
 		awaiting_input: 'text-yellow-400',
 		done: 'text-green-500',
@@ -174,7 +174,6 @@
 	const statusLabels: Record<string, string> = {
 		pending: 'Processing',
 		ready: 'Ready',
-		requires_approval: 'Needs Approval',
 		agent_running: 'Agent Running',
 		awaiting_input: 'Input Needed',
 		done: 'Done',
@@ -345,16 +344,6 @@
 		}
 	}
 
-	async function approveAgent() {
-		approvingAgent = true;
-		try {
-			await engineApi.approveAgent(card.card_id);
-			card.status = 'agent_running';
-		} finally {
-			approvingAgent = false;
-		}
-	}
-
 	async function dismiss() {
 		dismissing = true;
 		try {
@@ -417,42 +406,24 @@
 	}
 
 	function chatAbout() {
-		const lines = [
-			`I'd like to discuss this action card (ID: ${card.card_id}):`,
-			``,
-			`**Title:** ${card.header}`,
-			`**Summary:** ${card.summary}`,
-			`**Priority:** ${card.priority} · **Status:** ${card.status} · **Persona:** ${card.persona} · **Category:** ${card.category}`,
-		];
-		if (card.intelligence && card.intelligence.length > 0) {
-			lines.push(``, `**Intelligence:**`);
-			card.intelligence.forEach((p) => lines.push(`- ${p}`));
-		}
-		if (card.staged_output) {
-			lines.push(``, `**Staged Output (${card.staged_output.type}):**`, card.staged_output.content);
-		}
-		chatInputPreset.set(lines.join('\n'));
+		chatCardContext.set(buildSingleCardContext(card));
+		chatCardIds.set([card.card_id]);
+		chatListOpen.set(false);
 		chatOpen.set(true);
 	}
 
-	// Research is available on cards without an active workspace, in eligible statuses
-	const researchEligible = $derived(
-		!card.has_workspace &&
-		['ready', 'done', 'dismissed', 'failed'].includes(card.status)
-	);
-
-	async function startResearch() {
-		startingResearch = true;
+	async function startEntityAgent() {
+		if (!card.entity_id || !onrunagent) return;
+		startingAgent = true;
 		try {
-			await engineApi.startResearch(card.card_id, {
-				prompt: researchPrompt || undefined
+			await engineApi.runEntityAgent(card.entity_id, {
+				prompt: runAgentPrompt || undefined
 			});
-			card.status = 'agent_running';
 			card.has_workspace = true;
-			showResearchInput = false;
-			researchPrompt = '';
+			showRunAgentInput = false;
+			runAgentPrompt = '';
 		} finally {
-			startingResearch = false;
+			startingAgent = false;
 		}
 	}
 </script>
@@ -842,13 +813,13 @@
 					Related ({relatedCount})
 				</button>
 			{/if}
-			{#if researchEligible}
+			{#if onrunagent && card.entity_id && !card.has_workspace}
 				<button
 					class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-cyan-400"
-					onclick={() => (showResearchInput = true)}
+					onclick={() => (showRunAgentInput = true)}
 				>
-					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-					Research
+					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+					Run Agent
 				</button>
 			{/if}
 			<!-- Overflow menu: Link / Unlink / Delete -->
@@ -868,28 +839,28 @@
 
 		<!-- Primary actions -->
 		<div class="mt-3">
-			{#if showResearchInput}
+			{#if showRunAgentInput}
 				<div class="flex flex-col gap-2">
 					<div class="flex items-center gap-2 text-xs text-surface-400">
-						<svg class="h-3.5 w-3.5 text-cyan-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-						Start Research
+						<svg class="h-3.5 w-3.5 text-cyan-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+						Run Agent
 					</div>
 					<input
-						bind:value={researchPrompt}
-						placeholder="What would you like to research? (optional)"
+						bind:value={runAgentPrompt}
+						placeholder="What should the agent focus on? (optional)"
 						class="flex-1 rounded-md border border-surface-600 bg-surface-900 px-2 py-1.5 text-xs text-surface-50 placeholder-surface-500"
 					/>
 					<div class="flex gap-2">
 						<button
 							class="flex-1 rounded-md bg-cyan-700/40 px-2 py-1.5 text-xs font-medium text-cyan-300 transition-colors hover:bg-cyan-700/60 disabled:opacity-50"
-							onclick={startResearch}
-							disabled={startingResearch}
+							onclick={startEntityAgent}
+							disabled={startingAgent}
 						>
-							{startingResearch ? 'Starting...' : 'Start'}
+							{startingAgent ? 'Starting...' : 'Start'}
 						</button>
 						<button
 							class="text-sm text-surface-400 hover:text-surface-200"
-							onclick={() => { showResearchInput = false; researchPrompt = ''; }}
+							onclick={() => { showRunAgentInput = false; runAgentPrompt = ''; }}
 						>
 							Cancel
 						</button>
@@ -918,36 +889,6 @@
 				</div>
 			{:else if card.status === 'ready'}
 				<div class="flex gap-2">
-					<button
-						class="flex-1 rounded-md bg-green-700/40 px-2 py-1.5 text-xs font-medium text-green-300 transition-colors hover:bg-green-700/60 disabled:opacity-50"
-						onclick={markDone}
-						disabled={markingDone}
-					>
-						{markingDone ? '...' : 'Done'}
-					</button>
-					<button
-						class="flex-1 rounded-md bg-surface-700/50 px-2 py-1.5 text-xs font-medium text-surface-400 transition-colors hover:bg-surface-700"
-						onclick={() => (showDismissInput = true)}
-					>
-						Dismiss
-					</button>
-					<button
-						class="flex-1 rounded-md bg-surface-700/30 px-2 py-1.5 text-xs font-medium text-surface-500 transition-colors hover:bg-surface-700 disabled:opacity-50"
-						onclick={archive}
-						disabled={archiving}
-					>
-						{archiving ? '...' : 'Archive'}
-					</button>
-				</div>
-			{:else if card.status === 'requires_approval'}
-				<div class="flex gap-2">
-					<button
-						class="flex-1 rounded-md bg-violet-700/40 px-2 py-1.5 text-xs font-medium text-violet-300 transition-colors hover:bg-violet-700/60 disabled:opacity-50"
-						onclick={approveAgent}
-						disabled={approvingAgent}
-					>
-						{approvingAgent ? '...' : 'Approve'}
-					</button>
 					<button
 						class="flex-1 rounded-md bg-green-700/40 px-2 py-1.5 text-xs font-medium text-green-300 transition-colors hover:bg-green-700/60 disabled:opacity-50"
 						onclick={markDone}

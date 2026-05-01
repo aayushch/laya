@@ -101,14 +101,13 @@
 
 	// Status priority for group color: highest-priority status wins
 	const statusPriority: string[] = [
-		'pending', 'awaiting_input', 'agent_running', 'failed', 'requires_approval',
+		'pending', 'awaiting_input', 'agent_running', 'failed',
 		'ready', 'done', 'dismissed', 'archived'
 	];
 
 	const solidGroupRowStyle: Record<string, string> = {
 		pending:            'bg-amber-950/55',
 		ready:              'bg-amber-950/55',
-		requires_approval:  'bg-sky-950/55',
 		agent_running:      'bg-violet-950/55',
 		awaiting_input:     'bg-amber-950/55',
 		done:               'bg-emerald-950/50',
@@ -119,7 +118,6 @@
 	const glassGroupRowStyle: Record<string, string> = {
 		pending:            'glass-card-flat bg-amber-950/45',
 		ready:              'glass-card-flat bg-amber-950/45',
-		requires_approval:  'glass-card-flat bg-sky-950/45',
 		agent_running:      'glass-card-flat bg-violet-950/45',
 		awaiting_input:     'glass-card-flat bg-amber-950/45',
 		done:               'glass-card-flat bg-emerald-950/40',
@@ -148,7 +146,7 @@
 	);
 
 	const statusDisplayLabel: Record<string, string> = {
-		pending: 'processing', ready: 'ready', requires_approval: 'needs approval',
+		pending: 'processing', ready: 'ready',
 		agent_running: 'running', awaiting_input: 'needs input', done: 'done',
 		failed: 'failed', dismissed: 'dismissed', archived: 'archived'
 	};
@@ -217,15 +215,14 @@
 	}
 
 	// Bulk actions
-	const canApproveAll = $derived(group.cards.some((c) => c.status === 'requires_approval'));
 	const canCompleteAll = $derived(group.cards.some((c) => c.status !== 'done' && !['dismissed', 'archived', 'failed'].includes(c.status)));
 	const canDismissAll = $derived(group.cards.some((c) => c.status !== 'dismissed' && !['archived', 'done', 'failed'].includes(c.status)));
 	const canArchiveAll = $derived(group.cards.some((c) => c.status !== 'archived'));
 	const canReopenAll = $derived(group.cards.some((c) => ['dismissed', 'archived', 'done'].includes(c.status)));
 	const canUnarchiveAll = $derived(group.cards.some((c) => c.status === 'archived'));
-	const hasAnyAction = $derived(canApproveAll || canCompleteAll || canDismissAll || canArchiveAll || canReopenAll || canUnarchiveAll || !!onlink);
+	const hasAnyAction = $derived(canCompleteAll || canDismissAll || canArchiveAll || canReopenAll || canUnarchiveAll || !!onlink);
 
-	async function bulkAction(action: 'approve' | 'complete' | 'dismiss' | 'archive' | 'reopen' | 'unarchive', e: Event) {
+	async function bulkAction(action: 'complete' | 'dismiss' | 'archive' | 'reopen' | 'unarchive', e: Event) {
 		e.stopPropagation();
 		groupMenuOpen = false;
 		bulkActionRunning = true;
@@ -233,9 +230,6 @@
 			const promises: Promise<unknown>[] = [];
 			for (const card of group.cards) {
 				switch (action) {
-					case 'approve':
-						if (card.status === 'requires_approval') promises.push(engineApi.approveAgent(card.card_id).then(() => { card.status = 'agent_running'; }));
-						break;
 					case 'complete':
 						if (card.status !== 'done' && !['dismissed', 'archived', 'failed'].includes(card.status)) promises.push(engineApi.markCardDone(card.card_id).then(() => { card.status = 'done'; }));
 						break;
@@ -440,9 +434,6 @@
 		onclick={(e) => e.stopPropagation()}
 		onkeydown={(e) => { if (e.key === 'Escape') groupMenuOpen = false; }}
 	>
-		{#if canApproveAll}
-			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-violet-400" role="menuitem" onclick={(e) => bulkAction('approve', e)}>Approve All</button>
-		{/if}
 		{#if canCompleteAll}
 			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-green-400" role="menuitem" onclick={(e) => bulkAction('complete', e)}>Complete All</button>
 		{/if}

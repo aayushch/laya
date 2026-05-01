@@ -35,7 +35,6 @@
 
 	let bookmarking = $state(false);
 	let markingDone = $state(false);
-	let approvingAgent = $state(false);
 	let dismissing = $state(false);
 	let archiving = $state(false);
 	let reopening = $state(false);
@@ -79,7 +78,6 @@
 	const statusDot: Record<string, string> = {
 		pending: 'bg-yellow-400 animate-pulse',
 		ready: 'bg-amber-400',
-		requires_approval: 'bg-sky-400',
 		agent_running: 'bg-violet-400 animate-pulse',
 		awaiting_input: 'bg-yellow-400 animate-pulse',
 		done: 'bg-green-500',
@@ -90,7 +88,6 @@
 	const solidRowStyle: Record<string, string> = {
 		pending:            'bg-amber-950/55',
 		ready:              'bg-amber-950/55',
-		requires_approval:  'bg-sky-950/55',
 		agent_running:      'bg-violet-950/55',
 		awaiting_input:     'bg-amber-950/55',
 		done:               'bg-emerald-950/50',
@@ -101,7 +98,6 @@
 	const glassRowStyle: Record<string, string> = {
 		pending:            'glass-card-flat bg-amber-950/45',
 		ready:              'glass-card-flat bg-amber-950/45',
-		requires_approval:  'glass-card-flat bg-sky-950/45',
 		agent_running:      'glass-card-flat bg-violet-950/45',
 		awaiting_input:     'glass-card-flat bg-amber-950/45',
 		done:               'glass-card-flat bg-emerald-950/40',
@@ -113,7 +109,6 @@
 	const statusLabel: Record<string, string> = {
 		pending: 'Processing',
 		ready: 'Ready',
-		requires_approval: 'Approval',
 		agent_running: 'Running',
 		awaiting_input: 'Input',
 		done: 'Done',
@@ -157,11 +152,6 @@
 		e.stopPropagation();
 		markingDone = true;
 		try { await engineApi.markCardDone(card.card_id); card.status = 'done'; } finally { markingDone = false; }
-	}
-	async function approveAgent(e: Event) {
-		e.stopPropagation();
-		approvingAgent = true;
-		try { await engineApi.approveAgent(card.card_id); card.status = 'agent_running'; } finally { approvingAgent = false; }
 	}
 	async function dismiss(e: Event) {
 		e.stopPropagation();
@@ -282,38 +272,15 @@
 		</span>
 	</span>
 
-	<!-- Status — fixed width / Approve button for requires_approval -->
-	{#if card.status === 'requires_approval'}
-		<span class="w-[70px] shrink-0 flex items-center justify-center ml-2">
-			<button
-				class="flex items-center gap-1 rounded-full bg-violet-500/20 px-2 py-0.5 text-[10px] font-medium text-violet-400 transition-colors hover:bg-violet-500/30 disabled:opacity-40"
-				onclick={approveAgent}
-				disabled={approvingAgent}
-			>
-				<svg class="h-2.5 w-2.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-				{approvingAgent ? '...' : 'Approve'}
-			</button>
-		</span>
-	{:else}
-		<span class="w-[70px] shrink-0 flex items-center gap-1 ml-2">
-			<StatusDot status={card.status} size="md" errorMessage={card.last_error} />
-			<span class="text-[11px] text-surface-500 whitespace-nowrap truncate" title={card.status === 'failed' && card.last_error ? card.last_error : ''}>{statusLabel[card.status] ?? card.status}</span>
-		</span>
-	{/if}
+	<!-- Status — fixed width -->
+	<span class="w-[70px] shrink-0 flex items-center gap-1 ml-2">
+		<StatusDot status={card.status} size="md" errorMessage={card.last_error} />
+		<span class="text-[11px] text-surface-500 whitespace-nowrap truncate" title={card.status === 'failed' && card.last_error ? card.last_error : ''}>{statusLabel[card.status] ?? card.status}</span>
+	</span>
 
 	<!-- Action buttons — fixed width slot (visible on hover) -->
 	<div class="w-[68px] shrink-0 flex items-center justify-end gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
 		{#if card.status === 'ready'}
-			<button aria-label="Mark as Done" class="h-5 w-5 flex items-center justify-center rounded text-green-400/60 hover:bg-green-500/15 hover:text-green-400 disabled:opacity-40" onclick={markDone} disabled={markingDone} onmouseenter={(e) => showTooltip(e.currentTarget, 'Done')} onmouseleave={hideTooltip}>
-				<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
-			</button>
-			<button aria-label="Dismiss" class="h-5 w-5 flex items-center justify-center rounded text-surface-500 hover:bg-surface-500/15 hover:text-surface-300 disabled:opacity-40" onclick={dismiss} disabled={dismissing} onmouseenter={(e) => showTooltip(e.currentTarget, 'Dismiss')} onmouseleave={hideTooltip}>
-				<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12" /></svg>
-			</button>
-			<button aria-label="Archive" class="h-5 w-5 flex items-center justify-center rounded text-red-400/60 hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40" onclick={archive} disabled={archiving} onmouseenter={(e) => showTooltip(e.currentTarget, 'Archive')} onmouseleave={hideTooltip}>
-				<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
-			</button>
-		{:else if card.status === 'requires_approval'}
 			<button aria-label="Mark as Done" class="h-5 w-5 flex items-center justify-center rounded text-green-400/60 hover:bg-green-500/15 hover:text-green-400 disabled:opacity-40" onclick={markDone} disabled={markingDone} onmouseenter={(e) => showTooltip(e.currentTarget, 'Done')} onmouseleave={hideTooltip}>
 				<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
 			</button>

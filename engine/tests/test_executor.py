@@ -150,19 +150,6 @@ class TestExecutor:
 
         assert result["status"] == "done"
 
-    async def test_execute_from_requires_approval_status(self, db):
-        """Execution works from 'requires_approval' status."""
-        await insert_test_card(db, "card_app", "evt_app", status="requires_approval")
-
-        mock_egress_result = EgressResult(success=True, result_data={})
-
-        with patch("laya.egress.route_and_execute", new_callable=AsyncMock, return_value=mock_egress_result):
-            with patch("laya.pipeline.executor.manager.broadcast", new_callable=AsyncMock):
-                from laya.pipeline.executor import execute_action
-
-                result = await execute_action("card_app", "act_1")
-
-        assert result["status"] == "done"
 
     async def test_execute_from_failed_status(self, db):
         """Execution works from 'failed' status (retry scenario)."""

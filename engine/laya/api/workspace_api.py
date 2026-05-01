@@ -58,6 +58,24 @@ async def get_workspace(card_id: str) -> dict[str, Any]:
     )
 
     if not session_row:
+        # Fall back to entity-level session: look up this card's entity_id,
+        # then find a workspace_session by entity_id.
+        entity_rows = await db.execute_fetchall(
+            "SELECT entity_id FROM action_cards WHERE card_id = ?", (card_id,),
+        )
+        if entity_rows and entity_rows[0]["entity_id"]:
+            session_row = await db.execute_fetchall(
+                """SELECT session_id, card_id, agent_type, status,
+                          repo_path, initial_prompt, started_at, updated_at,
+                          completed_at, findings_json, error_message, add_dirs,
+                          session_type
+                   FROM workspace_sessions
+                   WHERE entity_id = ?
+                   ORDER BY started_at DESC
+                   LIMIT 1""",
+                (entity_rows[0]["entity_id"],),
+            )
+    if not session_row:
         return {"card_id": card_id, "session": None, "events": [], "context": {}}
 
     row = session_row[0]
@@ -513,30 +531,58 @@ async def list_research_files(card_id: str) -> dict:
     """List files in a research session's working directory.
 
     Only works for research sessions — returns 404 for code sessions.
-    Scoped to ~/.laya/tmp/research/<card_id>/ for security.
+    Scoped to ~/.laya/tmp/research/ for security.
+
+    For entity-level sessions the research dir is an add_dir (not
+    repo_path), so we check add_dirs for a path inside the research root.
+    Also falls back to entity_id-based session lookup when no session
+    is found directly by card_id.
     """
     from pathlib import Path
 
-    # Verify this is a research session
     db = await get_db()
+
+    # Try card_id first, then fall back to entity_id
     rows = await db.execute_fetchall(
-        "SELECT repo_path, session_type FROM workspace_sessions WHERE card_id = ? ORDER BY started_at DESC LIMIT 1",
+        "SELECT repo_path, session_type, add_dirs FROM workspace_sessions WHERE card_id = ? ORDER BY started_at DESC LIMIT 1",
         (card_id,),
     )
+    if not rows:
+        entity_rows = await db.execute_fetchall(
+            "SELECT entity_id FROM action_cards WHERE card_id = ?", (card_id,),
+        )
+        if entity_rows and entity_rows[0]["entity_id"]:
+            rows = await db.execute_fetchall(
+                "SELECT repo_path, session_type, add_dirs FROM workspace_sessions WHERE entity_id = ? ORDER BY started_at DESC LIMIT 1",
+                (entity_rows[0]["entity_id"],),
+            )
     if not rows:
         raise HTTPException(status_code=404, detail="No session found for this card")
 
     repo_path = rows[0]["repo_path"] or ""
     st = rows[0]["session_type"]
+    add_dirs_json = rows[0]["add_dirs"]
     is_research = st == "research" or (not st and "/tmp/research/" in repo_path)
     if not is_research:
         raise HTTPException(status_code=403, detail="File browsing is only available for research sessions")
 
-    if not repo_path:
+    # Resolve the research directory: could be repo_path itself or an add_dir
+    research_root = _get_research_root()
+    research_dir_path = None
+
+    if repo_path and repo_path.startswith(research_root):
+        research_dir_path = repo_path
+    elif add_dirs_json:
+        add_dirs = json.loads(add_dirs_json) if isinstance(add_dirs_json, str) else []
+        for d in add_dirs:
+            if d.startswith(research_root):
+                research_dir_path = d
+                break
+
+    if not research_dir_path:
         return {"card_id": card_id, "files": []}
 
-    # Validate the path is inside the research directory
-    resolved = _validate_research_path(repo_path)
+    resolved = _validate_research_path(research_dir_path)
     research_dir = Path(resolved)
     if not research_dir.exists():
         return {"card_id": card_id, "files": []}
@@ -560,7 +606,7 @@ async def read_research_file(card_id: str, path: str) -> dict:
     """Read a file from a research session's working directory.
 
     Only works for research sessions. The `path` query parameter is
-    relative to the session's repo_path. Scoped to ~/.laya/tmp/research/
+    relative to the research directory. Scoped to ~/.laya/tmp/research/
     for security.
     """
     from pathlib import Path
@@ -568,26 +614,49 @@ async def read_research_file(card_id: str, path: str) -> dict:
     if not path:
         raise HTTPException(status_code=400, detail="Missing 'path' query parameter")
 
-    # Verify this is a research session
     db = await get_db()
+
+    # Try card_id first, then fall back to entity_id
     rows = await db.execute_fetchall(
-        "SELECT repo_path, session_type FROM workspace_sessions WHERE card_id = ? ORDER BY started_at DESC LIMIT 1",
+        "SELECT repo_path, session_type, add_dirs FROM workspace_sessions WHERE card_id = ? ORDER BY started_at DESC LIMIT 1",
         (card_id,),
     )
+    if not rows:
+        entity_rows = await db.execute_fetchall(
+            "SELECT entity_id FROM action_cards WHERE card_id = ?", (card_id,),
+        )
+        if entity_rows and entity_rows[0]["entity_id"]:
+            rows = await db.execute_fetchall(
+                "SELECT repo_path, session_type, add_dirs FROM workspace_sessions WHERE entity_id = ? ORDER BY started_at DESC LIMIT 1",
+                (entity_rows[0]["entity_id"],),
+            )
     if not rows:
         raise HTTPException(status_code=404, detail="No session found for this card")
 
     repo_path = rows[0]["repo_path"] or ""
     st = rows[0]["session_type"]
+    add_dirs_json = rows[0]["add_dirs"]
     is_research = st == "research" or (not st and "/tmp/research/" in repo_path)
     if not is_research:
         raise HTTPException(status_code=403, detail="File reading is only available for research sessions")
 
-    if not repo_path:
-        raise HTTPException(status_code=404, detail="No working directory for this session")
+    # Resolve the research directory
+    research_root = _get_research_root()
+    research_dir_path = None
+    if repo_path and repo_path.startswith(research_root):
+        research_dir_path = repo_path
+    elif add_dirs_json:
+        add_dirs = json.loads(add_dirs_json) if isinstance(add_dirs_json, str) else []
+        for d in add_dirs:
+            if d.startswith(research_root):
+                research_dir_path = d
+                break
+
+    if not research_dir_path:
+        raise HTTPException(status_code=404, detail="No research directory for this session")
 
     # Resolve and validate the full file path
-    full_path = _validate_research_path(str(Path(repo_path) / path))
+    full_path = _validate_research_path(str(Path(research_dir_path) / path))
     file_path = Path(full_path)
 
     if not file_path.exists() or not file_path.is_file():

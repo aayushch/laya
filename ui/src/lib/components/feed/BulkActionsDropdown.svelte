@@ -40,12 +40,6 @@
 			filter: (c) => c.status !== 'done' && !['dismissed', 'archived', 'failed'].includes(c.status)
 		},
 		{
-			key: 'approve', label: 'Approve Agent',
-			icon: 'M8 5v14l11-7z',
-			color: 'text-violet-400',
-			filter: (c) => c.status === 'requires_approval'
-		},
-		{
 			key: 'dismiss', label: 'Dismiss',
 			icon: 'M6 18L18 6M6 6l12 12',
 			color: 'text-surface-300',
@@ -115,9 +109,6 @@
 					case 'done':
 						promises.push(engineApi.markCardDone(card.card_id).then(() => { card.status = 'done'; }));
 						break;
-					case 'approve':
-						promises.push(engineApi.approveAgent(card.card_id).then(() => { card.status = 'agent_running'; }));
-						break;
 					case 'dismiss':
 						promises.push(engineApi.dismissCard(card.card_id).then(() => { card.status = 'dismissed'; }));
 						break;
@@ -183,7 +174,7 @@
 					onclick={() => handleActionClick(stat)}
 					disabled={stat.applicableCount === 0}
 				>
-					<svg class="h-3 w-3 shrink-0 {stat.applicableCount > 0 ? stat.color : 'text-surface-600'}" fill={stat.key === 'approve' ? 'currentColor' : 'none'} stroke={stat.key === 'approve' ? 'none' : 'currentColor'} stroke-width="2" viewBox="0 0 24 24">
+					<svg class="h-3 w-3 shrink-0 {stat.applicableCount > 0 ? stat.color : 'text-surface-600'}" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" d={stat.icon} />
 					</svg>
 					<span class="flex-1 text-left">{stat.label}</span>

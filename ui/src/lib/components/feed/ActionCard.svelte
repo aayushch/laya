@@ -2,7 +2,8 @@
 	import type { ActionCard } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
 	import { goto } from '$app/navigation';
-	import { chatOpen, chatInputPreset } from '$lib/stores/chat';
+	import { chatOpen, chatCardContext, chatCardIds, chatListOpen } from '$lib/stores/chat';
+	import { buildSingleCardContext } from '$lib/utils/cardContext';
 	import { cardColors } from '$lib/stores/cardColors';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { cardDescriptions } from '$lib/stores/cardDescriptions';
@@ -18,7 +19,6 @@
 	const isLastViewed = $derived(!isSelected && !hasSelection && card.card_id === lastViewedCardId);
 
 	let markingDone = $state(false);
-	let approvingAgent = $state(false);
 	let dismissing = $state(false);
 	let archiving = $state(false);
 	let reopening = $state(false);
@@ -99,7 +99,7 @@
 	const statusDot: Record<string, string> = {
 		pending:            'bg-yellow-400 animate-pulse',
 		ready:              'bg-amber-400',
-		requires_approval:  'bg-sky-400',
+
 		agent_running:      'bg-violet-400 animate-pulse',
 		awaiting_input:     'bg-yellow-400 animate-pulse',
 		done:               'bg-green-500',
@@ -111,7 +111,7 @@
 	const statusLabel: Record<string, string> = {
 		pending:            'Processing',
 		ready:              'Ready',
-		requires_approval:  'Needs Approval',
+
 		agent_running:      'Agent Running',
 		awaiting_input:     'Input Needed',
 		done:               'Done',
@@ -133,7 +133,7 @@
 	const glassStatusCardStyle: Record<string, string> = {
 		pending:            'glass-card bg-amber-950/45  border-transparent  hover:border-amber-700/30  card-pulse-amber',
 		ready:              'glass-card bg-amber-950/45  border-transparent  hover:border-amber-700/30',
-		requires_approval:  'glass-card bg-sky-950/45 border-transparent hover:border-sky-700/30',
+
 		agent_running:      'glass-card bg-violet-950/45 border-transparent hover:border-violet-700/30 card-pulse-violet',
 		awaiting_input:     'glass-card bg-amber-950/45  border-transparent  hover:border-amber-700/30  card-pulse-amber',
 		done:               'glass-card bg-emerald-950/40 border-transparent hover:border-emerald-700/25',
@@ -144,7 +144,7 @@
 	const solidStatusCardStyle: Record<string, string> = {
 		pending:            'bg-amber-950/55  border-transparent  hover:border-amber-700/45  card-pulse-amber',
 		ready:              'bg-amber-950/55  border-transparent  hover:border-amber-700/45',
-		requires_approval:  'bg-sky-950/55 border-transparent hover:border-sky-700/40',
+
 		agent_running:      'bg-violet-950/55 border-transparent hover:border-violet-700/40 card-pulse-violet',
 		awaiting_input:     'bg-amber-950/55  border-transparent  hover:border-amber-700/45  card-pulse-amber',
 		done:               'bg-emerald-950/50 border-transparent hover:border-emerald-700/35',
@@ -218,17 +218,6 @@
 		}
 	}
 
-	async function approveAgent(e: Event) {
-		e.stopPropagation();
-		approvingAgent = true;
-		try {
-			await engineApi.approveAgent(card.card_id);
-			card.status = 'agent_running';
-		} finally {
-			approvingAgent = false;
-		}
-	}
-
 	async function dismiss(e: Event) {
 		e.stopPropagation();
 		dismissing = true;
@@ -287,18 +276,9 @@
 
 	function chatAbout(e: Event) {
 		e.stopPropagation();
-		const lines = [
-			`I'd like to discuss this action card (ID: ${card.card_id}):`,
-			``,
-			`**Title:** ${card.header}`,
-			`**Summary:** ${card.summary}`,
-			`**Priority:** ${card.priority} · **Status:** ${card.status} · **Persona:** ${card.persona} · **Category:** ${card.category}`,
-		];
-		if (card.intelligence && card.intelligence.length > 0) {
-			lines.push(``, `**Intelligence:**`);
-			card.intelligence.forEach((p) => lines.push(`- ${p}`));
-		}
-		chatInputPreset.set(lines.join('\n'));
+		chatCardContext.set(buildSingleCardContext(card));
+		chatCardIds.set([card.card_id]);
+		chatListOpen.set(false);
 		chatOpen.set(true);
 	}
 </script>
@@ -355,81 +335,6 @@
 						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
 							<path stroke-linecap="round" d="M6 18L18 6M6 6l12 12" />
 						</svg>
-					</button>
-				</div>
-				{#if card.has_workspace}
-					<!-- Overflow: Archive + Workspace -->
-					<div class="action-overflow-menu relative" bind:this={actionMenuEl}>
-						<button
-							class="flex h-6 w-6 items-center justify-center rounded-md text-surface-500 transition-all hover:bg-surface-700/50 hover:text-surface-300"
-							onclick={(e) => { e.stopPropagation(); if (!actionMenuOpen && actionMenuEl) { const r = actionMenuEl.getBoundingClientRect(); actionMenuPos = { top: r.bottom + 4, left: r.left }; } actionMenuOpen = !actionMenuOpen; }}
-							aria-label="More actions"
-						>
-							<svg class="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20">
-								<path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM18 10a2 2 0 11-4 0 2 2 0 014 0z" />
-							</svg>
-						</button>
-						{#if actionMenuOpen}
-							<div use:portal class="fixed z-[100] w-40 rounded-lg border p-1 {$glassTheme ? 'glass-menu' : 'border-surface-600 bg-surface-800 shadow-xl shadow-black/30'}" style="top: {actionMenuPos.top}px; left: {actionMenuPos.left}px;" role="menu">
-								<button
-									class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400 disabled:opacity-40"
-									role="menuitem"
-									onclick={(e) => { actionMenuOpen = false; archive(e); }}
-									disabled={archiving}
-								>
-									<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
-									Archive
-								</button>
-								<button
-									class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-violet-400"
-									role="menuitem"
-									onclick={(e) => { e.stopPropagation(); actionMenuOpen = false; goto(`/workspace/${card.card_id}`); }}
-								>
-									<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-									Workspace
-								</button>
-							</div>
-						{/if}
-					</div>
-				{:else}
-					<!-- No workspace — Archive fits as 3rd button -->
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<div class="relative" onmouseenter={(e) => showTooltip(e.currentTarget, 'Archive')} onmouseleave={hideTooltip}>
-						<button
-							aria-label="Archive"
-							class="flex h-6 w-6 items-center justify-center rounded-md text-red-400/60 transition-all hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40"
-							onclick={archive}
-							disabled={archiving}
-						>
-							<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-							</svg>
-						</button>
-					</div>
-				{/if}
-			{:else if card.status === 'requires_approval'}
-				<!-- Done -->
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<div class="relative" onmouseenter={(e) => showTooltip(e.currentTarget, 'Done')} onmouseleave={hideTooltip}>
-					<button
-						aria-label="Mark as Done"
-						class="flex h-6 w-6 items-center justify-center rounded-md text-green-400/60 transition-all hover:bg-green-500/15 hover:text-green-400 disabled:opacity-40"
-						onclick={markDone}
-						disabled={markingDone}
-					>
-						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
-					</button>
-				</div>
-				<!-- Dismiss -->
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<div class="relative" onmouseenter={(e) => showTooltip(e.currentTarget, 'Dismiss')} onmouseleave={hideTooltip}>
-					<button
-						aria-label="Dismiss"
-						class="flex h-6 w-6 items-center justify-center rounded-md text-surface-500 transition-all hover:bg-surface-500/15 hover:text-surface-300 disabled:opacity-40"
-						onclick={dismiss}
-						disabled={dismissing}
-					>
-						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12" /></svg>
 					</button>
 				</div>
 				{#if card.has_workspace}
@@ -615,7 +520,7 @@
 					</button>
 				</div>
 			{/if}
-			{#if card.has_workspace && card.status !== 'ready' && card.status !== 'requires_approval'}
+			{#if card.has_workspace && card.status !== 'ready'}
 				<!-- Open Workspace — shown as standalone button only for statuses with ≤2 actions -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div class="relative" onmouseenter={(e) => showTooltip(e.currentTarget, 'Open Workspace')} onmouseleave={hideTooltip}>
@@ -679,22 +584,11 @@
 					</svg>
 				</span>
 			{/if}
-			<!-- Status indicator / Approve button -->
-			{#if card.status === 'requires_approval'}
-				<button
-					class="ml-1 flex items-center gap-1 rounded-full bg-violet-500/20 px-2 py-0.5 text-[11px] font-medium text-violet-400 transition-colors hover:bg-violet-500/30 disabled:opacity-40"
-					onclick={approveAgent}
-					disabled={approvingAgent}
-				>
-					<svg class="h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-					{approvingAgent ? 'Approving...' : 'Approve'}
-				</button>
-			{:else}
-				<span class="ml-1 flex items-center gap-1 min-w-0 overflow-hidden">
-					<StatusDot status={card.status} size="md" errorMessage={card.last_error} />
-					<span class="text-[11px] text-surface-400 truncate" title={card.status === 'failed' && card.last_error ? card.last_error : ''}>{statusLabel[card.status] ?? card.status}</span>
-				</span>
-			{/if}
+			<!-- Status indicator -->
+			<span class="ml-1 flex items-center gap-1 min-w-0 overflow-hidden">
+				<StatusDot status={card.status} size="md" errorMessage={card.last_error} />
+				<span class="text-[11px] text-surface-400 truncate" title={card.status === 'failed' && card.last_error ? card.last_error : ''}>{statusLabel[card.status] ?? card.status}</span>
+			</span>
 			<!-- Priority chip -->
 			<span class="ml-1 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase {priorityColors[card.priority] ?? priorityColors.MEDIUM}">
 				{priorityLabel[card.priority] ?? card.priority}

@@ -3,7 +3,69 @@
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { portal } from '$lib/actions/portal';
-	import type { AuditLogEntry, DeadEvent } from '$lib/api/types';
+	import type { AuditLogEntry, DeadEvent, IngestionError } from '$lib/api/types';
+
+	// ── Ingestion errors state ──
+	let ingestionErrors: IngestionError[] = $state([]);
+	let ingestionLoading = $state(true);
+	let ingestionExpanded = $state(false);
+	let clearingIngestion = $state<Set<string>>(new Set());
+	let dismissingIngestion = $state<Set<string>>(new Set());
+	let clearingAllIngestion = $state(false);
+	let clearAllIngestionConfirm = $state(false);
+
+	async function loadIngestionErrors() {
+		ingestionLoading = true;
+		try {
+			const resp = await engineApi.getIngestionErrors({ limit: 100 });
+			ingestionErrors = resp.errors;
+		} catch {
+			// Silent — supplementary section
+		} finally {
+			ingestionLoading = false;
+		}
+	}
+
+	async function clearIngestionError(errorId: string) {
+		clearingIngestion = new Set([...clearingIngestion, errorId]);
+		try {
+			await engineApi.clearIngestionError(errorId);
+			dismissingIngestion = new Set([...dismissingIngestion, errorId]);
+			const next = new Set(clearingIngestion);
+			next.delete(errorId);
+			clearingIngestion = next;
+			setTimeout(() => {
+				ingestionErrors = ingestionErrors.filter(e => e.error_id !== errorId);
+				const d = new Set(dismissingIngestion);
+				d.delete(errorId);
+				dismissingIngestion = d;
+			}, 350);
+		} catch {
+			const next = new Set(clearingIngestion);
+			next.delete(errorId);
+			clearingIngestion = next;
+		}
+	}
+
+	async function clearAllIngestion() {
+		if (!clearAllIngestionConfirm) {
+			clearAllIngestionConfirm = true;
+			return;
+		}
+		clearingAllIngestion = true;
+		clearAllIngestionConfirm = false;
+		try {
+			await engineApi.clearAllIngestionErrors();
+			dismissingIngestion = new Set(ingestionErrors.map(e => e.error_id));
+			setTimeout(() => {
+				ingestionErrors = [];
+				dismissingIngestion = new Set();
+				ingestionExpanded = false;
+			}, 350);
+		} finally {
+			clearingAllIngestion = false;
+		}
+	}
 
 	// ── Audit log state ──
 	let entries: AuditLogEntry[] = $state([]);
@@ -104,6 +166,7 @@
 	onMount(() => {
 		load();
 		loadDeadEvents();
+		loadIngestionErrors();
 	});
 
 	function applyFilter() {
@@ -265,6 +328,114 @@
 		</div>
 	{/if}
 
+	<!-- Ingestion Errors -->
+	{#if !ingestionLoading && ingestionErrors.length > 0}
+		<div class="rounded-lg border border-red-600/50 bg-red-900/20 p-3">
+			<div class="flex items-center justify-between">
+				<div class="flex items-center gap-2">
+					<svg class="h-4 w-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+					</svg>
+					<span class="text-sm font-medium text-red-300">
+						{ingestionErrors.length} ingestion error{ingestionErrors.length !== 1 ? 's' : ''} detected
+					</span>
+				</div>
+				<div class="flex items-center gap-2">
+					<button
+						onclick={() => { ingestionExpanded = !ingestionExpanded; clearAllIngestionConfirm = false; }}
+						class="rounded px-3 py-1 text-xs font-medium text-surface-300 transition-colors {$glassTheme ? 'hover:bg-white/[0.08]' : 'hover:bg-surface-700'}"
+					>
+						{ingestionExpanded ? 'Hide' : 'View'}
+					</button>
+					<button
+						onclick={clearAllIngestion}
+						disabled={clearingAllIngestion}
+						class="rounded bg-red-500/20 px-3 py-1 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/30 disabled:opacity-50"
+					>
+						{#if clearingAllIngestion}
+							Clearing...
+						{:else if clearAllIngestionConfirm}
+							Confirm clear all?
+						{:else}
+							Clear All
+						{/if}
+					</button>
+				</div>
+			</div>
+
+			{#if ingestionExpanded}
+				<div class="mt-3 overflow-visible {$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700'}">
+					<table class="w-full table-fixed text-left text-xs">
+						<thead class="border-b {$glassTheme ? 'border-white/[0.06] bg-white/[0.03]' : 'border-surface-700 bg-surface-800'} text-surface-400">
+							<tr>
+								<th class="w-[15%] px-3 py-2">Time</th>
+								<th class="w-[9%] px-3 py-2">Platform</th>
+								<th class="w-[15%] px-3 py-2">Workflow</th>
+								<th class="w-[13%] px-3 py-2">Node</th>
+								<th class="w-[28%] px-3 py-2">Error</th>
+								<th class="w-[8%] px-3 py-2">Count</th>
+								<th class="w-[12%] px-3 py-2">Action</th>
+							</tr>
+						</thead>
+						<tbody class="divide-y {$glassTheme ? 'divide-white/[0.04]' : 'divide-surface-700/50'}">
+							{#each ingestionErrors as err (err.error_id)}
+								<tr class="transition-all duration-300 ease-out hover:bg-surface-800/50 {dismissingIngestion.has(err.error_id) ? 'opacity-0 translate-x-4' : 'opacity-100 translate-x-0'}">
+									<td class="whitespace-nowrap px-3 py-2 text-surface-300">
+										{formatTime(err.last_occurred_at)}
+									</td>
+									<td class="px-3 py-2">
+										{#if err.platform}
+											<span class="rounded bg-surface-700 px-1.5 py-0.5 text-surface-300">
+												{err.platform}
+											</span>
+										{:else}
+											<span class="text-surface-500">-</span>
+										{/if}
+									</td>
+									<td
+										class="px-3 py-2 text-surface-300"
+										onmouseenter={(e) => { if (err.workflow_name && err.workflow_name.length > 18) showTooltip(e.currentTarget, err.workflow_name); }}
+										onmouseleave={hideTooltip}
+									>
+										<span class="block truncate">{err.workflow_name ?? '-'}</span>
+									</td>
+									<td
+										class="px-3 py-2 text-surface-400"
+										onmouseenter={(e) => { if (err.node_name && err.node_name.length > 14) showTooltip(e.currentTarget, err.node_name); }}
+										onmouseleave={hideTooltip}
+									>
+										<span class="block truncate">{err.node_name ?? '-'}</span>
+									</td>
+									<td
+										class="px-3 py-2 text-red-400"
+										onmouseenter={(e) => { if (err.error_message && err.error_message.length > 32) showTooltip(e.currentTarget, err.error_message, { maxWidth: 400, color: 'text-red-300' }); }}
+										onmouseleave={hideTooltip}
+									>
+										<span class="block truncate">
+											{truncateError(err.error_message)}
+										</span>
+									</td>
+									<td class="whitespace-nowrap px-3 py-2 text-surface-400">
+										{err.occurrence_count}x
+									</td>
+									<td class="px-3 py-2">
+										<button
+											onclick={() => clearIngestionError(err.error_id)}
+											disabled={clearingIngestion.has(err.error_id)}
+											class="rounded bg-red-500/20 px-2 py-0.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/30 disabled:opacity-50"
+										>
+											{clearingIngestion.has(err.error_id) ? 'Clearing...' : 'Clear'}
+										</button>
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{/if}
+		</div>
+	{/if}
+
 	<!-- Filters -->
 	<div class="flex flex-wrap items-end gap-3">
 		<div>
@@ -273,7 +444,7 @@
 				id="step-filter"
 				bind:value={filterStep}
 				placeholder="e.g. router"
-				class="rounded-lg border px-3 py-1.5 text-sm text-surface-200 placeholder-surface-500 focus:outline-none {$glassTheme ? 'glass-input focus:border-laya-orange/50' : 'border-surface-600 bg-surface-800 focus:border-blue-500'}"
+				class="h-9 rounded-lg border px-3 text-sm text-surface-200 placeholder-surface-500 focus:outline-none {$glassTheme ? 'glass-input focus:border-laya-orange/50' : 'border-surface-600 bg-surface-800 focus:border-blue-500'}"
 			/>
 		</div>
 		<div>
@@ -281,7 +452,7 @@
 			<select
 				id="success-filter"
 				bind:value={filterSuccess}
-				class="rounded-lg border px-3 py-1.5 text-sm text-surface-200 focus:outline-none {$glassTheme ? 'glass-input focus:border-laya-orange/50' : 'border-surface-600 bg-surface-800 focus:border-blue-500'}"
+				class="h-9 rounded-lg border px-3 text-sm text-surface-200 focus:outline-none {$glassTheme ? 'glass-input focus:border-laya-orange/50' : 'border-surface-600 bg-surface-800 focus:border-blue-500'}"
 			>
 				<option value="">All</option>
 				<option value="true">Success</option>
@@ -290,7 +461,7 @@
 		</div>
 		<button
 			onclick={applyFilter}
-			class="rounded-lg px-4 py-1.5 text-sm font-medium text-surface-200 transition-colors {$glassTheme ? 'bg-white/[0.08] hover:bg-white/[0.14]' : 'bg-surface-700 hover:bg-surface-600'}"
+			class="h-9 rounded-lg px-4 text-sm font-medium text-surface-200 transition-colors {$glassTheme ? 'bg-white/[0.08] hover:bg-white/[0.14]' : 'bg-surface-700 hover:bg-surface-600'}"
 		>
 			Apply
 		</button>

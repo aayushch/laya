@@ -31,7 +31,6 @@ DEFAULT_SETTINGS = {
         "local": "ollama/llama3",
     },
     "coding_agent": "claude_code",
-    "agent_execution_mode": "requires_approval",
     "agent_paths": {
         "claude_code": "",
         "gemini_cli": "",
@@ -55,6 +54,7 @@ DEFAULT_SETTINGS = {
         "chat_retention_days": 90,
         "audit_retention_days": 90,
         "omni_retention_days": 30,
+        "ingestion_errors_retention_days": 30,
     },
     "feed_preferences": {
         "statusFilters": [],

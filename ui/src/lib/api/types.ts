@@ -219,7 +219,6 @@ export interface Settings {
 	models: ModelSettings;
 	api_keys: ApiKeyStatus;
 	coding_agent: string;
-	agent_execution_mode: 'automatic' | 'requires_approval';
 	agent_paths: Record<string, string>;
 	privacy: {
 		tier3_sources: string[];
@@ -239,6 +238,7 @@ export interface Settings {
 		chat_retention_days: number;
 		audit_retention_days: number;
 		omni_retention_days: number;
+		ingestion_errors_retention_days: number;
 	};
 	omni?: {
 		enabled: boolean;
@@ -552,6 +552,36 @@ export interface DeadEventsResponse {
 /** Response from retrying dead events */
 export interface RetryDeadEventsResponse {
 	retried: number;
+}
+
+/** Ingestion error captured from n8n workflow failures */
+export interface IngestionError {
+	error_id: string;
+	workflow_id: string;
+	source_id?: string;
+	space_id?: string;
+	platform?: string;
+	workflow_name?: string;
+	node_name?: string;
+	error_name?: string;
+	error_message?: string;
+	error_http_code?: number;
+	occurrence_count: number;
+	first_occurred_at: string;
+	last_occurred_at: string;
+	acknowledged_at?: string;
+	resolved_at?: string;
+	cleared_at?: string;
+}
+
+/** Ingestion errors list response */
+export interface IngestionErrorsResponse {
+	errors: IngestionError[];
+}
+
+/** Response from clearing ingestion errors */
+export interface ClearIngestionErrorsResponse {
+	cleared: number;
 }
 
 /** Inbound Laya Event (n8n -> Engine) */

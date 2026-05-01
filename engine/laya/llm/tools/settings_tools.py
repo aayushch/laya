@@ -25,7 +25,6 @@ _SECTION_MAP: dict[str, list[str]] = {
     "briefing": ["briefing"],
     "notifications": ["notifications"],
     "feed_preferences": ["feed_preferences"],
-    "agent": ["agent_execution_mode"],
 }
 
 _VALID_PRIORITIES = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
@@ -366,40 +365,5 @@ async def update_feed_preferences(
         "section": "feed_preferences",
         "old_value": old_value,
         "new_value": prefs,
-        "success": True,
-    }
-
-
-async def update_agent_execution_mode(mode: str) -> dict[str, Any]:
-    """Change whether agent actions require explicit user approval.
-
-    Args:
-        mode: "auto" (run without asking) or "requires_approval" (ask before acting).
-
-    Returns:
-        Dict with old and new mode values.
-    """
-    if mode not in ("auto", "requires_approval"):
-        return {"error": "mode must be 'auto' or 'requires_approval'"}
-
-    settings = load_settings()
-    old_value = settings.get("agent_execution_mode", "requires_approval")
-    settings["agent_execution_mode"] = mode
-    save_settings(settings)
-
-    await _write_settings_audit(
-        "update_agent_execution_mode", "agent", old_value, mode
-    )
-    log.info(
-        "settings_updated_via_chat",
-        tool="update_agent_execution_mode",
-        old=old_value,
-        new=mode,
-    )
-
-    return {
-        "section": "agent",
-        "old_value": old_value,
-        "new_value": mode,
         "success": True,
     }
