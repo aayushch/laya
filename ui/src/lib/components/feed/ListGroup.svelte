@@ -181,9 +181,20 @@
 	const allGroupSelected = $derived(selectedInGroupCount === groupCardIds.length && groupCardIds.length > 0);
 	const someGroupSelected = $derived(selectedInGroupCount > 0 && !allGroupSelected);
 
-	let subjectTruncated = $state(false);
 	let subjectEl: HTMLSpanElement | undefined = $state();
 	let groupCheckboxEl: HTMLButtonElement | undefined = $state();
+	let fixedTooltip = $state<{ text: string; top: number; left: number; maxWidth?: number } | null>(null);
+
+	function showTooltip(el: HTMLElement, text: string, opts?: { maxWidth?: number }) {
+		const rect = el.getBoundingClientRect();
+		fixedTooltip = { text, top: rect.bottom + 4, left: rect.left, maxWidth: opts?.maxWidth };
+	}
+	function showTooltipIfTruncated(el: HTMLElement | undefined, text: string, opts?: { maxWidth?: number }) {
+		if (!el) return;
+		if (el.scrollWidth <= el.clientWidth) { fixedTooltip = null; return; }
+		showTooltip(el, text, opts);
+	}
+	function hideTooltip() { fixedTooltip = null; }
 
 	function toggleGroupCheckbox(e: MouseEvent) {
 		e.stopPropagation();
@@ -250,7 +261,6 @@
 </script>
 
 <div bind:this={wrapperEl} class="transition-opacity
-		{expanded ? ($glassTheme ? 'rounded-lg glass-card-flat bg-surface-900/50' : 'rounded-lg bg-surface-900') : ''}
 		{isDimmed ? ($glassTheme ? 'glass-dim' : 'opacity-45 hover:opacity-70') : ''}" data-group-entity={group.entity_id}>
 	<div class="flex items-center {onbulktoggle ? 'gap-1.5' : ''}">
 		{#if onbulktoggle}
@@ -281,7 +291,7 @@
 
 		<div data-group-row={group.entity_id}
 			data-status={$glassTheme && $cardColors && !allArchived && !expanded ? dominantStatus : undefined}
-			class="relative flex flex-1 items-center rounded-lg border hover:z-20 transition-colors
+			class="relative flex flex-1 min-w-0 items-center rounded-lg border hover:z-20 transition-colors
 				{expanded
 					? 'border-transparent'
 					: 'list-row-hover border-transparent ' + groupBgStyle}
@@ -334,10 +344,11 @@
 		</span>
 
 		<!-- Subject (entity title) -->
-		<span class="group/subject relative min-w-0 flex-1 ml-2 flex items-center gap-1"
-			onmouseenter={() => { if (subjectEl) subjectTruncated = subjectEl.scrollWidth > subjectEl.clientWidth; }}
+		<span class="min-w-0 flex-1 ml-2 flex items-center gap-1"
+			onmouseenter={() => showTooltipIfTruncated(subjectEl, group.entity_title, { maxWidth: 320 })}
+			onmouseleave={hideTooltip}
 		>
-			<span bind:this={subjectEl} class="block truncate text-xs font-medium text-surface-200">
+			<span bind:this={subjectEl} class="min-w-0 block truncate text-xs font-medium text-surface-200">
 				{group.entity_title}
 			</span>
 			{#if hasBookmark}
@@ -345,25 +356,19 @@
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke-dasharray="3 2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
 				</svg>
 			{/if}
-			{#if subjectTruncated}
-				<span class="pointer-events-none absolute top-full left-0 z-10 mt-1 max-w-xs whitespace-normal rounded-md border border-transparent bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/subject:opacity-100">
-					{group.entity_title}
-				</span>
-			{/if}
 		</span>
 
 		<!-- Card count — aligned with ListRow status column (w-[70px]) -->
-		<div class="group/count relative w-[70px] shrink-0 flex items-center ml-2">
+		<div class="w-[70px] shrink-0 flex items-center ml-2">
 			<button
 				class="rounded-full bg-laya-orange/10 px-2 py-0.5 text-[10px] font-semibold text-laya-orange hover:bg-laya-orange/20 transition-colors whitespace-nowrap"
 				title="Show all cards"
 				onclick={(e) => { e.stopPropagation(); expanded = !expanded; }}
+				onmouseenter={(e) => showTooltip(e.currentTarget, statusSummaryTooltip)}
+				onmouseleave={hideTooltip}
 			>
 				{group.card_count} cards
 			</button>
-			<span class="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 z-10 mt-1 whitespace-nowrap rounded-md border border-transparent bg-surface-800 px-2 py-1 text-[10px] font-medium text-laya-orange opacity-0 transition-opacity duration-75 group-hover/count:opacity-100">
-				{statusSummaryTooltip}
-			</span>
 		</div>
 
 		<!-- Three-dot menu — aligned with ListRow action buttons column (w-[68px]) -->
@@ -463,4 +468,14 @@
 			Link to...
 		</button>
 	</div>
+{/if}
+
+{#if fixedTooltip}
+	<span
+		use:portal
+		class="pointer-events-none fixed z-[100] rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium"
+		style="top: {fixedTooltip.top}px; left: {fixedTooltip.left}px;{fixedTooltip.maxWidth ? ` max-width: ${fixedTooltip.maxWidth}px; white-space: normal;` : ' white-space: nowrap;'}"
+	>
+		{fixedTooltip.text}
+	</span>
 {/if}

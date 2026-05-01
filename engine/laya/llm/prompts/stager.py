@@ -70,7 +70,9 @@ and concrete findings.
   - type: "draft_reply" (message response), "code_fix" (code changes summary), \
 "briefing" (analysis summary), "summary" (general summary)
   - content: The actual drafted content the user can review, edit, and send/apply.
-- **suggested_actions**: 1-3 actions the user can approve. Each action specifies:
+- **suggested_actions**: 0-3 actions the user can approve. If the event is purely \
+informational, a status update, or noise (e.g., polling with no changes), return an \
+empty array — do not invent actions that have no meaningful effect. Each action specifies:
   - action_id: unique identifier (e.g., "act_comment_jira")
   - label: human-readable button text (e.g., "Post Jira Comment")
   - action_type: MUST be chosen from the [SUPPORTED ACTIONS] block in the user \

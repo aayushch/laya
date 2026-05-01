@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { portal } from '$lib/actions/portal';
 	import type { AuditLogEntry, DeadEvent } from '$lib/api/types';
 
 	// ── Audit log state ──
@@ -147,6 +148,16 @@
 		if (!err) return '-';
 		return err.length > maxLen ? err.slice(0, maxLen) + '...' : err;
 	}
+
+	// ── Portal tooltip ──
+	let fixedTooltip = $state<{ text: string; top: number; left: number; maxWidth: number; color?: string } | null>(null);
+
+	function showTooltip(el: HTMLElement, text: string, opts?: { maxWidth?: number; color?: string }) {
+		const rect = el.getBoundingClientRect();
+		fixedTooltip = { text, top: rect.bottom + 4, left: rect.left, maxWidth: opts?.maxWidth ?? 320, color: opts?.color };
+	}
+
+	function hideTooltip() { fixedTooltip = null; }
 </script>
 
 <div class="space-y-4">
@@ -165,7 +176,7 @@
 				<div class="flex items-center gap-2">
 					<button
 						onclick={() => { deadExpanded = !deadExpanded; retryAllConfirm = false; }}
-						class="rounded px-3 py-1 text-xs font-medium text-surface-300 transition-colors hover:bg-surface-700"
+						class="rounded px-3 py-1 text-xs font-medium text-surface-300 transition-colors {$glassTheme ? 'hover:bg-white/[0.08]' : 'hover:bg-surface-700'}"
 					>
 						{deadExpanded ? 'Hide' : 'View'}
 					</button>
@@ -209,7 +220,11 @@
 											{evt.source_platform}
 										</span>
 									</td>
-									<td class="group/subj relative overflow-visible px-3 py-2 font-medium text-surface-200">
+									<td
+										class="px-3 py-2 font-medium text-surface-200"
+										onmouseenter={(e) => { if (evt.subject_title && evt.subject_title.length > 25) showTooltip(e.currentTarget, evt.subject_title); }}
+										onmouseleave={hideTooltip}
+									>
 										<span class="block truncate">
 											{#if evt.subject_url}
 												<a href={evt.subject_url} target="_blank" rel="noopener" class="hover:text-laya-orange hover:underline">
@@ -219,21 +234,15 @@
 												{evt.subject_title}
 											{/if}
 										</span>
-										{#if evt.subject_title && evt.subject_title.length > 25}
-											<div class="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 hidden max-w-sm whitespace-normal break-words rounded-lg border border-surface-600 bg-surface-800 px-3 py-2 text-xs font-normal text-surface-200 shadow-lg group-hover/subj:block">
-												{evt.subject_title}
-											</div>
-										{/if}
 									</td>
-									<td class="group/err relative overflow-visible px-3 py-2 text-red-400">
+									<td
+										class="px-3 py-2 text-red-400"
+										onmouseenter={(e) => { if (evt.last_error && evt.last_error.length > 30) showTooltip(e.currentTarget, evt.last_error, { maxWidth: 400, color: 'text-red-300' }); }}
+										onmouseleave={hideTooltip}
+									>
 										<span class="block truncate">
 											{truncateError(evt.last_error)}
 										</span>
-										{#if evt.last_error && evt.last_error.length > 30}
-											<div class="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 hidden max-w-sm whitespace-normal break-words rounded-lg border border-surface-600 bg-surface-800 px-3 py-2 text-xs font-normal text-red-300 shadow-lg group-hover/err:block">
-												{evt.last_error}
-											</div>
-										{/if}
 									</td>
 									<td class="whitespace-nowrap px-3 py-2 text-surface-400">
 										{evt.processing_attempts} attempt{evt.processing_attempts !== 1 ? 's' : ''}{#if evt.manual_retries > 0}, retried {evt.manual_retries}x{/if}
@@ -354,3 +363,13 @@
 		</div>
 	{/if}
 </div>
+
+{#if fixedTooltip}
+	<span
+		use:portal
+		class="pointer-events-none fixed z-[100] max-w-sm whitespace-normal break-words rounded-md border border-transparent glass-tooltip px-2.5 py-1.5 text-xs font-normal {fixedTooltip.color ?? 'text-surface-200'}"
+		style="top: {fixedTooltip.top}px; left: {fixedTooltip.left}px; max-width: {fixedTooltip.maxWidth}px;"
+	>
+		{fixedTooltip.text}
+	</span>
+{/if}
