@@ -4,10 +4,18 @@
 	import { goto } from '$app/navigation';
 	import { pendingCardId } from '$lib/stores/chat';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { portal } from '$lib/actions/portal';
 
 	let { message, streaming = false }: { message: ChatMessage; streaming?: boolean } = $props();
 
 	let copied = $state(false);
+	let fixedTooltip = $state<{ text: string; top: number; left: number } | null>(null);
+
+	function showTooltip(el: HTMLElement, text: string) {
+		const rect = el.getBoundingClientRect();
+		fixedTooltip = { text, top: rect.top - 4, left: rect.left + rect.width / 2 };
+	}
+	function hideTooltip() { fixedTooltip = null; }
 
 	function copyResponse() {
 		// Copy raw markdown content (strip thinking blocks)
@@ -15,7 +23,11 @@
 		if (!content) return;
 		navigator.clipboard.writeText(content).then(() => {
 			copied = true;
-			setTimeout(() => (copied = false), 2000);
+			if (fixedTooltip) fixedTooltip = { ...fixedTooltip, text: 'Copied!' };
+			setTimeout(() => {
+				copied = false;
+				if (fixedTooltip) fixedTooltip = { ...fixedTooltip, text: 'Copy response' };
+			}, 2000);
 		});
 	}
 
@@ -140,23 +152,30 @@
 			<div class="mt-1 flex items-center gap-2 text-[10px] {isUser ? 'text-laya-orange/60' : 'text-surface-500'}">
 				<span>{time}</span>
 				{#if !isUser && parsed.response}
-					<span class="relative group/copy">
-						<button
-							onclick={copyResponse}
-							class="opacity-0 group-hover:opacity-100 transition-opacity text-surface-500 hover:text-surface-300"
-						>
-							{#if copied}
-								<svg class="h-3.5 w-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
-							{:else}
-								<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-							{/if}
-						</button>
-						<span class="pointer-events-none absolute left-1/2 bottom-full z-10 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip {$glassTheme ? 'glass-tooltip-dense' : ''} px-2 py-1 text-[10px] font-medium opacity-0 transition-opacity duration-75 group-hover/copy:opacity-100">
-							{copied ? 'Copied!' : 'Copy response'}
-						</span>
-					</span>
+					<button
+						onclick={copyResponse}
+						onmouseenter={(e) => showTooltip(e.currentTarget, copied ? 'Copied!' : 'Copy response')}
+						onmouseleave={hideTooltip}
+						class="opacity-0 group-hover:opacity-100 transition-opacity text-surface-500 hover:text-surface-300"
+					>
+						{#if copied}
+							<svg class="h-3.5 w-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+						{:else}
+							<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+						{/if}
+					</button>
 				{/if}
 			</div>
 		{/if}
 	</div>
 </div>
+
+{#if fixedTooltip}
+	<span
+		use:portal
+		class="pointer-events-none fixed z-[100] -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium"
+		style="top: {fixedTooltip.top}px; left: {fixedTooltip.left}px; translate: -50% -100%;"
+	>
+		{fixedTooltip.text}
+	</span>
+{/if}
