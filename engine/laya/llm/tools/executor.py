@@ -42,7 +42,6 @@ def _register_tools() -> None:
         "semantic_search": search_tools.semantic_search,
         # Write tools
         "dismiss_card": card_tools.dismiss_card,
-        "approve_card": card_tools.approve_card,
         "mark_card_done": card_tools.mark_card_done,
         "archive_card": card_tools.archive_card,
         "reopen_card": card_tools.reopen_card,
@@ -53,7 +52,6 @@ def _register_tools() -> None:
         "update_briefing": settings_tools.update_briefing,
         "update_notifications": settings_tools.update_notifications,
         "update_feed_preferences": settings_tools.update_feed_preferences,
-        "update_agent_execution_mode": settings_tools.update_agent_execution_mode,
     }
 
 

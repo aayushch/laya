@@ -313,7 +313,7 @@ async def get_grouped_cards(
             key=lambda p: _PRIORITY_ORDER.get(p, 99),
         )
         latest_at = max((c.created_at or "") for c in cards)
-        has_pending = any(c.status in ("pending", "ready", "requires_approval") for c in cards)
+        has_pending = any(c.status in ("pending", "ready") for c in cards)
 
         entity_id_val = entity_rows[0]["entity_id"] or group_key
         entity_title = meta.get("subject_title") or entity_id_val
@@ -364,13 +364,13 @@ async def get_grouped_cards(
             g.sort_key = (g.cards[0].actor_name if g.cards and g.cards[0].actor_name else "Unknown")
     elif sort == "status":
         _STATUS_ORDER = {
-            "awaiting_input": 0, "failed": 1, "requires_approval": 2,
-            "agent_running": 3, "pending": 4, "ready": 5,
-            "done": 6, "dismissed": 7, "archived": 8,
+            "awaiting_input": 0, "failed": 1,
+            "agent_running": 2, "pending": 3, "ready": 4,
+            "done": 5, "dismissed": 6, "archived": 7,
         }
         _STATUS_LABEL = {
             "awaiting_input": "Input Needed", "failed": "Failed",
-            "requires_approval": "Needs Approval", "agent_running": "Agent Running",
+            "agent_running": "Agent Running",
             "pending": "Processing", "ready": "Ready",
             "done": "Done", "dismissed": "Dismissed", "archived": "Archived",
         }
@@ -522,7 +522,7 @@ async def reopen_card(card_id: str) -> dict:
     """Reopen a card, retrying the last failed stage when applicable.
 
     Retry strategy based on failed_stage:
-    - agent_spawn / agent_execution: re-queue for agent approval (requires_approval)
+    - agent_spawn / agent_execution: reset to ready so user can re-invoke agent
     - action_execution: reset to ready so user can re-execute the action
     - pipeline / NULL: reset to pending for full reprocessing
     - Archived/done/dismissed cards with previous_status: restore that status
@@ -549,9 +549,8 @@ async def reopen_card(card_id: str) -> dict:
     failed_stage = row["failed_stage"] if current == "failed" else None
 
     if failed_stage in ("agent_spawn", "agent_execution") and row["agent_prompt"]:
-        # Agent failed — put card back to requires_approval so user can click
-        # "Approve Agent" again (or auto-run if in automatic mode)
-        new_status = "requires_approval"
+        # Agent failed — put card back to ready so user can re-invoke agent
+        new_status = "ready"
         await db.execute(
             "UPDATE action_cards SET status = ?, failed_stage = NULL, resolved_at = NULL, updated_at = ? WHERE card_id = ?",
             (new_status, now, card_id),
@@ -671,7 +670,7 @@ async def mark_card_done(card_id: str) -> dict:
     if not rows:
         raise HTTPException(status_code=404, detail="Card not found")
 
-    doneable = {"pending", "ready", "requires_approval", "awaiting_input"}
+    doneable = {"pending", "ready", "awaiting_input"}
     if rows[0]["status"] not in doneable:
         raise HTTPException(
             status_code=409, detail=f"Card status '{rows[0]['status']}' cannot be marked done"
@@ -705,69 +704,6 @@ async def mark_card_done(card_id: str) -> dict:
 
     return {"status": "done", "card_id": card_id}
 
-
-@router.post("/cards/{card_id}/approve-agent")
-async def approve_agent(card_id: str) -> dict:
-    """Approve agent execution for a requires_approval card.
-
-    Retrieves the stored agent prompt, spawns the coding agent in the
-    background, and transitions the card to agent_running.
-    """
-    db = await get_db()
-
-    rows = await db.execute_fetchall(
-        "SELECT status, event_id, agent_prompt, persona, space_id FROM action_cards WHERE card_id = ?",
-        (card_id,),
-    )
-    if not rows:
-        raise HTTPException(status_code=404, detail="Card not found")
-
-    row = rows[0]
-    if row["status"] != "requires_approval":
-        raise HTTPException(
-            status_code=409,
-            detail=f"Card status '{row['status']}' is not requires_approval",
-        )
-
-    if not row["agent_prompt"]:
-        raise HTTPException(
-            status_code=409, detail="No agent prompt stored for this card"
-        )
-
-    # Transition to agent_running immediately
-    now = datetime.now(timezone.utc).isoformat()
-    await db.execute(
-        "UPDATE action_cards SET status = 'agent_running', updated_at = ? WHERE card_id = ?",
-        (now, card_id),
-    )
-    await db.commit()
-
-    await manager.broadcast(
-        {"type": "card_updated", "card_id": card_id, "payload": {"status": "agent_running"}}
-    )
-
-    # Spawn agent in background
-    from laya.workers.engineer import run_engineer_from_prompt
-
-    asyncio.create_task(
-        run_engineer_from_prompt(
-            card_id=card_id,
-            agent_prompt=row["agent_prompt"],
-            space_id=row["space_id"],
-        ),
-        name=f"agent_{card_id}",
-    )
-
-    log.info("agent_approved", card_id=card_id)
-
-    await log_to_audit(
-        event_id=row["event_id"], card_id=card_id, step="lifecycle",
-        model="n/a", input_tokens=0, output_tokens=0, latency_ms=0,
-        success=True,
-        metadata={"action": "approve_agent", "persona": row["persona"]},
-    )
-
-    return {"status": "agent_running", "card_id": card_id}
 
 
 async def _delete_card_cascade(db, card_id: str, event_id: str | None) -> None:
@@ -1365,10 +1301,6 @@ class RunAgentRequest(BaseModel):
     files: list[str] | None = None  # Absolute paths to uploaded staging files
 
 
-class StartResearchRequest(BaseModel):
-    prompt: str | None = None  # Optional user focus question
-    directory: str | None = None  # Optional working dir (defaults to ~/.laya/tmp/research/<card_id>/)
-
 
 async def _stream_agent_to_card(
     card_id: str,
@@ -1382,7 +1314,7 @@ async def _stream_agent_to_card(
 ) -> None:
     """Shared background task: spawn agent, stream events, update card status.
 
-    Used by both run_agent() and start_research() endpoints. Handles the
+    Used by the run_agent() endpoint. Handles the
     full lifecycle: session spawn, event streaming, status transitions,
     findings extraction, and session completion.
     """
@@ -1831,118 +1763,289 @@ async def run_agent(body: RunAgentRequest) -> dict:
     return {"status": "agent_running", "card_id": card_id}
 
 
-@router.post("/cards/{card_id}/start-research")
-async def start_research(card_id: str, body: StartResearchRequest) -> dict:
-    """Start a research agent session on an existing card.
+class RunEntityAgentRequest(BaseModel):
+    prompt: str | None = None
 
-    Unlike run-agent (which creates a new card), this attaches a workspace
-    to an existing card of any persona. Builds a research-oriented prompt
-    from the card's context and spawns the configured agent.
+
+@router.post("/entity/{entity_id:path}/run-agent")
+async def run_entity_agent(entity_id: str, body: RunEntityAgentRequest) -> dict:
+    """Start or resume an agent session for an entity group.
+
+    Associates an agent at the entity level rather than per-card.
+    Builds CONTEXT.md with group summary + card details, resolves repo,
+    and spawns the agent. On subsequent calls, refreshes context and resumes.
     """
-    from laya.agents import session_manager
-    from laya.config import LAYA_HOME, load_settings
-    from laya.llm.prompts.research import build_research_prompt
+    from urllib.parse import unquote
 
+    from laya.agents import session_manager
+    from laya.agents.entity_context import (
+        build_entity_agent_prompt,
+        get_entity_research_dir,
+        write_entity_context_file,
+    )
+    from laya.config import load_repos, load_settings
+    from laya.workers.engineer import resolve_repo_path
+
+    entity_id = unquote(entity_id)
     db = await get_db()
 
-    # Fetch card
-    rows = await db.execute_fetchall(
-        "SELECT card_id, event_id, status, header, summary, intelligence, space_id FROM action_cards WHERE card_id = ?",
-        (card_id,),
+    # 1. Fetch all cards for this entity
+    card_rows = await db.execute_fetchall(
+        "SELECT card_id, status, space_id, entity_id FROM action_cards WHERE entity_id = ? ORDER BY created_at DESC",
+        (entity_id,),
     )
-    if not rows:
-        raise HTTPException(status_code=404, detail="Card not found")
+    if not card_rows:
+        raise HTTPException(status_code=404, detail="No cards found for this entity")
 
-    card = rows[0]
-
-    # Validate status — reject statuses where research doesn't make sense
-    blocked = {"agent_running", "awaiting_input", "archived", "pending"}
-    if card["status"] in blocked:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Cannot start research on card with status '{card['status']}'"
-        )
-
-    # Validate agent is configured
+    # 2. Validate agent is configured
     settings = load_settings()
     agent_setting = settings.get("coding_agent", "none")
     if agent_setting == "none":
         raise HTTPException(
             status_code=409,
-            detail="No agent configured. Set a coding agent in Settings to use research."
+            detail="No coding agent configured. Set one in Settings > Agent.",
         )
 
+    # 3. Check for existing running session
+    existing = await session_manager.get_session_for_entity(entity_id)
+    if existing and existing["status"] in ("starting", "running"):
+        raise HTTPException(
+            status_code=409,
+            detail="An agent is already running for this entity",
+        )
+
+    space_id = card_rows[0]["space_id"] or "default"
+    anchor_card_id = card_rows[0]["card_id"]
+
+    # 4. Build CONTEXT.md
+    await write_entity_context_file(entity_id, space_id)
+    research_dir = get_entity_research_dir(entity_id)
+
+    # 5. Resolve repo
+    from laya.models.classification import Category, Persona, Priority, RouterOutput
+
+    dummy_router = RouterOutput(
+        persona=Persona.ENGINEER, priority=Priority.MEDIUM,
+        category=Category.CODE, confidence=0.8, entities=[],
+    )
+    repo_path, other_repos = await resolve_repo_path(dummy_router, space_id=space_id)
+
+    # 6. Determine cwd and add_dirs
+    research_dir_str = str(research_dir)
+    if repo_path:
+        cwd = repo_path
+        add_dirs = [research_dir_str] + [p for p in other_repos if p != research_dir_str]
+    else:
+        cwd = research_dir_str
+        repos_data = load_repos()
+        add_dirs = [r["path"] for r in repos_data.get("repos", []) if r.get("path")]
+
+    # 7. Build agent prompt
+    agent_prompt = build_entity_agent_prompt(
+        entity_id=entity_id,
+        research_dir=research_dir_str,
+        repo_path=repo_path,
+        user_prompt=body.prompt,
+    )
+
+    # 8. If a prior completed/paused session exists, resume it
+    if existing and existing["status"] == "paused":
+        # Refresh context and resume
+        now = datetime.now(timezone.utc).isoformat()
+        await db.execute(
+            "UPDATE action_cards SET has_workspace = 1, updated_at = ? WHERE entity_id = ?",
+            (now, entity_id),
+        )
+        await db.commit()
+
+        for card_row in card_rows:
+            await manager.broadcast(
+                {"type": "card_updated", "card_id": card_row["card_id"],
+                 "payload": {"has_workspace": True, "status": "agent_running"}}
+            )
+
+        resume_text = body.prompt or "Continue working. Check CONTEXT.md for updated entity context."
+        agent = await session_manager.resume_conversation(
+            existing["session_id"], resume_text, add_dirs=add_dirs,
+        )
+
+        asyncio.create_task(
+            _stream_entity_agent(
+                session_id=existing["session_id"],
+                agent=agent,
+                entity_id=entity_id,
+                anchor_card_id=anchor_card_id,
+            ),
+            name=f"entity_agent_{entity_id}",
+        )
+
+        log.info("entity_agent_resumed", entity_id=entity_id, session_id=existing["session_id"])
+        return {"status": "agent_running", "session_id": existing["session_id"], "card_id": anchor_card_id}
+
+    # 9. New session — start in plan mode
     agent_type = session_manager.get_configured_agent_type()
 
-    # Fetch source event body for context
-    event_body = ""
-    platform = "unknown"
-    event_rows = await db.execute_fetchall(
-        "SELECT content_body, source_platform FROM events WHERE event_id = ?",
-        (card["event_id"],),
-    )
-    if event_rows:
-        event_body = event_rows[0]["content_body"] or ""
-        platform = event_rows[0]["source_platform"] or "unknown"
-
-    # Parse intelligence
-    intelligence: list[str] = []
-    if card["intelligence"]:
-        try:
-            parsed = json.loads(card["intelligence"])
-            if isinstance(parsed, list):
-                intelligence = parsed
-        except json.JSONDecodeError:
-            pass
-
-    # Build research prompt
-    research_prompt = build_research_prompt(
-        header=card["header"] or "",
-        summary=card["summary"] or "",
-        intelligence=intelligence,
-        event_body=event_body,
-        platform=platform,
-        user_question=body.prompt,
-    )
-
-    # Resolve working directory
-    if body.directory:
-        directory = body.directory
-    else:
-        research_dir = LAYA_HOME / "tmp" / "research" / card_id
-        research_dir.mkdir(parents=True, exist_ok=True)
-        directory = str(research_dir)
-
-    # Update card: set status, workspace flag, and store the research prompt
     now = datetime.now(timezone.utc).isoformat()
     await db.execute(
-        """UPDATE action_cards
-           SET status = 'agent_running', has_workspace = 1, agent_prompt = ?, updated_at = ?
-           WHERE card_id = ?""",
-        (research_prompt, now, card_id),
+        "UPDATE action_cards SET has_workspace = 1, updated_at = ? WHERE entity_id = ?",
+        (now, entity_id),
     )
     await db.commit()
 
-    # Broadcast status change
-    await manager.broadcast(
-        {"type": "card_updated", "card_id": card_id, "payload": {"status": "agent_running", "has_workspace": True}}
+    for card_row in card_rows:
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": card_row["card_id"],
+             "payload": {"has_workspace": True}}
+        )
+
+    session_id, agent = await session_manager.start_session(
+        card_id=anchor_card_id,
+        prompt=agent_prompt,
+        repo_path=cwd,
+        agent_type=agent_type,
+        space_id=space_id,
+        add_dirs=add_dirs,
+        mode="plan",
+        research=True,
+        entity_id=entity_id,
     )
 
-    # Spawn agent in background — research=True enables web search + file writes
     asyncio.create_task(
-        _stream_agent_to_card(
-            card_id=card_id,
-            prompt=research_prompt,
-            directory=directory,
-            agent_type=agent_type,
-            space_id=card["space_id"],
-            research=True,
+        _stream_entity_agent(
+            session_id=session_id,
+            agent=agent,
+            entity_id=entity_id,
+            anchor_card_id=anchor_card_id,
         ),
-        name=f"research_{card_id}",
+        name=f"entity_agent_{entity_id}",
     )
 
-    log.info("start_research_initiated", card_id=card_id, has_user_prompt=bool(body.prompt))
-    return {"status": "agent_running", "card_id": card_id}
+    log.info("entity_agent_started", entity_id=entity_id, session_id=session_id, anchor=anchor_card_id)
+    return {"status": "agent_running", "session_id": session_id, "card_id": anchor_card_id}
+
+
+async def _stream_entity_agent(
+    session_id: str,
+    agent: "Any",
+    entity_id: str,
+    anchor_card_id: str,
+) -> None:
+    """Background task: stream agent events for an entity-level session.
+
+    Similar to _stream_agent_to_card but broadcasts updates keyed by the
+    anchor card and updates has_workspace on all entity cards.
+    """
+    from laya.agents import session_manager
+    from laya.models.workspace import SessionStatus
+
+    findings: dict[str, Any] = {}
+    cc_session_id_stored = False
+
+    try:
+        async for ws_event in agent.stream_events():
+            inserted = await session_manager.store_workspace_event(ws_event)
+            if not inserted:
+                continue
+
+            if not cc_session_id_stored and hasattr(agent, "cc_session_id") and agent.cc_session_id:
+                await session_manager.store_cc_session_id(session_id, agent.cc_session_id)
+                cc_session_id_stored = True
+
+            if ws_event.event_type.value == "approval_request":
+                if ws_event.content.get("ask_user_question"):
+                    db2 = await get_db()
+                    await db2.execute(
+                        "UPDATE action_cards SET status = 'awaiting_input', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+                        (anchor_card_id,),
+                    )
+                    await db2.commit()
+                    await manager.broadcast(
+                        {"type": "card_updated", "card_id": anchor_card_id, "payload": {"status": "awaiting_input"}}
+                    )
+                await manager.broadcast(
+                    {"type": "approval_request", "card_id": anchor_card_id, "session_id": session_id, "payload": ws_event.content}
+                )
+            elif ws_event.event_type.value == "error":
+                findings["last_error"] = ws_event.content.get("error", "")
+                await manager.broadcast(
+                    {"type": "agent_error", "card_id": anchor_card_id, "session_id": session_id, "payload": ws_event.content}
+                )
+
+            if ws_event.event_type.value == "agent_message" and ws_event.content.get("is_plan"):
+                findings["agent_plan"] = ws_event.content.get("text", "")
+            if ws_event.event_type.value == "status_change":
+                if ws_event.content.get("status") == "result_received":
+                    findings["agent_result"] = ws_event.content.get("result", "")
+
+    except Exception as e:
+        log.error("entity_agent_stream_error", session_id=session_id, error=str(e))
+        await session_manager.complete_session(session_id, error=str(e))
+        db3 = await get_db()
+        await db3.execute(
+            "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_execution', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            (anchor_card_id,),
+        )
+        await db3.commit()
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": anchor_card_id, "payload": {"status": "failed"}}
+        )
+        return
+
+    final_status = agent.get_status()
+    db4 = await get_db()
+
+    if final_status == SessionStatus.COMPLETED:
+        await session_manager.complete_session(session_id, findings=findings)
+
+        agent_plan = findings.get("agent_plan", "")
+        agent_result = findings.get("agent_result", "")
+        staged_content = agent_plan or agent_result
+        if staged_content:
+            staged_type = "agent_plan" if agent_plan else "agent_result"
+            await db4.execute(
+                "UPDATE action_cards SET staged_output = ?, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+                (json.dumps({"type": staged_type, "content": staged_content}), anchor_card_id),
+            )
+
+        has_unanswered = await session_manager.has_unanswered_questions(session_id)
+        card_status = "awaiting_input" if has_unanswered else "ready"
+
+        await db4.execute(
+            "UPDATE action_cards SET status = ?, failed_stage = NULL, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            (card_status, anchor_card_id),
+        )
+        await db4.commit()
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": anchor_card_id, "payload": {"status": card_status}}
+        )
+        await manager.broadcast(
+            {"type": "agent_completed", "card_id": anchor_card_id, "session_id": session_id, "payload": {"findings": findings}}
+        )
+    elif final_status == SessionStatus.CANCELLED:
+        await session_manager.complete_session(session_id, error="Cancelled by user")
+        await db4.execute(
+            "UPDATE action_cards SET status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            (anchor_card_id,),
+        )
+        await db4.commit()
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": anchor_card_id, "payload": {"status": "ready"}}
+        )
+    else:
+        last_error = findings.get("last_error", "")
+        error_msg = f"Agent ended with status: {final_status.value}"
+        if last_error:
+            error_msg += f" -- {last_error}"
+        log.error("entity_agent_failed", session_id=session_id, error=error_msg)
+        await session_manager.complete_session(session_id, error=error_msg)
+        await db4.execute(
+            "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_execution', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            (anchor_card_id,),
+        )
+        await db4.commit()
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": anchor_card_id, "payload": {"status": "failed"}}
+        )
 
 
 # ---------- Context Group Management ----------

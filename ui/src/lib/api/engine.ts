@@ -52,7 +52,9 @@ import type {
 	OmniPinsResponse,
 	OmniPin,
 	DeadEventsResponse,
-	RetryDeadEventsResponse
+	RetryDeadEventsResponse,
+	IngestionErrorsResponse,
+	ClearIngestionErrorsResponse
 } from './types';
 
 const ENGINE_URL = 'http://127.0.0.1:8420';
@@ -182,10 +184,6 @@ export const engineApi = {
 		request<{ status: string; card_id: string }>(`/cards/${cardId}/done`, {
 			method: 'POST'
 		}),
-	approveAgent: (cardId: string) =>
-		request<{ status: string; card_id: string }>(`/cards/${cardId}/approve-agent`, {
-			method: 'POST'
-		}),
 	runAgent: (data: {
 		prompt: string;
 		directory?: string;
@@ -199,11 +197,11 @@ export const engineApi = {
 			method: 'POST',
 			body: JSON.stringify(data)
 		}),
-	startResearch: (cardId: string, data?: { prompt?: string; directory?: string }) =>
-		request<{ status: string; card_id: string }>(`/cards/${cardId}/start-research`, {
-			method: 'POST',
-			body: JSON.stringify(data ?? {})
-		}),
+	runEntityAgent: (entityId: string, data?: { prompt?: string }) =>
+		request<{ status: string; session_id: string; card_id: string }>(
+			`/entity/${encodeURIComponent(entityId)}/run-agent`,
+			{ method: 'POST', body: JSON.stringify(data ?? {}) }
+		),
 	dismissCard: (cardId: string, reason?: string, feedbackType?: string) =>
 		request<{ status: string; card_id: string }>(`/cards/${cardId}/dismiss`, {
 			method: 'POST',
@@ -673,6 +671,42 @@ export const engineApi = {
 			method: 'POST',
 			body: JSON.stringify(eventIds ? { event_ids: eventIds } : { all: true })
 		}),
+
+	// Ingestion Errors
+	getIngestionErrors: (params?: {
+		space_id?: string;
+		source_id?: string;
+		unacknowledged_only?: boolean;
+		include_cleared?: boolean;
+		limit?: number;
+		offset?: number;
+	}) => {
+		const searchParams = new URLSearchParams();
+		if (params?.space_id) searchParams.set('space_id', params.space_id);
+		if (params?.source_id) searchParams.set('source_id', params.source_id);
+		if (params?.unacknowledged_only) searchParams.set('unacknowledged_only', 'true');
+		if (params?.include_cleared) searchParams.set('include_cleared', 'true');
+		if (params?.limit) searchParams.set('limit', String(params.limit));
+		if (params?.offset) searchParams.set('offset', String(params.offset));
+		const qs = searchParams.toString();
+		return request<IngestionErrorsResponse>(`/ingestion-errors${qs ? '?' + qs : ''}`);
+	},
+
+	clearIngestionError: (errorId: string) =>
+		request<ClearIngestionErrorsResponse>(`/ingestion-errors/${encodeURIComponent(errorId)}/clear`, {
+			method: 'POST'
+		}),
+
+	clearAllIngestionErrors: (params?: { space_id?: string; source_id?: string }) => {
+		const searchParams = new URLSearchParams();
+		if (params?.space_id) searchParams.set('space_id', params.space_id);
+		if (params?.source_id) searchParams.set('source_id', params.source_id);
+		const qs = searchParams.toString();
+		return request<ClearIngestionErrorsResponse>(
+			`/ingestion-errors/clear-all${qs ? '?' + qs : ''}`,
+			{ method: 'POST' }
+		);
+	},
 
 	// Egress
 	egressExecute: (data: EgressExecuteRequest) =>

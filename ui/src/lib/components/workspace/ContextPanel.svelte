@@ -116,6 +116,7 @@
 			filesLoaded = true;
 		} catch {
 			researchFiles = [];
+			filesLoaded = true;
 		} finally {
 			filesLoading = false;
 		}

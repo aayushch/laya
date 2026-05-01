@@ -166,6 +166,24 @@ async def _run_audit_housekeeping(retention_days: int) -> None:
         log.info("audit_housekeeping_nothing_to_delete", retention_days=retention_days)
 
 
+async def _run_ingestion_errors_housekeeping(retention_days: int) -> None:
+    """Delete ingestion error rows older than `retention_days` days."""
+    from laya.db.sqlite import get_db
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+
+    db = await get_db()
+    cursor = await db.execute(
+        "DELETE FROM ingestion_errors WHERE last_occurred_at < ?", (cutoff,)
+    )
+    await db.commit()
+    deleted = cursor.rowcount
+    if deleted:
+        log.info("ingestion_errors_housekeeping_complete", deleted=deleted, retention_days=retention_days)
+    else:
+        log.info("ingestion_errors_housekeeping_nothing_to_delete", retention_days=retention_days)
+
+
 async def _run_omni_housekeeping(retention_days: int) -> None:
     """Delete omni snapshots older than `retention_days` days.
 
@@ -427,6 +445,13 @@ async def _scheduler_loop() -> None:
                     await _run_corrections_housekeeping(corrections_retention)
                 except Exception as e:
                     log.error("corrections_housekeeping_failed", error=str(e))
+
+                # Ingestion errors cleanup
+                ingestion_errors_retention = int(retention_cfg.get("ingestion_errors_retention_days", 30))
+                try:
+                    await _run_ingestion_errors_housekeeping(ingestion_errors_retention)
+                except Exception as e:
+                    log.error("ingestion_errors_housekeeping_failed", error=str(e))
 
             # --- Budget month rollover (local timezone) ---
             try:

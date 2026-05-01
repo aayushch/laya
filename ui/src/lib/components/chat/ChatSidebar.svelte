@@ -8,7 +8,9 @@
 		activeTools,
 		activeConversationId,
 		conversations,
-		chatListOpen
+		chatListOpen,
+		chatCardContext,
+		chatCardIds
 	} from '$lib/stores/chat';
 	import { wsStatus, lastMessage, sendMessage } from '$lib/stores/websocket';
 	import { engineApi } from '$lib/api/engine';
@@ -22,6 +24,7 @@
 
 	let input = $state('');
 	let sending = $state(false);
+	let clearPending = $state(false);
 	let messagesEl: HTMLDivElement | undefined = $state();
 	let textareaEl: HTMLTextAreaElement | undefined = $state();
 	let renaming = $state(false);
@@ -71,6 +74,32 @@
 			// Wait for the textarea to render, then resize to fit the preset text
 			tick().then(resizeTextarea);
 		}
+	});
+
+	const inCardMode = $derived(!!$chatCardIds && $chatCardIds.length > 0);
+
+	// When card context is set and drawer opens, restore or start a card-anchored conversation
+	$effect(() => {
+		const cardIds = $chatCardIds;
+		if (!cardIds || cardIds.length === 0 || !$chatOpen) return;
+		chatListOpen.set(false);
+
+		(async () => {
+			try {
+				const conv = await engineApi.getConversationByCards(cardIds);
+				if (conv) {
+					activeConversationId.set(conv.conversation_id);
+					const msgs = await engineApi.getConversationMessages(conv.conversation_id, 100);
+					chatMessages.set([...msgs].reverse());
+				} else {
+					activeConversationId.set(null);
+					chatMessages.set([]);
+				}
+			} catch {
+				activeConversationId.set(null);
+				chatMessages.set([]);
+			}
+		})();
 	});
 
 	// Clear input when switching to the conversation list (new chat)
@@ -243,11 +272,21 @@
 		if (wsConnected) {
 			sendMessage({
 				type: 'chat_message',
-				payload: { message: text, conversation_id: convId }
+				payload: {
+					message: text,
+					conversation_id: convId,
+					...(get(chatCardContext) ? { card_context: get(chatCardContext) } : {}),
+					...(get(chatCardIds)?.length ? { card_ids: get(chatCardIds) } : {})
+				}
 			});
 		} else {
 			try {
-				const resp = await engineApi.sendChat(text, convId ?? undefined);
+				const resp = await engineApi.sendChat(
+					text,
+					convId ?? undefined,
+					get(chatCardContext) ?? undefined,
+					get(chatCardIds) ?? undefined
+				);
 				chatMessages.update((msgs) => [...msgs, resp.message]);
 				// Track auto-created conversation
 				if (resp.message.conversation_id && !convId) {
@@ -277,7 +316,35 @@
 	}
 
 	function goBackToList() {
+		chatCardContext.set(null);
+		chatCardIds.set(null);
 		chatListOpen.set(true);
+	}
+
+	function handleClose() {
+		chatOpen.set(false);
+		chatCardContext.set(null);
+		chatCardIds.set(null);
+	}
+
+	function clearChat() {
+		if (clearPending) {
+			// Second click — confirm
+			const convId = get(activeConversationId);
+			if (convId) {
+				engineApi.deleteConversation(convId).catch(() => {});
+				conversations.update((list) => list.filter((c) => c.conversation_id !== convId));
+			}
+			activeConversationId.set(null);
+			chatMessages.set([]);
+			clearPending = false;
+			if (!get(chatCardIds)?.length) {
+				chatListOpen.set(true);
+			}
+		} else {
+			clearPending = true;
+			setTimeout(() => { clearPending = false; }, 3000);
+		}
 	}
 
 	function conversationTitle(): string {
@@ -369,7 +436,11 @@
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
 						</svg>
 					</button>
-					{#if renaming}
+					{#if inCardMode}
+						<h3 class="truncate text-sm font-semibold">
+							{$chatCardIds?.length === 1 ? 'Chat about this card' : `Chat about ${$chatCardIds?.length} cards`}
+						</h3>
+					{:else if renaming}
 						<input
 							bind:this={renameInputEl}
 							bind:value={renameValue}
@@ -401,22 +472,49 @@
 						</button>
 					{/if}
 				</div>
-				<button
-					onclick={() => chatOpen.set(false)}
-					aria-label="Close chat"
-					class="shrink-0 text-surface-400 transition-colors hover:text-surface-200"
-				>
-					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-					</svg>
-				</button>
+				<div class="flex items-center gap-1">
+					{#if $activeConversationId || inCardMode}
+						<div class="group/clr relative">
+							<button
+								onclick={clearChat}
+								aria-label={clearPending ? 'Click again to confirm' : 'Clear chat'}
+								class="shrink-0 rounded-md p-1 transition-colors
+									{clearPending ? 'text-red-400' : 'text-surface-400 hover:text-red-400'}"
+							>
+								<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+								</svg>
+							</button>
+							<span class="pointer-events-none absolute right-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border px-2 py-1 text-[10px] font-medium shadow-lg
+								opacity-0 transition-opacity duration-75 group-hover/clr:opacity-100
+								{clearPending
+									? 'border-red-400/30 bg-red-950 text-red-300'
+									: $glassTheme ? 'border-white/[0.08] bg-white/[0.06] text-surface-400' : 'border-surface-600 bg-surface-800 text-surface-400'}">
+								{clearPending ? 'Click again to confirm' : 'Clear chat'}
+							</span>
+						</div>
+					{/if}
+					<button
+						onclick={handleClose}
+						aria-label="Close chat"
+						class="shrink-0 text-surface-400 transition-colors hover:text-surface-200"
+					>
+						<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
 			</div>
 
 			<!-- Messages -->
 			<div bind:this={messagesEl} onscroll={handleMessagesScroll} class="flex-1 space-y-3 overflow-auto p-4">
 				{#if $chatMessages.length === 0}
 					<p class="text-center text-sm text-surface-500">
-						Ask Laya about your events, cards, or recent activity.
+						{#if inCardMode}
+							Ask anything about {$chatCardIds?.length === 1 ? 'this card' : `these ${$chatCardIds?.length} cards`}. Laya has full context of their intelligence, outputs, and metadata.
+						{:else}
+							Ask Laya about your events, cards, or recent activity.
+						{/if}
 					</p>
 				{:else}
 					{#each $chatMessages as msg (msg.message_id)}

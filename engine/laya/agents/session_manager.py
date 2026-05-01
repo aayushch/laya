@@ -25,6 +25,8 @@ log = structlog.get_logger()
 _active_sessions: dict[str, CodingAgent] = {}
 # Reverse mapping: card_id -> session_id (for cancellation on card archive/delete)
 _card_sessions: dict[str, str] = {}
+# Reverse mapping: entity_id -> session_id (for entity-level agent sessions)
+_entity_sessions: dict[str, str] = {}
 
 
 def _create_agent(agent_type: AgentType) -> CodingAgent:
@@ -71,6 +73,7 @@ async def start_session(
     add_dirs: list[str] | None = None,
     mode: str | None = None,
     research: bool = False,
+    entity_id: str | None = None,
 ) -> tuple[str, CodingAgent]:
     """Create and start a new agent session.
 
@@ -80,6 +83,7 @@ async def start_session(
         add_dirs: Additional directory paths to include via --add-dir / --include-directories.
         mode: Agent-specific permission/sandbox mode override (e.g. "plan", "acceptEdits").
         research: If True, enable web search and file write permissions for research tasks.
+        entity_id: Entity group this session belongs to (for entity-level agent runs).
 
     Returns:
         Tuple of (session_id, CodingAgent instance).
@@ -93,15 +97,17 @@ async def start_session(
 
     session_id = f"sess_{uuid.uuid4().hex[:12]}"
 
-    # Persist session to SQLite (including add_dirs, session_type, and permission_mode for resumption)
+    # Persist session to SQLite (including add_dirs, session_type, permission_mode, and entity_id)
     session_type = "research" if research else "code"
     db = await get_db()
     await db.execute(
         """INSERT INTO workspace_sessions
-           (session_id, card_id, agent_type, status, repo_path, initial_prompt, add_dirs, session_type, permission_mode)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           (session_id, card_id, agent_type, status, repo_path, initial_prompt,
+            add_dirs, session_type, permission_mode, entity_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (session_id, card_id, agent_type.value, SessionStatus.STARTING.value,
-         repo_path, prompt, json.dumps(add_dirs) if add_dirs else None, session_type, mode),
+         repo_path, prompt, json.dumps(add_dirs) if add_dirs else None,
+         session_type, mode, entity_id),
     )
     await db.commit()
 
@@ -113,6 +119,8 @@ async def start_session(
     )
     _active_sessions[session_id] = agent
     _card_sessions[card_id] = session_id
+    if entity_id:
+        _entity_sessions[entity_id] = session_id
 
     # Update status to running
     await _update_session_status(session_id, SessionStatus.RUNNING)
@@ -121,6 +129,7 @@ async def start_session(
         "session_started",
         session_id=session_id,
         card_id=card_id,
+        entity_id=entity_id,
         agent_type=agent_type.value,
         add_dirs_count=len(add_dirs) if add_dirs else 0,
     )
@@ -130,6 +139,36 @@ async def start_session(
 def get_session(session_id: str) -> CodingAgent | None:
     """Get an active agent session by ID."""
     return _active_sessions.get(session_id)
+
+
+async def get_session_for_entity(entity_id: str) -> dict | None:
+    """Find the most recent non-terminal session for an entity.
+
+    Returns a dict with session_id, status, cc_session_id, etc. or None.
+    """
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        """SELECT session_id, card_id, status, cc_session_id, repo_path,
+                  add_dirs, session_type, permission_mode, agent_type
+           FROM workspace_sessions
+           WHERE entity_id = ? AND status NOT IN ('completed', 'failed', 'cancelled')
+           ORDER BY started_at DESC LIMIT 1""",
+        (entity_id,),
+    )
+    if not rows:
+        return None
+    row = rows[0]
+    return {
+        "session_id": row["session_id"],
+        "card_id": row["card_id"],
+        "status": row["status"],
+        "cc_session_id": row["cc_session_id"],
+        "repo_path": row["repo_path"],
+        "add_dirs": json.loads(row["add_dirs"]) if row["add_dirs"] else [],
+        "session_type": row["session_type"],
+        "permission_mode": row["permission_mode"],
+        "agent_type": row["agent_type"],
+    }
 
 
 async def send_input(session_id: str, text: str) -> None:
@@ -164,10 +203,14 @@ async def cancel_session(session_id: str) -> None:
         await agent.cancel()
         await _update_session_status(session_id, SessionStatus.CANCELLED)
         _active_sessions.pop(session_id, None)
-        # Clean up reverse mapping
+        # Clean up reverse mappings
         for cid, sid in list(_card_sessions.items()):
             if sid == session_id:
                 _card_sessions.pop(cid, None)
+                break
+        for eid, sid in list(_entity_sessions.items()):
+            if sid == session_id:
+                _entity_sessions.pop(eid, None)
                 break
 
 
@@ -196,10 +239,14 @@ async def complete_session(
     )
     await db.commit()
     _active_sessions.pop(session_id, None)
-    # Clean up reverse mapping
+    # Clean up reverse mappings
     for cid, sid in list(_card_sessions.items()):
         if sid == session_id:
             _card_sessions.pop(cid, None)
+            break
+    for eid, sid in list(_entity_sessions.items()):
+        if sid == session_id:
+            _entity_sessions.pop(eid, None)
             break
 
 

@@ -52,10 +52,10 @@ async def execute_action(
 
     # 2. Validate status — allow execution from agent_running too, so users
     # can invoke actions while an agent session is active on the card.
-    if current_status not in ("pending", "ready", "requires_approval", "failed", "agent_running"):
+    if current_status not in ("pending", "ready", "failed", "agent_running"):
         raise ValueError(
             f"Card {card_id} status is '{current_status}', "
-            "must be 'pending', 'ready', 'requires_approval', 'failed', or 'agent_running' to execute"
+            "must be 'pending', 'ready', 'failed', or 'agent_running' to execute"
         )
 
     # 3. Find the specific action from suggested_actions JSON

@@ -130,7 +130,7 @@
 			card_count: 1,
 			top_priority: card.priority as CardGroup['top_priority'],
 			latest_at: card.created_at ?? '',
-			has_pending: ['pending', 'ready', 'requires_approval'].includes(card.status),
+			has_pending: ['pending', 'ready'].includes(card.status),
 			cards: [card],
 			context_id: card.context_id,
 		};
@@ -580,7 +580,7 @@
 						if (payload.header) card.header = payload.header;
 						if (payload.summary) card.summary = payload.summary;
 						if (payload.selected_action_id) card.selected_action_id = payload.selected_action_id;
-						group.has_pending = group.cards.some((c) => c.status === 'pending' || c.status === 'ready' || c.status === 'requires_approval');
+						group.has_pending = group.cards.some((c) => c.status === 'pending' || c.status === 'ready');
 						if (wasAgent && payload.status !== 'agent_running') {
 							scheduleReload();
 						}
@@ -800,6 +800,29 @@
 		sessionStorage.removeItem(SELECTED_GROUP_KEY);
 	}
 
+	// Run Agent at entity level — invoked from GroupSummaryDetail or CardDetail (single-card entities)
+	let runningAgentEntityId = $state<string | null>(null);
+	async function handleRunEntityAgent(entityId: string) {
+		runningAgentEntityId = entityId;
+		try {
+			await engineApi.runEntityAgent(entityId);
+		} catch (e: any) {
+			const detail = e?.body?.detail || e?.message || 'Failed to start agent';
+			error = detail;
+		} finally {
+			runningAgentEntityId = null;
+		}
+	}
+
+	// Check if selected card is a single-card entity (not part of a multi-card group)
+	const selectedCardIsSingleEntity = $derived.by(() => {
+		if (!selectedCard) return false;
+		const entityId = selectedCard.entity_id;
+		if (!entityId) return false;
+		const group = groups.find((g) => g.entity_id === entityId);
+		return group ? group.card_count === 1 : true;
+	});
+
 	function handleDelete(cardId: string) {
 		if (selectedCard?.card_id === cardId) {
 			selectedCard = null;
@@ -863,9 +886,6 @@
 	}
 
 	const totalCards = $derived(groups.reduce((sum, g) => sum + g.card_count, 0));
-	const requiresApprovalCount = $derived(
-		groups.reduce((sum, g) => sum + g.cards.filter((c) => c.status === 'requires_approval').length, 0)
-	);
 	const agentRunningCount = $derived(
 		groups.reduce((sum, g) => sum + g.cards.filter((c) => c.status === 'agent_running').length, 0)
 	);
@@ -918,7 +938,7 @@
 					cards: matching,
 					card_count: matching.length,
 					has_pending: matching.some(
-						(c) => c.status === 'pending' || c.status === 'ready' || c.status === 'requires_approval'
+						(c) => c.status === 'pending' || c.status === 'ready'
 					)
 				};
 			})
@@ -1277,12 +1297,6 @@
 						{failedCount} failed
 					</span>
 				{/if}
-				{#if requiresApprovalCount > 0}
-					<span class="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-400">
-						<span class="h-1.5 w-1.5 rounded-full bg-violet-400"></span>
-						{requiresApprovalCount} {requiresApprovalCount === 1 ? 'needs' : 'need'} approval
-					</span>
-				{/if}
 			</div>
 		{/if}
 
@@ -1372,7 +1386,7 @@
 					<div class="mb-3">
 						<div class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Status</div>
 						<div class="space-y-0.5">
-							{#each [['pending', 'Processing'], ['ready', 'Ready'], ['requires_approval', 'Needs Approval'], ['agent_running', 'Running'], ['failed', 'Failed'], ['done', 'Done'], ['dismissed', 'Dismissed']] as [value, label]}
+							{#each [['pending', 'Processing'], ['ready', 'Ready'], ['agent_running', 'Running'], ['failed', 'Failed'], ['done', 'Done'], ['dismissed', 'Dismissed']] as [value, label]}
 								<button
 									class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors hover:bg-surface-700
 										{$feedFilters.statusFilters.includes(value) ? 'text-laya-orange' : 'text-surface-300'}"
@@ -1656,8 +1670,11 @@
 			{#if loading && groups.length === 0}
 				<div class="py-12 text-center text-surface-400">Loading cards...</div>
 			{:else if error}
-				<div class="rounded-lg border border-red-800 bg-red-900/30 px-4 py-3 text-sm text-red-300">
-					{error}
+				<div class="flex items-start gap-2 rounded-lg border border-red-800 bg-red-900/30 px-4 py-3 text-sm text-red-300">
+					<span class="flex-1">{error}</span>
+					<button class="shrink-0 text-red-400 hover:text-red-200" onclick={() => (error = null)} aria-label="Dismiss error">
+						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+					</button>
 				</div>
 			{:else if groups.length === 0}
 				<div class="py-12 text-center text-surface-500">
@@ -1825,9 +1842,19 @@
 								generatingEntityIds = new Set(generatingEntityIds);
 							}}
 							onshowrelated={handleShowRelated}
+							onrunagent={handleRunEntityAgent}
 						/>
 					{:else if selectedCard}
-						<CardDetail card={selectedCard} onclose={closeDetailPanel} ondismiss={dismissActiveCard} ongotocard={gotoCard} onlink={handleLinkCard} onshowrelated={handleShowRelated} onunlinked={handleUnlinked} />
+						<CardDetail
+							card={selectedCard}
+							onclose={closeDetailPanel}
+							ondismiss={dismissActiveCard}
+							ongotocard={gotoCard}
+							onlink={handleLinkCard}
+							onshowrelated={handleShowRelated}
+							onunlinked={handleUnlinked}
+							onrunagent={selectedCardIsSingleEntity ? handleRunEntityAgent : undefined}
+						/>
 					{:else}
 						<div class="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-surface-700 text-surface-600">
 							<svg class="mb-2 h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">

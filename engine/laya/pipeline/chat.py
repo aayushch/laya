@@ -277,10 +277,15 @@ async def process_chat_message(
             name=f"chat_title_{conversation_id}",
         )
 
-    # Step 1: Hybrid retrieval
-    context = await _retrieve_context(user_message, space_id=space_id)
+    # Skip broad retrieval when card_context is provided — the injected card
+    # context already contains everything the LLM needs, and retrieval would
+    # pull in unrelated cards/events that dilute the focused context.
+    if card_context:
+        context = {"context_text": "", "result_count": 0, "signals_used": []}
+    else:
+        context = await _retrieve_context(user_message, space_id=space_id)
 
-    # Step 2: Load recent chat history (scoped to conversation)
+    # Load recent chat history (scoped to conversation)
     history_rows = await db.execute_fetchall(
         """SELECT role, content FROM chat_messages
            WHERE conversation_id = ?
@@ -292,7 +297,7 @@ async def process_chat_message(
         for row in reversed(history_rows)
     ]
 
-    # Step 3: Generate response with tool loop
+    # Generate response with tool loop
     from laya.config import get_self_user
     user_identity = get_self_user()
     messages = build_chat_messages(
@@ -467,8 +472,12 @@ async def process_chat_message_streaming(
             name=f"chat_title_{conversation_id}",
         )
 
-    # Hybrid retrieval
-    context = await _retrieve_context(user_message, space_id=space_id)
+    # Skip broad retrieval when card_context is provided — the injected card
+    # context already contains everything the LLM needs.
+    if card_context:
+        context = {"context_text": "", "result_count": 0, "signals_used": []}
+    else:
+        context = await _retrieve_context(user_message, space_id=space_id)
 
     # Chat history (scoped to conversation)
     history_rows = await db.execute_fetchall(

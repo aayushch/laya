@@ -127,14 +127,13 @@
 
 	// Status priority for group color: highest-priority status wins
 	const statusPriority: string[] = [
-		'pending', 'awaiting_input', 'agent_running', 'failed', 'requires_approval',
+		'pending', 'awaiting_input', 'agent_running', 'failed',
 		'ready', 'done', 'dismissed', 'archived'
 	];
 
 	const glassGroupStatusStyle: Record<string, string> = {
 		pending:            'glass-card bg-amber-950/45  border-transparent  hover:border-amber-700/30  card-pulse-amber',
 		ready:              'glass-card bg-amber-950/45  border-transparent  hover:border-amber-700/30',
-		requires_approval:  'glass-card bg-sky-950/45 border-transparent hover:border-sky-700/30',
 		done:               'glass-card bg-emerald-950/40 border-transparent hover:border-emerald-700/25',
 		failed:             'glass-card bg-rose-950/50   border-transparent   hover:border-rose-700/35',
 		dismissed:          'glass-card bg-surface-800/30 border-transparent hover:border-surface-600/30',
@@ -146,7 +145,6 @@
 	const solidGroupStatusStyle: Record<string, string> = {
 		pending:            'bg-amber-950/55  border-transparent  hover:border-amber-700/45  card-pulse-amber',
 		ready:              'bg-amber-950/55  border-transparent  hover:border-amber-700/45',
-		requires_approval:  'bg-sky-950/55 border-transparent hover:border-sky-700/40',
 		done:               'bg-emerald-950/50 border-transparent hover:border-emerald-700/35',
 		failed:             'bg-rose-950/60   border-transparent   hover:border-rose-700/50',
 		dismissed:          'bg-surface-800/40 border-transparent hover:border-surface-600/40',
@@ -262,14 +260,13 @@
 	const isDimmed = $derived(hasSelection && !isGroupSelected);
 
 	// Bulk action menu visibility — only show actions that apply to at least one card
-	const canApproveAll = $derived(group.cards.some(c => c.status === 'requires_approval'));
 	const canCompleteAll = $derived(group.cards.some(c => c.status !== 'done' && !['dismissed', 'archived', 'failed'].includes(c.status)));
 	const canDismissAll = $derived(group.cards.some(c => c.status !== 'dismissed' && !['archived', 'done', 'failed'].includes(c.status)));
 	const canArchiveAll = $derived(group.cards.some(c => c.status !== 'archived'));
 	const canReopenAll = $derived(group.cards.some(c => ['dismissed', 'archived', 'done'].includes(c.status)));
 	const canUnarchiveAll = $derived(group.cards.some(c => c.status === 'archived'));
 
-	const hasAnyAction = $derived(canApproveAll || canCompleteAll || canDismissAll || canArchiveAll || canReopenAll || canUnarchiveAll);
+	const hasAnyAction = $derived(canCompleteAll || canDismissAll || canArchiveAll || canReopenAll || canUnarchiveAll);
 
 	function toggle() {
 		expanded = !expanded;
@@ -290,7 +287,7 @@
 		groupMenuOpen = false;
 	}
 
-	async function bulkAction(action: 'approve' | 'complete' | 'dismiss' | 'archive' | 'reopen' | 'unarchive', e: Event) {
+	async function bulkAction(action: 'complete' | 'dismiss' | 'archive' | 'reopen' | 'unarchive', e: Event) {
 		e.stopPropagation();
 		groupMenuOpen = false;
 		bulkActionRunning = true;
@@ -298,11 +295,6 @@
 			const promises: Promise<unknown>[] = [];
 			for (const card of group.cards) {
 				switch (action) {
-					case 'approve':
-						if (card.status === 'requires_approval') {
-							promises.push(engineApi.approveAgent(card.card_id).then(() => { card.status = 'agent_running'; }));
-						}
-						break;
 					case 'complete':
 						if (card.status !== 'done' && !['dismissed', 'archived', 'failed'].includes(card.status)) {
 							promises.push(engineApi.markCardDone(card.card_id).then(() => { card.status = 'done'; }));
@@ -564,12 +556,6 @@
 		style="top: {menuPos.top}px; right: {menuPos.right}px;"
 		role="menu"
 	>
-		{#if canApproveAll}
-			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-violet-400" role="menuitem" onclick={(e) => bulkAction('approve', e)}>
-				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-				Approve All
-			</button>
-		{/if}
 		{#if canCompleteAll}
 			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-green-400" role="menuitem" onclick={(e) => bulkAction('complete', e)}>
 				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>

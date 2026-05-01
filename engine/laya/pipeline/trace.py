@@ -1041,7 +1041,7 @@ def _build_clusters(
         platforms = list({c.entity_id.split(":")[0] for c in cards if c.entity_id and ":" in c.entity_id})
         dates = [c.created_at for c in cards if c.created_at]
         pending = sum(
-            1 for c in cards if c.status in ("pending", "ready", "requires_approval", "awaiting_input")
+            1 for c in cards if c.status in ("pending", "ready", "awaiting_input")
         )
 
         latest_card = cards[-1]

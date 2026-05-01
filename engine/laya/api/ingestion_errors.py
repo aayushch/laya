@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 import structlog
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from laya.db.sqlite import get_db
@@ -112,6 +112,11 @@ class IngestionErrorRow(BaseModel):
     occurred_at: str
     acknowledged_at: Optional[str]
     resolved_at: Optional[str]
+    cleared_at: Optional[str]
+
+
+class ClearIngestionErrorsResponse(BaseModel):
+    cleared: int
 
 
 # ── endpoints ────────────────────────────────────────────────────────────────
@@ -272,10 +277,15 @@ async def list_ingestion_errors(
     space_id: Optional[str] = Query(default=None),
     source_id: Optional[str] = Query(default=None),
     unacknowledged_only: bool = Query(default=False),
+    include_cleared: bool = Query(default=False),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> dict:
-    """List captured ingestion errors. Used by the surfacing layer."""
+    """List captured ingestion errors. Used by the surfacing layer.
+
+    Cleared (soft-deleted) rows are excluded by default; pass
+    `include_cleared=true` to see them.
+    """
     db = await get_db()
 
     where: list[str] = []
@@ -288,6 +298,8 @@ async def list_ingestion_errors(
         params.append(source_id)
     if unacknowledged_only:
         where.append("acknowledged_at IS NULL")
+    if not include_cleared:
+        where.append("cleared_at IS NULL")
 
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
     params.extend([limit, offset])
@@ -302,6 +314,56 @@ async def list_ingestion_errors(
         params,
     )
     return {"errors": [_row_to_model(r).model_dump() for r in rows]}
+
+
+@router.post("/ingestion-errors/{error_id}/clear", response_model=ClearIngestionErrorsResponse)
+async def clear_ingestion_error(error_id: str) -> ClearIngestionErrorsResponse:
+    """Soft-delete a single ingestion error so it stops appearing in the UI."""
+    db = await get_db()
+    cursor = await db.execute(
+        "UPDATE ingestion_errors SET cleared_at = ? WHERE error_id = ? AND cleared_at IS NULL",
+        (datetime.now(timezone.utc).isoformat(), error_id),
+    )
+    await db.commit()
+    if cursor.rowcount == 0:
+        # Already cleared or not found — surface 404 only when truly missing.
+        existing = await db.execute_fetchall(
+            "SELECT 1 FROM ingestion_errors WHERE error_id = ?", (error_id,)
+        )
+        if not existing:
+            raise HTTPException(status_code=404, detail="ingestion error not found")
+    return ClearIngestionErrorsResponse(cleared=cursor.rowcount)
+
+
+@router.post("/ingestion-errors/clear-all", response_model=ClearIngestionErrorsResponse)
+async def clear_all_ingestion_errors(
+    space_id: Optional[str] = Query(default=None),
+    source_id: Optional[str] = Query(default=None),
+) -> ClearIngestionErrorsResponse:
+    """Soft-delete all currently-visible ingestion errors.
+
+    Filters mirror the listing endpoint so the UI can clear exactly the rows
+    it just rendered. Already-cleared rows are not touched.
+    """
+    db = await get_db()
+    where: list[str] = ["cleared_at IS NULL"]
+    params: list[Any] = []
+    if space_id is not None:
+        where.append("space_id = ?")
+        params.append(space_id)
+    if source_id is not None:
+        where.append("source_id = ?")
+        params.append(source_id)
+
+    where_sql = " AND ".join(where)
+    params.insert(0, datetime.now(timezone.utc).isoformat())
+
+    cursor = await db.execute(
+        f"UPDATE ingestion_errors SET cleared_at = ? WHERE {where_sql}",
+        params,
+    )
+    await db.commit()
+    return ClearIngestionErrorsResponse(cleared=cursor.rowcount)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -348,4 +410,5 @@ def _row_to_model(row: Any) -> IngestionErrorRow:
         occurred_at=row["occurred_at"],
         acknowledged_at=row["acknowledged_at"],
         resolved_at=row["resolved_at"],
+        cleared_at=row["cleared_at"],
     )

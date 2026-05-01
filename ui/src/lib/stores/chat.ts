@@ -22,3 +22,9 @@ export const chatListOpen = writable(true);
 
 /** Card ID to navigate to in the feed (set by chat card links, consumed by feed page) */
 export const pendingCardId = writable<string | null>(null);
+
+/** Card context string for system prompt injection (hidden from user input) */
+export const chatCardContext = writable<string | null>(null);
+
+/** Card IDs for conversation anchoring (used with card-context chats) */
+export const chatCardIds = writable<string[] | null>(null);
