@@ -159,6 +159,7 @@ export const engineApi = {
 		bookmarked?: boolean;
 		has_workspace?: boolean;
 		related_entity_ids?: string;
+		search?: string;
 	}) => {
 		const searchParams = new URLSearchParams();
 		if (params?.status) searchParams.set('status', params.status);
@@ -171,6 +172,7 @@ export const engineApi = {
 		if (params?.bookmarked) searchParams.set('bookmarked', 'true');
 		if (params?.has_workspace) searchParams.set('has_workspace', 'true');
 		if (params?.related_entity_ids) searchParams.set('related_entity_ids', params.related_entity_ids);
+		if (params?.search) searchParams.set('search', params.search);
 		searchParams.set('tz', Intl.DateTimeFormat().resolvedOptions().timeZone);
 		const qs = searchParams.toString();
 		return request<GroupedCardsResponse>(`/cards/grouped${qs ? '?' + qs : ''}`);

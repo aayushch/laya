@@ -2,7 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
 	import { lastMessage } from '$lib/stores/websocket';
-	import { feedFilters, feedDate, feedPrevDate, feedNextDate, localToday } from '$lib/stores/feedFilters';
+	import { feedFilters, feedDate, feedPrevDate, feedNextDate, localToday, allDaysSavedDate } from '$lib/stores/feedFilters';
 	import type { ActionCard, CardGroup, GroupSummary, DaySummary } from '$lib/api/types';
 	import CardGroupComponent from '$lib/components/feed/CardGroup.svelte';
 	import ActionCardComponent from '$lib/components/feed/ActionCard.svelte';
@@ -325,11 +325,12 @@
 				sort: f.sortBy,
 				sort_asc: f.sortAsc || undefined,
 				show_archived: f.showArchived || undefined,
-				date: (f.showBookmarked || f.showRelated) ? undefined : $feedDate,
+				date: (f.showBookmarked || f.showRelated || f.showAllDaysSearch) ? undefined : $feedDate,
 				space_id: f.spaceFilter.length ? f.spaceFilter.join(',') : undefined,
 				bookmarked: f.showBookmarked || undefined,
 				related_entity_ids: f.showRelated ? f.relatedEntityIds.join(',') : undefined,
-				has_workspace: f.hasWorkspace || undefined
+				has_workspace: f.hasWorkspace || undefined,
+				search: f.showAllDaysSearch && searchQuery.trim() ? searchQuery.trim() : undefined
 			});
 			if (id !== _fetchId) return;
 
@@ -411,6 +412,22 @@
 		$feedDate;
 		$feedFilters;
 		loadGroups();
+	});
+
+	// Re-query backend when search changes in all-days mode
+	$effect(() => {
+		if ($feedFilters.showAllDaysSearch) {
+			searchQuery;
+			scheduleReload();
+		}
+	});
+
+	// Exit all-days search when search is cleared
+	$effect(() => {
+		if (searchTerms.length === 0 && $feedFilters.showAllDaysSearch) {
+			$feedDate = $allDaysSavedDate;
+			$feedFilters = { ...$feedFilters, showAllDaysSearch: false };
+		}
 	});
 
 	// Load summary when date changes while modal is open
@@ -1284,6 +1301,14 @@
 						<svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
 						{filteredGroups.length} shown
 					</span>
+				{/if}
+				{#if searchTerms.length > 0 && !$feedFilters.showAllDaysSearch && !$feedFilters.showBookmarked && !$feedFilters.showRelated}
+					<button
+						class="text-[10px] font-medium text-laya-orange hover:underline"
+						onclick={() => { $allDaysSavedDate = $feedDate; $feedFilters = { ...$feedFilters, showAllDaysSearch: true }; }}
+					>
+						Search all days
+					</button>
 				{/if}
 				{#if agentRunningCount > 0}
 					<span class="inline-flex items-center gap-1 rounded-full bg-laya-coral/10 px-2 py-0.5 text-[10px] font-medium text-laya-coral">
