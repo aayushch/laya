@@ -171,6 +171,7 @@ async def get_grouped_cards(
     bookmarked: bool = False,
     has_workspace: bool = False,
     related_entity_ids: str | None = None,
+    search: str | None = None,
 ) -> GroupedCardsResponse:
     """Return cards grouped by entity_id, filtered by date and space."""
     db = await get_db()
@@ -240,6 +241,21 @@ async def get_grouped_cards(
         conditions.append("c.has_workspace = 1")
     if not show_archived:
         conditions.append("c.status != 'archived'")
+    if search:
+        terms = [t for t in search.lower().split() if t]
+        search_fields = [
+            "c.header", "c.summary", "c.category",
+            "c.entity_id", "c.source_ref",
+            "e.actor_name", "e.actor_email",
+            "s.name",
+            "c.persona", "c.priority", "c.status",
+            "c.intelligence", "c.staged_output", "c.suggested_actions",
+            "e.subject_title", "e.source_platform",
+        ]
+        for term in terms:
+            like_val = f"%{term}%"
+            conditions.append(f"({' OR '.join(f'{f} LIKE ?' for f in search_fields)})")
+            params.extend([like_val] * len(search_fields))
     where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
     rows = await db.execute_fetchall(

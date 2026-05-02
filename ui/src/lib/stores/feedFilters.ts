@@ -15,6 +15,8 @@ export interface FeedFilters {
 	relatedEntityIds: string[];
 	relatedSourceHeader: string;
 	relatedSourceCardId: string;
+	// Transient (not persisted) — search across all days mode
+	showAllDaysSearch: boolean;
 }
 
 /** Local date in YYYY-MM-DD format (respects the user's timezone, unlike toISOString which is UTC). */
@@ -28,6 +30,9 @@ export const feedDate = writable<string>(localToday());
 export const feedPrevDate = writable<string | null>(null);
 export const feedNextDate = writable<string | null>(null);
 
+/** Saved date before entering all-days search mode (restored on exit). */
+export const allDaysSavedDate = writable<string>('');
+
 const defaults: FeedFilters = {
 	statusFilters: [],
 	priorityFilters: [],
@@ -40,7 +45,8 @@ const defaults: FeedFilters = {
 	showRelated: false,
 	relatedEntityIds: [],
 	relatedSourceHeader: '',
-	relatedSourceCardId: ''
+	relatedSourceCardId: '',
+	showAllDaysSearch: false
 };
 
 export const feedFilters = writable<FeedFilters>({ ...defaults });
@@ -71,7 +77,8 @@ export async function loadFeedFilters(): Promise<void> {
 				showRelated: false,
 				relatedEntityIds: [],
 				relatedSourceHeader: '',
-				relatedSourceCardId: ''
+				relatedSourceCardId: '',
+				showAllDaysSearch: false
 			});
 		}
 		_loaded = true;
@@ -88,7 +95,7 @@ export function saveFeedFilters(): void {
 	_saveTimer = setTimeout(async () => {
 		_saveTimer = null;
 		try {
-			const { showRelated, relatedEntityIds, relatedSourceHeader, relatedSourceCardId, ...persistable } = get(feedFilters);
+			const { showRelated, relatedEntityIds, relatedSourceHeader, relatedSourceCardId, showAllDaysSearch, ...persistable } = get(feedFilters);
 			await engineApi.updateSettings({ feed_preferences: persistable } as Partial<import('$lib/api/types').Settings>);
 		} catch {
 			// Silently fail — don't disrupt UX
