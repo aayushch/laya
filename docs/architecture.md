@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-Laya is a **local-first AI command centre** for professionals. It intercepts events from a user's professional tools (Jira, Bitbucket, Slack, Gmail, Calendar), performs autonomous research and action-staging using LLM-powered agents, and presents the user with ready-to-approve **Action Cards** in a desktop application.
+Laya is a **local-first AI command centre** for professionals. It intercepts events from a user's professional tools (Jira, Bitbucket, Slack, Gmail, Calendar, GitHub, Linear, Outlook, Notion), performs autonomous research and action-staging using LLM-powered agents, and presents the user with ready-to-approve **Action Cards** in a desktop application.
 
 **Core Principle:** By the time a human opens a notification, Laya has already researched context, drafted the response/fix/email, and packaged it into an Action Card for one-click approval.
 
@@ -101,7 +101,7 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |  |  GET  /events/dead     (failed events for retry)           |  |    |
 |  |  |  POST /actions/approve (receives from UI)                  |  |    |
 |  |  |  GET  /cards           (UI fetches feed)                   |  |    |
-|  |  |  POST /cards/:id/start-research (launch research session)  |  |    |
+|  |  |  POST /cards/run-agent (launch agent on card or entity)     |  |    |
 |  |  |  GET  /dashboard       (UI fetches stats)                  |  |    |
 |  |  |  POST /trace           (Coherence entity search)           |  |    |
 |  |  |  POST /egress/execute  (outbound actions)                  |  |    |
@@ -119,6 +119,7 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |  | INGEST -> RULES -> ROUTER -> WORKER(s) -> STAGER -> EMIT   |  |    |
 |  |  |                                                    |       |  |    |
 |  |  |                                              CONTEXT ASSOC |  |    |
+|  |  |                                              GROUP SUMMARY |  |    |
 |  |  |                                              TRACE -> LEARN|  |    |
 |  |  |                                              CONTEXT LEARN |  |    |
 |  |  |                                              OMNI          |  |    |
@@ -131,10 +132,13 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |  |           +----------------------+                         |  |    |
 |  |  | *Note: LiteLLM can be configured with self-hosted models   |  |    |
 |  |  |                                                            |  |    |
-|  |  | Workers:                                                   |  |    |
+|  |  | Workers (6 Personas):                                       |  |    |
 |  |  |   ENGINEER -> Coding Agent (Claude Code/Gemini/Codex PTY)  |  |    |
 |  |  |   COMMS    -> LLM drafting with memory context             |  |    |
 |  |  |   OPS      -> Calendar/event aggregation + LLM synthesis   |  |    |
+|  |  |   FINANCE  -> Invoice/expense/budget processing            |  |    |
+|  |  |   HR       -> People ops, onboarding, leave requests       |  |    |
+|  |  |   SALES    -> Pipeline/deal/prospect tracking              |  |    |
 |  |  +------------------------------------------------------------+  |    |
 |  |                                                                  |    |
 |  |  +- Internal Tools (Python functions) ------------------------+  |    |
@@ -144,9 +148,9 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |  +------------------------------------------------------------+  |    |
 |  |                                                                  |    |
 |  |  +- Egress Module --------------------------------------------+  |    |
-|  |  |  Outbound action execution for 8 platforms                 |  |    |
+|  |  |  Outbound action execution for 9 platforms                 |  |    |
 |  |  |  Gmail | Slack | Jira | GitHub | Bitbucket | Calendar      |  |    |
-|  |  |  Linear | Outlook | Connection broker | OAuth mgmt         |  |    |
+|  |  |  Linear | Outlook | Notion | Connection broker | OAuth mgmt|  |    |
 |  |  +------------------------------------------------------------+  |    |
 |  |                                                                  |    |
 |  |  +- Scheduled Jobs -------------------------------------------+  |    |
@@ -400,8 +404,8 @@ EXECUTE
 CONNECTION BROKER
   - Manage OAuth credentials
   - Health check connections
-  - 8 platforms: Gmail, Slack, Jira, GitHub,
-    Bitbucket, Calendar, Linear, Outlook
+  - 9 platforms: Gmail, Slack, Jira, GitHub,
+    Bitbucket, Calendar, Linear, Outlook, Notion
 ```
 
 ### Omni Pipeline (Rolling Summary)
@@ -476,36 +480,43 @@ CONTEXT LEARNING (periodic, every 6 hours)
   - Injected into future confirmation prompts
 ```
 
-### Card Research Flow
+### Run Agent Flow
 
-Any card can be further investigated with an on-demand research session:
+Any card or entity group can have a coding agent run against it:
 
 ```
-User clicks "Start Research" on card
+User presses Ctrl+A or clicks "Run Agent"
        |
        v
-BUILD RESEARCH PROMPT
-  - Card header, summary, intelligence points
-  - Source event body and metadata
-  - Semantic context from ChromaDB
+AGENT DIALOG
+  - Custom prompt (what to investigate/code/research)
+  - Agent selection (Claude Code / Gemini CLI / Codex)
+  - Working directory (repo path or ~/.laya/tmp/research/<card_id>/)
+  - Additional directories
        |
        v
-SPAWN AGENT (Claude Code)
-  - research=True flag
-  - Scoped permissions:
-    - Write: ~/.laya/tmp/research/<card_id>/ only
-    - WebFetch: unlimited (for web research)
-    - Read: full filesystem
+POST /cards/run-agent  OR  POST /entity/{id}/run-agent
+  - Creates event + card with status=agent_running
+  - For entity-level: writes CONTEXT.md with group summary + card details
+  - session_type: "research" (sandboxed) or "code" (repo-based)
        |
        v
-STREAM PROGRESS
-  - Agent output → workspace timeline via WebSocket
-  - Live updates visible in card detail
+SPAWN AGENT (background task)
+  - PTY subprocess with configured agent CLI
+  - Streams events to workspace_events table + WebSocket
        |
        v
-REPORT FINDINGS
-  - Structured output parsed on completion
-  - Results attached to card workspace
+INTERACTIVE SESSION
+  - Agent may ask questions → status=awaiting_input
+  - User answers via POST /workspace/{session_id}/answer
+  - User can dismiss questions or resume with new prompt
+  - User can browse research output files
+       |
+       v
+SESSION COMPLETE
+  - Findings stored in session (findings_json)
+  - Card transitions to ready status
+  - Session can be resumed with POST /workspace/{session_id}/resume
 ```
 
 ### Dead Event Recovery

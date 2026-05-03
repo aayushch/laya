@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import ProcessingRulesEditor from './ProcessingRulesEditor.svelte';
 	import type { Rule, RuleCondition, SimpleCondition, ClassificationRule } from '$lib/api/types';
 
 	const operators: SimpleCondition['operator'][] = ['equals', 'not_equals', 'contains', 'starts_with', 'ends_with', 'in'];
@@ -578,4 +579,7 @@
 			{/if}
 		{/if}
 	</div>
+
+	<!-- Processing Rules -->
+	<ProcessingRulesEditor />
 {/if}

@@ -18,7 +18,7 @@ laya/
 |   |   |-- scheduler.py                  # Background scheduler (briefings, housekeeping)
 |   |   |-- http_client.py                # Shared HTTP client
 |   |   |
-|   |   |-- api/                          # HTTP + WebSocket endpoints (23 routers)
+|   |   |-- api/                          # HTTP + WebSocket endpoints (24 routers)
 |   |   |   |-- __init__.py
 |   |   |   |-- events.py                 # POST /events (receives from n8n)
 |   |   |   |-- cards_api.py              # Card CRUD, grouping, archive/reopen, bookmarks
@@ -56,21 +56,26 @@ laya/
 |   |   |   |-- context_grouping.py       # Context association: semantic grouping across entity boundaries
 |   |   |   |-- context_learn.py          # Context learning: extract grouping rules from user corrections
 |   |   |   |-- entity_resolution.py      # Cross-platform entity linking with context awareness
+|   |   |   |-- group_summary.py           # Rolling LLM summaries for multi-card entity groups
+|   |   |   |-- processing_rules.py       # Processing rules evaluation
 |   |   |   |-- omni.py                   # Omni: rolling summary, incremental updates, resynthesis
 |   |   |   |-- budget.py                 # LLM cost tracking by feature and pipeline step
 |   |   |   |-- chat.py                   # Chat assistant pipeline
-|   |   |   |-- workers.py                # Multi-persona LLM workers
+|   |   |   |-- workers.py                # Multi-persona LLM workers (6 personas)
 |   |   |   |-- space_resolution.py       # Space/source identification
 |   |   |   |-- feedback.py               # Learning loop (approval pattern tracking)
 |   |   |   |-- summarize.py              # Daily briefing generation
 |   |   |   |-- briefing.py               # Briefing content assembly
 |   |   |
-|   |   |-- workers/                      # Persona workers
+|   |   |-- workers/                      # Persona workers (6 personas)
 |   |   |   |-- __init__.py
 |   |   |   |-- base.py                   # BaseWorker interface
 |   |   |   |-- engineer.py               # ENGINEER worker (coding agent orchestration)
 |   |   |   |-- comms.py                  # COMMS worker (draft replies)
 |   |   |   |-- ops.py                    # OPS worker (calendar prep, briefings)
+|   |   |   |-- finance.py                # FINANCE worker (invoices, expenses, budgets)
+|   |   |   |-- hr.py                     # HR worker (people ops, onboarding, leave)
+|   |   |   |-- sales.py                  # SALES worker (pipeline, deals, prospects)
 |   |   |
 |   |   |-- agents/                       # Coding agent adapters
 |   |   |   |-- __init__.py
@@ -84,13 +89,16 @@ laya/
 |   |   |   |-- __init__.py
 |   |   |   |-- client.py                 # LiteLLM wrapper with model selection, retries, space overrides
 |   |   |   |-- providers.py              # Custom model provider management
-|   |   |   |-- prompts/                  # Prompt templates (router, stager, engineer, comms, ops, omni, research, context_learner, etc.)
+|   |   |   |-- prompts/                  # Prompt templates (router, stager, engineer, comms, ops, finance, hr, sales, omni, research, group_summary, context_learner, etc.)
 |   |   |   |-- tools/                    # MCP tool definitions
 |   |   |       |-- definitions.py        # Tool schemas
 |   |   |       |-- card_tools.py         # Card query tools
+|   |   |       |-- contact_tools.py      # Contact search/lookup tools
+|   |   |       |-- constants.py          # Search and pipeline limit constants
 |   |   |       |-- entity_tools.py       # Entity lookup/link tools
 |   |   |       |-- event_tools.py        # Event query tools
 |   |   |       |-- search_tools.py       # Memory/semantic search tools
+|   |   |       |-- settings_tools.py     # Settings management tools
 |   |   |       |-- executor.py           # Tool execution
 |   |   |
 |   |   |-- mcp/                          # Model Context Protocol server
@@ -104,7 +112,7 @@ laya/
 |   |   |   |-- chromadb_store.py         # ChromaDB vector store (embedded PersistentClient)
 |   |   |   |-- chunking.py              # Document chunking for embeddings
 |   |   |   |-- migrate.py               # Migration runner (check version, apply pending)
-|   |   |   |-- migrations/              # 46 numbered SQL migration files
+|   |   |   |-- migrations/              # 59 numbered SQL migration files
 |   |   |       |-- 001_initial.sql       # Core tables: events, action_cards, action_log
 |   |   |       |-- 002_entities.sql      # Entity resolution: entities table
 |   |   |       |-- ...
@@ -120,6 +128,12 @@ laya/
 |   |   |       |-- 044_manual_retries.sql    # Dead event manual retry counter
 |   |   |       |-- 045_context_groups.sql    # Context groups, members tables
 |   |   |       |-- 046_context_learning.sql  # Context corrections + rules tables
+|   |   |       |-- ...
+|   |   |       |-- 053_group_summaries.sql   # Rolling LLM group summaries
+|   |   |       |-- 055_context_members_card_level.sql  # Card-level context members
+|   |   |       |-- 057_entity_agent_sessions.sql  # Agent session per entity
+|   |   |       |-- 058_ingestion_errors_cleared.sql  # Ingestion error tracking
+|   |   |       |-- 059_processing_rules.sql  # Processing rules
 |   |   |
 |   |   |-- models/                       # Pydantic data models
 |   |   |   |-- __init__.py
@@ -152,6 +166,7 @@ laya/
 |   |   |       |-- bitbucket.py          # Bitbucket: create PR, comment
 |   |   |       |-- calendar.py           # Calendar: create/update events
 |   |   |       |-- linear.py             # Linear: create issue, comment
+|   |   |       |-- notion.py             # Notion: create pages, update properties
 |   |   |       |-- outlook.py            # Outlook: send, reply
 |   |   |
 |   |   |-- integrations/                 # External service clients
@@ -188,15 +203,16 @@ laya/
 |   |   |-- lib/
 |   |   |   |-- stores/                   # Svelte stores (reactive state)
 |   |   |   |   |-- chat.ts               # Chat message history
-|   |   |   |   |-- feedFilters.ts        # Feed filter state
-|   |   |   |   |-- feedSelection.ts      # Selected card state
-|   |   |   |   |-- feedView.ts           # Feed view mode
+|   |   |   |   |-- compose.ts            # Compose modal state (platform, action, prefill)
+|   |   |   |   |-- feedFilters.ts        # Feed filter state (includes search-all-days mode)
+|   |   |   |   |-- feedSelection.ts      # Selected card state (for bulk actions)
+|   |   |   |   |-- feedView.ts           # Feed view mode (card/list)
 |   |   |   |   |-- health.ts             # System health state
 |   |   |   |   |-- recentCards.ts        # Recent card tracking
 |   |   |   |   |-- setup.ts              # First-run setup state
 |   |   |   |   |-- spaces.ts             # Space/source state
 |   |   |   |   |-- trace.ts              # Coherence trace state
-|   |   |   |   |-- theme.ts              # Theme (dark/light), persists to localStorage
+|   |   |   |   |-- theme.ts              # Theme (dark/light/glass), persists to localStorage
 |   |   |   |   |-- websocket.ts          # WebSocket connection state
 |   |   |   |
 |   |   |   |-- api/                      # Engine communication layer
@@ -204,14 +220,18 @@ laya/
 |   |   |   |   |-- types.ts              # TypeScript types matching API contracts
 |   |   |   |
 |   |   |   |-- components/              # Reusable UI components
-|   |   |       |-- feed/                 # ActionCard, CardGroup, CardDetail, FilterBar, LinkDialog, etc.
-|   |   |       |-- workspace/            # AgentPanel, Timeline, Context, StagedOutput, etc.
+|   |   |       |-- feed/                 # ActionCard, CardGroup, CardDetail, ListRow, ListGroup,
+|   |   |       |                         #   LinkDialog, ClassificationDialog, DaySummary,
+|   |   |       |                         #   GroupSummaryDetail, BulkActionsDropdown, StatusDot
+|   |   |       |-- workspace/            # AgentPanel, TimelinePanel, ContextPanel
 |   |   |       |-- trace/                # TraceCard, TraceHeader, TraceTimeline, TraceSearch, etc.
 |   |   |       |-- omni/                # OmniView, OmniHeader, OmniItem
-|   |   |       |-- egress/               # ComposeModal, action preview
+|   |   |       |-- egress/               # ComposeModal, InlineEditor, ConfirmAction, QuickActions
 |   |   |       |-- dashboard/            # StatCard, FeatureCostChart, charts, analytics components
 |   |   |       |-- chat/                 # ChatPanel, ChatMessage, ChatInput
-|   |   |       |-- settings/             # SettingsLayout, ModelConfig, SpacesConfig, etc.
+|   |   |       |-- settings/             # ModelConfig, SpacesConfig, IntegrationsConfig,
+|   |   |       |                         #   AppearanceConfig, KeybindingsConfig, AuditLogViewer,
+|   |   |       |                         #   BriefingConfig, ProcessingRulesEditor, etc.
 |   |   |       |-- setup/                # SetupWizard steps
 |   |   |       |-- common/               # LoadingSpinner, EmptyState, ErrorDisplay, etc.
 |   |   |
@@ -236,29 +256,38 @@ laya/
 |   |       |-- setup/
 |   |       |   |-- +page.svelte          # First-run wizard
 |   |       |-- status/
-|   |           |-- +page.svelte          # System status page
+|   |       |   |-- +page.svelte          # System status page
+|   |       |-- legal/
+|   |           |-- +page.svelte          # Terms & license page
 |   |
 |   |-- package.json                      # Node dependencies (SvelteKit, Tauri CLI, Tailwind, etc.)
 |   |-- svelte.config.js                  # SvelteKit config (static adapter, SPA fallback)
 |   |-- vite.config.ts                    # Vite bundler config (Tailwind v4 plugin)
 |   |-- tsconfig.json                     # TypeScript config (strict mode)
 |
-|-- n8n/                                  # Pre-built n8n workflow definitions
+|-- n8n/                                  # Pre-built n8n workflow definitions (21 files)
 |   |-- workflows/
-|   |   |-- gmail-ingestion.json
-|   |   |-- gmail-executor.json
-|   |   |-- slack-ingestion.json
-|   |   |-- jira-ingestion.json
-|   |   |-- github-ingestion.json
-|   |   |-- bitbucket-ingestion.json
+|   |   |-- gmail-ingestion.json          # Gmail polling trigger
+|   |   |-- gmail-executor.json           # Send, forward, archive, star, mark_read
+|   |   |-- slack-ingestion.json          # Slack event webhook
+|   |   |-- slack-executor.json           # Send, reply, react
+|   |   |-- jira-ingestion.json           # Jira polling trigger
+|   |   |-- jira-executor.json            # Comment, transition, create, assign
+|   |   |-- github-ingestion.json         # GitHub webhook
+|   |   |-- github-executor.json          # Comment, close, approve/merge/create PR
+|   |   |-- bitbucket-ingestion.json      # Bitbucket webhook
+|   |   |-- bitbucket-executor.json       # Comment, approve/decline/merge PR
 |   |   |-- google-calendar-ingestion.json
-|   |   |-- google-calendar-executor.json
+|   |   |-- google-calendar-executor.json # Create/update/delete events
+|   |   |-- linear-ingestion.json         # Linear polling
+|   |   |-- linear-executor.json          # Create, comment, update, assign (GraphQL)
+|   |   |-- notion-ingestion.json         # Notion page polling
+|   |   |-- notion-executor.json          # Create/update pages
 |   |   |-- outlook-email-ingestion.json
-|   |   |-- outlook-email-executor.json
-|   |   |-- outlook-imap-ingestion.json
-|   |   |-- outlook-imap-executor.json
+|   |   |-- outlook-email-executor.json   # Send, reply
 |   |   |-- outlook-calendar-ingestion.json
-|   |   |-- outlook-calendar-executor.json
+|   |   |-- outlook-calendar-executor.json # Create/update/delete events
+|   |   |-- laya-error-handler.json       # Default error workflow
 |   |-- import.sh                         # Script to import workflows into n8n via REST API
 |
 |-- scripts/                              # Development and build scripts

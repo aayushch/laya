@@ -4,15 +4,15 @@
 > This document covers architecture, module structure, credential management,
 > chat integration, card UI integration, platform coverage, and implementation roadmap.
 
-**Status**: Design complete, implementation pending
-**Date**: 2026-03-30
+**Status**: Core implementation complete (9 platforms, connection broker, OAuth, UI); remaining: attachments, chained actions, templates
+**Date**: 2026-03-30 (design) / 2026-05-02 (last updated)
 **Related docs**: [egress-connection-broker.md](egress-connection-broker.md) | [egress-chat-tools.md](egress-chat-tools.md) | [egress-platform-matrix.md](egress-platform-matrix.md) | [egress-implementation-checklist.md](egress-implementation-checklist.md)
 
 ---
 
 ## 1. Problem Statement
 
-Laya currently excels at **ingestion** — consolidating notifications from 8+ platforms
+Laya currently excels at **ingestion** — consolidating notifications from 9+ platforms
 into a unified, AI-processed feed. However, to respond to those notifications, users
 must switch back to each individual platform (Gmail to reply, Jira to comment, Bitbucket
 to approve a PR). This makes Laya a read-only notification viewer rather than a true
@@ -22,28 +22,29 @@ For Laya to succeed, it must support robust **egress** — the ability to take a
 any platform directly from within Laya, whether through the card UI or through natural
 language chat commands.
 
-### Current State (What Exists)
+### Current State (Implemented)
 
 | Platform | Executor Workflow | Actions Supported |
 |----------|-------------------|-------------------|
-| Gmail | `gmail-executor.json` | Send/reply (no attachments, no forward, no archive) |
-| GitHub | `github-executor.json` | Close issue, comment on issue (no PR actions) |
-| Google Calendar | `google-calendar-executor.json` | Create event |
-| Outlook Email | `outlook-email-executor.json` | Send/reply |
-| Outlook Calendar | `outlook-calendar-executor.json` | Create event |
-| Jira | **None** | Nothing |
-| Bitbucket | **None** | Nothing |
-| Slack | **None** | Nothing |
-| Linear | **None** | Nothing |
+| Gmail | `gmail-executor.json` | Send, reply, forward, archive, star, mark_read |
+| GitHub | `github-executor.json` | Close issue, comment, approve/request_changes/merge PR, create issue |
+| Google Calendar | `google-calendar-executor.json` | Create, update, delete events |
+| Outlook Email | `outlook-email-executor.json` | Send, reply |
+| Outlook Calendar | `outlook-calendar-executor.json` | Create, update, delete events |
+| Jira | `jira-executor.json` | Comment, transition, create issue, assign |
+| Bitbucket | `bitbucket-executor.json` | Comment PR, approve/decline/merge PR |
+| Slack | `slack-executor.json` | Send message, reply thread, react |
+| Linear | `linear-executor.json` | Create issue, comment, update status, assign |
+| Notion | `notion-executor.json` | Create page, update page properties |
 
-### What's Missing
+### Remaining Gaps
 
-- **3 critical executor workflows** (Jira, Slack, Bitbucket) don't exist at all
-- **No user-initiated compose** — users can only act on LLM-suggested actions
-- **No inline reply/edit UI** — no rich text area for modifying drafts before sending
 - **No file attachment support** for any platform
-- **No chat-driven egress** — chat tools only support card management, not platform actions
-- **Incomplete platform coverage** — even existing executors are partial (Gmail has no forward/archive)
+- **No @-mention autocomplete** for user search
+- **No MCP backend** — planned future alternative to n8n for platforms with MCP servers
+- **No chained actions** — sequential cross-platform execution with rollback
+- **No template system** — reusable action templates
+- **No scheduled sends** — deferred action execution
 
 ---
 
@@ -136,6 +137,7 @@ engine/laya/egress/                  <-- NEW top-level package
     +-- slack.py                     Slack payload normalization, channel resolution
     +-- outlook.py                   Outlook payload normalization
     +-- linear.py                    Linear GraphQL payload building
+    +-- notion.py                    Notion API payload normalization, property typing
     +-- calendar.py                  Google/Outlook Calendar payload normalization
 ```
 
