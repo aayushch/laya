@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import re
 from datetime import datetime, timezone
 
 import structlog
@@ -12,6 +14,7 @@ from laya.db.sqlite import get_db
 from laya.models.processing_rules import (
     CreateProcessingRuleRequest,
     ProcessingRule,
+    ProcessingSimpleCondition,
     UpdateProcessingRuleRequest,
 )
 from laya.pipeline.processing_rules import (
@@ -20,6 +23,8 @@ from laya.pipeline.processing_rules import (
     build_trigger_context,
     evaluate_condition,
 )
+
+_MAX_REGEX_LEN = 500
 
 log = structlog.get_logger()
 router = APIRouter()
@@ -64,9 +69,32 @@ async def list_processing_rules(space_id: str | None = None) -> dict:
     return {"rules": [_row_to_rule(r) for r in rows]}
 
 
+def _validate_regex_patterns(condition) -> None:
+    """Validate regex patterns in conditions at creation time."""
+    if isinstance(condition, ProcessingSimpleCondition):
+        if condition.operator.value == "matches" and condition.value:
+            pattern = str(condition.value)
+            if len(pattern) > _MAX_REGEX_LEN:
+                raise HTTPException(status_code=422, detail=f"Regex pattern too long ({len(pattern)} > {_MAX_REGEX_LEN})")
+            try:
+                re.compile(pattern)
+            except re.error as e:
+                raise HTTPException(status_code=422, detail=f"Invalid regex pattern: {e}")
+    elif hasattr(condition, "all"):
+        for c in condition.all:
+            _validate_regex_patterns(c)
+    elif hasattr(condition, "any"):
+        for c in condition.any:
+            _validate_regex_patterns(c)
+    elif hasattr(condition, "not_"):
+        _validate_regex_patterns(condition.not_)
+
+
 @router.post("/processing-rules")
 async def create_processing_rule(body: CreateProcessingRuleRequest) -> dict:
     """Create a new processing rule."""
+    _validate_regex_patterns(body.condition)
+
     # Validate condition and actions parse correctly
     try:
         condition_json = body.condition.model_dump_json()
@@ -150,6 +178,9 @@ async def update_processing_rule(rule_id: int, body: UpdateProcessingRuleRequest
     rows = await db.execute_fetchall("SELECT * FROM processing_rules WHERE id = ?", (rule_id,))
     if not rows:
         raise HTTPException(status_code=404, detail="Rule not found")
+
+    if body.condition is not None:
+        _validate_regex_patterns(body.condition)
 
     updates = []
     params = []
@@ -275,37 +306,46 @@ async def preview_matches(body: dict) -> dict:
     from laya.models.classification import RouterOutput, Persona, Priority, Category
     from laya.models.event import LayaEvent
 
-    matches = []
-    for row in rows:
-        try:
-            event_data = json.loads(row["raw_json"]) if row["raw_json"] else None
-            if not event_data:
+    def _evaluate_rows(rows_data, cond):
+        matched = []
+        skipped = 0
+        for row in rows_data:
+            try:
+                event_data = json.loads(row["raw_json"]) if row["raw_json"] else None
+                if not event_data:
+                    skipped += 1
+                    continue
+                event = LayaEvent(**event_data)
+                router_output = RouterOutput(
+                    persona=Persona(row["persona"]),
+                    priority=Priority(row["priority"]),
+                    category=Category(row["category"]),
+                    confidence=row["confidence"] or 0.5,
+                    entities=[],
+                )
+                ctx = build_trigger_context(event, router_output, row["card_id"], row["entity_id"], row["space_id"])
+                if evaluate_condition(cond, ctx):
+                    matched.append({
+                        "card_id": row["card_id"],
+                        "header": row["header"],
+                        "priority": row["priority"],
+                        "persona": row["persona"],
+                        "status": row["status"],
+                    })
+            except Exception:
+                skipped += 1
                 continue
-            event = LayaEvent(**event_data)
-            router_output = RouterOutput(
-                persona=Persona(row["persona"]),
-                priority=Priority(row["priority"]),
-                category=Category(row["category"]),
-                confidence=row["confidence"] or 0.5,
-                entities=[],
-            )
-            ctx = build_trigger_context(event, router_output, row["card_id"], row["entity_id"], row["space_id"])
-            if evaluate_condition(condition, ctx):
-                matches.append({
-                    "card_id": row["card_id"],
-                    "header": row["header"],
-                    "priority": row["priority"],
-                    "persona": row["persona"],
-                    "status": row["status"],
-                })
-        except Exception:
-            continue
+        return matched, skipped
+
+    rows_data = [dict(r) for r in rows]
+    matches, skipped = await asyncio.to_thread(_evaluate_rows, rows_data, condition)
 
     return {
         "match_count": len(matches),
         "sample_cards": matches[:5],
         "period": "last 7 days",
         "scanned": len(rows),
+        "skipped": skipped,
     }
 
 

@@ -22,6 +22,7 @@
 		"@tailwindcss/postcss": "^4.2.2",
 		"@tailwindcss/vite": "^4.2.0",
 		"@tauri-apps/cli": "^2.10.0",
+		"@types/dompurify": "^3.0.5",
 		"svelte": "^5.51.0",
 		"svelte-check": "^4.3.6",
 		"tailwindcss": "^4.2.0",
@@ -34,6 +35,7 @@
 		"@tauri-apps/plugin-process": "^2.3.1",
 		"@tauri-apps/plugin-shell": "^2.3.5",
 		"@tauri-apps/plugin-updater": "^2.10.1",
+		"dompurify": "^3.4.2",
 		"marked": "^17.0.4"
 	}
 }

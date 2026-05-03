@@ -63,6 +63,16 @@
 	let dateMenuOpen = $state(false);
 	let dateCollapseWidth = 0;
 
+	let toasts = $state<Array<{id: string; message: string; variant: 'info' | 'warning'}>>([]);
+
+	function addToast(message: string, variant: 'info' | 'warning' = 'info') {
+		const id = crypto.randomUUID();
+		toasts = [...toasts, { id, message, variant }];
+		setTimeout(() => {
+			toasts = toasts.filter(t => t.id !== id);
+		}, 5000);
+	}
+
 	$effect(() => {
 		function check() {
 			const center = document.querySelector('[data-titlebar-center]');
@@ -229,6 +239,24 @@
 				(payload.prefill as Record<string, unknown>) ?? {},
 				payload.source_card_id ? String(payload.source_card_id) : undefined
 			);
+		}
+	});
+
+	// React to processing rule auto-disable events
+	$effect(() => {
+		const msg = $lastMessage;
+		if (msg && msg.type === 'processing_rule_auto_disabled') {
+			const p = msg.payload as { name: string; reason: string };
+			addToast(`Rule "${p.name}" auto-disabled: ${p.reason}`, 'warning');
+		}
+	});
+
+	// React to push notification events
+	$effect(() => {
+		const msg = $lastMessage;
+		if (msg && msg.type === 'push_notification') {
+			const p = msg.payload as { title: string; body: string };
+			addToast(`${p.title}: ${p.body}`, 'info');
 		}
 	});
 
@@ -784,4 +812,17 @@
 	<ChatSidebar />
 	<ComposeModal />
 	<RunAgentModal />
+
+	{#if toasts.length > 0}
+		<div class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+			{#each toasts as toast (toast.id)}
+				<div class="rounded-lg border px-4 py-3 text-sm shadow-lg backdrop-blur-sm transition-all
+					{toast.variant === 'warning'
+						? 'border-amber-700/50 bg-amber-950/90 text-amber-200'
+						: 'border-surface-600/50 bg-surface-800/90 text-surface-200'}">
+					{toast.message}
+				</div>
+			{/each}
+		</div>
+	{/if}
 {/if}

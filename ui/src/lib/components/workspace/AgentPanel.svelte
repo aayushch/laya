@@ -5,6 +5,7 @@
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { tick } from 'svelte';
 	import { marked } from 'marked';
+	import DOMPurify from 'dompurify';
 
 	let {
 		card,
@@ -183,7 +184,7 @@
 	const sessionStatusColors: Record<string, string> = {
 		starting: 'bg-cyan-900/50 text-cyan-300',
 		running: 'bg-blue-900/50 text-blue-300',
-		awaiting_input: 'bg-yellow-900/50 text-yellow-300',
+		awaiting_input: 'bg-violet-900/50 text-violet-300',
 		paused: 'bg-surface-700 text-surface-300',
 		completed: 'bg-green-900/50 text-green-300',
 		failed: 'bg-red-900/50 text-red-300',
@@ -456,7 +457,7 @@
 						{:else if event.event_type === 'approval_request'}
 							<!-- Regular approval request -->
 							<div class="mb-2 text-xs text-yellow-300 font-medium">Approval Required</div>
-							<div class="prose-plan text-xs">{@html marked(String(event.content.description ?? event.content.message ?? JSON.stringify(event.content)))}</div>
+							<div class="prose-plan text-xs">{@html DOMPurify.sanitize(marked(String(event.content.description ?? event.content.message ?? JSON.stringify(event.content))) as string)}</div>
 							{#if showDenyInput !== event.event_id}
 								<div class="mt-2 flex gap-2">
 									<button
@@ -494,10 +495,10 @@
 								<span class="text-xs font-medium text-laya-gold">Implementation Plan</span>
 							</div>
 							<div class="prose-plan text-xs">
-								{@html marked(getPlanText(event))}
+								{@html DOMPurify.sanitize(marked(getPlanText(event)) as string)}
 							</div>
 						{:else}
-							<div class="prose-plan text-xs">{@html marked(String(event.content.text ?? event.content.message ?? JSON.stringify(event.content)))}</div>
+							<div class="prose-plan text-xs">{@html DOMPurify.sanitize(marked(String(event.content.text ?? event.content.message ?? JSON.stringify(event.content))) as string)}</div>
 						{/if}
 
 						<p class="mt-1 text-[10px] text-surface-500">

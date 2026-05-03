@@ -25,7 +25,7 @@ async def resolve_space(event_id: str, connection_id: str | None, platform: str)
     Returns the space_id, or None if connection_id is missing.
     """
     if not connection_id:
-        return None
+        return "default"
 
     db = await get_db()
 

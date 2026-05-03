@@ -91,3 +91,9 @@ sentence-transformers/
 *.db-wal
 *.db-shm
 chroma_data/
+
+# =========================
+# LLM tool output / ephemeral artifacts
+# =========================
+*.tmp.json
+/tmp/

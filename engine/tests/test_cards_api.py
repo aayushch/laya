@@ -199,8 +199,8 @@ class TestCardsAPI:
 
         assert resp.status_code == 409
 
-    async def test_dismiss_failed_returns_409(self, db):
-        """POST /cards/:card_id/dismiss returns 409 for failed cards."""
+    async def test_dismiss_failed_succeeds(self, db):
+        """POST /cards/:card_id/dismiss succeeds for failed cards (failed -> dismissed is valid)."""
         await insert_test_card(db, status="failed")
 
         from laya.main import app
@@ -208,7 +208,7 @@ class TestCardsAPI:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post("/cards/card_test/dismiss", json={})
 
-        assert resp.status_code == 409
+        assert resp.status_code == 200
 
 
 @pytest.mark.asyncio

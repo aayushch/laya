@@ -111,7 +111,7 @@
 		pending: 'bg-yellow-400', approved: 'bg-green-400', executing: 'bg-blue-400',
 		completed: 'bg-green-500', failed: 'bg-red-500', dismissed: 'bg-surface-500',
 		archived: 'bg-surface-600', agent_running: 'bg-violet-400',
-		awaiting_input: 'bg-yellow-400', staged: 'bg-emerald-400'
+		awaiting_input: 'bg-violet-400', staged: 'bg-emerald-400'
 	};
 
 	const statusSummaryLabel: Record<string, string> = {
@@ -139,7 +139,7 @@
 		dismissed:          'glass-card bg-surface-800/30 border-transparent hover:border-surface-600/30',
 		archived:           'glass-card bg-surface-800/30 border-transparent hover:border-surface-600/30',
 		agent_running:      'glass-card bg-violet-950/45 border-transparent hover:border-violet-700/30 card-pulse-violet',
-		awaiting_input:     'glass-card bg-amber-950/45  border-transparent  hover:border-amber-700/30  card-pulse-amber',
+		awaiting_input:     'glass-card bg-violet-950/45 border-transparent hover:border-violet-700/30',
 	};
 
 	const solidGroupStatusStyle: Record<string, string> = {
@@ -150,7 +150,7 @@
 		dismissed:          'bg-surface-800/40 border-transparent hover:border-surface-600/40',
 		archived:           'bg-surface-800/40 border-transparent hover:border-surface-600/40',
 		agent_running:      'bg-violet-950/55 border-transparent hover:border-violet-700/40 card-pulse-violet',
-		awaiting_input:     'bg-amber-950/55  border-transparent  hover:border-amber-700/45  card-pulse-amber',
+		awaiting_input:     'bg-violet-950/55 border-transparent hover:border-violet-700/40',
 	};
 
 	const groupStatusStyle = $derived($glassTheme ? glassGroupStatusStyle : solidGroupStatusStyle);
@@ -207,7 +207,7 @@
 		failed:         'bg-red-500',
 		executing:      'bg-blue-400 animate-pulse',
 		agent_running:  'bg-violet-400 animate-pulse',
-		awaiting_input: 'bg-yellow-400 animate-pulse',
+		awaiting_input: 'bg-violet-400',
 		staged:         'bg-emerald-400'
 	};
 

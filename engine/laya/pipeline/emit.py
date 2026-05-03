@@ -263,27 +263,24 @@ async def run_emit(
             (entity_id, card_id),
         )
         if sibling_rows:
+            from laya.models.card_lifecycle import transition_card_status
+            resolved = 0
             for sib in sibling_rows:
-                await db.execute(
-                    """UPDATE action_cards SET status = 'done', previous_status = ?,
-                       resolved_at = ?, updated_at = ? WHERE card_id = ?""",
-                    (sib["status"], now_ts, now_ts, sib["card_id"]),
-                )
-                await manager.broadcast(
-                    {"type": "card_updated", "card_id": sib["card_id"],
-                     "payload": {"status": "done"}}
-                )
+                try:
+                    await transition_card_status(sib["card_id"], "done", actor="pipeline")
+                    resolved += 1
+                except ValueError:
+                    continue
                 from laya.tasks import create_task as create_tracked_task
                 create_tracked_task(
                     trigger_summary_status_update(sib["card_id"], sib["header"], "done"),
                     name=f"summary_status_{sib['card_id']}",
                 )
-            await db.commit()
             log.info(
                 "auto_resolved_siblings",
                 entity_id=entity_id,
                 trigger_event=event.source.raw_event_type,
-                resolved_count=len(sibling_rows),
+                resolved_count=resolved,
             )
 
     # 4. Embed card in ChromaDB
@@ -428,17 +425,20 @@ async def run_emit(
     # 9. Omni update: card_id is already in omni_queue (enqueued atomically
     #    with the card persist above). The omni queue processor picks it up.
 
-    # 10. Processing rules — evaluate automated actions (non-blocking)
-    from laya.pipeline.processing_rules import run_processing_rules
+    # 10. Processing rules — evaluate automated actions (non-blocking, bounded)
+    from laya.pipeline.processing_rules import run_processing_rules, _processing_semaphore
+    async def _bounded_processing_rules():
+        async with _processing_semaphore:
+            await run_processing_rules(
+                event=event,
+                router_output=router_output,
+                card_id=card_id,
+                entity_id=entity_id,
+                space_id=space_id,
+                is_carry_forward=_is_carry_forward,
+            )
     create_tracked_task(
-        run_processing_rules(
-            event=event,
-            router_output=router_output,
-            card_id=card_id,
-            entity_id=entity_id,
-            space_id=space_id,
-            is_carry_forward=_is_carry_forward,
-        ),
+        _bounded_processing_rules(),
         name=f"processing_rules_{card_id}",
     )
 

@@ -438,8 +438,7 @@ html, body {
 }
 [data-status="pending"]           { --status-rgb: 217 119 6; }
 [data-status="ready"]             { --status-rgb: 217 119 6; }
-[data-status="awaiting_input"]    { --status-rgb: 217 119 6; }
-[data-status="requires_approval"] { --status-rgb: 127 119 221; }
+[data-status="awaiting_input"]    { --status-rgb: 127 119 221; }
 [data-status="agent_running"]     { --status-rgb: 139 92 246; }
 [data-status="done"]              { --status-rgb: 99 153 34; }
 [data-status="failed"]            { --status-rgb: 244 63 110; }
@@ -1036,8 +1035,7 @@ html, body {
 /* ─── Glass card --status-rgb overrides ────────────────────── */
 [data-accessible-colors] [data-status="pending"]           { --status-rgb: 14 165 233; }
 [data-accessible-colors] [data-status="ready"]             { --status-rgb: 14 165 233; }
-[data-accessible-colors] [data-status="awaiting_input"]    { --status-rgb: 14 165 233; }
-[data-accessible-colors] [data-status="requires_approval"] { --status-rgb: 168 85 247; }
+[data-accessible-colors] [data-status="awaiting_input"]    { --status-rgb: 168 85 247; }
 [data-accessible-colors] [data-status="agent_running"]     { --status-rgb: 168 85 247; }
 [data-accessible-colors] [data-status="done"]              { --status-rgb: 234 179 8; }
 [data-accessible-colors] [data-status="failed"]            { --status-rgb: 71 85 105; }
@@ -1173,7 +1171,7 @@ html, body {
 [data-accessible-colors] .border-red-800\/40 { border-color: oklch(0.50 0.14 40 / 40%); }
 [data-accessible-colors] .border-red-800     { border-color: oklch(0.50 0.14 40); }
 
-/* ─── DARK: Sky → Purple (requires_approval card backgrounds) ── */
+/* ─── DARK: Sky → Purple (awaiting_input card backgrounds) ── */
 [data-accessible-colors] .bg-sky-950\/55    { background-color: oklch(0.22 0.09 302 / 55%); }
 [data-accessible-colors] .bg-sky-950\/45    { background-color: oklch(0.22 0.09 302 / 45%); }
 [data-accessible-colors] .bg-sky-950\/30    { background-color: oklch(0.22 0.09 302 / 30%); }
@@ -1234,7 +1232,7 @@ html, body {
 [data-theme='light'][data-accessible-colors] .hover\:border-rose-700\/50:hover { border-color: oklch(0.50 0.02 257 / 65%); }
 [data-theme='light'][data-accessible-colors] .hover\:border-rose-700\/35:hover { border-color: oklch(0.50 0.02 257 / 50%); }
 
-/* Light: Sky → Purple (requires_approval) */
+/* Light: Sky → Purple (awaiting_input) */
 [data-theme='light'][data-accessible-colors] .bg-sky-950\/55    { background-color: oklch(0.94 0.04 302); }
 [data-theme='light'][data-accessible-colors] .bg-sky-950\/45    { background-color: oklch(0.94 0.04 302); }
 [data-theme='light'][data-accessible-colors] .bg-sky-950\/30    { background-color: oklch(0.96 0.03 302); }

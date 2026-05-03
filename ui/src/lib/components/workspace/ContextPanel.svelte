@@ -4,6 +4,7 @@
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { goto } from '$app/navigation';
 	import { marked } from 'marked';
+	import DOMPurify from 'dompurify';
 
 	let {
 		card,
@@ -53,7 +54,7 @@
 		failed: 'text-red-500',
 		dismissed: 'text-surface-500',
 		agent_running: 'text-violet-400',
-		awaiting_input: 'text-yellow-400',
+		awaiting_input: 'text-violet-400',
 		staged: 'text-emerald-400'
 	};
 
@@ -457,7 +458,7 @@
 			<div class="flex-1 overflow-y-auto p-5">
 				{#if viewingFile.name.endsWith('.md')}
 					<div class="research-file-content">
-						{@html marked(viewingFile.content)}
+						{@html DOMPurify.sanitize(marked(viewingFile.content) as string)}
 					</div>
 				{:else}
 					<pre class="whitespace-pre-wrap break-words rounded-lg bg-surface-900 p-4 font-mono text-[11px] text-surface-200">{viewingFile.content}</pre>

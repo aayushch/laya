@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { ChatMessage } from '$lib/api/types';
 	import { marked } from 'marked';
+	import DOMPurify from 'dompurify';
 	import { goto } from '$app/navigation';
 	import { pendingCardId } from '$lib/stores/chat';
 	import { glassTheme } from '$lib/stores/glassTheme';
@@ -82,7 +83,7 @@
 	}
 
 	function renderMarkdown(text: string): string {
-		return replaceMarkers(marked(text) as string);
+		return DOMPurify.sanitize(replaceMarkers(marked(text) as string));
 	}
 
 	function handleClick(e: MouseEvent | KeyboardEvent) {
@@ -106,7 +107,7 @@
 		{#if isUser}
 			<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="whitespace-pre-wrap break-words" onclick={handleClick} onkeydown={handleClick}>{@html replaceMarkers(message.content)}</div>
+			<div class="whitespace-pre-wrap break-words" onclick={handleClick} onkeydown={handleClick}>{@html DOMPurify.sanitize(replaceMarkers(message.content))}</div>
 		{:else}
 			<!-- Thinking indicator / collapsible block -->
 			{#if parsed.isThinking}

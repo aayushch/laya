@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from laya.agents import session_manager
 from laya.api.websocket import manager
 from laya.db.sqlite import get_db
+from laya.models.card_lifecycle import transition_card_status
 from laya.models.workspace import (
     SessionStatus,
     WorkspaceEvent,
@@ -217,21 +218,13 @@ async def answer_agent_question(session_id: str, body: AnswerQuestionRequest) ->
     await session_manager.store_workspace_event(user_event)
 
     # Update card status back to agent_running
-    await db.execute(
-        "UPDATE action_cards SET status = 'agent_running', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-        (card_id,),
-    )
+    await transition_card_status(card_id, "agent_running", actor="agent")
     # Reset session status to running
     await db.execute(
         "UPDATE workspace_sessions SET status = 'running', completed_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE session_id = ?",
         (session_id,),
     )
     await db.commit()
-    await manager.broadcast({
-        "type": "card_updated",
-        "card_id": card_id,
-        "payload": {"status": "agent_running"},
-    })
 
     # Resume the agent conversation in the background
     from laya.tasks import create_task as create_tracked_task
@@ -260,17 +253,7 @@ async def _run_resumed_session(
             # Broadcast questions and errors
             if ws_event.event_type == WorkspaceEventType.APPROVAL_REQUEST:
                 if ws_event.content.get("ask_user_question"):
-                    db = await get_db()
-                    await db.execute(
-                        "UPDATE action_cards SET status = 'awaiting_input', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-                        (card_id,),
-                    )
-                    await db.commit()
-                    await manager.broadcast({
-                        "type": "card_updated",
-                        "card_id": card_id,
-                        "payload": {"status": "awaiting_input"},
-                    })
+                    await transition_card_status(card_id, "awaiting_input", actor="agent")
                 await manager.broadcast({
                     "type": "approval_request",
                     "card_id": card_id,
@@ -330,17 +313,8 @@ async def _run_resumed_session(
                 has_unanswered = False
             card_status = "awaiting_input" if has_unanswered else "ready"
 
-            await db.execute(
-                "UPDATE action_cards SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-                (card_status, card_id),
-            )
-            await db.commit()
+            await transition_card_status(card_id, card_status, actor="agent")
 
-            await manager.broadcast({
-                "type": "card_updated",
-                "card_id": card_id,
-                "payload": {"status": card_status},
-            })
             await manager.broadcast({
                 "type": "agent_completed",
                 "card_id": card_id,
@@ -356,17 +330,10 @@ async def _run_resumed_session(
             await session_manager.complete_session(session_id, error=error_msg)
 
             # Mark card as failed so it doesn't stay stuck on agent_running
-            db = await get_db()
-            await db.execute(
-                "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_execution', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-                (card_id,),
+            await transition_card_status(
+                card_id, "failed", actor="agent",
+                failed_stage="agent_execution", last_error=error_msg,
             )
-            await db.commit()
-            await manager.broadcast({
-                "type": "card_updated",
-                "card_id": card_id,
-                "payload": {"status": "failed"},
-            })
 
     except Exception as e:
         log.error("resumed_session_failed", session_id=session_id, card_id=card_id, error=str(e))
@@ -374,17 +341,10 @@ async def _run_resumed_session(
 
         # Mark card as failed so it doesn't stay stuck on agent_running
         try:
-            db = await get_db()
-            await db.execute(
-                "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_execution', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-                (card_id,),
+            await transition_card_status(
+                card_id, "failed", actor="agent",
+                failed_stage="agent_execution", last_error=str(e),
             )
-            await db.commit()
-            await manager.broadcast({
-                "type": "card_updated",
-                "card_id": card_id,
-                "payload": {"status": "failed"},
-            })
         except Exception:
             log.error("resumed_session_card_update_failed", session_id=session_id, card_id=card_id)
 
@@ -422,21 +382,13 @@ async def resume_session_with_prompt(session_id: str, body: ResumePromptRequest)
     await session_manager.store_workspace_event(user_event)
 
     # Update card status back to agent_running
-    await db.execute(
-        "UPDATE action_cards SET status = 'agent_running', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-        (card_id,),
-    )
+    await transition_card_status(card_id, "agent_running", actor="agent")
     # Reset session status to running
     await db.execute(
         "UPDATE workspace_sessions SET status = 'running', completed_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE session_id = ?",
         (session_id,),
     )
     await db.commit()
-    await manager.broadcast({
-        "type": "card_updated",
-        "card_id": card_id,
-        "payload": {"status": "agent_running"},
-    })
 
     # Resume the agent conversation in the background
     from laya.tasks import create_task as create_tracked_task
@@ -477,23 +429,14 @@ async def dismiss_questions(session_id: str) -> dict[str, str]:
     await session_manager.store_workspace_event(dismiss_event)
 
     # Transition card to ready
-    await db.execute(
-        "UPDATE action_cards SET status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-        (card_id,),
-    )
+    await transition_card_status(card_id, "ready", actor="agent")
     # Mark session as completed if it was awaiting_input
     if session_status in ("awaiting_input", "starting"):
         await db.execute(
             "UPDATE workspace_sessions SET status = 'completed', completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE session_id = ?",
             (session_id,),
         )
-    await db.commit()
-
-    await manager.broadcast({
-        "type": "card_updated",
-        "card_id": card_id,
-        "payload": {"status": "ready"},
-    })
+        await db.commit()
 
     return {"status": "dismissed", "session_id": session_id}
 
