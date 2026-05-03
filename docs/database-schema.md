@@ -443,9 +443,39 @@ CREATE TABLE egress_connections (
 );
 ```
 
+### group_summaries
+
+Rolling LLM-generated summaries for multi-card entity groups.
+
+```sql
+CREATE TABLE group_summaries (
+    entity_id       TEXT PRIMARY KEY,
+    summary         TEXT NOT NULL,
+    card_count      INTEGER DEFAULT 0,
+    last_card_id    TEXT,
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### ingestion_errors
+
+Tracks events that failed during ingestion (parsing, validation, etc.).
+
+```sql
+CREATE TABLE ingestion_errors (
+    error_id        TEXT PRIMARY KEY,
+    event_data      TEXT,               -- raw event JSON
+    error_message   TEXT,
+    error_type      TEXT,
+    source_platform TEXT,
+    cleared         INTEGER DEFAULT 0,
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
 ## Migration Files
 
-Migrations are numbered SQL files in `engine/laya/db/migrations/`. There are currently 46 migrations (001 through 046), covering:
+Migrations are numbered SQL files in `engine/laya/db/migrations/`. There are currently 59 migrations (001 through 059), covering:
 
 | Range | Description |
 |---|---|
@@ -472,5 +502,17 @@ Migrations are numbered SQL files in `engine/laya/db/migrations/`. There are cur
 | `044` | **Dead event recovery**: manual_retries counter on events |
 | `045` | **Context groups**: context_groups, context_group_members tables for semantic card grouping |
 | `046` | **Context learning**: context_corrections, context_rules tables for learned grouping rules |
+| `047`-`048` | Session type tracking, pre-context active timestamp |
+| `049` | Session permission mode |
+| `050` | Card last error tracking |
+| `051` | Chat card context linking |
+| `052` | **Ingestion errors**: ingestion_errors table for tracking failed event ingestion |
+| `053` | **Group summaries**: group_summaries table for rolling LLM entity-group summaries |
+| `054` | Omni last attempt timestamp |
+| `055` | **Context members card-level**: card-level context group membership |
+| `056` | Drop omni last attempt (superseded) |
+| `057` | **Agent sessions per entity**: entity_agent_sessions linking |
+| `058` | Ingestion errors cleared flag |
+| `059` | **Processing rules**: custom processing rules table |
 
 The migration runner (`engine/laya/db/migrate.py`) checks `schema_version` on startup and applies any migrations with version > current version.

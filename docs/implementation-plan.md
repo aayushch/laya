@@ -37,7 +37,7 @@ Manually POST a JSON event to `/events` via curl. Confirm it's stored in SQLite.
 
 ## Milestone 2: Ingestion Pipeline (Week 3-4)
 
-**Goal:** n8n receives real events from all 5 sources and normalizes them to the Laya Event schema.
+**Goal:** n8n receives real events from all sources and normalizes them to the Laya Event schema.
 
 ### Deliverables
 
@@ -46,7 +46,10 @@ Manually POST a JSON event to `/events` via curl. Confirm it's stored in SQLite.
 - [x] **n8n Gmail ingestion workflow:** Gmail trigger -> normalize -> POST
 - [x] **n8n Bitbucket ingestion workflow:** Bitbucket webhook -> normalize -> POST
 - [x] **n8n Calendar ingestion workflow:** Google Calendar trigger -> normalize -> POST
-- [x] All 5 workflow JSONs stored in `n8n/workflows/` and auto-importable
+- [x] **n8n Outlook email/calendar ingestion workflows:** Outlook trigger -> normalize -> POST
+- [x] **n8n Linear ingestion workflow:** Linear trigger -> normalize -> POST
+- [x] **n8n Notion ingestion workflow:** Notion trigger -> normalize -> POST
+- [x] All workflow JSONs stored in `n8n/workflows/` and auto-importable (10 ingestion + 10 executor + 1 error handler)
 - [x] Laya Event schema validation in engine (Pydantic model)
 - [x] **INGEST node:** Parse event, resolve actor relationship via team.json, store in SQLite
 - [x] **RULES ENGINE node:** Basic drop/pass filtering against rules.json
@@ -100,13 +103,13 @@ POST a Jira bug event. Confirm:
 
 ### Deliverables
 
-- [ ] **CodingAgent protocol** (`agents/base.py`): `start_session()`, `stream_events()`, `send_input()`, `pause()`, `resume()`, `cancel()`
-- [ ] **AgentSession** implementation using asyncio + PTY subprocess management
-- [ ] **Claude Code adapter** (`agents/claude_code.py`): spawn `claude -p`, parse output, intercept approval prompts
-- [ ] **Gemini CLI adapter** (`agents/gemini_cli.py`): same interface
-- [ ] **Codex CLI adapter** (`agents/codex_cli.py`): same interface
-- [ ] **Session manager** (`agents/session_manager.py`): track active sessions across cards, handle lifecycle
-- [ ] **ENGINEER Worker:**
+- [x] **CodingAgent protocol** (`agents/base.py`): `start_session()`, `stream_events()`, `send_input()`, `pause()`, `resume()`, `cancel()`
+- [x] **AgentSession** implementation using asyncio + PTY subprocess management
+- [x] **Claude Code adapter** (`agents/claude_code.py`): spawn `claude -p`, parse output, intercept approval prompts
+- [x] **Gemini CLI adapter** (`agents/gemini_cli.py`): same interface
+- [x] **Codex CLI adapter** (`agents/codex_cli.py`): same interface
+- [x] **Session manager** (`agents/session_manager.py`): track active sessions across cards, handle lifecycle
+- [x] **ENGINEER Worker:**
   - Gather internal context (memory_search, entity_lookup, card_history)
   - Build prompt with research_plan + gathered context
   - Spawn coding agent PTY session in configured repo directory
@@ -114,15 +117,18 @@ POST a Jira bug event. Confirm:
   - Intercept agent approval requests, surface via WebSocket
   - Pipe user responses from WebSocket back to agent stdin
   - Parse structured findings on agent completion
-- [ ] **COMMS Worker:** Draft replies using LLM + memory context (no coding agent needed)
-- [ ] **OPS Worker:** Calendar prep briefings using event history + LLM synthesis
-- [ ] **Sequential multi-worker execution:** When Router specifies secondary_persona, run workers in sequence, passing findings forward
-- [ ] **Workspace state persistence:**
+- [x] **COMMS Worker:** Draft replies using LLM + memory context (no coding agent needed)
+- [x] **OPS Worker:** Calendar prep briefings using event history + LLM synthesis
+- [x] **FINANCE Worker:** Invoice, expense, and budget event processing
+- [x] **HR Worker:** People ops, onboarding, leave request processing
+- [x] **SALES Worker:** Pipeline, deal, and prospect tracking
+- [x] **Sequential multi-worker execution:** When Router specifies secondary_persona, run workers in sequence, passing findings forward
+- [x] **Workspace state persistence:**
   - `workspace_sessions` table in SQLite
   - `workspace_events` table in SQLite
   - All agent messages, user responses, tool calls logged as workspace events
-- [ ] Settings page: Coding agent selection UI + repo configuration UI
-- [ ] `repos.json` config file loading
+- [x] Settings page: Coding agent selection UI + repo configuration UI
+- [x] `repos.json` config file loading
 
 ### Test Criteria
 
@@ -143,31 +149,32 @@ POST a Jira bug event. Confirm:
 
 ### Deliverables
 
-- [ ] **Stager prompt template** (`laya/llm/prompts/stager.py`)
-- [ ] **STAGER node:** Synthesize worker findings + context into polished Action Card JSON
-- [ ] **STAGER node:** Generate `suggested_actions` array (multiple possible actions per card)
-- [ ] **STAGER node:** Include intelligence_report, staged_output, privacy tier indicator
-- [ ] **EMIT node:**
+- [x] **Stager prompt template** (`laya/llm/prompts/stager.py`)
+- [x] **STAGER node:** Synthesize worker findings + context into polished Action Card JSON
+- [x] **STAGER node:** Generate `suggested_actions` array (multiple possible actions per card)
+- [x] **STAGER node:** Include intelligence_report, staged_output, privacy tier indicator
+- [x] **EMIT node:**
   - Store Action Card in SQLite (action_cards table)
   - Embed card summary in ChromaDB
   - Update entity cross-references (entity_link)
   - Log to audit_log (model used, tokens, latency, tier)
   - Push card to UI via WebSocket (`card_created` message)
-- [ ] **Entity resolution (Layer 2):** Semantic matching via ChromaDB similarity
-- [ ] **Entity resolution (Layer 3):** LLM confirmation before creating new entity links
-- [ ] **Feed UI (Svelte):**
+  - Trigger context association and group summary
+- [x] **Entity resolution (Layer 2):** Semantic matching via ChromaDB similarity
+- [x] **Entity resolution (Layer 3):** LLM confirmation before creating new entity links
+- [x] **Feed UI (Svelte):**
   - Action Card component (compact view in feed)
-  - Card list with scroll
+  - Card list with scroll + Card view with 3-column grid
   - Priority badges (CRITICAL/HIGH/MEDIUM/LOW)
   - Status indicators (pending, awaiting_input, agent_running, staged, etc.)
-  - Filter bar (by status, priority, source, persona)
-  - Sort controls (priority+time, newest, oldest)
-- [ ] **Simple card approval:** One-click approve from feed for simple cards (Slack reply, calendar prep)
-- [ ] **Card dismiss** with optional reason
-- [ ] Card status transitions: `pending -> reviewing -> approved -> executing -> completed`
-- [ ] **Privacy tier indicator** on cards (visual marker for Tier 3 events)
-- [ ] **Learning loop (storage):** Record approval/edit/dismiss decisions in action_cards table
-- [ ] **Feedback query tool:** Query past approval patterns for similar event types
+  - Filter bar (by status, priority, source, persona, space)
+  - Sort controls (priority+time, newest, oldest, category, platform)
+- [x] **Simple card approval:** One-click approve from feed for simple cards (Slack reply, calendar prep)
+- [x] **Card dismiss** with optional reason
+- [x] Card status transitions: `pending -> ready -> requires_approval -> agent_running -> awaiting_input -> done | failed | dismissed | archived`
+- [x] **Privacy tier indicator** on cards (visual marker for Tier 3 events)
+- [x] **Learning loop (storage):** Record approval/edit/dismiss decisions in action_cards table
+- [x] **Feedback query tool:** Query past approval patterns for similar event types
 
 ### Test Criteria
 
@@ -181,16 +188,20 @@ Full end-to-end: Jira ticket created -> n8n fires -> Engine classifies -> Worker
 
 ### Deliverables
 
-- [ ] **n8n execution workflows** (all 5 platforms):
-  - jira-executor: add comment, update ticket
-  - bitbucket-executor: create PR, add PR comment
-  - slack-executor: send message, reply to thread
-  - gmail-executor: send email, reply to email
-  - calendar-executor: create event, update event
-- [ ] **Engine -> n8n action forwarding:** POST approved action payload to n8n webhook
-- [ ] **Execution result handling:** Parse n8n response, update card status (completed/failed), store in action_log
-- [ ] **Card status update via WebSocket** (`card_updated` message with result URL)
-- [ ] **Workspace UI (Svelte):**
+- [x] **n8n execution workflows** (10 platforms):
+  - jira-executor: comment, transition, create_issue, assign
+  - bitbucket-executor: comment_pr, approve_pr, decline_pr, merge_pr
+  - slack-executor: send_message, reply_thread, react
+  - gmail-executor: send_email, forward, archive, star, mark_read
+  - calendar-executor: create/update/delete events (Google + Outlook)
+  - github-executor: close_issue, comment, approve_pr, request_changes, merge_pr, create_issue
+  - linear-executor: create_issue, comment, update_status, assign
+  - outlook-email/calendar-executor: send, reply, calendar ops
+  - notion-executor: create_page, update_page
+- [x] **Engine -> n8n action forwarding:** POST approved action payload to n8n webhook via egress module
+- [x] **Execution result handling:** Parse n8n response, update card status (completed/failed), store in action_log
+- [x] **Card status update via WebSocket** (`card_updated` message with result URL)
+- [x] **Workspace UI (Svelte):**
   - Workspace layout (three panels: timeline + live agent + context/staged)
   - Timeline component: chronological event display
   - Live Agent panel: streaming agent output, approval prompts, user input
@@ -198,10 +209,10 @@ Full end-to-end: Jira ticket created -> n8n fires -> Engine classifies -> Worker
   - Staged Outputs panel: code diffs, drafted emails, PR descriptions
   - Code diff component with syntax highlighting
   - Session controls: pause, resume, cancel
-- [ ] **Workspace state restoration:** Navigate away and back, full state loads from SQLite
-- [ ] **Feed status badges:** Visual indicators (awaiting input, agent running, staged, etc.)
-- [ ] **Native notifications** via Tauri for HIGH/CRITICAL cards
-- [ ] **System tray badge:** Count of pending cards requiring attention
+- [x] **Workspace state restoration:** Navigate away and back, full state loads from SQLite
+- [x] **Feed status badges:** Visual indicators (awaiting input, agent running, staged, etc.)
+- [x] **Native notifications** via Tauri for HIGH/CRITICAL cards
+- [x] **System tray badge:** Count of pending cards requiring attention
 
 ### Test Criteria
 
@@ -218,34 +229,35 @@ Full end-to-end: Jira ticket created -> n8n fires -> Engine classifies -> Worker
 
 ### Deliverables
 
-- [ ] **Dashboard UI (Svelte):**
+- [x] **Dashboard UI (Svelte):**
   - Stat cards: events processed, cards generated, approved/edited/dismissed, pending
   - Estimated time saved (running total with configurable estimates per action type)
   - LLM cost tracking (from audit_log token counts + per-model pricing)
-  - Events by source chart (Layerchart/Chart.js)
+  - Feature cost chart with expandable step-level details
   - Approval rate by persona chart
   - Average response time
-- [ ] **Dashboard API:** `GET /dashboard` endpoint with aggregation queries on SQLite
-- [ ] **Chat sidebar UI (Svelte):**
+- [x] **Dashboard API:** `GET /dashboard` endpoint with aggregation queries on SQLite
+- [x] **Chat sidebar UI (Svelte):**
   - Chat panel with message history
   - Chat input with send button
   - Messages display with Laya responses and referenced cards/events
-- [ ] **Chat pipeline (asyncio):**
+- [x] **Chat pipeline (asyncio):**
   - Parse intent step (fast LLM)
   - Retrieve context step (ChromaDB + SQLite)
-  - Respond step (strong LLM)
+  - Respond step (strong LLM with tool calling)
   - Reference specific cards and events in responses
-- [ ] **Chat API:** WebSocket `chat_message` type + `POST /chat` REST fallback
-- [ ] **Daily Briefing:**
+  - find_contact tool for people lookup
+- [x] **Chat API:** WebSocket `chat_message` type + `POST /chat` REST fallback
+- [x] **Daily Briefing:**
   - Scheduler job (configurable time via settings.json)
   - Briefing worker: query overnight events, pending cards, today's calendar
   - Briefing stager: synthesize into briefing card with meeting prep context
   - Native notification: "Your morning briefing is ready"
-- [ ] **Learning loop (prompt injection):**
+- [x] **Learning loop (prompt injection):**
   - feedback_query tool returns recent approval/edit/dismiss patterns
-  - Router prompt includes: "For similar events, user edited priority from HIGH to LOW 3/5 times"
-  - Measure: does approval rate improve over first 2 weeks of use?
-- [ ] **Audit log viewer** in settings page (filterable table)
+  - Router prompt includes classification rules learned from correction patterns
+  - Context learning extracts grouping rules from link/unlink corrections
+- [x] **Audit log viewer** in settings page (filterable table)
 
 ### Test Criteria
 
@@ -262,9 +274,9 @@ Full end-to-end: Jira ticket created -> n8n fires -> Engine classifies -> Worker
 
 ### Deliverables
 
-- [ ] **First-run setup wizard (Svelte):**
+- [x] **First-run setup wizard (Svelte):**
   - Step 1: LLM configuration (model selection, API key entry -> keychain)
-  - Step 2: Connect tools (link to n8n OAuth pages per service)
+  - Step 2: n8n check (detect Node.js, install n8n, auto-configure)
   - Step 3: Coding agent selection + repo directory picker
   - Step 4: Team member entry (name, email, role)
   - Step 5: Event filter presets (ignore bots, ignore status changes, etc.)
@@ -277,28 +289,28 @@ Full end-to-end: Jira ticket created -> n8n fires -> Engine classifies -> Worker
   - Windows: MSI installer
 - [ ] **Tauri auto-update** configuration (stable/beta channels, update check URL)
 - [ ] **System tray:** Health status indicator (green/yellow/red), badge count, quick actions
-- [ ] **OS keychain integration** verified on all three platforms
-- [ ] **Error handling throughout:**
+- [x] **OS keychain integration** verified on all three platforms
+- [x] **Error handling throughout:**
   - n8n offline: show indicator, queue events, retry on reconnect
   - LLM API timeout: retry with backoff, show "processing delayed" on card
   - Coding agent crash: mark session as failed, preserve workspace state, show error
-  - Invalid event: log validation error, drop event, don't crash
-- [ ] **Graceful shutdown:** Save workspace states, stop agent sessions, stop n8n process
-- [ ] **Database migrations** verified: fresh install and upgrade from earlier milestone builds
+  - Invalid event: log validation error, track in ingestion_errors table, don't crash
+- [x] **Graceful shutdown:** Save workspace states, stop agent sessions, stop n8n process
+- [x] **Database migrations** verified: fresh install and upgrade from earlier milestone builds (59 migrations)
 - [ ] **Test suites:**
   - Python unit tests (pytest): all graph nodes, tools, rules engine, models
   - Python integration tests: full event flow with mocked LLM, workspace persistence
   - Svelte component tests (Vitest): all major components
   - E2E tests (Playwright): setup wizard, event-to-card flow, workspace interaction, chat
 - [ ] **Documentation:** Setup guide for users, developer setup guide
-- [ ] **n8n workflow import script** verified on all platforms
-- [ ] **Export Diagnostics** button: bundle logs + config (redacted) + system info into zip
+- [x] **n8n workflow import script** verified on all platforms
+- [x] **Export Diagnostics** button: bundle logs + config (redacted) + system info into zip
 
 ### Test Criteria
 
 1. Clean install on fresh macOS, Linux, and Windows machines
 2. Setup wizard completes end-to-end
-3. Events flow from all 5 sources
+3. Events flow from all 10 platform sources
 4. Cards generate with intelligence and staged outputs
 5. Workspaces work with interactive agent sessions
 6. Actions execute via n8n

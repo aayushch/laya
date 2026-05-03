@@ -428,4 +428,18 @@ async def run_emit(
     # 9. Omni update: card_id is already in omni_queue (enqueued atomically
     #    with the card persist above). The omni queue processor picks it up.
 
+    # 10. Processing rules — evaluate automated actions (non-blocking)
+    from laya.pipeline.processing_rules import run_processing_rules
+    create_tracked_task(
+        run_processing_rules(
+            event=event,
+            router_output=router_output,
+            card_id=card_id,
+            entity_id=entity_id,
+            space_id=space_id,
+            is_carry_forward=_is_carry_forward,
+        ),
+        name=f"processing_rules_{card_id}",
+    )
+
     return card_id

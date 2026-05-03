@@ -254,6 +254,96 @@ Fetch workspace state for a card.
 }
 ```
 
+### `POST /cards/run-agent`
+
+Run a coding agent on a card.
+
+**Request:**
+```json
+{
+  "card_id": "card_001",
+  "prompt": "Investigate the payment timeout issue",
+  "agent_type": "claude_code",
+  "directory": "/path/to/repo",
+  "add_dirs": ["/path/to/other/repo"],
+  "mode": "plan",
+  "space_id": "default"
+}
+```
+
+**Response (200):**
+```json
+{
+  "status": "agent_running",
+  "card_id": "card_001"
+}
+```
+
+### `POST /entity/:entity_id/run-agent`
+
+Run a coding agent at the entity group level, covering all cards in the group.
+
+**Request:**
+```json
+{
+  "prompt": "Summarize all related changes",
+  "agent_type": "claude_code"
+}
+```
+
+**Response (200):**
+```json
+{
+  "status": "agent_running",
+  "entity_id": "ENT-123",
+  "session_id": "sess_002"
+}
+```
+
+### `POST /workspace/:session_id/answer`
+
+Answer an agent's question during execution.
+
+**Request:**
+```json
+{
+  "answers": [{"header": "Proceed?", "selected": "yes"}],
+  "add_dirs": []
+}
+```
+
+### `POST /workspace/:session_id/resume`
+
+Resume a completed or paused session with a new prompt.
+
+**Request:**
+```json
+{
+  "prompt": "Now fix the test file too",
+  "add_dirs": []
+}
+```
+
+### `POST /workspace/:session_id/dismiss-questions`
+
+Dismiss pending agent questions without answering.
+
+### `GET /workspace/research-files/:card_id`
+
+List files created by a research session.
+
+**Response (200):**
+```json
+{
+  "files": ["report.md", "data.json"],
+  "directory": "~/.laya/tmp/research/card_001/"
+}
+```
+
+### `GET /workspace/research-files/:card_id/read?path=report.md`
+
+Read a specific research file (max 2 MB, UTF-8 text).
+
 ### `POST /actions/approve`
 
 Approve an action from an Action Card.
@@ -816,6 +906,66 @@ Remove a pin.
 ```json
 {
   "detail": "Pin not found"
+}
+```
+
+### `GET /budget`
+
+Returns LLM cost tracking data broken down by feature and pipeline step.
+
+**Response (200):**
+```json
+{
+  "total_cost": 12.45,
+  "monthly_cap": 50.0,
+  "is_paused": false,
+  "features": [
+    {"name": "pulse", "cost": 5.20, "steps": [...]},
+    {"name": "coherence", "cost": 2.10, "steps": [...]},
+    {"name": "omni", "cost": 1.80, "steps": [...]},
+    {"name": "chat", "cost": 1.50, "steps": [...]},
+    {"name": "briefing", "cost": 0.85, "steps": [...]},
+    {"name": "egress", "cost": 0.50, "steps": [...]},
+    {"name": "system", "cost": 0.50, "steps": [...]}
+  ],
+  "monthly_history": [...]
+}
+```
+
+### `GET /ingestion-errors`
+
+Returns events that failed during ingestion.
+
+**Response (200):**
+```json
+{
+  "errors": [
+    {
+      "error_id": "err_...",
+      "event_data": "...",
+      "error_message": "Invalid event schema",
+      "error_type": "validation",
+      "source_platform": "slack",
+      "cleared": false,
+      "created_at": "2026-05-01T10:00:00Z"
+    }
+  ]
+}
+```
+
+### `GET /diagnostics`
+
+Returns system diagnostics for troubleshooting.
+
+**Response (200):**
+```json
+{
+  "engine_version": "...",
+  "python_version": "...",
+  "database": {"size_mb": 42, "migration_version": 59},
+  "chromadb": {"collection_count": 3, "total_embeddings": 1200},
+  "n8n": {"status": "healthy", "workflow_count": 21},
+  "system": {"platform": "darwin", "memory_mb": 1024}
 }
 ```
 

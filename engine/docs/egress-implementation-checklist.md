@@ -4,7 +4,7 @@
 > to be built. Organized by phase with dependencies noted.
 > Part of the [Egress Architecture](egress-architecture.md).
 >
-> **Last updated**: 2026-03-31
+> **Last updated**: 2026-05-02
 
 ---
 
@@ -15,7 +15,7 @@
 - [x] **`engine/laya/egress/__init__.py`** — Public API: `execute()`, `preview()`, `get_capabilities()`, `list_connections()`, `connect()`, `disconnect()`
 - [x] **`engine/laya/egress/models.py`** — `EgressRequest`, `EgressResult`, `EgressPreview`, `EgressCapability`, `Connection`, `ConnectionResult`
 - [x] **`engine/laya/egress/router.py`** — Backend resolution (n8n > SMTP), preview builder with platform-specific summaries and warnings
-- [x] **`engine/laya/egress/registry.py`** — Platform capability matrix: 10 platforms, 38 action types
+- [x] **`engine/laya/egress/registry.py`** — Platform capability matrix: 11 platforms (including Notion), 40+ action types
 
 ### 1.2 Backends
 
@@ -33,10 +33,11 @@
 - [x] **`engine/laya/egress/platforms/outlook.py`** — Conversation threading, Re: prefix
 - [x] **`engine/laya/egress/platforms/linear.py`** — issue_id/team_id normalization, body from comment
 - [x] **`engine/laya/egress/platforms/calendar.py`** — Title from summary, datetime field normalization
+- [x] **`engine/laya/egress/platforms/notion.py`** — Property type inference, payload normalization for create/update pages
 
 ### 1.4 Connection Broker
 
-- [x] **`engine/laya/egress/connections.py`** — Full broker: `create_connection()`, `remove_connection()`, `list_all_connections()`, `test_connection()` with credential validation for 8 platform types (Jira, GitHub, Bitbucket, Slack, Linear, GitLab, Discord, SMTP)
+- [x] **`engine/laya/egress/connections.py`** — Full broker: `create_connection()`, `remove_connection()`, `list_all_connections()`, `test_connection()` with credential validation for 9 platform types (Jira, GitHub, Bitbucket, Slack, Linear, Notion, GitLab, Discord, SMTP)
 - [x] **`engine/laya/db/migrations/034_egress_connections.sql`** — `egress_connections` table with indexes
 
 ### 1.5 Refactor Executor
@@ -53,6 +54,7 @@
 - [x] **`n8n/workflows/jira-executor.json`** — 4 routes: comment, transition (with dynamic transition ID resolution), create_issue, assign
 - [x] **`n8n/workflows/slack-executor.json`** — 3 routes: send_message, reply_thread, react
 - [x] **`n8n/workflows/bitbucket-executor.json`** — 4 routes: comment_pr, approve_pr, decline_pr, merge_pr
+- [x] **`n8n/workflows/notion-executor.json`** — 2 routes: create_page, update_page
 
 ### 1.8 Extend Existing n8n Workflows
 
@@ -67,7 +69,7 @@
 - [x] **`engine/tests/test_egress_models.py`** — 15 tests for all data models
 - [x] **`engine/tests/test_egress_router.py`** — 20 tests for preview summaries, warnings, impact levels
 - [x] **`engine/tests/test_egress_n8n_backend.py`** — 16 tests for payload building, webhook resolution, execution
-- [x] **`engine/tests/test_egress_platforms.py`** — 48 tests for all 8 platform payload builders
+- [x] **`engine/tests/test_egress_platforms.py`** — 48+ tests for all 9 platform payload builders
 - [x] **`engine/tests/test_egress_connections.py`** — 15 tests for credential validation, connection CRUD
 
 **Total: 114 tests, all passing.**
@@ -233,14 +235,14 @@
 
 | Phase | Items | Done | Remaining |
 |-------|-------|------|-----------|
-| Phase 1: Foundation | 28 | 28 | 0 |
+| Phase 1: Foundation | 30 | 30 | 0 |
 | Phase 2: Chat Egress | 10 | 10 | 0 |
 | Phase 3: OAuth + Setup | 16 | 14 | 2 (migration, deprecation) |
 | Phase 4: Card UI | 10 | 8 | 2 (CardDetail integration, attachments) |
-| Phase 5: Expansion | 16 | 2 | 14 (autocomplete, MCP backend, chains, templates, scheduled sends) |
-| **Total** | **80** | **62** | **18** |
+| Phase 5: Expansion | 16 | 4 | 12 (autocomplete, MCP backend, chains, templates, scheduled sends) |
+| **Total** | **82** | **66** | **16** |
 
-### Remaining Items (18)
+### Remaining Items (16)
 
 **Quick wins (can be done incrementally):**
 1. Integrate QuickActions into CardDetail.svelte
@@ -260,10 +262,10 @@
 
 | Category | New Files | Modified Files |
 |----------|-----------|----------------|
-| Egress package (Python) | 22 | 0 |
+| Egress package (Python) | 23 | 0 |
 | API routes | 1 | 1 (main.py) |
 | DB migrations | 1 | 0 |
-| n8n workflows | 4 new | 2 modified |
+| n8n workflows | 5 new | 2 modified |
 | Chat integration | 0 | 3 (definitions.py, executor.py, chat prompt) |
 | Stager prompt | 0 | 1 |
 | Config | 0 | 1 (config.py) |
@@ -275,4 +277,4 @@
 | UI layout | 0 | 1 (+layout.svelte) |
 | UI icons | 0 | 1 (PlatformIcon.svelte) |
 | Documentation | 5 | 0 |
-| **Total** | **~49 new** | **~13 modified** |
+| **Total** | **~51 new** | **~13 modified** |

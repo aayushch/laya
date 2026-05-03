@@ -20,7 +20,7 @@ The Engine should **never** need to understand Jira's API format or Gmail's payl
   "event_id": "evt_<uuid>",
   "timestamp": "<ISO 8601 datetime>",
   "source": {
-    "platform": "<string: jira | bitbucket | slack | gmail | calendar>",
+    "platform": "<string: jira | bitbucket | slack | gmail | calendar | github | linear | outlook | notion>",
     "connection_id": "<string: identifies which account/workspace>",
     "raw_event_type": "<string: platform-specific event type>"
   },

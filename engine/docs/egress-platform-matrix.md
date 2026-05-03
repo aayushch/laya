@@ -107,6 +107,15 @@ for full control.
 | Update event | Yes | `n8n-nodes-base.microsoftOutlook` | `event_id`, `fields` |
 | Delete event | Yes | `n8n-nodes-base.microsoftOutlook` | `event_id` |
 
+### Notion
+
+| Action | Supported | n8n Node | Required Payload |
+|--------|-----------|----------|-----------------|
+| Create page | Yes | `n8n-nodes-base.notion` | `database_id`, `title`, `properties` |
+| Update page | Yes | `n8n-nodes-base.notion` | `page_id`, `properties` |
+
+**Note**: Notion uses Internal Integration Tokens. The executor normalizes property types (title, rich_text, number, select, multi_select, date, checkbox, url, email, phone) from the payload.
+
 ---
 
 ## 2. n8n Executor Workflow Specifications

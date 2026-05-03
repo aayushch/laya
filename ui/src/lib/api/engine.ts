@@ -94,6 +94,43 @@ export const engineApi = {
 			body: JSON.stringify(rules)
 		}),
 
+	// Processing Rules
+	listProcessingRules: (spaceId?: string) =>
+		request<{ rules: import('./types').ProcessingRule[] }>(
+			`/processing-rules${spaceId ? `?space_id=${spaceId}` : ''}`
+		),
+	createProcessingRule: (data: {
+		name: string; description?: string; space_id?: string; enabled?: boolean;
+		condition: import('./types').ProcessingCondition; actions: import('./types').ProcessingRuleAction[];
+		rate_limit?: number; cooldown_secs?: number; max_daily?: number;
+	}) =>
+		request<import('./types').ProcessingRule>('/processing-rules', {
+			method: 'POST', body: JSON.stringify(data)
+		}),
+	updateProcessingRule: (id: number, data: Record<string, unknown>) =>
+		request<import('./types').ProcessingRule>(`/processing-rules/${id}`, {
+			method: 'PUT', body: JSON.stringify(data)
+		}),
+	deleteProcessingRule: (id: number) =>
+		request<{ status: string }>(`/processing-rules/${id}`, { method: 'DELETE' }),
+	toggleProcessingRule: (id: number) =>
+		request<{ id: number; enabled: boolean }>(`/processing-rules/${id}/toggle`, { method: 'PUT' }),
+	reorderProcessingRules: (order: number[]) =>
+		request<{ status: string }>('/processing-rules/reorder', {
+			method: 'PUT', body: JSON.stringify({ order })
+		}),
+	previewProcessingRuleMatches: (condition: import('./types').ProcessingCondition) =>
+		request<{ match_count: number; sample_cards: Array<{ card_id: string; header: string; priority: string; persona: string; status: string }>; period: string }>(
+			'/processing-rules/preview-matches',
+			{ method: 'POST', body: JSON.stringify({ condition }) }
+		),
+	getProcessingRuleHistory: (id: number, limit?: number) =>
+		request<{ rule_id: number; firings: import('./types').ProcessingRuleFiring[] }>(
+			`/processing-rules/${id}/history${limit ? `?limit=${limit}` : ''}`
+		),
+	getProcessingRuleFieldOptions: () =>
+		request<Record<string, string[]>>('/processing-rules/field-options'),
+
 	// Repos
 	getRepos: () => request<ReposConfig>('/repos'),
 	updateRepos: (repos: ReposConfig) =>

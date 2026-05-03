@@ -9,7 +9,7 @@ Every architectural and design decision made during the planning phase, with rat
 | 1 | **Engineering persona first** | Dogfoodable by the developer, MCP/coding agent tooling is most mature, Jira/Bitbucket triggers are well-understood. |
 | 2 | **Local-first desktop app, single user** | No multi-tenancy, no auth system, no server infrastructure. Privacy by default. One user's event volume (~100-200/day) needs no scaling infrastructure. |
 | 3 | **n8n owns all event ingestion** | No custom pollers or webhooks. n8n handles push/pull/latency per connector. Keeps Laya's ecosystem lightweight. Laya simply waits for n8n to fire a trigger. |
-| 4 | **All 5 sources in v0.1** (Gmail, Slack, Bitbucket, Jira, Calendar) | Surface integration issues early. Proves the architecture generalizes across source types. Important since we need to build for multiple personas eventually. |
+| 4 | **Start with 5 sources, expand to 10** (originally Gmail, Slack, Bitbucket, Jira, Calendar; later added GitHub, Linear, Outlook email/calendar, Notion) | Surface integration issues early. Proves the architecture generalizes across source types. Important since we need to build for multiple personas eventually. |
 | 5 | **60-second event-to-card SLA** | Event fires from any source -> Action Card with context-aware staged response within 60 seconds. Concrete success criteria. |
 
 ## Phase 2: Product Surface & UX
@@ -93,7 +93,7 @@ Every architectural and design decision made during the planning phase, with rat
 | 45 | **LiteLLM for unified LLM interface** | Single `completion()` call works with 100+ providers (Anthropic, OpenAI, Google, Ollama). Perfectly implements configurable model settings without provider-specific code. |
 | 46 | **Svelte + Skeleton + Tailwind for frontend** | Lightweight, fast, clean DX. Skeleton for accessible UI components. Tailwind for utility-first styling. Excellent Tauri integration. Layerchart or Chart.js for dashboard charts. |
 | 47 | **Tauri v2 manages everything** | Single install for the user. Tauri manages the Python engine lifecycle (creates venv from bundled source, starts/stops engine process) and n8n (npm install + process management). Native system tray + notifications. Auto-update support built in. |
-| 48 | **n8n via npm, pre-built workflows** | n8n is installed locally via npm (no Docker required). ~15 workflow JSON files (ingestion + execution for multiple platforms) shipped with Laya, auto-imported on first launch. Two-attempt install strategy: first tries full native addons, falls back to skip native compilation if node-gyp fails. n8n runs on port 45678 to avoid conflicts with user's own n8n instances. |
+| 48 | **n8n via npm, pre-built workflows** | n8n is installed locally via npm (no Docker required). 21 workflow JSON files (10 ingestion + 10 executor + 1 error handler for 10 platforms) shipped with Laya, auto-imported on first launch. Two-attempt install strategy: first tries full native addons, falls back to skip native compilation if node-gyp fails. n8n runs on port 45678 to avoid conflicts with user's own n8n instances. |
 | 49 | **SQLite + ChromaDB embedded** | All data stored locally in `~/.laya/`. No external database servers. SQLite for structured data, ChromaDB (embedded mode) for vector search. Zero-config persistence. |
 | 50 | **pytest + Vitest + Playwright for testing** | pytest + pytest-asyncio for Python engine. Vitest + Svelte Testing Library for frontend components. Playwright for end-to-end browser tests through Tauri's webview. |
 
@@ -121,3 +121,17 @@ Every architectural and design decision made during the planning phase, with rat
 | 55 | **5-step first-run setup wizard** | Step 1: LLM config. Step 2: Connect tools (via n8n OAuth). Step 3: Coding agent + repos. Step 4: Team config. Step 5: Event filters. Gets user to a working state in ~5 minutes. |
 | 56 | **SQL migration system for schema evolution** | Numbered migration files (001_initial.sql, 002_entities.sql, etc.). Engine checks schema version on startup and runs pending migrations. Simple, no heavy ORM framework. |
 | 57 | **System tray with health status indicator** | Green (all healthy), yellow (degraded), red (engine/n8n offline). Badge count of pending cards. Click to open app. Minimizes to tray on close. Background operation. |
+
+## Phase 12: Recent Additions (Apr-May 2026)
+
+| # | Decision | Rationale |
+|---|---|---|
+| 66 | **Six personas instead of three** | Added FINANCE, HR, and SALES personas alongside the original ENGINEER, COMMS, OPS. Each gets a dedicated prompt file and worker. The router includes disambiguation rules (SALES vs COMMS, HR vs COMMS, FINANCE vs OPS) to ensure accurate classification. |
+| 67 | **Notion integration** | Added Notion as the 9th platform with ingestion and executor workflows. Uses Internal Integration Tokens. Supports page creation and property updates with automatic property type inference. |
+| 68 | **Glass theme (glassmorphism)** | Optional frosted glass effect applied via `data-glass-theme` attribute on `<html>`. Uses backdrop-filter for cards, tooltips, and menus. Respects reduce-motion accessibility preferences. |
+| 69 | **Group summaries** | Rolling LLM-generated summaries for multi-card entity groups. Triggered as fire-and-forget background tasks from EMIT step. Forward-only — never regenerated from scratch, only rolled with new card additions. |
+| 70 | **Platform registry refactor** | Moved platform-specific dependencies from scattered imports into a centralized registry pattern (`egress/registry.py`) with per-platform module files in `egress/platforms/`. |
+| 71 | **Constants file for pipeline limits** | Refactored hardcoded search and pipeline limits into `llm/tools/constants.py`. Defines max/default pairs for chat, coherence, contact search, semantic search, and entity search. |
+| 72 | **Context association re-implementation** | Card-level context group membership (migration 055) replacing the earlier entity-level approach. More granular linking with better accuracy. |
+| 73 | **Ingestion error tracking** | Dedicated `ingestion_errors` table (migrations 052, 058) for tracking events that fail during ingestion, rather than silently dropping them. Surfaced via `GET /ingestion-errors` API. |
+| 74 | **find_contact tool** | Chat tool for looking up contacts from the team directory and egress connections. Used by the chat pipeline for people-related queries and egress compose flows. |
