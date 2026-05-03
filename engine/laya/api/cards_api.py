@@ -18,6 +18,7 @@ from laya.db.sqlite import get_db
 from laya.llm.client import log_to_audit
 from laya.models.card import CardGroup, CardResponse, CardsListResponse, GroupedCardsResponse, GroupSummaryResponse, StagedOutput, SuggestedAction
 from laya.pipeline.summarize import trigger_summary_status_update
+from laya.tasks import create_task as create_tracked_task
 
 log = structlog.get_logger()
 router = APIRouter()
@@ -450,19 +451,14 @@ async def dismiss_group(entity_id: str) -> dict:
         (entity_id,),
     )
 
-    now = datetime.now(timezone.utc).isoformat()
+    from laya.models.card_lifecycle import transition_card_status
     dismissed = 0
     for row in rows:
-        await db.execute(
-            "UPDATE action_cards SET status = 'dismissed', previous_status = ?, resolved_at = ?, updated_at = ? WHERE card_id = ?",
-            (row["status"], now, now, row["card_id"]),
-        )
-        await manager.broadcast(
-            {"type": "card_updated", "card_id": row["card_id"], "payload": {"status": "dismissed"}}
-        )
-        dismissed += 1
-
-    await db.commit()
+        try:
+            await transition_card_status(row["card_id"], "dismissed", actor="user")
+            dismissed += 1
+        except ValueError:
+            continue
 
     # Update summary for each dismissed card so items get strikethrough
     header_rows = await db.execute_fetchall(
@@ -470,7 +466,7 @@ async def dismiss_group(entity_id: str) -> dict:
         (entity_id,),
     )
     for hr in header_rows:
-        asyncio.create_task(
+        create_tracked_task(
             trigger_summary_status_update(hr["card_id"], hr["header"], "dismissed"),
             name=f"summary_status_{hr['card_id']}",
         )
@@ -500,18 +496,11 @@ async def archive_card(card_id: str) -> dict:
     except asyncio.TimeoutError:
         log.warning("session_cancel_timeout", card_id=card_id)
 
-    now = datetime.now(timezone.utc).isoformat()
-    await db.execute(
-        "UPDATE action_cards SET status = 'archived', previous_status = ?, updated_at = ? WHERE card_id = ?",
-        (current, now, card_id),
-    )
-    await db.commit()
-
-    await manager.broadcast(
-        {"type": "card_updated", "card_id": card_id, "payload": {"status": "archived"}}
-    )
-
-    log.info("card_archived", card_id=card_id)
+    from laya.models.card_lifecycle import transition_card_status
+    try:
+        await transition_card_status(card_id, "archived", actor="user")
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
 
     await log_to_audit(
         event_id=None, card_id=card_id, step="lifecycle",
@@ -525,7 +514,7 @@ async def archive_card(card_id: str) -> dict:
         "SELECT header FROM action_cards WHERE card_id = ?", (card_id,)
     )
     if header_rows:
-        asyncio.create_task(
+        create_tracked_task(
             trigger_summary_status_update(card_id, header_rows[0]["header"], "archived"),
             name=f"summary_status_{card_id}",
         )
@@ -629,7 +618,7 @@ async def reopen_card(card_id: str) -> dict:
         "SELECT header FROM action_cards WHERE card_id = ?", (card_id,)
     )
     if header_rows:
-        asyncio.create_task(
+        create_tracked_task(
             trigger_summary_status_update(card_id, header_rows[0]["header"], new_status),
             name=f"summary_status_{card_id}",
         )
@@ -713,7 +702,7 @@ async def mark_card_done(card_id: str) -> dict:
         "SELECT header FROM action_cards WHERE card_id = ?", (card_id,)
     )
     if header_rows:
-        asyncio.create_task(
+        create_tracked_task(
             trigger_summary_status_update(card_id, header_rows[0]["header"], "done"),
             name=f"summary_status_{card_id}",
         )
@@ -855,31 +844,18 @@ async def dismiss_card(card_id: str, body: DismissRequest | None = None) -> dict
     if not rows:
         raise HTTPException(status_code=404, detail="Card not found")
 
-    terminal = {"done", "failed", "dismissed"}
-    if rows[0]["status"] in terminal:
-        raise HTTPException(
-            status_code=409, detail=f"Card status '{rows[0]['status']}' is terminal"
-        )
-
     current = rows[0]["status"]
-    now = datetime.now(timezone.utc).isoformat()
     reason = body.reason if body else None
     feedback_type = body.feedback_type if body else None
 
-    await db.execute(
-        """UPDATE action_cards
-           SET status = 'dismissed', previous_status = ?, resolved_at = ?, user_feedback = ?,
-               feedback_type = ?, updated_at = ?
-           WHERE card_id = ?""",
-        (current, now, reason, feedback_type, now, card_id),
-    )
-    await db.commit()
-
-    await manager.broadcast(
-        {"type": "card_updated", "card_id": card_id, "payload": {"status": "dismissed"}}
-    )
-
-    log.info("card_dismissed", card_id=card_id, feedback_type=feedback_type)
+    from laya.models.card_lifecycle import transition_card_status
+    try:
+        await transition_card_status(
+            card_id, "dismissed", actor="user",
+            reason=reason, feedback_type=feedback_type,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
 
     await log_to_audit(
         event_id=None, card_id=card_id, step="lifecycle",
@@ -894,7 +870,7 @@ async def dismiss_card(card_id: str, body: DismissRequest | None = None) -> dict
         "SELECT header FROM action_cards WHERE card_id = ?", (card_id,)
     )
     if header_rows:
-        asyncio.create_task(
+        create_tracked_task(
             trigger_summary_status_update(card_id, header_rows[0]["header"], "dismissed"),
             name=f"summary_status_{card_id}",
         )
@@ -1044,7 +1020,7 @@ async def polish_action_payload(card_id: str, body: PolishActionPayloadRequest) 
         }
     )
 
-    asyncio.create_task(
+    create_tracked_task(
         _run_polish(
             card_id=card_id,
             action_id=body.action_id,
@@ -1761,7 +1737,7 @@ async def run_agent(body: RunAgentRequest) -> dict:
 
     # Spawn agent in background. Attachments live inside card_dir/attachments/
     # and persist with the card — no post-run cleanup.
-    asyncio.create_task(
+    create_tracked_task(
         _stream_agent_to_card(
             card_id=card_id,
             prompt=effective_prompt,
@@ -1885,7 +1861,7 @@ async def run_entity_agent(entity_id: str, body: RunEntityAgentRequest) -> dict:
             existing["session_id"], resume_text, add_dirs=add_dirs,
         )
 
-        asyncio.create_task(
+        create_tracked_task(
             _stream_entity_agent(
                 session_id=existing["session_id"],
                 agent=agent,
@@ -1926,7 +1902,7 @@ async def run_entity_agent(entity_id: str, body: RunEntityAgentRequest) -> dict:
         entity_id=entity_id,
     )
 
-    asyncio.create_task(
+    create_tracked_task(
         _stream_entity_agent(
             session_id=session_id,
             agent=agent,

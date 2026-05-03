@@ -17,8 +17,10 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let saving = $state(false);
-	let showAddForm = $state(false);
-	let editingId = $state<number | null>(null);
+	let confirmDeleteId = $state<number | null>(null);
+	let formMode = $state<'closed' | 'add' | { edit: number }>('closed');
+	let showAddForm = $derived(formMode === 'add');
+	let editingId = $derived(typeof formMode === 'object' && 'edit' in formMode ? formMode.edit : null);
 
 	// --- Form state ---
 	let formName = $state('');
@@ -196,7 +198,27 @@
 				case 'set_priority': return { type: 'set_priority' as const, priority: (a.config.priority || 'HIGH') as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' };
 				case 'bookmark': return { type: 'bookmark' as const };
 				case 'run_entity_agent': return { type: 'run_entity_agent' as const, prompt_template: a.config.prompt_template || undefined };
-				case 'execute_egress': return { type: 'execute_egress' as const, platform: a.config.platform || '', action_type: a.config.action_type || '', payload_template: Object.fromEntries(Object.entries(a.config).filter(([k]) => !['platform', 'action_type', 'connection_id'].includes(k))), connection_id: a.config.connection_id || undefined };
+				case 'execute_egress': {
+					const payload: Record<string, string> = {};
+					for (const [k, v] of Object.entries(a.config)) {
+						if (['platform', 'action_type', 'connection_id', 'payload_json'].includes(k)) continue;
+						payload[k] = v;
+					}
+					if (a.config.payload_json) {
+						try {
+							const parsed = JSON.parse(a.config.payload_json);
+							if (typeof parsed === 'object' && parsed !== null) {
+								for (const [k, v] of Object.entries(parsed)) {
+									payload[k] = String(v);
+								}
+							}
+						} catch {
+							error = 'Invalid JSON in egress payload';
+							return { type: 'execute_egress' as const, platform: '', action_type: '', payload_template: {} };
+						}
+					}
+					return { type: 'execute_egress' as const, platform: a.config.platform || '', action_type: a.config.action_type || '', payload_template: payload, connection_id: a.config.connection_id || undefined };
+				}
 				case 'send_notification': return { type: 'send_notification' as const, title_template: a.config.title_template || '', body_template: a.config.body_template || '' };
 				default: return { type: 'bookmark' as const };
 			}
@@ -254,7 +276,7 @@
 					rate_limit: formRateLimit, cooldown_secs: formCooldownSecs, max_daily: formMaxDaily,
 				});
 				rules = rules.map(r => r.id === editingId ? updated : r);
-				editingId = null;
+				formMode = 'closed';
 			} else {
 				const created = await engineApi.createProcessingRule({
 					name: formName, description: formDescription || undefined,
@@ -262,7 +284,7 @@
 					rate_limit: formRateLimit, cooldown_secs: formCooldownSecs, max_daily: formMaxDaily,
 				});
 				rules = [...rules, created];
-				showAddForm = false;
+				formMode = 'closed';
 			}
 			resetForm();
 		} catch (e: any) {
@@ -405,16 +427,27 @@
 							<div class="flex items-center gap-1">
 								<button
 									class="rounded p-1 text-surface-500 transition-colors hover:text-surface-200"
-									onclick={() => { editingId = rule.id; loadIntoForm(rule); }}
+									onclick={() => { formMode = { edit: rule.id }; loadIntoForm(rule); }}
 								>
 									<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
 								</button>
-								<button
-									class="rounded p-1 text-surface-500 transition-colors hover:text-red-400"
-									onclick={() => deleteRule(rule.id)}
-								>
-									<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-								</button>
+								{#if confirmDeleteId === rule.id}
+									<button
+										class="rounded px-2 py-0.5 text-[10px] font-medium bg-red-900/50 text-red-300 transition-colors hover:bg-red-800/60"
+										onclick={() => { deleteRule(rule.id); confirmDeleteId = null; }}
+									>Delete</button>
+									<button
+										class="rounded px-1.5 py-0.5 text-[10px] text-surface-400 hover:text-surface-200"
+										onclick={() => (confirmDeleteId = null)}
+									>Cancel</button>
+								{:else}
+									<button
+										class="rounded p-1 text-surface-500 transition-colors hover:text-red-400"
+										onclick={() => (confirmDeleteId = rule.id)}
+									>
+										<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+									</button>
+								{/if}
 							</div>
 						</div>
 					</div>
@@ -430,7 +463,7 @@
 		{:else if editingId === null}
 			<button
 				class="mt-3 rounded-lg border border-dashed border-surface-600 px-4 py-2 text-sm text-surface-400 transition-colors hover:border-surface-400 hover:text-surface-200"
-				onclick={() => { resetForm(); showAddForm = true; }}
+				onclick={() => { resetForm(); formMode = 'add'; }}
 			>
 				+ Add Processing Rule
 			</button>
@@ -769,7 +802,7 @@
 			</button>
 			<button
 				class="ml-auto text-xs text-surface-400 hover:text-surface-200"
-				onclick={() => { editingId = null; showAddForm = false; resetForm(); }}
+				onclick={() => { formMode = 'closed'; resetForm(); }}
 			>
 				Cancel
 			</button>

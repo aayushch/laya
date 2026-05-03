@@ -9,7 +9,7 @@
 		pending:            'status-dot-yellow',
 		ready:              'status-dot-amber',
 		agent_running:      'status-dot-violet',
-		awaiting_input:     'status-dot-yellow',
+		awaiting_input:     'status-dot-violet',
 		done:               'status-dot-green',
 		failed:             'status-dot-red',
 		dismissed:          'text-surface-500',
@@ -19,7 +19,6 @@
 	const animate: Record<string, string> = {
 		pending: 'animate-pulse',
 		agent_running: 'animate-pulse',
-		awaiting_input: 'animate-pulse',
 	};
 
 	const colorClass = $derived(colors[status] ?? 'text-surface-500');

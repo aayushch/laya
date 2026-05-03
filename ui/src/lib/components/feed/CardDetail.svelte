@@ -7,6 +7,7 @@
 	import { buildSingleCardContext } from '$lib/utils/cardContext';
 	import { lastMessage } from '$lib/stores/websocket';
 	import { marked } from 'marked';
+	import DOMPurify from 'dompurify';
 	import ClassificationDialog from './ClassificationDialog.svelte';
 	import PlatformBadge from '$lib/components/PlatformBadge.svelte';
 	import { glassTheme } from '$lib/stores/glassTheme';
@@ -164,7 +165,7 @@
 		pending: 'text-yellow-400',
 		ready: 'text-amber-400',
 		agent_running: 'text-violet-400',
-		awaiting_input: 'text-yellow-400',
+		awaiting_input: 'text-violet-400',
 		done: 'text-green-500',
 		failed: 'text-red-500',
 		dismissed: 'text-surface-500',
@@ -601,11 +602,11 @@
 					<pre class="overflow-x-auto rounded-lg bg-surface-900 p-3 text-xs text-surface-200">{card.staged_output.content}</pre>
 				{:else if card.staged_output.type === 'agent_plan'}
 					<div class="prose-plan max-h-96 overflow-y-auto rounded-lg border border-surface-700 bg-surface-900/50 p-4 text-laya-base text-surface-200">
-						{@html marked(card.staged_output.content)}
+						{@html DOMPurify.sanitize(marked(card.staged_output.content) as string)}
 					</div>
 				{:else}
 					<div class="prose-plan max-h-96 overflow-y-auto overflow-x-auto rounded-lg border border-surface-700 bg-surface-900/50 p-4 text-laya-base text-surface-200">
-						{@html marked(card.staged_output.content)}
+						{@html DOMPurify.sanitize(marked(card.staged_output.content) as string)}
 					</div>
 				{/if}
 			</div>

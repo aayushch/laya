@@ -80,15 +80,10 @@ async def execute_action(
         payload.update(modifications)
 
     # 4. Update card to 'executing' and record selected action
-    now = datetime.now(timezone.utc).isoformat()
-    await db.execute(
-        "UPDATE action_cards SET status = 'executing', selected_action_id = ?, updated_at = ? WHERE card_id = ?",
-        (action_id, now, card_id),
-    )
-    await db.commit()
-
-    await manager.broadcast(
-        {"type": "card_updated", "card_id": card_id, "payload": {"status": "executing", "selected_action_id": action_id}}
+    from laya.models.card_lifecycle import transition_card_status
+    await transition_card_status(
+        card_id, "executing", actor="executor",
+        extra_fields={"selected_action_id": action_id},
     )
 
     # 5. Resolve target platform (handle calendar detection)
@@ -174,30 +169,13 @@ async def execute_action(
 
     # 9. Update card final status
     try:
-        if result_status == "failed":
-            await db.execute(
-                "UPDATE action_cards SET status = ?, failed_stage = 'action_execution', last_error = ?, updated_at = ? WHERE card_id = ?",
-                (result_status, result.error, now, card_id),
-            )
-        else:
-            await db.execute(
-                "UPDATE action_cards SET status = ?, failed_stage = NULL, last_error = NULL, updated_at = ? WHERE card_id = ?",
-                (result_status, now, card_id),
-            )
-        await db.commit()
-    except Exception as db_err:
-        log.error("card_status_update_failed", card_id=card_id, error=str(db_err))
-
-    # 10. Broadcast final status
-    broadcast_payload: dict = {"status": result_status}
-    if result.result_url:
-        broadcast_payload["result_url"] = result.result_url
-    if result.error:
-        broadcast_payload["error"] = result.error
-
-    await manager.broadcast(
-        {"type": "card_updated", "card_id": card_id, "payload": broadcast_payload}
-    )
+        await transition_card_status(
+            card_id, result_status, actor="executor",
+            failed_stage="action_execution" if result_status == "failed" else None,
+            last_error=result.error if result_status == "failed" else None,
+        )
+    except (ValueError, Exception) as e:
+        log.error("card_status_update_failed", card_id=card_id, error=str(e))
 
     log.info(
         "action_executed",

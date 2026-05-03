@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { ActionCard } from '$lib/api/types';
 	import { marked } from 'marked';
+	import DOMPurify from 'dompurify';
 
 	let {
 		card,
@@ -45,7 +46,7 @@
 		pending: 'text-yellow-400',
 		ready: 'text-amber-400',
 		agent_running: 'text-violet-400',
-		awaiting_input: 'text-yellow-400',
+		awaiting_input: 'text-violet-400',
 		done: 'text-green-400',
 		failed: 'text-red-400',
 		dismissed: 'text-surface-500',
@@ -145,7 +146,7 @@
 
 				{#if card.staged_output?.content}
 					<div class="mt-1 text-[10px] text-surface-400 prose prose-invert prose-xs max-w-none">
-						{@html marked(card.staged_output.content.slice(0, 300))}
+						{@html DOMPurify.sanitize(marked(card.staged_output.content.slice(0, 300)) as string)}
 					</div>
 				{/if}
 
@@ -237,7 +238,7 @@
 								{card.staged_output.type.replace(/_/g, ' ')}
 							</h5>
 							<div class="text-xs text-surface-300 prose prose-invert prose-xs max-w-none">
-								{@html marked(card.staged_output.content.slice(0, 500))}
+								{@html DOMPurify.sanitize(marked(card.staged_output.content.slice(0, 500)) as string)}
 							</div>
 						</div>
 					{/if}

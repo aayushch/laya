@@ -101,7 +101,7 @@
 		ready:              'bg-amber-400',
 
 		agent_running:      'bg-violet-400 animate-pulse',
-		awaiting_input:     'bg-yellow-400 animate-pulse',
+		awaiting_input:     'bg-violet-400',
 		done:               'bg-green-500',
 		failed:             'bg-red-500',
 		dismissed:          'bg-surface-500',
@@ -135,7 +135,7 @@
 		ready:              'glass-card bg-amber-950/45  border-transparent  hover:border-amber-700/30',
 
 		agent_running:      'glass-card bg-violet-950/45 border-transparent hover:border-violet-700/30 card-pulse-violet',
-		awaiting_input:     'glass-card bg-amber-950/45  border-transparent  hover:border-amber-700/30  card-pulse-amber',
+		awaiting_input:     'glass-card bg-violet-950/45 border-transparent hover:border-violet-700/30',
 		done:               'glass-card bg-emerald-950/40 border-transparent hover:border-emerald-700/25',
 		failed:             'glass-card bg-rose-950/50   border-transparent   hover:border-rose-700/35',
 		dismissed:          'glass-card bg-surface-800/30 border-transparent hover:border-surface-600/30 opacity-50 hover:opacity-75',
@@ -146,7 +146,7 @@
 		ready:              'bg-amber-950/55  border-transparent  hover:border-amber-700/45',
 
 		agent_running:      'bg-violet-950/55 border-transparent hover:border-violet-700/40 card-pulse-violet',
-		awaiting_input:     'bg-amber-950/55  border-transparent  hover:border-amber-700/45  card-pulse-amber',
+		awaiting_input:     'bg-violet-950/55 border-transparent hover:border-violet-700/40',
 		done:               'bg-emerald-950/50 border-transparent hover:border-emerald-700/35',
 		failed:             'bg-rose-950/60   border-transparent   hover:border-rose-700/50',
 		dismissed:          'bg-surface-800/40 border-transparent hover:border-surface-600/40 opacity-50 hover:opacity-75',

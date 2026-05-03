@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from datetime import datetime, timezone
@@ -32,10 +33,18 @@ log = structlog.get_logger()
 
 _PRIORITY_ORDINAL = {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}
 
+_processing_semaphore = asyncio.Semaphore(4)
+
 _VAR_RE = re.compile(r"\{\{([\w.]+)\}\}")
 
 # Auto-disable after this many consecutive errors
 _AUTO_DISABLE_THRESHOLD = 5
+
+# Max rules that can fire for a single card before we stop evaluating
+_MAX_FIRINGS_PER_CARD = 5
+
+# Per-entity locks to prevent concurrent agent spawns
+_agent_locks: dict[str, asyncio.Lock] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -49,11 +58,14 @@ def _resolve_template(template: str, context: dict[str, Any]) -> str:
         value: Any = context
         for part in path.split("."):
             if isinstance(value, dict):
-                value = value.get(part, "")
+                value = value.get(part)
             else:
-                value = ""
+                value = None
                 break
-        return str(value) if value is not None else ""
+        if value is None or value == "":
+            log.warning("processing_rule_template_missing_key", key=path)
+            return f"<missing:{path}>"
+        return str(value)
     return _VAR_RE.sub(_replace, template)
 
 
@@ -116,8 +128,12 @@ def _evaluate_simple(condition: ProcessingSimpleCondition, context: dict[str, An
                 return actual_str not in [str(v).lower() for v in expected]
             return actual_str not in str(expected).lower()
         case "matches":
+            pattern = str(expected)
+            if len(pattern) > 500:
+                log.warning("processing_rule_regex_too_long", length=len(pattern))
+                return False
             try:
-                return bool(re.search(str(expected), str(actual), re.IGNORECASE))
+                return bool(re.search(pattern, str(actual), re.IGNORECASE))
             except re.error:
                 return False
         case "gt" | "gte" | "lt" | "lte":
@@ -158,16 +174,22 @@ def _to_ordinal(value: Any) -> float | None:
         return None
 
 
-def evaluate_condition(condition: ProcessingCondition, context: dict[str, Any]) -> bool:
+_MAX_CONDITION_DEPTH = 32
+
+
+def evaluate_condition(condition: ProcessingCondition, context: dict[str, Any], *, _depth: int = 0) -> bool:
     """Recursively evaluate a processing rule condition tree."""
+    if _depth > _MAX_CONDITION_DEPTH:
+        log.warning("processing_rule_condition_too_deep", depth=_depth)
+        return False
     if isinstance(condition, ProcessingSimpleCondition):
         return _evaluate_simple(condition, context)
     elif isinstance(condition, ProcessingAllCondition):
-        return all(evaluate_condition(c, context) for c in condition.all)
+        return all(evaluate_condition(c, context, _depth=_depth + 1) for c in condition.all)
     elif isinstance(condition, ProcessingAnyCondition):
-        return any(evaluate_condition(c, context) for c in condition.any)
+        return any(evaluate_condition(c, context, _depth=_depth + 1) for c in condition.any)
     elif isinstance(condition, ProcessingNotCondition):
-        return not evaluate_condition(condition.not_, context)
+        return not evaluate_condition(condition.not_, context, _depth=_depth + 1)
     return False
 
 
@@ -309,26 +331,17 @@ async def _execute_action(
 
 
 async def _exec_set_status(action: SetStatusAction, card_id: str) -> dict[str, Any]:
-    db = await get_db()
-    now = datetime.now(timezone.utc).isoformat()
-    if action.status == "dismissed":
-        await db.execute(
-            "UPDATE action_cards SET status = 'dismissed', user_feedback = ?, resolved_at = ?, updated_at = ? WHERE card_id = ?",
-            (action.reason, now, now, card_id),
+    from laya.models.card_lifecycle import transition_card_status
+    try:
+        await transition_card_status(
+            card_id, action.status,
+            actor="processing_rule",
+            reason=action.reason,
         )
-    elif action.status == "archived":
-        await db.execute(
-            "UPDATE action_cards SET status = 'archived', resolved_at = ?, updated_at = ? WHERE card_id = ?",
-            (now, now, card_id),
-        )
-    elif action.status == "done":
-        await db.execute(
-            "UPDATE action_cards SET status = 'done', resolved_at = ?, updated_at = ? WHERE card_id = ?",
-            (now, now, card_id),
-        )
-    await db.commit()
-    await manager.broadcast({"type": "card_updated", "card_id": card_id, "payload": {"status": action.status}})
-    return {"success": True, "status": action.status}
+        return {"success": True, "status": action.status}
+    except ValueError as e:
+        log.warning("processing_rule_invalid_transition", card_id=card_id, error=str(e))
+        return {"success": False, "error": str(e)}
 
 
 async def _exec_set_priority(action: SetPriorityAction, card_id: str) -> dict[str, Any]:
@@ -350,6 +363,7 @@ async def _exec_bookmark(card_id: str) -> dict[str, Any]:
         (now, card_id),
     )
     await db.commit()
+    await manager.broadcast({"type": "card_updated", "card_id": card_id, "payload": {"bookmarked": True}})
     return {"success": True, "bookmarked": True}
 
 
@@ -361,70 +375,72 @@ async def _exec_run_agent(
     if not entity_id:
         return {"success": False, "error": "No entity_id for agent run"}
     prompt = _resolve_template(action.prompt_template, context) if action.prompt_template else None
-    try:
-        from laya.agents.entity_context import get_entity_research_dir, write_entity_context_file
-        from laya.agents import session_manager
-        from laya.config import load_repos
-        from laya.workers.engineer import resolve_repo_path
-        from laya.models.classification import Category, Persona, Priority, RouterOutput as RO
-        from laya.agents.entity_context import build_entity_agent_prompt
+    lock = _agent_locks.setdefault(entity_id, asyncio.Lock())
+    async with lock:
+        try:
+            from laya.agents.entity_context import get_entity_research_dir, write_entity_context_file
+            from laya.agents import session_manager
+            from laya.config import load_repos
+            from laya.workers.engineer import resolve_repo_path
+            from laya.models.classification import Category, Persona, Priority, RouterOutput as RO
+            from laya.agents.entity_context import build_entity_agent_prompt
 
-        existing = await session_manager.get_session_for_entity(entity_id)
-        if existing and existing["status"] in ("starting", "running"):
-            return {"success": True, "skipped": True, "reason": "agent already running"}
+            existing = await session_manager.get_session_for_entity(entity_id)
+            if existing and existing["status"] in ("starting", "running"):
+                return {"success": True, "skipped": True, "reason": "agent already running"}
 
-        db = await get_db()
-        card_rows = await db.execute_fetchall(
-            "SELECT card_id, space_id FROM action_cards WHERE entity_id = ? ORDER BY created_at DESC LIMIT 1",
-            (entity_id,),
-        )
-        if not card_rows:
-            return {"success": False, "error": "No cards for entity"}
+            db = await get_db()
+            card_rows = await db.execute_fetchall(
+                "SELECT card_id, space_id FROM action_cards WHERE entity_id = ? ORDER BY created_at DESC LIMIT 1",
+                (entity_id,),
+            )
+            if not card_rows:
+                return {"success": False, "error": "No cards for entity"}
 
-        space_id = card_rows[0]["space_id"] or "default"
-        anchor_card_id = card_rows[0]["card_id"]
+            space_id = card_rows[0]["space_id"] or "default"
+            anchor_card_id = card_rows[0]["card_id"]
 
-        await write_entity_context_file(entity_id, space_id)
-        research_dir = get_entity_research_dir(entity_id)
-        research_dir_str = str(research_dir)
+            await write_entity_context_file(entity_id, space_id)
+            research_dir = get_entity_research_dir(entity_id)
+            research_dir_str = str(research_dir)
 
-        dummy_router = RO(persona=Persona.ENGINEER, priority=Priority.MEDIUM, category=Category.CODE, confidence=0.8, entities=[])
-        repo_path, other_repos = await resolve_repo_path(dummy_router, space_id=space_id)
+            dummy_router = RO(persona=Persona.ENGINEER, priority=Priority.MEDIUM, category=Category.CODE, confidence=0.8, entities=[])
+            repo_path, other_repos = await resolve_repo_path(dummy_router, space_id=space_id)
 
-        if repo_path:
-            cwd = repo_path
-            add_dirs = [research_dir_str] + [p for p in other_repos if p != research_dir_str]
-        else:
-            cwd = research_dir_str
-            repos_data = load_repos()
-            add_dirs = [r["path"] for r in repos_data.get("repos", []) if r.get("path")]
+            if repo_path:
+                cwd = repo_path
+                add_dirs = [research_dir_str] + [p for p in other_repos if p != research_dir_str]
+            else:
+                cwd = research_dir_str
+                repos_data = load_repos()
+                add_dirs = [r["path"] for r in repos_data.get("repos", []) if r.get("path")]
 
-        agent_prompt = build_entity_agent_prompt(entity_id, research_dir_str, repo_path, prompt)
-        agent_type = session_manager.get_configured_agent_type()
+            agent_prompt = build_entity_agent_prompt(entity_id, research_dir_str, repo_path, prompt)
+            agent_type = session_manager.get_configured_agent_type()
 
-        now = datetime.now(timezone.utc).isoformat()
-        await db.execute(
-            "UPDATE action_cards SET has_workspace = 1, updated_at = ? WHERE entity_id = ?",
-            (now, entity_id),
-        )
-        await db.commit()
+            now = datetime.now(timezone.utc).isoformat()
+            await db.execute(
+                "UPDATE action_cards SET has_workspace = 1, updated_at = ? WHERE entity_id = ?",
+                (now, entity_id),
+            )
+            await db.commit()
 
-        session_id, agent = await session_manager.start_session(
-            card_id=anchor_card_id, prompt=agent_prompt, repo_path=cwd,
-            agent_type=agent_type, space_id=space_id, add_dirs=add_dirs,
-            mode="plan", research=True, entity_id=entity_id,
-        )
+            session_id, agent = await session_manager.start_session(
+                card_id=anchor_card_id, prompt=agent_prompt, repo_path=cwd,
+                agent_type=agent_type, space_id=space_id, add_dirs=add_dirs,
+                mode="plan", research=True, entity_id=entity_id,
+            )
 
-        import asyncio
-        from laya.api.cards_api import _stream_entity_agent
-        asyncio.create_task(
-            _stream_entity_agent(session_id=session_id, agent=agent, entity_id=entity_id, anchor_card_id=anchor_card_id),
-            name=f"proc_rule_agent_{entity_id}",
-        )
+            from laya.api.cards_api import _stream_entity_agent
+            from laya.tasks import create_task as create_tracked_task
+            create_tracked_task(
+                _stream_entity_agent(session_id=session_id, agent=agent, entity_id=entity_id, anchor_card_id=anchor_card_id),
+                name=f"proc_rule_agent_{entity_id}",
+            )
 
-        return {"success": True, "session_id": session_id}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+            return {"success": True, "session_id": session_id}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
 
 async def _exec_egress(
@@ -523,7 +539,17 @@ async def run_processing_rules(
             actor_relationship, is_carry_forward, entity_card_count,
         )
 
+        from laya.models.card_lifecycle import TERMINAL_STATUSES
+        firings_this_card = 0
+        card_terminated = False
+
         for rule_row in rows:
+            if card_terminated:
+                break
+            if firings_this_card >= _MAX_FIRINGS_PER_CARD:
+                log.info("processing_rules_per_card_cap", card_id=card_id, cap=_MAX_FIRINGS_PER_CARD)
+                break
+
             rule_id = rule_row["id"]
             rule_name = rule_row["name"]
 
@@ -556,6 +582,11 @@ async def run_processing_rules(
                 results.append(result)
                 if not result.get("success"):
                     has_error = True
+                if isinstance(action, SetStatusAction) and result.get("success") and action.status in TERMINAL_STATUSES:
+                    card_terminated = True
+                    break
+
+            firings_this_card += 1
 
             # Record firing
             await db.execute(

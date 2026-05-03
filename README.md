@@ -272,9 +272,3 @@ Architecture and design documents in [`docs/`](./docs/):
 - [**Project Structure**](./docs/project-structure.md) -- Repository layout and config file schemas
 - [**Implementation Plan**](./docs/implementation-plan.md) -- Milestone breakdown
 - [**Decision Log**](./docs/decision-log.md) -- Architectural decisions with rationale
-
-### Concept Materials
-
-- [Laya Architecture Spec](./LayaArchitectureSpec.md) -- Initial technical architecture vision
-- [Laya Master Orchestrator](./LayaMasterOrchestrator.md) -- Multi-persona system prompt design
-- [Laya - The Professional AI Operating System (PDF)](./Laya%20-%20The%20Professional%20AI%20Operating%20System.pdf) -- Concept slide deck

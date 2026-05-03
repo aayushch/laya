@@ -18,7 +18,17 @@ export interface HealthResponse {
 
 /** WebSocket message from the engine */
 export interface WsMessage {
-	type: string;
+	type:
+		| 'card_created' | 'card_updated'
+		| 'group_carried_forward' | 'group_summary_updated'
+		| 'summary_updated'
+		| 'budget_status'
+		| 'omni_updated'
+		| 'settings_changed'
+		| 'open_compose'
+		| 'processing_rule_auto_disabled'
+		| 'push_notification'
+		| (string & {});
 	event_id?: string;
 	card_id?: string;
 	entity_id?: string;
@@ -367,7 +377,7 @@ export interface ActionCard {
 	status:
 		| 'pending'
 		| 'ready'
-		| 'requires_approval'
+		| 'executing'
 		| 'done'
 		| 'failed'
 		| 'dismissed'

@@ -67,10 +67,11 @@ async def retry_action_endpoint(action_id: str) -> dict:
     modifications = json.loads(row["modifications"]) if row["modifications"] else None
 
     # Reset card status to allow re-execution
-    await db.execute(
-        "UPDATE action_cards SET status = 'approved' WHERE card_id = ?",
-        (card_id,),
-    )
+    from laya.models.card_lifecycle import transition_card_status
+    try:
+        await transition_card_status(card_id, "ready", actor="user")
+    except ValueError:
+        pass
     # Delete old action_log entry so action_id can be reused
     await db.execute("DELETE FROM action_log WHERE action_id = ?", (action_id,))
     await db.commit()
