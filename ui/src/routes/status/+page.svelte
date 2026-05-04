@@ -168,7 +168,7 @@
 					<span class="text-sm text-red-400">Offline</span>
 				{:else}
 					<span class="text-sm {statusIcon($health.engine)}">{statusLabel($health.engine)}</span>
-					<div class="mt-1 text-[10px] text-surface-500">Uptime: {$health.uptime_seconds}s</div>
+					<div class="mt-1 text-[10px] text-surface-500">Uptime: {Math.floor($health.uptime_seconds / 3600)}h {Math.floor(($health.uptime_seconds % 3600) / 60)}m {Math.floor($health.uptime_seconds % 60)}s</div>
 				{/if}
 			</div>
 
