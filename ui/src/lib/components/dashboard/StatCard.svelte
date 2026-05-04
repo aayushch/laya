@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { glassTheme } from '$lib/stores/glassTheme';
 	let {
 		label,
 		value,
@@ -12,7 +13,7 @@
 	} = $props();
 </script>
 
-<div class="rounded-xl border border-surface-700 bg-surface-800 p-5">
+<div class="rounded-xl border p-5 {$glassTheme ? 'glass-section' : 'border-surface-700 bg-surface-800'}">
 	<div class="mb-1 text-xs uppercase tracking-wider text-surface-400">{label}</div>
 	<div class="text-2xl font-bold {color ?? 'text-surface-50'}">{value}</div>
 	{#if subtitle}

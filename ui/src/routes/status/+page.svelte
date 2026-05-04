@@ -3,11 +3,14 @@
 	import { health, healthError } from '$lib/stores/health';
 	import { wsStatus, lastMessage } from '$lib/stores/websocket';
 	import { engineApi } from '$lib/api/engine';
+	import { glassTheme } from '$lib/stores/glassTheme';
 	import type { DashboardResponse } from '$lib/api/types';
 	import StatCard from '$lib/components/dashboard/StatCard.svelte';
 	import BarChart from '$lib/components/dashboard/BarChart.svelte';
 	import DonutChart from '$lib/components/dashboard/DonutChart.svelte';
 	import FeatureCostChart from '$lib/components/dashboard/FeatureCostChart.svelte';
+
+	const cardClass = $derived($glassTheme ? 'rounded-xl glass-section p-4' : 'rounded-xl border border-surface-700 bg-surface-800 p-4');
 
 	// --- Service health ---
 	function statusIcon(status: string | undefined): string {
@@ -159,7 +162,7 @@
 		<h2 class="mb-4 text-lg font-semibold">System Status</h2>
 		<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
 			<!-- Engine -->
-			<div class="rounded-xl border border-surface-700 bg-surface-800 p-4">
+			<div class={cardClass}>
 				<div class="mb-1.5 text-[10px] uppercase tracking-wider text-surface-400">Engine</div>
 				{#if $healthError || !$health}
 					<span class="text-sm text-red-400">Offline</span>
@@ -170,7 +173,7 @@
 			</div>
 
 			<!-- SQLite -->
-			<div class="rounded-xl border border-surface-700 bg-surface-800 p-4">
+			<div class={cardClass}>
 				<div class="mb-1.5 text-[10px] uppercase tracking-wider text-surface-400">SQLite</div>
 				{#if $healthError || !$health}
 					<span class="text-sm text-red-400">Offline</span>
@@ -180,7 +183,7 @@
 			</div>
 
 			<!-- n8n -->
-			<div class="rounded-xl border border-surface-700 bg-surface-800 p-4">
+			<div class={cardClass}>
 				<div class="mb-1.5 text-[10px] uppercase tracking-wider text-surface-400">n8n</div>
 				{#if $healthError || !$health}
 					<span class="text-sm text-red-400">Offline</span>
@@ -190,7 +193,7 @@
 			</div>
 
 			<!-- WebSocket -->
-			<div class="rounded-xl border border-surface-700 bg-surface-800 p-4">
+			<div class={cardClass}>
 				<div class="mb-1.5 text-[10px] uppercase tracking-wider text-surface-400">WebSocket</div>
 				<span class="text-sm {statusIcon($wsStatus === 'connected' ? 'healthy' : 'unhealthy')}">
 					{$wsStatus}
@@ -201,7 +204,7 @@
 		<!-- Embeddings info -->
 		{#if $health?.embeddings}
 			{@const emb = $health.embeddings}
-			<div class="mt-3 rounded-xl border border-surface-700 bg-surface-800 p-4">
+			<div class="mt-3 {cardClass}">
 				<div class="flex items-center justify-between">
 					<div>
 						<div class="text-[10px] uppercase tracking-wider text-surface-400">Embeddings</div>
@@ -234,7 +237,7 @@
 		{/if}
 
 		<!-- n8n process control -->
-		<div class="mt-3 rounded-xl border border-surface-700 bg-surface-800 p-4">
+		<div class="mt-3 {cardClass}">
 			<div class="flex items-center justify-between">
 				<div>
 					<div class="text-[10px] uppercase tracking-wider text-surface-400">n8n Process</div>
@@ -268,7 +271,7 @@
 
 		<!-- Last WS message -->
 		{#if $lastMessage}
-			<div class="mt-3 rounded-xl border border-surface-700 bg-surface-800 p-4">
+			<div class="mt-3 {cardClass}">
 				<div class="mb-1.5 text-[10px] uppercase tracking-wider text-surface-400">Last WS Message</div>
 				<pre class="overflow-x-auto text-xs text-surface-300">{JSON.stringify($lastMessage, null, 2)}</pre>
 			</div>
@@ -282,7 +285,7 @@
 			<select
 				bind:value={days}
 				onchange={loadDashboard}
-				class="rounded-lg border border-surface-600 bg-surface-800 px-3 py-1.5 text-sm text-surface-200 focus:border-laya-orange/50 focus:outline-none"
+				class="rounded-lg border px-3 py-1.5 text-sm text-surface-200 focus:border-laya-orange/50 focus:outline-none {$glassTheme ? 'glass-input' : 'border-surface-600 bg-surface-800'}"
 			>
 				<option value={7}>Last 7 days</option>
 				<option value={14}>Last 14 days</option>
