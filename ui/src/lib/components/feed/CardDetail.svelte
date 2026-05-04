@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { ActionCard } from '$lib/api/types';
+	import type { ActionCard, CardEgressContext, CardEgressAction } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
 	import { goto } from '$app/navigation';
 	import { untrack } from 'svelte';
@@ -12,6 +12,7 @@
 	import PlatformBadge from '$lib/components/PlatformBadge.svelte';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { portal } from '$lib/actions/portal';
+	import { compose } from '$lib/stores/compose';
 
 	let {
 		card,
@@ -60,6 +61,9 @@
 	let overflowMenuPos = $state({ top: 0, right: 0 });
 	const hasRelated = $derived(relatedCount != null && relatedCount > 0);
 
+	let egressContext = $state<CardEgressContext | null>(null);
+	let egressLoading = $state(false);
+
 	$effect(() => {
 		const cardId = card.card_id;
 		relatedCount = null;
@@ -70,6 +74,20 @@
 				relatedCount = data.total_related_cards;
 			}
 		}).catch(() => {}).finally(() => { loadingRelated = false; });
+	});
+
+	$effect(() => {
+		const cardId = card.card_id;
+		const entityId = card.entity_id;
+		egressContext = null;
+		egressLoading = false;
+		if (!entityId) return;
+		egressLoading = true;
+		engineApi.getCardEgressContext(cardId).then((ctx) => {
+			if (card.card_id === cardId) egressContext = ctx;
+		}).catch(() => {
+			egressContext = null;
+		}).finally(() => { egressLoading = false; });
 	});
 
 	$effect(() => {
@@ -90,6 +108,18 @@
 		const rect = overflowBtnEl.getBoundingClientRect();
 		overflowMenuPos = { top: rect.top - 4, right: window.innerWidth - rect.right };
 		overflowMenuOpen = true;
+	}
+
+	function openPlatformAction(action: CardEgressAction) {
+		if (!egressContext) return;
+		overflowMenuOpen = false;
+		compose.openCompose(
+			egressContext.platform,
+			action.action_type,
+			egressContext.prefill,
+			card.card_id,
+			egressContext.event_id ?? undefined
+		);
 	}
 
 	// Watches an element for text overflow and reports the result via callback.
@@ -1000,7 +1030,7 @@
 	<div
 		bind:this={overflowMenuEl}
 		use:portal
-		class="fixed z-[100] w-36 rounded-lg border p-1 {$glassTheme ? 'glass-menu' : 'border-surface-600 bg-surface-900 shadow-xl shadow-black/50'}"
+		class="fixed z-[100] w-44 rounded-lg border p-1 {$glassTheme ? 'glass-menu' : 'border-surface-600 bg-surface-900 shadow-xl shadow-black/50'}"
 		style="top: {overflowMenuPos.top}px; right: {overflowMenuPos.right}px; transform: translateY(-100%);"
 		role="menu"
 	>
@@ -1035,6 +1065,33 @@
 				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
 				Delete
 			</button>
+		{/if}
+		{#if egressContext && egressContext.actions.length > 0}
+			<div class="my-1 border-t {$glassTheme ? 'border-surface-700/40' : 'border-surface-600'}"></div>
+			{#each egressContext.actions as action (action.action_type)}
+				<button
+					class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-surface-200"
+					role="menuitem"
+					onclick={() => openPlatformAction(action)}
+				>
+					<svg class="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+					<span class="truncate">{action.label}</span>
+					{#if action.impact === 'high'}
+						<span class="ml-auto text-[9px] font-bold text-amber-500/70">!</span>
+					{/if}
+				</button>
+			{/each}
+			{#if !egressContext.connected}
+				<p class="px-2.5 py-1 text-[10px] text-surface-500 italic">
+					Connect {egressContext.platform} to use
+				</p>
+			{/if}
+		{:else if egressLoading}
+			<div class="my-1 border-t {$glassTheme ? 'border-surface-700/40' : 'border-surface-600'}"></div>
+			<div class="flex items-center gap-2 px-2.5 py-1.5 text-[10px] text-surface-500">
+				<svg class="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" /><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+				Loading actions
+			</div>
 		{/if}
 	</div>
 {/if}

@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 import laya.egress as egress
+from laya.config import ENGINE_PORT
 from laya.egress.models import EgressRequest
 
 log = structlog.get_logger()
@@ -444,6 +445,44 @@ async def get_capabilities(platform: str) -> dict:
     }
 
 
+@router.get("/egress/card-context/{card_id}")
+async def get_card_egress_context(card_id: str) -> dict:
+    """Return platform, available actions, and pre-filled identifiers for a card."""
+    from laya.egress.enrichment import get_prefill_for_card
+    from laya.egress.registry import get_composable_actions
+
+    platform, prefill, event_id = await get_prefill_for_card(card_id)
+    if not platform:
+        return {"platform": "", "actions": [], "prefill": {}, "event_id": None, "connected": False}
+
+    actions = get_composable_actions(platform)
+
+    connected = False
+    try:
+        conns = await egress.list_connections()
+        connected = any(
+            c.platform == platform and c.status == "connected"
+            for c in conns
+        )
+    except Exception:
+        pass
+
+    return {
+        "platform": platform,
+        "actions": [
+            {
+                "action_type": a.action_type,
+                "label": a.label,
+                "impact": a.impact,
+            }
+            for a in actions
+        ],
+        "prefill": prefill,
+        "event_id": event_id,
+        "connected": connected,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Connection endpoints
 # ---------------------------------------------------------------------------
@@ -673,7 +712,7 @@ async def oauth_start(platform: str, connection_name: str | None = None) -> dict
     """
     from laya.egress.oauth import build_auth_url
 
-    redirect_uri = "http://localhost:8420/egress/connections/oauth/callback"
+    redirect_uri = f"http://localhost:{ENGINE_PORT}/egress/connections/oauth/callback"
     result = build_auth_url(platform, redirect_uri, connection_name=connection_name)
 
     if "error" in result:
@@ -692,7 +731,7 @@ async def oauth_callback(code: str, state: str):
     from fastapi.responses import HTMLResponse
     from laya.egress.oauth import handle_callback
 
-    redirect_uri = "http://localhost:8420/egress/connections/oauth/callback"
+    redirect_uri = f"http://localhost:{ENGINE_PORT}/egress/connections/oauth/callback"
     result = await handle_callback(code, state, redirect_uri)
 
     if "error" in result:

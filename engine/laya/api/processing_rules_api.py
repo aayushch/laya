@@ -53,6 +53,35 @@ def _row_to_rule(row: dict) -> dict:
     }
 
 
+@router.get("/processing-rules/settings")
+async def get_processing_rules_settings() -> dict:
+    """Return processing-rules engine settings (e.g. auto-disable threshold)."""
+    from laya.config import load_settings
+    settings = load_settings()
+    pr_settings = settings.get("processing_rules", {})
+    return {
+        "auto_disable_threshold": pr_settings.get("auto_disable_threshold", 5),
+    }
+
+
+@router.put("/processing-rules/settings")
+async def update_processing_rules_settings(body: dict) -> dict:
+    """Update processing-rules engine settings."""
+    from laya.config import load_settings, save_settings
+    settings = load_settings()
+    if "processing_rules" not in settings:
+        settings["processing_rules"] = {}
+    if "auto_disable_threshold" in body:
+        val = int(body["auto_disable_threshold"])
+        if val < 1:
+            val = 1
+        if val > 100:
+            val = 100
+        settings["processing_rules"]["auto_disable_threshold"] = val
+    save_settings(settings)
+    return {"auto_disable_threshold": settings["processing_rules"]["auto_disable_threshold"]}
+
+
 @router.get("/processing-rules")
 async def list_processing_rules(space_id: str | None = None) -> dict:
     """List all processing rules, optionally filtered by space."""

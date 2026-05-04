@@ -349,6 +349,9 @@
 		letter-spacing: 0.06em;
 		color: var(--color-surface-400);
 	}
+	:global([data-theme='light']) .summary-section-title {
+		color: oklch(0.42 0.03 55);
+	}
 
 	/* ── Count badge ── */
 	.summary-section-badge {
@@ -469,6 +472,9 @@
 		font-size: 0.6rem;
 		font-weight: 500;
 		color: var(--color-surface-400);
+	}
+	:global([data-theme='light']) .summary-space-legend {
+		color: oklch(0.42 0.025 55);
 	}
 	.summary-space-legend-dot {
 		width: 0.4rem;

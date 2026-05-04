@@ -669,6 +669,7 @@ fn spawn_n8n() -> Result<Child, String> {
         .env("EXTERNAL_FRONTEND_HOOKS_URLS", "")
         .env("N8N_DIAGNOSTICS_CONFIG_FRONTEND", "")
         .env("N8N_DIAGNOSTICS_CONFIG_BACKEND", "")
+        .env("LAYA_ENGINE_URL", format!("http://127.0.0.1:{}", std::env::var("LAYA_ENGINE_PORT").unwrap_or_else(|_| "8420".to_string())))
         .stdout(log_file)
         .stderr(stderr_file);
 

@@ -360,14 +360,15 @@ fn start_health_polling(tray: TrayIcon) {
         loop {
             std::thread::sleep(Duration::from_secs(30));
 
-            let tooltip = match client.get("http://127.0.0.1:8420/health").send() {
+            let engine_base = sidecar::engine_url();
+            let tooltip = match client.get(format!("{}/health", engine_base)).send() {
                 Ok(resp) => {
                     if let Ok(body) = resp.json::<serde_json::Value>() {
                         let engine = body.get("engine").and_then(|v| v.as_str()).unwrap_or("unknown");
                         let n8n = body.get("n8n").and_then(|v| v.as_str()).unwrap_or("unknown");
 
                         let pending = client
-                            .get("http://127.0.0.1:8420/cards?status=pending&limit=1")
+                            .get(format!("{}/cards?status=pending&limit=1", engine_base))
                             .send()
                             .ok()
                             .and_then(|r| r.json::<serde_json::Value>().ok())
@@ -659,7 +660,7 @@ pub fn run() {
                 // main app URL and covers the Titlebar's window controls.
                 let is_internal = url.starts_with("http://localhost:5173")
                     || url.starts_with("http://127.0.0.1:5173")
-                    || url.starts_with("http://127.0.0.1:8420")
+                    || url.starts_with(&sidecar::engine_url())
                     || url.starts_with("tauri://")
                     || url.starts_with("http://tauri.localhost/")
                     || url.starts_with("https://tauri.localhost/")
@@ -811,7 +812,7 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
                     // our cleanup above (race), or if we never got a handle,
                     // kill any process listening on the engine port (8420).
                     if !killed_engine {
-                        kill_process_on_port(8420);
+                        kill_process_on_port(sidecar::engine_port());
                     }
 
                     log::info!("Stopping n8n process");

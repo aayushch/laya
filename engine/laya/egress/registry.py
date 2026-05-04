@@ -877,6 +877,12 @@ def get_composable_platforms() -> list[str]:
     return list(_CAPABILITIES.keys())
 
 
+def get_composable_actions(platform: str) -> list[EgressCapability]:
+    """Return all composable actions for *platform* (non-composable filtered out)."""
+    caps = _CAPABILITIES.get(platform, [])
+    return [c for c in caps if c.action_type not in _NON_COMPOSABLE_ACTIONS]
+
+
 # ---------------------------------------------------------------------------
 # Compose UI — field metadata for dynamic form rendering
 # ---------------------------------------------------------------------------

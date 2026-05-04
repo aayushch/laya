@@ -8,6 +8,7 @@
 	import SpacesConfig from '$lib/components/settings/SpacesConfig.svelte';
 	import AuditLogViewer from '$lib/components/settings/AuditLogViewer.svelte';
 	import AppearanceConfig from '$lib/components/settings/AppearanceConfig.svelte';
+	import { getEngineUrl } from '$lib/config';
 	import KeybindingsConfig from '$lib/components/settings/KeybindingsConfig.svelte';
 	import DataConfig from '$lib/components/settings/DataConfig.svelte';
 	import BriefingConfig from '$lib/components/settings/BriefingConfig.svelte';
@@ -72,7 +73,7 @@
 	async function exportDiagnostics() {
 		exporting = true;
 		try {
-			const resp = await fetch('http://127.0.0.1:8420/diagnostics/export');
+			const resp = await fetch(`${getEngineUrl()}/diagnostics/export`);
 			if (!resp.ok) throw new Error(`Export failed: ${resp.status}`);
 			const blob = await resp.blob();
 			const url = URL.createObjectURL(blob);

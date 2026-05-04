@@ -13,9 +13,9 @@ LAYA_TEAM_FILE = LAYA_HOME / "team.json"
 LAYA_RULES_FILE = LAYA_HOME / "rules.json"
 LAYA_REPOS_FILE = LAYA_HOME / "repos.json"
 
-# Engine defaults
-ENGINE_HOST = "127.0.0.1"
-ENGINE_PORT = 8420
+# Engine defaults (overridable via environment)
+ENGINE_HOST = os.environ.get("LAYA_ENGINE_HOST", "127.0.0.1")
+ENGINE_PORT = int(os.environ.get("LAYA_ENGINE_PORT", "8420"))
 N8N_URL = "http://localhost:45678"
 DB_PATH = LAYA_DATA_DIR / "laya.db"
 MIGRATIONS_DIR = Path(__file__).parent / "db" / "migrations"

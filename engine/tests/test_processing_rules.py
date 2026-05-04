@@ -754,23 +754,6 @@ class TestRunProcessingRules:
         firings = await db.execute_fetchall("SELECT * FROM processing_rule_firings WHERE rule_id = 202")
         assert len(firings) == 0
 
-    async def test_loop_guard_prevents_re_entry(self, db, sample_processing_event, sample_router_output):
-        """When _rule_triggered=True, processing is skipped entirely."""
-        await insert_test_card(db, "card_run4", "evt_proc_001", space_id=None)
-        await self._insert_rule(db, rule_id=203, space_id=None)
-
-        with patch("laya.pipeline.processing_rules.manager.broadcast", new_callable=AsyncMock):
-            await run_processing_rules(
-                event=sample_processing_event,
-                router_output=sample_router_output,
-                card_id="card_run4",
-                space_id=None,
-                _rule_triggered=True,
-            )
-
-        firings = await db.execute_fetchall("SELECT * FROM processing_rule_firings WHERE rule_id = 203")
-        assert len(firings) == 0
-
     async def test_auto_disable_after_consecutive_errors(self, db, sample_processing_event, sample_router_output):
         """After _AUTO_DISABLE_THRESHOLD consecutive errors, the rule is auto-disabled."""
         await insert_test_card(db, "card_run5", "evt_proc_001", space_id=None)

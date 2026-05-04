@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { ProviderModels } from '$lib/api/types';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { portal } from '$lib/actions/portal';
 
 	interface Props {
 		id?: string;
@@ -25,8 +26,10 @@
 	let open = $state(false);
 	let search = $state('');
 	let highlightIndex = $state(-1);
-	let dropdownRef = $state<HTMLDivElement | null>(null);
+	let triggerRef = $state<HTMLButtonElement | null>(null);
+	let panelRef = $state<HTMLDivElement | null>(null);
 	let searchRef = $state<HTMLInputElement | null>(null);
+	let dropPos = $state({ top: 0, left: 0, width: 0 });
 
 	// Build flat list of filtered options for keyboard nav
 	let filteredProviders = $derived.by(() => {
@@ -64,7 +67,6 @@
 			const m = p.models.find((m) => m.id === value);
 			if (m) return m.name;
 		}
-		// Model not in list — show raw value (e.g. previously configured model)
 		return value;
 	});
 
@@ -73,7 +75,10 @@
 		if (open) {
 			search = '';
 			highlightIndex = -1;
-			// Focus search input after opening
+			if (triggerRef) {
+				const r = triggerRef.getBoundingClientRect();
+				dropPos = { top: r.bottom + 4, left: r.left, width: r.width };
+			}
 			requestAnimationFrame(() => searchRef?.focus());
 		}
 	}
@@ -119,18 +124,20 @@
 
 	// Close on outside click
 	function handleWindowClick(e: MouseEvent) {
-		if (dropdownRef && !dropdownRef.contains(e.target as Node)) {
-			open = false;
-			search = '';
-		}
+		const target = e.target as Node;
+		if (triggerRef?.contains(target)) return;
+		if (panelRef?.contains(target)) return;
+		open = false;
+		search = '';
 	}
 </script>
 
 <svelte:window onclick={handleWindowClick} />
 
-<div class="relative" bind:this={dropdownRef}>
+<div class="relative">
 	<!-- Trigger button -->
 	<button
+		bind:this={triggerRef}
 		type="button"
 		{id}
 		onclick={toggle}
@@ -150,10 +157,13 @@
 		</svg>
 	</button>
 
-	<!-- Dropdown panel -->
+	<!-- Dropdown panel — portaled to body for proper frosted glass -->
 	{#if open}
 		<div
-			class="absolute z-50 mt-1 w-full rounded-md border shadow-lg {$glassTheme ? 'glass-dropdown border-white/15' : 'border-surface-600 bg-surface-800'}"
+			use:portal
+			bind:this={panelRef}
+			class="fixed z-[100] rounded-md border shadow-lg {$glassTheme ? 'glass-dropdown border-white/15' : 'border-surface-600 bg-surface-800'}"
+			style="top: {dropPos.top}px; left: {dropPos.left}px; width: {dropPos.width}px;"
 		>
 			<!-- Search input -->
 			<div class="border-b {$glassTheme ? 'border-white/[0.08]' : 'border-surface-700'} p-2">

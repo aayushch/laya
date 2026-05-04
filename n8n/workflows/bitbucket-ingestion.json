@@ -23,7 +23,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://127.0.0.1:8420/repos?platform=bitbucket",
+        "url": "={{ $env.LAYA_ENGINE_URL }}/repos?platform=bitbucket",
         "options": {}
       },
       "name": "Get Repos",
@@ -201,7 +201,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://127.0.0.1:8420/events",
+        "url": "={{ $env.LAYA_ENGINE_URL }}/events",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

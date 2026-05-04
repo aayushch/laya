@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store';
 
-export type ComposeActionType = 'reply' | 'compose' | 'comment' | 'forward';
+export type ComposeActionType = string;
 
 interface ComposeState {
 	isOpen: boolean;
@@ -8,6 +8,7 @@ interface ComposeState {
 	actionType: ComposeActionType;
 	prefill: Record<string, unknown>;
 	sourceCardId: string | null;
+	sourceEventId: string | null;
 }
 
 const initial: ComposeState = {
@@ -15,7 +16,8 @@ const initial: ComposeState = {
 	platform: '',
 	actionType: 'compose',
 	prefill: {},
-	sourceCardId: null
+	sourceCardId: null,
+	sourceEventId: null
 };
 
 const { subscribe, set, update } = writable<ComposeState>(initial);
@@ -26,14 +28,16 @@ export const compose = {
 		platform: string,
 		actionType: ComposeActionType,
 		prefill: Record<string, unknown> = {},
-		sourceCardId?: string
+		sourceCardId?: string,
+		sourceEventId?: string
 	) {
 		set({
 			isOpen: true,
 			platform,
 			actionType,
 			prefill,
-			sourceCardId: sourceCardId ?? null
+			sourceCardId: sourceCardId ?? null,
+			sourceEventId: sourceEventId ?? null
 		});
 	},
 	closeCompose() {

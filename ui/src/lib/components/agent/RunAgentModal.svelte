@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { agentDialog } from '$lib/stores/agentDialog';
 	import { engineApi } from '$lib/api/engine';
+	import { getEngineUrl } from '$lib/config';
 	import { goto } from '$app/navigation';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { portal } from '$lib/actions/portal';
 
 	const agents = [
 		{ value: 'claude_code', label: 'Claude Code', modes: ['plan', 'acceptEdits'] },
@@ -49,6 +51,8 @@
 	let dragOver = $state(false);
 	let repos = $state<Repo[]>([]);
 	let dirDropdownOpen = $state(false);
+	let dirTriggerRef = $state<HTMLButtonElement | null>(null);
+	let dirDropPos = $state({ top: 0, left: 0, width: 0 });
 
 	const currentAgent = $derived(agents.find((a) => a.value === selectedAgent));
 	const availableModes = $derived(currentAgent?.modes ?? []);
@@ -119,7 +123,7 @@
 			const formData = new FormData();
 			formData.append('file', file);
 
-			const resp = await fetch('http://127.0.0.1:8420/upload-agent-file', {
+			const resp = await fetch('${getEngineUrl()}/upload-agent-file', {
 				method: 'POST',
 				body: formData
 			});
@@ -156,7 +160,7 @@
 		uploading = true;
 		error = null;
 		try {
-			const resp = await fetch('http://127.0.0.1:8420/upload-agent-file-path', {
+			const resp = await fetch('${getEngineUrl()}/upload-agent-file-path', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ path })
@@ -187,7 +191,7 @@
 	function deleteStagedFile(path: string) {
 		// Fire-and-forget — UI doesn't need to wait, and the 24h sweep is a
 		// backstop if this ever fails.
-		fetch('http://127.0.0.1:8420/delete-agent-staging-file', {
+		fetch('${getEngineUrl()}/delete-agent-staging-file', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ path })
@@ -381,10 +385,10 @@
 		// Backdrop kept as event sink so clicks outside the card don't bleed through.
 	}
 
-	// Close directory dropdown when clicking anywhere else in the modal
+	// Close directory dropdown when clicking anywhere else
 	function handleModalClick(e: MouseEvent) {
 		const target = e.target as HTMLElement;
-		if (dirDropdownOpen && !target.closest('.relative')) {
+		if (dirDropdownOpen && !target.closest('[data-dir-dropdown]')) {
 			dirDropdownOpen = false;
 		}
 	}
@@ -497,13 +501,14 @@
 				{/if}
 
 				<!-- Working Directory -->
-				<div class="relative">
+				<div class="relative" data-dir-dropdown>
 					<label class={labelClass} for="agent-directory">Working Directory</label>
 					<button
+						bind:this={dirTriggerRef}
 						id="agent-directory"
 						type="button"
 						class="flex w-full items-center justify-between rounded-md border border-surface-600 bg-surface-800 px-3 py-2 text-left text-sm transition-colors hover:border-surface-500 {directory ? 'text-surface-200' : 'text-surface-500'}"
-						onclick={() => (dirDropdownOpen = !dirDropdownOpen)}
+						onclick={() => { if (!dirDropdownOpen && dirTriggerRef) { const r = dirTriggerRef.getBoundingClientRect(); dirDropPos = { top: r.bottom + 4, left: r.left, width: r.width }; } dirDropdownOpen = !dirDropdownOpen; }}
 					>
 						<span class="truncate">{directory || 'Optional — leave empty for a research workspace'}</span>
 						<svg
@@ -519,7 +524,10 @@
 					{#if dirDropdownOpen}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
-							class="absolute z-50 mt-1 w-full rounded-md border {$glassTheme ? 'border-surface-600/40 bg-surface-900/95 backdrop-blur-md shadow-lg shadow-black/30' : 'border-surface-600 bg-surface-800 shadow-lg'}"
+							use:portal
+							data-dir-dropdown
+							class="fixed z-[100] rounded-md border {$glassTheme ? 'glass-dropdown border-white/15' : 'border-surface-600 bg-surface-800 shadow-lg'}"
+							style="top: {dirDropPos.top}px; left: {dirDropPos.left}px; width: {dirDropPos.width}px;"
 							onkeydown={(e) => { if (e.key === 'Escape') dirDropdownOpen = false; }}
 						>
 							<div class="max-h-48 overflow-y-auto py-1">

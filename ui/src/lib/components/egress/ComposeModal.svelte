@@ -263,7 +263,8 @@
 				action_type: selectedActionType,
 				payload: buildPayload(),
 				connection_id: selectedConnectionId || undefined,
-				source_card_id: $compose.sourceCardId ?? undefined
+				source_card_id: $compose.sourceCardId ?? undefined,
+				source_event_id: $compose.sourceEventId ?? undefined
 			});
 			success = true;
 			resultUrl = result.result_url ?? null;
