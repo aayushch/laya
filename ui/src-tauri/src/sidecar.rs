@@ -13,6 +13,18 @@ use std::time::Duration;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 
+pub fn engine_url() -> String {
+    let port = std::env::var("LAYA_ENGINE_PORT").unwrap_or_else(|_| "8420".to_string());
+    format!("http://127.0.0.1:{}", port)
+}
+
+pub fn engine_port() -> u16 {
+    std::env::var("LAYA_ENGINE_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8420)
+}
+
 /// On Windows, attach CREATE_NO_WINDOW so spawned child processes do not
 /// flash a console window. No-op on other platforms.
 #[cfg(windows)]
@@ -541,7 +553,7 @@ pub fn wait_for_engine(timeout: Duration) -> bool {
         .unwrap();
 
     while start.elapsed() < timeout {
-        match client.get("http://127.0.0.1:8420/health").send() {
+        match client.get(format!("{}/health", engine_url())).send() {
             Ok(resp) if resp.status().is_success() => {
                 log::info!("Engine is ready");
                 return true;

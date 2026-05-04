@@ -10,6 +10,7 @@
 	import { needsSetup, setupComplete } from '$lib/stores/setup';
 	import { chatOpen, chatListOpen } from '$lib/stores/chat';
 	import { theme } from '$lib/stores/theme';
+	import { getEngineUrl } from '$lib/config';
 	import { fontScale } from '$lib/stores/fontScale';
 	import { accessibleColors } from '$lib/stores/accessibleColors';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
@@ -193,7 +194,7 @@
 	$effect(() => {
 		if (!$startupReady || setupChecked || isSetupRoute) return;
 		setupChecked = true;
-		fetch('http://127.0.0.1:8420/settings/setup-status')
+		fetch(`${getEngineUrl()}/settings/setup-status`)
 			.then((resp) => resp.ok ? resp.json() : null)
 			.then((data) => {
 				if (data && !data.setup_complete) goto('/setup');

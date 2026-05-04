@@ -1057,6 +1057,20 @@ export interface ComposePlatformsResponse {
 	platforms: ComposePlatform[];
 }
 
+export interface CardEgressAction {
+	action_type: string;
+	label: string;
+	impact: 'low' | 'medium' | 'high';
+}
+
+export interface CardEgressContext {
+	platform: string;
+	actions: CardEgressAction[];
+	prefill: Record<string, unknown>;
+	event_id: string | null;
+	connected: boolean;
+}
+
 /** An egress connection */
 export interface EgressConnection {
 	connection_id: string;

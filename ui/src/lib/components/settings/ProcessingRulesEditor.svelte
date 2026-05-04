@@ -109,6 +109,18 @@
 		)
 	);
 
+	// --- Auto-disable threshold setting ---
+	let autoDisableThreshold = $state(5);
+
+	async function saveThreshold() {
+		try {
+			const result = await engineApi.updateProcessingRulesSettings({ auto_disable_threshold: autoDisableThreshold });
+			autoDisableThreshold = result.auto_disable_threshold;
+		} catch {
+			error = 'Failed to save auto-disable threshold';
+		}
+	}
+
 	// --- Field options for smart dropdowns ---
 	let fieldOptions = $state<Record<string, string[]>>({});
 
@@ -165,6 +177,10 @@
 		try {
 			fieldOptions = await engineApi.getProcessingRuleFieldOptions();
 		} catch { /* field options unavailable */ }
+		try {
+			const s = await engineApi.getProcessingRulesSettings();
+			autoDisableThreshold = s.auto_disable_threshold;
+		} catch { /* settings unavailable, keep default */ }
 	});
 
 	// --- CRUD ---
@@ -386,6 +402,15 @@
 				<h3 class="text-sm font-medium">Processing Rules</h3>
 				<p class="text-xs text-surface-400">Automate actions when events match specific conditions</p>
 			</div>
+		</div>
+
+		<!-- Auto-disable threshold setting -->
+		<div class="mb-4 flex items-center gap-3">
+			<label class="text-xs text-surface-400">Auto-disable rules after</label>
+			<input type="number" bind:value={autoDisableThreshold} min="1" max="100"
+				class="w-16 rounded-lg border border-surface-600 bg-surface-900 px-2 py-1 text-sm text-surface-50"
+				onchange={saveThreshold} />
+			<span class="text-xs text-surface-500">consecutive errors</span>
 		</div>
 
 		<!-- Rule list -->

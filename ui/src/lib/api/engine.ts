@@ -39,6 +39,7 @@ import type {
 	EgressPreviewResponse,
 	EgressCapabilitiesResponse,
 	ComposePlatformsResponse,
+	CardEgressContext,
 	EgressConnectionsResponse,
 	EgressConnectRequest,
 	EgressConnectResponse,
@@ -57,12 +58,16 @@ import type {
 	ClearIngestionErrorsResponse
 } from './types';
 
-const ENGINE_URL = 'http://127.0.0.1:8420';
+import { getEngineUrl } from '$lib/config';
+
+const ENGINE_URL = getEngineUrl();
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+	const signal = options?.signal ?? AbortSignal.timeout(30_000);
 	const resp = await fetch(`${ENGINE_URL}${path}`, {
 		headers: { 'Content-Type': 'application/json' },
-		...options
+		...options,
+		signal,
 	});
 	if (!resp.ok) {
 		let detail: string | undefined;
@@ -130,6 +135,13 @@ export const engineApi = {
 		),
 	getProcessingRuleFieldOptions: () =>
 		request<Record<string, string[]>>('/processing-rules/field-options'),
+	getProcessingRulesSettings: () =>
+		request<{ auto_disable_threshold: number }>('/processing-rules/settings'),
+	updateProcessingRulesSettings: (body: { auto_disable_threshold: number }) =>
+		request<{ auto_disable_threshold: number }>('/processing-rules/settings', {
+			method: 'PUT',
+			body: JSON.stringify(body),
+		}),
 
 	// Repos
 	getRepos: () => request<ReposConfig>('/repos'),
@@ -765,6 +777,9 @@ export const engineApi = {
 
 	getComposePlatforms: () =>
 		request<ComposePlatformsResponse>('/egress/compose-platforms'),
+
+	getCardEgressContext: (cardId: string) =>
+		request<CardEgressContext>(`/egress/card-context/${encodeURIComponent(cardId)}`),
 
 	listEgressConnections: () => request<EgressConnectionsResponse>('/egress/connections'),
 

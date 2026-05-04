@@ -105,6 +105,7 @@ html, body {
    ───────────────────────────────────────────────────────────── */
 [data-theme='light'] .text-green-300    { color: oklch(0.38 0.15 145); }
 [data-theme='light'] .text-green-400    { color: oklch(0.40 0.16 145); }
+[data-theme='light'] .text-green-400\/70 { color: oklch(0.40 0.14 145); }
 [data-theme='light'] .text-orange-300   { color: oklch(0.46 0.16 55);  }
 [data-theme='light'] .text-orange-50    { color: oklch(0.98 0.01 65);  }
 [data-theme='light'] .text-red-50       { color: oklch(0.98 0.01 25);  }
@@ -337,6 +338,10 @@ html, body {
 [data-theme='light'] .bg-violet-950\/30  { background-color: oklch(0.95 0.02 285); }
 [data-theme='light'] .bg-emerald-950\/25 { background-color: oklch(0.97 0.010 162); }
 
+/* Repo/row assigned highlight — visible in both themes */
+.repo-row-assigned { background-color: rgb(249 115 22 / 0.15); }
+[data-theme='light'] .repo-row-assigned { background-color: rgb(249 115 22 / 0.18); border: 1px solid rgb(249 115 22 / 0.30); }
+
 /* ─────────────────────────────────────────────────────────────
    LIGHT THEME — card action text and workspace badges
    Darken light-on-dark utility text for cream backgrounds.
@@ -363,15 +368,15 @@ html, body {
 [data-theme='light'] .glass-card {
 	-webkit-backdrop-filter: blur(22px) saturate(1.8);
 	backdrop-filter: blur(22px) saturate(1.8);
-	background: rgb(255 255 255 / 0.32);
+	background: rgb(255 255 255 / 0.35);
 	box-shadow:
-		inset 0 1px 0 rgb(255 255 255 / 0.7),
-		0 8px 28px -10px rgb(0 0 0 / 0.12);
+		0 8px 28px -10px rgb(0 0 0 / 0.12),
+		inset 0 1px 0 rgb(255 255 255 / 0.7);
 }
 [data-theme='light'] .glass-card-flat {
 	-webkit-backdrop-filter: blur(22px) saturate(1.8);
 	backdrop-filter: blur(22px) saturate(1.8);
-	background: rgb(255 255 255 / 0.32);
+	background: rgb(255 255 255 / 0.42);
 	box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.6);
 }
 
@@ -381,8 +386,7 @@ html, body {
    raw white opacity. Border at 45% does most of the identity work, and the
    colored shadow at 28% lets the card cast a pool of its hue onto the page —
    the stained-glass-on-floor effect. Dark mode is intentionally untouched. */
-[data-theme='light'] .glass-card[data-status],
-[data-theme='light'] .glass-card-flat[data-status] {
+[data-theme='light'] .glass-card[data-status] {
 	background:
 		linear-gradient(rgb(var(--status-rgb) / 0.14), rgb(var(--status-rgb) / 0.14)),
 		rgb(255 255 255 / 0.20);
@@ -391,8 +395,16 @@ html, body {
 		0 8px 28px -10px rgb(var(--status-rgb) / 0.28),
 		inset 0 1px 0 rgb(255 255 255 / 0.65);
 }
-[data-theme='light'] .glass-card[data-status]:hover,
-[data-theme='light'] .glass-card-flat[data-status]:hover {
+/* List rows (glass-card-flat) — lighter treatment so stacked rows
+   don't bleed colored shadows into each other. */
+[data-theme='light'] .glass-card-flat[data-status] {
+	background:
+		linear-gradient(rgb(var(--status-rgb) / 0.07), rgb(var(--status-rgb) / 0.07)),
+		rgb(255 255 255 / 0.30);
+	border-color: rgb(var(--status-rgb) / 0.20);
+	box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.55);
+}
+[data-theme='light'] .glass-card[data-status]:hover {
 	background:
 		linear-gradient(rgb(var(--status-rgb) / 0.18), rgb(var(--status-rgb) / 0.18)),
 		rgb(255 255 255 / 0.24);
@@ -401,8 +413,14 @@ html, body {
 		0 8px 28px -10px rgb(var(--status-rgb) / 0.35),
 		inset 0 1px 0 rgb(255 255 255 / 0.65);
 }
-[data-theme='light'] .glass-card[data-status="failed"],
-[data-theme='light'] .glass-card-flat[data-status="failed"] {
+[data-theme='light'] .glass-card-flat[data-status]:hover {
+	background:
+		linear-gradient(rgb(var(--status-rgb) / 0.11), rgb(var(--status-rgb) / 0.11)),
+		rgb(255 255 255 / 0.35);
+	border-color: rgb(var(--status-rgb) / 0.35);
+	box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.6);
+}
+[data-theme='light'] .glass-card[data-status="failed"] {
 	background:
 		linear-gradient(rgb(244 63 110 / 0.16), rgb(244 63 110 / 0.16)),
 		rgb(255 255 255 / 0.20);
@@ -410,6 +428,13 @@ html, body {
 	box-shadow:
 		0 8px 28px -10px rgb(244 63 110 / 0.32),
 		inset 0 1px 0 rgb(255 255 255 / 0.65);
+}
+[data-theme='light'] .glass-card-flat[data-status="failed"] {
+	background:
+		linear-gradient(rgb(244 63 110 / 0.09), rgb(244 63 110 / 0.09)),
+		rgb(255 255 255 / 0.30);
+	border-color: rgb(244 63 110 / 0.25);
+	box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.55);
 }
 /* Glass status colors (dark mode only) — stronger tints, colored
    borders, and inset glow to survive backdrop-filter dilution.
@@ -535,9 +560,10 @@ html, body {
 		inset 0 0.5px 0 rgb(255 255 255 / 0.08);
 }
 [data-theme='light'] .glass-dropdown {
-	background: rgb(255 255 255 / 0.82);
+	background: rgb(255 255 255 / 0.52);
+	border-color: rgb(255 255 255 / 0.5);
 	box-shadow:
-		0 8px 32px -4px rgb(0 0 0 / 0.15),
+		0 8px 32px -4px rgb(0 0 0 / 0.12),
 		inset 0 1px 0 rgb(255 255 255 / 0.7);
 }
 
@@ -726,6 +752,35 @@ html, body {
 	border-color: rgb(0 0 0 / 0.1) !important;
 }
 
+/* White-opacity utilities inside glass-section — invisible on
+   cream backgrounds. Flip to dark-on-light equivalents. */
+[data-theme='light'] .glass-section .border-white\/\[0\.06\],
+[data-theme='light'] .glass-section .border-white\/\[0\.08\],
+[data-theme='light'] .glass-section .border-white\/\[0\.12\] {
+	border-color: rgb(0 0 0 / 0.10) !important;
+}
+[data-theme='light'] .glass-section .divide-white\/\[0\.05\] > :not(:last-child),
+[data-theme='light'] .glass-section .divide-white\/\[0\.06\] > :not(:last-child),
+[data-theme='light'] .glass-section .divide-white\/\[0\.05\] > :not([hidden]) ~ :not([hidden]),
+[data-theme='light'] .glass-section .divide-white\/\[0\.06\] > :not([hidden]) ~ :not([hidden]) {
+	border-color: rgb(0 0 0 / 0.08) !important;
+}
+[data-theme='light'] .glass-section .bg-white\/\[0\.04\],
+[data-theme='light'] .glass-section .bg-white\/\[0\.05\],
+[data-theme='light'] .glass-section .bg-white\/\[0\.06\] {
+	background-color: rgb(0 0 0 / 0.04) !important;
+}
+[data-theme='light'] .glass-section .bg-white\/\[0\.08\],
+[data-theme='light'] .glass-section .bg-white\/\[0\.10\] {
+	background-color: rgb(0 0 0 / 0.05) !important;
+}
+[data-theme='light'] .glass-section .hover\:bg-white\/\[0\.14\]:hover {
+	background-color: rgb(0 0 0 / 0.08) !important;
+}
+[data-theme='light'] .glass-section .hover\:bg-white\/\[0\.06\]:hover {
+	background-color: rgb(0 0 0 / 0.05) !important;
+}
+
 /* Range inputs inside glass sections */
 .glass-section input[type="range"] {
 	accent-color: rgb(249 115 22);
@@ -736,6 +791,155 @@ html, body {
 }
 [data-theme='light'] .glass-section input[type="range"]::-webkit-slider-runnable-track {
 	background: rgb(0 0 0 / 0.1);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   LIGHT GLASS MODAL OVERLAY
+   bg-black/60 kills background variation that glass needs:
+   the modal's backdrop-filter sees uniform dark gray and the
+   frosting collapses into flat paint. In light+glass mode,
+   replace with a warm translucent wash that preserves the page
+   content for the modal's blur to frost through.
+   Dark mode untouched — dark overlay + additive glass works.
+   ───────────────────────────────────────────────────────────── */
+[data-theme='light'][data-glass-theme] .bg-black\/60 {
+	background-color: rgb(180 160 135 / 0.25) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   GLASS-CARD — frosted form controls inside modals/overlays.
+   Same recipe as glass-section inputs: translucent background +
+   backdrop-blur so fields feel like part of the glass surface.
+   ───────────────────────────────────────────────────────────── */
+.glass-card input[type="text"],
+.glass-card input[type="password"],
+.glass-card input[type="email"],
+.glass-card input[type="number"],
+.glass-card input[type="url"],
+.glass-card input[type="search"],
+.glass-card input:not([type]),
+.glass-card select,
+.glass-card textarea {
+	-webkit-backdrop-filter: blur(10px) saturate(1.4);
+	backdrop-filter: blur(10px) saturate(1.4);
+	background: rgb(255 255 255 / 0.06) !important;
+	border-color: rgb(255 255 255 / 0.14) !important;
+	transition: border-color 180ms ease, background 180ms ease;
+}
+.glass-card input[type="text"]:focus,
+.glass-card input[type="password"]:focus,
+.glass-card input[type="email"]:focus,
+.glass-card input[type="number"]:focus,
+.glass-card input[type="url"]:focus,
+.glass-card input[type="search"]:focus,
+.glass-card input:not([type]):focus,
+.glass-card select:focus,
+.glass-card textarea:focus {
+	border-color: rgb(246 172 105 / 0.55) !important;
+	outline: none;
+}
+[data-theme='light'] .glass-card input[type="text"],
+[data-theme='light'] .glass-card input[type="password"],
+[data-theme='light'] .glass-card input[type="email"],
+[data-theme='light'] .glass-card input[type="number"],
+[data-theme='light'] .glass-card input[type="url"],
+[data-theme='light'] .glass-card input[type="search"],
+[data-theme='light'] .glass-card input:not([type]),
+[data-theme='light'] .glass-card select,
+[data-theme='light'] .glass-card textarea {
+	background: rgb(255 255 255 / 0.28) !important;
+	border-color: rgb(110 60 25 / 0.18) !important;
+}
+[data-theme='light'] .glass-card input:focus,
+[data-theme='light'] .glass-card select:focus,
+[data-theme='light'] .glass-card textarea:focus {
+	border-color: rgb(246 172 105 / 0.55) !important;
+}
+/* Surface backgrounds inside glass-card — frosted inner surfaces */
+.glass-card .bg-surface-800 {
+	background: rgb(255 255 255 / 0.06) !important;
+	-webkit-backdrop-filter: blur(10px) saturate(1.4);
+	backdrop-filter: blur(10px) saturate(1.4);
+}
+.glass-card .bg-surface-700 {
+	background: rgb(255 255 255 / 0.08) !important;
+}
+.glass-card .bg-surface-900 {
+	background: rgb(255 255 255 / 0.03) !important;
+}
+.glass-card .bg-surface-900\/95 {
+	background: rgb(20 18 16 / 0.72) !important;
+	-webkit-backdrop-filter: blur(20px) saturate(1.6);
+	backdrop-filter: blur(20px) saturate(1.6);
+}
+.glass-card .hover\:bg-surface-700:hover {
+	background: rgb(255 255 255 / 0.10) !important;
+}
+[data-theme='light'] .glass-card .bg-surface-800 {
+	background: rgb(255 255 255 / 0.28) !important;
+	-webkit-backdrop-filter: blur(10px) saturate(1.4);
+	backdrop-filter: blur(10px) saturate(1.4);
+}
+[data-theme='light'] .glass-card .bg-surface-700 {
+	background: rgb(0 0 0 / 0.05) !important;
+}
+[data-theme='light'] .glass-card .bg-surface-900 {
+	background: rgb(0 0 0 / 0.03) !important;
+}
+[data-theme='light'] .glass-card .bg-surface-900\/95 {
+	background: rgb(255 255 255 / 0.72) !important;
+	-webkit-backdrop-filter: blur(20px) saturate(1.6);
+	backdrop-filter: blur(20px) saturate(1.6);
+}
+[data-theme='light'] .glass-card .hover\:bg-surface-700:hover {
+	background: rgb(0 0 0 / 0.06) !important;
+}
+/* Borders and dividers */
+.glass-card .border-surface-700,
+.glass-card .border-surface-600 {
+	border-color: rgb(255 255 255 / 0.10) !important;
+}
+.glass-card .hover\:border-surface-500:hover {
+	border-color: rgb(255 255 255 / 0.20) !important;
+}
+[data-theme='light'] .glass-card .border-surface-700,
+[data-theme='light'] .glass-card .border-surface-600 {
+	border-color: rgb(110 60 25 / 0.18) !important;
+}
+[data-theme='light'] .glass-card .hover\:border-surface-500:hover {
+	border-color: rgb(110 60 25 / 0.30) !important;
+}
+[data-theme='light'] .glass-card .border-surface-700\/40 {
+	border-color: rgb(110 60 25 / 0.12) !important;
+}
+[data-theme='light'] .glass-card .border-surface-600\/40 {
+	border-color: rgb(110 60 25 / 0.16) !important;
+}
+[data-theme='light'] .glass-card .divide-surface-700 > :not([hidden]) ~ :not([hidden]) {
+	border-color: rgb(0 0 0 / 0.08) !important;
+}
+/* Text — mid-tone surface utilities are too faint on cream glass */
+[data-theme='light'] .glass-card .text-surface-400 {
+	color: oklch(0.42 0.025 55);
+}
+[data-theme='light'] .glass-card .text-surface-500 {
+	color: oklch(0.48 0.02 55);
+}
+[data-theme='light'] .glass-card .text-surface-600 {
+	color: oklch(0.54 0.015 55);
+}
+/* Hover states */
+[data-theme='light'] .glass-card .hover\:bg-surface-800\/50:hover {
+	background: rgb(0 0 0 / 0.05) !important;
+}
+[data-theme='light'] .glass-card .hover\:border-surface-500:hover {
+	border-color: rgb(110 60 25 / 0.25) !important;
+}
+[data-theme='light'] .glass-card button.hover\:bg-surface-700:hover {
+	background: rgb(0 0 0 / 0.06) !important;
+}
+[data-theme='light'] .glass-card tbody tr:hover {
+	background: rgb(0 0 0 / 0.04) !important;
 }
 
 /* Tinted icon chip — semantic glass accent */
@@ -1054,8 +1258,7 @@ html, body {
 	border-color: rgb(148 163 184 / 0.65);
 }
 /* Failed light: heavier cool-gray tint, the only non-warm card. */
-[data-accessible-colors][data-theme='light'] .glass-card[data-status="failed"],
-[data-accessible-colors][data-theme='light'] .glass-card-flat[data-status="failed"] {
+[data-accessible-colors][data-theme='light'] .glass-card[data-status="failed"] {
 	background:
 		linear-gradient(rgb(71 85 105 / 0.18), rgb(71 85 105 / 0.18)),
 		rgb(255 255 255 / 0.20);
@@ -1064,13 +1267,25 @@ html, body {
 		0 8px 28px -10px rgb(71 85 105 / 0.28),
 		inset 0 1px 0 rgb(255 255 255 / 0.65);
 }
+[data-accessible-colors][data-theme='light'] .glass-card-flat[data-status="failed"] {
+	background:
+		linear-gradient(rgb(71 85 105 / 0.10), rgb(71 85 105 / 0.10)),
+		rgb(255 255 255 / 0.30);
+	border-color: rgb(71 85 105 / 0.25);
+	box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.55);
+}
 /* Done light: higher yellow alpha to prevent washout on cream. */
-[data-accessible-colors][data-theme='light'] .glass-card[data-status="done"],
-[data-accessible-colors][data-theme='light'] .glass-card-flat[data-status="done"] {
+[data-accessible-colors][data-theme='light'] .glass-card[data-status="done"] {
 	background:
 		linear-gradient(rgb(234 179 8 / 0.18), rgb(234 179 8 / 0.18)),
 		rgb(255 255 255 / 0.20);
 	border-color: rgb(234 179 8 / 0.45);
+}
+[data-accessible-colors][data-theme='light'] .glass-card-flat[data-status="done"] {
+	background:
+		linear-gradient(rgb(234 179 8 / 0.10), rgb(234 179 8 / 0.10)),
+		rgb(255 255 255 / 0.30);
+	border-color: rgb(234 179 8 / 0.22);
 }
 
 /* ─── DARK: Amber → Cyan-blue (pending/ready/awaiting cards) ── */
@@ -1283,6 +1498,27 @@ html, body {
 [data-theme='light'][data-accessible-colors] .card-pulse-amber {
 	--card-pulse-base: oklch(0.55 0.14 230 / 0.30);
 	--card-pulse-color: oklch(0.55 0.14 230 / 0.50);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   LIGHT GLASS AUDIT BANNERS — dead-event/ingestion-error alerts
+   use dark amber/red backgrounds that become muddy on cream glass.
+   Swap to warmer, more saturated tints for clear warning identity.
+   ───────────────────────────────────────────────────────────── */
+[data-theme='light'][data-glass-theme] .bg-amber-900\/20 {
+	background-color: oklch(0.90 0.065 70 / 0.55);
+}
+[data-theme='light'][data-glass-theme] .border-amber-600\/50 {
+	border-color: oklch(0.65 0.14 65 / 0.50);
+}
+[data-theme='light'][data-glass-theme] .bg-red-900\/20 {
+	background-color: oklch(0.90 0.065 25 / 0.55);
+}
+[data-theme='light'][data-glass-theme] .border-red-600\/50 {
+	border-color: oklch(0.60 0.16 25 / 0.50);
+}
+[data-theme='light'][data-glass-theme] .bg-red-500\/20 {
+	background-color: oklch(0.88 0.07 25 / 0.50);
 }
 
 /* ═══════════════════════════════════════════════════════════════

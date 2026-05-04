@@ -1,12 +1,13 @@
 import { writable } from 'svelte/store';
 import type { WsMessage } from '$lib/api/types';
+import { getEngineWsUrl } from '$lib/config';
 
 export type WsStatus = 'connecting' | 'connected' | 'disconnected';
 
 export const wsStatus = writable<WsStatus>('disconnected');
 export const lastMessage = writable<WsMessage | null>(null);
 
-const ENGINE_WS_URL = 'ws://127.0.0.1:8420/ws';
+const ENGINE_WS_URL = getEngineWsUrl();
 let socket: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectDelay = 1000;
@@ -15,6 +16,7 @@ let reconnectDelay = 1000;
 // Messages are pushed here synchronously in onmessage and drained
 // one-at-a-time via setTimeout(0) so the browser's task scheduler
 // can interleave rendering and user input between each message.
+const _MAX_QUEUE = 500;
 const _msgQueue: WsMessage[] = [];
 let _draining = false;
 
@@ -47,10 +49,14 @@ function connect() {
 	socket.onmessage = (event) => {
 		try {
 			const msg: WsMessage = JSON.parse(event.data);
+			if (_msgQueue.length >= _MAX_QUEUE) {
+				console.warn('[ws] queue full, dropping oldest message');
+				_msgQueue.shift();
+			}
 			_msgQueue.push(msg);
 			if (!_draining) _scheduleNext();
-		} catch {
-			// ignore non-JSON messages
+		} catch (err) {
+			console.error('[ws] parse error', err, event.data);
 		}
 	};
 

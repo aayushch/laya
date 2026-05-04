@@ -1,13 +1,13 @@
 <script lang="ts">
-	import type { GroupSummary, CardGroup } from '$lib/api/types';
+	import type { GroupSummary, CardGroup, ActionCard, CardEgressContext, CardEgressAction } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
 	import { goto } from '$app/navigation';
 	import { chatOpen, chatCardContext, chatCardIds, chatListOpen } from '$lib/stores/chat';
 	import PlatformBadge from '$lib/components/PlatformBadge.svelte';
 	import StatusDot from './StatusDot.svelte';
 	import { glassTheme } from '$lib/stores/glassTheme';
-
-	import type { ActionCard } from '$lib/api/types';
+	import { compose } from '$lib/stores/compose';
+	import { portal } from '$lib/actions/portal';
 
 	let {
 		summary,
@@ -39,6 +39,11 @@
 	let relatedCount = $state<number | null>(null);
 	let overflowOpen = $state(false);
 	let overflowBtnEl: HTMLElement | undefined = $state();
+	let overflowMenuEl: HTMLElement | undefined = $state();
+	let overflowMenuPos = $state({ top: 0, right: 0 });
+
+	let egressContext = $state<CardEgressContext | null>(null);
+	let egressLoading = $state(false);
 
 	const hasWorkspace = $derived(group.cards.some(c => c.has_workspace));
 	const workspaceCardId = $derived(group.cards.find(c => c.has_workspace)?.card_id ?? group.cards[0]?.card_id);
@@ -61,6 +66,26 @@
 	const overflowActions = $derived(footerActions.slice(3));
 
 	$effect(() => {
+		if (!overflowOpen) return;
+		function handleClick(e: MouseEvent) {
+			const target = e.target as HTMLElement;
+			if (!overflowMenuEl?.contains(target) && !overflowBtnEl?.contains(target)) {
+				overflowOpen = false;
+			}
+		}
+		document.addEventListener('click', handleClick, true);
+		return () => document.removeEventListener('click', handleClick, true);
+	});
+
+	function toggleOverflow() {
+		if (overflowOpen) { overflowOpen = false; return; }
+		if (!overflowBtnEl) return;
+		const rect = overflowBtnEl.getBoundingClientRect();
+		overflowMenuPos = { top: rect.top - 4, right: window.innerWidth - rect.right };
+		overflowOpen = true;
+	}
+
+	$effect(() => {
 		const firstCard = group.cards[0];
 		relatedCount = null;
 		if (!onshowrelated || !firstCard) return;
@@ -70,6 +95,33 @@
 			}
 		}).catch(() => {});
 	});
+
+	$effect(() => {
+		const entityId = group.entity_id;
+		egressContext = null;
+		egressLoading = false;
+		const firstCard = group.cards[0];
+		if (!firstCard || !entityId) return;
+		egressLoading = true;
+		engineApi.getCardEgressContext(firstCard.card_id).then((ctx) => {
+			if (group.entity_id === entityId) egressContext = ctx;
+		}).catch(() => {
+			egressContext = null;
+		}).finally(() => { egressLoading = false; });
+	});
+
+	function openPlatformAction(action: CardEgressAction) {
+		if (!egressContext) return;
+		overflowOpen = false;
+		const firstCard = group.cards[0];
+		compose.openCompose(
+			egressContext.platform,
+			action.action_type,
+			egressContext.prefill,
+			firstCard?.card_id,
+			egressContext.event_id ?? undefined
+		);
+	}
 
 	function chatAboutGroup() {
 		const lines = [
@@ -345,29 +397,18 @@
 			{#each inlineActions as key (key)}
 				{@render footerButton(key)}
 			{/each}
-			{#if overflowActions.length > 0}
+			{#if overflowActions.length > 0 || (egressContext && egressContext.actions.length > 0)}
 				<div class="relative">
 					<button
 						bind:this={overflowBtnEl}
 						class="flex items-center justify-center rounded-md px-1.5 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-surface-200"
-						onclick={() => (overflowOpen = !overflowOpen)}
+						onclick={toggleOverflow}
 						aria-label="More actions"
 					>
 						<svg class="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20">
 							<path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM18 10a2 2 0 11-4 0 2 2 0 014 0z" />
 						</svg>
 					</button>
-					{#if overflowOpen}
-						<!-- svelte-ignore a11y_no_static_element_interactions -->
-						<div
-							class="absolute bottom-full right-0 mb-1 min-w-[140px] rounded-lg border p-1 shadow-xl z-20 {$glassTheme ? 'glass-card border-surface-700/40 bg-surface-900/80 backdrop-blur-xl' : 'border-surface-600 bg-surface-800'}"
-							onmouseleave={() => (overflowOpen = false)}
-						>
-							{#each overflowActions as key (key)}
-								{@render overflowItem(key)}
-							{/each}
-						</div>
-					{/if}
 				</div>
 			{/if}
 		</div>
@@ -472,3 +513,40 @@
 		</button>
 	{/if}
 {/snippet}
+
+{#if overflowOpen}
+	<div
+		bind:this={overflowMenuEl}
+		use:portal
+		class="fixed z-[100] w-44 rounded-lg border p-1 {$glassTheme ? 'glass-menu' : 'border-surface-600 bg-surface-900 shadow-xl shadow-black/50'}"
+		style="top: {overflowMenuPos.top}px; right: {overflowMenuPos.right}px; transform: translateY(-100%);"
+		role="menu"
+	>
+		{#each overflowActions as key (key)}
+			{@render overflowItem(key)}
+		{/each}
+		{#if egressContext && egressContext.actions.length > 0}
+			{#if overflowActions.length > 0}
+				<div class="my-1 border-t {$glassTheme ? 'border-surface-700/40' : 'border-surface-600'}"></div>
+			{/if}
+			{#each egressContext.actions as action (action.action_type)}
+				<button
+					class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[11px] text-surface-300 transition-colors hover:bg-surface-700 hover:text-surface-200"
+					role="menuitem"
+					onclick={() => openPlatformAction(action)}
+				>
+					<svg class="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+					<span class="truncate">{action.label}</span>
+					{#if action.impact === 'high'}
+						<span class="ml-auto text-[9px] font-bold text-amber-500/70">!</span>
+					{/if}
+				</button>
+			{/each}
+			{#if !egressContext.connected}
+				<p class="px-2 py-1 text-[10px] text-surface-500 italic">
+					Connect {egressContext.platform} to use
+				</p>
+			{/if}
+		{/if}
+	</div>
+{/if}

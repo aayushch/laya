@@ -139,3 +139,63 @@ def _get_self_emails() -> set[str]:
     except Exception:
         pass
     return set()
+
+
+async def get_prefill_for_card(card_id: str) -> tuple[str, dict, str | None]:
+    """Return ``(platform, prefill_dict, event_id)`` for a card.
+
+    Used by the card-context endpoint to pre-fill ComposeModal fields
+    with identifiers derived from the card's source event.
+    """
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT event_id, entity_id FROM action_cards WHERE card_id = ?",
+        (card_id,),
+    )
+    if not rows:
+        return "", {}, None
+
+    event_id = rows[0]["event_id"]
+    entity_id = rows[0]["entity_id"] or ""
+
+    parts = entity_id.split(":", 2)
+    platform = parts[0] if parts else ""
+    if not platform:
+        return "", {}, event_id
+
+    event_ctx = await _fetch_event_context(event_id)
+    if not event_ctx:
+        return platform, {}, event_id
+
+    try:
+        content_metadata = json.loads(event_ctx.get("content_metadata") or "{}")
+    except (json.JSONDecodeError, AttributeError, TypeError):
+        content_metadata = {}
+
+    mod = platforms.for_platform(platform)
+    if mod is None:
+        return platform, {}, event_id
+
+    kwargs: dict = {}
+    if platform in ("gmail", "outlook"):
+        kwargs["self_emails"] = _get_self_emails()
+
+    # Derive identifiers using a generic action_type per platform so we
+    # capture the broadest set of fields.  For GitHub we call twice
+    # (issue vs PR) and merge, since the action_type controls whether
+    # issue_number or pr_number is returned.
+    prefill: dict = {}
+    probe_actions = ["comment"]
+    if platform == "github":
+        probe_actions = ["comment", "approve_pr"]
+    elif platform == "bitbucket":
+        probe_actions = ["comment_pr"]
+
+    for action_type in probe_actions:
+        derived = mod.identifiers_from_event(
+            action_type, event_id, content_metadata, event_ctx, **kwargs,
+        )
+        if derived:
+            prefill.update(derived)
+
+    return platform, prefill, event_id

@@ -37,8 +37,11 @@ _processing_semaphore = asyncio.Semaphore(4)
 
 _VAR_RE = re.compile(r"\{\{([\w.]+)\}\}")
 
-# Auto-disable after this many consecutive errors
-_AUTO_DISABLE_THRESHOLD = 5
+# Auto-disable after this many consecutive errors (default; overridable via settings)
+def _get_auto_disable_threshold() -> int:
+    from laya.config import load_settings
+    settings = load_settings()
+    return settings.get("processing_rules", {}).get("auto_disable_threshold", 5)
 
 # Max rules that can fire for a single card before we stop evaluating
 _MAX_FIRINGS_PER_CARD = 5
@@ -498,17 +501,12 @@ async def run_processing_rules(
     actor_relationship: str | None = None,
     is_carry_forward: bool = False,
     entity_card_count: int = 1,
-    _rule_triggered: bool = False,
 ) -> None:
     """Evaluate all enabled processing rules against a newly emitted card.
 
     Called as a background task from run_emit(). Errors are logged and
     never propagate to the caller.
     """
-    if _rule_triggered:
-        log.debug("processing_rules_skipped_loop_guard", card_id=card_id)
-        return
-
     try:
         db = await get_db()
 
@@ -603,7 +601,7 @@ async def run_processing_rules(
 
             # Update rule stats
             new_error_count = (rule_row["error_count"] + 1) if has_error else 0
-            auto_disable = new_error_count >= _AUTO_DISABLE_THRESHOLD
+            auto_disable = new_error_count >= _get_auto_disable_threshold()
 
             await db.execute(
                 """UPDATE processing_rules

@@ -643,7 +643,7 @@
 												onclick={() => { toggleSpaceRepo(space.space_id, repo.name); saveSpaceRepos(space.space_id); }}
 												class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors
 													{isAssigned
-														? 'bg-laya-orange/15 text-laya-orange'
+														? 'repo-row-assigned text-laya-orange'
 														: $glassTheme ? 'hover:bg-white/[0.06] text-surface-300' : 'hover:bg-surface-700 text-surface-300'}"
 											>
 												<span class="h-4 w-4 shrink-0 rounded border text-center text-xs leading-4

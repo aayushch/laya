@@ -1,7 +1,8 @@
 import { writable, derived } from 'svelte/store';
 import type { HealthResponse } from '$lib/api/types';
+import { getEngineUrl } from '$lib/config';
 
-const ENGINE_URL = 'http://127.0.0.1:8420';
+const ENGINE_URL = getEngineUrl();
 
 export const health = writable<HealthResponse | null>(null);
 export const healthError = writable<boolean>(false);
