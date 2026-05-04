@@ -752,8 +752,34 @@ html, body {
 	border-color: rgb(0 0 0 / 0.1) !important;
 }
 
-/* White-opacity utilities inside glass-section — invisible on
-   cream backgrounds. Flip to dark-on-light equivalents. */
+/* White-opacity utilities — invisible on cream backgrounds in
+   light mode. Global overrides (glass-theme only) so standalone
+   glass elements (e.g. coherence search) also get the fix. */
+[data-theme='light'][data-glass-theme] .border-white\/\[0\.06\],
+[data-theme='light'][data-glass-theme] .border-white\/\[0\.08\],
+[data-theme='light'][data-glass-theme] .border-white\/\[0\.10\],
+[data-theme='light'][data-glass-theme] .border-white\/\[0\.12\],
+[data-theme='light'][data-glass-theme] .border-white\/\[0\.15\] {
+	border-color: rgb(0 0 0 / 0.10) !important;
+}
+[data-theme='light'][data-glass-theme] .bg-white\/\[0\.04\],
+[data-theme='light'][data-glass-theme] .bg-white\/\[0\.05\],
+[data-theme='light'][data-glass-theme] .bg-white\/\[0\.06\] {
+	background-color: rgb(0 0 0 / 0.04) !important;
+}
+[data-theme='light'][data-glass-theme] .bg-white\/\[0\.08\],
+[data-theme='light'][data-glass-theme] .bg-white\/\[0\.10\] {
+	background-color: rgb(0 0 0 / 0.05) !important;
+}
+[data-theme='light'][data-glass-theme] .hover\:bg-white\/\[0\.06\]:hover {
+	background-color: rgb(0 0 0 / 0.05) !important;
+}
+[data-theme='light'][data-glass-theme] .hover\:bg-white\/\[0\.14\]:hover {
+	background-color: rgb(0 0 0 / 0.08) !important;
+}
+
+/* Glass-section-scoped overrides (kept for specificity on
+   nested elements, mirrors the global set above). */
 [data-theme='light'] .glass-section .border-white\/\[0\.06\],
 [data-theme='light'] .glass-section .border-white\/\[0\.08\],
 [data-theme='light'] .glass-section .border-white\/\[0\.12\] {

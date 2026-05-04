@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { glassTheme } from '$lib/stores/glassTheme';
 	let {
 		byFeature,
 		byStep
@@ -118,7 +119,7 @@
 	const stepBarColor = 'bg-surface-400';
 </script>
 
-<div class="rounded-xl border border-surface-700 bg-surface-800 p-5">
+<div class="rounded-xl border p-5 {$glassTheme ? 'glass-section' : 'border-surface-700 bg-surface-800'}">
 	<h3 class="mb-4 text-xs font-semibold uppercase tracking-wider text-surface-400">
 		LLM Cost by Feature ($)
 	</h3>
