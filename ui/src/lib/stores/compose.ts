@@ -9,6 +9,7 @@ interface ComposeState {
 	prefill: Record<string, unknown>;
 	sourceCardId: string | null;
 	sourceEventId: string | null;
+	connectionId: string | null;
 }
 
 const initial: ComposeState = {
@@ -17,7 +18,8 @@ const initial: ComposeState = {
 	actionType: 'compose',
 	prefill: {},
 	sourceCardId: null,
-	sourceEventId: null
+	sourceEventId: null,
+	connectionId: null
 };
 
 const { subscribe, set, update } = writable<ComposeState>(initial);
@@ -29,7 +31,8 @@ export const compose = {
 		actionType: ComposeActionType,
 		prefill: Record<string, unknown> = {},
 		sourceCardId?: string,
-		sourceEventId?: string
+		sourceEventId?: string,
+		connectionId?: string | null
 	) {
 		set({
 			isOpen: true,
@@ -37,7 +40,8 @@ export const compose = {
 			actionType,
 			prefill,
 			sourceCardId: sourceCardId ?? null,
-			sourceEventId: sourceEventId ?? null
+			sourceEventId: sourceEventId ?? null,
+			connectionId: connectionId ?? null
 		});
 	},
 	closeCompose() {

@@ -139,7 +139,7 @@ def _generate_pkce() -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 
 
-def build_auth_url(platform: str, redirect_uri: str, connection_name: str | None = None) -> dict:
+def build_auth_url(platform: str, redirect_uri: str, connection_name: str | None = None, space_id: str | None = None) -> dict:
     """Build the OAuth authorization URL for a platform.
 
     Returns:
@@ -170,6 +170,7 @@ def build_auth_url(platform: str, redirect_uri: str, connection_name: str | None
         "timestamp": time.time(),
         "code_verifier": code_verifier,
         "connection_name": connection_name,
+        "space_id": space_id,
     }
     _cleanup_expired_states()
 
@@ -210,6 +211,7 @@ async def handle_callback(
     platform = state_data["platform"]
     code_verifier = state_data.get("code_verifier")
     connection_name = state_data.get("connection_name")
+    space_id = state_data.get("space_id")
     provider = OAUTH_PROVIDERS.get(platform)
     if not provider:
         return {"error": f"Unknown OAuth platform: {platform}"}
@@ -283,7 +285,8 @@ async def handle_callback(
     if n8n_cred_id:
         from laya.egress.connections import _clone_workflows_for_connection
         activated, workflow_errors = await _clone_workflows_for_connection(
-            platform, connection_id, display_name, n8n_cred_id
+            platform, connection_id, display_name, n8n_cred_id,
+            space_id=space_id,
         )
         all_errors.extend(workflow_errors)
 
@@ -302,7 +305,7 @@ async def handle_callback(
             status, capabilities, error_message, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
-            connection_id, platform, display_name, n8n_cred_id, None,
+            connection_id, platform, display_name, n8n_cred_id, space_id,
             status, json.dumps(capabilities), error_message, now, now,
         ),
     )

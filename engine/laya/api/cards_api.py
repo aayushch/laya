@@ -24,12 +24,20 @@ log = structlog.get_logger()
 router = APIRouter()
 
 
+def _safe_privacy_tier(val) -> int:
+    try:
+        return max(1, min(3, int(val)))
+    except (TypeError, ValueError):
+        return 2
+
+
 def _row_to_card(row) -> CardResponse:
     """Convert a SQLite Row to a CardResponse, deserializing JSON columns."""
     intelligence = None
     if row["intelligence"]:
         try:
-            intelligence = json.loads(row["intelligence"])
+            parsed = json.loads(row["intelligence"])
+            intelligence = parsed if isinstance(parsed, list) else None
         except json.JSONDecodeError:
             intelligence = None
 
@@ -61,7 +69,7 @@ def _row_to_card(row) -> CardResponse:
         staged_output=staged_output,
         suggested_actions=suggested_actions,
         status=row["status"],
-        privacy_tier=row["privacy_tier"] or 2,
+        privacy_tier=_safe_privacy_tier(row["privacy_tier"]),
         has_workspace=bool(row["has_workspace"]),
         resolved_at=row["resolved_at"],
         user_feedback=row["user_feedback"],

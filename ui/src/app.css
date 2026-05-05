@@ -121,6 +121,9 @@ html, body {
 [data-theme='light'] .text-amber-400    { color: oklch(0.44 0.18 70);  }
 [data-theme='light'] .text-amber-300    { color: oklch(0.46 0.18 75);  }
 [data-theme='light'] .text-rose-300     { color: oklch(0.46 0.20 15);  }
+[data-theme='light'] .text-cyan-300    { color: oklch(0.38 0.12 200); }
+[data-theme='light'] .text-cyan-400    { color: oklch(0.40 0.12 200); }
+[data-theme='light'] .text-blue-300    { color: oklch(0.40 0.18 240); }
 
 /* Status-dot colors — bright enough for small icons in both themes.
    The global light-theme text overrides above darken colors for text
@@ -141,6 +144,10 @@ html, body {
 /* Priority badge text - ensure contrast in light mode */
 [data-theme='light'] .bg-red-600      { background-color: oklch(0.50 0.22 27);  }
 [data-theme='light'] .bg-orange-500   { background-color: oklch(0.62 0.18 47);  }
+[data-theme='light'] .bg-cyan-700\/40 { background-color: oklch(0.52 0.10 200 / 0.35); }
+[data-theme='light'] .bg-green-900\/40 { background-color: oklch(0.42 0.12 145 / 0.20); }
+[data-theme='light'] .bg-blue-900\/40  { background-color: oklch(0.48 0.12 240 / 0.20); }
+[data-theme='light'] .bg-blue-900\/20  { background-color: oklch(0.48 0.12 240 / 0.15); }
 /* bg-blue-600 override removed — MEDIUM priority now uses laya-coral brand color */
 
 /* Ghost strip cards: no shadow in dark (invisible anyway), lighter in light to avoid darkening strip 1 */

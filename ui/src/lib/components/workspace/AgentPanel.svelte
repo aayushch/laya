@@ -398,7 +398,7 @@
 							<div class="space-y-3">
 								{#each questions as q, qIdx}
 									{@const selKey = `${event.event_id}_${qIdx}`}
-									<div class="rounded border border-surface-600/50 bg-surface-900/50 p-2.5">
+									<div class="rounded border p-2.5 {$glassTheme ? 'border-white/[0.08] bg-white/[0.04]' : 'border-surface-600/50 bg-surface-900/50'}">
 										{#if q.header}
 											<p class="mb-1 text-[11px] font-semibold text-surface-200">{q.header}</p>
 										{/if}
@@ -410,7 +410,7 @@
 												{#each q.options as opt}
 													{@const isSelected = questionSelections[selKey] === opt.label}
 													<button
-														class="flex w-full flex-col items-start rounded-md border px-2.5 py-2 text-left transition-colors {isSelected ? 'border-laya-orange bg-laya-orange/10' : 'border-surface-600 hover:border-surface-500 hover:bg-surface-800'} disabled:opacity-50 disabled:cursor-not-allowed"
+														class="flex w-full flex-col items-start rounded-md border px-2.5 py-2 text-left transition-colors {isSelected ? 'border-laya-orange bg-laya-orange/10' : $glassTheme ? 'border-white/[0.08] hover:border-white/[0.14] hover:bg-white/[0.06]' : 'border-surface-600 hover:border-surface-500 hover:bg-surface-800'} disabled:opacity-50 disabled:cursor-not-allowed"
 														onclick={() => selectOption(event.event_id, qIdx, opt.label)}
 														disabled={formDisabled}
 													>
@@ -445,7 +445,7 @@
 										{submittingAnswer ? 'Submitting...' : 'Submit answers'}
 									</button>
 									<button
-										class="w-full rounded-lg border border-surface-600 py-2 text-xs font-medium text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-200 disabled:opacity-40 disabled:cursor-not-allowed"
+										class="w-full rounded-lg border py-2 text-xs font-medium text-surface-400 transition-colors hover:text-surface-200 disabled:opacity-40 disabled:cursor-not-allowed {$glassTheme ? 'border-white/[0.08] hover:bg-white/[0.06]' : 'border-surface-600 hover:bg-surface-800'}"
 										onclick={dismissQuestions}
 										disabled={dismissingQuestions}
 									>

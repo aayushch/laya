@@ -820,14 +820,26 @@ def format_source_ref(
     """
     config = _SOURCE_REF_CONFIG.get(platform, {})
 
+    # Repo-qualified subject IDs (e.g. "owner/repo/#42", "ws/repo/PR-69")
+    # need the repo prefix stripped before template substitution.
+    display_id = subject_id
+    repo_prefix = ""
+    if platform in ("github", "bitbucket") and "/" in subject_id:
+        parts = subject_id.rsplit("/", 1)
+        repo_prefix = parts[0]
+        display_id = parts[1]
+
     if config.get("use_title"):
         ref = subject_title or subject_id
     elif subject_type == "pull_request" and "pr_format" in config:
-        ref = config["pr_format"].replace("{id}", subject_id)
+        ref = config["pr_format"].replace("{id}", display_id)
     elif "default_format" in config:
-        ref = config["default_format"].replace("{id}", subject_id)
+        ref = config["default_format"].replace("{id}", display_id)
     else:
         ref = subject_id or None
+
+    if repo_prefix and ref:
+        ref = f"{repo_prefix} {ref}"
 
     if not source_url and "url_template" in config and subject_id:
         source_url = config["url_template"].replace("{id}", subject_id)

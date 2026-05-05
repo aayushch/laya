@@ -19,11 +19,15 @@ from laya.pipeline.emit import run_emit
 log = structlog.get_logger()
 
 
-async def generate_briefing() -> str:
+async def generate_briefing(space_id: str | None = None) -> str:
     """Generate a daily briefing card.
 
     Queries overnight events, pending cards, and calendar events,
     then synthesizes a briefing via LLM and creates an action card.
+
+    Args:
+        space_id: If provided, scope the briefing to this space only.
+                  The resulting card is associated with the given space.
 
     Returns:
         card_id of the created briefing card.
@@ -33,14 +37,23 @@ async def generate_briefing() -> str:
     now = datetime.now(timezone.utc)
     today = now.strftime("%Y-%m-%d")
 
+    # Build space filter clause for SQL queries
+    if space_id:
+        space_filter = " AND space_id = ?"
+        space_params: tuple = (space_id,)
+    else:
+        space_filter = ""
+        space_params = ()
+
     # 1. Query overnight events (last 12 hours)
     overnight_rows = await db.execute_fetchall(
-        """SELECT event_id, source_platform, subject_title, actor_name, timestamp
+        f"""SELECT event_id, source_platform, subject_title, actor_name, timestamp
            FROM events
            WHERE timestamp > datetime('now', '-12 hours')
-             AND filtered = 0
+             AND filtered = 0{space_filter}
            ORDER BY timestamp DESC
-           LIMIT 30"""
+           LIMIT 30""",
+        space_params,
     )
     overnight_events = [
         {
@@ -55,13 +68,14 @@ async def generate_briefing() -> str:
 
     # 2. Query pending action cards
     pending_rows = await db.execute_fetchall(
-        """SELECT card_id, header, summary, priority, persona
+        f"""SELECT card_id, header, summary, priority, persona
            FROM action_cards
-           WHERE status IN ('pending', 'ready')
+           WHERE status IN ('pending', 'ready'){space_filter}
            ORDER BY CASE priority
                WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1
                WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3 END ASC
-           LIMIT 10"""
+           LIMIT 10""",
+        space_params,
     )
     pending_cards = [
         {
@@ -76,12 +90,13 @@ async def generate_briefing() -> str:
 
     # 3. Query today's calendar events
     calendar_rows = await db.execute_fetchall(
-        """SELECT event_id, subject_title, timestamp
+        f"""SELECT event_id, subject_title, timestamp
            FROM events
            WHERE source_platform = 'calendar'
-             AND DATE(timestamp) = DATE('now')
+             AND DATE(timestamp) = DATE('now'){space_filter}
            ORDER BY timestamp ASC
-           LIMIT 10"""
+           LIMIT 10""",
+        space_params,
     )
     calendar_events = [
         {
@@ -94,10 +109,11 @@ async def generate_briefing() -> str:
 
     # 4. Quick stats
     stats_rows = await db.execute_fetchall(
-        """SELECT
-               (SELECT COUNT(*) FROM events WHERE timestamp > datetime('now', '-24 hours') AND processed = 1) as processed,
-               (SELECT COUNT(*) FROM action_cards WHERE created_at > datetime('now', '-24 hours')) as generated,
-               (SELECT COUNT(*) FROM action_cards WHERE resolved_at > datetime('now', '-24 hours')) as resolved"""
+        f"""SELECT
+               (SELECT COUNT(*) FROM events WHERE timestamp > datetime('now', '-24 hours') AND processed = 1{space_filter}) as processed,
+               (SELECT COUNT(*) FROM action_cards WHERE created_at > datetime('now', '-24 hours'){space_filter}) as generated,
+               (SELECT COUNT(*) FROM action_cards WHERE resolved_at > datetime('now', '-24 hours'){space_filter}) as resolved""",
+        space_params * 3,
     )
     stats = {
         "events_processed": stats_rows[0][0] or 0,
@@ -117,16 +133,18 @@ async def generate_briefing() -> str:
             step="briefing",
             temperature=0.3,
             max_tokens=2000,
+            space_id=space_id,
         )
         briefing_text = response.content
     except Exception as e:
-        log.error("briefing_llm_failed", error=str(e))
+        log.error("briefing_llm_failed", error=str(e), space_id=space_id)
         briefing_text = _build_fallback_briefing(
             overnight_events, pending_cards, stats
         )
 
     # 6. Create synthetic event
-    briefing_event_id = f"evt_briefing_{today}"
+    suffix = f"_{space_id}" if space_id else ""
+    briefing_event_id = f"evt_briefing_{today}{suffix}"
 
     # Check if briefing event already exists today
     existing = await db.execute_fetchall(
@@ -146,8 +164,8 @@ async def generate_briefing() -> str:
         """INSERT INTO events
            (event_id, timestamp, source_platform, source_raw_event_type,
             actor_name, actor_email, subject_type, subject_id, subject_title,
-            content_body, raw_json, processed, processing_status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            content_body, raw_json, processed, processing_status, space_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             briefing_event_id,
             now.isoformat(),
@@ -162,6 +180,7 @@ async def generate_briefing() -> str:
             "{}",
             True,
             "completed",
+            space_id,
         ),
     )
     await db.commit()
@@ -222,16 +241,16 @@ async def generate_briefing() -> str:
     )
 
     # 8. Emit the card
-    card_id = await run_emit(briefing_event, router_output, stager_output)
+    card_id = await run_emit(briefing_event, router_output, stager_output, space_id=space_id)
 
     # Broadcast briefing_ready
     await manager.broadcast({
         "type": "briefing_ready",
         "card_id": card_id,
-        "payload": {"header": stager_output.header},
+        "payload": {"header": stager_output.header, "space_id": space_id or ""},
     })
 
-    log.info("briefing_generated", card_id=card_id, date=today)
+    log.info("briefing_generated", card_id=card_id, date=today, space_id=space_id)
     return card_id
 
 

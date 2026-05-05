@@ -639,6 +639,7 @@ export const engineApi = {
 	}) =>
 		request<import('./types').TraceResponse>('/trace', {
 			method: 'POST',
+			signal: AbortSignal.timeout(240_000),
 			body: JSON.stringify({
 				query,
 				space_id: spaceId || null,
@@ -821,9 +822,10 @@ export const engineApi = {
 	detectEmailProvider: (email: string) =>
 		request<EmailProviderDetection>(`/egress/connections/detect?email=${encodeURIComponent(email)}`),
 
-	startOAuthFlow: (platform: string, connectionName?: string) => {
+	startOAuthFlow: (platform: string, connectionName?: string, spaceId?: string) => {
 		const params = new URLSearchParams({ platform });
 		if (connectionName) params.set('connection_name', connectionName);
+		if (spaceId) params.set('space_id', spaceId);
 		return request<OAuthStartResponse>(`/egress/connections/oauth/start?${params}`);
 	},
 

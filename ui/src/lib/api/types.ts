@@ -311,6 +311,7 @@ export interface Settings {
 		enabled: boolean;
 		time: string;
 		timezone: string;
+		per_space?: boolean;
 	};
 	notifications: {
 		enabled: boolean;
@@ -1069,6 +1070,7 @@ export interface CardEgressContext {
 	prefill: Record<string, unknown>;
 	event_id: string | null;
 	connected: boolean;
+	connection_id: string | null;
 }
 
 /** An egress connection */

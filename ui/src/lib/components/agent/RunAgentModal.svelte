@@ -415,6 +415,7 @@
 		<div
 			class="mx-4 w-full max-w-2xl rounded-xl border max-h-[90vh] flex flex-col {$glassTheme ? 'glass-card border-surface-700/40' : 'border-surface-700 bg-surface-900 shadow-2xl'}"
 			onclick={handleModalClick}
+			onkeydown={handleKeydown}
 		>
 			<!-- Header -->
 			<div
