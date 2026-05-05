@@ -282,11 +282,28 @@ async def _scheduler_loop() -> None:
                     _last_briefing_date = today_local
                     log.info("scheduler_briefing_triggered", date=today_local)
                     from laya.pipeline.briefing import generate_briefing
-                    try:
-                        card_id = await generate_briefing()
-                        log.info("scheduler_briefing_complete", card_id=card_id)
-                    except Exception as e:
-                        log.error("scheduler_briefing_failed", error=str(e))
+
+                    if briefing_cfg.get("per_space", False):
+                        # Per-space mode: one briefing per non-default space
+                        from laya.db.sqlite import get_db as _get_briefing_db
+                        _bdb = await _get_briefing_db()
+                        _space_rows = await _bdb.execute_fetchall(
+                            "SELECT space_id FROM spaces WHERE is_default = 0"
+                        )
+                        for _row in _space_rows:
+                            _sid = _row["space_id"]
+                            try:
+                                card_id = await generate_briefing(space_id=_sid)
+                                log.info("scheduler_briefing_complete", card_id=card_id, space_id=_sid)
+                            except Exception as e:
+                                log.error("scheduler_briefing_failed", error=str(e), space_id=_sid)
+                    else:
+                        # Global mode: one briefing across all spaces
+                        try:
+                            card_id = await generate_briefing()
+                            log.info("scheduler_briefing_complete", card_id=card_id)
+                        except Exception as e:
+                            log.error("scheduler_briefing_failed", error=str(e))
 
             # --- Omni resynthesis ---
             omni_cfg = settings.get("omni", {})

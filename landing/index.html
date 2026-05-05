@@ -146,13 +146,15 @@ nav .container {
   border: none;
 }
 .btn-primary {
-  background: linear-gradient(135deg, var(--laya-orange), var(--laya-coral));
-  color: var(--surface-950);
-  box-shadow: 0 4px 24px rgba(246, 172, 105, 0.3);
+  background: linear-gradient(135deg, var(--laya-orange), var(--laya-amber));
+  color: #fff;
+  box-shadow: 0 4px 24px rgba(246, 172, 105, 0.35);
+  font-weight: 700;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
 }
 .btn-primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(246, 172, 105, 0.45);
+  box-shadow: 0 8px 32px rgba(246, 172, 105, 0.5);
 }
 .btn-ghost {
   background: transparent;
@@ -1248,14 +1250,14 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
 <section class="showcase">
   <div class="container">
     <div class="showcase-tabs">
-      <button class="showcase-tab active" data-target="shot-list">List View</button>
-      <button class="showcase-tab" data-target="shot-cards">Card View</button>
-      <button class="showcase-tab" data-target="shot-brief">Summary View</button>
+      <button class="showcase-tab active" data-target="shot-cards">Card View</button>
+      <button class="showcase-tab" data-target="shot-list">List View</button>
+      <button class="showcase-tab" data-target="shot-brief">Summary</button>
     </div>
     <div class="showcase-frame">
-      <img id="shot-list" src="images/list-view.png" alt="Laya List View — AI action cards with intelligence reports" style="display: block;">
-      <img id="shot-cards" src="images/card-view.png" alt="Laya Card View — grouped action cards in 3-column grid" style="display: none;">
-      <img id="shot-brief" src="images/briefing-view.png" alt="Laya Summary View — AI-synthesized daily briefing" style="display: none;">
+      <img id="shot-cards" src="images/card-view.png" alt="Laya Card View — grouped action cards in 3-column grid with intelligence reports" style="display: block;">
+      <img id="shot-list" src="images/list-view.png" alt="Laya List View — AI action cards with intelligence reports" style="display: none;">
+      <img id="shot-brief" src="images/summary-view.png" alt="Laya Day Summary — action items and key updates synthesized by AI" style="display: none;">
     </div>
   </div>
 </section>
@@ -1340,7 +1342,7 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
       <div class="feature-card animate-on-scroll">
         <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/><line x1="14" y1="4" x2="10" y2="20" stroke="#ff9770"/></svg></div>
         <h3>Coding Agents</h3>
-        <p>Laya spawns real coding agents (Claude Code, Gemini CLI, Codex) in your repos. Watch them work in real-time. Approve or guide their actions from the workspace.</p>
+        <p>Run coding agents (Claude Code, Gemini CLI, Codex) directly from any card. Watch them work in real-time and guide their actions from the workspace.</p>
       </div>
       <div class="feature-card animate-on-scroll">
         <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
@@ -1359,8 +1361,8 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
       </div>
       <div class="feature-card animate-on-scroll">
         <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div>
-        <h3>Egress Actions</h3>
-        <p>Execute actions directly from Laya — send emails, post Slack messages, comment on PRs, and more. Preview before you send, with full platform support.</p>
+        <h3>Cross-Platform Composer</h3>
+        <p>Execute outbound actions from a single interface — send emails, post Slack messages, comment on tickets, and more. AI-assisted drafting with full preview before sending.</p>
       </div>
       <div class="feature-card animate-on-scroll">
         <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div>
@@ -1379,8 +1381,8 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
       </div>
       <div class="feature-card animate-on-scroll">
         <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><path d="M11 8v6" stroke="#ff9770"/><path d="M8 11h6" stroke="#ff9770"/></svg></div>
-        <h3>Run Agent</h3>
-        <p>Run a coding agent on any card or entity group. Provide a prompt, pick your agent (Claude Code, Gemini CLI, Codex), and watch it work in real-time. Answer questions, resume sessions, and browse output files.</p>
+        <h3>Agent Studio</h3>
+        <p>Launch a fully configured agent session from any card. Choose your runtime, set an execution mode, configure directories, and write detailed prompts — with Plan or Accept Edits modes for full control.</p>
       </div>
       <div class="feature-card animate-on-scroll">
         <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
@@ -1463,7 +1465,7 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
     </div>
 
     <!-- Deep dive 3: Briefings -->
-    <div class="feature-showcase animate-on-scroll">
+    <div class="feature-showcase animate-on-scroll" style="margin-bottom: 100px;">
       <div class="feature-text">
         <span class="tag">Briefings</span>
         <h2>Your morning, already organized</h2>
@@ -1480,30 +1482,38 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
       </div>
     </div>
 
-    <!-- Deep dive 4: Coding Agents -->
-    <div class="feature-showcase reverse animate-on-scroll" style="margin-top: 100px;">
+    <!-- Deep dive 3.5: Day Summary -->
+    <div class="feature-showcase reverse animate-on-scroll">
       <div class="feature-text">
-        <span class="tag">Agents</span>
-        <h2>Real coding agents, right in your feed</h2>
-        <p>When a card needs code changes, Laya can spawn real coding agents — Claude Code, Gemini CLI, or Codex — directly in your repos. Approve the agent, watch it work in real-time, and review results in the workspace.</p>
+        <span class="tag">Summary</span>
+        <h2>Your day at a glance</h2>
+        <p>The Day Summary distills your entire day into a single structured view. Action items with pending counts, key updates filtered from noise, and space-level breakdowns — all generated and updated automatically.</p>
         <ul>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> One-click agent approval from your feed</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Live timeline of agent actions and tool calls</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Full workspace with context, draft replies, and related entities</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Pause, cancel, or guide agents at any point</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Action items with pending status and priority</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Key updates from all connected platforms</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Space-level breakdown for multi-context workflows</li>
         </ul>
       </div>
-      <div class="feature-image agent-showcase">
-        <div class="agent-screenshots">
-          <img src="images/agent-approve.png" alt="Laya agent approval — one-click to approve a coding agent from your feed" class="agent-shot" id="agent-shot-approve" style="display: block;">
-          <img src="images/agent-running.png" alt="Laya agent running — live view of a coding agent working on your task" class="agent-shot" id="agent-shot-running" style="display: none;">
-          <img src="images/agent-workspace.png" alt="Laya agent workspace — full workspace with timeline, context, and draft replies" class="agent-shot" id="agent-shot-workspace" style="display: none;">
-        </div>
-        <div class="agent-tabs">
-          <button class="agent-tab active" data-agent-target="agent-shot-approve">Approve</button>
-          <button class="agent-tab" data-agent-target="agent-shot-running">Running</button>
-          <button class="agent-tab" data-agent-target="agent-shot-workspace">Workspace</button>
-        </div>
+      <div class="feature-image">
+        <img src="images/summary-view.png" alt="Laya Day Summary — structured view of action items and key updates">
+      </div>
+    </div>
+
+    <!-- Deep dive 4: Agent Workspace -->
+    <div class="feature-showcase animate-on-scroll" style="margin-top: 100px;">
+      <div class="feature-text">
+        <span class="tag">Workspace</span>
+        <h2>A full workspace for every agent session</h2>
+        <p>Run coding agents — Claude Code, Gemini CLI, or Codex — directly from any card in your feed. Each session gets a dedicated workspace with a live timeline, context panel, and generated files.</p>
+        <ul>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Run an agent from any card with a single click</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Live timeline of agent actions, tool calls, and progress</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Full context panel with card info, implementation plan, and related entities</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Interactive messaging — guide, question, or redirect mid-session</li>
+        </ul>
+      </div>
+      <div class="feature-image">
+        <img src="images/agent-workspace.png" alt="Laya agent workspace — full workspace with timeline, context panel, and agent output">
       </div>
     </div>
 
@@ -1592,7 +1602,7 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
         </ul>
       </div>
       <div class="feature-image">
-        <img src="images/card-view.png" alt="Laya Context Association — related cards automatically grouped across platforms">
+        <img src="images/related-cards.png" alt="Laya Context Association — related cards automatically grouped across platforms">
       </div>
     </div>
   </div>
@@ -1603,40 +1613,62 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
   <div class="container">
     <div class="feature-showcase reverse animate-on-scroll">
       <div class="feature-text">
-        <span class="tag">Run Agent</span>
-        <h2>Run an agent on any card or entity group</h2>
-        <p>Need to investigate, code, or research? Run a coding agent directly from any card or entity group. Provide a custom prompt, choose your agent, and interact with it in real-time through the workspace.</p>
+        <span class="tag">Inline Agents</span>
+        <h2>Launch an agent from any card</h2>
+        <p>Every card in your feed has a Run Agent action. Provide an optional focus prompt and start the agent instantly — no context switching, no setup. The card's intelligence report and related entities are automatically injected as context.</p>
         <ul>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Per-card or entity-level agent sessions with custom prompts</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Answer questions, resume sessions, or dismiss prompts mid-run</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Browse output files from research sessions in the workspace</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> One-click agent trigger from any card detail view</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Optional focus prompt to guide the agent's investigation</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Card context and related entities injected automatically</li>
           <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Live progress streaming via workspace timeline</li>
         </ul>
       </div>
       <div class="feature-image">
-        <img src="images/card-view.png" alt="Laya Run Agent — run coding agents on any card or entity group">
+        <img src="images/run-agent.png" alt="Laya Run Agent — launch a coding agent directly from card detail view">
       </div>
     </div>
   </div>
 </section>
 
-<!-- ═══════════════════ EGRESS ═══════════════════ -->
+<!-- ═══════════════════ AGENT STUDIO ═══════════════════ -->
 <section>
   <div class="container">
     <div class="feature-showcase animate-on-scroll">
       <div class="feature-text">
-        <span class="tag">Egress</span>
-        <h2>Take action without leaving Laya</h2>
-        <p>Laya's egress system lets you execute outbound actions directly — send emails, reply on Slack, comment on Jira tickets, and more. Preview every action before it goes out.</p>
+        <span class="tag">Agent Studio</span>
+        <h2>Full control over your agent sessions</h2>
+        <p>For complex tasks, the Agent Studio gives you full control. Choose your agent runtime, select an execution mode, configure working directories, attach reference files, and write detailed prompts — all before the agent starts.</p>
         <ul>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> 9 platform backends: Gmail, Slack, Jira, GitHub, Bitbucket, Calendar, Linear, Outlook, Notion</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Compose modal with keyboard shortcut</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Preview before executing — never send by accident</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Connection health monitoring and OAuth management</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Choose from Claude Code, Gemini CLI, or Codex</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Plan mode for review-first workflows, or Accept Edits for autonomous execution</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Configure working directories and attach reference files</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Auto-provisioned research workspaces for investigation tasks</li>
         </ul>
       </div>
-      <div class="feature-image" style="max-width: 380px; margin: 0 auto;">
-        <img src="images/egress-actions.png" alt="Laya egress — execute actions directly from the app">
+      <div class="feature-image">
+        <img src="images/custom-agent.png" alt="Laya Agent Studio — configure agent runtime, mode, and prompt before launching">
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ COMPOSER ═══════════════════ -->
+<section>
+  <div class="container">
+    <div class="feature-showcase reverse animate-on-scroll">
+      <div class="feature-text">
+        <span class="tag">Composer</span>
+        <h2>One interface for every outbound action</h2>
+        <p>The Composer lets you execute actions across all connected platforms from a single modal. Send emails, post Slack messages, comment on Jira tickets, create GitHub issues, and more — with AI-assisted drafting and full preview before sending.</p>
+        <ul>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> 9 platform backends: Gmail, Outlook, Jira, Notion, GitHub, Bitbucket, Linear, Calendar, and more</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> AI Assist generates context-aware drafts from your card data</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Per-platform action types — compose email, post comment, create ticket</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Multi-account support with connection health monitoring</li>
+        </ul>
+      </div>
+      <div class="feature-image">
+        <img src="images/composer.png" alt="Laya Composer — unified outbound action interface across all connected platforms">
       </div>
     </div>
   </div>
@@ -2991,18 +3023,6 @@ document.querySelectorAll('.showcase-tab').forEach(tab => {
     tab.classList.add('active');
     const target = tab.dataset.target;
     document.querySelectorAll('.showcase-frame img').forEach(img => {
-      img.style.display = img.id === target ? 'block' : 'none';
-    });
-  });
-});
-
-// ── Agent screenshot tabs ──
-document.querySelectorAll('.agent-tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.agent-tab').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    const target = tab.dataset.agentTarget;
-    document.querySelectorAll('.agent-shot').forEach(img => {
       img.style.display = img.id === target ? 'block' : 'none';
     });
   });

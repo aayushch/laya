@@ -159,10 +159,12 @@
 		}
 	}
 
-	// Auto-select first connection when platform connections change
+	// Auto-select connection when platform connections change — prefer the one resolved by the backend for the card's space
 	$effect(() => {
 		if (platformConnections.length > 0 && !platformConnections.find((c) => c.connection_id === selectedConnectionId)) {
-			selectedConnectionId = platformConnections[0].connection_id;
+			const preferred = $compose.connectionId;
+			const match = preferred ? platformConnections.find((c) => c.connection_id === preferred) : undefined;
+			selectedConnectionId = (match ?? platformConnections[0]).connection_id;
 		}
 	});
 
@@ -401,7 +403,7 @@
 						</div>
 					{:else if platformConnections.length === 1}
 						<div>
-							<label class={labelClass}>Account</label>
+							<span class={labelClass}>Account</span>
 							<p class="text-sm text-surface-300 px-3 py-2">{platformConnections[0].name}</p>
 						</div>
 					{/if}

@@ -5,6 +5,8 @@
 	let enabled = $state(true);
 	let time = $state('07:00');
 	let timezone = $state('America/New_York');
+	let perSpace = $state(false);
+	let spaceCount = $state(0);
 	let loading = $state(true);
 	let saving = $state(false);
 	let saved = $state(false);
@@ -74,10 +76,16 @@
 	];
 
 	$effect(() => {
-		engineApi.getSettings().then((s) => {
+		Promise.all([
+			engineApi.getSettings(),
+			engineApi.getSpaces(),
+		]).then(([s, spacesResp]) => {
 			enabled = s.briefing?.enabled ?? true;
 			time = s.briefing?.time ?? '07:00';
 			timezone = s.briefing?.timezone ?? 'America/New_York';
+			perSpace = s.briefing?.per_space ?? false;
+
+			spaceCount = spacesResp.spaces?.length ?? 0;
 
 			omniEnabled = s.omni?.enabled ?? true;
 			omniResynthesisTime = s.omni?.resynthesis_time ?? '17:00';
@@ -102,7 +110,7 @@
 
 	async function saveBriefing() {
 		try {
-			await engineApi.updateSettings({ briefing: { enabled, time, timezone } } as never);
+			await engineApi.updateSettings({ briefing: { enabled, time, timezone, per_space: perSpace } } as never);
 			saved = true;
 			setTimeout(() => (saved = false), 2000);
 		} catch (e) {
@@ -183,7 +191,11 @@
 
 	function handleBriefingToggle() {
 		enabled = !enabled;
-		// Toggle saves immediately, no debounce needed
+		saveBriefing();
+	}
+
+	function handlePerSpaceToggle() {
+		perSpace = !perSpace;
 		saveBriefing();
 	}
 
@@ -299,6 +311,26 @@
 					</div>
 				</div>
 
+				<!-- Per-space briefings toggle (only shown when multiple spaces exist) -->
+				{#if spaceCount > 1}
+					<div class="flex items-center justify-between rounded-md border {$glassTheme ? 'border-white/[0.08] bg-white/[0.04]' : 'border-surface-600 bg-surface-700/40'} px-4 py-3" class:opacity-40={!enabled}>
+						<div>
+							<span class="text-sm font-medium text-surface-100">Per-space briefings</span>
+							<p class="text-xs text-surface-400">Generate a separate briefing for each space instead of one combined briefing</p>
+						</div>
+						<button
+							class="relative h-6 w-11 shrink-0 rounded-full transition-colors {perSpace ? 'bg-laya-orange' : 'bg-surface-600'}"
+							onclick={handlePerSpaceToggle}
+							disabled={!enabled}
+							role="switch"
+							aria-checked={perSpace}
+							aria-label="Toggle per-space briefings"
+						>
+							<span class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform {perSpace ? 'translate-x-5' : ''}"></span>
+						</button>
+					</div>
+				{/if}
+
 				{#if error}
 					<p class="text-xs text-red-400">{error}</p>
 				{/if}
@@ -310,7 +342,11 @@
 						{:else if saved}
 							<span class="text-green-400">Saved</span> —
 						{/if}
-						Briefing will run daily at
+						{#if perSpace && spaceCount > 1}
+							Each space will receive its own briefing daily at
+						{:else}
+							Briefing will run daily at
+						{/if}
 						<span class="text-surface-300">{previewTime}</span>
 						in
 						<span class="text-surface-300">{timezone.replace(/_/g, ' ')}</span>.

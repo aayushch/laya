@@ -44,6 +44,7 @@ DEFAULT_SETTINGS = {
         "enabled": True,
         "time": "07:00",
         "timezone": "America/New_York",
+        "per_space": False,
     },
     "notifications": {
         "enabled": True,

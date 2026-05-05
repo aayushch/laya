@@ -119,7 +119,8 @@
 			action.action_type,
 			egressContext.prefill,
 			firstCard?.card_id,
-			egressContext.event_id ?? undefined
+			egressContext.event_id ?? undefined,
+			egressContext.connection_id
 		);
 	}
 

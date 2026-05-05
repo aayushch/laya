@@ -74,7 +74,8 @@ async def create_connection(
     if n8n_credential_id:
         try:
             activated, workflow_errors = await _clone_workflows_for_connection(
-                platform, connection_id, display_name, n8n_credential_id
+                platform, connection_id, display_name, n8n_credential_id,
+                space_id=space_id,
             )
             log.info("workflows_cloned", platform=platform, count=activated,
                      connection_id=connection_id)
@@ -582,6 +583,7 @@ async def _clone_workflows_for_connection(
     connection_id: str,
     connection_name: str,
     n8n_credential_id: str,
+    space_id: str | None = None,
 ) -> tuple[int, list[str]]:
     """Clone bundled workflow templates for a specific connection.
 
@@ -810,9 +812,9 @@ async def _clone_workflows_for_connection(
             """INSERT INTO sources
                (source_id, name, platform, workflow_id, space_id,
                 source_type, webhook_path, connection_id)
-               VALUES (?, ?, ?, ?, 'default', ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (source_id, wf_data["name"], platform, wf_id,
-             source_type, webhook_path, connection_id),
+             space_id or "default", source_type, webhook_path, connection_id),
         )
         await db.commit()
 

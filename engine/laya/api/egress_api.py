@@ -448,22 +448,35 @@ async def get_capabilities(platform: str) -> dict:
 @router.get("/egress/card-context/{card_id}")
 async def get_card_egress_context(card_id: str) -> dict:
     """Return platform, available actions, and pre-filled identifiers for a card."""
+    from laya.db.sqlite import get_db
     from laya.egress.enrichment import get_prefill_for_card
     from laya.egress.registry import get_composable_actions
 
-    platform, prefill, event_id = await get_prefill_for_card(card_id)
+    platform, prefill, event_id, space_id = await get_prefill_for_card(card_id)
     if not platform:
-        return {"platform": "", "actions": [], "prefill": {}, "event_id": None, "connected": False}
+        return {"platform": "", "actions": [], "prefill": {}, "event_id": None, "connected": False, "connection_id": None}
 
     actions = get_composable_actions(platform)
 
     connected = False
+    preferred_connection_id: str | None = None
     try:
         conns = await egress.list_connections()
-        connected = any(
-            c.platform == platform and c.status == "connected"
-            for c in conns
-        )
+        platform_conns = [c for c in conns if c.platform == platform and c.status == "connected"]
+        connected = len(platform_conns) > 0
+
+        # When multiple connections exist for the platform, resolve the one
+        # whose sources belong to the card's space.
+        if space_id and len(platform_conns) > 1:
+            db = await get_db()
+            rows = await db.execute_fetchall(
+                "SELECT DISTINCT connection_id FROM sources WHERE space_id = ? AND platform = ? AND connection_id IS NOT NULL",
+                (space_id, platform),
+            )
+            space_conn_ids = {r["connection_id"] for r in rows}
+            match = next((c for c in platform_conns if c.connection_id in space_conn_ids), None)
+            if match:
+                preferred_connection_id = match.connection_id
     except Exception:
         pass
 
@@ -480,6 +493,7 @@ async def get_card_egress_context(card_id: str) -> dict:
         "prefill": prefill,
         "event_id": event_id,
         "connected": connected,
+        "connection_id": preferred_connection_id,
     }
 
 
@@ -704,7 +718,7 @@ async def detect_email_provider(email: str) -> dict:
 
 
 @router.get("/egress/connections/oauth/start")
-async def oauth_start(platform: str, connection_name: str | None = None) -> dict:
+async def oauth_start(platform: str, connection_name: str | None = None, space_id: str | None = None) -> dict:
     """Start an OAuth flow for a platform (Gmail, Google Calendar, Outlook).
 
     Returns the authorization URL to redirect the user's browser to.
@@ -713,7 +727,7 @@ async def oauth_start(platform: str, connection_name: str | None = None) -> dict
     from laya.egress.oauth import build_auth_url
 
     redirect_uri = f"http://localhost:{ENGINE_PORT}/egress/connections/oauth/callback"
-    result = build_auth_url(platform, redirect_uri, connection_name=connection_name)
+    result = build_auth_url(platform, redirect_uri, connection_name=connection_name, space_id=space_id)
 
     if "error" in result:
         status_code = 422 if result.get("needs_setup") else 400

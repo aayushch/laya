@@ -390,7 +390,7 @@
 	{#if error}
 		<div class="flex items-start gap-2 rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-sm text-red-300">
 			<span class="flex-1">{error}</span>
-			<button class="shrink-0 text-red-400 hover:text-red-200" onclick={() => (error = null)}>
+			<button class="shrink-0 text-red-400 hover:text-red-200" onclick={() => (error = null)} aria-label="Dismiss error">
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
 			</button>
 		</div>
@@ -406,8 +406,8 @@
 
 		<!-- Auto-disable threshold setting -->
 		<div class="mb-4 flex items-center gap-3">
-			<label class="text-xs text-surface-400">Auto-disable rules after</label>
-			<input type="number" bind:value={autoDisableThreshold} min="1" max="100"
+			<label for="auto-disable-threshold" class="text-xs text-surface-400">Auto-disable rules after</label>
+			<input id="auto-disable-threshold" type="number" bind:value={autoDisableThreshold} min="1" max="100"
 				class="w-16 rounded-lg border border-surface-600 bg-surface-900 px-2 py-1 text-sm text-surface-50"
 				onchange={saveThreshold} />
 			<span class="text-xs text-surface-500">consecutive errors</span>
@@ -453,6 +453,7 @@
 								<button
 									class="rounded p-1 text-surface-500 transition-colors hover:text-surface-200"
 									onclick={() => { formMode = { edit: rule.id }; loadIntoForm(rule); }}
+									aria-label="Edit rule"
 								>
 									<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
 								</button>
@@ -469,6 +470,7 @@
 									<button
 										class="rounded p-1 text-surface-500 transition-colors hover:text-red-400"
 										onclick={() => (confirmDeleteId = rule.id)}
+										aria-label="Delete rule"
 									>
 										<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
 									</button>
@@ -510,22 +512,26 @@
 	<div class="rounded-lg border border-laya-orange/30 {$glassTheme ? 'bg-white/[0.03]' : 'bg-surface-850'} p-4 space-y-4">
 		<!-- Name -->
 		<div>
-			<label class="mb-1 block text-xs font-medium text-surface-300">Rule Name</label>
-			<input
-				bind:value={formName}
-				placeholder="e.g. Auto-dismiss low-priority calendar"
-				class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500 focus:border-laya-orange focus:outline-none"
-			/>
+			<label class="mb-1 block text-xs font-medium text-surface-300">
+				Rule Name
+				<input
+					bind:value={formName}
+					placeholder="e.g. Auto-dismiss low-priority calendar"
+					class="mt-1 w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500 focus:border-laya-orange focus:outline-none"
+				/>
+			</label>
 		</div>
 
 		<!-- Description (optional) -->
 		<div>
-			<label class="mb-1 block text-xs font-medium text-surface-300">Description <span class="text-surface-500">(optional)</span></label>
-			<input
-				bind:value={formDescription}
-				placeholder="What does this rule do?"
-				class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500 focus:border-laya-orange/50 focus:outline-none"
-			/>
+			<label class="mb-1 block text-xs font-medium text-surface-300">
+				Description <span class="text-surface-500">(optional)</span>
+				<input
+					bind:value={formDescription}
+					placeholder="What does this rule do?"
+					class="mt-1 w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500 focus:border-laya-orange/50 focus:outline-none"
+				/>
+			</label>
 		</div>
 
 		<!-- WHEN section -->
@@ -597,6 +603,7 @@
 							<button
 								class="rounded p-1 text-surface-500 transition-colors hover:bg-surface-700 hover:text-red-400"
 								onclick={() => { formConditions = formConditions.filter((_, j) => j !== i); }}
+								aria-label="Remove condition"
 							>
 								<svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>
 							</button>
@@ -635,6 +642,7 @@
 								<button
 									class="rounded p-1 text-surface-500 transition-colors hover:bg-surface-700 hover:text-red-400"
 									onclick={() => { formActions = formActions.filter((_, j) => j !== i); }}
+									aria-label="Remove action"
 								>
 									<svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>
 								</button>
@@ -754,36 +762,36 @@
 			{#if showAdvanced}
 				<div class="mt-2 grid grid-cols-3 gap-3">
 					<div>
-						<label class="mb-1 flex items-center gap-1 text-xs text-surface-400">
+						<label for="rule-rate-limit" class="mb-1 flex items-center gap-1 text-xs text-surface-400">
 							Max per hour
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<span class="cursor-help" onmouseenter={(e) => showTip(e.currentTarget as HTMLElement, 'Maximum times this rule can fire per hour globally')} onmouseleave={hideTip}>
 								<svg class="h-3 w-3 text-surface-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" /></svg>
 							</span>
 						</label>
-						<input type="number" bind:value={formRateLimit} min="0" class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50" />
+						<input id="rule-rate-limit" type="number" bind:value={formRateLimit} min="0" class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50" />
 						<p class="mt-1 text-[11px] text-surface-600">0 = unlimited</p>
 					</div>
 					<div>
-						<label class="mb-1 flex items-center gap-1 text-xs text-surface-400">
+						<label for="rule-cooldown" class="mb-1 flex items-center gap-1 text-xs text-surface-400">
 							Entity cooldown
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<span class="cursor-help" onmouseenter={(e) => showTip(e.currentTarget as HTMLElement, 'Minimum seconds between firings for the same entity (e.g. same PR)')} onmouseleave={hideTip}>
 								<svg class="h-3 w-3 text-surface-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" /></svg>
 							</span>
 						</label>
-						<input type="number" bind:value={formCooldownSecs} min="0" class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50" />
+						<input id="rule-cooldown" type="number" bind:value={formCooldownSecs} min="0" class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50" />
 						<p class="mt-1 text-[11px] text-surface-600">In seconds, 0 = none</p>
 					</div>
 					<div>
-						<label class="mb-1 flex items-center gap-1 text-xs text-surface-400">
+						<label for="rule-max-daily" class="mb-1 flex items-center gap-1 text-xs text-surface-400">
 							Max per day
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<span class="cursor-help" onmouseenter={(e) => showTip(e.currentTarget as HTMLElement, 'Maximum total firings per calendar day. Prevents runaway rules.')} onmouseleave={hideTip}>
 								<svg class="h-3 w-3 text-surface-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" /></svg>
 							</span>
 						</label>
-						<input type="number" bind:value={formMaxDaily} min="0" class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50" />
+						<input id="rule-max-daily" type="number" bind:value={formMaxDaily} min="0" class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50" />
 						<p class="mt-1 text-[11px] text-surface-600">0 = unlimited</p>
 					</div>
 				</div>

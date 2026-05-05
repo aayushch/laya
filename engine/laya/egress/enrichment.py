@@ -141,31 +141,32 @@ def _get_self_emails() -> set[str]:
     return set()
 
 
-async def get_prefill_for_card(card_id: str) -> tuple[str, dict, str | None]:
-    """Return ``(platform, prefill_dict, event_id)`` for a card.
+async def get_prefill_for_card(card_id: str) -> tuple[str, dict, str | None, str | None]:
+    """Return ``(platform, prefill_dict, event_id, space_id)`` for a card.
 
     Used by the card-context endpoint to pre-fill ComposeModal fields
     with identifiers derived from the card's source event.
     """
     db = await get_db()
     rows = await db.execute_fetchall(
-        "SELECT event_id, entity_id FROM action_cards WHERE card_id = ?",
+        "SELECT event_id, entity_id, space_id FROM action_cards WHERE card_id = ?",
         (card_id,),
     )
     if not rows:
-        return "", {}, None
+        return "", {}, None, None
 
     event_id = rows[0]["event_id"]
     entity_id = rows[0]["entity_id"] or ""
+    space_id = rows[0]["space_id"]
 
     parts = entity_id.split(":", 2)
     platform = parts[0] if parts else ""
     if not platform:
-        return "", {}, event_id
+        return "", {}, event_id, space_id
 
     event_ctx = await _fetch_event_context(event_id)
     if not event_ctx:
-        return platform, {}, event_id
+        return platform, {}, event_id, space_id
 
     try:
         content_metadata = json.loads(event_ctx.get("content_metadata") or "{}")
@@ -174,7 +175,7 @@ async def get_prefill_for_card(card_id: str) -> tuple[str, dict, str | None]:
 
     mod = platforms.for_platform(platform)
     if mod is None:
-        return platform, {}, event_id
+        return platform, {}, event_id, space_id
 
     kwargs: dict = {}
     if platform in ("gmail", "outlook"):
@@ -198,4 +199,4 @@ async def get_prefill_for_card(card_id: str) -> tuple[str, dict, str | None]:
         if derived:
             prefill.update(derived)
 
-    return platform, prefill, event_id
+    return platform, prefill, event_id, space_id
