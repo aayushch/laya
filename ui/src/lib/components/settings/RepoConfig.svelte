@@ -3,6 +3,7 @@
 	import { invoke } from '@tauri-apps/api/core';
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { portal } from '$lib/actions/portal';
 	import type { Repo } from '$lib/api/types';
 
 	interface RepoDetection {
@@ -26,6 +27,17 @@
 	let formRemoteId = $state('');
 	let detectionStatus = $state<{ ok: boolean; msg: string } | null>(null);
 	let browsing = $state(false);
+
+	let fixedTooltip = $state<{ text: string; top: number; left: number } | null>(null);
+
+	function showTooltipIfTruncated(e: MouseEvent) {
+		const el = e.currentTarget as HTMLElement;
+		if (el.scrollWidth <= el.clientWidth) { fixedTooltip = null; return; }
+		const rect = el.getBoundingClientRect();
+		fixedTooltip = { text: el.textContent ?? '', top: rect.bottom + 4, left: rect.left };
+	}
+
+	function hideTooltip() { fixedTooltip = null; }
 
 	onMount(async () => {
 		try {
@@ -123,21 +135,21 @@
 
 	<!-- Repo table -->
 	<div class="overflow-hidden {$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700'}">
-		<table class="w-full text-sm">
+		<table class="w-full table-fixed text-sm">
 			<thead class="{$glassTheme ? 'bg-white/[0.03]' : 'bg-surface-800'} text-left text-xs uppercase tracking-wider text-surface-400">
 				<tr>
-					<th class="px-4 py-3">Name</th>
-					<th class="px-4 py-3">Path</th>
-					<th class="px-4 py-3">Platform</th>
+					<th class="w-[15%] px-4 py-3">Name</th>
+					<th class="w-[25%] px-4 py-3">Path</th>
+					<th class="w-[12%] px-4 py-3">Platform</th>
 					<th class="px-4 py-3">Remote ID</th>
-					<th class="px-4 py-3 text-right">Actions</th>
+					<th class="w-[15%] px-4 py-3 text-right">Actions</th>
 				</tr>
 			</thead>
 			<tbody class="divide-y {$glassTheme ? 'divide-white/[0.05]' : 'divide-surface-700'}">
 				{#each repos as repo, i}
 					<tr class="{$glassTheme ? 'bg-white/[0.02] hover:bg-white/[0.05]' : 'bg-surface-900 hover:bg-surface-800'}">
-						<td class="px-4 py-3 font-medium">{repo.name}</td>
-						<td class="px-4 py-3 font-mono text-xs text-surface-300">{repo.path}</td>
+						<td class="truncate px-4 py-3 font-medium" onmouseenter={showTooltipIfTruncated} onmouseleave={hideTooltip}>{repo.name}</td>
+						<td class="truncate px-4 py-3 font-mono text-xs text-surface-300" onmouseenter={showTooltipIfTruncated} onmouseleave={hideTooltip}>{repo.path}</td>
 						<td class="px-4 py-3">
 							{#if repo.platform}
 								<span class="rounded-full bg-surface-700 px-2 py-0.5 text-xs">{repo.platform}</span>
@@ -145,8 +157,8 @@
 								<span class="text-surface-500">-</span>
 							{/if}
 						</td>
-						<td class="px-4 py-3 text-surface-400">{repo.remote_id || '-'}</td>
-						<td class="px-4 py-3 text-right">
+						<td class="truncate px-4 py-3 text-surface-400" onmouseenter={showTooltipIfTruncated} onmouseleave={hideTooltip}>{repo.remote_id || '-'}</td>
+						<td class="px-4 py-3 text-right whitespace-nowrap">
 							<button class="text-surface-400 hover:text-surface-100" onclick={() => startEdit(i)}>Edit</button>
 							<button class="ml-2 text-red-400 hover:text-red-300" onclick={() => removeRepo(i)}>Remove</button>
 						</td>
@@ -204,4 +216,14 @@
 			+ Add Repository
 		</button>
 	{/if}
+{/if}
+
+{#if fixedTooltip}
+	<span
+		use:portal
+		class="pointer-events-none fixed z-[100] max-w-sm rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium whitespace-normal break-all"
+		style="top: {fixedTooltip.top}px; left: {fixedTooltip.left}px;"
+	>
+		{fixedTooltip.text}
+	</span>
 {/if}

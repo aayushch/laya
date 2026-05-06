@@ -86,9 +86,9 @@
 		archived: 'bg-surface-600'
 	};
 	const solidRowStyle: Record<string, string> = {
-		pending:            'bg-amber-950/55',
+		pending:            'bg-amber-950/55 card-pulse-amber',
 		ready:              'bg-amber-950/55',
-		agent_running:      'bg-violet-950/55',
+		agent_running:      'bg-violet-950/55 card-pulse-violet',
 		awaiting_input:     'bg-violet-950/55',
 		done:               'bg-emerald-950/50',
 		failed:             'bg-rose-950/60',
@@ -96,9 +96,9 @@
 		archived:           'bg-surface-900/60',
 	};
 	const glassRowStyle: Record<string, string> = {
-		pending:            'glass-card-flat bg-amber-950/45',
+		pending:            'glass-card-flat bg-amber-950/45 card-pulse-amber',
 		ready:              'glass-card-flat bg-amber-950/45',
-		agent_running:      'glass-card-flat bg-violet-950/45',
+		agent_running:      'glass-card-flat bg-violet-950/45 card-pulse-violet',
 		awaiting_input:     'glass-card-flat bg-violet-950/45',
 		done:               'glass-card-flat bg-emerald-950/40',
 		failed:             'glass-card-flat bg-rose-950/50',
