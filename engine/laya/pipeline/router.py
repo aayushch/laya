@@ -8,7 +8,12 @@ import structlog
 from laya.db.chromadb_store import memory_search
 from laya.db.sqlite import get_db
 from laya.llm.client import llm_call
-from laya.llm.prompts.router import build_router_messages, get_router_json_schema
+from laya.llm.prompts.router import (
+    build_batch_router_messages,
+    build_router_messages,
+    get_batch_router_json_schema,
+    get_router_json_schema,
+)
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 
@@ -161,3 +166,83 @@ async def run_router(
     )
 
     return router_output
+
+
+async def run_batch_router(
+    events_data: list[dict],
+) -> dict[str, RouterOutput]:
+    """Classify multiple events in a single LLM call for efficiency.
+
+    Falls back to individual routing on parse failure for any event.
+
+    Args:
+        events_data: List of dicts with keys: event_id, event, actor_relationship, space_id
+
+    Returns:
+        Dict mapping event_id → RouterOutput
+    """
+    if len(events_data) == 1:
+        item = events_data[0]
+        output = await run_router(
+            item["event"], item["actor_relationship"], space_id=item["space_id"]
+        )
+        return {item["event_id"]: output}
+
+    messages = build_batch_router_messages(events_data)
+    schema = get_batch_router_json_schema(len(events_data))
+
+    space_id = events_data[0].get("space_id")
+
+    response = await llm_call(
+        role="router",
+        messages=messages,
+        response_schema=schema,
+        step="route_batch",
+        temperature=0.0,
+        max_tokens=1500 * len(events_data),
+        space_id=space_id,
+    )
+
+    results: dict[str, RouterOutput] = {}
+
+    if response.parsed and "classifications" in response.parsed:
+        for i, classification in enumerate(response.parsed["classifications"]):
+            if i >= len(events_data):
+                break
+            event_id = events_data[i]["event_id"]
+            try:
+                router_output = RouterOutput(**classification)
+                results[event_id] = router_output
+
+                # Store router output in DB
+                db = await get_db()
+                await db.execute(
+                    "UPDATE events SET router_output = ?, processed = TRUE WHERE event_id = ?",
+                    (router_output.model_dump_json(), event_id),
+                )
+
+                # Store entities
+                await _store_entities(event_id, router_output)
+
+                log.info(
+                    "batch_router_classified",
+                    event_id=event_id,
+                    category=router_output.category.value,
+                    persona=router_output.persona.value,
+                    priority=router_output.priority.value,
+                    batch_index=i,
+                )
+            except Exception as e:
+                log.warning("batch_router_parse_single", event_id=event_id, error=str(e))
+
+        # Commit all DB updates
+        db = await get_db()
+        await db.commit()
+
+    log.info(
+        "batch_router_complete",
+        total_events=len(events_data),
+        classified=len(results),
+    )
+
+    return results

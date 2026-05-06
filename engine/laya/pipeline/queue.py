@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 import structlog
 
-from laya.config import load_settings
+from laya.config import get_debounce_config, load_settings
 from laya.db.sqlite import get_db
 from laya.models.event import LayaEvent
 
@@ -21,6 +21,9 @@ log = structlog.get_logger()
 _consumer_task: asyncio.Task | None = None
 _semaphore: asyncio.Semaphore | None = None
 _shutdown_event: asyncio.Event = asyncio.Event()
+# Pre-computed router outputs from batch routing (event_id → RouterOutput).
+# Populated by _batch_route_events, consumed by process_event.
+_batch_router_cache: dict[str, object] = {}
 # Track in-flight processing tasks so we can cancel them on shutdown,
 # aborting pending LLM HTTP requests instead of blocking until they complete.
 _inflight_tasks: set[asyncio.Task] = set()
@@ -227,13 +230,16 @@ async def process_event(event_id: str) -> None:
             )
             return
 
-        # ROUTER
-        router_output: RouterOutput | None = None
-        try:
-            router_output = await run_router(event, actor_relationship, space_id=space_id)
-        except Exception as e:
-            log.error("router_failed", event_id=event.event_id, error=str(e))
-            raise  # let the queue retry
+        # ROUTER — check batch cache first (populated by _batch_route_events)
+        router_output: RouterOutput | None = _batch_router_cache.pop(event_id, None)
+        if router_output:
+            log.debug("router_from_batch_cache", event_id=event.event_id)
+        else:
+            try:
+                router_output = await run_router(event, actor_relationship, space_id=space_id)
+            except Exception as e:
+                log.error("router_failed", event_id=event.event_id, error=str(e))
+                raise  # let the queue retry
 
         # Broadcast classification
         broadcast_payload: dict = {
@@ -577,6 +583,53 @@ async def _reap_stale_events() -> int:
     return count
 
 
+# ── batch routing ────────────────────────────────────────────────────────
+
+
+async def _batch_route_events(event_ids: list[str]) -> None:
+    """Pre-classify multiple events in one LLM call (populates _batch_router_cache).
+
+    Best-effort: failures are logged and events fall back to individual routing.
+    Events are NOT claimed here — they are only loaded for classification.
+    """
+    from laya.pipeline.ingest import run_ingest
+    from laya.pipeline.router import run_batch_router
+    from laya.pipeline.rules import run_rules
+    from laya.pipeline.space_resolution import resolve_space
+
+    events_data = []
+    for eid in event_ids:
+        event = await _load_event(eid)
+        if not event:
+            continue
+        try:
+            actor_relationship, _ = await run_ingest(event)
+            space_id = await resolve_space(
+                eid, event.source.connection_id, event.source.platform
+            )
+            filtered, _ = await run_rules(event)
+            if filtered:
+                continue
+            events_data.append({
+                "event_id": eid,
+                "event": event,
+                "actor_relationship": actor_relationship,
+                "space_id": space_id,
+            })
+        except Exception as e:
+            log.debug("batch_route_prep_skipped", event_id=eid, error=str(e))
+
+    if len(events_data) < 2:
+        return  # Not enough events for batching to save anything
+
+    try:
+        results = await run_batch_router(events_data)
+        _batch_router_cache.update(results)
+        log.info("batch_route_cached", count=len(results))
+    except Exception as e:
+        log.warning("batch_route_failed", error=str(e))
+
+
 # ── background consumer ──────────────────────────────────────────────────
 
 _STALE_CHECK_INTERVAL = 30  # seconds between stale event checks
@@ -599,7 +652,12 @@ async def _fetch_ready_events(limit: int) -> list[str]:
 
 
 async def _consumer_loop() -> None:
-    """Background loop that polls the queue and dispatches event processing."""
+    """Background loop that polls the queue and dispatches event processing.
+
+    When event_batch_window_seconds > 0, collects events for a short window
+    before processing to enable batch-routing (multiple events classified in
+    one LLM call). When set to 0, events process immediately as before.
+    """
     log.info("queue_consumer_started")
 
     last_stale_check = 0.0
@@ -607,7 +665,10 @@ async def _consumer_loop() -> None:
     while not _shutdown_event.is_set():
         try:
             cfg = _get_pipeline_settings()
+            debounce_cfg = get_debounce_config()
             poll_interval = cfg["queue_poll_interval"]
+            batch_window = debounce_cfg.get("event_batch_window_seconds", 3)
+            batch_max = debounce_cfg.get("event_batch_max_size", 10)
 
             # Periodically reap stale events
             import time
@@ -616,7 +677,8 @@ async def _consumer_loop() -> None:
                 await _reap_stale_events()
                 last_stale_check = now_mono
 
-            event_ids = await _fetch_ready_events(limit=cfg["max_concurrent_events"])
+            fetch_limit = min(batch_max, cfg["max_concurrent_events"]) if batch_window > 0 else cfg["max_concurrent_events"]
+            event_ids = await _fetch_ready_events(limit=fetch_limit)
             if not event_ids:
                 try:
                     await asyncio.wait_for(
@@ -625,6 +687,28 @@ async def _consumer_loop() -> None:
                 except asyncio.TimeoutError:
                     pass
                 continue
+
+            # Batch collection: wait briefly for more events to arrive
+            if batch_window > 0 and len(event_ids) < batch_max:
+                try:
+                    await asyncio.wait_for(
+                        _shutdown_event.wait(),
+                        timeout=min(batch_window, poll_interval),
+                    )
+                    break  # Shutdown requested during batch window
+                except asyncio.TimeoutError:
+                    pass
+                # Fetch any new arrivals that queued during the window
+                extra_ids = await _fetch_ready_events(limit=batch_max)
+                for eid in extra_ids:
+                    if eid not in event_ids:
+                        event_ids.append(eid)
+                        if len(event_ids) >= batch_max:
+                            break
+
+            # Attempt batch routing if multiple events are ready
+            if len(event_ids) > 1 and batch_window > 0:
+                await _batch_route_events(event_ids)
 
             sem = _get_semaphore()
             tasks = []

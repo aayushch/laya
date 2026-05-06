@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import structlog
 
 from laya.api.websocket import manager
+from laya.config import get_debounce_config
 from laya.db.sqlite import get_db
 from laya.llm.client import llm_call
 from laya.llm.prompts.summarizer import (
@@ -26,7 +27,12 @@ _debounce_lock = asyncio.Lock()
 _pending_cards: list[dict] = []
 _pending_status_changes: list[dict] = []
 _debounce_task: asyncio.Task | None = None
-_DEBOUNCE_SECONDS = 5
+
+
+def _get_debounce_seconds() -> float:
+    """Read daily summary debounce interval from settings."""
+    cfg = get_debounce_config()
+    return cfg.get("daily_summary_seconds", 30)
 
 
 async def trigger_summary_update(
@@ -93,7 +99,7 @@ async def trigger_summary_status_update(
 async def _debounced_run() -> None:
     """Wait for the debounce period, then process all pending updates."""
     try:
-        await asyncio.sleep(_DEBOUNCE_SECONDS)
+        await asyncio.sleep(_get_debounce_seconds())
     except asyncio.CancelledError:
         return  # Another update came in, timer reset
 

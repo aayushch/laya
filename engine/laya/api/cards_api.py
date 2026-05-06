@@ -260,6 +260,7 @@ async def get_grouped_cards(
             "c.persona", "c.priority", "c.status",
             "c.intelligence", "c.staged_output", "c.suggested_actions",
             "e.subject_title", "e.source_platform",
+            "CASE c.privacy_tier WHEN 3 THEN 'confidential' WHEN 2 THEN 'internal' WHEN 1 THEN 'public' ELSE '' END",
         ]
         for term in terms:
             like_val = f"%{term}%"

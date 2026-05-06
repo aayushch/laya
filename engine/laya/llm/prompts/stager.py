@@ -212,7 +212,24 @@ In all modes:
 - **Use the actor's role** to describe their actions accurately ("Author pushed a fix", \
 "Reviewer approved").
 - **A participant roster** may list all known participants. Use it to correctly reference \
-people and their relationships rather than guessing."""
+people and their relationships rather than guessing.
+
+## Context Matching
+
+Among the "Related past cards" listed in the input, identify if any card with a DIFFERENT \
+entity than this event is about the same real-world context (same transaction, project, \
+or situation across platforms).
+
+Same context examples: a bill notification + payment receipt for that bill, a PR comment + \
+the CI build it triggered, a meeting invite + follow-up notes for that meeting, a shipping \
+confirmation + delivery notification for the same order.
+
+NOT same context: two unrelated emails of the same type, two different newsletters, two \
+alerts about different services, two reviews of different content. Notifications are NOT \
+the same context just because they are the same notification type.
+
+If you identify a match, output the card_id in context_match. If no match or uncertain, \
+output matched_card_id as null with an empty label."""
 
 
 def _build_role_directive(
@@ -405,14 +422,17 @@ Body:
                 workers_text += f"\n  Coding session: {wr.session_id}"
         workers_text += "\n--- END WORKER FINDINGS ---"
 
-    # Related context from ChromaDB
+    # Related context from ChromaDB (includes card_id + entity for context matching)
     context_text = ""
     if related_context:
-        context_text = "\n\nRelated past events (from memory):\n"
+        context_text = "\n\nRelated past cards (from memory):\n"
         for i, ctx in enumerate(related_context, 1):
             meta = ctx.get("metadata", {})
+            card_id_ref = meta.get("card_id", "?")
+            entity_ref = meta.get("entity_refs", "?")
             context_text += (
-                f"  {i}. [{meta.get('source_platform', '?')}] "
+                f"  {i}. [card_id: {card_id_ref}] [entity: {entity_ref}] "
+                f"[{meta.get('source_platform', '?')}] "
                 f"{ctx.get('document', '')[:200]}\n"
             )
 
@@ -564,6 +584,22 @@ def get_stager_json_schema() -> dict[str, Any]:
                     },
                 },
                 "privacy_tier": {"type": "integer", "minimum": 1, "maximum": 3},
+                "context_match": {
+                    "type": "object",
+                    "description": "Cross-entity context match from related cards",
+                    "properties": {
+                        "matched_card_id": {
+                            "type": ["string", "null"],
+                            "description": "card_id of a related card with DIFFERENT entity that shares real-world context, or null",
+                        },
+                        "label": {
+                            "type": "string",
+                            "description": "Short label describing the shared context (e.g. 'April electricity bill'), empty if no match",
+                        },
+                    },
+                    "required": ["matched_card_id", "label"],
+                    "additionalProperties": False,
+                },
             },
             "required": [
                 "header",
@@ -572,6 +608,7 @@ def get_stager_json_schema() -> dict[str, Any]:
                 "staged_output",
                 "suggested_actions",
                 "privacy_tier",
+                "context_match",
             ],
             "additionalProperties": False,
         },
