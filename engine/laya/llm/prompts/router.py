@@ -193,57 +193,138 @@ def get_router_json_schema() -> dict[str, Any]:
     return {
         "name": "router_classification",
         "strict": True,
+        "schema": _single_classification_schema(),
+    }
+
+
+def _single_classification_schema() -> dict[str, Any]:
+    """The schema for a single event classification (shared by single and batch)."""
+    return {
+        "type": "object",
+        "properties": {
+            "category": {
+                "type": "string",
+                "enum": ["CODE", "COMMS", "PEOPLE", "FINANCE", "OPS"],
+            },
+            "persona": {
+                "type": "string",
+                "enum": ["ENGINEER", "COMMS", "OPS", "SALES", "HR", "FINANCE"],
+            },
+            "priority": {
+                "type": "string",
+                "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+            },
+            "confidence": {"type": "number"},
+            "entities": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "entity_type": {"type": "string"},
+                        "value": {"type": "string"},
+                        "platform": {"type": ["string", "null"]},
+                    },
+                    "required": ["entity_type", "value", "platform"],
+                    "additionalProperties": False,
+                },
+            },
+            "research_plan": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+            "requires_research": {"type": "boolean"},
+            "secondary_persona": {
+                "type": ["string", "null"],
+                "enum": ["ENGINEER", "COMMS", "OPS", "SALES", "HR", "FINANCE", None],
+            },
+            "reasoning": {"type": "string"},
+        },
+        "required": [
+            "category",
+            "persona",
+            "priority",
+            "confidence",
+            "entities",
+            "research_plan",
+            "requires_research",
+            "secondary_persona",
+            "reasoning",
+        ],
+        "additionalProperties": False,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Batch routing — classify multiple events in a single LLM call
+# ---------------------------------------------------------------------------
+
+
+def _format_event_text(event: LayaEvent, actor_relationship: str) -> str:
+    """Format a single event for use in batch or single routing prompts."""
+    text = f"""\
+[EVENT CONTENT - UNTRUSTED INPUT]
+Platform: {event.source.platform}
+Event Type: {event.source.raw_event_type}
+Actor: {event.actor.name} ({event.actor.email}) [relationship: {actor_relationship}]
+Subject: [{event.subject.type}] {event.subject.id} — {event.subject.title}
+URL: {event.subject.url or "N/A"}
+Body:
+{event.content.body}
+[END EVENT CONTENT]"""
+
+    if event.content.metadata:
+        metadata_lines = [f"  {key}: {val}" for key, val in event.content.metadata.items()]
+        text += "\n\nSource Metadata:\n" + "\n".join(metadata_lines)
+
+    return text
+
+
+def build_batch_router_messages(
+    events_data: list[dict],
+) -> list[dict[str, str]]:
+    """Build messages for batch classification of multiple events.
+
+    Each item in events_data must have: event (LayaEvent), actor_relationship (str).
+    """
+    events_text = ""
+    for i, item in enumerate(events_data, 1):
+        event = item["event"]
+        actor_rel = item["actor_relationship"]
+        event_text = _format_event_text(event, actor_rel)
+        events_text += f"\n\n--- EVENT {i} ---\n{event_text}\n--- END EVENT {i} ---"
+
+    user_message = f"""\
+{current_timestamp_line()}
+
+Classify each event below independently. Return a JSON object with a "classifications" \
+array containing one classification per event, in the same order as presented.
+
+{events_text}
+
+Respond with valid JSON matching the required schema."""
+
+    return [
+        {"role": "system", "content": ROUTER_SYSTEM_PROMPT},
+        {"role": "user", "content": user_message},
+    ]
+
+
+def get_batch_router_json_schema(count: int) -> dict[str, Any]:
+    """Return the JSON schema for batch classification of N events."""
+    return {
+        "name": "batch_router_classification",
+        "strict": True,
         "schema": {
             "type": "object",
             "properties": {
-                "category": {
-                    "type": "string",
-                    "enum": ["CODE", "COMMS", "PEOPLE", "FINANCE", "OPS"],
-                },
-                "persona": {
-                    "type": "string",
-                    "enum": ["ENGINEER", "COMMS", "OPS", "SALES", "HR", "FINANCE"],
-                },
-                "priority": {
-                    "type": "string",
-                    "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
-                },
-                "confidence": {"type": "number"},
-                "entities": {
+                "classifications": {
                     "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "entity_type": {"type": "string"},
-                            "value": {"type": "string"},
-                            "platform": {"type": ["string", "null"]},
-                        },
-                        "required": ["entity_type", "value", "platform"],
-                        "additionalProperties": False,
-                    },
+                    "items": _single_classification_schema(),
+                    "minItems": count,
+                    "maxItems": count,
                 },
-                "research_plan": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                },
-                "requires_research": {"type": "boolean"},
-                "secondary_persona": {
-                    "type": ["string", "null"],
-                    "enum": ["ENGINEER", "COMMS", "OPS", "SALES", "HR", "FINANCE", None],
-                },
-                "reasoning": {"type": "string"},
             },
-            "required": [
-                "category",
-                "persona",
-                "priority",
-                "confidence",
-                "entities",
-                "research_plan",
-                "requires_research",
-                "secondary_persona",
-                "reasoning",
-            ],
+            "required": ["classifications"],
             "additionalProperties": False,
         },
     }

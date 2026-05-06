@@ -316,26 +316,64 @@ async def run_emit(
     except Exception as e:
         log.warning("card_embed_failed", card_id=card_id, error=str(e))
 
-    # 4b. Semantic context grouping — find related cards across entity boundaries
-    from laya.pipeline.context_grouping import resolve_context_group
+    # 4b. Semantic context grouping — find related cards across entity boundaries.
+    #     First check if the stager already identified a cross-entity context match
+    #     (saves a separate LLM call). Fall back to the post-emit search for race
+    #     conditions where the stager couldn't see a concurrent card.
+    from laya.config import load_settings as _load_settings
+    _sg_config = _load_settings().get("smart_grouping", {})
+    _context_assoc_enabled = _sg_config.get("context_association", True)
 
-    try:
-        context_id = await resolve_context_group(
-            card_id=card_id,
-            entity_id=entity_id,
-            embed_text=embed_text,
-            space_id=space_id,
-            platform=event.source.platform,
-        )
-        if context_id:
-            await db.execute(
-                "UPDATE action_cards SET context_id = ? WHERE card_id = ?",
-                (context_id, card_id),
+    context_id = None
+    stager_context_match = getattr(stager_output, "context_match", None)
+    if stager_context_match is None and isinstance(stager_output, dict):
+        stager_context_match = stager_output.get("context_match")
+
+    if _context_assoc_enabled and stager_context_match and stager_context_match.get("matched_card_id"):
+        # Stager identified a cross-entity context match — validate and use it
+        from laya.pipeline.context_grouping import assign_or_join_context_group
+        matched_card_id = stager_context_match["matched_card_id"]
+        label = stager_context_match.get("label", "")
+        try:
+            match_rows = await db.execute_fetchall(
+                "SELECT entity_id, context_id FROM action_cards WHERE card_id = ?",
+                (matched_card_id,),
             )
-            await db.commit()
-            log.info("context_group_assigned", card_id=card_id, context_id=context_id)
-    except Exception as e:
-        log.warning("context_grouping_failed", card_id=card_id, error=str(e))
+            if match_rows and match_rows[0]["entity_id"] != entity_id:
+                context_id = await assign_or_join_context_group(
+                    card_id, matched_card_id, label, space_id
+                )
+                if context_id:
+                    log.info(
+                        "context_group_from_stager",
+                        card_id=card_id,
+                        matched_card_id=matched_card_id,
+                        context_id=context_id,
+                    )
+        except Exception as e:
+            log.warning("stager_context_match_failed", card_id=card_id, error=str(e))
+
+    if _context_assoc_enabled and not context_id:
+        # Fallback: post-emit ChromaDB search (handles race conditions)
+        from laya.pipeline.context_grouping import resolve_context_group
+        try:
+            context_id = await resolve_context_group(
+                card_id=card_id,
+                entity_id=entity_id,
+                embed_text=embed_text,
+                space_id=space_id,
+                platform=event.source.platform,
+            )
+        except Exception as e:
+            log.warning("context_grouping_failed", card_id=card_id, error=str(e))
+
+    if context_id:
+        await db.execute(
+            "UPDATE action_cards SET context_id = ? WHERE card_id = ?",
+            (context_id, card_id),
+        )
+        await db.commit()
+        log.info("context_group_assigned", card_id=card_id, context_id=context_id)
 
     # 5. Entity resolution Layer 2 (semantic, non-blocking)
     entity_values = [e.value for e in router_output.entities]

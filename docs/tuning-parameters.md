@@ -100,6 +100,32 @@ Parameters that control how much context Laya's chat retrieves when answering qu
 |-----------|---------|-------------|
 | `corrections_retention_days` | `30` | Days to keep processed corrections before automatic deletion. Applies to both classification and context corrections. Unprocessed corrections are never deleted. |
 
+## Pipeline Debounce & Batching
+
+Parameters that control how Laya batches and debounces LLM calls for efficiency. These reduce the number of LLM calls during burst activity without affecting card quality. Located under `pipeline.debounce` in settings.json.
+
+```json
+{
+  "pipeline": {
+    "debounce": {
+      "daily_summary_seconds": 30,
+      "group_summary_seconds": 15,
+      "event_batch_window_seconds": 3,
+      "event_batch_max_size": 10
+    }
+  }
+}
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `pipeline.debounce.daily_summary_seconds` | `30` | Quiet period before processing accumulated cards into the daily summary. Each new card resets the timer. **Higher** = fewer LLM calls during bursts but slightly delayed summary updates. Set to `0` for immediate processing. |
+| `pipeline.debounce.group_summary_seconds` | `15` | Per-entity quiet period before updating the group summary. Multiple cards arriving for the same entity within this window are processed in one LLM call instead of N calls. **Higher** = more batching, fewer calls. Set to `0` to disable (immediate per-card updates). |
+| `pipeline.debounce.event_batch_window_seconds` | `3` | Collection window for batch-routing. The queue processor waits this long for additional events to arrive before classifying. Multiple events classified in one LLM call instead of individually. Set to `0` to disable batching (events process immediately). |
+| `pipeline.debounce.event_batch_max_size` | `10` | Maximum events to classify in a single batch-router call. Larger batches save more calls but increase per-call latency and output token usage. |
+
+Changes take effect on the next pipeline run (no restart required).
+
 ---
 
 ## Distance Values Explained

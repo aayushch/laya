@@ -48,23 +48,24 @@ GROUP_SUMMARY_ROLLING_SYSTEM_PROMPT = """\
 You are updating a rolling executive summary for a tracked entity in a \
 professional event tracking system.
 
-You receive the CURRENT summary and a NEW event card. Your job is to integrate \
-the new event into the existing summary, producing an updated version.
+You receive the CURRENT summary and one or more NEW event cards. Your job is to \
+integrate the new events into the existing summary, producing an updated version.
 
 {timestamp}
 
 ## TASK
 
-Integrate the new event into the existing summary:
-- If the new event **resolves** something mentioned in the current summary, \
+Integrate the new event(s) into the existing summary:
+- If a new event **resolves** something mentioned in the current summary, \
   update the headline, current_status, and remove it from pending_actions.
 - If it **adds new information**, incorporate it naturally into the summary narrative.
 - If it **changes the entity's status** (e.g., PR merged, ticket closed, email replied), \
   update headline and current_status to reflect the new state.
-- Keep key_events chronological (oldest first, newest last). Add the new development. \
+- Keep key_events chronological (oldest first, newest last). Add new developments. \
   If there are more than 7 items, prune the least significant older entries.
 - Don't just append — **synthesize** into a coherent narrative.
 - pending_actions: remove items that are now resolved, add new ones if applicable.
+- When multiple new cards are provided, integrate ALL of them in a single pass.
 - Never use emoji or icon characters anywhere in your output.
 
 ## OUTPUT FORMAT (JSON)
@@ -160,17 +161,27 @@ def build_initial_messages(
 
 def build_rolling_messages(
     existing_summary: dict,
-    new_card: dict,
+    new_cards: list[dict] | dict,
     entity_id: str,
 ) -> list[dict[str, str]]:
-    """Build LLM messages for rolling summary update."""
+    """Build LLM messages for rolling summary update.
+
+    Accepts a single card dict (legacy) or a list of cards (batched).
+    """
     ts = current_timestamp_line()
     system = GROUP_SUMMARY_ROLLING_SYSTEM_PROMPT.format(timestamp=ts)
+
+    # Support both single card (legacy callers) and batched list
+    if isinstance(new_cards, dict):
+        new_cards = [new_cards]
+
+    cards_section = "\n\n".join(_serialize_card(c) for c in new_cards)
+    label = "NEW EVENT CARDS" if len(new_cards) > 1 else "NEW EVENT CARD"
 
     user_msg = (
         f"Entity: {entity_id}\n\n"
         f"--- CURRENT SUMMARY ---\n{json.dumps(existing_summary, indent=2)}\n\n"
-        f"--- NEW EVENT CARD ---\n{_serialize_card(new_card)}"
+        f"--- {label} ---\n{cards_section}"
     )
 
     return [

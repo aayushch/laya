@@ -222,6 +222,85 @@ async def resolve_context_group(
     return context_id
 
 
+async def assign_or_join_context_group(
+    card_id: str,
+    matched_card_id: str,
+    label: str,
+    space_id: str | None,
+) -> str | None:
+    """Assign a card to a context group with the matched card.
+
+    If the matched card already belongs to a context group, the new card joins it.
+    If not, a new context group is created for both cards.
+
+    Respects user_split — if the user has manually split a group, we don't rejoin.
+
+    Returns:
+        context_id if assigned, None if rejected (e.g. user_split).
+    """
+    db = await get_db()
+
+    # Look up the matched card's current context state
+    match_rows = await db.execute_fetchall(
+        "SELECT context_id, header, summary FROM action_cards WHERE card_id = ?",
+        (matched_card_id,),
+    )
+    if not match_rows:
+        return None
+
+    matched_context_id = match_rows[0]["context_id"]
+    matched_header = match_rows[0]["header"]
+
+    # Check user_split on existing group
+    if matched_context_id:
+        split_rows = await db.execute_fetchall(
+            "SELECT user_split FROM context_groups WHERE context_id = ?",
+            (matched_context_id,),
+        )
+        if split_rows and split_rows[0]["user_split"]:
+            log.debug("context_group_user_split_stager", card_id=card_id)
+            return None
+
+        # Join existing group
+        await db.execute(
+            "INSERT OR IGNORE INTO context_group_members (context_id, card_id, confidence, link_method) VALUES (?, ?, ?, ?)",
+            (matched_context_id, card_id, 1.0, "stager"),
+        )
+        await db.commit()
+        return matched_context_id
+
+    # No existing group — create a new one
+    context_id = f"ctx_{uuid.uuid4().hex[:12]}"
+    group_label = label if label else _truncate_label(matched_header)
+
+    await db.execute(
+        "INSERT INTO context_groups (context_id, label) VALUES (?, ?)",
+        (context_id, group_label),
+    )
+    await db.execute(
+        "INSERT OR IGNORE INTO context_group_members (context_id, card_id, confidence, link_method) VALUES (?, ?, ?, ?)",
+        (context_id, matched_card_id, 1.0, "stager"),
+    )
+    await db.execute(
+        "INSERT OR IGNORE INTO context_group_members (context_id, card_id, confidence, link_method) VALUES (?, ?, ?, ?)",
+        (context_id, card_id, 1.0, "stager"),
+    )
+    # Assign context_id to the matched card too
+    await db.execute(
+        "UPDATE action_cards SET context_id = ? WHERE card_id = ?",
+        (context_id, matched_card_id),
+    )
+    await db.commit()
+    return context_id
+
+
+def _truncate_label(header: str) -> str:
+    """Truncate a header to use as a context group label."""
+    if len(header) > 60:
+        return header[:57] + "..."
+    return header
+
+
 async def _generate_context_label(
     matched_header: str,
     matched_summary: str,
@@ -248,8 +327,4 @@ async def _generate_context_label(
     else:
         label = current_header
 
-    # Truncate to reasonable length
-    if len(label) > 60:
-        label = label[:57] + "..."
-
-    return label
+    return _truncate_label(label)

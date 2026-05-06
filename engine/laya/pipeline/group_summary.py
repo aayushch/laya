@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import structlog
 
 from laya.api.websocket import manager
-from laya.config import load_settings
+from laya.config import get_debounce_config, load_settings
 from laya.db.sqlite import get_db
 from laya.llm.client import llm_call
 from laya.llm.prompts.group_summary import (
@@ -18,24 +19,80 @@ from laya.llm.prompts.group_summary import (
 
 log = structlog.get_logger()
 
+# Debounce state: accumulate card_ids per entity and batch after quiet period.
+_debounce_lock = asyncio.Lock()
+_pending_updates: dict[str, list[str]] = {}  # entity_id → [card_ids]
+_pending_space: dict[str, str | None] = {}  # entity_id → space_id
+_debounce_tasks: dict[str, asyncio.Task] = {}  # entity_id → timer task
+
 
 async def trigger_group_summary_update(
     entity_id: str,
     new_card_id: str,
     space_id: str | None = None,
 ) -> None:
-    """Generate or update the rolling summary for an entity group.
+    """Queue a group summary update (debounced per entity).
 
-    Designed to run as a fire-and-forget background task from emit.py.
+    Multiple cards arriving for the same entity within the debounce window
+    are batched into a single LLM call.
     """
     settings = load_settings()
     if not settings.get("group_summaries", {}).get("enabled", True):
         return
 
+    cfg = get_debounce_config()
+    debounce_seconds = cfg.get("group_summary_seconds", 15)
+
+    if debounce_seconds <= 0:
+        # Debounce disabled — run immediately (backwards compat)
+        await _run_group_summary(entity_id, [new_card_id], space_id)
+        return
+
+    async with _debounce_lock:
+        if entity_id not in _pending_updates:
+            _pending_updates[entity_id] = []
+        _pending_updates[entity_id].append(new_card_id)
+        _pending_space[entity_id] = space_id
+
+        # Cancel existing timer for this entity and restart
+        if entity_id in _debounce_tasks and not _debounce_tasks[entity_id].done():
+            _debounce_tasks[entity_id].cancel()
+
+        from laya.tasks import create_task
+        _debounce_tasks[entity_id] = create_task(
+            _debounced_group_summary(entity_id, debounce_seconds),
+            name=f"group_summary_debounce_{entity_id}",
+        )
+
+
+async def _debounced_group_summary(entity_id: str, delay: float) -> None:
+    """Wait for quiet period, then process all pending cards for this entity."""
+    try:
+        await asyncio.sleep(delay)
+    except asyncio.CancelledError:
+        return  # Another card arrived, timer restarted
+
+    async with _debounce_lock:
+        card_ids = _pending_updates.pop(entity_id, [])
+        space_id = _pending_space.pop(entity_id, None)
+        _debounce_tasks.pop(entity_id, None)
+
+    if not card_ids:
+        return
+
+    await _run_group_summary(entity_id, card_ids, space_id)
+
+
+async def _run_group_summary(
+    entity_id: str,
+    new_card_ids: list[str],
+    space_id: str | None,
+) -> None:
+    """Execute the group summary generation/update for an entity."""
     db = await get_db()
 
     try:
-        # Count sibling cards (including the new one)
+        # Count sibling cards (including the new ones)
         async with db.execute(
             "SELECT COUNT(*) AS cnt FROM action_cards WHERE entity_id = ?",
             (entity_id,),
@@ -53,12 +110,14 @@ async def trigger_group_summary_update(
         existing_row = existing_rows[0] if existing_rows else None
 
         if existing_row:
-            await _rolling_update(db, entity_id, new_card_id, existing_row, space_id)
+            await _rolling_update(db, entity_id, new_card_ids, existing_row, space_id)
         else:
             await _initial_generation(db, entity_id, space_id)
 
     except Exception:
-        log.exception("group_summary_failed", entity_id=entity_id, card_id=new_card_id)
+        log.exception(
+            "group_summary_failed", entity_id=entity_id, card_ids=new_card_ids
+        )
 
 
 async def regenerate_group_summary(entity_id: str) -> dict | None:
@@ -162,24 +221,27 @@ async def _initial_generation(
 async def _rolling_update(
     db,
     entity_id: str,
-    new_card_id: str,
+    new_card_ids: list[str],
     existing_row: dict,
     space_id: str | None,
 ) -> dict | None:
-    """Update an existing summary with a new card."""
+    """Update an existing summary with one or more new cards."""
+    placeholders = ",".join("?" for _ in new_card_ids)
     card_rows = await db.execute_fetchall(
-        """SELECT c.card_id, c.header, c.summary, c.intelligence, c.status,
-                  c.created_at, c.entity_id,
-                  e.actor_name
-           FROM action_cards c
-           LEFT JOIN events e ON c.event_id = e.event_id
-           WHERE c.card_id = ?""",
-        (new_card_id,),
+        f"""SELECT c.card_id, c.header, c.summary, c.intelligence, c.status,
+                   c.created_at, c.entity_id,
+                   e.actor_name
+            FROM action_cards c
+            LEFT JOIN events e ON c.event_id = e.event_id
+            WHERE c.card_id IN ({placeholders})
+            ORDER BY c.created_at ASC""",
+        tuple(new_card_ids),
     )
-    card_row = card_rows[0] if card_rows else None
-    if not card_row:
-        log.warning("group_summary_card_not_found", card_id=new_card_id)
+    if not card_rows:
+        log.warning("group_summary_cards_not_found", card_ids=new_card_ids)
         return None
+
+    new_cards = [dict(r) for r in card_rows]
 
     existing_summary = {
         "headline": existing_row["headline"],
@@ -191,12 +253,12 @@ async def _rolling_update(
 
     resolved_space_id = space_id or existing_row.get("space_id") or "default"
 
-    messages = build_rolling_messages(existing_summary, dict(card_row), entity_id)
+    messages = build_rolling_messages(existing_summary, new_cards, entity_id)
     resp = await llm_call(
         role="group_summary",
         messages=messages,
         response_schema=GROUP_SUMMARY_JSON_SCHEMA,
-        card_id=new_card_id,
+        card_id=new_card_ids[-1],
         step="group_summary_rolling",
         temperature=0.1,
         max_tokens=1000,
@@ -209,8 +271,9 @@ async def _rolling_update(
 
     parsed = resp.parsed
     prev_card_ids = json.loads(existing_row["card_ids"] or "[]")
-    if new_card_id not in prev_card_ids:
-        prev_card_ids.append(new_card_id)
+    for cid in new_card_ids:
+        if cid not in prev_card_ids:
+            prev_card_ids.append(cid)
     card_ids = prev_card_ids
 
     await db.execute(
@@ -246,6 +309,7 @@ async def _rolling_update(
         entity_id=entity_id,
         mode="rolling",
         card_count=len(card_ids),
+        new_cards_batched=len(new_card_ids),
         model=resp.model,
     )
     return summary_data

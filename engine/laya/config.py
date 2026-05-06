@@ -95,6 +95,12 @@ DEFAULT_SETTINGS = {
         "max_retry_attempts": 3,
         "max_concurrent_events": 4,
         "queue_poll_interval": 2,
+        "debounce": {
+            "daily_summary_seconds": 30,
+            "group_summary_seconds": 15,
+            "event_batch_window_seconds": 3,
+            "event_batch_max_size": 10,
+        },
     },
     "group_summaries": {
         "enabled": True,
@@ -165,6 +171,14 @@ def get_tuning(key: str, default=None):
         return tuning.get(key, default)
     # Fall back to DEFAULT_SETTINGS tuning section
     return tuning.get(key, DEFAULT_SETTINGS.get("tuning", {}).get(key))
+
+
+def get_debounce_config() -> dict:
+    """Read pipeline debounce configuration from settings.json."""
+    settings = load_settings()
+    return settings.get("pipeline", {}).get(
+        "debounce", DEFAULT_SETTINGS["pipeline"]["debounce"]
+    )
 
 
 def ensure_directories() -> None:
