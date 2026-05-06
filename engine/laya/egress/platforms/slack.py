@@ -42,6 +42,7 @@ def normalize_payload(action_type: str, payload: dict) -> dict:
         p["message"] = (
             p.pop("body", None)
             or p.pop("content", None)
+            or p.pop("raw", None)
             or ""
         )
 

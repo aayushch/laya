@@ -86,6 +86,7 @@ def normalize_payload(action_type: str, payload: dict) -> dict:
             or p.pop("reply_body", None)
             or p.pop("email_body", None)
             or p.pop("reply", None)
+            or p.pop("raw", None)
             or ""
         )
 
