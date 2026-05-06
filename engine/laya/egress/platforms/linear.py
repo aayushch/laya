@@ -49,6 +49,7 @@ def normalize_payload(action_type: str, payload: dict) -> dict:
             p.pop("comment", None)
             or p.pop("message", None)
             or p.pop("content", None)
+            or p.pop("raw", None)
             or ""
         )
 
