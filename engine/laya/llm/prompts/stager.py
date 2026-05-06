@@ -59,8 +59,11 @@ You receive:
 
 You must produce a card with:
 
-- **header**: Concise action-oriented title (max 80 chars). Start with a verb when \
-possible (e.g., "Review NPE fix in PaymentService", "Reply to Sarah's design question").
+- **header**: Concise title (max 80 chars). When the Laya user has an assigned role \
+on the item, use an action verb ("Review NPE fix in PaymentService", "Reply to Sarah's \
+design question"). When the user has no assigned role and is monitoring, use a descriptive \
+title ("Sarah opened PR: NPE fix in PaymentService", "PR #45 merged into main"). The \
+[ACTOR CONTEXT] block determines which framing to use.
 - **summary**: 2-3 sentences explaining what happened and what needs attention. \
 Written for a busy professional — be clear and direct.
 - **intelligence_report**: 3-7 bullet points of key findings from the workers. \
@@ -133,7 +136,7 @@ Suggest investigation if the reopening implies the original fix was insufficient
 
 - **New issues** (issue_created, or no existing cards): Full investigation as normal.
 
-### Bitbucket PR lifecycle:
+### PR lifecycle (Bitbucket / GitHub):
 - **Approvals** (pr_approved): Brief card noting who approved. 1-2 sentences max.
 - **Comments** (pr_commented): Focus on the comment content. Inline code comments \
 should reference the file and line. Do not re-summarize the PR description.
@@ -175,19 +178,41 @@ person IS the Laya user (relationship: self), or when referring to items the Lay
 owns (e.g., "your PR" when the Laya user created it).
 - **If no [ACTOR CONTEXT] is provided**, fall back to third-person behavior.
 
-## Participant Roles (when provided)
+## Participant Roles and User Involvement
 
-The [ACTOR CONTEXT] may include a ROLE CONTEXT line with the contextual roles of the \
-actor and the Laya user (e.g., "author" vs "reviewer", "reporter" vs "assignee"). These \
-roles are determined from the platform data — not inferred. When role context is present:
+The [ACTOR CONTEXT] block includes the Laya user's role on this specific work item \
+(e.g., "reviewer", "author", "assignee") when one exists. These roles come from \
+platform data — they are facts, not inferences. **Never infer or assume a role that \
+the system has not explicitly assigned.**
 
-- **Use the Laya user's role to frame summaries and drafts.** If the user is a "reviewer", \
-write from the reviewer's perspective. If the user is the "author", write from the author's \
-perspective. NEVER confuse these — a reviewer does not commit to doing the author's work.
-- **Use the actor's role to frame their actions.** If the actor is the "author", describe \
-their actions as the author's (e.g., "Author pushed a fix", "Author responded to review").
-- **A participant roster may be provided** listing all known participants and their roles. \
-Use this to correctly reference people (e.g., "the assignee Alex" rather than guessing)."""
+Three framing modes based on the Laya user's role:
+
+1. **User has an assigned role** (reviewer, author, assignee, etc.): Frame summaries, \
+headers, and drafts from that role's perspective. Follow the ROLE CONTEXT directive in \
+[ACTOR CONTEXT].
+
+2. **User has NO assigned role** (no "Laya user's role" shown, or ROLE CONTEXT says \
+"no assigned role"): The user is monitoring this item but is not a direct participant. \
+Frame the card as an awareness update. Report what happened, who is involved, and any \
+relevant details, but do NOT imply the user needs to act. Specifically:
+   - Do NOT assume the user should review a PR because a PR event arrived — only a \
+listed reviewer should be told to review.
+   - Do NOT draft replies or feedback as if the user is a reviewer or assignee.
+   - Use descriptive headers ("{Actor} opened PR: {title}") rather than action headers \
+("Review {title}").
+   - Limit suggested_actions to lightweight follow-ups (e.g., comment, bookmark) rather \
+than ownership actions (approve, request changes, merge).
+   The user benefits from awareness of project activity, not from being assigned work \
+they were not asked to do.
+
+3. **No [ACTOR CONTEXT] provided**: Fall back to informational framing (mode 2) — \
+assume monitoring rather than participation.
+
+In all modes:
+- **Use the actor's role** to describe their actions accurately ("Author pushed a fix", \
+"Reviewer approved").
+- **A participant roster** may list all known participants. Use it to correctly reference \
+people and their relationships rather than guessing."""
 
 
 def _build_role_directive(
@@ -286,6 +311,21 @@ def _build_role_directive(
                 f"Laya user ({user_name})'s role: {laya_user_role}. "
                 "Frame the summary and any draft replies according to these roles."
             )
+    elif not laya_user_role:
+        # User has no assigned role — they are monitoring, not participating
+        actor_desc = f" {actor_name}'s role: {actor_role}." if actor_role else ""
+        role_guidance = (
+            f"\n>>> ROLE CONTEXT:{actor_desc} "
+            f"The Laya user ({user_name}) has NO assigned role on this item "
+            "(not a reviewer, author, assignee, or other participant). "
+            "They receive this event because Laya monitors this source. "
+            "Frame the card as an informational awareness update — report what "
+            "happened and who is involved, but do NOT imply the user needs to "
+            "review, approve, fix, or respond. Use descriptive headers, not "
+            "action-oriented ones. Limit suggested actions to lightweight "
+            "follow-ups (e.g., comment) rather than ownership actions "
+            "(e.g., approve, request changes)."
+        )
 
     return base + role_guidance
 
