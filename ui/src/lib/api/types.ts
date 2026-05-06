@@ -404,6 +404,7 @@ export interface ActionCard {
 	space_name?: string;
 	space_color?: string;
 	bookmarked_at?: string;
+	read_at?: string;
 	group_active_at?: string;
 	context_id?: string;
 	last_error?: string;
@@ -432,6 +433,7 @@ export interface CardGroup {
 	top_priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 	latest_at: string;
 	has_pending: boolean;
+	unread_count: number;
 	cards: ActionCard[];
 	sort_key?: string;
 	context_id?: string;

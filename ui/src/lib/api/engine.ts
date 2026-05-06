@@ -207,6 +207,7 @@ export const engineApi = {
 		space_id?: string;
 		bookmarked?: boolean;
 		has_workspace?: boolean;
+		unread_only?: boolean;
 		related_entity_ids?: string;
 		search?: string;
 	}) => {
@@ -220,6 +221,7 @@ export const engineApi = {
 		if (params?.space_id) searchParams.set('space_id', params.space_id);
 		if (params?.bookmarked) searchParams.set('bookmarked', 'true');
 		if (params?.has_workspace) searchParams.set('has_workspace', 'true');
+		if (params?.unread_only) searchParams.set('unread_only', 'true');
 		if (params?.related_entity_ids) searchParams.set('related_entity_ids', params.related_entity_ids);
 		if (params?.search) searchParams.set('search', params.search);
 		searchParams.set('tz', Intl.DateTimeFormat().resolvedOptions().timeZone);
@@ -302,6 +304,25 @@ export const engineApi = {
 		request<{ status: string; card_id: string }>(`/cards/${cardId}/unbookmark`, {
 			method: 'POST'
 		}),
+	markCardRead: (cardId: string) =>
+		request<{ status: string; card_id: string; read_at: string }>(`/cards/${cardId}/read`, {
+			method: 'POST'
+		}),
+	markGroupRead: (entityId: string) =>
+		request<{ status: string; entity_id: string; marked: number }>(
+			`/cards/group/${encodeURIComponent(entityId)}/read-all`,
+			{ method: 'POST' }
+		),
+	markAllRead: (params?: { date?: string; space_id?: string }) => {
+		const searchParams = new URLSearchParams();
+		if (params?.date) searchParams.set('date', params.date);
+		if (params?.space_id) searchParams.set('space_id', params.space_id);
+		searchParams.set('tz', Intl.DateTimeFormat().resolvedOptions().timeZone);
+		const qs = searchParams.toString();
+		return request<{ status: string; marked: number }>(`/cards/read-all${qs ? '?' + qs : ''}`, {
+			method: 'POST'
+		});
+	},
 	updateCardClassification: (cardId: string, body: import('./types').UpdateClassificationRequest) =>
 		request<{ status: string; card_id: string; corrections: number }>(`/cards/${cardId}/classification`, {
 			method: 'PATCH',

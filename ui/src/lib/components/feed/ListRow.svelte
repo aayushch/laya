@@ -151,17 +151,17 @@
 	async function markDone(e: Event) {
 		e.stopPropagation();
 		markingDone = true;
-		try { await engineApi.markCardDone(card.card_id); card.status = 'done'; } finally { markingDone = false; }
+		try { await engineApi.markCardDone(card.card_id); card.status = 'done'; if (!card.read_at) card.read_at = new Date().toISOString(); } finally { markingDone = false; }
 	}
 	async function dismiss(e: Event) {
 		e.stopPropagation();
 		dismissing = true;
-		try { await engineApi.dismissCard(card.card_id); card.status = 'dismissed'; } finally { dismissing = false; }
+		try { await engineApi.dismissCard(card.card_id); card.status = 'dismissed'; if (!card.read_at) card.read_at = new Date().toISOString(); } finally { dismissing = false; }
 	}
 	async function archive(e: Event) {
 		e.stopPropagation();
 		archiving = true;
-		try { await engineApi.archiveCard(card.card_id); card.status = 'archived'; } finally { archiving = false; }
+		try { await engineApi.archiveCard(card.card_id); card.status = 'archived'; if (!card.read_at) card.read_at = new Date().toISOString(); } finally { archiving = false; }
 	}
 	async function reopen(e: Event) {
 		e.stopPropagation();
@@ -267,7 +267,7 @@
 		onmouseenter={() => showTooltipIfTruncated(subjectEl, card.header, { maxWidth: 320 })}
 		onmouseleave={hideTooltip}
 	>
-		<span bind:this={subjectEl} class="block truncate text-xs font-medium text-surface-200">
+		<span bind:this={subjectEl} class="block truncate text-xs {card.read_at ? 'font-normal text-surface-300' : 'font-semibold text-surface-100'}">
 			{card.header}
 		</span>
 	</span>

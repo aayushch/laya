@@ -302,3 +302,110 @@ class TestActionPayloadPolish:
         payload = json.loads(rows[0]["suggested_actions"])[0]["payload"]
         assert payload["body"] == "User edit"
         assert payload["_edited"] is True
+
+    # ── Read / Unread tracking ──────────────────────────────────────────
+
+    async def test_mark_card_read(self, db):
+        """POST /cards/:id/read sets read_at timestamp."""
+        await insert_test_card(db, status="ready")
+
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post("/cards/card_test/read")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "read"
+        assert data["read_at"] is not None
+
+        rows = await db.execute_fetchall(
+            "SELECT read_at FROM action_cards WHERE card_id = ?", ("card_test",)
+        )
+        assert rows[0]["read_at"] is not None
+
+    async def test_mark_card_read_idempotent(self, db):
+        """Calling read twice returns already_read without changing timestamp."""
+        await insert_test_card(db, status="ready")
+
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp1 = await client.post("/cards/card_test/read")
+            first_read_at = resp1.json()["read_at"]
+
+            resp2 = await client.post("/cards/card_test/read")
+            assert resp2.json()["status"] == "already_read"
+            assert resp2.json()["read_at"] == first_read_at
+
+    async def test_mark_card_read_404(self, db):
+        """POST /cards/:id/read returns 404 for non-existent card."""
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post("/cards/nonexistent/read")
+        assert resp.status_code == 404
+
+    async def test_mark_group_read(self, db):
+        """POST /cards/group/:entity_id/read-all marks all group cards as read."""
+        entity = "jira:ticket:GROUP-1"
+        await insert_test_card(db, "c1", "e1", entity_id=entity)
+        await insert_test_card(db, "c2", "e2", entity_id=entity)
+
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(f"/cards/group/{entity}/read-all")
+
+        assert resp.status_code == 200
+        assert resp.json()["marked"] == 2
+
+        rows = await db.execute_fetchall(
+            "SELECT read_at FROM action_cards WHERE entity_id = ?", (entity,)
+        )
+        assert all(r["read_at"] is not None for r in rows)
+
+    async def test_mark_all_read(self, db):
+        """POST /cards/read-all marks all unread cards as read."""
+        await insert_test_card(db, "c1", "e1")
+        await insert_test_card(db, "c2", "e2")
+
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post("/cards/read-all")
+
+        assert resp.status_code == 200
+        assert resp.json()["marked"] == 2
+
+    async def test_mark_done_sets_read_at(self, db):
+        """Marking a card as done implicitly sets read_at."""
+        await insert_test_card(db, status="ready")
+
+        rows_before = await db.execute_fetchall(
+            "SELECT read_at FROM action_cards WHERE card_id = ?", ("card_test",)
+        )
+        assert rows_before[0]["read_at"] is None
+
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            await client.post("/cards/card_test/done")
+
+        rows_after = await db.execute_fetchall(
+            "SELECT read_at FROM action_cards WHERE card_id = ?", ("card_test",)
+        )
+        assert rows_after[0]["read_at"] is not None
+
+    async def test_card_detail_includes_read_at(self, db):
+        """GET /cards/:id response includes read_at field."""
+        await insert_test_card(db)
+
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/cards/card_test")
+
+        data = resp.json()
+        assert "read_at" in data
+        assert data["read_at"] is None
