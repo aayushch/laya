@@ -88,6 +88,7 @@ def _row_to_card(row) -> CardResponse:
         space_name=row["space_name"] if "space_name" in row.keys() else None,
         space_color=row["space_color"] if "space_color" in row.keys() else None,
         bookmarked_at=row["bookmarked_at"] if "bookmarked_at" in row.keys() else None,
+        read_at=row["read_at"] if "read_at" in row.keys() else None,
         group_active_at=row["group_active_at"] if "group_active_at" in row.keys() else None,
         context_id=row["context_id"] if "context_id" in row.keys() else None,
         last_error=row["last_error"] if "last_error" in row.keys() else None,
@@ -146,7 +147,7 @@ async def list_cards(
                    c.status, c.privacy_tier, c.has_workspace, c.resolved_at, c.user_feedback,
                    c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at,
                    c.entity_id, c.source_ref, c.source_url, c.selected_action_id,
-                   c.space_id, c.bookmarked_at, c.group_active_at,
+                   c.space_id, c.bookmarked_at, c.read_at, c.group_active_at,
                    e.actor_name, e.actor_email,
                    s.name AS space_name, s.color AS space_color
             FROM action_cards c
@@ -179,6 +180,7 @@ async def get_grouped_cards(
     tz: str | None = None,
     bookmarked: bool = False,
     has_workspace: bool = False,
+    unread_only: bool = False,
     related_entity_ids: str | None = None,
     search: str | None = None,
 ) -> GroupedCardsResponse:
@@ -248,6 +250,8 @@ async def get_grouped_cards(
             params.extend(priorities)
     if has_workspace:
         conditions.append("c.has_workspace = 1")
+    if unread_only:
+        conditions.append("c.read_at IS NULL")
     if not show_archived:
         conditions.append("c.status != 'archived'")
     if search:
@@ -274,7 +278,7 @@ async def get_grouped_cards(
                    c.status, c.privacy_tier, c.has_workspace, c.resolved_at, c.user_feedback,
                    c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at,
                    c.entity_id, c.source_ref, c.source_url, c.selected_action_id,
-                   c.space_id, c.bookmarked_at, c.group_active_at, c.context_id,
+                   c.space_id, c.bookmarked_at, c.read_at, c.group_active_at, c.context_id,
                    e.actor_name, e.actor_email,
                    s.name AS space_name, s.color AS space_color
             FROM action_cards c
@@ -340,6 +344,7 @@ async def get_grouped_cards(
         )
         latest_at = max((c.created_at or "") for c in cards)
         has_pending = any(c.status in ("pending", "ready") for c in cards)
+        unread_count = sum(1 for c in cards if c.read_at is None)
 
         entity_id_val = entity_rows[0]["entity_id"] or group_key
         entity_title = meta.get("subject_title") or entity_id_val
@@ -356,6 +361,7 @@ async def get_grouped_cards(
                 top_priority=top_priority,
                 latest_at=latest_at,
                 has_pending=has_pending,
+                unread_count=unread_count,
                 cards=cards,
                 group_summary=group_summary,
             )
@@ -480,6 +486,13 @@ async def dismiss_group(entity_id: str) -> dict:
             name=f"summary_status_{hr['card_id']}",
         )
 
+    now = datetime.now(timezone.utc).isoformat()
+    await db.execute(
+        "UPDATE action_cards SET read_at = COALESCE(read_at, ?) WHERE entity_id = ? AND read_at IS NULL",
+        (now, entity_id),
+    )
+    await db.commit()
+
     log.info("group_dismissed", entity_id=entity_id, count=dismissed)
     return {"dismissed": dismissed, "entity_id": entity_id}
 
@@ -510,6 +523,13 @@ async def archive_card(card_id: str) -> dict:
         await transition_card_status(card_id, "archived", actor="user")
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.execute(
+        "UPDATE action_cards SET read_at = COALESCE(read_at, ?) WHERE card_id = ?",
+        (now, card_id),
+    )
+    await db.commit()
 
     await log_to_audit(
         event_id=None, card_id=card_id, step="lifecycle",
@@ -657,7 +677,7 @@ async def get_card(card_id: str) -> CardResponse:
                   c.status, c.privacy_tier, c.has_workspace, c.resolved_at, c.user_feedback,
                   c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at,
                   c.entity_id, c.source_ref, c.source_url, c.selected_action_id,
-                  c.space_id, c.bookmarked_at, c.group_active_at,
+                  c.space_id, c.bookmarked_at, c.read_at, c.group_active_at,
                   e.actor_name, e.actor_email,
                   s.name AS space_name, s.color AS space_color
            FROM action_cards c
@@ -694,9 +714,10 @@ async def mark_card_done(card_id: str) -> dict:
     now = datetime.now(timezone.utc).isoformat()
     await db.execute(
         """UPDATE action_cards
-           SET status = 'done', previous_status = ?, resolved_at = ?, updated_at = ?
+           SET status = 'done', previous_status = ?, resolved_at = ?, updated_at = ?,
+               read_at = COALESCE(read_at, ?)
            WHERE card_id = ?""",
-        (current, now, now, card_id),
+        (current, now, now, now, card_id),
     )
     await db.commit()
 
@@ -801,8 +822,8 @@ async def bookmark_card(card_id: str) -> dict:
 
     now = datetime.now(timezone.utc).isoformat()
     await db.execute(
-        "UPDATE action_cards SET bookmarked_at = ? WHERE card_id = ?",
-        (now, card_id),
+        "UPDATE action_cards SET bookmarked_at = ?, read_at = COALESCE(read_at, ?) WHERE card_id = ?",
+        (now, now, card_id),
     )
     await db.commit()
 
@@ -837,6 +858,88 @@ async def unbookmark_card(card_id: str) -> dict:
     return {"status": "unbookmarked", "card_id": card_id}
 
 
+@router.post("/cards/{card_id}/read")
+async def mark_card_read(card_id: str) -> dict:
+    """Mark a single card as read. Idempotent."""
+    db = await get_db()
+
+    rows = await db.execute_fetchall(
+        "SELECT read_at FROM action_cards WHERE card_id = ?", (card_id,)
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Card not found")
+    if rows[0]["read_at"]:
+        return {"status": "already_read", "card_id": card_id, "read_at": rows[0]["read_at"]}
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.execute(
+        "UPDATE action_cards SET read_at = ? WHERE card_id = ? AND read_at IS NULL",
+        (now, card_id),
+    )
+    await db.commit()
+    return {"status": "read", "card_id": card_id, "read_at": now}
+
+
+@router.post("/cards/group/{entity_id:path}/read-all")
+async def mark_group_read(entity_id: str) -> dict:
+    """Mark all cards in an entity group as read."""
+    db = await get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    cursor = await db.execute(
+        "UPDATE action_cards SET read_at = ? WHERE entity_id = ? AND read_at IS NULL",
+        (now, entity_id),
+    )
+    await db.commit()
+    return {"status": "read", "entity_id": entity_id, "marked": cursor.rowcount}
+
+
+@router.post("/cards/read-all")
+async def mark_all_read(
+    date: str | None = None,
+    space_id: str | None = None,
+    tz: str | None = None,
+) -> dict:
+    """Mark all cards as read, optionally scoped by date and space."""
+    db = await get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    conditions = ["read_at IS NULL"]
+    params: list[Any] = [now]
+
+    if date:
+        if tz:
+            try:
+                local_tz = ZoneInfo(tz)
+                local_start = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=local_tz)
+                local_end = local_start + timedelta(days=1)
+                utc_start = local_start.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                utc_end = local_end.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                conditions.append("group_active_at >= ? AND group_active_at < ?")
+                params.extend([utc_start, utc_end])
+            except (KeyError, ValueError):
+                conditions.append("DATE(group_active_at) = ?")
+                params.append(date)
+        else:
+            conditions.append("DATE(group_active_at) = ?")
+            params.append(date)
+
+    if space_id:
+        space_ids = [s.strip() for s in space_id.split(",") if s.strip()]
+        if len(space_ids) == 1:
+            conditions.append("space_id = ?")
+            params.append(space_ids[0])
+        elif space_ids:
+            placeholders = ",".join("?" for _ in space_ids)
+            conditions.append(f"space_id IN ({placeholders})")
+            params.extend(space_ids)
+
+    where = " AND ".join(conditions)
+    cursor = await db.execute(
+        f"UPDATE action_cards SET read_at = ? WHERE {where}", params
+    )
+    await db.commit()
+    return {"status": "read", "marked": cursor.rowcount}
+
+
 class DismissRequest(BaseModel):
     reason: str | None = None
     feedback_type: str | None = None
@@ -865,6 +968,13 @@ async def dismiss_card(card_id: str, body: DismissRequest | None = None) -> dict
         )
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.execute(
+        "UPDATE action_cards SET read_at = COALESCE(read_at, ?) WHERE card_id = ?",
+        (now, card_id),
+    )
+    await db.commit()
 
     await log_to_audit(
         event_id=None, card_id=card_id, step="lifecycle",

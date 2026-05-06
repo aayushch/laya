@@ -9,6 +9,7 @@ export interface FeedFilters {
 	showArchived: boolean;
 	showBookmarked: boolean;
 	hasWorkspace: boolean;
+	showUnreadOnly: boolean;
 	spaceFilter: string[];
 	// Transient (not persisted) — related cards filter mode
 	showRelated: boolean;
@@ -41,6 +42,7 @@ const defaults: FeedFilters = {
 	showArchived: false,
 	showBookmarked: false,
 	hasWorkspace: false,
+	showUnreadOnly: false,
 	spaceFilter: [],
 	showRelated: false,
 	relatedEntityIds: [],
@@ -73,6 +75,7 @@ export async function loadFeedFilters(): Promise<void> {
 				showArchived: prefs.showArchived ?? defaults.showArchived,
 				showBookmarked: prefs.showBookmarked ?? defaults.showBookmarked,
 				hasWorkspace: prefs.hasWorkspace ?? defaults.hasWorkspace,
+				showUnreadOnly: prefs.showUnreadOnly ?? defaults.showUnreadOnly,
 				spaceFilter: Array.isArray(prefs.spaceFilter) ? prefs.spaceFilter : prefs.spaceFilter ? [prefs.spaceFilter] : defaults.spaceFilter,
 				showRelated: false,
 				relatedEntityIds: [],

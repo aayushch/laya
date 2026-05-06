@@ -231,13 +231,13 @@
 			for (const card of group.cards) {
 				switch (action) {
 					case 'complete':
-						if (card.status !== 'done' && !['dismissed', 'archived', 'failed'].includes(card.status)) promises.push(engineApi.markCardDone(card.card_id).then(() => { card.status = 'done'; }));
+						if (card.status !== 'done' && !['dismissed', 'archived', 'failed'].includes(card.status)) promises.push(engineApi.markCardDone(card.card_id).then(() => { card.status = 'done'; if (!card.read_at) card.read_at = new Date().toISOString(); }));
 						break;
 					case 'dismiss':
-						if (card.status !== 'dismissed' && !['archived', 'done', 'failed'].includes(card.status)) promises.push(engineApi.dismissCard(card.card_id).then(() => { card.status = 'dismissed'; }));
+						if (card.status !== 'dismissed' && !['archived', 'done', 'failed'].includes(card.status)) promises.push(engineApi.dismissCard(card.card_id).then(() => { card.status = 'dismissed'; if (!card.read_at) card.read_at = new Date().toISOString(); }));
 						break;
 					case 'archive':
-						if (card.status !== 'archived') promises.push(engineApi.archiveCard(card.card_id).then(() => { card.status = 'archived'; }));
+						if (card.status !== 'archived') promises.push(engineApi.archiveCard(card.card_id).then(() => { card.status = 'archived'; if (!card.read_at) card.read_at = new Date().toISOString(); }));
 						break;
 					case 'reopen':
 						if (['dismissed', 'archived', 'done'].includes(card.status)) promises.push(engineApi.reopenCard(card.card_id).then(() => { card.status = 'ready'; }));
@@ -342,7 +342,7 @@
 			onmouseenter={() => showTooltipIfTruncated(subjectEl, group.entity_title, { maxWidth: 320 })}
 			onmouseleave={hideTooltip}
 		>
-			<span bind:this={subjectEl} class="min-w-0 block truncate text-xs font-medium text-surface-200">
+			<span bind:this={subjectEl} class="min-w-0 block truncate text-xs {group.unread_count > 0 ? 'font-semibold text-surface-100' : 'font-normal text-surface-300'}">
 				{group.entity_title}
 			</span>
 			{#if hasBookmark}
@@ -361,7 +361,7 @@
 				onmouseenter={(e) => showTooltip(e.currentTarget, statusSummaryTooltip)}
 				onmouseleave={hideTooltip}
 			>
-				{group.card_count} cards
+				{group.card_count} cards{#if group.unread_count > 0} · {group.unread_count} new{/if}
 			</button>
 		</div>
 

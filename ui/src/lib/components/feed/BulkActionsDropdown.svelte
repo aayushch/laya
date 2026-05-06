@@ -107,13 +107,13 @@
 			for (const card of cards) {
 				switch (actionKey) {
 					case 'done':
-						promises.push(engineApi.markCardDone(card.card_id).then(() => { card.status = 'done'; }));
+						promises.push(engineApi.markCardDone(card.card_id).then(() => { card.status = 'done'; if (!card.read_at) card.read_at = new Date().toISOString(); }));
 						break;
 					case 'dismiss':
-						promises.push(engineApi.dismissCard(card.card_id).then(() => { card.status = 'dismissed'; }));
+						promises.push(engineApi.dismissCard(card.card_id).then(() => { card.status = 'dismissed'; if (!card.read_at) card.read_at = new Date().toISOString(); }));
 						break;
 					case 'archive':
-						promises.push(engineApi.archiveCard(card.card_id).then(() => { card.status = 'archived'; }));
+						promises.push(engineApi.archiveCard(card.card_id).then(() => { card.status = 'archived'; if (!card.read_at) card.read_at = new Date().toISOString(); }));
 						break;
 					case 'reopen':
 					case 'unarchive':

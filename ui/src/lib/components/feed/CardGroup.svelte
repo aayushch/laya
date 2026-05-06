@@ -122,7 +122,7 @@
 	};
 
 	const statusText = $derived(
-		statusSummary.map(s => `${s.count} ${statusSummaryLabel[s.status] ?? s.status}`).join(' \u00b7 ') + ` \u00b7 ${group.card_count} cards`
+		statusSummary.map(s => `${s.count} ${statusSummaryLabel[s.status] ?? s.status}`).join(' \u00b7 ') + ` \u00b7 ${group.card_count} cards` + (group.unread_count > 0 ? ` \u00b7 ${group.unread_count} new` : '')
 	);
 
 	// Status priority for group color: highest-priority status wins
@@ -297,17 +297,17 @@
 				switch (action) {
 					case 'complete':
 						if (card.status !== 'done' && !['dismissed', 'archived', 'failed'].includes(card.status)) {
-							promises.push(engineApi.markCardDone(card.card_id).then(() => { card.status = 'done'; }));
+							promises.push(engineApi.markCardDone(card.card_id).then(() => { card.status = 'done'; if (!card.read_at) card.read_at = new Date().toISOString(); }));
 						}
 						break;
 					case 'dismiss':
 						if (card.status !== 'dismissed' && !['archived', 'done', 'failed'].includes(card.status)) {
-							promises.push(engineApi.dismissCard(card.card_id).then(() => { card.status = 'dismissed'; }));
+							promises.push(engineApi.dismissCard(card.card_id).then(() => { card.status = 'dismissed'; if (!card.read_at) card.read_at = new Date().toISOString(); }));
 						}
 						break;
 					case 'archive':
 						if (card.status !== 'archived') {
-							promises.push(engineApi.archiveCard(card.card_id).then(() => { card.status = 'archived'; }));
+							promises.push(engineApi.archiveCard(card.card_id).then(() => { card.status = 'archived'; if (!card.read_at) card.read_at = new Date().toISOString(); }));
 						}
 						break;
 					case 'reopen':
@@ -451,7 +451,7 @@
 				</div>
 			{/if}
 
-			<span class="line-clamp-2 text-sm font-semibold leading-snug {expanded ? 'text-surface-100' : 'text-surface-50'}">
+			<span class="line-clamp-2 text-sm {group.unread_count > 0 ? 'font-bold text-surface-50' : 'font-normal text-surface-200'} leading-snug">
 				{group.entity_title}
 			</span>
 		</div>

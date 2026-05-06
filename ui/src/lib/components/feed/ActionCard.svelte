@@ -213,6 +213,7 @@
 		try {
 			await engineApi.markCardDone(card.card_id);
 			card.status = 'done';
+			if (!card.read_at) card.read_at = new Date().toISOString();
 		} finally {
 			markingDone = false;
 		}
@@ -224,6 +225,7 @@
 		try {
 			await engineApi.dismissCard(card.card_id);
 			card.status = 'dismissed';
+			if (!card.read_at) card.read_at = new Date().toISOString();
 		} finally {
 			dismissing = false;
 		}
@@ -235,6 +237,7 @@
 		try {
 			await engineApi.archiveCard(card.card_id);
 			card.status = 'archived';
+			if (!card.read_at) card.read_at = new Date().toISOString();
 		} finally {
 			archiving = false;
 		}
@@ -632,7 +635,7 @@
 		onmouseenter={() => showTooltipIfTruncated(headerEl, card.header, { checkHeight: true, maxWidth: 300 })}
 		onmouseleave={hideTooltip}
 	>
-		<h3 bind:this={headerEl} class="line-clamp-2 text-sm font-semibold {compact ? 'leading-tight' : 'leading-snug'} text-surface-50">{card.header}</h3>
+		<h3 bind:this={headerEl} class="line-clamp-2 text-sm {card.read_at ? 'font-normal text-surface-200' : 'font-bold text-surface-50'} {compact ? 'leading-tight' : 'leading-snug'}">{card.header}</h3>
 	</div>
 
 	<!-- Row 4: Summary (2-line clamp) -->

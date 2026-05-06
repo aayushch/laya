@@ -70,6 +70,7 @@ class CardResponse(BaseModel):
     space_name: str | None = None
     space_color: str | None = None
     bookmarked_at: str | None = None
+    read_at: str | None = None
     group_active_at: str | None = None
     context_id: str | None = None
     last_error: str | None = None
@@ -109,6 +110,7 @@ class CardGroup(BaseModel):
     top_priority: str
     latest_at: str
     has_pending: bool
+    unread_count: int = 0
     cards: list[CardResponse]
     sort_key: str | None = None
     context_id: str | None = None
