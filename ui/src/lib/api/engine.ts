@@ -386,16 +386,16 @@ export const engineApi = {
 	// Workspace
 	getWorkspace: (cardId: string) => request<WorkspaceResponse>(`/cards/${cardId}/workspace`),
 
-	answerAgentQuestion: (sessionId: string, answers: Array<{ header?: string; selected: string }>, addDirs?: string[]) =>
+	answerAgentQuestion: (sessionId: string, answers: Array<{ header?: string; selected: string }>, addDirs?: string[], mode?: string) =>
 		request<{ status: string; session_id: string }>(`/workspace/${sessionId}/answer`, {
 			method: 'POST',
-			body: JSON.stringify({ answers, add_dirs: addDirs?.length ? addDirs : undefined })
+			body: JSON.stringify({ answers, add_dirs: addDirs?.length ? addDirs : undefined, mode: mode || undefined })
 		}),
 
-	resumeSession: (sessionId: string, prompt: string, addDirs?: string[]) =>
+	resumeSession: (sessionId: string, prompt: string, addDirs?: string[], mode?: string) =>
 		request<{ status: string; session_id: string }>(`/workspace/${sessionId}/resume`, {
 			method: 'POST',
-			body: JSON.stringify({ prompt, add_dirs: addDirs?.length ? addDirs : undefined })
+			body: JSON.stringify({ prompt, add_dirs: addDirs?.length ? addDirs : undefined, mode: mode || undefined })
 		}),
 
 	dismissQuestions: (sessionId: string) =>
@@ -873,6 +873,11 @@ export const engineApi = {
 		request<{ status: string; snapshot_ids: string[]; space_id: string }>(`/omni/resynthesis?space_id=${encodeURIComponent(spaceId)}`, {
 			method: 'POST'
 		}),
+
+	getOmniResynthesisStatus: (spaceId = 'default') =>
+		request<{ space_id: string; in_progress: boolean }>(
+			`/omni/resynthesis/status?space_id=${encodeURIComponent(spaceId)}`
+		),
 
 	getOmniPins: (spaceId = 'default') =>
 		request<OmniPinsResponse>(`/omni/pins?space_id=${encodeURIComponent(spaceId)}`),

@@ -19,15 +19,14 @@
 	let snapshot = $state<OmniSnapshot | null>(null);
 	let segments = $state<TimelineSegment[]>([]);
 	let loading = $state(true);
-	let resynthesizing = $state(false);
 	let error = $state<string | null>(null);
 	let activeSpaceId = $state(get(omniSpace));
 	let nextSynthesis = $state<string | null>(null);
+	const resynthesizing = $derived($resynthesizingSpaces.has(activeSpaceId));
 
-	// Use store.subscribe instead of $effect to avoid Svelte 5 tracking
-	// the state writes inside loadOmni/loadHistory, which causes infinite loops.
+	// Use store.subscribe for the WS listener to avoid Svelte 5 tracking
+	// the state writes inside loadOmni/loadTimeline, which causes infinite loops.
 	let unsubWs: Unsubscriber;
-	let unsubResynth: Unsubscriber;
 
 	async function loadNextSynthesisTime() {
 		try {
@@ -76,6 +75,7 @@
 		await loadSpaces();
 		await loadOmni();
 		loadTimeline();
+		syncResynthesisStatus(activeSpaceId);
 
 		// Scroll to the item user was viewing before navigating to insight
 		const scrollTarget = sessionStorage.getItem(SCROLL_TARGET_KEY);
@@ -94,15 +94,10 @@
 			}
 		});
 
-		// Track resynthesis state from store so it survives navigation
-		unsubResynth = resynthesizingSpaces.subscribe((set) => {
-			resynthesizing = set.has(activeSpaceId);
-		});
 	});
 
 	onDestroy(() => {
 		unsubWs?.();
-		unsubResynth?.();
 	});
 
 	async function loadOmni(version?: number) {
@@ -125,6 +120,14 @@
 		} catch {
 			// Non-critical
 		}
+	}
+
+	async function syncResynthesisStatus(spaceId: string) {
+		try {
+			const { in_progress } = await engineApi.getOmniResynthesisStatus(spaceId);
+			if (in_progress) markResynthesizing(spaceId);
+			else clearResynthesizing(spaceId);
+		} catch { /* non-critical */ }
 	}
 
 	async function handleResynthesis() {
@@ -228,6 +231,7 @@
 		segments = [];
 		loadOmni();
 		loadTimeline();
+		syncResynthesisStatus(spaceId);
 	}
 </script>
 

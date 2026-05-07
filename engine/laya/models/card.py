@@ -85,13 +85,20 @@ class CardsListResponse(BaseModel):
     offset: int
 
 
+class KeyEvent(BaseModel):
+    """A structured key event with separate timestamp."""
+
+    event: str
+    timestamp: str = ""
+
+
 class GroupSummaryResponse(BaseModel):
     """Rolling LLM-generated summary for a multi-card entity group."""
 
     entity_id: str
     headline: str
     summary: str
-    key_events: list[str] | None = None
+    key_events: list[str | KeyEvent] | None = None
     current_status: str | None = None
     pending_actions: list[str] | None = None
     card_count: int

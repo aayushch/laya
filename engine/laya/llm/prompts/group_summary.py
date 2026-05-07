@@ -27,7 +27,12 @@ Return a JSON object with these fields:
 - **summary**: 3-5 sentence narrative of the entity's journey and current state. \
   Start with what the entity is, cover key milestones, end with where things stand now.
 - **key_events**: Chronological list of significant developments (3-7 items, \
-  newest last). Each item: one concise sentence with actor name and date if available.
+  newest last). Each item is an object with two fields:
+  - **event**: One concise sentence describing what happened and who did it. \
+    Do NOT include timestamps or dates in this text.
+  - **timestamp**: ISO 8601 UTC timestamp (e.g. "2026-05-04T04:23:03Z") for \
+    when the event occurred. Use the card's date/time. If the exact time is \
+    unknown, use an empty string "".
 - **current_status**: One sentence describing what is happening RIGHT NOW with \
   this entity.
 - **pending_actions**: Array of items that still need attention. Null if nothing \
@@ -61,8 +66,10 @@ Integrate the new event(s) into the existing summary:
 - If it **adds new information**, incorporate it naturally into the summary narrative.
 - If it **changes the entity's status** (e.g., PR merged, ticket closed, email replied), \
   update headline and current_status to reflect the new state.
-- Keep key_events chronological (oldest first, newest last). Add new developments. \
-  If there are more than 7 items, prune the least significant older entries.
+- Keep key_events chronological (oldest first, newest last). Add new developments \
+  as objects with "event" and "timestamp" fields. If existing key_events contain \
+  plain strings (legacy format), convert them to {{"event": <text>, "timestamp": ""}} \
+  objects. If there are more than 7 items, prune the least significant older entries.
 - Don't just append — **synthesize** into a coherent narrative.
 - pending_actions: remove items that are now resolved, add new ones if applicable.
 - When multiple new cards are provided, integrate ALL of them in a single pass.
@@ -92,7 +99,15 @@ GROUP_SUMMARY_JSON_SCHEMA: dict[str, Any] = {
             "summary": {"type": "string"},
             "key_events": {
                 "type": "array",
-                "items": {"type": "string"},
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "event": {"type": "string"},
+                        "timestamp": {"type": "string"},
+                    },
+                    "required": ["event", "timestamp"],
+                    "additionalProperties": False,
+                },
             },
             "current_status": {"type": "string"},
             "pending_actions": {

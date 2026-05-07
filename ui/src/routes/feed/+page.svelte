@@ -1456,19 +1456,18 @@
 							</svg>
 							Bookmarks
 						</button>
-						{#if hasUnread}
-							<div class="my-0.5 border-t border-surface-700"></div>
+						<div class="my-0.5 border-t border-surface-700"></div>
 							<button
-								class="flex w-full items-center gap-2 whitespace-nowrap px-4 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700"
+								class="flex w-full items-center gap-2 whitespace-nowrap px-4 py-1.5 text-xs transition-colors
+									{hasUnread ? 'text-surface-300 hover:bg-surface-700' : 'text-surface-600 cursor-not-allowed'}"
 								onclick={() => { handleMarkAllRead(); feedActionsMenuOpen = false; }}
-								disabled={markingAllRead}
+								disabled={markingAllRead || !hasUnread}
 							>
 								<svg class="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
 								</svg>
 								Mark all read
 							</button>
-						{/if}
 						<div class="my-0.5 border-t border-surface-700"></div>
 						<button
 							class="flex w-full items-center gap-2 whitespace-nowrap px-4 py-1.5 text-xs transition-colors hover:bg-surface-700
@@ -1531,12 +1530,14 @@
 
 			<div class="h-5 w-px bg-surface-700/60 mx-0.5"></div>
 
-			{#if hasUnread}
-				<button
+			<button
 					onclick={handleMarkAllRead}
-					disabled={markingAllRead}
+					disabled={markingAllRead || !hasUnread}
 					class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors
-						border-surface-700 bg-surface-800/60 text-surface-400 hover:text-surface-200 hover:border-surface-600
+						border-surface-700 bg-surface-800/60
+						{hasUnread
+							? 'text-surface-400 hover:text-surface-200 hover:border-surface-600'
+							: 'text-surface-600 cursor-not-allowed'}
 						disabled:opacity-40"
 				>
 					<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1544,7 +1545,6 @@
 					</svg>
 					Mark all read
 				</button>
-			{/if}
 
 			<div class="h-5 w-px bg-surface-700/60 mx-0.5"></div>
 

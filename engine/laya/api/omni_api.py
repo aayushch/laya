@@ -240,6 +240,15 @@ async def trigger_resynthesis(space_id: str = "default"):
     )
 
 
+@router.get("/omni/resynthesis/status")
+async def resynthesis_status(space_id: str = "default"):
+    """Check whether a resynthesis is currently running for a space."""
+    from laya.pipeline.omni import _get_gate
+
+    gate = _get_gate(space_id)
+    return {"space_id": space_id, "in_progress": not gate.is_set()}
+
+
 # ---------------------------------------------------------------------------
 # Pin endpoints
 # ---------------------------------------------------------------------------

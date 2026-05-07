@@ -319,6 +319,7 @@ async def resume_conversation(
     session_id: str,
     answer_text: str,
     add_dirs: list[str] | None = None,
+    mode: str | None = None,
 ) -> CodingAgent:
     """Resume an agent conversation with the user's answer.
 
@@ -328,6 +329,8 @@ async def resume_conversation(
 
     Args:
         add_dirs: Extra directory paths to pass via --add-dir / --include-directories flags.
+        mode: Permission mode override (e.g. "plan", "acceptEdits"). When
+              provided, overrides the stored mode and persists the new value.
 
     Returns:
         The resumed CodingAgent instance.
@@ -346,6 +349,15 @@ async def resume_conversation(
 
     agent_session_id, repo_path, agent_type_str, existing_dirs_json, session_type, stored_mode, space_id = rows[0]
     is_research = session_type == "research"
+
+    # User-provided mode overrides the stored value; persist for future resumes
+    effective_mode = mode or stored_mode
+    if mode and mode != stored_mode:
+        await db.execute(
+            "UPDATE workspace_sessions SET permission_mode = ?, updated_at = CURRENT_TIMESTAMP WHERE session_id = ?",
+            (mode, session_id),
+        )
+        await db.commit()
 
     # Merge new add_dirs with previously stored ones (deduplicated, order-preserving)
     existing_dirs: list[str] = json.loads(existing_dirs_json) if existing_dirs_json else []
@@ -392,7 +404,7 @@ async def resume_conversation(
 
         await agent.resume_with_answer(
             answer_text, add_dirs=all_dirs, research=is_research,
-            mode=stored_mode, space_id=space_id,
+            mode=effective_mode, space_id=space_id,
         )
     else:
         # No agent session ID stored (e.g. session started with old adapter).

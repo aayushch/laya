@@ -203,6 +203,7 @@ export interface WorkspaceSession {
 	findings?: Record<string, unknown>;
 	error_message?: string;
 	session_type?: 'code' | 'research';
+	permission_mode?: string;
 }
 
 /** Workspace event */
@@ -410,12 +411,18 @@ export interface ActionCard {
 	last_error?: string;
 }
 
+/** A structured key event with separate timestamp */
+export interface KeyEvent {
+	event: string;
+	timestamp?: string;
+}
+
 /** Rolling LLM-generated summary for an entity group */
 export interface GroupSummary {
 	entity_id: string;
 	headline: string;
 	summary: string;
-	key_events?: string[];
+	key_events?: (string | KeyEvent)[];
 	current_status?: string;
 	pending_actions?: string[];
 	card_count: number;
