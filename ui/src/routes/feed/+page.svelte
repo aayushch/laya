@@ -3,7 +3,7 @@
 	import { engineApi } from '$lib/api/engine';
 	import { lastMessage } from '$lib/stores/websocket';
 	import { feedFilters, feedDate, feedPrevDate, feedNextDate, localToday, allDaysSavedDate } from '$lib/stores/feedFilters';
-	import type { ActionCard, CardGroup, GroupSummary, DaySummary } from '$lib/api/types';
+	import type { ActionCard, CardGroup, GroupSummary, DaySummary, SpaceSummary } from '$lib/api/types';
 	import CardGroupComponent from '$lib/components/feed/CardGroup.svelte';
 	import ActionCardComponent from '$lib/components/feed/ActionCard.svelte';
 	import CardDetail from '$lib/components/feed/CardDetail.svelte';
@@ -251,9 +251,30 @@
 	function setSummaryModalOpen(v: boolean) { summaryModalOpen = v; summaryModalStore.set(v); }
 	// Load summary when opened via keyboard shortcut
 	$effect(() => { if ($summaryModalStore) loadSummary(); });
+	let spaceSummaries = $state<SpaceSummary[]>([]);
 	let daySummary = $state<DaySummary | null>(null);
 	let summaryUpdatedAt = $state<string | null>(null);
 	let summaryLoading = $state(false);
+
+	function mergeSpaceSummaries(summaries: SpaceSummary[]): { merged: DaySummary; updatedAt: string | null } {
+		const merged: DaySummary = { events_and_meetings: [], action_items: [], key_updates: [] };
+		let latest: string | null = null;
+		for (const ss of summaries) {
+			if (!ss.summary) continue;
+			if (ss.updated_at && (!latest || ss.updated_at > latest)) latest = ss.updated_at;
+			for (const section of ['events_and_meetings', 'action_items', 'key_updates'] as const) {
+				for (const item of ss.summary[section]) {
+					merged[section].push({
+						...item,
+						space_id: ss.space_id,
+						space_name: ss.space_name,
+						space_color: ss.space_color,
+					});
+				}
+			}
+		}
+		return { merged, updatedAt: latest };
+	}
 
 	// Persist selected card/group ID across webview navigations (e.g. external link → back)
 	const SELECTED_CARD_KEY = 'laya_feed_selected_card';
@@ -432,9 +453,12 @@
 		summaryLoading = true;
 		try {
 			const data = await engineApi.getDaySummary($feedDate);
-			daySummary = data.summary;
-			summaryUpdatedAt = data.updated_at;
+			spaceSummaries = data.space_summaries;
+			const { merged, updatedAt } = mergeSpaceSummaries(spaceSummaries);
+			daySummary = merged;
+			summaryUpdatedAt = updatedAt;
 		} catch {
+			spaceSummaries = [];
 			daySummary = null;
 			summaryUpdatedAt = null;
 		} finally {
@@ -493,16 +517,31 @@
 		if (!msg) return;
 		if (msg === _lastProcessedMsg) return;
 
-		// Handle summary updates
+		// Handle per-space summary updates
 		if (msg.type === 'summary_updated' && msg.payload) {
 			_lastProcessedMsg = msg;
-			const payload = msg.payload as { date?: string; summary?: DaySummary; updated_at?: string };
-			// payload.date is UTC; $feedDate is local — accept the update
-			// whenever the user is viewing today's feed (isToday) to handle
-			// the UTC/local date mismatch.
-			if (payload.summary && (payload.date === $feedDate || isToday)) {
-				daySummary = payload.summary;
-				summaryUpdatedAt = payload.updated_at ?? null;
+			const payload = msg.payload as { date?: string; space_id?: string; summary?: DaySummary; updated_at?: string };
+			if (payload.summary && payload.space_id && (payload.date === $feedDate || isToday)) {
+				const idx = spaceSummaries.findIndex(s => s.space_id === payload.space_id);
+				const entry: SpaceSummary = {
+					space_id: payload.space_id,
+					space_name: spaceSummaries.find(s => s.space_id === payload.space_id)?.space_name ?? payload.space_id,
+					space_color: spaceSummaries.find(s => s.space_id === payload.space_id)?.space_color ?? '#F97316',
+					summary: payload.summary,
+					card_ids: [],
+					updated_at: payload.updated_at ?? null,
+				};
+				if (idx >= 0) {
+					entry.card_ids = spaceSummaries[idx].card_ids;
+					entry.space_name = spaceSummaries[idx].space_name;
+					entry.space_color = spaceSummaries[idx].space_color;
+					spaceSummaries = [...spaceSummaries.slice(0, idx), entry, ...spaceSummaries.slice(idx + 1)];
+				} else {
+					spaceSummaries = [...spaceSummaries, entry];
+				}
+				const { merged, updatedAt } = mergeSpaceSummaries(spaceSummaries);
+				daySummary = merged;
+				summaryUpdatedAt = updatedAt;
 			}
 			return;
 		}
@@ -1345,19 +1384,19 @@
 		<!-- Stats -->
 		{#if hasSelection && $feedViewMode === 'list'}
 			<div class="flex items-center gap-2">
-				<span class="text-xs font-medium text-laya-orange">{selectionCount} selected</span>
-				<span class="text-[10px] text-surface-600">·</span>
+				<span class="text-laya-secondary font-medium text-laya-orange">{selectionCount} selected</span>
+				<span class="text-laya-micro text-surface-600">·</span>
 				{#if !allVisibleSelected}
 					<button
-						class="text-xs text-surface-400 hover:text-surface-200 transition-colors"
+						class="text-laya-secondary text-surface-400 hover:text-surface-200 transition-colors"
 						onclick={() => feedSelection.selectMany(allVisibleCardIds)}
 					>
 						Select All
 					</button>
-					<span class="text-[10px] text-surface-600">·</span>
+					<span class="text-laya-micro text-surface-600">·</span>
 				{/if}
 				<button
-					class="text-xs text-surface-400 hover:text-surface-200 transition-colors"
+					class="text-laya-secondary text-surface-400 hover:text-surface-200 transition-colors"
 					onclick={() => feedSelection.deselectAll()}
 				>
 					Deselect All
@@ -1368,31 +1407,31 @@
 			</div>
 		{:else}
 			<div class="flex items-center gap-1.5 flex-wrap whitespace-nowrap">
-				<span class="text-xs text-surface-500">{totalGroups} {totalGroups === 1 ? 'group' : 'groups'}</span>
-				<span class="text-[10px] text-surface-600">·</span>
-				<span class="text-xs text-surface-500">{totalCards} cards</span>
+				<span class="text-laya-secondary text-surface-500">{totalGroups} {totalGroups === 1 ? 'group' : 'groups'}</span>
+				<span class="text-laya-micro text-surface-600">·</span>
+				<span class="text-laya-secondary text-surface-500">{totalCards} cards</span>
 				{#if searchTerms.length > 0 && filteredTotalCards !== totalCards}
-					<span class="inline-flex items-center gap-1 rounded-full bg-laya-orange/10 px-2 py-0.5 text-[10px] font-medium text-laya-orange">
+					<span class="inline-flex items-center gap-1 rounded-full bg-laya-orange/10 px-2 py-0.5 text-laya-micro font-medium text-laya-orange">
 						<svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
 						{filteredGroups.length} shown
 					</span>
 				{/if}
 				{#if searchTerms.length > 0 && !$feedFilters.showAllDaysSearch && !$feedFilters.showBookmarked && !$feedFilters.showRelated}
 					<button
-						class="text-[10px] font-medium text-laya-orange hover:underline"
+						class="text-laya-micro font-medium text-laya-orange hover:underline"
 						onclick={() => { $allDaysSavedDate = $feedDate; $feedFilters = { ...$feedFilters, showAllDaysSearch: true }; }}
 					>
 						Search all days
 					</button>
 				{/if}
 				{#if agentRunningCount > 0}
-					<span class="inline-flex items-center gap-1 rounded-full bg-laya-coral/10 px-2 py-0.5 text-[10px] font-medium text-laya-coral">
+					<span class="inline-flex items-center gap-1 rounded-full bg-laya-coral/10 px-2 py-0.5 text-laya-micro font-medium text-laya-coral">
 						<span class="h-1.5 w-1.5 rounded-full bg-laya-coral animate-pulse"></span>
 						{agentRunningCount} running
 					</span>
 				{/if}
 				{#if failedCount > 0}
-					<span class="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-medium text-red-400">
+					<span class="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-laya-micro font-medium text-red-400">
 						<span class="h-1.5 w-1.5 rounded-full bg-red-400"></span>
 						{failedCount} failed
 					</span>
@@ -1407,7 +1446,7 @@
 			<div class="feed-overflow-menu relative">
 				<button
 					onclick={() => (feedActionsMenuOpen = !feedActionsMenuOpen)}
-					class="flex items-center gap-1 rounded-lg border px-2 py-1 text-xs transition-colors
+					class="flex items-center gap-1 rounded-lg border px-2 py-1 text-laya-secondary transition-colors
 						{hasActiveFilters || $feedFilters.showBookmarked || $recentDrawerOpen || summaryModalOpen
 							? 'border-laya-orange/30 bg-laya-orange/10 text-laya-orange'
 							: 'border-surface-700 bg-surface-800/60 text-surface-400 hover:text-surface-200 hover:border-surface-600'}"
@@ -1420,7 +1459,7 @@
 				{#if feedActionsMenuOpen}
 					<div class="absolute right-0 top-full z-[100] mt-1 flex flex-col rounded-lg border border-surface-600 bg-surface-800 py-1 shadow-lg min-w-[160px]">
 						<button
-							class="flex w-full items-center gap-2 whitespace-nowrap px-4 py-1.5 text-xs transition-colors hover:bg-surface-700
+							class="flex w-full items-center gap-2 whitespace-nowrap px-4 py-1.5 text-laya-secondary transition-colors hover:bg-surface-700
 								{hasActiveFilters ? 'text-laya-orange' : 'text-surface-300'}"
 							onclick={(e: MouseEvent) => {
 								const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -1433,11 +1472,11 @@
 							</svg>
 							Filters
 							{#if hasActiveFilters}
-								<span class="flex h-4 w-4 items-center justify-center rounded-full bg-laya-orange text-[9px] font-bold text-surface-900">{activeStatusCount + activePriorityCount + activeSpaceCount + ($feedFilters.showArchived ? 1 : 0) + ($feedFilters.hasWorkspace ? 1 : 0) + ($feedFilters.showUnreadOnly ? 1 : 0)}</span>
+								<span class="flex h-4 w-4 items-center justify-center rounded-full bg-laya-orange text-laya-micro font-bold text-surface-900">{activeStatusCount + activePriorityCount + activeSpaceCount + ($feedFilters.showArchived ? 1 : 0) + ($feedFilters.hasWorkspace ? 1 : 0) + ($feedFilters.showUnreadOnly ? 1 : 0)}</span>
 							{/if}
 						</button>
 						<button
-							class="flex w-full items-center gap-2 whitespace-nowrap px-4 py-1.5 text-xs transition-colors hover:bg-surface-700
+							class="flex w-full items-center gap-2 whitespace-nowrap px-4 py-1.5 text-laya-secondary transition-colors hover:bg-surface-700
 								{$recentDrawerOpen ? 'text-laya-orange' : 'text-surface-300'}"
 							onclick={() => { toggleRecentDrawer(); feedActionsMenuOpen = false; }}
 						>
@@ -1447,7 +1486,7 @@
 							Recent
 						</button>
 						<button
-							class="flex w-full items-center gap-2 whitespace-nowrap px-4 py-1.5 text-xs transition-colors hover:bg-surface-700
+							class="flex w-full items-center gap-2 whitespace-nowrap px-4 py-1.5 text-laya-secondary transition-colors hover:bg-surface-700
 								{$feedFilters.showBookmarked ? 'text-laya-orange' : 'text-surface-300'}"
 							onclick={() => { $feedFilters.showBookmarked = !$feedFilters.showBookmarked; feedActionsMenuOpen = false; }}
 						>
@@ -1458,7 +1497,7 @@
 						</button>
 						<div class="my-0.5 border-t border-surface-700"></div>
 							<button
-								class="flex w-full items-center gap-2 whitespace-nowrap px-4 py-1.5 text-xs transition-colors
+								class="flex w-full items-center gap-2 whitespace-nowrap px-4 py-1.5 text-laya-secondary transition-colors
 									{hasUnread ? 'text-surface-300 hover:bg-surface-700' : 'text-surface-600 cursor-not-allowed'}"
 								onclick={() => { handleMarkAllRead(); feedActionsMenuOpen = false; }}
 								disabled={markingAllRead || !hasUnread}
@@ -1470,7 +1509,7 @@
 							</button>
 						<div class="my-0.5 border-t border-surface-700"></div>
 						<button
-							class="flex w-full items-center gap-2 whitespace-nowrap px-4 py-1.5 text-xs transition-colors hover:bg-surface-700
+							class="flex w-full items-center gap-2 whitespace-nowrap px-4 py-1.5 text-laya-secondary transition-colors hover:bg-surface-700
 								{summaryModalOpen ? 'text-laya-orange' : 'text-surface-300'}"
 							onclick={() => { setSummaryModalOpen(true); loadSummary(); feedActionsMenuOpen = false; }}
 						>
@@ -1487,7 +1526,7 @@
 			<div class="filter-dropdown relative" bind:this={filterBtnEl}>
 				<button
 					onclick={() => { if (!filterPopoverOpen && filterBtnEl) { const r = filterBtnEl.getBoundingClientRect(); filterMenuPos = { top: r.bottom + 6, left: r.left }; } filterPopoverOpen = !filterPopoverOpen; }}
-					class="relative flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors
+					class="relative flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-laya-secondary transition-colors
 						{hasActiveFilters
 							? 'border-laya-orange/30 bg-laya-orange/10 text-laya-orange'
 							: 'border-surface-700 bg-surface-800/60 text-surface-400 hover:text-surface-200 hover:border-surface-600'}"
@@ -1497,14 +1536,14 @@
 					</svg>
 					Filters
 					{#if hasActiveFilters}
-						<span class="flex h-4 w-4 items-center justify-center rounded-full bg-laya-orange text-[9px] font-bold text-surface-900">{activeStatusCount + activePriorityCount + activeSpaceCount + ($feedFilters.showArchived ? 1 : 0) + ($feedFilters.hasWorkspace ? 1 : 0) + ($feedFilters.showUnreadOnly ? 1 : 0)}</span>
+						<span class="flex h-4 w-4 items-center justify-center rounded-full bg-laya-orange text-laya-micro font-bold text-surface-900">{activeStatusCount + activePriorityCount + activeSpaceCount + ($feedFilters.showArchived ? 1 : 0) + ($feedFilters.hasWorkspace ? 1 : 0) + ($feedFilters.showUnreadOnly ? 1 : 0)}</span>
 					{/if}
 				</button>
 			</div>
 
 			<button
 				onclick={toggleRecentDrawer}
-				class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors
+				class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-laya-secondary transition-colors
 					{$recentDrawerOpen
 						? 'border-laya-orange/30 bg-laya-orange/10 text-laya-orange'
 						: 'border-surface-700 bg-surface-800/60 text-surface-400 hover:text-surface-200 hover:border-surface-600'}"
@@ -1517,7 +1556,7 @@
 
 			<button
 				onclick={() => ($feedFilters.showBookmarked = !$feedFilters.showBookmarked)}
-				class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors
+				class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-laya-secondary transition-colors
 					{$feedFilters.showBookmarked
 						? 'border-laya-orange/30 bg-laya-orange/10 text-laya-orange'
 						: 'border-surface-700 bg-surface-800/60 text-surface-400 hover:text-surface-200 hover:border-surface-600'}"
@@ -1533,7 +1572,7 @@
 			<button
 					onclick={handleMarkAllRead}
 					disabled={markingAllRead || !hasUnread}
-					class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors
+					class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-laya-secondary transition-colors
 						border-surface-700 bg-surface-800/60
 						{hasUnread
 							? 'text-surface-400 hover:text-surface-200 hover:border-surface-600'
@@ -1550,7 +1589,7 @@
 
 			<button
 				onclick={() => { setSummaryModalOpen(true); loadSummary(); }}
-				class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors
+				class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-laya-secondary transition-colors
 					{summaryModalOpen
 						? 'border-laya-orange/30 bg-laya-orange/10 text-laya-orange'
 						: 'border-surface-700 bg-surface-800/60 text-surface-400 hover:text-surface-200 hover:border-surface-600'}"
@@ -1567,7 +1606,7 @@
 			<div use:portal bind:this={filterMenuEl} class="filter-dropdown fixed z-[100] w-64 rounded-xl border p-3 {$glassTheme ? 'glass-menu' : 'border-surface-600 bg-surface-800 shadow-xl shadow-black/30'}" style="top: {filterMenuPos.top}px; left: {filterMenuPos.left}px;">
 				<!-- Sort -->
 				<div class="mb-3">
-					<div class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Sort</div>
+					<div class="mb-1.5 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">Sort</div>
 					<div class="flex items-center gap-1.5">
 						<div class="flex flex-1 items-center gap-1.5 rounded-lg border border-surface-700 bg-surface-900/60 px-2 py-1">
 							<svg class="h-3.5 w-3.5 text-surface-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1575,7 +1614,7 @@
 							</svg>
 							<select
 								bind:value={$feedFilters.sortBy}
-								class="flex-1 bg-transparent text-xs text-surface-200 outline-none cursor-pointer appearance-none pr-4"
+								class="flex-1 bg-transparent text-laya-secondary text-surface-200 outline-none cursor-pointer appearance-none pr-4"
 								style="background-image: url('data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%2712%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%23888%27 stroke-width=%272%27%3E%3Cpath d=%27M6 9l6 6 6-6%27/%3E%3C/svg%3E'); background-repeat: no-repeat; background-position: right 0 center;"
 							>
 								<option value="newest">Newest</option>
@@ -1602,11 +1641,11 @@
 				<!-- Workspace -->
 				{#if $spaces.length > 1}
 					<div class="mb-3">
-						<div class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Workspace</div>
+						<div class="mb-1.5 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">Workspace</div>
 						<div class="space-y-0.5">
 							{#each $spaces as space}
 								<button
-									class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors hover:bg-surface-700
+									class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-laya-secondary transition-colors hover:bg-surface-700
 										{$feedFilters.spaceFilter.includes(space.space_id) ? 'text-laya-orange' : 'text-surface-300'}"
 									onclick={() => ($feedFilters.spaceFilter = toggleFilter($feedFilters.spaceFilter, space.space_id))}
 								>
@@ -1627,11 +1666,11 @@
 
 				<!-- Status -->
 				<div class="mb-3">
-					<div class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Status</div>
+					<div class="mb-1.5 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">Status</div>
 					<div class="space-y-0.5">
 						{#each [['pending', 'Processing'], ['ready', 'Ready'], ['agent_running', 'Running'], ['failed', 'Failed'], ['done', 'Done'], ['dismissed', 'Dismissed']] as [value, label]}
 							<button
-								class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors hover:bg-surface-700
+								class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-laya-secondary transition-colors hover:bg-surface-700
 									{$feedFilters.statusFilters.includes(value) ? 'text-laya-orange' : 'text-surface-300'}"
 								onclick={() => ($feedFilters.statusFilters = toggleFilter($feedFilters.statusFilters, value))}
 							>
@@ -1650,11 +1689,11 @@
 
 				<!-- Priority -->
 				<div class="mb-3">
-					<div class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Priority</div>
+					<div class="mb-1.5 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">Priority</div>
 					<div class="space-y-0.5">
 						{#each [['CRITICAL', 'Critical'], ['HIGH', 'High'], ['MEDIUM', 'Medium'], ['LOW', 'Low']] as [value, label]}
 							<button
-								class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors hover:bg-surface-700
+								class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-laya-secondary transition-colors hover:bg-surface-700
 									{$feedFilters.priorityFilters.includes(value) ? 'text-laya-orange' : 'text-surface-300'}"
 								onclick={() => ($feedFilters.priorityFilters = toggleFilter($feedFilters.priorityFilters, value))}
 							>
@@ -1674,7 +1713,7 @@
 				<!-- Toggles -->
 				<div class="mb-2 space-y-0.5">
 					<button
-						class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors hover:bg-surface-700
+						class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-laya-secondary transition-colors hover:bg-surface-700
 							{$feedFilters.showArchived ? 'text-laya-orange' : 'text-surface-300'}"
 						onclick={() => ($feedFilters.showArchived = !$feedFilters.showArchived)}
 					>
@@ -1688,7 +1727,7 @@
 						Show Archived
 					</button>
 					<button
-						class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors hover:bg-surface-700
+						class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-laya-secondary transition-colors hover:bg-surface-700
 							{$feedFilters.hasWorkspace ? 'text-laya-orange' : 'text-surface-300'}"
 						onclick={() => ($feedFilters.hasWorkspace = !$feedFilters.hasWorkspace)}
 					>
@@ -1702,7 +1741,7 @@
 						Has Workspace
 					</button>
 					<button
-						class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors hover:bg-surface-700
+						class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-laya-secondary transition-colors hover:bg-surface-700
 							{$feedFilters.showUnreadOnly ? 'text-laya-orange' : 'text-surface-300'}"
 						onclick={() => ($feedFilters.showUnreadOnly = !$feedFilters.showUnreadOnly)}
 					>
@@ -1721,7 +1760,7 @@
 				{#if hasActiveFilters}
 					<div class="border-t border-surface-700 pt-2">
 						<button
-							class="w-full rounded-md px-2 py-1 text-[11px] font-medium text-surface-500 transition-colors hover:text-surface-300 hover:bg-surface-700"
+							class="w-full rounded-md px-2 py-1 text-laya-secondary font-medium text-surface-500 transition-colors hover:text-surface-300 hover:bg-surface-700"
 							onclick={() => {
 								$feedFilters.statusFilters = [];
 								$feedFilters.priorityFilters = [];
@@ -1755,7 +1794,7 @@
 				type="text"
 				bind:value={searchQuery}
 				placeholder="Search"
-				class="h-7 w-48 rounded-lg border border-surface-700 bg-surface-800/60 pl-7 pr-7 text-xs text-surface-200 placeholder-surface-500 outline-none transition-colors focus:border-laya-orange/50 focus:ring-1 focus:ring-laya-orange/25"
+				class="h-7 w-48 rounded-lg border border-surface-700 bg-surface-800/60 pl-7 pr-7 text-laya-secondary text-surface-200 placeholder-surface-500 outline-none transition-colors focus:border-laya-orange/50 focus:ring-1 focus:ring-laya-orange/25"
 			/>
 			{#if searchQuery}
 				<button
@@ -1773,7 +1812,7 @@
 		<div class="flex items-center rounded-lg border border-surface-700 bg-surface-800/60 p-0.5">
 			<div class="group/tip relative">
 				<button
-					class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {$feedViewMode === 'card' ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-200'}"
+					class="flex items-center gap-1 rounded-md px-2 py-1 text-laya-secondary transition-colors {$feedViewMode === 'card' ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-200'}"
 					onclick={() => ($feedViewMode = 'card')}
 					aria-label="Card View"
 				>
@@ -1781,11 +1820,11 @@
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
 					</svg>
 				</button>
-				<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100">Card View</span>
+				<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100">Card View</span>
 			</div>
 			<div class="group/tip relative">
 				<button
-					class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {$feedViewMode === 'list' ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-200'}"
+					class="flex items-center gap-1 rounded-md px-2 py-1 text-laya-secondary transition-colors {$feedViewMode === 'list' ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-200'}"
 					onclick={() => ($feedViewMode = 'list')}
 					aria-label="List View"
 				>
@@ -1793,7 +1832,7 @@
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
 					</svg>
 				</button>
-				<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100">List View</span>
+				<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100">List View</span>
 			</div>
 		</div>
 	</div>
@@ -1804,7 +1843,7 @@
 		<div class="flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-in-out {$recentDrawerOpen ? 'w-[260px]' : 'w-0'}">
 			<div class="flex h-full w-[260px] flex-col overflow-hidden rounded-xl border border-surface-700/50 bg-surface-900/60">
 				<div class="flex items-center justify-between border-b border-surface-700/50 px-3 py-2">
-					<span class="text-xs font-medium text-surface-300">Recent Cards</span>
+					<span class="text-laya-secondary font-medium text-surface-300">Recent Cards</span>
 					<div class="flex items-center gap-1">
 						{#if filteredRecentCards.length > 0}
 							<button
@@ -1834,8 +1873,8 @@
 							<svg class="mb-2 h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
 							</svg>
-							<p class="text-[11px]">{$feedFilters.spaceFilter.length ? 'No recent cards in selected spaces' : 'No recent cards yet'}</p>
-							<p class="mt-0.5 text-[10px] text-surface-700">Cards you view will appear here</p>
+							<p class="text-laya-secondary">{$feedFilters.spaceFilter.length ? 'No recent cards in selected spaces' : 'No recent cards yet'}</p>
+							<p class="mt-0.5 text-laya-micro text-surface-700">Cards you view will appear here</p>
 						</div>
 					{:else}
 						{#each filteredRecentCards as entry (entry.card_id)}
@@ -1846,10 +1885,10 @@
 								onclick={() => handleRecentCardClick(entry)}
 							>
 								<div class="flex items-start justify-between gap-2">
-									<span class="line-clamp-1 text-xs text-surface-200">{entry.header}</span>
-									<span class="shrink-0 text-[9px] text-surface-600">{formatRecentTime(entry.visited_at)}</span>
+									<span class="line-clamp-1 text-laya-secondary text-surface-200">{entry.header}</span>
+									<span class="shrink-0 text-laya-micro text-surface-600">{formatRecentTime(entry.visited_at)}</span>
 								</div>
-								<span class="line-clamp-1 text-[10px] text-surface-500">
+								<span class="line-clamp-1 text-laya-micro text-surface-500">
 									{#if entry.source_ref}{entry.source_ref}{:else if entry.entity_id}{entry.entity_id}{:else if entry.category}{entry.category}{/if}
 									{#if entry.space_name}
 										<span class="text-surface-600"> · {entry.space_name}</span>
@@ -1868,7 +1907,7 @@
 					<svg class="h-4 w-4 shrink-0 text-laya-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
 					</svg>
-					<span class="min-w-0 flex-1 truncate text-xs text-laya-orange">
+					<span class="min-w-0 flex-1 truncate text-laya-secondary text-laya-orange">
 						Related to "<span class="font-medium">{$feedFilters.relatedSourceHeader}</span>"
 					</span>
 					<button
@@ -1885,7 +1924,7 @@
 			{#if loading && groups.length === 0}
 				<div class="py-12 text-center text-surface-400">Loading cards...</div>
 			{:else if error}
-				<div class="flex items-start gap-2 rounded-lg border border-red-800 bg-red-900/30 px-4 py-3 text-sm text-red-300">
+				<div class="flex items-start gap-2 rounded-lg border border-red-800 bg-red-900/30 px-4 py-3 text-laya-base text-red-300">
 					<span class="flex-1">{error}</span>
 					<button class="shrink-0 text-red-400 hover:text-red-200" onclick={() => (error = null)} aria-label="Dismiss error">
 						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -1893,8 +1932,8 @@
 				</div>
 			{:else if groups.length === 0}
 				<div class="py-12 text-center text-surface-500">
-					<p class="text-lg">{$feedFilters.showRelated ? 'No related cards found' : $feedFilters.showBookmarked ? 'No bookmarked cards' : `No cards for ${formatDateLabel($feedDate)}`}</p>
-					<p class="mt-1 text-sm">
+					<p class="text-laya-heading">{$feedFilters.showRelated ? 'No related cards found' : $feedFilters.showBookmarked ? 'No bookmarked cards' : `No cards for ${formatDateLabel($feedDate)}`}</p>
+					<p class="mt-1 text-laya-base">
 						{#if $feedFilters.showRelated}
 							<button class="text-laya-orange hover:underline" onclick={clearRelatedFilter}>Back to feed</button>
 						{:else if $feedFilters.showBookmarked}
@@ -1914,8 +1953,8 @@
 					<svg class="mx-auto mb-2 h-8 w-8 text-surface-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
 					</svg>
-					<p class="text-sm">No cards match "<span class="text-surface-300">{searchQuery}</span>"</p>
-					<button class="mt-2 text-xs text-laya-orange hover:underline" onclick={() => (searchQuery = '')}>Clear search</button>
+					<p class="text-laya-base">No cards match "<span class="text-surface-300">{searchQuery}</span>"</p>
+					<button class="mt-2 text-laya-secondary text-laya-orange hover:underline" onclick={() => (searchQuery = '')}>Clear search</button>
 				</div>
 			<!-- ── LIST VIEW ── -->
 			{:else if $feedViewMode === 'list'}
@@ -1933,9 +1972,9 @@
 							<svg class="h-3.5 w-3.5 shrink-0 text-surface-500 transition-transform {isCollapsed ? '-rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
 							</svg>
-							<span class="text-xs font-semibold uppercase tracking-wider text-surface-400">{sectionTitle}</span>
+							<span class="text-laya-secondary font-semibold uppercase tracking-wider text-surface-400">{sectionTitle}</span>
 							<div class="flex-1 border-t border-surface-700"></div>
-							<span class="text-[10px] text-surface-500">{sectionGroups.reduce((s, g) => s + g.card_count, 0)}</span>
+							<span class="text-laya-micro text-surface-500">{sectionGroups.reduce((s, g) => s + g.card_count, 0)}</span>
 						</div>
 						{#if !isCollapsed}
 							<div class="flex flex-col gap-1 mb-2">
@@ -1976,9 +2015,9 @@
 						<svg class="h-3.5 w-3.5 shrink-0 text-surface-500 transition-transform {isCollapsed ? '-rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
 						</svg>
-						<span class="text-xs font-semibold uppercase tracking-wider text-surface-400">{sectionTitle}</span>
+						<span class="text-laya-secondary font-semibold uppercase tracking-wider text-surface-400">{sectionTitle}</span>
 						<div class="flex-1 border-t border-surface-700"></div>
-						<span class="text-[10px] text-surface-500">{sectionGroups.reduce((s, g) => s + g.card_count, 0)}</span>
+						<span class="text-laya-micro text-surface-500">{sectionGroups.reduce((s, g) => s + g.card_count, 0)}</span>
 					</div>
 					{#if !isCollapsed}
 						<div class="flex flex-wrap gap-4">
@@ -2075,7 +2114,7 @@
 							<svg class="mb-2 h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
 							</svg>
-							<p class="text-xs">Select a card to view details</p>
+							<p class="text-laya-secondary">Select a card to view details</p>
 						</div>
 					{/if}
 				</div>
@@ -2109,8 +2148,8 @@
 					</svg>
 				</div>
 				<div>
-					<h3 class="text-sm font-semibold text-surface-100">Set up your integrations</h3>
-					<p class="mt-1.5 text-xs leading-relaxed text-surface-400">
+					<h3 class="text-laya-base font-semibold text-surface-100">Set up your integrations</h3>
+					<p class="mt-1.5 text-laya-secondary leading-relaxed text-surface-400">
 						Connect your tools to start receiving cards. Set up Gmail, Jira, Slack, GitHub, and more from the Integrations settings.
 					</p>
 				</div>
@@ -2120,7 +2159,7 @@
 				<a
 					href="/settings?tab=integrations"
 					onclick={() => showIntegrationsPopup = false}
-					class="inline-flex items-center gap-1.5 rounded-md bg-laya-orange px-4 py-2 text-xs font-medium text-surface-900 transition-colors hover:bg-laya-gold"
+					class="inline-flex items-center gap-1.5 rounded-md bg-laya-orange px-4 py-2 text-laya-secondary font-medium text-surface-900 transition-colors hover:bg-laya-gold"
 				>
 					<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -2130,7 +2169,7 @@
 				</a>
 				<button
 					onclick={() => showIntegrationsPopup = false}
-					class="rounded-md px-4 py-2 text-xs text-surface-400 transition-colors hover:text-surface-200"
+					class="rounded-md px-4 py-2 text-laya-secondary text-surface-400 transition-colors hover:text-surface-200"
 				>
 					Later
 				</button>
@@ -2162,7 +2201,7 @@
 					<svg class="h-4 w-4 text-laya-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
 					</svg>
-					<h2 class="text-sm font-semibold text-surface-100">Day Summary — {formatDateLabel($feedDate)}</h2>
+					<h2 class="text-laya-base font-semibold text-surface-100">Day Summary — {formatDateLabel($feedDate)}</h2>
 				</div>
 				<button
 					onclick={() => setSummaryModalOpen(false)}
@@ -2178,7 +2217,7 @@
 			<div class="flex-1 overflow-y-auto p-6">
 				{#if summaryLoading}
 					<div class="flex h-48 items-center justify-center text-surface-400">
-						<span class="text-sm">Loading summary...</span>
+						<span class="text-laya-base">Loading summary...</span>
 					</div>
 				{:else}
 					<DaySummaryComponent summary={filteredDaySummary} updatedAt={summaryUpdatedAt} ongotocard={handleSummaryGotoCard} spaceFilter={$feedFilters.spaceFilter} />

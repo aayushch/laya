@@ -39,9 +39,9 @@
 					<div class="absolute left-0 top-[11px] w-[13px] h-px bg-surface-700/40"></div>
 					<div class="absolute left-[10px] top-[8px] w-1.5 h-1.5 rounded-full bg-laya-orange/50"></div>
 
-					<span class="text-[11px] font-medium text-surface-300">{chapter.label}</span>
+					<span class="text-laya-secondary font-medium text-surface-300">{chapter.label}</span>
 					{#if chapter.timestamp}
-						<span class="text-[10px] text-surface-600 tabular-nums ml-1.5">
+						<span class="text-laya-micro text-surface-600 tabular-nums ml-1.5">
 							{new Date(chapter.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
 						</span>
 					{/if}
@@ -82,7 +82,7 @@
 					<div class="flex items-center gap-2">
 						<span class="text-laya-base font-semibold text-surface-200">{chapter.label}</span>
 						{#if chapter.timestamp}
-							<span class="text-xs text-surface-500">
+							<span class="text-laya-secondary text-surface-500">
 								{new Date(chapter.timestamp).toLocaleDateString(undefined, {
 									month: 'short',
 									day: 'numeric',
@@ -111,7 +111,7 @@
 		{#if cluster.timeline.length > 0}
 			<div class="relative flex items-center gap-3 mt-6">
 				<div class="w-3 h-3 rounded-full bg-surface-600 border-2 border-surface-500 z-10"></div>
-				<span class="text-xs text-surface-500 italic">
+				<span class="text-laya-secondary text-surface-500 italic">
 					{cluster.status_summary.current_state}
 				</span>
 			</div>

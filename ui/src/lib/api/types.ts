@@ -486,12 +486,20 @@ export interface DaySummary {
 	key_updates: SummaryItem[];
 }
 
-/** Response from GET /summary */
-export interface DaySummaryResponse {
-	date: string;
+/** Per-space summary entry returned by GET /summary */
+export interface SpaceSummary {
+	space_id: string;
+	space_name: string;
+	space_color: string;
 	summary: DaySummary | null;
 	card_ids: string[];
 	updated_at: string | null;
+}
+
+/** Response from GET /summary */
+export interface DaySummaryResponse {
+	date: string;
+	space_summaries: SpaceSummary[];
 }
 
 /** Request body for POST /actions/execute */

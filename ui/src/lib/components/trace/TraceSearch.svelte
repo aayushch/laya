@@ -85,7 +85,7 @@
 {#if tooltip}
 	<div
 		use:portal
-		class="fixed z-[100] px-2.5 py-1 rounded-md border border-transparent glass-tooltip text-xs font-medium shadow-lg pointer-events-none -translate-x-1/2 -translate-y-full"
+		class="fixed z-[100] px-2.5 py-1 rounded-md border border-transparent glass-tooltip text-laya-secondary font-medium shadow-lg pointer-events-none -translate-x-1/2 -translate-y-full"
 		style="left: {tooltip.x}px; top: {tooltip.y}px;"
 	>
 		{tooltip.text}
@@ -142,7 +142,7 @@
 				type="submit"
 				disabled={!query.trim() || loading}
 				class="px-5 py-2 rounded-lg
-				       bg-laya-orange text-white font-medium text-sm
+				       bg-laya-orange text-white font-medium text-laya-base
 				       hover:bg-laya-orange/90 disabled:opacity-40 disabled:cursor-not-allowed
 				       transition-colors"
 			>
@@ -155,12 +155,12 @@
 	{#if showAdvanced}
 		<div class="mt-2 rounded-xl p-4 {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-800/80'}">
 			<div class="flex items-center justify-between mb-3">
-				<h4 class="text-xs font-semibold uppercase tracking-wider text-surface-400">Search Settings</h4>
+				<h4 class="text-laya-secondary font-semibold uppercase tracking-wider text-surface-400">Search Settings</h4>
 				{#if hasCustomSettings}
 					<button
 						type="button"
 						onclick={resetAdvanced}
-						class="text-[10px] text-surface-500 hover:text-surface-300 transition-colors"
+						class="text-laya-micro text-surface-500 hover:text-surface-300 transition-colors"
 					>
 						Reset to defaults
 					</button>
@@ -181,8 +181,8 @@
 						<span class="absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full transition-all {enableSemantic ? 'translate-x-[14px] bg-white' : 'bg-surface-400'}"></span>
 					</button>
 					<div class="flex-1">
-						<span class="text-xs font-medium text-surface-200 group-hover:text-surface-50 transition-colors">Semantic search</span>
-						<p class="text-[10px] text-surface-500 leading-tight">Vector similarity via embeddings — finds conceptually related items</p>
+						<span class="text-laya-secondary font-medium text-surface-200 group-hover:text-surface-50 transition-colors">Semantic search</span>
+						<p class="text-laya-micro text-surface-500 leading-tight">Vector similarity via embeddings — finds conceptually related items</p>
 					</div>
 				</label>
 
@@ -199,8 +199,8 @@
 						<span class="absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full transition-all {enableText ? 'translate-x-[14px] bg-white' : 'bg-surface-400'}"></span>
 					</button>
 					<div class="flex-1">
-						<span class="text-xs font-medium text-surface-200 group-hover:text-surface-50 transition-colors">Text search</span>
-						<p class="text-[10px] text-surface-500 leading-tight">Exact phrase match on titles, descriptions, and event content</p>
+						<span class="text-laya-secondary font-medium text-surface-200 group-hover:text-surface-50 transition-colors">Text search</span>
+						<p class="text-laya-micro text-surface-500 leading-tight">Exact phrase match on titles, descriptions, and event content</p>
 					</div>
 				</label>
 
@@ -217,8 +217,8 @@
 						<span class="absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full transition-all {enableFuzzy ? 'translate-x-[14px] bg-white' : 'bg-surface-400'}"></span>
 					</button>
 					<div class="flex-1">
-						<span class="text-xs font-medium text-surface-200 group-hover:text-surface-50 transition-colors">Fuzzy search</span>
-						<p class="text-[10px] text-surface-500 leading-tight">Broad keyword matching — each word matched independently (noisier results)</p>
+						<span class="text-laya-secondary font-medium text-surface-200 group-hover:text-surface-50 transition-colors">Fuzzy search</span>
+						<p class="text-laya-micro text-surface-500 leading-tight">Broad keyword matching — each word matched independently (noisier results)</p>
 					</div>
 				</label>
 
@@ -235,8 +235,8 @@
 						<span class="absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full transition-all {enableLlmFilter ? 'translate-x-[14px] bg-white' : 'bg-surface-400'}"></span>
 					</button>
 					<div class="flex-1">
-						<span class="text-xs font-medium text-surface-200 group-hover:text-surface-50 transition-colors">AI relevance filter</span>
-						<p class="text-[10px] text-surface-500 leading-tight">Uses a model to remove false positives — adds latency but improves precision</p>
+						<span class="text-laya-secondary font-medium text-surface-200 group-hover:text-surface-50 transition-colors">AI relevance filter</span>
+						<p class="text-laya-micro text-surface-500 leading-tight">Uses a model to remove false positives — adds latency but improves precision</p>
 					</div>
 				</label>
 			</div>

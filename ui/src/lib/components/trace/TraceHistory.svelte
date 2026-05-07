@@ -40,7 +40,7 @@
 {#if tooltip}
 	<div
 		use:portal
-		class="fixed z-[100] px-2.5 py-1 rounded-md border border-transparent glass-tooltip text-xs font-medium shadow-lg pointer-events-none -translate-x-1/2 -translate-y-full"
+		class="fixed z-[100] px-2.5 py-1 rounded-md border border-transparent glass-tooltip text-laya-secondary font-medium shadow-lg pointer-events-none -translate-x-1/2 -translate-y-full"
 		style="left: {tooltip.x}px; top: {tooltip.y}px;"
 	>
 		{tooltip.text}
@@ -52,7 +52,7 @@
 		<svg class="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
 			<path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
 		</svg>
-		<p class="text-sm">No searches yet. Search for an entity to get started.</p>
+		<p class="text-laya-base">No searches yet. Search for an entity to get started.</p>
 	</div>
 {:else}
 	<div class="space-y-2">
@@ -72,11 +72,11 @@
 				<!-- Row 1: Title + action buttons -->
 				<div class="flex items-center justify-between gap-3">
 					<div class="flex items-center gap-2 min-w-0">
-						<h3 class="text-sm font-medium text-surface-100 truncate group-hover:text-laya-orange transition-colors">
+						<h3 class="text-laya-base font-medium text-surface-100 truncate group-hover:text-laya-orange transition-colors">
 							"{trace.query}"
 						</h3>
 						{#if trace.fuzzy_search}
-							<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-laya-orange/15 text-laya-orange border border-laya-orange/30">
+							<span class="shrink-0 px-1.5 py-0.5 rounded text-laya-micro font-medium bg-laya-orange/15 text-laya-orange border border-laya-orange/30">
 								Fuzzy
 							</span>
 						{/if}
@@ -115,10 +115,10 @@
 					{#each trace.platforms as platform}
 						<PlatformBadge {platform} />
 					{/each}
-					<span class="text-xs text-surface-500">
+					<span class="text-laya-secondary text-surface-500">
 						{trace.total_cards} cards
 					</span>
-					<span class="text-xs text-surface-600">
+					<span class="text-laya-secondary text-surface-600">
 						{new Date(trace.created_at).toLocaleDateString(undefined, {
 							month: 'short',
 							day: 'numeric',
@@ -129,16 +129,16 @@
 					{#if trace.enable_semantic || trace.enable_text || trace.enable_llm_filter || trace.fuzzy_search}
 						<div class="flex items-center gap-1.5 ml-auto">
 							{#if trace.enable_semantic}
-								<span class="px-1.5 py-0.5 rounded bg-laya-orange/10 text-laya-orange text-[9px] font-medium">Semantic</span>
+								<span class="px-1.5 py-0.5 rounded bg-laya-orange/10 text-laya-orange text-laya-micro font-medium">Semantic</span>
 							{/if}
 							{#if trace.enable_text}
-								<span class="px-1.5 py-0.5 rounded bg-laya-gold/10 text-laya-gold text-[9px] font-medium">Text</span>
+								<span class="px-1.5 py-0.5 rounded bg-laya-gold/10 text-laya-gold text-laya-micro font-medium">Text</span>
 							{/if}
 							{#if trace.enable_llm_filter}
-								<span class="px-1.5 py-0.5 rounded bg-laya-peach/10 text-laya-peach text-[9px] font-medium">AI Filter</span>
+								<span class="px-1.5 py-0.5 rounded bg-laya-peach/10 text-laya-peach text-laya-micro font-medium">AI Filter</span>
 							{/if}
 							{#if trace.fuzzy_search}
-								<span class="px-1.5 py-0.5 rounded bg-laya-coral/10 text-laya-coral text-[9px] font-medium">Fuzzy</span>
+								<span class="px-1.5 py-0.5 rounded bg-laya-coral/10 text-laya-coral text-laya-micro font-medium">Fuzzy</span>
 							{/if}
 						</div>
 					{/if}

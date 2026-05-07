@@ -136,7 +136,7 @@
 {#if tooltip}
 	<div
 		use:portal
-		class="fixed z-[100] px-2 py-1 rounded-md border border-transparent glass-tooltip text-[10px] font-medium pointer-events-none -translate-x-1/2 -translate-y-full max-w-[400px] break-words"
+		class="fixed z-[100] px-2 py-1 rounded-md border border-transparent glass-tooltip text-laya-micro font-medium pointer-events-none -translate-x-1/2 -translate-y-full max-w-[400px] break-words"
 		style="left: {tooltip.x}px; top: {tooltip.y}px;"
 	>
 		{tooltip.text}
@@ -176,7 +176,7 @@
 		<!-- Platform badges (fixed) -->
 		<span class="flex items-center gap-1 shrink-0 w-[80px]">
 			{#each cluster.status_summary.platforms_involved as platform}
-				<span class="inline-flex items-center px-1.5 py-0 rounded border text-[9px] font-medium capitalize leading-[16px] {platformBadgeColors[platform] || 'bg-surface-700/50 text-surface-400 border-surface-600/50'}">
+				<span class="inline-flex items-center px-1.5 py-0 rounded border text-laya-micro font-medium capitalize leading-[16px] {platformBadgeColors[platform] || 'bg-surface-700/50 text-surface-400 border-surface-600/50'}">
 					{platform}
 				</span>
 			{/each}
@@ -187,7 +187,7 @@
 			onclick={() => (expanded = !expanded)}
 			onmouseenter={(e) => showTooltip(e, cluster.primary_entity.title)}
 			onmouseleave={hideTooltip}
-			class="text-[13px] font-medium text-surface-100 hover:text-laya-orange transition-colors truncate text-left cursor-pointer flex-1 min-w-0"
+			class="text-laya-base font-medium text-surface-100 hover:text-laya-orange transition-colors truncate text-left cursor-pointer flex-1 min-w-0"
 		>
 			{cluster.primary_entity.title}
 		</button>
@@ -201,14 +201,14 @@
 				<span
 					class="inline-flex items-center justify-center min-w-[22px] h-[16px] px-1.5 rounded-full
 					       bg-surface-700/60 border border-surface-600/50
-					       text-[10px] font-medium text-surface-300 tabular-nums leading-none"
+					       text-laya-micro font-medium text-surface-300 tabular-nums leading-none"
 					aria-label="{cluster.status_summary.total_cards} cards"
 				>
 					{cluster.status_summary.total_cards}
 				</span>
 			</span>
 			<span
-				class="text-[10px] text-surface-500 whitespace-nowrap tabular-nums w-[160px] text-right
+				class="text-laya-micro text-surface-500 whitespace-nowrap tabular-nums w-[160px] text-right
 				       transition-opacity duration-150 group-hover:opacity-0 group-hover:pointer-events-none"
 			>
 				{dateRangeText}
@@ -221,7 +221,7 @@
 		             group-hover:opacity-100 group-hover:pointer-events-auto
 		             transition-opacity duration-150 z-10">
 			{#if hasNarrative}
-				<span class="text-[10px] text-laya-orange" role="img" aria-label="Has narrative"
+				<span class="text-laya-micro text-laya-orange" role="img" aria-label="Has narrative"
 					onmouseenter={(e) => showTooltip(e, 'Has narrative')}
 					onmouseleave={hideTooltip}
 				>✦</span>
@@ -309,7 +309,7 @@
 							     generation is in progress. Without this, parseNarrative('')
 							     short-circuits to isThinking=false and the pill renders empty. -->
 							<div class="rounded-md bg-laya-orange/5 border border-laya-orange/15 px-3 py-2">
-								<div class="flex items-center gap-1.5 text-[11px] text-surface-400">
+								<div class="flex items-center gap-1.5 text-laya-secondary text-surface-400">
 									<svg class="h-2.5 w-2.5 animate-spin text-laya-orange/60 shrink-0" fill="none" viewBox="0 0 24 24">
 										<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 										<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
@@ -320,7 +320,7 @@
 						{:else}
 							<div class="rounded-md bg-laya-orange/5 border border-laya-orange/15 px-3 py-2">
 								<div class="flex items-center gap-1.5 mb-1">
-									<span class="text-[9px] font-medium uppercase tracking-wider text-laya-orange/70 inline-flex items-center gap-1"><span class="text-[8px] leading-none -translate-y-px">✦</span> narrative</span>
+									<span class="text-laya-micro font-medium uppercase tracking-wider text-laya-orange/70 inline-flex items-center gap-1"><span class="text-laya-micro leading-none -translate-y-px">✦</span> narrative</span>
 									{#if isStreaming}
 										<svg class="h-2.5 w-2.5 animate-spin text-laya-orange/60 shrink-0" fill="none" viewBox="0 0 24 24">
 											<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -330,13 +330,13 @@
 								</div>
 								{#if parsed.thinking}
 									<details>
-										<summary class="cursor-pointer text-[10px] text-surface-500 hover:text-surface-300 select-none list-none flex items-center gap-1 mb-1">
+										<summary class="cursor-pointer text-laya-micro text-surface-500 hover:text-surface-300 select-none list-none flex items-center gap-1 mb-1">
 											<svg class="w-2.5 h-2.5 shrink-0 transition-transform [[open]>&]:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
 												<path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
 											</svg>
 											thought process
 										</summary>
-										<div class="ml-3.5 border-l border-laya-orange/10 pl-2 text-[10px] leading-relaxed text-surface-500 whitespace-pre-wrap mb-1.5">
+										<div class="ml-3.5 border-l border-laya-orange/10 pl-2 text-laya-micro leading-relaxed text-surface-500 whitespace-pre-wrap mb-1.5">
 											{parsed.thinking}
 										</div>
 									</details>
@@ -358,7 +358,7 @@
 						<div class="absolute left-0 top-[11px] bottom-0 w-px bg-surface-700/40"></div>
 						<button
 							onclick={ongenerate}
-							class="flex items-center gap-1 text-[11px] text-surface-500 hover:text-laya-orange transition-colors cursor-pointer"
+							class="flex items-center gap-1 text-laya-secondary text-surface-500 hover:text-laya-orange transition-colors cursor-pointer"
 						>
 							<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 								<path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
@@ -376,7 +376,7 @@
 						<div class="absolute left-0 top-[13px] w-[13px] h-px bg-surface-700/40"></div>
 						<div class="absolute left-[10px] top-[10px] w-1.5 h-1.5 rounded-full bg-surface-600"></div>
 						<div class="absolute left-0 top-[13px] bottom-0 w-px bg-surface-700/40"></div>
-						<div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+						<div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-laya-secondary">
 							<span class="text-surface-600">linked:</span>
 							{#each cluster.linked_entities as entity}
 								{#if entity.url}
@@ -396,7 +396,7 @@
 				{#if cluster.timeline.length > 1}
 					<div class="relative pl-5 h-[22px] flex items-center justify-end pr-2">
 						<div class="absolute left-0 top-0 bottom-0 w-px bg-surface-700/40"></div>
-						<div class="flex items-center gap-2 text-[10px] text-surface-500">
+						<div class="flex items-center gap-2 text-laya-micro text-surface-500">
 							{#if cardsExpanded}
 								<button
 									onclick={() => { allCardsExpanded = false; cardsExpanded = false; }}
@@ -424,7 +424,7 @@
 					<div class="absolute left-0 top-0 h-[13px] w-px bg-surface-700/40"></div>
 					<div class="absolute left-0 top-[13px] w-[13px] h-px bg-surface-700/40"></div>
 					<div class="absolute left-[10px] top-[10px] w-1.5 h-1.5 rounded-full bg-surface-500"></div>
-					<span class="text-[10px] text-surface-600 italic">
+					<span class="text-laya-micro text-surface-600 italic">
 						{cluster.status_summary.current_state}
 					</span>
 				</div>

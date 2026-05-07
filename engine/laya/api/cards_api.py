@@ -1351,12 +1351,16 @@ async def update_classification(card_id: str, body: UpdateClassificationRequest)
 
 
 @router.get("/summary")
-async def get_daily_summary(date: str | None = None, tz: str | None = None) -> dict:
-    """Get the daily summary for a given date (defaults to today).
+async def get_daily_summary(
+    date: str | None = None,
+    tz: str | None = None,
+    space_id: str | None = None,
+) -> dict:
+    """Get daily summaries for a given date, grouped by space.
 
-    When ``tz`` is provided the caller's local date is converted to the
-    corresponding UTC date for the DB lookup (summaries are stored under
-    UTC dates).  This mirrors the timezone handling in ``get_grouped_cards``.
+    When ``tz`` is provided the caller's local date is used for the DB
+    lookup (summaries are stored under UTC dates).  Optionally filter to
+    a single space via ``space_id``.
     """
     if not date:
         if tz:
@@ -1369,36 +1373,47 @@ async def get_daily_summary(date: str | None = None, tz: str | None = None) -> d
         else:
             date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    # Summaries are stored under UTC dates (datetime.now(UTC) at processing
-    # time).  The caller's local date usually matches the UTC date except
-    # near midnight, so we use ``date`` directly — the old midnight-to-UTC
-    # conversion shifted the lookup a full day back for UTC+ timezones.
     db = await get_db()
-    rows = await db.execute_fetchall(
-        "SELECT summary_json, card_ids, updated_at FROM daily_summaries WHERE date = ?",
-        (date,),
-    )
 
-    if not rows:
-        return {
-            "date": date,
-            "summary": None,
-            "card_ids": [],
-            "updated_at": None,
-        }
+    if space_id:
+        rows = await db.execute_fetchall(
+            """SELECT ds.space_id, ds.summary_json, ds.card_ids, ds.updated_at,
+                      s.name AS space_name, s.color AS space_color
+               FROM daily_summaries ds
+               LEFT JOIN spaces s ON ds.space_id = s.space_id
+               WHERE ds.date = ? AND ds.space_id = ?""",
+            (date, space_id),
+        )
+    else:
+        rows = await db.execute_fetchall(
+            """SELECT ds.space_id, ds.summary_json, ds.card_ids, ds.updated_at,
+                      s.name AS space_name, s.color AS space_color
+               FROM daily_summaries ds
+               LEFT JOIN spaces s ON ds.space_id = s.space_id
+               WHERE ds.date = ?""",
+            (date,),
+        )
 
-    try:
-        summary = json.loads(rows[0]["summary_json"])
-        card_ids = json.loads(rows[0]["card_ids"])
-    except json.JSONDecodeError:
-        summary = None
-        card_ids = []
+    space_summaries = []
+    for row in rows:
+        try:
+            summary = json.loads(row["summary_json"])
+            card_ids = json.loads(row["card_ids"])
+        except json.JSONDecodeError:
+            summary = None
+            card_ids = []
+        space_summaries.append({
+            "space_id": row["space_id"] or "default",
+            "space_name": row["space_name"] or "Default",
+            "space_color": row["space_color"] or "#F97316",
+            "summary": summary,
+            "card_ids": card_ids,
+            "updated_at": row["updated_at"],
+        })
 
     return {
         "date": date,
-        "summary": summary,
-        "card_ids": card_ids,
-        "updated_at": rows[0]["updated_at"],
+        "space_summaries": space_summaries,
     }
 
 

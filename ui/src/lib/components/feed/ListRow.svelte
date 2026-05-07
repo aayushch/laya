@@ -244,7 +244,7 @@
 		</button>
 
 		<!-- Source — fixed width, brand-colored dot prefix for at-a-glance scanning -->
-	<span class="w-[76px] shrink-0 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-surface-500 truncate" title={platform}>
+	<span class="w-[76px] shrink-0 flex items-center gap-1.5 text-laya-secondary font-semibold uppercase tracking-wider text-surface-500 truncate" title={platform}>
 		<span class="h-1 w-1 rounded-full shrink-0" style="background-color: {platformDotColor(platformKey(card.entity_id))}"></span>
 		<span class="truncate">{platform}</span>
 	</span>
@@ -257,7 +257,7 @@
 		onmouseenter={() => showTooltipIfTruncated(actorEl, card.actor_name ?? '')}
 		onmouseleave={hideTooltip}
 	>
-		<span bind:this={actorEl} class="block truncate text-xs text-surface-400">
+		<span bind:this={actorEl} class="block truncate text-laya-secondary text-surface-400">
 			{card.actor_name ?? ''}
 		</span>
 	</span>
@@ -267,7 +267,7 @@
 		onmouseenter={() => showTooltipIfTruncated(subjectEl, card.header, { maxWidth: 320 })}
 		onmouseleave={hideTooltip}
 	>
-		<span bind:this={subjectEl} class="block truncate text-xs {card.read_at ? 'font-normal text-surface-300' : 'font-semibold text-surface-100'}">
+		<span bind:this={subjectEl} class="block truncate text-laya-secondary {card.read_at ? 'font-normal text-surface-300' : 'font-semibold text-surface-100'}">
 			{card.header}
 		</span>
 	</span>
@@ -275,7 +275,7 @@
 	<!-- Status — fixed width -->
 	<span class="w-[70px] shrink-0 flex items-center gap-1 ml-2">
 		<StatusDot status={card.status} size="md" errorMessage={card.last_error} />
-		<span class="text-[11px] text-surface-500 whitespace-nowrap truncate" title={card.status === 'failed' && card.last_error ? card.last_error : ''}>{statusLabel[card.status] ?? card.status}</span>
+		<span class="text-laya-secondary text-surface-500 whitespace-nowrap truncate" title={card.status === 'failed' && card.last_error ? card.last_error : ''}>{statusLabel[card.status] ?? card.status}</span>
 	</span>
 
 	<!-- Action buttons — fixed width slot (visible on hover) -->
@@ -320,19 +320,19 @@
 	</div>
 
 	<!-- Persona badge — fixed width -->
-	<span class="w-[62px] shrink-0 text-center rounded border px-1 py-0.5 text-[9px] font-bold uppercase ml-1 {personaColors[card.persona] ?? personaColors.ENGINEER}">
+	<span class="w-[62px] shrink-0 text-center rounded border px-1 py-0.5 text-laya-micro font-bold uppercase ml-1 {personaColors[card.persona] ?? personaColors.ENGINEER}">
 		{card.persona}
 	</span>
 
 	<!-- Priority badge — fixed width -->
-	<span class="w-[36px] shrink-0 text-center rounded px-1 py-0.5 text-[9px] font-bold uppercase ml-1 {priorityColors[card.priority] ?? priorityColors.MEDIUM}">
+	<span class="w-[36px] shrink-0 text-center rounded px-1 py-0.5 text-laya-micro font-bold uppercase ml-1 {priorityColors[card.priority] ?? priorityColors.MEDIUM}">
 		{priorityLabel[card.priority] ?? card.priority}
 	</span>
 
 	<!-- Space badge — fixed width -->
 	<span class="w-[72px] shrink-0 flex items-center gap-1 ml-1 truncate">
 		{#if card.space_name}
-			<span class="inline-flex items-center gap-1 rounded border border-surface-700 bg-surface-800/60 px-1.5 py-0.5 text-[9px] text-surface-400 truncate">
+			<span class="inline-flex items-center gap-1 rounded border border-surface-700 bg-surface-800/60 px-1.5 py-0.5 text-laya-micro text-surface-400 truncate">
 				<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {card.space_color ?? '#F97316'}"></span>
 				<span class="truncate">{card.space_name}</span>
 			</span>
@@ -340,7 +340,7 @@
 	</span>
 
 	<!-- Time — fixed width -->
-	<span class="w-[52px] shrink-0 text-right text-[10px] text-surface-500 whitespace-nowrap">{timeAgo(card.created_at)}</span>
+	<span class="w-[52px] shrink-0 text-right text-laya-micro text-surface-500 whitespace-nowrap">{timeAgo(card.created_at)}</span>
 	</div>
 </div>
 </div>
@@ -362,13 +362,13 @@
 					</svg>
 				</div>
 				<div>
-					<h4 class="text-sm font-semibold text-surface-50">Delete card permanently?</h4>
-					<p class="mt-1 text-xs leading-relaxed text-surface-400">This cannot be undone.</p>
+					<h4 class="text-laya-base font-semibold text-surface-50">Delete card permanently?</h4>
+					<p class="mt-1 text-laya-secondary leading-relaxed text-surface-400">This cannot be undone.</p>
 				</div>
 			</div>
 			<div class="flex justify-end gap-2">
-				<button class="rounded-md px-3 py-1.5 text-xs text-surface-400 hover:text-surface-200" onclick={(e) => { e.stopPropagation(); showDeleteConfirm = false; }}>Cancel</button>
-				<button class="rounded-md bg-red-700 px-3 py-1.5 text-xs font-medium text-red-50 hover:bg-red-600" onclick={deleteCard} disabled={deleting}>{deleting ? 'Deleting...' : 'Delete'}</button>
+				<button class="rounded-md px-3 py-1.5 text-laya-secondary text-surface-400 hover:text-surface-200" onclick={(e) => { e.stopPropagation(); showDeleteConfirm = false; }}>Cancel</button>
+				<button class="rounded-md bg-red-700 px-3 py-1.5 text-laya-secondary font-medium text-red-50 hover:bg-red-600" onclick={deleteCard} disabled={deleting}>{deleting ? 'Deleting...' : 'Delete'}</button>
 			</div>
 		</div>
 	</div>
@@ -377,7 +377,7 @@
 {#if fixedTooltip}
 	<span
 		use:portal
-		class="pointer-events-none fixed z-[100] rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium"
+		class="pointer-events-none fixed z-[100] rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium"
 		style="top: {fixedTooltip.top}px; left: {fixedTooltip.left}px;{fixedTooltip.maxWidth ? ` max-width: ${fixedTooltip.maxWidth}px; white-space: normal;` : ' white-space: nowrap;'}"
 	>
 		{fixedTooltip.text}
