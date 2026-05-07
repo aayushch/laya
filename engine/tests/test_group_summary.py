@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 import pytest
 import pytest_asyncio
 
-from laya.models.card import GroupSummaryResponse
+from laya.models.card import GroupSummaryResponse, KeyEvent
 
 
 @pytest.fixture
@@ -18,9 +18,9 @@ def mock_llm_response():
         "headline": "PR #540 reviewed and approved",
         "summary": "Alice opened PR #540 for the auth module refactor. Bob reviewed and approved it after two rounds of feedback. The PR is now ready to merge.",
         "key_events": [
-            "PR #540 opened by Alice (Feb 22)",
-            "Review requested from Bob (Feb 22)",
-            "Bob approved after feedback addressed (Feb 23)",
+            {"event": "PR #540 opened by Alice", "timestamp": "2026-02-22T10:00:00Z"},
+            {"event": "Review requested from Bob", "timestamp": "2026-02-22T14:30:00Z"},
+            {"event": "Bob approved after feedback addressed", "timestamp": "2026-02-23T09:15:00Z"},
         ],
         "current_status": "Approved and ready to merge",
         "pending_actions": ["Merge PR before sprint close"],
@@ -103,7 +103,7 @@ async def test_rolling_update(db, mock_llm_response):
         """INSERT INTO group_summaries
                (entity_id, headline, summary, key_events, current_status,
                 pending_actions, card_ids, card_count, space_id)
-           VALUES (?, 'Bug reported', 'Initial summary', '["Bug found"]',
+           VALUES (?, 'Bug reported', 'Initial summary', '[{"event": "Bug found", "timestamp": "2026-02-20T08:00:00Z"}]',
                    'Under investigation', '["Fix the bug"]',
                    '["card_1", "card_2"]', 2, 'default')""",
         (entity_id,),
@@ -117,7 +117,11 @@ async def test_rolling_update(db, mock_llm_response):
     updated_response.parsed = {
         "headline": "Bug fixed and deployed",
         "summary": "The NPE was found, assigned to Alice, and fixed. Deployed to staging.",
-        "key_events": ["Bug found", "Assigned to Alice", "Fix deployed"],
+        "key_events": [
+            {"event": "Bug found", "timestamp": "2026-02-20T08:00:00Z"},
+            {"event": "Assigned to Alice", "timestamp": "2026-02-20T10:00:00Z"},
+            {"event": "Fix deployed", "timestamp": "2026-02-21T16:00:00Z"},
+        ],
         "current_status": "Fix deployed to staging",
         "pending_actions": None,
     }
@@ -238,7 +242,7 @@ async def test_grouped_cards_include_summary(db, mock_llm_response):
         """INSERT INTO group_summaries
                (entity_id, headline, summary, key_events, current_status,
                 pending_actions, card_ids, card_count, space_id)
-           VALUES (?, 'Test headline', 'Test summary', '["Event 1"]',
+           VALUES (?, 'Test headline', 'Test summary', '[{"event": "Event 1", "timestamp": "2026-02-20T08:00:00Z"}]',
                    'In progress', null, '["grp_1", "grp_2"]', 2, 'default')""",
         (entity_id,),
     )
@@ -257,3 +261,78 @@ async def test_grouped_cards_include_summary(db, mock_llm_response):
     assert group.group_summary is not None
     assert group.group_summary.headline == "Test headline"
     assert group.group_summary.card_count == 2
+
+
+def test_legacy_string_key_events():
+    """Old string[] key_events still deserialize correctly."""
+    resp = GroupSummaryResponse(
+        entity_id="test:legacy",
+        headline="Test",
+        summary="Test summary",
+        key_events=["Old format event 1", "Old format event 2"],
+        current_status="Active",
+        pending_actions=None,
+        card_count=2,
+        card_ids=["c1", "c2"],
+    )
+    assert resp.key_events is not None
+    assert isinstance(resp.key_events[0], str)
+
+
+def test_new_object_key_events():
+    """New object format key_events deserialize correctly."""
+    resp = GroupSummaryResponse(
+        entity_id="test:new",
+        headline="Test",
+        summary="Test summary",
+        key_events=[
+            {"event": "Something happened", "timestamp": "2026-05-04T04:23:03Z"},
+        ],
+        current_status="Active",
+        pending_actions=None,
+        card_count=2,
+        card_ids=["c1", "c2"],
+    )
+    assert resp.key_events is not None
+    assert isinstance(resp.key_events[0], KeyEvent)
+    assert resp.key_events[0].event == "Something happened"
+    assert resp.key_events[0].timestamp == "2026-05-04T04:23:03Z"
+
+
+def test_key_event_empty_timestamp():
+    """KeyEvent with empty timestamp is accepted."""
+    resp = GroupSummaryResponse(
+        entity_id="test:empty-ts",
+        headline="Test",
+        summary="Test summary",
+        key_events=[
+            {"event": "No timestamp available", "timestamp": ""},
+        ],
+        current_status="Active",
+        pending_actions=None,
+        card_count=2,
+        card_ids=["c1", "c2"],
+    )
+    assert resp.key_events is not None
+    assert isinstance(resp.key_events[0], KeyEvent)
+    assert resp.key_events[0].timestamp == ""
+
+
+def test_mixed_key_events():
+    """Mix of old strings and new objects in key_events."""
+    resp = GroupSummaryResponse(
+        entity_id="test:mixed",
+        headline="Test",
+        summary="Test summary",
+        key_events=[
+            "Legacy event text",
+            {"event": "New format event", "timestamp": "2026-05-04T04:23:03Z"},
+        ],
+        current_status="Active",
+        pending_actions=None,
+        card_count=2,
+        card_ids=["c1", "c2"],
+    )
+    assert resp.key_events is not None
+    assert isinstance(resp.key_events[0], str)
+    assert isinstance(resp.key_events[1], KeyEvent)

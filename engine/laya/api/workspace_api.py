@@ -50,7 +50,7 @@ async def get_workspace(card_id: str) -> dict[str, Any]:
         """SELECT session_id, card_id, agent_type, status,
                   repo_path, initial_prompt, started_at, updated_at,
                   completed_at, findings_json, error_message, add_dirs,
-                  session_type
+                  session_type, permission_mode
            FROM workspace_sessions
            WHERE card_id = ?
            ORDER BY started_at DESC
@@ -69,7 +69,7 @@ async def get_workspace(card_id: str) -> dict[str, Any]:
                 """SELECT session_id, card_id, agent_type, status,
                           repo_path, initial_prompt, started_at, updated_at,
                           completed_at, findings_json, error_message, add_dirs,
-                          session_type
+                          session_type, permission_mode
                    FROM workspace_sessions
                    WHERE entity_id = ?
                    ORDER BY started_at DESC
@@ -96,6 +96,7 @@ async def get_workspace(card_id: str) -> dict[str, Any]:
         "session_type": row[12] or (
             "research" if row[4] and "/tmp/research/" in row[4] else "code"
         ),
+        "permission_mode": row[13],
     }
 
     # Get workspace events for this session
@@ -168,12 +169,14 @@ class AnswerQuestionRequest(BaseModel):
     """Request body for POST /workspace/{session_id}/answer."""
     answers: list[dict[str, Any]]  # [{question_index: 0, selected: "Free APIs (Recommended)"}]
     add_dirs: list[str] | None = None
+    mode: str | None = None
 
 
 class ResumePromptRequest(BaseModel):
     """Request body for POST /workspace/{session_id}/resume."""
     prompt: str
     add_dirs: list[str] | None = None
+    mode: str | None = None
 
 
 @router.post("/workspace/{session_id}/answer")
@@ -228,7 +231,7 @@ async def answer_agent_question(session_id: str, body: AnswerQuestionRequest) ->
 
     # Resume the agent conversation in the background
     from laya.tasks import create_task as create_tracked_task
-    create_tracked_task(_run_resumed_session(session_id, card_id, answer_text, add_dirs=body.add_dirs))
+    create_tracked_task(_run_resumed_session(session_id, card_id, answer_text, add_dirs=body.add_dirs, mode=body.mode))
 
     return {"status": "resumed", "session_id": session_id}
 
@@ -239,10 +242,11 @@ async def _run_resumed_session(
     answer_text: str,
     add_dirs: list[str] | None = None,
     is_freeform: bool = False,
+    mode: str | None = None,
 ) -> None:
     """Background task: resume agent, stream events, complete session."""
     try:
-        agent = await session_manager.resume_conversation(session_id, answer_text, add_dirs=add_dirs)
+        agent = await session_manager.resume_conversation(session_id, answer_text, add_dirs=add_dirs, mode=mode)
 
         findings: dict[str, Any] = {}
         async for ws_event in agent.stream_events():
@@ -392,7 +396,7 @@ async def resume_session_with_prompt(session_id: str, body: ResumePromptRequest)
 
     # Resume the agent conversation in the background
     from laya.tasks import create_task as create_tracked_task
-    create_tracked_task(_run_resumed_session(session_id, card_id, prompt, add_dirs=body.add_dirs, is_freeform=True))
+    create_tracked_task(_run_resumed_session(session_id, card_id, prompt, add_dirs=body.add_dirs, is_freeform=True, mode=body.mode))
 
     return {"status": "resumed", "session_id": session_id}
 

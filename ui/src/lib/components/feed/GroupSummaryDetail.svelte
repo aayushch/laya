@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { GroupSummary, CardGroup, ActionCard, CardEgressContext, CardEgressAction } from '$lib/api/types';
+	import type { GroupSummary, CardGroup, ActionCard, CardEgressContext, CardEgressAction, KeyEvent } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
 	import { goto } from '$app/navigation';
 	import { chatOpen, chatCardContext, chatCardIds, chatListOpen } from '$lib/stores/chat';
@@ -34,6 +34,29 @@
 		onshowrelated?: (card: ActionCard) => void;
 		onrunagent?: (entityId: string) => void;
 	} = $props();
+
+	function parseKeyEvent(item: string | KeyEvent): { text: string; timestamp: string | null } {
+		if (typeof item === 'string') return { text: item, timestamp: null };
+		if (item && typeof item === 'object' && 'event' in item) {
+			return { text: item.event, timestamp: item.timestamp || null };
+		}
+		return { text: String(item), timestamp: null };
+	}
+
+	function formatLocalTime(iso: string): string {
+		try {
+			const d = new Date(iso);
+			if (isNaN(d.getTime())) return '';
+			return d.toLocaleString(undefined, {
+				month: 'short',
+				day: 'numeric',
+				hour: 'numeric',
+				minute: '2-digit',
+			});
+		} catch {
+			return '';
+		}
+	}
 
 	let regenerateError = $state<string | null>(null);
 	let relatedCount = $state<number | null>(null);
@@ -137,7 +160,10 @@
 			lines.push(`Summary: ${summary.summary}`);
 			if (summary.key_events?.length) {
 				lines.push(``, `Key Events:`);
-				summary.key_events.forEach((e) => lines.push(`- ${e}`));
+				summary.key_events.forEach((item) => {
+					const { text, timestamp } = parseKeyEvent(item);
+					lines.push(timestamp ? `- ${text} (${timestamp})` : `- ${text}`);
+				});
 			}
 			if (summary.current_status) {
 				lines.push(``, `Current Status: ${summary.current_status}`);
@@ -324,11 +350,20 @@
 			{#if summary.key_events && summary.key_events.length > 0}
 				<div class="mb-5">
 					<h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-surface-400">Key Developments</h3>
-					<ul class="space-y-1.5">
-						{#each summary.key_events as event}
+					<ul class="space-y-2.5">
+						{#each summary.key_events as item}
+							{@const parsed = parseKeyEvent(item)}
 							<li class="flex items-start gap-2 text-laya-base text-surface-300">
 								<span class="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-laya-orange/50"></span>
-								{event}
+								<div class="flex flex-col">
+									<span>{parsed.text}</span>
+									{#if parsed.timestamp}
+										{@const localTime = formatLocalTime(parsed.timestamp)}
+										{#if localTime}
+											<span class="mt-0.5 text-xs text-surface-500">{localTime}</span>
+										{/if}
+									{/if}
+								</div>
 							</li>
 						{/each}
 					</ul>

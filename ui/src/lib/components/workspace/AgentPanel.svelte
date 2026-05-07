@@ -32,6 +32,23 @@
 	let scrollContainer = $state<HTMLElement | null>(null);
 	let sendingPrompt = $state(false);
 
+	// Agent permission mode toggle — 'plan' or 'acceptEdits'
+	let agentMode = $state<'plan' | 'acceptEdits'>(
+		(session?.permission_mode as 'plan' | 'acceptEdits') || 'plan'
+	);
+
+	// Sync agentMode when session changes (e.g. after poll refresh updates permission_mode)
+	$effect(() => {
+		if (session?.permission_mode) {
+			agentMode = session.permission_mode as 'plan' | 'acceptEdits';
+		}
+	});
+
+	// Toggle is enabled when the agent is NOT actively running
+	const canToggleMode = $derived(
+		session != null && !['starting', 'running'].includes(session.status)
+	);
+
 	// AskUserQuestion state
 	let questionSelections = $state<Record<string, string>>({});
 	let submittingAnswer = $state(false);
@@ -232,7 +249,7 @@
 				header: q.header ?? '',
 				selected: questionSelections[`${event.event_id}_${idx}`] ?? ''
 			}));
-			await engineApi.answerAgentQuestion(session.session_id, answers, addDirsArray);
+			await engineApi.answerAgentQuestion(session.session_id, answers, addDirsArray, agentMode);
 		} finally {
 			submittingAnswer = false;
 		}
@@ -257,7 +274,7 @@
 			// Session is done — resume via REST endpoint
 			sendingPrompt = true;
 			try {
-				await engineApi.resumeSession(session.session_id, message, addDirsArray);
+				await engineApi.resumeSession(session.session_id, message, addDirsArray, agentMode);
 			} finally {
 				sendingPrompt = false;
 			}
@@ -329,6 +346,20 @@
 
 		<div class="flex shrink-0 items-center gap-2">
 			{#if session}
+				<!-- Plan / Act mode toggle -->
+				<div class="flex rounded text-[10px] font-medium overflow-hidden {canToggleMode ? '' : 'opacity-50 pointer-events-none'}">
+					<button
+						class="px-2 py-0.5 transition-colors {agentMode === 'plan' ? 'bg-blue-900/50 text-blue-300' : $glassTheme ? 'bg-white/[0.04] text-surface-400 hover:text-surface-200' : 'bg-surface-800 text-surface-400 hover:text-surface-200'}"
+						onclick={() => (agentMode = 'plan')}
+						disabled={!canToggleMode}
+					>Plan</button>
+					<button
+						class="px-2 py-0.5 transition-colors {agentMode === 'acceptEdits' ? 'bg-amber-900/50 text-amber-300' : $glassTheme ? 'bg-white/[0.04] text-surface-400 hover:text-surface-200' : 'bg-surface-800 text-surface-400 hover:text-surface-200'}"
+						onclick={() => (agentMode = 'acceptEdits')}
+						disabled={!canToggleMode}
+					>Act</button>
+				</div>
+
 				<span class="rounded px-1.5 py-0.5 text-[10px] font-medium {sessionStatusColors[session.status] ?? 'bg-surface-700 text-surface-300'}">
 					{session.status}
 				</span>
