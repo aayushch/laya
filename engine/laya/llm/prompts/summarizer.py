@@ -73,7 +73,7 @@ Rules:
 - If the card was dismissed, set status to "dismissed".
 - If the card was archived, set status to "archived".
 - If the card was reopened, set status back to "pending".
-- Keep all other items unchanged, including space_id, space_name, and space_color fields.
+- Keep all other items unchanged.
 - Return the full updated summary."""
 
 

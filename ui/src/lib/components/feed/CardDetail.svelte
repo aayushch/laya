@@ -464,14 +464,14 @@
 	<!-- Header bar -->
 	<div class="flex items-center justify-between border-b px-5 py-4 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
 		<div class="flex items-center gap-2">
-			<span class="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase {priorityColors[card.priority] ?? priorityColors.MEDIUM}">
+			<span class="rounded px-1.5 py-0.5 text-laya-micro font-bold uppercase {priorityColors[card.priority] ?? priorityColors.MEDIUM}">
 				{priorityLabel[card.priority] ?? card.priority}
 			</span>
-			<span class="rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase {personaColors[card.persona] ?? personaColors.ENGINEER}">
+			<span class="rounded border px-1.5 py-0.5 text-laya-micro font-medium uppercase {personaColors[card.persona] ?? personaColors.ENGINEER}">
 				{card.persona}
 			</span>
 			{#if card.privacy_tier === 3}
-				<span class="rounded bg-red-900/50 px-1.5 py-0.5 text-[10px] font-medium text-red-300">
+				<span class="rounded bg-red-900/50 px-1.5 py-0.5 text-laya-micro font-medium text-red-300">
 					CONFIDENTIAL
 				</span>
 			{/if}
@@ -489,7 +489,7 @@
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5" />
 						</svg>
 					</button>
-					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">Go to card</span>
+					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">Go to card</span>
 				</div>
 			{/if}
 			<!-- Copy card ID -->
@@ -509,7 +509,7 @@
 						</svg>
 					{/if}
 				</button>
-				<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">{copied ? 'Copied!' : 'Copy card ID'}</span>
+				<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">{copied ? 'Copied!' : 'Copy card ID'}</span>
 			</div>
 			<!-- Chat about this card -->
 			<div class="group/act relative">
@@ -522,7 +522,7 @@
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
 					</svg>
 				</button>
-				<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">Chat about card</span>
+				<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">Chat about card</span>
 			</div>
 			<!-- Bookmark -->
 			<div class="group/act relative">
@@ -536,7 +536,7 @@
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
 					</svg>
 				</button>
-				<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">{card.bookmarked_at ? 'Remove Bookmark' : 'Bookmark'}</span>
+				<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">{card.bookmarked_at ? 'Remove Bookmark' : 'Bookmark'}</span>
 			</div>
 			<button aria-label="Dismiss card" class="rounded p-1.5 text-surface-400 transition-colors hover:text-surface-100" onclick={() => ondismiss ? ondismiss() : onclose()}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -560,7 +560,7 @@
 									href={card.source_url}
 									target="_blank"
 									rel="noopener noreferrer"
-									class="inline-flex items-center gap-1 text-xs font-medium text-laya-orange hover:text-laya-peach transition-colors min-w-0 truncate"
+									class="inline-flex items-center gap-1 text-laya-secondary font-medium text-laya-orange hover:text-laya-peach transition-colors min-w-0 truncate"
 								>
 									<span class="truncate">{card.source_ref}</span>
 									<svg class="h-2.5 w-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -568,18 +568,18 @@
 									</svg>
 								</a>
 							{:else}
-								<span class="text-xs font-medium text-surface-400 truncate">{card.source_ref}</span>
+								<span class="text-laya-secondary font-medium text-surface-400 truncate">{card.source_ref}</span>
 							{/if}
 						{/if}
 					</div>
 				{/if}
 				{#if card.actor_name}
 					<div class="flex items-center gap-1.5 min-w-0">
-						<span class="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Actor</span>
+						<span class="shrink-0 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">Actor</span>
 						<span class="group/actor relative min-w-0 flex-1">
-							<span use:trackTruncation={{ onChange: (t) => (actorTruncated = t), text: card.actor_name }} class="block truncate text-xs text-surface-300">{card.actor_name}</span>
+							<span use:trackTruncation={{ onChange: (t) => (actorTruncated = t), text: card.actor_name }} class="block truncate text-laya-secondary text-surface-300">{card.actor_name}</span>
 							{#if actorTruncated}
-								<span class="pointer-events-none absolute left-0 top-full z-50 mt-1 max-w-xs break-all whitespace-normal rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium opacity-0 transition-opacity duration-75 group-hover/actor:opacity-100">
+								<span class="pointer-events-none absolute left-0 top-full z-50 mt-1 max-w-xs break-all whitespace-normal rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium opacity-0 transition-opacity duration-75 group-hover/actor:opacity-100">
 									{card.actor_name}
 								</span>
 							{/if}
@@ -588,11 +588,11 @@
 				{/if}
 				{#if card.actor_email}
 					<div class="flex items-center gap-1.5 min-w-0">
-						<span class="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Email</span>
+						<span class="shrink-0 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">Email</span>
 						<span class="group/email relative min-w-0 flex-1">
-							<span use:trackTruncation={{ onChange: (t) => (emailTruncated = t), text: card.actor_email }} class="block truncate text-xs text-surface-400">{card.actor_email}</span>
+							<span use:trackTruncation={{ onChange: (t) => (emailTruncated = t), text: card.actor_email }} class="block truncate text-laya-secondary text-surface-400">{card.actor_email}</span>
 							{#if emailTruncated}
-								<span class="pointer-events-none absolute left-0 top-full z-50 mt-1 max-w-xs break-all whitespace-normal rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium opacity-0 transition-opacity duration-75 group-hover/email:opacity-100">
+								<span class="pointer-events-none absolute left-0 top-full z-50 mt-1 max-w-xs break-all whitespace-normal rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium opacity-0 transition-opacity duration-75 group-hover/email:opacity-100">
 									{card.actor_email}
 								</span>
 							{/if}
@@ -603,13 +603,13 @@
 		{/if}
 
 		<!-- Header + summary -->
-		<h2 class="mb-2 text-lg font-semibold text-surface-50">{card.header}</h2>
+		<h2 class="mb-2 text-laya-heading font-semibold text-surface-50">{card.header}</h2>
 		<p class="mb-5 text-laya-base text-surface-300">{card.summary}</p>
 
 		<!-- Intelligence report -->
 		{#if card.intelligence && card.intelligence.length > 0}
 			<div class="mb-5">
-				<h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-surface-400">Intelligence Report</h3>
+				<h3 class="mb-2 text-laya-secondary font-semibold uppercase tracking-wider text-surface-400">Intelligence Report</h3>
 				<ul class="space-y-1.5">
 					{#each card.intelligence as point}
 						<li class="flex items-start gap-2 text-laya-base text-surface-300">
@@ -626,11 +626,11 @@
 		     controls, so we'd otherwise duplicate the same content. -->
 		{#if card.staged_output && !(card.staged_output.type === 'draft_reply' && (card.suggested_actions?.length ?? 0) > 0)}
 			<div class="mb-5">
-				<h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-surface-400">
+				<h3 class="mb-2 text-laya-secondary font-semibold uppercase tracking-wider text-surface-400">
 					{outputTypeLabels[card.staged_output.type] ?? 'Output'}
 				</h3>
 				{#if card.staged_output.type === 'code_fix'}
-					<pre class="overflow-x-auto rounded-lg bg-surface-900 p-3 text-xs text-surface-200">{card.staged_output.content}</pre>
+					<pre class="overflow-x-auto rounded-lg bg-surface-900 p-3 text-laya-secondary text-surface-200">{card.staged_output.content}</pre>
 				{:else if card.staged_output.type === 'agent_plan'}
 					<div class="prose-plan max-h-96 overflow-y-auto rounded-lg border border-surface-700 bg-surface-900/50 p-4 text-laya-base text-surface-200">
 						{@html DOMPurify.sanitize(marked(card.staged_output.content) as string)}
@@ -646,7 +646,7 @@
 		<!-- Suggested actions -->
 		{#if card.suggested_actions && card.suggested_actions.length > 0}
 			<div class="mb-5">
-				<h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-surface-400">Suggested Actions</h3>
+				<h3 class="mb-2 text-laya-secondary font-semibold uppercase tracking-wider text-surface-400">Suggested Actions</h3>
 				{#each card.suggested_actions as action}
 					{@const isSelected = card.selected_action_id === action.action_id}
 					{@const payload = action.payload}
@@ -671,7 +671,7 @@
 								     since it's an engine-side fallback marker, not user content. -->
 								{#each Object.entries(payload) as [key, value]}
 									{#if !key.startsWith('_') && typeof value === 'string' && value.length > 0 && key !== editableField && key !== 'raw'}
-										<div class="mb-1.5 flex items-center gap-1.5 text-[11px]">
+										<div class="mb-1.5 flex items-center gap-1.5 text-laya-secondary">
 											<span class="font-medium text-surface-500 capitalize">{key}:</span>
 											<span class="text-surface-300">{value}</span>
 										</div>
@@ -682,18 +682,18 @@
 								<!-- Edit mode: inputs for metadata, textarea for main text -->
 								{#each Object.entries(editedPayload) as [key]}
 									{#if key !== editableField}
-										<div class="mb-1.5 flex items-center gap-1.5 text-[11px]">
+										<div class="mb-1.5 flex items-center gap-1.5 text-laya-secondary">
 											<span class="shrink-0 font-medium text-surface-500 capitalize">{key}:</span>
 											<input
 												type="text"
-												class="w-full rounded border border-surface-600 bg-surface-800 px-1.5 py-0.5 text-[11px] text-surface-200 outline-none focus:border-laya-orange/50"
+												class="w-full rounded border border-surface-600 bg-surface-800 px-1.5 py-0.5 text-laya-secondary text-surface-200 outline-none focus:border-laya-orange/50"
 												bind:value={editedPayload[key]}
 											/>
 										</div>
 									{/if}
 								{/each}
 								<textarea
-									class="w-full resize-y rounded border border-surface-600 bg-surface-800 p-2 text-sm text-surface-200 outline-none focus:border-laya-orange/50"
+									class="w-full resize-y rounded border border-surface-600 bg-surface-800 p-2 text-laya-base text-surface-200 outline-none focus:border-laya-orange/50"
 									rows="6"
 									bind:value={editedPayload[editableField]}
 								></textarea>
@@ -707,18 +707,18 @@
 										<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
 										<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
 									</svg>
-									<span class="text-[11px] font-medium text-laya-orange">Polishing draft…</span>
+									<span class="text-laya-secondary font-medium text-laya-orange">Polishing draft…</span>
 								</div>
 							{/if}
 							<!-- Edit / Save / Cancel / Polish controls -->
 							{#if !isTerminal}
 								<div class="mt-2 flex items-center justify-end gap-3">
 									{#if polishErrorMsg && !isPolishing}
-										<span class="mr-auto text-[11px] text-red-400">{polishErrorMsg}</span>
+										<span class="mr-auto text-laya-secondary text-red-400">{polishErrorMsg}</span>
 									{/if}
 									{#if !isEditing}
 										<button
-											class="text-[11px] text-surface-400 hover:text-laya-orange transition-colors disabled:opacity-40 disabled:hover:text-surface-400"
+											class="text-laya-secondary text-surface-400 hover:text-laya-orange transition-colors disabled:opacity-40 disabled:hover:text-surface-400"
 											onclick={() => startEditing(action, detectedField ? undefined : fallbackText)}
 											disabled={isPolishing}
 										>
@@ -726,7 +726,7 @@
 										</button>
 										{#if hasEdits}
 											<button
-												class="inline-flex items-center gap-1 text-[11px] font-medium text-laya-gold hover:text-laya-peach transition-colors disabled:opacity-40 disabled:hover:text-laya-gold"
+												class="inline-flex items-center gap-1 text-laya-secondary font-medium text-laya-gold hover:text-laya-peach transition-colors disabled:opacity-40 disabled:hover:text-laya-gold"
 												onclick={() => polishDraft(action)}
 												disabled={isPolishing}
 												title="Rewrite this draft with AI to polish the phrasing"
@@ -739,14 +739,14 @@
 										{/if}
 									{:else}
 										<button
-											class="text-[11px] text-surface-400 hover:text-surface-200 transition-colors"
+											class="text-laya-secondary text-surface-400 hover:text-surface-200 transition-colors"
 											onclick={() => { editingActionId = null; editedPayload = {}; }}
 											disabled={savingPayload}
 										>
 											Cancel
 										</button>
 										<button
-											class="text-[11px] font-medium text-laya-orange hover:text-laya-gold transition-colors disabled:opacity-50"
+											class="text-laya-secondary font-medium text-laya-orange hover:text-laya-gold transition-colors disabled:opacity-50"
 											onclick={() => savePayload(action)}
 											disabled={savingPayload}
 										>
@@ -760,7 +760,7 @@
 
 					<div class="mb-2 flex flex-wrap gap-2">
 						<button
-							class="rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed
+							class="rounded-lg border px-3 py-1.5 text-laya-secondary font-medium transition-colors disabled:cursor-not-allowed
 								{isSelected
 									? isTerminal
 										? 'border-laya-orange/50 bg-laya-orange/15 text-laya-orange'
@@ -786,14 +786,14 @@
 					</div>
 				{/each}
 				{#if executeError}
-					<p class="mt-2 text-xs text-red-400">{executeError}</p>
+					<p class="mt-2 text-laya-secondary text-red-400">{executeError}</p>
 				{/if}
 			</div>
 		{/if}
 
 		<!-- Metadata -->
 		<div class="mt-4 border-t pt-3 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
-			<div class="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-surface-500">
+			<div class="flex flex-wrap gap-x-4 gap-y-1 text-laya-secondary text-surface-500">
 				{#if card.confidence}
 					<span>Confidence: {Math.round(card.confidence * 100)}%</span>
 				{/if}
@@ -801,7 +801,7 @@
 				{#if card.status === 'failed' && card.last_error}
 					<span class="{statusColors[card.status]} relative group cursor-help">
 						Status: {statusLabels[card.status]}
-						<span class="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2.5 py-1.5 text-[11px] leading-tight bg-surface-800 border border-surface-600 text-surface-300 rounded shadow-lg whitespace-normal max-w-[280px] w-max z-50">
+						<span class="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2.5 py-1.5 text-laya-secondary leading-tight bg-surface-800 border border-surface-600 text-surface-300 rounded shadow-lg whitespace-normal max-w-[280px] w-max z-50">
 							{card.last_error}
 						</span>
 					</span>
@@ -822,7 +822,7 @@
 			{#if card.has_workspace}
 				<a
 					href="/workspace/{card.card_id}"
-					class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-violet-400/80 transition-colors hover:bg-violet-500/15 hover:text-violet-300"
+					class="flex items-center gap-1 rounded-md px-2 py-1 text-laya-secondary text-violet-400/80 transition-colors hover:bg-violet-500/15 hover:text-violet-300"
 					onclick={(e) => { e.preventDefault(); e.stopPropagation(); goto(`/workspace/${card.card_id}`); }}
 				>
 					<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
@@ -830,7 +830,7 @@
 				</a>
 			{/if}
 			<button
-				class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-surface-200"
+				class="flex items-center gap-1 rounded-md px-2 py-1 text-laya-secondary text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-surface-200"
 				onclick={() => (showClassificationDialog = true)}
 			>
 				<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
@@ -838,7 +838,7 @@
 			</button>
 			{#if onshowrelated && hasRelated}
 				<button
-					class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-laya-orange"
+					class="flex items-center gap-1 rounded-md px-2 py-1 text-laya-secondary text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-laya-orange"
 					onclick={() => onshowrelated(card)}
 				>
 					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="5" cy="12" r="2" stroke-width="2" /><circle cx="19" cy="6" r="2" stroke-width="2" /><circle cx="19" cy="18" r="2" stroke-width="2" /><path stroke-linecap="round" stroke-width="2" d="M7 11l10-4M7 13l10 4" /></svg>
@@ -847,7 +847,7 @@
 			{/if}
 			{#if onrunagent && card.entity_id && !card.has_workspace}
 				<button
-					class="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-cyan-400"
+					class="flex items-center gap-1 rounded-md px-2 py-1 text-laya-secondary text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-cyan-400"
 					onclick={() => (showRunAgentInput = true)}
 				>
 					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
@@ -858,7 +858,7 @@
 			<div class="relative">
 				<button
 					bind:this={overflowBtnEl}
-					class="flex items-center justify-center rounded-md px-1.5 py-1 text-[11px] text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-surface-200"
+					class="flex items-center justify-center rounded-md px-1.5 py-1 text-laya-secondary text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-surface-200"
 					onclick={toggleOverflowMenu}
 					aria-label="More actions"
 				>
@@ -873,25 +873,25 @@
 		<div class="mt-3">
 			{#if showRunAgentInput}
 				<div class="flex flex-col gap-2">
-					<div class="flex items-center gap-2 text-xs text-surface-400">
+					<div class="flex items-center gap-2 text-laya-secondary text-surface-400">
 						<svg class="h-3.5 w-3.5 text-cyan-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
 						Run Agent
 					</div>
 					<input
 						bind:value={runAgentPrompt}
 						placeholder="What should the agent focus on? (optional)"
-						class="flex-1 rounded-md border border-surface-600 bg-surface-900 px-2 py-1.5 text-xs text-surface-50 placeholder-surface-500"
+						class="flex-1 rounded-md border border-surface-600 bg-surface-900 px-2 py-1.5 text-laya-secondary text-surface-50 placeholder-surface-500"
 					/>
 					<div class="flex gap-2">
 						<button
-							class="flex-1 rounded-md bg-cyan-700/40 px-2 py-1.5 text-xs font-medium text-cyan-300 transition-colors hover:bg-cyan-700/60 disabled:opacity-50"
+							class="flex-1 rounded-md bg-cyan-700/40 px-2 py-1.5 text-laya-secondary font-medium text-cyan-300 transition-colors hover:bg-cyan-700/60 disabled:opacity-50"
 							onclick={startEntityAgent}
 							disabled={startingAgent}
 						>
 							{startingAgent ? 'Starting...' : 'Start'}
 						</button>
 						<button
-							class="text-sm text-surface-400 hover:text-surface-200"
+							class="text-laya-base text-surface-400 hover:text-surface-200"
 							onclick={() => { showRunAgentInput = false; runAgentPrompt = ''; }}
 						>
 							Cancel
@@ -903,17 +903,17 @@
 					<input
 						bind:value={dismissReason}
 						placeholder="Reason (optional)"
-						class="flex-1 rounded-md border border-surface-600 bg-surface-900 px-2 py-1.5 text-xs text-surface-50 placeholder-surface-500"
+						class="flex-1 rounded-md border border-surface-600 bg-surface-900 px-2 py-1.5 text-laya-secondary text-surface-50 placeholder-surface-500"
 					/>
 					<button
-						class="rounded-md bg-surface-600 px-3 py-1.5 text-xs font-medium text-surface-200 hover:bg-surface-500"
+						class="rounded-md bg-surface-600 px-3 py-1.5 text-laya-secondary font-medium text-surface-200 hover:bg-surface-500"
 						onclick={dismiss}
 						disabled={dismissing}
 					>
 						{dismissing ? '...' : 'Confirm'}
 					</button>
 					<button
-						class="text-sm text-surface-400 hover:text-surface-200"
+						class="text-laya-base text-surface-400 hover:text-surface-200"
 						onclick={() => (showDismissInput = false)}
 					>
 						Cancel
@@ -922,20 +922,20 @@
 			{:else if card.status === 'ready'}
 				<div class="flex gap-2">
 					<button
-						class="flex-1 rounded-md bg-green-700/40 px-2 py-1.5 text-xs font-medium text-green-300 transition-colors hover:bg-green-700/60 disabled:opacity-50"
+						class="flex-1 rounded-md bg-green-700/40 px-2 py-1.5 text-laya-secondary font-medium text-green-300 transition-colors hover:bg-green-700/60 disabled:opacity-50"
 						onclick={markDone}
 						disabled={markingDone}
 					>
 						{markingDone ? '...' : 'Done'}
 					</button>
 					<button
-						class="flex-1 rounded-md bg-surface-700/50 px-2 py-1.5 text-xs font-medium text-surface-400 transition-colors hover:bg-surface-700"
+						class="flex-1 rounded-md bg-surface-700/50 px-2 py-1.5 text-laya-secondary font-medium text-surface-400 transition-colors hover:bg-surface-700"
 						onclick={() => (showDismissInput = true)}
 					>
 						Dismiss
 					</button>
 					<button
-						class="flex-1 rounded-md bg-surface-700/30 px-2 py-1.5 text-xs font-medium text-surface-500 transition-colors hover:bg-surface-700 disabled:opacity-50"
+						class="flex-1 rounded-md bg-surface-700/30 px-2 py-1.5 text-laya-secondary font-medium text-surface-500 transition-colors hover:bg-surface-700 disabled:opacity-50"
 						onclick={archive}
 						disabled={archiving}
 					>
@@ -945,7 +945,7 @@
 			{:else if card.status === 'dismissed' || card.status === 'archived' || card.status === 'done' || card.status === 'failed'}
 				<div class="flex gap-2">
 					<button
-						class="flex-1 rounded-md bg-laya-orange/15 px-2 py-1.5 text-xs font-medium text-laya-orange transition-colors hover:bg-laya-orange/25 disabled:opacity-50"
+						class="flex-1 rounded-md bg-laya-orange/15 px-2 py-1.5 text-laya-secondary font-medium text-laya-orange transition-colors hover:bg-laya-orange/25 disabled:opacity-50"
 						onclick={reopen}
 						disabled={reopening}
 					>
@@ -953,7 +953,7 @@
 					</button>
 					{#if card.status !== 'archived'}
 						<button
-							class="flex-1 rounded-md bg-surface-700/30 px-2 py-1.5 text-xs font-medium text-surface-500 transition-colors hover:bg-surface-700 disabled:opacity-50"
+							class="flex-1 rounded-md bg-surface-700/30 px-2 py-1.5 text-laya-secondary font-medium text-surface-500 transition-colors hover:bg-surface-700 disabled:opacity-50"
 							onclick={archive}
 							disabled={archiving}
 						>
@@ -964,7 +964,7 @@
 			{:else}
 				<div class="flex gap-2">
 					<button
-						class="flex-1 rounded-md bg-surface-700/30 px-2 py-1.5 text-xs font-medium text-surface-500 transition-colors hover:bg-surface-700 disabled:opacity-50"
+						class="flex-1 rounded-md bg-surface-700/30 px-2 py-1.5 text-laya-secondary font-medium text-surface-500 transition-colors hover:bg-surface-700 disabled:opacity-50"
 						onclick={archive}
 						disabled={archiving}
 					>
@@ -993,8 +993,8 @@
 					</svg>
 				</div>
 				<div>
-					<h4 class="text-sm font-semibold text-surface-50">Delete card permanently?</h4>
-					<p class="mt-1 text-xs leading-relaxed text-surface-400">
+					<h4 class="text-laya-base font-semibold text-surface-50">Delete card permanently?</h4>
+					<p class="mt-1 text-laya-secondary leading-relaxed text-surface-400">
 						All details, intelligence, workspace sessions, and related events for this card will be
 						<span class="font-medium text-red-400">permanently removed</span>. This cannot be undone.
 					</p>
@@ -1002,14 +1002,14 @@
 			</div>
 			<div class="flex justify-end gap-2">
 				<button
-					class="rounded-md px-3 py-1.5 text-xs text-surface-400 transition-colors hover:text-surface-200 disabled:opacity-50"
+					class="rounded-md px-3 py-1.5 text-laya-secondary text-surface-400 transition-colors hover:text-surface-200 disabled:opacity-50"
 					onclick={() => (showDeleteConfirm = false)}
 					disabled={deleting}
 				>
 					Cancel
 				</button>
 				<button
-					class="rounded-md bg-red-700 px-3 py-1.5 text-xs font-medium text-red-50 transition-colors hover:bg-red-600 disabled:opacity-50"
+					class="rounded-md bg-red-700 px-3 py-1.5 text-laya-secondary font-medium text-red-50 transition-colors hover:bg-red-600 disabled:opacity-50"
 					onclick={deleteCard}
 					disabled={deleting}
 				>
@@ -1037,7 +1037,7 @@
 	>
 		{#if onlink}
 			<button
-				class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-surface-200"
+				class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary text-surface-300 transition-colors hover:bg-surface-700 hover:text-surface-200"
 				role="menuitem"
 				onclick={() => { overflowMenuOpen = false; onlink(card); }}
 			>
@@ -1047,7 +1047,7 @@
 		{/if}
 		{#if hasRelated}
 			<button
-				class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400 disabled:opacity-50"
+				class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400 disabled:opacity-50"
 				role="menuitem"
 				disabled={unlinkingCard}
 				onclick={unlinkCard}
@@ -1058,7 +1058,7 @@
 		{/if}
 		{#if card.status === 'archived'}
 			<button
-				class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400 disabled:opacity-50"
+				class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400 disabled:opacity-50"
 				role="menuitem"
 				disabled={deleting}
 				onclick={() => { overflowMenuOpen = false; showDeleteConfirm = true; }}
@@ -1071,25 +1071,25 @@
 			<div class="my-1 border-t {$glassTheme ? 'border-surface-700/40' : 'border-surface-600'}"></div>
 			{#each egressContext.actions as action (action.action_type)}
 				<button
-					class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-surface-200"
+					class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary text-surface-300 transition-colors hover:bg-surface-700 hover:text-surface-200"
 					role="menuitem"
 					onclick={() => openPlatformAction(action)}
 				>
 					<svg class="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
 					<span class="truncate">{action.label}</span>
 					{#if action.impact === 'high'}
-						<span class="ml-auto text-[9px] font-bold text-amber-500/70">!</span>
+						<span class="ml-auto text-laya-micro font-bold text-amber-500/70">!</span>
 					{/if}
 				</button>
 			{/each}
 			{#if !egressContext.connected}
-				<p class="px-2.5 py-1 text-[10px] text-surface-500 italic">
+				<p class="px-2.5 py-1 text-laya-micro text-surface-500 italic">
 					Connect {egressContext.platform} to use
 				</p>
 			{/if}
 		{:else if egressLoading}
 			<div class="my-1 border-t {$glassTheme ? 'border-surface-700/40' : 'border-surface-600'}"></div>
-			<div class="flex items-center gap-2 px-2.5 py-1.5 text-[10px] text-surface-500">
+			<div class="flex items-center gap-2 px-2.5 py-1.5 text-laya-micro text-surface-500">
 				<svg class="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" /><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
 				Loading actions
 			</div>

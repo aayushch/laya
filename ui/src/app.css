@@ -2,11 +2,28 @@
 @import '@skeletonlabs/skeleton';
 @import '@skeletonlabs/skeleton/themes/cerberus';
 
+@font-face {
+	font-family: 'Inter';
+	font-style: normal;
+	font-weight: 100 900;
+	font-display: swap;
+	src: url('/fonts/InterVariable.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Geist Mono';
+	font-style: normal;
+	font-weight: 100 900;
+	font-display: swap;
+	src: url('/fonts/GeistMono-Variable.woff2') format('woff2');
+}
+
 /* Prevent macOS elastic overscroll from moving fixed header/footer */
 html, body {
 	overflow: hidden;
 	overscroll-behavior: none;
 	height: 100%;
+	font-feature-settings: 'tnum' 1;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -17,6 +34,7 @@ html, body {
 .text-laya-base  { font-size: var(--laya-font-base); line-height: 1.5; }
 .text-laya-secondary { font-size: calc(var(--laya-font-base) - 2px); line-height: 1.5; }
 .text-laya-micro { font-size: calc(var(--laya-font-base) - 3px); line-height: 1.4; }
+.text-laya-heading { font-size: calc(var(--laya-font-base) + 5px); line-height: 1.4; }
 
 /* ─────────────────────────────────────────────────────────────
    LAYA BRAND PALETTE
@@ -32,6 +50,15 @@ html, body {
 	--color-laya-sand:       oklch(0.885 0.045 78);   /* warm sand */
 	--color-laya-blush:      oklch(0.940 0.035 70);   /* soft blush */
 	--color-laya-terracotta: oklch(0.620 0.135 45);   /* muted terracotta */
+
+	--font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+[data-theme='cerberus'],
+[data-theme='dark'],
+[data-theme='light'] {
+	--base-font-family: 'Inter', system-ui, sans-serif;
+	--heading-font-family: 'Inter', system-ui, sans-serif;
 }
 
 /* ─────────────────────────────────────────────────────────────

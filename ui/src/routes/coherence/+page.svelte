@@ -538,7 +538,7 @@
 
 {#if tooltip}
 	<div
-		class="fixed z-50 px-2 py-1 rounded-md border border-transparent glass-tooltip text-[10px] font-medium pointer-events-none -translate-x-1/2 -translate-y-full max-w-[400px] break-words"
+		class="fixed z-50 px-2 py-1 rounded-md border border-transparent glass-tooltip text-laya-micro font-medium pointer-events-none -translate-x-1/2 -translate-y-full max-w-[400px] break-words"
 		style="left: {tooltip.x}px; top: {tooltip.y}px;"
 	>
 		{tooltip.text}
@@ -551,15 +551,15 @@
 		<!-- Header -->
 		<div class="flex items-center justify-between mb-6">
 			<div>
-				<h1 class="text-xl font-bold text-surface-50">Laya <span class="text-laya-orange">Coherence</span><sup class="text-[9px] ml-1 text-surface-500 tracking-wider font-medium">BETA</sup></h1>
-				<p class="text-xs text-surface-500 mt-0.5">
+				<h1 class="text-xl font-bold text-surface-50">Laya <span class="text-laya-orange">Coherence</span><sup class="text-laya-micro ml-1 text-surface-500 tracking-wider font-medium">BETA</sup></h1>
+				<p class="text-laya-secondary text-surface-500 mt-0.5">
 					{trace ? `"${trace.query}"` : 'Connect the dots across every platform'}
 				</p>
 			</div>
 			{#if trace || (loading && !showHistoryDuringSearch)}
 				<button
 					onclick={handleBack}
-					class="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs text-surface-400 hover:text-surface-200 transition-colors {$glassTheme ? 'hover:bg-black/[0.06]' : 'hover:bg-surface-800'}"
+					class="flex items-center gap-1 px-2.5 py-1 rounded-md text-laya-secondary text-surface-400 hover:text-surface-200 transition-colors {$glassTheme ? 'hover:bg-black/[0.06]' : 'hover:bg-surface-800'}"
 					aria-label="Back to search"
 				>
 					<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -582,7 +582,7 @@
 		<!-- Error -->
 		{#if error}
 			<div class="rounded-md border border-red-500/30 bg-red-500/10 p-3 mb-4">
-				<p class="text-xs text-red-400">{error}</p>
+				<p class="text-laya-secondary text-red-400">{error}</p>
 			</div>
 		{/if}
 
@@ -596,44 +596,28 @@
 				<svg class="w-3.5 h-3.5 text-laya-orange" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 					<path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
 				</svg>
-				<span class="text-xs text-laya-orange font-medium">New events detected — Click to refresh</span>
+				<span class="text-laya-secondary text-laya-orange font-medium">New events detected — Click to refresh</span>
 			</button>
 		{/if}
 
 		<!-- Active trace: tree view -->
 		{#if trace && visibleClusters.length > 0}
-			<!-- Summary bar -->
-			<div class="flex items-center justify-between px-3 py-2 mb-4 {$glassTheme ? 'glass-section rounded-lg' : 'rounded-md bg-surface-800/60 border border-surface-700/50'}">
-				<div class="flex items-center gap-2 text-[11px] text-surface-400">
-					<span class="text-surface-200 font-medium">{totalCards} cards</span>
+			<!-- Summary bar: buttons top-right, metadata in two rows below -->
+			<div class="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 px-3 py-2 mb-4 {$glassTheme ? 'glass-section rounded-lg' : 'rounded-md bg-surface-800/60 border border-surface-700/50'}">
+				<!-- Row 1 left: stats -->
+				<div class="flex items-center gap-2 text-laya-secondary text-surface-400">
+					<span class="text-surface-200 font-medium whitespace-nowrap">{totalCards} cards</span>
 					<span class="text-surface-600">·</span>
-					<span>{visibleClusters.length} {visibleClusters.length === 1 ? 'cluster' : 'clusters'}</span>
+					<span class="whitespace-nowrap">{visibleClusters.length} {visibleClusters.length === 1 ? 'cluster' : 'clusters'}</span>
 					<span class="text-surface-600">·</span>
-					<span>{allPlatforms.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ')}</span>
+					<span class="whitespace-nowrap">{allPlatforms.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ')}</span>
 					{#if dateRangeText}
 						<span class="text-surface-600">·</span>
-						<span>{dateRangeText}</span>
+						<span class="whitespace-nowrap">{dateRangeText}</span>
 					{/if}
-					<span class="text-surface-600">·</span>
-					<span class="text-surface-500 tabular-nums">{trace.search_metadata.elapsed_ms}ms</span>
-					<span class="text-surface-600">·</span>
-					<span class="flex items-center gap-1">
-						{#if trace.search_metadata.enable_semantic !== false}
-							<span class="px-1.5 py-0.5 rounded bg-laya-orange/10 text-laya-orange text-[9px] font-medium">Semantic</span>
-						{/if}
-						{#if trace.search_metadata.enable_text !== false}
-							<span class="px-1.5 py-0.5 rounded bg-laya-gold/10 text-laya-gold text-[9px] font-medium">Text</span>
-						{/if}
-						{#if trace.search_metadata.enable_llm_filter !== false}
-							<span class="px-1.5 py-0.5 rounded bg-laya-peach/10 text-laya-peach text-[9px] font-medium">AI Filter</span>
-						{/if}
-						{#if trace.search_metadata.fuzzy_search}
-							<span class="px-1.5 py-0.5 rounded bg-laya-coral/10 text-laya-coral text-[9px] font-medium">Fuzzy</span>
-						{/if}
-					</span>
 				</div>
-
-				<div class="flex items-center gap-1.5">
+				<!-- Row 1 right: action buttons (spans both rows) -->
+				<div class="row-span-2 flex items-center gap-1.5">
 					<button
 						onclick={() => handleRerun()}
 						onmouseenter={(e) => showTooltip(e, 'Re-run trace')}
@@ -648,7 +632,7 @@
 					<button
 						onclick={handleGenerateSummary}
 						disabled={summaryStreaming}
-						class="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium
+						class="flex items-center gap-1 px-2 py-1 rounded text-laya-secondary font-medium
 						       text-surface-300 bg-surface-700/60 border border-surface-600/50
 						       hover:border-laya-orange/40 hover:text-laya-orange hover:bg-laya-orange/5
 						       disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -661,7 +645,7 @@
 					<button
 						onclick={handleExport}
 						disabled={exporting}
-						class="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium
+						class="flex items-center gap-1 px-2 py-1 rounded text-laya-secondary font-medium
 						       text-surface-300 bg-surface-700/60 border border-surface-600/50
 						       hover:border-laya-orange/40 hover:text-laya-orange hover:bg-laya-orange/5
 						       disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -672,13 +656,32 @@
 						{exporting ? '...' : 'Export'}
 					</button>
 				</div>
+				<!-- Row 2 left: elapsed time + search mode badges -->
+				<div class="flex items-center gap-2 text-laya-secondary text-surface-400">
+					<span class="text-surface-500 tabular-nums whitespace-nowrap">{trace.search_metadata.elapsed_ms}ms</span>
+					<span class="text-surface-600">·</span>
+					<span class="flex items-center gap-1">
+						{#if trace.search_metadata.enable_semantic !== false}
+							<span class="px-1.5 py-0.5 rounded bg-laya-orange/10 text-laya-orange text-laya-micro font-medium whitespace-nowrap">Semantic</span>
+						{/if}
+						{#if trace.search_metadata.enable_text !== false}
+							<span class="px-1.5 py-0.5 rounded bg-laya-gold/10 text-laya-gold text-laya-micro font-medium whitespace-nowrap">Text</span>
+						{/if}
+						{#if trace.search_metadata.enable_llm_filter !== false}
+							<span class="px-1.5 py-0.5 rounded bg-laya-peach/10 text-laya-peach text-laya-micro font-medium whitespace-nowrap">AI Filter</span>
+						{/if}
+						{#if trace.search_metadata.fuzzy_search}
+							<span class="px-1.5 py-0.5 rounded bg-laya-coral/10 text-laya-coral text-laya-micro font-medium whitespace-nowrap">Fuzzy</span>
+						{/if}
+					</span>
+				</div>
 			</div>
 
 			<!-- Overall summary -->
 			{#if hasSummary}
 				<div class="mb-4 rounded-lg border border-laya-orange/20 bg-laya-orange/5 px-4 py-3">
 					{#if parsedSummary.isThinking}
-						<div class="flex items-center gap-1.5 text-[11px] text-surface-400">
+						<div class="flex items-center gap-1.5 text-laya-secondary text-surface-400">
 							<svg class="h-2.5 w-2.5 animate-spin text-laya-orange/60 shrink-0" fill="none" viewBox="0 0 24 24">
 								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
@@ -687,7 +690,7 @@
 						</div>
 					{:else}
 						<div class="flex items-center gap-1.5 mb-1.5">
-							<span class="text-[9px] font-semibold uppercase tracking-wider text-laya-orange/70 inline-flex items-center gap-1"><span class="text-[8px] leading-none -translate-y-px">✦</span> Summary</span>
+							<span class="text-laya-micro font-semibold uppercase tracking-wider text-laya-orange/70 inline-flex items-center gap-1"><span class="text-laya-micro leading-none -translate-y-px">✦</span> Summary</span>
 							{#if summaryStreaming}
 								<svg class="h-2.5 w-2.5 animate-spin text-laya-orange/60 shrink-0" fill="none" viewBox="0 0 24 24">
 									<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -697,19 +700,19 @@
 						</div>
 						{#if parsedSummary.thinking}
 							<details class="mb-1.5">
-								<summary class="cursor-pointer text-[10px] text-surface-500 hover:text-surface-300 select-none list-none flex items-center gap-1">
+								<summary class="cursor-pointer text-laya-micro text-surface-500 hover:text-surface-300 select-none list-none flex items-center gap-1">
 									<svg class="w-2.5 h-2.5 shrink-0 transition-transform [[open]>&]:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
 										<path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
 									</svg>
 									thought process
 								</summary>
-								<div class="ml-3.5 border-l border-laya-orange/10 pl-2 text-[10px] leading-relaxed text-surface-500 whitespace-pre-wrap mt-1">
+								<div class="ml-3.5 border-l border-laya-orange/10 pl-2 text-laya-micro leading-relaxed text-surface-500 whitespace-pre-wrap mt-1">
 									{parsedSummary.thinking}
 								</div>
 							</details>
 						{/if}
 						{#if parsedSummary.response}
-							<p class="text-[12px] text-surface-200 leading-relaxed">
+							<p class="text-laya-secondary text-surface-200 leading-relaxed">
 								{parsedSummary.response}{#if summaryStreaming && !parsedSummary.isThinking}<span class="inline-block w-1 h-3 bg-laya-orange/70 animate-pulse ml-0.5 align-middle"></span>{/if}
 							</p>
 						{/if}
@@ -721,27 +724,27 @@
 			<div class="px-4 py-2.5 overflow-hidden {$glassTheme ? 'glass-section' : 'rounded-md border border-surface-700/50 bg-surface-800/30'}">
 				<!-- Root node -->
 				<div class="flex items-center gap-1.5 pb-2 mb-1 border-b border-surface-700/30">
-					<span class="text-laya-orange text-[13px]">◆</span>
-					<span class="text-[13px] font-medium text-surface-200">{trace.query}</span>
-					<span class="text-[11px] text-surface-500 ml-1">{visibleClusters.length} clusters</span>
+					<span class="text-laya-orange text-laya-base">◆</span>
+					<span class="text-laya-base font-medium text-surface-200">{trace.query}</span>
+					<span class="text-laya-secondary text-surface-500 ml-1">{visibleClusters.length} clusters</span>
 
 					<div class="ml-auto flex items-center gap-1.5">
 						{#if clustersExpanded}
 							<button
 								onclick={() => { expandAllClusters = false; clustersExpanded = false; setTimeout(() => expandAllClusters = null, 50); }}
-								class="text-[11px] text-surface-500 hover:text-laya-orange transition-colors"
+								class="text-laya-secondary text-surface-500 hover:text-laya-orange transition-colors"
 							>collapse all</button>
 						{:else}
 							<button
 								onclick={() => { expandAllClusters = true; clustersExpanded = true; setTimeout(() => expandAllClusters = null, 50); }}
-								class="text-[11px] text-surface-500 hover:text-laya-orange transition-colors"
+								class="text-laya-secondary text-surface-500 hover:text-laya-orange transition-colors"
 							>expand all</button>
 						{/if}
 						{#if removedClusterIds.size > 0}
 							<span class="text-surface-600">·</span>
 							<button
 								onclick={handleRestoreClusters}
-								class="text-[11px] text-surface-500 hover:text-laya-orange transition-colors"
+								class="text-laya-secondary text-surface-500 hover:text-laya-orange transition-colors"
 							>
 								restore {removedClusterIds.size}
 							</button>
@@ -769,10 +772,10 @@
 		<!-- All clusters removed -->
 		{:else if trace && trace.clusters.length > 0 && visibleClusters.length === 0}
 			<div class="text-center py-10 text-surface-500" in:fade={{ duration: $reducedMotion ? 0 : 250, delay: $reducedMotion ? 0 : 300 }}>
-				<p class="text-xs">All clusters removed.</p>
+				<p class="text-laya-secondary">All clusters removed.</p>
 				<button
 					onclick={handleRestoreClusters}
-					class="mt-2 text-xs text-laya-orange hover:text-laya-gold transition-colors"
+					class="mt-2 text-laya-secondary text-laya-orange hover:text-laya-gold transition-colors"
 				>
 					Restore all
 				</button>
@@ -782,7 +785,7 @@
 		     backgrounded so the user sees the running query alongside recent ones) -->
 		{:else if !trace && (!loading || showHistoryDuringSearch)}
 			<div class="mt-4">
-				<h2 class="text-xs font-medium text-surface-400 uppercase tracking-wider mb-3">
+				<h2 class="text-laya-secondary font-medium text-surface-400 uppercase tracking-wider mb-3">
 					Recent Searches
 				</h2>
 
@@ -801,10 +804,10 @@
 						</svg>
 						<div class="flex-1 min-w-0">
 							<div class="flex items-center gap-2">
-								<h3 class="text-sm font-medium text-surface-100 truncate">
+								<h3 class="text-laya-base font-medium text-surface-100 truncate">
 									"{$traceProgress?.query || 'Searching...'}"
 								</h3>
-								<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-laya-orange/15 text-laya-orange border border-laya-orange/30">
+								<span class="shrink-0 px-1.5 py-0.5 rounded text-laya-micro font-medium bg-laya-orange/15 text-laya-orange border border-laya-orange/30">
 									Running
 								</span>
 							</div>
@@ -814,7 +817,7 @@
 									style="width: {$traceProgress ? Math.max(($traceProgress.step / $traceProgress.total) * 100, 8) : 8}%"
 								></div>
 							</div>
-							<div class="flex items-center gap-2 mt-1.5 text-xs text-surface-400">
+							<div class="flex items-center gap-2 mt-1.5 text-laya-secondary text-surface-400">
 								<span>{($traceProgress?.step ?? 0) > 0 && ($traceProgress?.step ?? 0) <= coherenceStages.length ? coherenceStages[($traceProgress?.step ?? 1) - 1] : 'Preparing'}</span>
 								<span class="text-surface-600">&middot;</span>
 								<span class="text-surface-500">{$traceProgress?.step ?? 0} / {$traceProgress?.total ?? coherenceStages.length}</span>
@@ -840,8 +843,8 @@
 			<div class="mt-6 p-6 {$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700/50 bg-surface-800/40'}" in:fade={{ duration: $reducedMotion ? 0 : 200 }}>
 				<!-- Query title -->
 				<div class="flex items-center gap-2 mb-5">
-					<span class="text-laya-orange text-sm">◆</span>
-					<span class="text-sm font-medium text-surface-200">{$traceProgress?.query || 'Searching...'}</span>
+					<span class="text-laya-orange text-laya-base">◆</span>
+					<span class="text-laya-base font-medium text-surface-200">{$traceProgress?.query || 'Searching...'}</span>
 				</div>
 
 				<!-- Progress bar -->
@@ -856,7 +859,7 @@
 
 				<!-- Current stage + cancel -->
 				<div class="flex items-center justify-between">
-					<div class="flex items-center gap-2 text-xs text-surface-400">
+					<div class="flex items-center gap-2 text-laya-secondary text-surface-400">
 						<svg class="w-3.5 h-3.5 animate-spin shrink-0 text-laya-orange" fill="none" viewBox="0 0 24 24">
 							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle>
 							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -868,7 +871,7 @@
 					<button
 						onclick={handleCancelSearch}
 						disabled={cancelling}
-						class="text-xs transition-colors {cancelling ? 'text-surface-600 cursor-not-allowed' : 'text-surface-500 hover:text-red-400'}"
+						class="text-laya-secondary transition-colors {cancelling ? 'text-surface-600 cursor-not-allowed' : 'text-surface-500 hover:text-red-400'}"
 					>
 						{cancelling ? 'Cancelling...' : 'Cancel'}
 					</button>

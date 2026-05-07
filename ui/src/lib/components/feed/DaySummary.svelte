@@ -116,14 +116,14 @@
 		<svg class="mb-3 h-10 w-10 text-laya-orange opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
 		</svg>
-		<p class="text-sm">No summary yet</p>
-		<p class="mt-1 text-xs text-surface-600">Summary builds as events arrive throughout the day</p>
+		<p class="text-laya-base">No summary yet</p>
+		<p class="mt-1 text-laya-secondary text-surface-600">Summary builds as events arrive throughout the day</p>
 	</div>
 {:else}
 	<div class="flex flex-col gap-5">
 		<!-- Last updated -->
 		{#if updatedAt}
-			<p class="text-[10px] text-surface-500">Last updated {formatTime(updatedAt)}</p>
+			<p class="text-laya-micro text-surface-500">Last updated {formatTime(updatedAt)}</p>
 		{/if}
 
 		<!-- Space legend (only when multiple spaces) -->
@@ -150,7 +150,7 @@
 					<h3 class="summary-section-title">Events & Meetings</h3>
 					<span class="summary-section-badge summary-section-badge--events">{filteredEvents.length}</span>
 					{#if eventsFilteredCount > 0}
-						<span class="text-[10px] text-surface-500">({eventsFilteredCount} filtered)</span>
+						<span class="text-laya-micro text-surface-500">({eventsFilteredCount} filtered)</span>
 					{/if}
 				</div>
 				{#if filteredEvents.length > 0}
@@ -163,7 +163,7 @@
 								onclick={() => ongotocard(item.card_id)}
 							>
 								<span class="summary-item-status {statusClass(item.status)}">{statusIcon(item.status)}</span>
-								<span class="flex-1 text-[13px] leading-snug {statusClass(item.status)}">{item.text}</span>
+								<span class="flex-1 text-laya-base leading-snug {statusClass(item.status)}">{item.text}</span>
 								{#if item.space_name}
 									<span class="summary-item-space" style:--space-color={item.space_color || '#F97316'}>{item.space_name}</span>
 								{/if}
@@ -172,7 +172,7 @@
 						{/each}
 					</div>
 				{:else}
-					<p class="text-xs text-surface-500 px-1">No items match the selected space</p>
+					<p class="text-laya-secondary text-surface-500 px-1">No items match the selected space</p>
 				{/if}
 			</section>
 		{/if}
@@ -191,10 +191,10 @@
 						{pendingActions}/{totalActions}
 					</span>
 					{#if actionsFilteredCount > 0}
-						<span class="text-[10px] text-surface-500">({actionsFilteredCount} filtered)</span>
+						<span class="text-laya-micro text-surface-500">({actionsFilteredCount} filtered)</span>
 					{/if}
 					{#if pendingActions > 0}
-						<span class="ml-auto text-[10px] text-laya-orange">{pendingActions} pending</span>
+						<span class="ml-auto text-laya-micro text-laya-orange">{pendingActions} pending</span>
 					{/if}
 				</div>
 				{#if filteredActions.length > 0}
@@ -214,7 +214,7 @@
 								onclick={() => ongotocard(item.card_id)}
 							>
 								<span class="summary-item-status {statusClass(item.status)}">{statusIcon(item.status)}</span>
-								<span class="flex-1 text-[13px] leading-snug {statusClass(item.status)}">{item.text}</span>
+								<span class="flex-1 text-laya-base leading-snug {statusClass(item.status)}">{item.text}</span>
 								{#if item.space_name}
 									<span class="summary-item-space" style:--space-color={item.space_color || '#F97316'}>{item.space_name}</span>
 								{/if}
@@ -223,7 +223,7 @@
 						{/each}
 					</div>
 				{:else}
-					<p class="text-xs text-surface-500 px-1">No items match the selected space</p>
+					<p class="text-laya-secondary text-surface-500 px-1">No items match the selected space</p>
 				{/if}
 			</section>
 		{/if}
@@ -240,7 +240,7 @@
 					<h3 class="summary-section-title">Key Updates</h3>
 					<span class="summary-section-badge summary-section-badge--updates">{filteredUpdates.length}</span>
 					{#if updatesFilteredCount > 0}
-						<span class="text-[10px] text-surface-500">({updatesFilteredCount} filtered)</span>
+						<span class="text-laya-micro text-surface-500">({updatesFilteredCount} filtered)</span>
 					{/if}
 				</div>
 				{#if filteredUpdates.length > 0}
@@ -253,7 +253,7 @@
 								onclick={() => ongotocard(item.card_id)}
 							>
 								<span class="summary-item-status {statusClass(item.status)}">{statusIcon(item.status)}</span>
-								<span class="flex-1 text-[13px] leading-snug {statusClass(item.status)}">{item.text}</span>
+								<span class="flex-1 text-laya-base leading-snug {statusClass(item.status)}">{item.text}</span>
 								{#if item.space_name}
 									<span class="summary-item-space" style:--space-color={item.space_color || '#F97316'}>{item.space_name}</span>
 								{/if}
@@ -262,7 +262,7 @@
 						{/each}
 					</div>
 				{:else}
-					<p class="text-xs text-surface-500 px-1">No items match the selected space</p>
+					<p class="text-laya-secondary text-surface-500 px-1">No items match the selected space</p>
 				{/if}
 			</section>
 		{/if}
@@ -343,7 +343,7 @@
 
 	/* ── Section title ── */
 	.summary-section-title {
-		font-size: 0.7rem;
+		font-size: calc(var(--laya-font-base) - 2px);
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
@@ -355,7 +355,7 @@
 
 	/* ── Count badge ── */
 	.summary-section-badge {
-		font-size: 0.625rem;
+		font-size: calc(var(--laya-font-base) - 3px);
 		font-weight: 600;
 		padding: 0.1rem 0.4rem;
 		border-radius: 9999px;
@@ -416,7 +416,7 @@
 	}
 	.summary-item-status {
 		margin-top: 0.15rem;
-		font-size: 0.7rem;
+		font-size: calc(var(--laya-font-base) - 2px);
 		flex-shrink: 0;
 		width: 0.875rem;
 		text-align: center;
@@ -425,7 +425,7 @@
 		position: absolute;
 		right: 0.5rem;
 		top: 0.45rem;
-		font-size: 0.6rem;
+		font-size: calc(var(--laya-font-base) - 4px);
 		font-weight: 500;
 	}
 
@@ -445,7 +445,7 @@
 
 	/* ── Space badge (inline pill) ── */
 	.summary-item-space {
-		font-size: 0.55rem;
+		font-size: calc(var(--laya-font-base) - 4px);
 		font-weight: 500;
 		padding: 0.05rem 0.35rem;
 		border-radius: 9999px;
@@ -469,7 +469,7 @@
 		display: flex;
 		align-items: center;
 		gap: 0.3rem;
-		font-size: 0.6rem;
+		font-size: calc(var(--laya-font-base) - 4px);
 		font-weight: 500;
 		color: var(--color-surface-400);
 	}

@@ -105,17 +105,17 @@
 			       hover:bg-surface-800/40 rounded-sm transition-colors group"
 		>
 			<!-- Card header -->
-			<span class="text-[12px] text-surface-200 leading-snug truncate flex-1 min-w-0">
+			<span class="text-laya-secondary text-surface-200 leading-snug truncate flex-1 min-w-0">
 				{card.header}
 			</span>
 
 			<!-- Priority badge -->
-			<span class="px-1 py-0 rounded text-[9px] font-medium shrink-0 ml-1.5 {priorityColors[card.priority] || ''}">
+			<span class="px-1 py-0 rounded text-laya-micro font-medium shrink-0 ml-1.5 {priorityColors[card.priority] || ''}">
 				{card.priority[0]}
 			</span>
 
 			<!-- Time -->
-			<span class="text-[10px] text-surface-600 shrink-0 tabular-nums ml-1">
+			<span class="text-laya-micro text-surface-600 shrink-0 tabular-nums ml-1">
 				{shortTime}
 			</span>
 		</button>
@@ -123,12 +123,12 @@
 		<!-- Expanded detail -->
 		{#if expanded}
 			<div class="pl-2 border-l border-surface-700/30 ml-1 mb-1">
-				<p class="text-[11px] text-surface-400 leading-relaxed py-0.5">
+				<p class="text-laya-secondary text-surface-400 leading-relaxed py-0.5">
 					{card.summary}
 				</p>
 
 				{#if card.actor_name}
-					<p class="text-[10px] text-surface-500">
+					<p class="text-laya-micro text-surface-500">
 						{card.actor_name}
 					</p>
 				{/if}
@@ -136,7 +136,7 @@
 				{#if card.intelligence && card.intelligence.length > 0}
 					<div class="mt-1">
 						{#each card.intelligence as item}
-							<p class="text-[10px] text-surface-400 flex gap-1">
+							<p class="text-laya-micro text-surface-400 flex gap-1">
 								<span class="text-laya-orange shrink-0">-</span>
 								<span>{item}</span>
 							</p>
@@ -145,7 +145,7 @@
 				{/if}
 
 				{#if card.staged_output?.content}
-					<div class="mt-1 text-[10px] text-surface-400 prose prose-invert prose-xs max-w-none">
+					<div class="mt-1 text-laya-micro text-surface-400 prose prose-invert prose-xs max-w-none">
 						{@html DOMPurify.sanitize(marked(card.staged_output.content.slice(0, 300)) as string)}
 					</div>
 				{/if}
@@ -153,7 +153,7 @@
 				{#if card.suggested_actions && card.suggested_actions.length > 0}
 					<div class="flex flex-wrap gap-1 mt-1">
 						{#each card.suggested_actions as action}
-							<span class="px-1.5 py-0 rounded text-[9px] bg-surface-700/60 text-surface-400">
+							<span class="px-1.5 py-0 rounded text-laya-micro bg-surface-700/60 text-surface-400">
 								{action.label}
 							</span>
 						{/each}
@@ -165,7 +165,7 @@
 						href={card.source_url}
 						target="_blank"
 						rel="noopener noreferrer"
-						class="inline-flex items-center gap-0.5 text-[10px] text-laya-orange hover:text-laya-gold transition-colors mt-1"
+						class="inline-flex items-center gap-0.5 text-laya-micro text-laya-orange hover:text-laya-gold transition-colors mt-1"
 						onclick={(e) => e.stopPropagation()}
 					>
 						open in {platform || 'source'}
@@ -189,14 +189,14 @@
 		>
 			<div class="p-3">
 				<div class="flex items-center gap-2 mb-1">
-					<span class="text-xs font-mono uppercase tracking-wider {statusColors[card.status] || 'text-surface-400'}">
+					<span class="text-laya-secondary font-mono uppercase tracking-wider {statusColors[card.status] || 'text-surface-400'}">
 						{platform || '?'}
 					</span>
 					{#if card.source_ref}
-						<span class="text-xs text-surface-500">{card.source_ref}</span>
+						<span class="text-laya-secondary text-surface-500">{card.source_ref}</span>
 					{/if}
-					<span class="ml-auto text-xs text-surface-500">{timeStr}</span>
-					<span class="px-1.5 py-0.5 rounded text-[10px] font-medium {priorityColors[card.priority] || ''}">
+					<span class="ml-auto text-laya-secondary text-surface-500">{timeStr}</span>
+					<span class="px-1.5 py-0.5 rounded text-laya-micro font-medium {priorityColors[card.priority] || ''}">
 						{card.priority}
 					</span>
 				</div>
@@ -210,7 +210,7 @@
 				</p>
 
 				{#if card.actor_name}
-					<p class="text-xs text-surface-500 mt-1">
+					<p class="text-laya-secondary text-surface-500 mt-1">
 						{card.actor_name}{card.actor_email ? ` (${card.actor_email})` : ''}
 					</p>
 				{/if}
@@ -220,7 +220,7 @@
 				<div class="border-t border-surface-700/50 p-3 space-y-3">
 					{#if card.intelligence && card.intelligence.length > 0}
 						<div>
-							<h5 class="text-xs font-medium text-surface-400 uppercase tracking-wider mb-1">Intelligence</h5>
+							<h5 class="text-laya-secondary font-medium text-surface-400 uppercase tracking-wider mb-1">Intelligence</h5>
 							<ul class="space-y-0.5">
 								{#each card.intelligence as item}
 									<li class="text-laya-secondary text-surface-300 flex gap-1.5">
@@ -234,10 +234,10 @@
 
 					{#if card.staged_output?.content}
 						<div>
-							<h5 class="text-xs font-medium text-surface-400 uppercase tracking-wider mb-1">
+							<h5 class="text-laya-secondary font-medium text-surface-400 uppercase tracking-wider mb-1">
 								{card.staged_output.type.replace(/_/g, ' ')}
 							</h5>
-							<div class="text-xs text-surface-300 prose prose-invert prose-xs max-w-none">
+							<div class="text-laya-secondary text-surface-300 prose prose-invert prose-xs max-w-none">
 								{@html DOMPurify.sanitize(marked(card.staged_output.content.slice(0, 500)) as string)}
 							</div>
 						</div>
@@ -246,7 +246,7 @@
 					{#if card.suggested_actions && card.suggested_actions.length > 0}
 						<div class="flex flex-wrap gap-1.5">
 							{#each card.suggested_actions as action}
-								<span class="px-2 py-0.5 rounded text-xs bg-surface-700 text-surface-300">
+								<span class="px-2 py-0.5 rounded text-laya-secondary bg-surface-700 text-surface-300">
 									{action.label}
 								</span>
 							{/each}
@@ -258,7 +258,7 @@
 							href={card.source_url}
 							target="_blank"
 							rel="noopener noreferrer"
-							class="inline-flex items-center gap-1 text-xs text-laya-orange hover:text-laya-gold transition-colors"
+							class="inline-flex items-center gap-1 text-laya-secondary text-laya-orange hover:text-laya-gold transition-colors"
 							onclick={(e) => e.stopPropagation()}
 						>
 							Open in {platform || 'source'}

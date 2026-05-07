@@ -452,6 +452,7 @@ async def run_emit(
             card_summary=stager_output.summary,
             card_priority=router_output.priority.value,
             card_category=router_output.category.value,
+            space_id=space_id,
             card_persona=router_output.persona.value,
             card_intelligence=stager_output.intelligence_report,
             actor_name=event.actor.name,

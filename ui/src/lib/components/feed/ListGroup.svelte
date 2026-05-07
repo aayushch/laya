@@ -327,13 +327,13 @@
 				</div>
 
 				<!-- Source — fixed width, matches ListRow; brand dot prefix mirrors ListRow -->
-		<span class="w-[76px] shrink-0 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-surface-500 truncate" title={sourceLabel}>
+		<span class="w-[76px] shrink-0 flex items-center gap-1.5 text-laya-secondary font-semibold uppercase tracking-wider text-surface-500 truncate" title={sourceLabel}>
 			<span class="h-1 w-1 rounded-full shrink-0" style="background-color: {platformDotColor(group.platform)}"></span>
 			<span class="truncate">{sourceLabel}</span>
 		</span>
 		<!-- Spacer slot — mirrors ListRow's icon spacer so subjectId aligns with ListRow's actor column -->
 		<span class="w-3 shrink-0 ml-2"></span>
-		<span class="w-[90px] shrink-0 ml-1 text-[11px] font-medium text-laya-orange/70 truncate">
+		<span class="w-[90px] shrink-0 ml-1 text-laya-secondary font-medium text-laya-orange/70 truncate">
 			{subjectId ?? ''}
 		</span>
 
@@ -342,7 +342,7 @@
 			onmouseenter={() => showTooltipIfTruncated(subjectEl, group.entity_title, { maxWidth: 320 })}
 			onmouseleave={hideTooltip}
 		>
-			<span bind:this={subjectEl} class="min-w-0 block truncate text-xs {group.unread_count > 0 ? 'font-semibold text-surface-100' : 'font-normal text-surface-300'}">
+			<span bind:this={subjectEl} class="min-w-0 block truncate text-laya-secondary {group.unread_count > 0 ? 'font-semibold text-surface-100' : 'font-normal text-surface-300'}">
 				{group.entity_title}
 			</span>
 			{#if hasBookmark}
@@ -355,7 +355,7 @@
 		<!-- Card count — aligned with ListRow status column (w-[70px]) -->
 		<div class="w-[70px] shrink-0 flex items-center ml-2">
 			<button
-				class="rounded-full bg-laya-orange/10 px-2 py-0.5 text-[10px] font-semibold text-laya-orange hover:bg-laya-orange/20 transition-colors whitespace-nowrap"
+				class="rounded-full bg-laya-orange/10 px-2 py-0.5 text-laya-micro font-semibold text-laya-orange hover:bg-laya-orange/20 transition-colors whitespace-nowrap"
 				title="Show all cards"
 				onclick={(e) => { e.stopPropagation(); expanded = !expanded; }}
 				onmouseenter={(e) => showTooltip(e.currentTarget, statusSummaryTooltip)}
@@ -399,7 +399,7 @@
 		<!-- Space badge — fixed width, matches ListRow -->
 		<span class="w-[72px] shrink-0 flex items-center gap-1 ml-1 truncate">
 			{#if topCard?.space_name}
-				<span class="inline-flex items-center gap-1 rounded border border-surface-700 bg-surface-800/60 px-1.5 py-0.5 text-[9px] text-surface-400 truncate">
+				<span class="inline-flex items-center gap-1 rounded border border-surface-700 bg-surface-800/60 px-1.5 py-0.5 text-laya-micro text-surface-400 truncate">
 					<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {topCard.space_color ?? '#F97316'}"></span>
 					<span class="truncate">{topCard.space_name}</span>
 				</span>
@@ -407,7 +407,7 @@
 		</span>
 
 		<!-- Time — fixed width, matches ListRow -->
-		<span class="w-[52px] shrink-0 text-right text-[10px] text-surface-500 whitespace-nowrap">{timeAgo(group.latest_at)}</span>
+		<span class="w-[52px] shrink-0 text-right text-laya-micro text-surface-500 whitespace-nowrap">{timeAgo(group.latest_at)}</span>
 	</div>
 	</div>
 	</div>
@@ -435,23 +435,23 @@
 		onkeydown={(e) => { if (e.key === 'Escape') groupMenuOpen = false; }}
 	>
 		{#if canCompleteAll}
-			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-green-400" role="menuitem" onclick={(e) => bulkAction('complete', e)}>Complete All</button>
+			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary text-surface-300 hover:bg-surface-700 hover:text-green-400" role="menuitem" onclick={(e) => bulkAction('complete', e)}>Complete All</button>
 		{/if}
 		{#if canDismissAll}
-			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-red-400" role="menuitem" onclick={(e) => bulkAction('dismiss', e)}>Dismiss All</button>
+			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary text-surface-300 hover:bg-surface-700 hover:text-red-400" role="menuitem" onclick={(e) => bulkAction('dismiss', e)}>Dismiss All</button>
 		{/if}
 		{#if canReopenAll}
-			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-laya-orange" role="menuitem" onclick={(e) => bulkAction('reopen', e)}>Reopen All</button>
+			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary text-surface-300 hover:bg-surface-700 hover:text-laya-orange" role="menuitem" onclick={(e) => bulkAction('reopen', e)}>Reopen All</button>
 		{/if}
 		{#if canArchiveAll}
-			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-surface-400" role="menuitem" onclick={(e) => bulkAction('archive', e)}>Archive All</button>
+			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary text-surface-300 hover:bg-surface-700 hover:text-surface-400" role="menuitem" onclick={(e) => bulkAction('archive', e)}>Archive All</button>
 		{/if}
 		{#if canUnarchiveAll}
-			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-laya-orange" role="menuitem" onclick={(e) => bulkAction('unarchive', e)}>Unarchive All</button>
+			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary text-surface-300 hover:bg-surface-700 hover:text-laya-orange" role="menuitem" onclick={(e) => bulkAction('unarchive', e)}>Unarchive All</button>
 		{/if}
 		<div class="my-1 border-t border-surface-700"></div>
 		<button
-			class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 hover:bg-surface-700 hover:text-laya-orange"
+			class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary text-surface-300 hover:bg-surface-700 hover:text-laya-orange"
 			role="menuitem"
 			onclick={(e) => { e.stopPropagation(); groupMenuOpen = false; onlink?.(group); }}
 		>
@@ -464,7 +464,7 @@
 {#if fixedTooltip}
 	<span
 		use:portal
-		class="pointer-events-none fixed z-[100] rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium"
+		class="pointer-events-none fixed z-[100] rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium"
 		style="top: {fixedTooltip.top}px; left: {fixedTooltip.left}px;{fixedTooltip.maxWidth ? ` max-width: ${fixedTooltip.maxWidth}px; white-space: normal;` : ' white-space: nowrap;'}"
 	>
 		{fixedTooltip.text}

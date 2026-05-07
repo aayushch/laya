@@ -305,7 +305,7 @@
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<span
 				bind:this={timeEl}
-				class="absolute inset-0 flex items-center text-[11px] text-surface-400/75 opacity-100 transition-opacity duration-[180ms] ease-out group-hover/card:opacity-0 group-hover/card:pointer-events-none"
+				class="absolute inset-0 flex items-center text-laya-secondary text-surface-400/75 opacity-100 transition-opacity duration-[180ms] ease-out group-hover/card:opacity-0 group-hover/card:pointer-events-none"
 				onmouseenter={() => timeEl && showTooltip(timeEl, fullDate(card.created_at))}
 				onmouseleave={hideTooltip}
 			>{timeAgo(card.created_at)}</span>
@@ -355,7 +355,7 @@
 						{#if actionMenuOpen}
 							<div use:portal class="fixed z-[100] w-40 rounded-lg border p-1 {$glassTheme ? 'glass-menu' : 'border-surface-600 bg-surface-800 shadow-xl shadow-black/30'}" style="top: {actionMenuPos.top}px; left: {actionMenuPos.left}px;" role="menu">
 								<button
-									class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400 disabled:opacity-40"
+									class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400 disabled:opacity-40"
 									role="menuitem"
 									onclick={(e) => { actionMenuOpen = false; archive(e); }}
 									disabled={archiving}
@@ -364,7 +364,7 @@
 									Archive
 								</button>
 								<button
-									class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-violet-400"
+									class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary text-surface-300 transition-colors hover:bg-surface-700 hover:text-violet-400"
 									role="menuitem"
 									onclick={(e) => { e.stopPropagation(); actionMenuOpen = false; goto(`/workspace/${card.card_id}`); }}
 								>
@@ -590,10 +590,10 @@
 			<!-- Status indicator -->
 			<span class="ml-1 flex items-center gap-1 min-w-0 overflow-hidden">
 				<StatusDot status={card.status} size="md" errorMessage={card.last_error} />
-				<span class="text-[11px] text-surface-400 truncate" title={card.status === 'failed' && card.last_error ? card.last_error : ''}>{statusLabel[card.status] ?? card.status}</span>
+				<span class="text-laya-secondary text-surface-400 truncate" title={card.status === 'failed' && card.last_error ? card.last_error : ''}>{statusLabel[card.status] ?? card.status}</span>
 			</span>
 			<!-- Priority chip -->
-			<span class="ml-1 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase {priorityColors[card.priority] ?? priorityColors.MEDIUM}">
+			<span class="ml-1 shrink-0 rounded px-1.5 py-0.5 text-laya-micro font-bold uppercase {priorityColors[card.priority] ?? priorityColors.MEDIUM}">
 				{priorityLabel[card.priority] ?? card.priority}
 			</span>
 		</div>
@@ -602,7 +602,7 @@
 	<!-- Row 2: Platform · source ref (relaxed only — compact pulls platform inline into the footer) -->
 	{#if !compact}
 		<div class="mb-1.5 flex items-center gap-1.5 min-w-0">
-			<span class="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-surface-500 shrink-0">
+			<span class="flex items-center gap-1.5 text-laya-micro font-semibold uppercase tracking-widest text-surface-500 shrink-0">
 				<span class="h-1 w-1 rounded-full shrink-0" style="background-color: {platformDotColor(platformKey(card.entity_id))}"></span>
 				{platform}
 			</span>
@@ -619,10 +619,10 @@
 							target="_blank"
 							rel="noopener noreferrer"
 							onclick={(e) => e.stopPropagation()}
-							class="block truncate text-[10px] font-medium text-laya-orange/80 hover:text-laya-orange transition-colors"
+							class="block truncate text-laya-micro font-medium text-laya-orange/80 hover:text-laya-orange transition-colors"
 						>{card.source_ref}</a>
 					{:else}
-						<span bind:this={srcRefEl} class="block truncate text-[10px] font-medium text-surface-400">{card.source_ref}</span>
+						<span bind:this={srcRefEl} class="block truncate text-laya-micro font-medium text-surface-400">{card.source_ref}</span>
 					{/if}
 				</div>
 			{/if}
@@ -635,7 +635,7 @@
 		onmouseenter={() => showTooltipIfTruncated(headerEl, card.header, { checkHeight: true, maxWidth: 300 })}
 		onmouseleave={hideTooltip}
 	>
-		<h3 bind:this={headerEl} class="line-clamp-2 text-sm {card.read_at ? 'font-normal text-surface-200' : 'font-bold text-surface-50'} {compact ? 'leading-tight' : 'leading-snug'}">{card.header}</h3>
+		<h3 bind:this={headerEl} class="line-clamp-2 text-laya-base {card.read_at ? 'font-normal text-surface-200' : 'font-bold text-surface-50'} {compact ? 'leading-tight' : 'leading-snug'}">{card.header}</h3>
 	</div>
 
 	<!-- Row 4: Summary (2-line clamp) -->
@@ -645,13 +645,13 @@
 			onmouseenter={() => showTooltipIfTruncated(summaryEl, card.summary, { checkHeight: true, maxWidth: 300 })}
 			onmouseleave={hideTooltip}
 		>
-			<p bind:this={summaryEl} class="line-clamp-2 text-xs leading-relaxed text-surface-400">{card.summary}</p>
+			<p bind:this={summaryEl} class="line-clamp-2 text-laya-secondary leading-relaxed text-surface-400">{card.summary}</p>
 		</div>
 	{/if}
 
 	<!-- Row 5a: Space identifier — own row in relaxed mode only. Compact inlines it into the footer. -->
 	{#if !compact && card.space_name}
-		<div class="mt-3 flex items-center gap-1 text-[10px] text-surface-500">
+		<div class="mt-3 flex items-center gap-1 text-laya-micro text-surface-500">
 			<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {card.space_color ?? '#F97316'}"></span>
 			<span class="truncate">{card.space_name}</span>
 		</div>
@@ -664,12 +664,12 @@
 	<div class="flex items-center gap-1.5 min-w-0 {compact ? 'mt-1.5' : (card.space_name ? 'mt-1.5 pt-2 border-t border-surface-500/30' : 'mt-3 pt-2 border-t border-surface-500/30')}">
 		{#if card.actor_name}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<span class="relative flex items-center gap-1.5 min-w-0 text-[10px] text-surface-500"
+			<span class="relative flex items-center gap-1.5 min-w-0 text-laya-micro text-surface-500"
 				onmouseenter={() => showTooltipIfTruncated(actorEl, card.actor_name ?? '')}
 				onmouseleave={hideTooltip}
 			>
 				<span
-					class="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[9px] font-semibold leading-none text-white/95"
+					class="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-laya-micro font-semibold leading-none text-white/95"
 					style="background-color: {actorAvatarColor(card.actor_name)}"
 					aria-hidden="true"
 				>{actorInitials(card.actor_name)}</span>
@@ -679,27 +679,27 @@
 			</span>
 		{/if}
 		{#if compact && card.space_name}
-			<span class="text-[10px] text-surface-600 shrink-0">·</span>
-			<span class="flex items-center gap-1 shrink-0 text-[10px] text-surface-500 truncate">
+			<span class="text-laya-micro text-surface-600 shrink-0">·</span>
+			<span class="flex items-center gap-1 shrink-0 text-laya-micro text-surface-500 truncate">
 				<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {card.space_color ?? '#F97316'}"></span>
 				<span class="truncate">{card.space_name}</span>
 			</span>
 		{/if}
 		{#if compact && platform}
-			<span class="text-[10px] text-surface-600 shrink-0">·</span>
-			<span class="flex items-center gap-1 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-surface-500">
+			<span class="text-laya-micro text-surface-600 shrink-0">·</span>
+			<span class="flex items-center gap-1 shrink-0 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">
 				<span class="h-1 w-1 rounded-full shrink-0" style="background-color: {platformDotColor(platformKey(card.entity_id))}"></span>
 				{platform}
 			</span>
 		{/if}
-		<span class="ml-auto shrink-0 text-[10px] font-medium {personaColors[card.persona] ?? personaColors.ENGINEER}">{card.persona}</span>
+		<span class="ml-auto shrink-0 text-laya-micro font-medium {personaColors[card.persona] ?? personaColors.ENGINEER}">{card.persona}</span>
 	</div>
 </div>
 
 {#if fixedTooltip}
 	<span
 		use:portal
-		class="pointer-events-none fixed z-[100] rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium"
+		class="pointer-events-none fixed z-[100] rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium"
 		style="top: {fixedTooltip.top}px; left: {fixedTooltip.left}px;{fixedTooltip.maxWidth ? ` max-width: ${fixedTooltip.maxWidth}px; white-space: normal;` : ' white-space: nowrap;'}"
 	>
 		{fixedTooltip.text}
@@ -723,8 +723,8 @@
 					</svg>
 				</div>
 				<div>
-					<h4 class="text-sm font-semibold text-surface-50">Delete card permanently?</h4>
-					<p class="mt-1 text-xs leading-relaxed text-surface-400">
+					<h4 class="text-laya-base font-semibold text-surface-50">Delete card permanently?</h4>
+					<p class="mt-1 text-laya-secondary leading-relaxed text-surface-400">
 						All details, intelligence, workspace sessions, and related events for this card will be
 						<span class="font-medium text-red-400">permanently removed</span>. This cannot be undone.
 					</p>
@@ -732,14 +732,14 @@
 			</div>
 			<div class="flex justify-end gap-2">
 				<button
-					class="rounded-md px-3 py-1.5 text-xs text-surface-400 transition-colors hover:text-surface-200 disabled:opacity-50"
+					class="rounded-md px-3 py-1.5 text-laya-secondary text-surface-400 transition-colors hover:text-surface-200 disabled:opacity-50"
 					onclick={(e) => { e.stopPropagation(); showDeleteConfirm = false; }}
 					disabled={deleting}
 				>
 					Cancel
 				</button>
 				<button
-					class="rounded-md bg-red-700 px-3 py-1.5 text-xs font-medium text-red-50 transition-colors hover:bg-red-600 disabled:opacity-50"
+					class="rounded-md bg-red-700 px-3 py-1.5 text-laya-secondary font-medium text-red-50 transition-colors hover:bg-red-600 disabled:opacity-50"
 					onclick={deleteCard}
 					disabled={deleting}
 				>

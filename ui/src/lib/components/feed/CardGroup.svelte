@@ -371,7 +371,7 @@
 			<!-- Top row: time (left) · utility cluster (right). Time uses latest_at so groups
 			     sort coherently against regular cards by most-recent activity. -->
 			<div class="flex items-center gap-2">
-				<span class="text-[11px] text-surface-400/75 shrink-0">
+				<span class="text-laya-secondary text-surface-400/75 shrink-0">
 					{timeAgo(group.latest_at)}
 				</span>
 				<div class="ml-auto flex items-center gap-1.5">
@@ -389,7 +389,7 @@
 					{/if}
 					<!-- Card count badge (expanded only — collapsed uses footer indicator) -->
 					{#if expanded}
-						<span class="whitespace-nowrap rounded-full bg-laya-orange/10 px-2 py-0.5 text-[10px] font-semibold text-laya-orange">
+						<span class="whitespace-nowrap rounded-full bg-laya-orange/10 px-2 py-0.5 text-laya-micro font-semibold text-laya-orange">
 							{group.card_count} cards
 						</span>
 					{/if}
@@ -418,7 +418,7 @@
 							</button>
 						</div>
 					{/if}
-					<span class="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase {priorityColors[group.top_priority] ?? priorityColors.MEDIUM}">
+					<span class="rounded px-1.5 py-0.5 text-laya-micro font-bold uppercase {priorityColors[group.top_priority] ?? priorityColors.MEDIUM}">
 						{priorityLabel[group.top_priority] ?? group.top_priority}
 					</span>
 					<!-- Chevron — expand/collapse toggle (independent of body click) -->
@@ -440,18 +440,18 @@
 			{#if !compact || subjectId}
 				<div class="flex items-center gap-1.5 min-w-0">
 					{#if !compact}
-						<span class="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-surface-500 shrink-0">
+						<span class="flex items-center gap-1.5 text-laya-micro font-semibold uppercase tracking-widest text-surface-500 shrink-0">
 							<span class="h-1 w-1 rounded-full shrink-0" style="background-color: {platformDotColor(group.platform)}"></span>
 							{sourceLabel}
 						</span>
 					{/if}
 					{#if subjectId}
-						<span class="text-[10px] font-medium text-laya-orange/70 truncate">{subjectId}</span>
+						<span class="text-laya-micro font-medium text-laya-orange/70 truncate">{subjectId}</span>
 					{/if}
 				</div>
 			{/if}
 
-			<span class="line-clamp-2 text-sm {group.unread_count > 0 ? 'font-bold text-surface-50' : 'font-normal text-surface-200'} leading-snug">
+			<span class="line-clamp-2 text-laya-base {group.unread_count > 0 ? 'font-bold text-surface-50' : 'font-normal text-surface-200'} leading-snug">
 				{group.entity_title}
 			</span>
 		</div>
@@ -473,7 +473,7 @@
 						onmouseenter={() => showTooltipIfTruncated(summaryEl, topCard.summary, { checkHeight: true, maxWidth: 280 })}
 						onmouseleave={hideTooltip}
 					>
-						<p bind:this={summaryEl} class="line-clamp-2 text-xs leading-relaxed text-surface-400">
+						<p bind:this={summaryEl} class="line-clamp-2 text-laya-secondary leading-relaxed text-surface-400">
 							{topCard.summary}
 						</p>
 					</div>
@@ -483,16 +483,16 @@
 				<div class="flex items-center gap-2">
 					<div class="flex items-center gap-2 shrink-0 min-w-0">
 						{#if topCard.space_name}
-							<span class="flex items-center gap-1 shrink-0 text-[10px] text-surface-500">
+							<span class="flex items-center gap-1 shrink-0 text-laya-micro text-surface-500">
 								<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {topCard.space_color ?? '#F97316'}"></span>
 								{topCard.space_name}
 							</span>
 						{/if}
 						{#if compact}
 							{#if topCard.space_name}
-								<span class="text-[10px] text-surface-600 shrink-0">·</span>
+								<span class="text-laya-micro text-surface-600 shrink-0">·</span>
 							{/if}
-							<span class="flex items-center gap-1 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-surface-500">
+							<span class="flex items-center gap-1 shrink-0 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">
 								<span class="h-1 w-1 rounded-full shrink-0" style="background-color: {platformDotColor(group.platform)}"></span>
 								{sourceLabel}
 							</span>
@@ -507,7 +507,7 @@
 							{#each statusSummary as { status, count }}
 								<span class="flex items-center gap-1 shrink-0">
 									<StatusDot {status} />
-									<span class="text-[10px] text-surface-400 whitespace-nowrap">{count} {statusSummaryLabel[status] ?? status}</span>
+									<span class="text-laya-micro text-surface-400 whitespace-nowrap">{count} {statusSummaryLabel[status] ?? status}</span>
 								</span>
 							{/each}
 						</div>
@@ -528,7 +528,7 @@
 								<!-- Front card -->
 								<rect x="2" y="4" width="11" height="14" rx="2" fill="currentColor" opacity="0.8" stroke="currentColor" stroke-width="1.4" />
 							</svg>
-							<span class="text-[10px] font-bold text-laya-orange">{group.card_count}</span>
+							<span class="text-laya-micro font-bold text-laya-orange">{group.card_count}</span>
 						</div>
 					</div>
 				</div>
@@ -557,38 +557,38 @@
 		role="menu"
 	>
 		{#if canCompleteAll}
-			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-green-400" role="menuitem" onclick={(e) => bulkAction('complete', e)}>
+			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary text-surface-300 transition-colors hover:bg-surface-700 hover:text-green-400" role="menuitem" onclick={(e) => bulkAction('complete', e)}>
 				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
 				Complete All
 			</button>
 		{/if}
 		{#if canDismissAll}
-			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400" role="menuitem" onclick={(e) => bulkAction('dismiss', e)}>
+			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400" role="menuitem" onclick={(e) => bulkAction('dismiss', e)}>
 				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
 				Dismiss All
 			</button>
 		{/if}
 		{#if canReopenAll}
-			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-laya-orange" role="menuitem" onclick={(e) => bulkAction('reopen', e)}>
+			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary text-surface-300 transition-colors hover:bg-surface-700 hover:text-laya-orange" role="menuitem" onclick={(e) => bulkAction('reopen', e)}>
 				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
 				Reopen All
 			</button>
 		{/if}
 		{#if canArchiveAll}
-			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-surface-400" role="menuitem" onclick={(e) => bulkAction('archive', e)}>
+			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary text-surface-300 transition-colors hover:bg-surface-700 hover:text-surface-400" role="menuitem" onclick={(e) => bulkAction('archive', e)}>
 				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
 				Archive All
 			</button>
 		{/if}
 		{#if canUnarchiveAll}
-			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-laya-orange" role="menuitem" onclick={(e) => bulkAction('unarchive', e)}>
+			<button class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary text-surface-300 transition-colors hover:bg-surface-700 hover:text-laya-orange" role="menuitem" onclick={(e) => bulkAction('unarchive', e)}>
 				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4l3 3m0 0l3-3m-3 3V9" /></svg>
 				Unarchive All
 			</button>
 		{/if}
 		<div class="my-1 border-t border-surface-700"></div>
 		<button
-			class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700 hover:text-laya-orange"
+			class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary text-surface-300 transition-colors hover:bg-surface-700 hover:text-laya-orange"
 			role="menuitem"
 			onclick={(e) => { e.stopPropagation(); groupMenuOpen = false; onlink?.(group); }}
 		>
@@ -601,7 +601,7 @@
 {#if hoveredTooltip}
 	<span
 		use:portal
-		class="pointer-events-none fixed z-[100] rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium"
+		class="pointer-events-none fixed z-[100] rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium"
 		style="top: {hoveredTooltip.top}px; left: {hoveredTooltip.left}px;{hoveredTooltip.maxWidth ? ` max-width: ${hoveredTooltip.maxWidth}px; white-space: normal;` : ' white-space: nowrap; transform: translateX(-100%);'}"
 	>
 		{hoveredTooltip.text}
