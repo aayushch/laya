@@ -13,6 +13,7 @@
 		traceId,
 		onremove,
 		ongenerate,
+		isFirst = false,
 		isLast = false,
 		expandAll = null
 	}: {
@@ -20,6 +21,7 @@
 		traceId: string;
 		onremove?: () => void;
 		ongenerate?: () => void;
+		isFirst?: boolean;
 		isLast?: boolean;
 		expandAll?: boolean | null;
 	} = $props();
@@ -144,15 +146,24 @@
 {/if}
 
 <div class="relative pl-7">
-	<!-- Vertical trunk segment (non-last: full height; last: to row center only) -->
+	<!-- Cluster trunk, split around the [+/-] toggle button.
+	     Above-button segment: y=0 to y=4 (top of button). Skipped for the first cluster
+	     so it doesn't dangle into empty space above. Connects to the previous cluster's
+	     below-button segment for clusters in the middle.
+	     Below-button segment: y=17 (bottom of button) to bottom of pl-7. Skipped for the
+	     last cluster so the trunk visually terminates.
+	     Splitting avoids drawing the trunk *through* the toggle button — bg-surface-800
+	     and bg-surface-700 are too close in lightness to fully mask it, which made every
+	     [+/-] look like an outlined box with a hairline through it. -->
+	{#if !isFirst}
+		<div class="absolute left-[11px] top-0 w-px bg-surface-700" style="height: 4px"></div>
+	{/if}
 	{#if !isLast}
-		<div class="absolute left-[11px] top-0 bottom-0 w-px bg-surface-700"></div>
-	{:else}
-		<div class="absolute left-[11px] top-0 w-px bg-surface-700" style="height: 11px"></div>
+		<div class="absolute left-[11px] w-px bg-surface-700" style="top: 17px; bottom: -4px"></div>
 	{/if}
 
 	<!-- Horizontal branch: from trunk through [+] box to content -->
-	<div class="absolute left-[11px] top-[11px] w-[17px] h-px bg-surface-700"></div>
+	<div class="absolute left-[11px] top-[11px] w-[10px] ml-[7px] h-px bg-surface-700"></div>
 
 	<!-- [+] box sits on the horizontal line -->
 	<button

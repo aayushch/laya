@@ -761,6 +761,7 @@
 								traceId={trace.trace_id}
 								onremove={() => handleRemoveCluster(cluster.cluster_id)}
 								ongenerate={() => handleGenerateNarrative(cluster.cluster_id)}
+								isFirst={idx === 0}
 								isLast={idx === visibleClusters.length - 1}
 								expandAll={expandAllClusters}
 							/>
