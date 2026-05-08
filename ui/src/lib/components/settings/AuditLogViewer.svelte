@@ -232,21 +232,21 @@
 					<svg class="h-4 w-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 						<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
 					</svg>
-					<span class="text-sm font-medium text-amber-300">
+					<span class="text-laya-base font-medium text-amber-300">
 						{deadTotal} event{deadTotal !== 1 ? 's' : ''} failed permanently
 					</span>
 				</div>
 				<div class="flex items-center gap-2">
 					<button
 						onclick={() => { deadExpanded = !deadExpanded; retryAllConfirm = false; }}
-						class="rounded px-3 py-1 text-xs font-medium text-surface-300 transition-colors {$glassTheme ? 'hover:bg-white/[0.08]' : 'hover:bg-surface-700'}"
+						class="rounded px-3 py-1 text-laya-secondary font-medium text-surface-300 transition-colors {$glassTheme ? 'hover:bg-white/[0.08]' : 'hover:bg-surface-700'}"
 					>
 						{deadExpanded ? 'Hide' : 'View'}
 					</button>
 					<button
 						onclick={retryAll}
 						disabled={retryingAll}
-						class="rounded bg-laya-orange/20 px-3 py-1 text-xs font-medium text-laya-orange transition-colors hover:bg-laya-orange/30 disabled:opacity-50"
+						class="rounded bg-laya-orange/20 px-3 py-1 text-laya-secondary font-medium text-laya-orange transition-colors hover:bg-laya-orange/30 disabled:opacity-50"
 					>
 						{#if retryingAll}
 							Retrying...
@@ -261,7 +261,7 @@
 
 			{#if deadExpanded}
 				<div class="mt-3 overflow-visible {$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700'}">
-					<table class="w-full table-fixed text-left text-xs">
+					<table class="w-full table-fixed text-left text-laya-secondary">
 						<thead class="border-b {$glassTheme ? 'border-white/[0.06] bg-white/[0.03]' : 'border-surface-700 bg-surface-800'} text-surface-400">
 							<tr>
 								<th class="w-[18%] px-3 py-2">Time</th>
@@ -314,7 +314,7 @@
 										<button
 											onclick={() => retryOne(evt.event_id)}
 											disabled={retrying.has(evt.event_id)}
-											class="rounded bg-laya-orange/20 px-2 py-0.5 text-xs font-medium text-laya-orange transition-colors hover:bg-laya-orange/30 disabled:opacity-50"
+											class="rounded bg-laya-orange/20 px-2 py-0.5 text-laya-secondary font-medium text-laya-orange transition-colors hover:bg-laya-orange/30 disabled:opacity-50"
 										>
 											{retrying.has(evt.event_id) ? 'Retrying...' : 'Retry'}
 										</button>
@@ -336,21 +336,21 @@
 					<svg class="h-4 w-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 						<path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
 					</svg>
-					<span class="text-sm font-medium text-red-300">
+					<span class="text-laya-base font-medium text-red-300">
 						{ingestionErrors.length} ingestion error{ingestionErrors.length !== 1 ? 's' : ''} detected
 					</span>
 				</div>
 				<div class="flex items-center gap-2">
 					<button
 						onclick={() => { ingestionExpanded = !ingestionExpanded; clearAllIngestionConfirm = false; }}
-						class="rounded px-3 py-1 text-xs font-medium text-surface-300 transition-colors {$glassTheme ? 'hover:bg-white/[0.08]' : 'hover:bg-surface-700'}"
+						class="rounded px-3 py-1 text-laya-secondary font-medium text-surface-300 transition-colors {$glassTheme ? 'hover:bg-white/[0.08]' : 'hover:bg-surface-700'}"
 					>
 						{ingestionExpanded ? 'Hide' : 'View'}
 					</button>
 					<button
 						onclick={clearAllIngestion}
 						disabled={clearingAllIngestion}
-						class="rounded bg-red-500/20 px-3 py-1 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/30 disabled:opacity-50"
+						class="rounded bg-red-500/20 px-3 py-1 text-laya-secondary font-medium text-red-300 transition-colors hover:bg-red-500/30 disabled:opacity-50"
 					>
 						{#if clearingAllIngestion}
 							Clearing...
@@ -365,7 +365,7 @@
 
 			{#if ingestionExpanded}
 				<div class="mt-3 overflow-visible {$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700'}">
-					<table class="w-full table-fixed text-left text-xs">
+					<table class="w-full table-fixed text-left text-laya-secondary">
 						<thead class="border-b {$glassTheme ? 'border-white/[0.06] bg-white/[0.03]' : 'border-surface-700 bg-surface-800'} text-surface-400">
 							<tr>
 								<th class="w-[15%] px-3 py-2">Time</th>
@@ -422,7 +422,7 @@
 										<button
 											onclick={() => clearIngestionError(err.error_id)}
 											disabled={clearingIngestion.has(err.error_id)}
-											class="rounded bg-red-500/20 px-2 py-0.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/30 disabled:opacity-50"
+											class="rounded bg-red-500/20 px-2 py-0.5 text-laya-secondary font-medium text-red-300 transition-colors hover:bg-red-500/30 disabled:opacity-50"
 										>
 											{clearingIngestion.has(err.error_id) ? 'Clearing...' : 'Clear'}
 										</button>
@@ -439,20 +439,20 @@
 	<!-- Filters -->
 	<div class="flex flex-wrap items-end gap-3">
 		<div>
-			<label for="step-filter" class="mb-1 block text-xs text-surface-400">Step</label>
+			<label for="step-filter" class="mb-1 block text-laya-secondary text-surface-400">Step</label>
 			<input
 				id="step-filter"
 				bind:value={filterStep}
 				placeholder="e.g. router"
-				class="h-9 rounded-lg border px-3 text-sm text-surface-200 placeholder-surface-500 focus:outline-none {$glassTheme ? 'glass-input focus:border-laya-orange/50' : 'border-surface-600 bg-surface-800 focus:border-blue-500'}"
+				class="h-9 rounded-lg border px-3 text-laya-base text-surface-200 placeholder-surface-500 focus:outline-none {$glassTheme ? 'glass-input focus:border-laya-orange/50' : 'border-surface-600 bg-surface-800 focus:border-blue-500'}"
 			/>
 		</div>
 		<div>
-			<label for="success-filter" class="mb-1 block text-xs text-surface-400">Status</label>
+			<label for="success-filter" class="mb-1 block text-laya-secondary text-surface-400">Status</label>
 			<select
 				id="success-filter"
 				bind:value={filterSuccess}
-				class="h-9 rounded-lg border px-3 text-sm text-surface-200 focus:outline-none {$glassTheme ? 'glass-input focus:border-laya-orange/50' : 'border-surface-600 bg-surface-800 focus:border-blue-500'}"
+				class="h-9 rounded-lg border px-3 text-laya-base text-surface-200 focus:outline-none {$glassTheme ? 'glass-input focus:border-laya-orange/50' : 'border-surface-600 bg-surface-800 focus:border-blue-500'}"
 			>
 				<option value="">All</option>
 				<option value="true">Success</option>
@@ -461,7 +461,7 @@
 		</div>
 		<button
 			onclick={applyFilter}
-			class="h-9 rounded-lg px-4 text-sm font-medium text-surface-200 transition-colors {$glassTheme ? 'bg-white/[0.08] hover:bg-white/[0.14]' : 'bg-surface-700 hover:bg-surface-600'}"
+			class="h-9 rounded-lg px-4 text-laya-base font-medium text-surface-200 transition-colors {$glassTheme ? 'bg-white/[0.08] hover:bg-white/[0.14]' : 'bg-surface-700 hover:bg-surface-600'}"
 		>
 			Apply
 		</button>
@@ -472,12 +472,12 @@
 			<div class="h-5 w-5 animate-spin rounded-full border-2 border-blue-400 border-t-transparent"></div>
 		</div>
 	{:else if error}
-		<div class="rounded-lg border border-red-800 bg-red-900/20 p-3 text-sm text-red-300">{error}</div>
+		<div class="rounded-lg border border-red-800 bg-red-900/20 p-3 text-laya-base text-red-300">{error}</div>
 	{:else if entries.length === 0}
-		<p class="py-8 text-center text-sm text-surface-500">No audit log entries found.</p>
+		<p class="py-8 text-center text-laya-base text-surface-500">No audit log entries found.</p>
 	{:else}
 		<div class="overflow-x-auto {$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700'}">
-			<table class="w-full text-left text-xs">
+			<table class="w-full text-left text-laya-secondary">
 				<thead class="border-b {$glassTheme ? 'border-white/[0.06] bg-white/[0.03]' : 'border-surface-700 bg-surface-800'} text-surface-400">
 					<tr>
 						<th class="px-3 py-2">Time</th>
@@ -512,7 +512,7 @@
 		</div>
 
 		<!-- Pagination -->
-		<div class="flex items-center justify-between text-xs text-surface-400">
+		<div class="flex items-center justify-between text-laya-secondary text-surface-400">
 			<span>{total} entries</span>
 			<div class="flex items-center gap-2">
 				<button
@@ -538,7 +538,7 @@
 {#if fixedTooltip}
 	<span
 		use:portal
-		class="pointer-events-none fixed z-[100] max-w-sm whitespace-normal break-words rounded-md border border-transparent glass-tooltip px-2.5 py-1.5 text-xs font-normal {fixedTooltip.color ?? 'text-surface-200'}"
+		class="pointer-events-none fixed z-[100] max-w-sm whitespace-normal break-words rounded-md border border-transparent glass-tooltip px-2.5 py-1.5 text-laya-secondary font-normal {fixedTooltip.color ?? 'text-surface-200'}"
 		style="top: {fixedTooltip.top}px; left: {fixedTooltip.left}px; max-width: {fixedTooltip.maxWidth}px;"
 	>
 		{fixedTooltip.text}

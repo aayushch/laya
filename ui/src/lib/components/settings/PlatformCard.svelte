@@ -89,17 +89,17 @@
 		</div>
 		<div class="min-w-0 flex-1">
 			<div class="flex items-center gap-2">
-				<span class="text-sm font-medium text-surface-100">{label}</span>
+				<span class="text-laya-base font-medium text-surface-100">{label}</span>
 				{#if isOAuth}
-					<span class="rounded bg-surface-700 px-1 py-0.5 text-[9px] uppercase tracking-wider text-surface-500">OAuth</span>
+					<span class="rounded bg-surface-700 px-1 py-0.5 text-laya-micro uppercase tracking-wider text-surface-500">OAuth</span>
 				{/if}
 			</div>
 			{#if !hasConnections}
-				<div class="text-xs text-surface-500">Not connected</div>
+				<div class="text-laya-secondary text-surface-500">Not connected</div>
 			{:else if connections.length === 1}
 				{@const conn = connections[0]}
 				{#if conn.status === 'connected'}
-					<div class="flex items-center gap-1.5 text-xs text-green-400/80">
+					<div class="flex items-center gap-1.5 text-laya-secondary text-green-400/80">
 						<span class="h-1.5 w-1.5 rounded-full bg-green-500"></span>
 						{conn.name || 'Connected'}
 						{#if conn.capabilities?.length}
@@ -111,14 +111,14 @@
 					<!-- svelte-ignore a11y_click_events_have_key_events -->
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div
-						class="text-xs text-red-400/80 {expandedErrors.has(conn.connection_id) ? 'whitespace-pre-wrap select-text' : 'truncate'} cursor-pointer"
+						class="text-laya-secondary text-red-400/80 {expandedErrors.has(conn.connection_id) ? 'whitespace-pre-wrap select-text' : 'truncate'} cursor-pointer"
 						onclick={(e) => { e.stopPropagation(); toggleError(conn.connection_id); }}
 					>
 						{conn.error_message || 'Connection error'}
 					</div>
 				{/if}
 			{:else}
-				<div class="text-xs text-surface-400">{connections.length} accounts</div>
+				<div class="text-laya-secondary text-surface-400">{connections.length} accounts</div>
 			{/if}
 		</div>
 	</div>
@@ -129,7 +129,7 @@
 			{#each connections as conn (conn.connection_id)}
 				<div class="flex items-center justify-between gap-2 rounded px-2 py-1.5 bg-surface-900/50">
 					<div class="min-w-0 flex-1">
-						<div class="flex items-center gap-1.5 text-xs">
+						<div class="flex items-center gap-1.5 text-laya-secondary">
 							{#if conn.status === 'connected'}
 								<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-green-500"></span>
 								<span class="text-surface-200 truncate">{conn.name || 'Connected'}</span>
@@ -150,21 +150,21 @@
 						<button
 							onclick={(e) => { e.stopPropagation(); handleTest(conn); }}
 							disabled={testingId === conn.connection_id}
-							class="text-[11px] text-surface-500 hover:text-surface-300 transition-colors disabled:opacity-50"
+							class="text-laya-secondary text-surface-500 hover:text-surface-300 transition-colors disabled:opacity-50"
 						>
 							{testingId === conn.connection_id ? '...' : 'Test'}
 						</button>
 						<button
 							onclick={(e) => { e.stopPropagation(); confirmDisconnectId = conn.connection_id; }}
 							disabled={disconnectingId === conn.connection_id}
-							class="text-[11px] text-red-400/50 hover:text-red-400 transition-colors disabled:opacity-50"
+							class="text-laya-secondary text-red-400/50 hover:text-red-400 transition-colors disabled:opacity-50"
 						>
 							{disconnectingId === conn.connection_id ? '...' : 'Remove'}
 						</button>
 					</div>
 				</div>
 				{#if testResult?.id === conn.connection_id}
-					<div class="mx-2 rounded px-2 py-1 text-xs
+					<div class="mx-2 rounded px-2 py-1 text-laya-secondary
 						{testResult.valid ? 'bg-green-900/20 text-green-400' : 'bg-red-900/20 text-red-400'}">
 						{testResult.valid ? 'Connection valid' : testResult.error || 'Test failed'}
 					</div>
@@ -177,7 +177,7 @@
 	{#if connections.length === 1}
 		{@const conn = connections[0]}
 		{#if testResult?.id === conn.connection_id}
-			<div class="mt-2 rounded px-2 py-1 text-xs
+			<div class="mt-2 rounded px-2 py-1 text-laya-secondary
 				{testResult.valid ? 'bg-green-900/20 text-green-400' : 'bg-red-900/20 text-red-400'}">
 				{testResult.valid ? 'Connection valid' : testResult.error || 'Test failed'}
 			</div>
@@ -186,7 +186,7 @@
 			{#if conn.status !== 'connected'}
 				<button
 					onclick={() => onConnect(platformKey)}
-					class="text-xs text-laya-orange hover:text-laya-gold transition-colors"
+					class="text-laya-secondary text-laya-orange hover:text-laya-gold transition-colors"
 				>
 					Reconnect
 				</button>
@@ -194,14 +194,14 @@
 			<button
 				onclick={() => handleTest(conn)}
 				disabled={testingId === conn.connection_id}
-				class="text-xs text-surface-400 hover:text-surface-200 transition-colors disabled:opacity-50"
+				class="text-laya-secondary text-surface-400 hover:text-surface-200 transition-colors disabled:opacity-50"
 			>
 				{testingId === conn.connection_id ? 'Testing...' : 'Test'}
 			</button>
 			<button
 				onclick={() => confirmDisconnectId = conn.connection_id}
 				disabled={disconnectingId === conn.connection_id}
-				class="ml-auto text-xs text-red-400/60 hover:text-red-400 transition-colors disabled:opacity-50"
+				class="ml-auto text-laya-secondary text-red-400/60 hover:text-red-400 transition-colors disabled:opacity-50"
 			>
 				{disconnectingId === conn.connection_id ? '...' : 'Disconnect'}
 			</button>
@@ -212,7 +212,7 @@
 	{#if hasConnections}
 		<button
 			onclick={(e) => { e.stopPropagation(); onConnect(platformKey); }}
-			class="mt-2 w-full rounded border border-dashed border-surface-700 px-2 py-1 text-xs text-surface-500 hover:text-surface-300 hover:border-surface-500 transition-colors"
+			class="mt-2 w-full rounded border border-dashed border-surface-700 px-2 py-1 text-laya-secondary text-surface-500 hover:text-surface-300 hover:border-surface-500 transition-colors"
 		>
 			+ Add another account
 		</button>
@@ -226,18 +226,18 @@
 			onkeydown={(e) => { if (e.key === 'Escape') confirmDisconnectId = null; }}
 		>
 			<div class="px-4 py-3 text-center">
-				<p class="text-xs font-medium text-surface-200 mb-1">Disconnect this account?</p>
-				<p class="text-[11px] text-surface-400 mb-3">This will remove credentials and deactivate associated workflows.</p>
+				<p class="text-laya-secondary font-medium text-surface-200 mb-1">Disconnect this account?</p>
+				<p class="text-laya-secondary text-surface-400 mb-3">This will remove credentials and deactivate associated workflows.</p>
 				<div class="flex items-center justify-center gap-2">
 					<button
 						onclick={() => confirmDisconnectId = null}
-						class="rounded px-3 py-1 text-xs text-surface-300 bg-surface-700 hover:bg-surface-600 transition-colors"
+						class="rounded px-3 py-1 text-laya-secondary text-surface-300 bg-surface-700 hover:bg-surface-600 transition-colors"
 					>
 						Cancel
 					</button>
 					<button
 						onclick={() => { if (confirmDisconnectId) confirmDisconnect(confirmDisconnectId); }}
-						class="rounded px-3 py-1 text-xs text-white bg-red-600 hover:bg-red-500 transition-colors"
+						class="rounded px-3 py-1 text-laya-secondary text-white bg-red-600 hover:bg-red-500 transition-colors"
 					>
 						Disconnect
 					</button>

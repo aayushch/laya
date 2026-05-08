@@ -147,13 +147,13 @@
 {:else}
 	<div class="space-y-8">
 		{#if error}
-			<div class="rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-sm text-red-300">
+			<div class="rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-laya-base text-red-300">
 				{error}
 			</div>
 		{/if}
 
 		<!-- Stats -->
-		<div class="flex items-center gap-3 text-xs text-surface-400">
+		<div class="flex items-center gap-3 text-laya-secondary text-surface-400">
 			<span class="flex items-center gap-1.5">
 				<span class="h-1.5 w-1.5 rounded-full bg-green-500"></span>
 				{connectionStats.connected} connected
@@ -165,7 +165,7 @@
 		<!-- Platform grid by category -->
 		{#each categorizedPlatforms as group}
 			<div>
-				<h3 class="mb-3 text-xs font-semibold uppercase tracking-wider text-surface-500">
+				<h3 class="mb-3 text-laya-secondary font-semibold uppercase tracking-wider text-surface-500">
 					{group.label}
 				</h3>
 				<div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -191,8 +191,8 @@
 				class="flex w-full items-center justify-between p-4 text-left transition-colors {$glassTheme ? 'hover:bg-white/[0.04]' : 'hover:bg-surface-700/50'}"
 			>
 				<div>
-					<span class="text-sm font-medium text-surface-300">Advanced: n8n Workflow Engine</span>
-					<span class="ml-2 text-xs text-surface-500">Manage workflows, webhooks, and n8n configuration</span>
+					<span class="text-laya-base font-medium text-surface-300">Advanced: n8n Workflow Engine</span>
+					<span class="ml-2 text-laya-secondary text-surface-500">Manage workflows, webhooks, and n8n configuration</span>
 				</div>
 				<svg
 					class="h-4 w-4 text-surface-400 transition-transform {showN8nAdvanced ? 'rotate-180' : ''}"

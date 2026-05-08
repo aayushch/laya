@@ -251,20 +251,20 @@
 <div class="space-y-6">
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 		<h3 class="mb-1 font-medium">Daily Briefing</h3>
-		<p class="mb-4 text-sm text-surface-400">
+		<p class="mb-4 text-laya-base text-surface-400">
 			Laya generates a daily briefing card summarising overnight activity, pending cards, and your
 			calendar. Configure when this briefing runs.
 		</p>
 
 		{#if loading}
-			<p class="text-sm text-surface-500">Loading…</p>
+			<p class="text-laya-base text-surface-500">Loading…</p>
 		{:else}
 			<div class="space-y-4">
 				<!-- Enabled toggle -->
 				<div class="flex items-center justify-between rounded-md border {$glassTheme ? 'border-white/[0.08] bg-white/[0.04]' : 'border-surface-600 bg-surface-700/40'} px-4 py-3">
 					<div>
-						<span class="text-sm font-medium text-surface-100">Enable daily briefing</span>
-						<p class="text-xs text-surface-400">Generate a briefing card each day at the scheduled time</p>
+						<span class="text-laya-base font-medium text-surface-100">Enable daily briefing</span>
+						<p class="text-laya-secondary text-surface-400">Generate a briefing card each day at the scheduled time</p>
 					</div>
 					<button
 						class="relative h-6 w-11 rounded-full transition-colors {enabled ? 'bg-laya-orange' : 'bg-surface-600'}"
@@ -280,7 +280,7 @@
 				<!-- Time and timezone -->
 				<div class="grid grid-cols-[auto_1fr] items-end gap-3" class:opacity-40={!enabled}>
 					<div class="flex flex-col gap-1">
-						<label class="text-xs font-medium text-surface-300" for="briefing-time">
+						<label class="text-laya-secondary font-medium text-surface-300" for="briefing-time">
 							Time
 						</label>
 						<input
@@ -289,12 +289,12 @@
 							bind:value={time}
 							oninput={() => debouncedSaveBriefing()}
 							disabled={!enabled}
-							class="h-9 w-36 rounded-md border border-surface-600 bg-surface-700 px-3 text-sm text-surface-50 focus:border-laya-orange/50 focus:outline-none disabled:cursor-not-allowed"
+							class="h-9 w-36 rounded-md border border-surface-600 bg-surface-700 px-3 text-laya-base text-surface-50 focus:border-laya-orange/50 focus:outline-none disabled:cursor-not-allowed"
 						/>
 					</div>
 
 					<div class="flex flex-col gap-1">
-						<label class="text-xs font-medium text-surface-300" for="briefing-tz">
+						<label class="text-laya-secondary font-medium text-surface-300" for="briefing-tz">
 							Timezone
 						</label>
 						<select
@@ -302,7 +302,7 @@
 							bind:value={timezone}
 							onchange={() => debouncedSaveBriefing()}
 							disabled={!enabled}
-							class="h-9 rounded-md border border-surface-600 bg-surface-700 px-3 text-sm text-surface-50 focus:border-laya-orange/50 focus:outline-none disabled:cursor-not-allowed"
+							class="h-9 rounded-md border border-surface-600 bg-surface-700 px-3 text-laya-base text-surface-50 focus:border-laya-orange/50 focus:outline-none disabled:cursor-not-allowed"
 						>
 							{#each timezones as tz}
 								<option value={tz}>{formatTzLabel(tz)}</option>
@@ -315,8 +315,8 @@
 				{#if spaceCount > 1}
 					<div class="flex items-center justify-between rounded-md border {$glassTheme ? 'border-white/[0.08] bg-white/[0.04]' : 'border-surface-600 bg-surface-700/40'} px-4 py-3" class:opacity-40={!enabled}>
 						<div>
-							<span class="text-sm font-medium text-surface-100">Per-space briefings</span>
-							<p class="text-xs text-surface-400">Generate a separate briefing for each space instead of one combined briefing</p>
+							<span class="text-laya-base font-medium text-surface-100">Per-space briefings</span>
+							<p class="text-laya-secondary text-surface-400">Generate a separate briefing for each space instead of one combined briefing</p>
 						</div>
 						<button
 							class="relative h-6 w-11 shrink-0 rounded-full transition-colors {perSpace ? 'bg-laya-orange' : 'bg-surface-600'}"
@@ -332,11 +332,11 @@
 				{/if}
 
 				{#if error}
-					<p class="text-xs text-red-400">{error}</p>
+					<p class="text-laya-secondary text-red-400">{error}</p>
 				{/if}
 
 				{#if enabled}
-					<p class="text-xs text-surface-500">
+					<p class="text-laya-secondary text-surface-500">
 						{#if saving}
 							<span class="text-laya-orange">Saving…</span>
 						{:else if saved}
@@ -360,9 +360,9 @@
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 		<div class="flex items-center gap-2 mb-1">
 			<h3 class="font-medium">Context Association</h3>
-			<span class="rounded-full border border-laya-orange/30 bg-laya-orange/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-laya-orange">Beta</span>
+			<span class="rounded-full border border-laya-orange/30 bg-laya-orange/10 px-2 py-0.5 text-laya-micro font-semibold uppercase tracking-wider text-laya-orange">Beta</span>
 		</div>
-		<p class="mb-4 text-sm text-surface-400">
+		<p class="mb-4 text-laya-base text-surface-400">
 			Automatically detect when different notifications are about the same real-world context.
 			For example, a bill notification and its payment receipt will be linked together.
 			Works across different senders, threads, and platforms.
@@ -374,8 +374,8 @@
 				<div class="rounded-md border {$glassTheme ? 'border-white/[0.08] bg-white/[0.04]' : 'border-surface-600 bg-surface-700/40'}">
 					<div class="flex items-center justify-between px-4 py-3">
 						<div>
-							<span class="text-sm font-medium text-surface-100">Enable context association</span>
-							<p class="text-xs text-surface-400">Compute semantic links between related cards during event processing</p>
+							<span class="text-laya-base font-medium text-surface-100">Enable context association</span>
+							<p class="text-laya-secondary text-surface-400">Compute semantic links between related cards during event processing</p>
 						</div>
 						<button
 							class="relative h-6 w-11 shrink-0 rounded-full transition-colors {contextAssociationEnabled ? 'bg-laya-orange' : 'bg-surface-600'}"
@@ -391,7 +391,7 @@
 					<!-- Info when disabled -->
 					{#if !contextAssociationEnabled}
 						<div class="border-t border-surface-600/50 px-4 py-2">
-							<p class="text-[11px] text-surface-500 flex items-center gap-1.5">
+							<p class="text-laya-secondary text-surface-500 flex items-center gap-1.5">
 								Related cards detection is disabled.
 							</p>
 						</div>
@@ -399,12 +399,12 @@
 				</div>
 
 				{#if contextError}
-					<p class="text-xs text-red-400">{contextError}</p>
+					<p class="text-laya-secondary text-red-400">{contextError}</p>
 				{/if}
 				{#if contextSaving}
-					<p class="text-xs text-laya-orange">Saving...</p>
+					<p class="text-laya-secondary text-laya-orange">Saving...</p>
 				{:else if contextSaved}
-					<p class="text-xs text-green-400">Saved</p>
+					<p class="text-laya-secondary text-green-400">Saved</p>
 				{/if}
 			</div>
 		{/if}
@@ -414,9 +414,9 @@
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 		<div class="flex items-center gap-2 mb-1">
 			<h3 class="font-medium">Group Summaries</h3>
-			<span class="rounded-full border border-laya-orange/30 bg-laya-orange/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-laya-orange">Beta</span>
+			<span class="rounded-full border border-laya-orange/30 bg-laya-orange/10 px-2 py-0.5 text-laya-micro font-semibold uppercase tracking-wider text-laya-orange">Beta</span>
 		</div>
-		<p class="mb-4 text-sm text-surface-400">
+		<p class="mb-4 text-laya-base text-surface-400">
 			Generate rolling AI summaries for card groups. When multiple cards share the same entity,
 			Laya synthesizes them into an executive snapshot that updates as new events arrive.
 		</p>
@@ -425,8 +425,8 @@
 			<div class="space-y-4">
 				<div class="flex items-center justify-between rounded-md border {$glassTheme ? 'border-white/[0.08] bg-white/[0.04]' : 'border-surface-600 bg-surface-700/40'} px-4 py-3">
 					<div>
-						<span class="text-sm font-medium text-surface-100">Enable group summaries</span>
-						<p class="text-xs text-surface-400">Automatically summarize multi-card entity groups</p>
+						<span class="text-laya-base font-medium text-surface-100">Enable group summaries</span>
+						<p class="text-laya-secondary text-surface-400">Automatically summarize multi-card entity groups</p>
 					</div>
 					<button
 						class="relative h-6 w-11 shrink-0 rounded-full transition-colors {groupSummariesEnabled ? 'bg-laya-orange' : 'bg-surface-600'}"
@@ -440,12 +440,12 @@
 				</div>
 
 				{#if groupSumError}
-					<p class="text-xs text-red-400">{groupSumError}</p>
+					<p class="text-laya-secondary text-red-400">{groupSumError}</p>
 				{/if}
 				{#if groupSumSaving}
-					<p class="text-xs text-laya-orange">Saving...</p>
+					<p class="text-laya-secondary text-laya-orange">Saving...</p>
 				{:else if groupSumSaved}
-					<p class="text-xs text-green-400">Saved</p>
+					<p class="text-laya-secondary text-green-400">Saved</p>
 				{/if}
 			</div>
 		{/if}
@@ -454,7 +454,7 @@
 	<!-- Omni settings -->
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 		<h3 class="mb-1 font-medium">Omni</h3>
-		<p class="mb-4 text-sm text-surface-400">
+		<p class="mb-4 text-laya-base text-surface-400">
 			Omni maintains a rolling cross-platform summary of your professional activity.
 			Configure when resynthesis runs and how detailed the summary should be.
 		</p>
@@ -464,8 +464,8 @@
 				<!-- Enabled toggle -->
 				<div class="flex items-center justify-between rounded-md border {$glassTheme ? 'border-white/[0.08] bg-white/[0.04]' : 'border-surface-600 bg-surface-700/40'} px-4 py-3">
 					<div>
-						<span class="text-sm font-medium text-surface-100">Enable Omni</span>
-						<p class="text-xs text-surface-400">Track and summarise activity across all platforms</p>
+						<span class="text-laya-base font-medium text-surface-100">Enable Omni</span>
+						<p class="text-laya-secondary text-surface-400">Track and summarise activity across all platforms</p>
 					</div>
 					<button
 						class="relative h-6 w-11 rounded-full transition-colors {omniEnabled ? 'bg-laya-orange' : 'bg-surface-600'}"
@@ -481,11 +481,11 @@
 				<div class="space-y-4" class:opacity-40={!omniEnabled}>
 					<!-- Density -->
 					<div class="flex flex-col gap-1.5">
-						<span class="text-xs font-medium text-surface-300">Summary density</span>
+						<span class="text-laya-secondary font-medium text-surface-300">Summary density</span>
 						<div class="flex rounded-lg border border-surface-600 overflow-hidden w-fit">
 							{#each ['compact', 'standard', 'detailed'] as opt}
 								<button
-									class="px-3 py-1.5 text-sm font-medium transition-colors
+									class="px-3 py-1.5 text-laya-base font-medium transition-colors
 										{omniDensity === opt
 											? 'bg-laya-orange/15 text-laya-orange'
 											: 'text-surface-400 hover:text-surface-200 hover:bg-surface-700'}"
@@ -496,13 +496,13 @@
 								</button>
 							{/each}
 						</div>
-						<p class="text-xs text-surface-500">{densityDescriptions[omniDensity]}</p>
+						<p class="text-laya-secondary text-surface-500">{densityDescriptions[omniDensity]}</p>
 					</div>
 
 					<!-- Resynthesis time and timezone -->
 					<div class="grid grid-cols-[auto_1fr] items-end gap-3">
 						<div class="flex flex-col gap-1">
-							<label class="text-xs font-medium text-surface-300" for="omni-time">
+							<label class="text-laya-secondary font-medium text-surface-300" for="omni-time">
 								Resynthesis time
 							</label>
 							<input
@@ -511,12 +511,12 @@
 								bind:value={omniResynthesisTime}
 								oninput={() => debouncedSaveOmni()}
 								disabled={!omniEnabled}
-								class="h-9 w-36 rounded-md border border-surface-600 bg-surface-700 px-3 text-sm text-surface-50 focus:border-laya-orange/50 focus:outline-none disabled:cursor-not-allowed"
+								class="h-9 w-36 rounded-md border border-surface-600 bg-surface-700 px-3 text-laya-base text-surface-50 focus:border-laya-orange/50 focus:outline-none disabled:cursor-not-allowed"
 							/>
 						</div>
 
 						<div class="flex flex-col gap-1">
-							<label class="text-xs font-medium text-surface-300" for="omni-tz">
+							<label class="text-laya-secondary font-medium text-surface-300" for="omni-tz">
 								Timezone
 							</label>
 							<select
@@ -524,7 +524,7 @@
 								bind:value={omniTimezone}
 								onchange={() => debouncedSaveOmni()}
 								disabled={!omniEnabled}
-								class="h-9 rounded-md border border-surface-600 bg-surface-700 px-3 text-sm text-surface-50 focus:border-laya-orange/50 focus:outline-none disabled:cursor-not-allowed"
+								class="h-9 rounded-md border border-surface-600 bg-surface-700 px-3 text-laya-base text-surface-50 focus:border-laya-orange/50 focus:outline-none disabled:cursor-not-allowed"
 							>
 								{#each timezones as tz}
 									<option value={tz}>{formatTzLabel(tz)}</option>
@@ -536,7 +536,7 @@
 					<!-- Rolling resynthesis controls -->
 					<div class="grid grid-cols-[auto_auto] items-end gap-3">
 						<div class="flex flex-col gap-1">
-							<label class="text-xs font-medium text-surface-300" for="omni-rolling">
+							<label class="text-laya-secondary font-medium text-surface-300" for="omni-rolling">
 								Rolling interval
 							</label>
 							<select
@@ -544,7 +544,7 @@
 								bind:value={omniRollingHours}
 								onchange={() => debouncedSaveOmni()}
 								disabled={!omniEnabled}
-								class="h-9 w-36 rounded-md border border-surface-600 bg-surface-700 px-3 text-sm text-surface-50 focus:border-laya-orange/50 focus:outline-none disabled:cursor-not-allowed"
+								class="h-9 w-36 rounded-md border border-surface-600 bg-surface-700 px-3 text-laya-base text-surface-50 focus:border-laya-orange/50 focus:outline-none disabled:cursor-not-allowed"
 							>
 								<option value={0}>Off</option>
 								<option value={1}>Every 1h</option>
@@ -556,7 +556,7 @@
 						</div>
 
 						<div class="flex flex-col gap-1">
-							<label class="text-xs font-medium text-surface-300" for="omni-threshold">
+							<label class="text-laya-secondary font-medium text-surface-300" for="omni-threshold">
 								Event threshold
 							</label>
 							<input
@@ -574,25 +574,25 @@
 									debouncedSaveOmni();
 								}}
 								disabled={!omniEnabled}
-								class="h-9 w-36 rounded-md border border-surface-600 bg-surface-700 px-3 text-sm text-surface-50 focus:border-laya-orange/50 focus:outline-none disabled:cursor-not-allowed"
+								class="h-9 w-36 rounded-md border border-surface-600 bg-surface-700 px-3 text-laya-base text-surface-50 focus:border-laya-orange/50 focus:outline-none disabled:cursor-not-allowed"
 								placeholder="0 = off"
 							/>
 						</div>
 					</div>
 
-					<p class="text-xs text-surface-500">
+					<p class="text-laya-secondary text-surface-500">
 						Resynthesis triggers: daily at <span class="text-surface-300">{omniPreviewTime}</span>{omniRollingHours > 0 ? `, every ${omniRollingHours}h` : ''}{omniEventThreshold > 0 ? `, or after ${omniEventThreshold} new events` : ''} — whichever comes first.
 						Synthesis is skipped automatically if no new cards have arrived since the last run.
 					</p>
 
 					{#if omniError}
-						<p class="text-xs text-red-400">{omniError}</p>
+						<p class="text-laya-secondary text-red-400">{omniError}</p>
 					{/if}
 
 					{#if omniSaving}
-						<p class="text-xs text-laya-orange">Saving…</p>
+						<p class="text-laya-secondary text-laya-orange">Saving…</p>
 					{:else if omniSaved}
-						<p class="text-xs text-green-400">Saved</p>
+						<p class="text-laya-secondary text-green-400">Saved</p>
 					{/if}
 				</div>
 			</div>

@@ -299,18 +299,18 @@
 	<!-- ═══════════════ FILTER RULES ═══════════════ -->
 	<div class="space-y-4">
 		<div>
-			<h3 class="text-lg font-semibold text-surface-50">Filter Rules</h3>
-			<p class="mt-1 text-sm text-surface-400">
+			<h3 class="text-laya-heading font-semibold text-surface-50">Filter Rules</h3>
+			<p class="mt-1 text-laya-base text-surface-400">
 				Filter rules control which events Laya processes. Use these to ignore noisy notifications or allow only specific sources.
 			</p>
 		</div>
 
 		{#if error}
-			<div class="rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-sm text-red-300">{error}</div>
+			<div class="rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-laya-base text-red-300">{error}</div>
 		{/if}
 
 		{#if loading}
-			<div class="text-surface-400 text-sm">Loading filter rules...</div>
+			<div class="text-surface-400 text-laya-base">Loading filter rules...</div>
 		{:else}
 			<div class="space-y-3">
 				{#each rules as rule, i}
@@ -325,17 +325,17 @@
 									>
 										<span class="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform {rule.enabled ? 'left-[1.125rem]' : 'left-0.5'}"></span>
 									</button>
-									<span class="rounded px-1.5 py-0.5 text-xs font-semibold uppercase {rule.action === 'allow' ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}">{rule.action === 'allow' ? 'Allow' : 'Ignore'}</span>
+									<span class="rounded px-1.5 py-0.5 text-laya-secondary font-semibold uppercase {rule.action === 'allow' ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}">{rule.action === 'allow' ? 'Allow' : 'Ignore'}</span>
 									{#if conditionLabel(rule.condition)}
-										<span class="rounded px-1.5 py-0.5 text-xs font-semibold uppercase bg-blue-900/50 text-blue-400">{conditionLabel(rule.condition)}</span>
+										<span class="rounded px-1.5 py-0.5 text-laya-secondary font-semibold uppercase bg-blue-900/50 text-blue-400">{conditionLabel(rule.condition)}</span>
 									{/if}
 									<span class="font-medium {rule.enabled ? 'text-surface-50' : 'text-surface-500'}">{rule.name}</span>
 								</div>
-								<p class="mt-1 pl-12 font-mono text-xs text-surface-400">{conditionSummary(rule.condition)}</p>
+								<p class="mt-1 pl-12 font-mono text-laya-secondary text-surface-400">{conditionSummary(rule.condition)}</p>
 							</div>
 							<div class="flex gap-2">
-								<button class="text-sm text-surface-400 hover:text-surface-100" onclick={() => startEdit(i)}>Edit</button>
-								<button class="text-sm text-red-400 hover:text-red-300" onclick={() => removeRule(i)}>Remove</button>
+								<button class="text-laya-base text-surface-400 hover:text-surface-100" onclick={() => startEdit(i)}>Edit</button>
+								<button class="text-laya-base text-red-400 hover:text-red-300" onclick={() => removeRule(i)}>Remove</button>
 							</div>
 						</div>
 					</div>
@@ -350,32 +350,32 @@
 			<!-- Add/Edit form (filter rules) -->
 			{#if showAddForm || editingIndex !== null}
 				<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-4">
-					<h3 class="mb-3 text-sm font-medium">{editingIndex !== null ? 'Edit Rule' : 'Add Rule'}</h3>
+					<h3 class="mb-3 text-laya-base font-medium">{editingIndex !== null ? 'Edit Rule' : 'Add Rule'}</h3>
 					<div class="space-y-3">
 						<div class="flex gap-3">
-							<input bind:value={formName} placeholder="Rule name" class="flex-1 rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500" />
+							<input bind:value={formName} placeholder="Rule name" class="flex-1 rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500" />
 							<div class="flex rounded-lg border border-surface-600 overflow-hidden">
 								<button
-									class="px-3 py-2 text-sm font-medium transition-colors {formAction === 'drop' ? 'bg-red-900/60 text-red-300' : 'bg-surface-900 text-surface-400 hover:text-surface-200'}"
+									class="px-3 py-2 text-laya-base font-medium transition-colors {formAction === 'drop' ? 'bg-red-900/60 text-red-300' : 'bg-surface-900 text-surface-400 hover:text-surface-200'}"
 									onclick={() => (formAction = 'drop')}
 								>Ignore</button>
 								<button
-									class="px-3 py-2 text-sm font-medium transition-colors {formAction === 'allow' ? 'bg-green-900/60 text-green-300' : 'bg-surface-900 text-surface-400 hover:text-surface-200'}"
+									class="px-3 py-2 text-laya-base font-medium transition-colors {formAction === 'allow' ? 'bg-green-900/60 text-green-300' : 'bg-surface-900 text-surface-400 hover:text-surface-200'}"
 									onclick={() => (formAction = 'allow')}
 								>Allow</button>
 							</div>
 						</div>
 
 						{#if formConditions.length > 1}
-							<div class="flex items-center gap-2 text-xs text-surface-400">
+							<div class="flex items-center gap-2 text-laya-secondary text-surface-400">
 								<span>Match</span>
 								<div class="flex rounded-lg border border-surface-600 overflow-hidden">
 									<button
-										class="px-2.5 py-1 text-xs font-medium transition-colors {formLogic === 'all' ? 'bg-blue-900/60 text-blue-300' : 'bg-surface-900 text-surface-400 hover:text-surface-200'}"
+										class="px-2.5 py-1 text-laya-secondary font-medium transition-colors {formLogic === 'all' ? 'bg-blue-900/60 text-blue-300' : 'bg-surface-900 text-surface-400 hover:text-surface-200'}"
 										onclick={() => (formLogic = 'all')}
 									>ALL conditions</button>
 									<button
-										class="px-2.5 py-1 text-xs font-medium transition-colors {formLogic === 'any' ? 'bg-blue-900/60 text-blue-300' : 'bg-surface-900 text-surface-400 hover:text-surface-200'}"
+										class="px-2.5 py-1 text-laya-secondary font-medium transition-colors {formLogic === 'any' ? 'bg-blue-900/60 text-blue-300' : 'bg-surface-900 text-surface-400 hover:text-surface-200'}"
 										onclick={() => (formLogic = 'any')}
 									>ANY condition</button>
 								</div>
@@ -385,7 +385,7 @@
 						{#each formConditions as cond, ci}
 							<div class="flex items-center gap-2">
 								{#if formConditions.length > 1}
-									<span class="w-8 text-center text-xs text-surface-500">
+									<span class="w-8 text-center text-laya-secondary text-surface-500">
 										{#if ci === 0}
 											If
 										{:else}
@@ -394,17 +394,17 @@
 									</span>
 								{/if}
 								<div class="grid flex-1 grid-cols-1 gap-2 sm:grid-cols-3">
-									<select bind:value={cond.field} class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50">
+									<select bind:value={cond.field} class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50">
 										{#each commonFields as field}
 											<option value={field}>{field}</option>
 										{/each}
 									</select>
-									<select bind:value={cond.operator} class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50">
+									<select bind:value={cond.operator} class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50">
 										{#each operators as op}
 											<option value={op}>{op.replace('_', ' ')}</option>
 										{/each}
 									</select>
-									<input bind:value={cond.value} placeholder="Value" class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500" />
+									<input bind:value={cond.value} placeholder="Value" class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500" />
 								</div>
 								{#if formConditions.length > 1}
 									<button
@@ -419,26 +419,26 @@
 						{/each}
 
 						<button
-							class="text-xs text-surface-400 transition-colors hover:text-surface-200"
+							class="text-laya-secondary text-surface-400 transition-colors hover:text-surface-200"
 							onclick={addConditionRow}
 						>+ Add condition</button>
 					</div>
 					<div class="mt-3 flex gap-2">
 						<button
-							class="rounded-lg bg-surface-600 px-4 py-2 text-sm font-medium hover:bg-surface-500"
+							class="rounded-lg bg-surface-600 px-4 py-2 text-laya-base font-medium hover:bg-surface-500"
 							onclick={editingIndex !== null ? saveEdit : addRule}
 							disabled={!formValid}
 						>
 							{saving ? 'Saving...' : editingIndex !== null ? 'Save' : 'Add'}
 						</button>
-						<button class="rounded-lg px-4 py-2 text-sm text-surface-400 hover:text-surface-200" onclick={resetForm}>
+						<button class="rounded-lg px-4 py-2 text-laya-base text-surface-400 hover:text-surface-200" onclick={resetForm}>
 							Cancel
 						</button>
 					</div>
 				</div>
 			{:else}
 				<button
-					class="rounded-lg border border-dashed border-surface-600 px-4 py-2 text-sm text-surface-400 transition-colors hover:border-surface-400 hover:text-surface-200"
+					class="rounded-lg border border-dashed border-surface-600 px-4 py-2 text-laya-base text-surface-400 transition-colors hover:border-surface-400 hover:text-surface-200"
 					onclick={() => (showAddForm = true)}
 				>
 					+ Add Filter Rule
@@ -453,18 +453,18 @@
 	<!-- ═══════════════ CLASSIFICATION RULES ═══════════════ -->
 	<div class="space-y-4">
 		<div>
-			<h3 class="text-lg font-semibold text-surface-50">Classification Rules</h3>
-			<p class="mt-1 text-sm text-surface-400">
+			<h3 class="text-laya-heading font-semibold text-surface-50">Classification Rules</h3>
+			<p class="mt-1 text-laya-base text-surface-400">
 				Classification rules guide how Laya assigns priority and persona to your cards. Write rules in plain language — they're injected into the AI's instructions. You can also add rules through the "Adjust classification" link on any card.
 			</p>
 		</div>
 
 		{#if clsError}
-			<div class="rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-sm text-red-300">{clsError}</div>
+			<div class="rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-laya-base text-red-300">{clsError}</div>
 		{/if}
 
 		{#if clsLoading}
-			<div class="text-surface-400 text-sm">Loading classification rules...</div>
+			<div class="text-surface-400 text-laya-base">Loading classification rules...</div>
 		{:else}
 			<div class="space-y-3">
 				{#each clsRules as rule (rule.id)}
@@ -475,11 +475,11 @@
 								<input
 									bind:value={clsFormText}
 									placeholder="Rule text"
-									class="flex-1 rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500"
+									class="flex-1 rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500"
 								/>
 								<select
 									bind:value={clsFormField}
-									class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50"
+									class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50"
 								>
 									{#each clsFieldOptions as opt}
 										<option value={opt.value}>{opt.label}</option>
@@ -488,13 +488,13 @@
 							</div>
 							<div class="flex gap-2">
 								<button
-									class="rounded-lg bg-surface-600 px-4 py-2 text-sm font-medium hover:bg-surface-500 disabled:opacity-50"
+									class="rounded-lg bg-surface-600 px-4 py-2 text-laya-base font-medium hover:bg-surface-500 disabled:opacity-50"
 									onclick={saveClsEdit}
 									disabled={!clsFormValid || clsSaving}
 								>
 									{clsSaving ? 'Saving...' : 'Save'}
 								</button>
-								<button class="rounded-lg px-4 py-2 text-sm text-surface-400 hover:text-surface-200" onclick={resetClsForm}>
+								<button class="rounded-lg px-4 py-2 text-laya-base text-surface-400 hover:text-surface-200" onclick={resetClsForm}>
 									Cancel
 								</button>
 							</div>
@@ -513,19 +513,19 @@
 									<div class="flex-1 min-w-0">
 										<div class="flex items-center gap-2 flex-wrap">
 											{#if rule.field}
-												<span class="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase bg-laya-orange/15 text-laya-orange">{rule.field}</span>
+												<span class="rounded px-1.5 py-0.5 text-laya-micro font-semibold uppercase bg-laya-orange/15 text-laya-orange">{rule.field}</span>
 											{/if}
-											<span class="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase
+											<span class="rounded px-1.5 py-0.5 text-laya-micro font-semibold uppercase
 												{rule.source === 'learned' ? 'bg-blue-900/50 text-blue-400' : 'bg-surface-700 text-surface-400'}">
 												{rule.source}
 											</span>
 										</div>
-										<p class="mt-1 text-sm {rule.active ? 'text-surface-200' : 'text-surface-500'}">{rule.rule_text}</p>
+										<p class="mt-1 text-laya-base {rule.active ? 'text-surface-200' : 'text-surface-500'}">{rule.rule_text}</p>
 									</div>
 								</div>
 								<div class="flex gap-2 shrink-0">
-									<button class="text-sm text-surface-400 hover:text-surface-100" onclick={() => startClsEdit(rule)}>Edit</button>
-									<button class="text-sm text-red-400 hover:text-red-300" onclick={() => removeClsRule(rule)}>Remove</button>
+									<button class="text-laya-base text-surface-400 hover:text-surface-100" onclick={() => startClsEdit(rule)}>Edit</button>
+									<button class="text-laya-base text-red-400 hover:text-red-300" onclick={() => removeClsRule(rule)}>Remove</button>
 								</div>
 							</div>
 						</div>
@@ -545,11 +545,11 @@
 						<input
 							bind:value={clsFormText}
 							placeholder='e.g., "Always treat emails from legal@acme.com as HIGH priority"'
-							class="flex-1 rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500"
+							class="flex-1 rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500"
 						/>
 						<select
 							bind:value={clsFormField}
-							class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50"
+							class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50"
 						>
 							{#each clsFieldOptions as opt}
 								<option value={opt.value}>{opt.label}</option>
@@ -558,20 +558,20 @@
 					</div>
 					<div class="flex gap-2">
 						<button
-							class="rounded-lg bg-surface-600 px-4 py-2 text-sm font-medium hover:bg-surface-500 disabled:opacity-50"
+							class="rounded-lg bg-surface-600 px-4 py-2 text-laya-base font-medium hover:bg-surface-500 disabled:opacity-50"
 							onclick={addClsRule}
 							disabled={!clsFormValid || clsSaving}
 						>
 							{clsSaving ? 'Saving...' : 'Add'}
 						</button>
-						<button class="rounded-lg px-4 py-2 text-sm text-surface-400 hover:text-surface-200" onclick={resetClsForm}>
+						<button class="rounded-lg px-4 py-2 text-laya-base text-surface-400 hover:text-surface-200" onclick={resetClsForm}>
 							Cancel
 						</button>
 					</div>
 				</div>
 			{:else if clsEditingId === null}
 				<button
-					class="rounded-lg border border-dashed border-surface-600 px-4 py-2 text-sm text-surface-400 transition-colors hover:border-surface-400 hover:text-surface-200"
+					class="rounded-lg border border-dashed border-surface-600 px-4 py-2 text-laya-base text-surface-400 transition-colors hover:border-surface-400 hover:text-surface-200"
 					onclick={() => (showClsAddForm = true)}
 				>
 					+ Add Classification Rule

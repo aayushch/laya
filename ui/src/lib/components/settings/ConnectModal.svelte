@@ -229,8 +229,8 @@
 				<PlatformIcon platform={platform} size={18} />
 			</div>
 			<div>
-				<h3 class="text-sm font-semibold text-surface-100">Connect {platformLabel}</h3>
-				<p class="text-xs text-surface-500">
+				<h3 class="text-laya-base font-semibold text-surface-100">Connect {platformLabel}</h3>
+				<p class="text-laya-secondary text-surface-500">
 					{#if isOAuth}
 						Authenticate via OAuth
 					{:else if platform === 'smtp'}
@@ -254,7 +254,7 @@
 		<!-- Body -->
 		<div class="px-6 py-5">
 			{#if error}
-				<div class="mb-4 rounded-md border border-red-800/50 bg-red-900/20 px-3 py-2 text-xs text-red-300">
+				<div class="mb-4 rounded-md border border-red-800/50 bg-red-900/20 px-3 py-2 text-laya-secondary text-red-300">
 					{error}
 				</div>
 			{/if}
@@ -262,20 +262,20 @@
 			<!-- Account name input (when adding another account) -->
 			{#if hasExistingConnections}
 				<div class="mb-4">
-					<label for="connection-name" class="mb-1 block text-xs font-medium text-surface-400">Account Name</label>
+					<label for="connection-name" class="mb-1 block text-laya-secondary font-medium text-surface-400">Account Name</label>
 					<input
 						id="connection-name"
 						type="text"
 						bind:value={connectionName}
 						placeholder="e.g., Personal, Work"
-						class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+						class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
 					/>
 					{#if nameError}
-						<p class="mt-1 text-[11px] text-red-400">{nameError}</p>
+						<p class="mt-1 text-laya-secondary text-red-400">{nameError}</p>
 					{:else if connectionName && existingNames.includes(connectionName.trim())}
-						<p class="mt-1 text-[11px] text-red-400">This name is already in use</p>
+						<p class="mt-1 text-laya-secondary text-red-400">This name is already in use</p>
 					{:else}
-						<p class="mt-1 text-[11px] text-surface-500">A label to identify this account</p>
+						<p class="mt-1 text-laya-secondary text-surface-500">A label to identify this account</p>
 					{/if}
 				</div>
 			{/if}
@@ -288,38 +288,38 @@
 				<!-- OAuth flow -->
 				{#if showOAuthSetup}
 					<div class="space-y-4">
-						<p class="text-xs text-surface-400">
+						<p class="text-laya-secondary text-surface-400">
 							To connect {platformLabel}, first configure your OAuth application credentials.
 						</p>
 						<div>
-							<label for="oauth-client-id" class="mb-1 block text-xs font-medium text-surface-400">Client ID</label>
+							<label for="oauth-client-id" class="mb-1 block text-laya-secondary font-medium text-surface-400">Client ID</label>
 							<input
 								id="oauth-client-id"
 								type="text"
 								bind:value={oauthClientId}
 								placeholder="Your OAuth client ID"
-								class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+								class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
 							/>
 						</div>
 						<div>
-							<label for="oauth-client-secret" class="mb-1 block text-xs font-medium text-surface-400">Client Secret</label>
+							<label for="oauth-client-secret" class="mb-1 block text-laya-secondary font-medium text-surface-400">Client Secret</label>
 							<input
 								id="oauth-client-secret"
 								type="password"
 								bind:value={oauthClientSecret}
 								placeholder="Your OAuth client secret"
-								class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+								class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
 							/>
 						</div>
 						{#if oauthError}
-							<div class="rounded-md border border-red-800/50 bg-red-900/20 px-3 py-2 text-xs text-red-300">
+							<div class="rounded-md border border-red-800/50 bg-red-900/20 px-3 py-2 text-laya-secondary text-red-300">
 								{oauthError}
 							</div>
 						{/if}
 						<button
 							onclick={handleOAuthSetup}
 							disabled={submitting || !oauthClientId.trim() || !oauthClientSecret.trim()}
-							class="w-full rounded-md bg-laya-orange px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-laya-gold disabled:opacity-50"
+							class="w-full rounded-md bg-laya-orange px-4 py-2 text-laya-base font-medium text-white transition-colors hover:bg-laya-gold disabled:opacity-50"
 						>
 							{submitting ? 'Saving...' : 'Save & Continue'}
 						</button>
@@ -327,29 +327,29 @@
 				{:else if oauthPolling}
 					<div class="flex flex-col items-center gap-3 py-6">
 						<div class="h-8 w-8 animate-spin rounded-full border-2 border-surface-600 border-t-laya-orange"></div>
-						<p class="text-sm text-surface-300">Waiting for authorization...</p>
-						<p class="text-xs text-surface-500">Complete the sign-in in the opened window</p>
+						<p class="text-laya-base text-surface-300">Waiting for authorization...</p>
+						<p class="text-laya-secondary text-surface-500">Complete the sign-in in the opened window</p>
 					</div>
 				{:else}
 					<div class="flex flex-col items-center gap-4 py-4">
-						<p class="text-center text-sm text-surface-400">
+						<p class="text-center text-laya-base text-surface-400">
 							Click below to sign in with {platformLabel}. A new window will open for authorization.
 						</p>
 						{#if oauthError}
-							<div class="w-full rounded-md border border-red-800/50 bg-red-900/20 px-3 py-2 text-xs text-red-300">
+							<div class="w-full rounded-md border border-red-800/50 bg-red-900/20 px-3 py-2 text-laya-secondary text-red-300">
 								{oauthError}
 							</div>
 						{/if}
 						<button
 							onclick={handleOAuthConnect}
-							class="flex items-center gap-2 rounded-md bg-laya-orange px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-laya-gold"
+							class="flex items-center gap-2 rounded-md bg-laya-orange px-6 py-2.5 text-laya-base font-medium text-white transition-colors hover:bg-laya-gold"
 						>
 							<PlatformIcon platform={platform} size={16} />
 							Connect {platformLabel}
 						</button>
 						<button
 							onclick={() => { showOAuthSetup = true; oauthError = null; }}
-							class="text-xs text-surface-500 hover:text-surface-300 transition-colors"
+							class="text-laya-secondary text-surface-500 hover:text-surface-300 transition-colors"
 						>
 							Change OAuth credentials
 						</button>
@@ -361,14 +361,14 @@
 				<div class="space-y-4">
 					{#each fields as field}
 						<div>
-							<label for="field-{field.key}" class="mb-1 block text-xs font-medium text-surface-400">{field.label}</label>
+							<label for="field-{field.key}" class="mb-1 block text-laya-secondary font-medium text-surface-400">{field.label}</label>
 							{#if field.type === 'password'}
 								<input
 									id="field-{field.key}"
 									type="password"
 									bind:value={fieldValues[field.key]}
 									placeholder={field.placeholder ?? ''}
-									class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+									class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
 								/>
 							{:else}
 								<input
@@ -376,11 +376,11 @@
 									type="text"
 									bind:value={fieldValues[field.key]}
 									placeholder={field.placeholder ?? ''}
-									class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+									class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
 								/>
 							{/if}
 							{#if field.help}
-								<p class="mt-1 text-[11px] text-surface-500">{field.help}</p>
+								<p class="mt-1 text-laya-secondary text-surface-500">{field.help}</p>
 							{/if}
 						</div>
 					{/each}
@@ -388,7 +388,7 @@
 					<button
 						onclick={handleApiKeySubmit}
 						disabled={submitting || fields.some((f) => !fieldValues[f.key]?.trim())}
-						class="w-full rounded-md bg-laya-orange px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-laya-gold disabled:opacity-50"
+						class="w-full rounded-md bg-laya-orange px-4 py-2 text-laya-base font-medium text-white transition-colors hover:bg-laya-gold disabled:opacity-50"
 					>
 						{submitting ? 'Connecting...' : 'Connect'}
 					</button>

@@ -388,7 +388,7 @@
 	<div class="text-surface-400">Loading processing rules...</div>
 {:else}
 	{#if error}
-		<div class="flex items-start gap-2 rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-sm text-red-300">
+		<div class="flex items-start gap-2 rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-laya-base text-red-300">
 			<span class="flex-1">{error}</span>
 			<button class="shrink-0 text-red-400 hover:text-red-200" onclick={() => (error = null)} aria-label="Dismiss error">
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -399,18 +399,18 @@
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-4">
 		<div class="mb-4 flex items-center justify-between">
 			<div>
-				<h3 class="text-sm font-medium">Processing Rules</h3>
-				<p class="text-xs text-surface-400">Automate actions when events match specific conditions</p>
+				<h3 class="text-laya-base font-medium">Processing Rules</h3>
+				<p class="text-laya-secondary text-surface-400">Automate actions when events match specific conditions</p>
 			</div>
 		</div>
 
 		<!-- Auto-disable threshold setting -->
 		<div class="mb-4 flex items-center gap-3">
-			<label for="auto-disable-threshold" class="text-xs text-surface-400">Auto-disable rules after</label>
+			<label for="auto-disable-threshold" class="text-laya-secondary text-surface-400">Auto-disable rules after</label>
 			<input id="auto-disable-threshold" type="number" bind:value={autoDisableThreshold} min="1" max="100"
-				class="w-16 rounded-lg border border-surface-600 bg-surface-900 px-2 py-1 text-sm text-surface-50"
+				class="w-16 rounded-lg border border-surface-600 bg-surface-900 px-2 py-1 text-laya-base text-surface-50"
 				onchange={saveThreshold} />
-			<span class="text-xs text-surface-500">consecutive errors</span>
+			<span class="text-laya-secondary text-surface-500">consecutive errors</span>
 		</div>
 
 		<!-- Rule list -->
@@ -431,17 +431,17 @@
 							</button>
 							<div class="flex-1 min-w-0">
 								<div class="flex items-center gap-2">
-									<span class="text-sm font-medium text-surface-100 truncate">{rule.name}</span>
+									<span class="text-laya-base font-medium text-surface-100 truncate">{rule.name}</span>
 									{#if rule.error_count > 0}
-										<span class="rounded bg-red-900/50 px-1.5 py-0.5 text-[10px] font-medium text-red-300">{rule.error_count} errors</span>
+										<span class="rounded bg-red-900/50 px-1.5 py-0.5 text-laya-micro font-medium text-red-300">{rule.error_count} errors</span>
 									{/if}
 								</div>
-								<div class="mt-0.5 text-[11px] text-surface-500 truncate">
+								<div class="mt-0.5 text-laya-secondary text-surface-500 truncate">
 									<span class="text-surface-400">WHEN</span> {conditionSummary(rule.condition)}
 									<span class="mx-1 text-surface-600">→</span>
 									<span class="text-surface-400">THEN</span> {rule.actions.map(actionSummary).join(', ')}
 								</div>
-								<div class="mt-1 flex items-center gap-3 text-[10px] text-surface-600">
+								<div class="mt-1 flex items-center gap-3 text-laya-micro text-surface-600">
 									<span>Fired {rule.fire_count}x</span>
 									<span>Last: {timeAgo(rule.last_fired_at)}</span>
 									{#if rule.last_error}
@@ -459,11 +459,11 @@
 								</button>
 								{#if confirmDeleteId === rule.id}
 									<button
-										class="rounded px-2 py-0.5 text-[10px] font-medium bg-red-900/50 text-red-300 transition-colors hover:bg-red-800/60"
+										class="rounded px-2 py-0.5 text-laya-micro font-medium bg-red-900/50 text-red-300 transition-colors hover:bg-red-800/60"
 										onclick={() => { deleteRule(rule.id); confirmDeleteId = null; }}
 									>Delete</button>
 									<button
-										class="rounded px-1.5 py-0.5 text-[10px] text-surface-400 hover:text-surface-200"
+										class="rounded px-1.5 py-0.5 text-laya-micro text-surface-400 hover:text-surface-200"
 										onclick={() => (confirmDeleteId = null)}
 									>Cancel</button>
 								{:else}
@@ -489,7 +489,7 @@
 			</div>
 		{:else if editingId === null}
 			<button
-				class="mt-3 rounded-lg border border-dashed border-surface-600 px-4 py-2 text-sm text-surface-400 transition-colors hover:border-surface-400 hover:text-surface-200"
+				class="mt-3 rounded-lg border border-dashed border-surface-600 px-4 py-2 text-laya-base text-surface-400 transition-colors hover:border-surface-400 hover:text-surface-200"
 				onclick={() => { resetForm(); formMode = 'add'; }}
 			>
 				+ Add Processing Rule
@@ -501,7 +501,7 @@
 {#if tooltip}
 	<span
 		use:portal
-		class="pointer-events-none fixed z-[100] -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium"
+		class="pointer-events-none fixed z-[100] -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium"
 		style="top: {tooltip.top}px; left: {tooltip.left}px;"
 	>
 		{tooltip.text}
@@ -512,24 +512,24 @@
 	<div class="rounded-lg border border-laya-orange/30 {$glassTheme ? 'bg-white/[0.03]' : 'bg-surface-850'} p-4 space-y-4">
 		<!-- Name -->
 		<div>
-			<label class="mb-1 block text-xs font-medium text-surface-300">
+			<label class="mb-1 block text-laya-secondary font-medium text-surface-300">
 				Rule Name
 				<input
 					bind:value={formName}
 					placeholder="e.g. Auto-dismiss low-priority calendar"
-					class="mt-1 w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500 focus:border-laya-orange focus:outline-none"
+					class="mt-1 w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500 focus:border-laya-orange focus:outline-none"
 				/>
 			</label>
 		</div>
 
 		<!-- Description (optional) -->
 		<div>
-			<label class="mb-1 block text-xs font-medium text-surface-300">
+			<label class="mb-1 block text-laya-secondary font-medium text-surface-300">
 				Description <span class="text-surface-500">(optional)</span>
 				<input
 					bind:value={formDescription}
 					placeholder="What does this rule do?"
-					class="mt-1 w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500 focus:border-laya-orange/50 focus:outline-none"
+					class="mt-1 w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500 focus:border-laya-orange/50 focus:outline-none"
 				/>
 			</label>
 		</div>
@@ -537,15 +537,15 @@
 		<!-- WHEN section -->
 		<div>
 			<div class="mb-2 flex items-center gap-2">
-				<span class="text-xs font-semibold uppercase tracking-wider text-surface-400">When</span>
+				<span class="text-laya-secondary font-semibold uppercase tracking-wider text-surface-400">When</span>
 				{#if formConditions.length > 1}
 					<div class="inline-flex overflow-hidden rounded-lg border border-surface-600">
 						<button
-							class="px-2.5 py-1 text-xs font-medium transition-colors {formLogic === 'all' ? 'bg-blue-900/60 text-blue-300' : 'bg-surface-900 text-surface-400 hover:text-surface-200'}"
+							class="px-2.5 py-1 text-laya-secondary font-medium transition-colors {formLogic === 'all' ? 'bg-blue-900/60 text-blue-300' : 'bg-surface-900 text-surface-400 hover:text-surface-200'}"
 							onclick={() => (formLogic = 'all')}
 						>ALL match</button>
 						<button
-							class="px-2.5 py-1 text-xs font-medium transition-colors {formLogic === 'any' ? 'bg-blue-900/60 text-blue-300' : 'bg-surface-900 text-surface-400 hover:text-surface-200'}"
+							class="px-2.5 py-1 text-laya-secondary font-medium transition-colors {formLogic === 'any' ? 'bg-blue-900/60 text-blue-300' : 'bg-surface-900 text-surface-400 hover:text-surface-200'}"
 							onclick={() => (formLogic = 'any')}
 						>ANY match</button>
 					</div>
@@ -558,7 +558,7 @@
 						<div class="grid flex-1 grid-cols-[2fr_1fr_2fr] gap-2">
 							<select
 								bind:value={cond.field}
-								class="h-[38px] rounded-lg border border-surface-600 bg-surface-900 px-3 text-sm text-surface-50"
+								class="h-[38px] rounded-lg border border-surface-600 bg-surface-900 px-3 text-laya-base text-surface-50"
 							>
 								{#each fieldGroups as group}
 									<optgroup label={group.label}>
@@ -570,7 +570,7 @@
 							</select>
 							<select
 								bind:value={cond.operator}
-								class="h-[38px] rounded-lg border border-surface-600 bg-surface-900 px-3 text-sm text-surface-50"
+								class="h-[38px] rounded-lg border border-surface-600 bg-surface-900 px-3 text-laya-base text-surface-50"
 							>
 								{#each operatorsForField(cond.field) as op}
 									<option value={op}>{operatorLabels[op]}</option>
@@ -583,7 +583,7 @@
 								{#if options}
 									<select
 										bind:value={cond.value}
-										class="h-[38px] rounded-lg border border-surface-600 bg-surface-900 px-3 text-sm text-surface-50"
+										class="h-[38px] rounded-lg border border-surface-600 bg-surface-900 px-3 text-laya-base text-surface-50"
 									>
 										<option value="">Select...</option>
 										{#each options as opt}
@@ -594,7 +594,7 @@
 									<input
 										bind:value={cond.value}
 										placeholder="Value"
-										class="h-[38px] rounded-lg border border-surface-600 bg-surface-900 px-3 text-sm text-surface-50 placeholder-surface-500"
+										class="h-[38px] rounded-lg border border-surface-600 bg-surface-900 px-3 text-laya-base text-surface-50 placeholder-surface-500"
 									/>
 								{/if}
 							{/if}
@@ -613,14 +613,14 @@
 			</div>
 
 			<button
-				class="mt-2 text-xs text-surface-400 hover:text-surface-200"
+				class="mt-2 text-laya-secondary text-surface-400 hover:text-surface-200"
 				onclick={() => { formConditions = [...formConditions, { field: 'event.source.platform', operator: 'equals', value: '' }]; }}
 			>+ Add condition</button>
 		</div>
 
 		<!-- THEN section -->
 		<div>
-			<span class="mb-2 block text-xs font-semibold uppercase tracking-wider text-surface-400">Then</span>
+			<span class="mb-2 block text-laya-secondary font-semibold uppercase tracking-wider text-surface-400">Then</span>
 
 			<div class="space-y-3">
 				{#each formActions as action, i}
@@ -631,7 +631,7 @@
 						<div class="flex items-center gap-2">
 							<select
 								bind:value={action.type}
-								class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50"
+								class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50"
 								onchange={() => { action.config = action.type === 'set_status' ? { status: 'dismissed' } : action.type === 'set_priority' ? { priority: 'HIGH' } : {}; }}
 							>
 								{#each actionTypes as at}
@@ -652,16 +652,16 @@
 						<!-- Action-specific config -->
 						{#if action.type === 'set_status'}
 							<div class="mt-3 grid grid-cols-2 gap-2">
-								<select bind:value={action.config.status} class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50">
+								<select bind:value={action.config.status} class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50">
 									<option value="dismissed">Dismiss</option>
 									<option value="archived">Archive</option>
 									<option value="done">Mark Done</option>
 								</select>
-								<input bind:value={action.config.reason} placeholder="Reason (optional)" class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500" />
+								<input bind:value={action.config.reason} placeholder="Reason (optional)" class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500" />
 							</div>
 						{:else if action.type === 'set_priority'}
 							<div class="mt-3">
-								<select bind:value={action.config.priority} class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50">
+								<select bind:value={action.config.priority} class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50">
 									<option value="LOW">LOW</option>
 									<option value="MEDIUM">MEDIUM</option>
 									<option value="HIGH">HIGH</option>
@@ -669,19 +669,19 @@
 								</select>
 							</div>
 						{:else if action.type === 'bookmark'}
-							<p class="mt-3 text-sm text-surface-500">Card will be bookmarked automatically.</p>
+							<p class="mt-3 text-laya-base text-surface-500">Card will be bookmarked automatically.</p>
 						{:else if action.type === 'run_entity_agent'}
 							<textarea
 								bind:value={action.config.prompt_template}
 								placeholder="Agent prompt (optional). Use variables like: event.subject.title, classification.priority"
 								rows="2"
-								class="mt-3 w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500"
+								class="mt-3 w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500"
 							></textarea>
 						{:else if action.type === 'execute_egress'}
 							<div class="mt-3 grid grid-cols-2 gap-2">
 								<select
 									bind:value={action.config.platform}
-									class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50"
+									class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50"
 									onchange={() => { action.config.action_type = ''; }}
 								>
 									<option value="">Select platform</option>
@@ -691,7 +691,7 @@
 								</select>
 								<select
 									bind:value={action.config.action_type}
-									class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50"
+									class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50"
 									disabled={!action.config.platform}
 								>
 									<option value="">Select action</option>
@@ -708,12 +708,12 @@
 												bind:value={action.config[field.name]}
 												placeholder={field.placeholder || field.label}
 												rows="2"
-												class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500"
+												class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500"
 											></textarea>
 										{:else if field.type === 'select' && field.options}
 											<select
 												bind:value={action.config[field.name]}
-												class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50"
+												class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50"
 											>
 												<option value="">{field.placeholder || field.label}</option>
 												{#each field.options as opt}
@@ -724,7 +724,7 @@
 											<input
 												bind:value={action.config[field.name]}
 												placeholder={field.placeholder || field.label}
-												class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500"
+												class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500"
 											/>
 										{/if}
 									{/each}
@@ -732,12 +732,12 @@
 							{/if}
 						{:else if action.type === 'send_notification'}
 							<div class="mt-3 space-y-2">
-								<input bind:value={action.config.title_template} placeholder="Notification title" class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500" />
+								<input bind:value={action.config.title_template} placeholder="Notification title" class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500" />
 								<textarea
 									bind:value={action.config.body_template}
 									placeholder="Notification body"
 									rows="2"
-									class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500"
+									class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500"
 								></textarea>
 							</div>
 						{/if}
@@ -746,7 +746,7 @@
 			</div>
 
 			<button
-				class="mt-2 text-xs text-surface-400 hover:text-surface-200"
+				class="mt-2 text-laya-secondary text-surface-400 hover:text-surface-200"
 				onclick={() => { formActions = [...formActions, { type: 'set_status', config: { status: 'dismissed' } }]; }}
 			>+ Add action</button>
 		</div>
@@ -754,7 +754,7 @@
 		<!-- Advanced (rate limiting) -->
 		<div>
 			<button
-				class="text-xs text-surface-500 hover:text-surface-300"
+				class="text-laya-secondary text-surface-500 hover:text-surface-300"
 				onclick={() => (showAdvanced = !showAdvanced)}
 			>
 				{showAdvanced ? 'Hide' : 'Show'} advanced options
@@ -762,37 +762,37 @@
 			{#if showAdvanced}
 				<div class="mt-2 grid grid-cols-3 gap-3">
 					<div>
-						<label for="rule-rate-limit" class="mb-1 flex items-center gap-1 text-xs text-surface-400">
+						<label for="rule-rate-limit" class="mb-1 flex items-center gap-1 text-laya-secondary text-surface-400">
 							Max per hour
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<span class="cursor-help" onmouseenter={(e) => showTip(e.currentTarget as HTMLElement, 'Maximum times this rule can fire per hour globally')} onmouseleave={hideTip}>
 								<svg class="h-3 w-3 text-surface-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" /></svg>
 							</span>
 						</label>
-						<input id="rule-rate-limit" type="number" bind:value={formRateLimit} min="0" class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50" />
-						<p class="mt-1 text-[11px] text-surface-600">0 = unlimited</p>
+						<input id="rule-rate-limit" type="number" bind:value={formRateLimit} min="0" class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50" />
+						<p class="mt-1 text-laya-secondary text-surface-600">0 = unlimited</p>
 					</div>
 					<div>
-						<label for="rule-cooldown" class="mb-1 flex items-center gap-1 text-xs text-surface-400">
+						<label for="rule-cooldown" class="mb-1 flex items-center gap-1 text-laya-secondary text-surface-400">
 							Entity cooldown
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<span class="cursor-help" onmouseenter={(e) => showTip(e.currentTarget as HTMLElement, 'Minimum seconds between firings for the same entity (e.g. same PR)')} onmouseleave={hideTip}>
 								<svg class="h-3 w-3 text-surface-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" /></svg>
 							</span>
 						</label>
-						<input id="rule-cooldown" type="number" bind:value={formCooldownSecs} min="0" class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50" />
-						<p class="mt-1 text-[11px] text-surface-600">In seconds, 0 = none</p>
+						<input id="rule-cooldown" type="number" bind:value={formCooldownSecs} min="0" class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50" />
+						<p class="mt-1 text-laya-secondary text-surface-600">In seconds, 0 = none</p>
 					</div>
 					<div>
-						<label for="rule-max-daily" class="mb-1 flex items-center gap-1 text-xs text-surface-400">
+						<label for="rule-max-daily" class="mb-1 flex items-center gap-1 text-laya-secondary text-surface-400">
 							Max per day
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<span class="cursor-help" onmouseenter={(e) => showTip(e.currentTarget as HTMLElement, 'Maximum total firings per calendar day. Prevents runaway rules.')} onmouseleave={hideTip}>
 								<svg class="h-3 w-3 text-surface-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" /></svg>
 							</span>
 						</label>
-						<input id="rule-max-daily" type="number" bind:value={formMaxDaily} min="0" class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50" />
-						<p class="mt-1 text-[11px] text-surface-600">0 = unlimited</p>
+						<input id="rule-max-daily" type="number" bind:value={formMaxDaily} min="0" class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50" />
+						<p class="mt-1 text-laya-secondary text-surface-600">0 = unlimited</p>
 					</div>
 				</div>
 			{/if}
@@ -801,14 +801,14 @@
 		<!-- Preview -->
 		{#if previewResult}
 			<div class="rounded-md border border-surface-700 bg-surface-900/50 p-3">
-				<p class="text-xs text-surface-300">
+				<p class="text-laya-secondary text-surface-300">
 					<span class="font-medium text-laya-orange">{previewResult.match_count}</span> cards matched in the last 7 days
 				</p>
 				{#if previewResult.sample_cards.length > 0}
 					<div class="mt-1.5 space-y-1">
 						{#each previewResult.sample_cards as card}
-							<div class="flex items-center gap-2 text-[11px] text-surface-400">
-								<span class="rounded bg-surface-700 px-1 py-0.5 text-[10px]">{card.priority}</span>
+							<div class="flex items-center gap-2 text-laya-secondary text-surface-400">
+								<span class="rounded bg-surface-700 px-1 py-0.5 text-laya-micro">{card.priority}</span>
 								<span class="truncate">{card.header}</span>
 							</div>
 						{/each}
@@ -820,21 +820,21 @@
 		<!-- Actions -->
 		<div class="flex items-center gap-2 pt-2 border-t border-surface-700/50">
 			<button
-				class="rounded-md bg-laya-orange/20 px-4 py-1.5 text-xs font-medium text-laya-orange transition-colors hover:bg-laya-orange/30 disabled:opacity-50"
+				class="rounded-md bg-laya-orange/20 px-4 py-1.5 text-laya-secondary font-medium text-laya-orange transition-colors hover:bg-laya-orange/30 disabled:opacity-50"
 				onclick={saveRule}
 				disabled={saving || !formName.trim()}
 			>
 				{saving ? 'Saving...' : editingId !== null ? 'Update Rule' : 'Create Rule'}
 			</button>
 			<button
-				class="rounded-md border border-surface-600 px-3 py-1.5 text-xs text-surface-400 transition-colors hover:text-surface-200 disabled:opacity-50"
+				class="rounded-md border border-surface-600 px-3 py-1.5 text-laya-secondary text-surface-400 transition-colors hover:text-surface-200 disabled:opacity-50"
 				onclick={testCondition}
 				disabled={previewing || !hasValidConditions}
 			>
 				{previewing ? 'Testing...' : 'Test Condition'}
 			</button>
 			<button
-				class="ml-auto text-xs text-surface-400 hover:text-surface-200"
+				class="ml-auto text-laya-secondary text-surface-400 hover:text-surface-200"
 				onclick={() => { formMode = 'closed'; resetForm(); }}
 			>
 				Cancel

@@ -481,15 +481,15 @@
 		<!-- Header -->
 		<div class="flex items-center justify-between">
 			<div>
-				<h3 class="text-lg font-medium">Spaces</h3>
-				<p class="text-sm text-surface-400">
+				<h3 class="text-laya-heading font-medium">Spaces</h3>
+				<p class="text-laya-base text-surface-400">
 					Group event sources and assign specific models or API keys per space.
 				</p>
 			</div>
 			{#if !showCreateForm}
 				<button
 					onclick={startCreate}
-					class="rounded-md bg-laya-orange/15 px-4 py-2 text-sm font-medium text-laya-orange transition-colors hover:bg-laya-orange/25"
+					class="rounded-md bg-laya-orange/15 px-4 py-2 text-laya-base font-medium text-laya-orange transition-colors hover:bg-laya-orange/25"
 				>
 					+ New Space
 				</button>
@@ -524,19 +524,19 @@
 					></div>
 					<div class="min-w-0 flex-1">
 						<div class="flex items-center gap-2">
-							<span class="text-sm font-semibold text-surface-100">{space.name}</span>
+							<span class="text-laya-base font-semibold text-surface-100">{space.name}</span>
 							{#if space.is_default}
-								<span class="rounded {$glassTheme ? 'bg-white/[0.08]' : 'bg-surface-600'} px-1.5 py-0.5 text-[11px] font-medium text-surface-400">DEFAULT</span>
+								<span class="rounded {$glassTheme ? 'bg-white/[0.08]' : 'bg-surface-600'} px-1.5 py-0.5 text-laya-secondary font-medium text-surface-400">DEFAULT</span>
 							{/if}
 							{#if space.paused}
-								<span class="rounded bg-laya-amber/20 px-1.5 py-0.5 text-[11px] font-semibold text-laya-amber">PAUSED</span>
+								<span class="rounded bg-laya-amber/20 px-1.5 py-0.5 text-laya-secondary font-semibold text-laya-amber">PAUSED</span>
 							{/if}
 							{#if spaceSources.length > 0}
 								<!-- svelte-ignore a11y_click_events_have_key_events -->
 								<!-- svelte-ignore a11y_no_static_element_interactions -->
 								<span
 									onclick={(e) => { e.stopPropagation(); togglePause(space); }}
-									class="rounded-md px-2 py-0.5 text-[11px] font-medium cursor-pointer transition-colors
+									class="rounded-md px-2 py-0.5 text-laya-secondary font-medium cursor-pointer transition-colors
 										{space.paused
 											? 'bg-laya-orange/15 text-laya-orange hover:bg-laya-orange/25'
 											: $glassTheme ? 'bg-white/[0.08] text-surface-400 hover:bg-white/[0.14] hover:text-surface-200' : 'bg-surface-700 text-surface-400 hover:bg-surface-600 hover:text-surface-200'}
@@ -554,19 +554,19 @@
 							{/if}
 						</div>
 						{#if space.description}
-							<p class="truncate text-sm text-surface-500">{space.description}</p>
+							<p class="truncate text-laya-base text-surface-500">{space.description}</p>
 						{/if}
 					</div>
-					<div class="flex items-center gap-2.5 text-xs text-surface-400">
+					<div class="flex items-center gap-2.5 text-laya-secondary text-surface-400">
 						<span>{groupedSources.length} source{groupedSources.length !== 1 ? 's' : ''}</span>
 						{#if space.router_model || space.stager_model || space.chat_model || space.trace_model || space.omni_model}
-							<span class="rounded {$glassTheme ? 'bg-white/[0.08]' : 'bg-surface-700'} px-1.5 py-0.5 text-[11px]">Custom models</span>
+							<span class="rounded {$glassTheme ? 'bg-white/[0.08]' : 'bg-surface-700'} px-1.5 py-0.5 text-laya-secondary">Custom models</span>
 						{/if}
 						{#if space.coding_agent}
-							<span class="rounded {$glassTheme ? 'bg-white/[0.08]' : 'bg-surface-700'} px-1.5 py-0.5 text-[11px]">{agentLabel(space.coding_agent)}</span>
+							<span class="rounded {$glassTheme ? 'bg-white/[0.08]' : 'bg-surface-700'} px-1.5 py-0.5 text-laya-secondary">{agentLabel(space.coding_agent)}</span>
 						{/if}
 						{#if spaceRepoNames[space.space_id]?.length}
-							<span class="rounded {$glassTheme ? 'bg-white/[0.08]' : 'bg-surface-700'} px-1.5 py-0.5 text-[11px]">{spaceRepoNames[space.space_id].length} repo{spaceRepoNames[space.space_id].length !== 1 ? 's' : ''}</span>
+							<span class="rounded {$glassTheme ? 'bg-white/[0.08]' : 'bg-surface-700'} px-1.5 py-0.5 text-laya-secondary">{spaceRepoNames[space.space_id].length} repo{spaceRepoNames[space.space_id].length !== 1 ? 's' : ''}</span>
 						{/if}
 						<svg
 							class="h-4 w-4 transition-transform {isExpanded ? 'rotate-180' : ''}"
@@ -588,26 +588,26 @@
 							<!-- Sources -->
 							<div>
 								<div class="flex items-center justify-between mb-2">
-									<h5 class="text-sm font-semibold text-surface-200">Sources</h5>
+									<h5 class="text-laya-base font-semibold text-surface-200">Sources</h5>
 									<button
 										onclick={() => startAssigning(space.space_id)}
-										class="text-sm text-laya-orange hover:text-laya-orange/80 transition-colors"
+										class="text-laya-base text-laya-orange hover:text-laya-orange/80 transition-colors"
 									>
 										+ Assign workflows
 									</button>
 								</div>
 								{#if groupedSources.length === 0}
-									<p class="text-sm text-surface-500 italic">No sources assigned. Click "Assign workflows" to add n8n ingestion workflows to this space.</p>
+									<p class="text-laya-base text-surface-500 italic">No sources assigned. Click "Assign workflows" to add n8n ingestion workflows to this space.</p>
 								{:else}
 									<div class="space-y-1">
 										{#each groupedSources as group (`${group.platform}::${group.displayName}`)}
-											<div class="flex items-center gap-2 rounded-md {$glassTheme ? 'bg-white/[0.05]' : 'bg-surface-700/50'} px-3 py-2 text-sm">
+											<div class="flex items-center gap-2 rounded-md {$glassTheme ? 'bg-white/[0.05]' : 'bg-surface-700/50'} px-3 py-2 text-laya-base">
 												<span class="flex-1 truncate">{group.displayName}</span>
-												<span class="text-xs text-surface-500">{group.platform}</span>
+												<span class="text-laya-secondary text-surface-500">{group.platform}</span>
 												<select
 													value={group.sources[0].space_id}
 													onchange={(e) => reassignSourceGroup(group, (e.target as HTMLSelectElement).value)}
-													class="rounded border {$glassTheme ? 'bg-white/[0.06] border-white/[0.12]' : 'border-surface-600 bg-surface-700'} px-2 py-0.5 text-xs text-surface-300"
+													class="rounded border {$glassTheme ? 'bg-white/[0.06] border-white/[0.12]' : 'border-surface-600 bg-surface-700'} px-2 py-0.5 text-laya-secondary text-surface-300"
 												>
 													{#each spaces as s}
 														<option value={s.space_id}>{s.name}</option>
@@ -615,7 +615,7 @@
 												</select>
 												<button
 													onclick={() => removeSourceGroup(group)}
-													class="text-xs text-red-400/60 hover:text-red-400 transition-colors"
+													class="text-laya-secondary text-red-400/60 hover:text-red-400 transition-colors"
 													title="Unregister source"
 												>
 													✕
@@ -629,8 +629,8 @@
 							<!-- Repositories -->
 							{#if allRepos.length > 0}
 								<div>
-									<h5 class="text-sm font-semibold text-surface-200 mb-2">Repositories</h5>
-									<p class="text-sm text-surface-500 mb-2">
+									<h5 class="text-laya-base font-semibold text-surface-200 mb-2">Repositories</h5>
+									<p class="text-laya-base text-surface-500 mb-2">
 										Assign repos to this space so engineer tasks pick the right codebase.
 										{#if !spaceRepoNames[space.space_id]?.length}
 											<span class="text-surface-400">No repos assigned — agent will search all repos.</span>
@@ -641,18 +641,18 @@
 											{@const isAssigned = (spaceRepoNames[space.space_id] || []).includes(repo.name)}
 											<button
 												onclick={() => { toggleSpaceRepo(space.space_id, repo.name); saveSpaceRepos(space.space_id); }}
-												class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors
+												class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-laya-base transition-colors
 													{isAssigned
 														? 'repo-row-assigned text-laya-orange'
 														: $glassTheme ? 'hover:bg-white/[0.06] text-surface-300' : 'hover:bg-surface-700 text-surface-300'}"
 											>
-												<span class="h-4 w-4 shrink-0 rounded border text-center text-xs leading-4
+												<span class="h-4 w-4 shrink-0 rounded border text-center text-laya-secondary leading-4
 													{isAssigned ? 'border-laya-orange bg-laya-orange text-white' : 'border-surface-500'}">
 													{#if isAssigned}&#10003;{/if}
 												</span>
 												<span class="flex-1 truncate">{repo.name}</span>
 												{#if repo.remote_id}
-													<span class="text-xs text-surface-500">{repo.remote_id}</span>
+													<span class="text-laya-secondary text-surface-500">{repo.remote_id}</span>
 												{/if}
 											</button>
 										{/each}
@@ -662,52 +662,52 @@
 
 							<!-- Model & Agent Configuration -->
 							<div>
-								<h5 class="text-sm font-semibold text-surface-200 mb-3">Model & Agent Configuration</h5>
+								<h5 class="text-laya-base font-semibold text-surface-200 mb-3">Model & Agent Configuration</h5>
 								<div class="{$glassTheme ? 'rounded-lg border border-white/[0.06] divide-y divide-white/[0.05]' : 'rounded-lg border border-surface-700 divide-y divide-surface-700'}">
 									<!-- Pipeline Models -->
 									<div class="px-4 py-2.5 flex items-center justify-between">
 										<div>
-											<span class="text-sm text-surface-200">Router</span>
-											<p class="text-xs text-surface-500">Classifies incoming events</p>
+											<span class="text-laya-base text-surface-200">Router</span>
+											<p class="text-laya-secondary text-surface-500">Classifies incoming events</p>
 										</div>
-										<span class="text-sm text-surface-400">{modelLabel(space.router_model)}</span>
+										<span class="text-laya-base text-surface-400">{modelLabel(space.router_model)}</span>
 									</div>
 									<div class="px-4 py-2.5 flex items-center justify-between">
 										<div>
-											<span class="text-sm text-surface-200">Stager</span>
-											<p class="text-xs text-surface-500">Stages actions from events</p>
+											<span class="text-laya-base text-surface-200">Stager</span>
+											<p class="text-laya-secondary text-surface-500">Stages actions from events</p>
 										</div>
-										<span class="text-sm text-surface-400">{modelLabel(space.stager_model)}</span>
+										<span class="text-laya-base text-surface-400">{modelLabel(space.stager_model)}</span>
 									</div>
 									<!-- Interactive Models -->
 									<div class="px-4 py-2.5 flex items-center justify-between">
 										<div>
-											<span class="text-sm text-surface-200">Chat</span>
-											<p class="text-xs text-surface-500">Conversational assistant</p>
+											<span class="text-laya-base text-surface-200">Chat</span>
+											<p class="text-laya-secondary text-surface-500">Conversational assistant</p>
 										</div>
-										<span class="text-sm text-surface-400">{modelLabel(space.chat_model)}</span>
+										<span class="text-laya-base text-surface-400">{modelLabel(space.chat_model)}</span>
 									</div>
 									<div class="px-4 py-2.5 flex items-center justify-between">
 										<div>
-											<span class="text-sm text-surface-200">Coherence</span>
-											<p class="text-xs text-surface-500">Narratives & summaries</p>
+											<span class="text-laya-base text-surface-200">Coherence</span>
+											<p class="text-laya-secondary text-surface-500">Narratives & summaries</p>
 										</div>
-										<span class="text-sm text-surface-400">{modelLabel(space.trace_model)}</span>
+										<span class="text-laya-base text-surface-400">{modelLabel(space.trace_model)}</span>
 									</div>
 									<div class="px-4 py-2.5 flex items-center justify-between">
 										<div>
-											<span class="text-sm text-surface-200">Omni</span>
-											<p class="text-xs text-surface-500">Cross-platform digest</p>
+											<span class="text-laya-base text-surface-200">Omni</span>
+											<p class="text-laya-secondary text-surface-500">Cross-platform digest</p>
 										</div>
-										<span class="text-sm text-surface-400">{modelLabel(space.omni_model)}</span>
+										<span class="text-laya-base text-surface-400">{modelLabel(space.omni_model)}</span>
 									</div>
 									<!-- Agent -->
 									<div class="px-4 py-2.5 flex items-center justify-between">
 										<div>
-											<span class="text-sm text-surface-200">Coding Agent</span>
-											<p class="text-xs text-surface-500">CLI agent for engineer tasks</p>
+											<span class="text-laya-base text-surface-200">Coding Agent</span>
+											<p class="text-laya-secondary text-surface-500">CLI agent for engineer tasks</p>
 										</div>
-										<span class="text-sm text-surface-400">{agentLabel(space.coding_agent)}</span>
+										<span class="text-laya-base text-surface-400">{agentLabel(space.coding_agent)}</span>
 									</div>
 								</div>
 							</div>
@@ -716,21 +716,21 @@
 							<div>
 								<button
 									onclick={() => keySpaceId === space.space_id ? (keySpaceId = null) : openSpaceKeys(space.space_id)}
-									class="text-sm font-semibold text-surface-200 hover:text-surface-100 transition-colors"
+									class="text-laya-base font-semibold text-surface-200 hover:text-surface-100 transition-colors"
 								>
 									{keySpaceId === space.space_id ? '▾' : '▸'} API Keys
 								</button>
 								{#if keySpaceId === space.space_id}
 									<div class="mt-2 space-y-2.5">
-										<p class="text-sm text-surface-500">Override global API keys for this space. Uses global key when not set.</p>
+										<p class="text-laya-base text-surface-500">Override global API keys for this space. Uses global key when not set.</p>
 										{#each providers as provider}
 											<div class="flex items-center gap-2">
-												<span class="w-20 text-sm text-surface-400">{provider.label}</span>
+												<span class="w-20 text-laya-base text-surface-400">{provider.label}</span>
 												{#if spaceKeyStatus[provider.id]}
-													<span class="text-xs text-green-400">Configured</span>
+													<span class="text-laya-secondary text-green-400">Configured</span>
 													<button
 														onclick={() => removeSpaceKey(provider.id)}
-														class="ml-auto text-xs text-red-400/60 hover:text-red-400 transition-colors"
+														class="ml-auto text-laya-secondary text-red-400/60 hover:text-red-400 transition-colors"
 													>
 														Remove
 													</button>
@@ -739,12 +739,12 @@
 														type="password"
 														bind:value={spaceKeyInputs[provider.id]}
 														placeholder="Enter API key..."
-														class="flex-1 rounded border border-surface-600 bg-surface-700 px-2 py-1 text-xs text-surface-100 placeholder:text-surface-500"
+														class="flex-1 rounded border border-surface-600 bg-surface-700 px-2 py-1 text-laya-secondary text-surface-100 placeholder:text-surface-500"
 													/>
 													<button
 														onclick={() => saveSpaceKey(provider.id)}
 														disabled={!spaceKeyInputs[provider.id]?.trim() || savingSpaceKey === provider.id}
-														class="rounded bg-surface-600 px-2 py-1 text-xs text-surface-200 hover:bg-surface-500 disabled:opacity-50 transition-colors"
+														class="rounded bg-surface-600 px-2 py-1 text-laya-secondary text-surface-200 hover:bg-surface-500 disabled:opacity-50 transition-colors"
 													>
 														{savingSpaceKey === provider.id ? '...' : 'Save'}
 													</button>
@@ -760,20 +760,20 @@
 								{#if !space.is_default}
 									<button
 										onclick={() => startEdit(space)}
-										class="text-sm text-surface-400 hover:text-surface-200 transition-colors"
+										class="text-laya-base text-surface-400 hover:text-surface-200 transition-colors"
 									>
 										Edit
 									</button>
 									<button
 										onclick={() => deleteSpace(space)}
-										class="text-sm text-red-400/60 hover:text-red-400 transition-colors"
+										class="text-laya-base text-red-400/60 hover:text-red-400 transition-colors"
 									>
 										Delete
 									</button>
 								{:else}
 									<button
 										onclick={() => startEdit(space)}
-										class="text-sm text-surface-400 hover:text-surface-200 transition-colors"
+										class="text-laya-base text-surface-400 hover:text-surface-200 transition-colors"
 									>
 										Edit models
 									</button>
@@ -791,7 +791,7 @@
 			<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
 				<div class="mx-4 w-full max-w-lg rounded-xl border p-5 shadow-xl {$glassTheme ? 'glass-dropdown border-white/[0.12]' : 'border-surface-600 bg-surface-800'}">
 					<h4 class="mb-1 text-base font-semibold text-surface-50">Assign Integrations to {targetSpace?.name}</h4>
-					<p class="mb-4 text-sm text-surface-400">Select integrations to assign to this space.</p>
+					<p class="mb-4 text-laya-base text-surface-400">Select integrations to assign to this space.</p>
 
 					<!-- Search -->
 					<div class="relative mb-3">
@@ -802,14 +802,14 @@
 							type="text"
 							bind:value={workflowSearch}
 							placeholder="Search integrations..."
-							class="w-full rounded-lg border border-surface-600 bg-surface-700 py-2 pl-9 pr-3 text-sm text-surface-100 placeholder:text-surface-500 focus:border-laya-orange/40 focus:outline-none"
+							class="w-full rounded-lg border border-surface-600 bg-surface-700 py-2 pl-9 pr-3 text-laya-base text-surface-100 placeholder:text-surface-500 focus:border-laya-orange/40 focus:outline-none"
 						/>
 					</div>
 
 					{#if workflows.length === 0}
-						<p class="py-4 text-center text-sm text-surface-400">No Laya ingestion workflows found in n8n.</p>
+						<p class="py-4 text-center text-laya-base text-surface-400">No Laya ingestion workflows found in n8n.</p>
 					{:else if filteredWorkflows.length === 0}
-						<p class="py-4 text-center text-sm text-surface-400">No workflows matching "{workflowSearch}"</p>
+						<p class="py-4 text-center text-laya-base text-surface-400">No workflows matching "{workflowSearch}"</p>
 					{:else}
 						<div class="max-h-72 space-y-1 overflow-y-auto">
 							{#each filteredWorkflows as wf (wf.workflow_id)}
@@ -818,7 +818,7 @@
 								<button
 									onclick={() => toggleWorkflow(wf.workflow_ids)}
 									disabled={!!isOwnedByTarget}
-									class="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors
+									class="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-laya-base transition-colors
 										{selectedWorkflows.has(wf.workflow_ids[0])
 											? 'bg-laya-orange/15 text-laya-orange'
 											: isOwnedByTarget
@@ -827,7 +827,7 @@
 								>
 									<div class="min-w-0 flex-1">
 										<p class="truncate">{wf.name}</p>
-										<p class="mt-0.5 text-xs text-surface-500">
+										<p class="mt-0.5 text-laya-secondary text-surface-500">
 											{wf.platform}
 											{#if currentSpace}
 												<span class="text-surface-600">· in {currentSpace.space_name || 'Default'}</span>
@@ -837,7 +837,7 @@
 									{#if selectedWorkflows.has(wf.workflow_ids[0])}
 										<span class="text-laya-orange">✓</span>
 									{:else if isOwnedByTarget}
-										<span class="text-xs text-surface-500">Already here</span>
+										<span class="text-laya-secondary text-surface-500">Already here</span>
 									{/if}
 								</button>
 							{/each}
@@ -847,14 +847,14 @@
 					<div class="mt-4 flex justify-end gap-2">
 						<button
 							onclick={cancelAssigning}
-							class="rounded-md px-4 py-2 text-sm text-surface-400 hover:text-surface-200 transition-colors"
+							class="rounded-md px-4 py-2 text-laya-base text-surface-400 hover:text-surface-200 transition-colors"
 						>
 							Cancel
 						</button>
 						<button
 							onclick={assignSelected}
 							disabled={selectedWorkflows.size === 0 || saving}
-							class="rounded-md bg-laya-orange px-4 py-2 text-sm font-medium text-white hover:bg-laya-orange/90 disabled:opacity-50 transition-colors"
+							class="rounded-md bg-laya-orange px-4 py-2 text-laya-base font-medium text-white hover:bg-laya-orange/90 disabled:opacity-50 transition-colors"
 						>
 							{saving ? 'Assigning...' : `Assign ${filteredWorkflows.filter(w => selectedWorkflows.has(w.workflow_id)).length} integration${filteredWorkflows.filter(w => selectedWorkflows.has(w.workflow_id)).length !== 1 ? 's' : ''}`}
 						</button>
@@ -870,33 +870,33 @@
 	<div class="space-y-4">
 		<!-- Name -->
 		<div>
-			<label for="space-name" class="mb-1 block text-sm text-surface-400">Name</label>
+			<label for="space-name" class="mb-1 block text-laya-base text-surface-400">Name</label>
 			<input
 				id="space-name"
 				type="text"
 				bind:value={formName}
 				placeholder="e.g. Work, Personal"
 				maxlength="50"
-				class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+				class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
 			/>
 		</div>
 
 		<!-- Description -->
 		<div>
-			<label for="space-desc" class="mb-1 block text-sm text-surface-400">Description <span class="text-surface-500">(optional)</span></label>
+			<label for="space-desc" class="mb-1 block text-laya-base text-surface-400">Description <span class="text-surface-500">(optional)</span></label>
 			<input
 				id="space-desc"
 				type="text"
 				bind:value={formDescription}
 				placeholder="What this space is for..."
-				class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+				class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
 			/>
 		</div>
 
 		<!-- Color -->
 		<div>
 			<!-- svelte-ignore a11y_label_has_associated_control -->
-			<label class="mb-2 block text-sm text-surface-400">Color</label>
+			<label class="mb-2 block text-laya-base text-surface-400">Color</label>
 			<div class="flex gap-2">
 				{#each presetColors as color}
 					<button
@@ -913,13 +913,13 @@
 		<!-- Model & Agent Configuration -->
 		<div>
 			<!-- svelte-ignore a11y_label_has_associated_control -->
-			<label class="mb-3 block text-sm text-surface-400">Model & Agent Configuration</label>
+			<label class="mb-3 block text-laya-base text-surface-400">Model & Agent Configuration</label>
 			<div class="{$glassTheme ? 'rounded-lg border border-white/[0.06] divide-y divide-white/[0.05]' : 'rounded-lg border border-surface-700 divide-y divide-surface-700'}">
 				<!-- Pipeline Models -->
 				<div class="px-4 py-3 flex items-center gap-4">
 					<div class="min-w-0 flex-1">
-						<span class="text-sm text-surface-200">Router</span>
-						<p class="text-xs text-surface-500">Classifies incoming events</p>
+						<span class="text-laya-base text-surface-200">Router</span>
+						<p class="text-laya-secondary text-surface-500">Classifies incoming events</p>
 					</div>
 					<div class="w-48 shrink-0">
 						<ModelSelect
@@ -933,8 +933,8 @@
 				</div>
 				<div class="px-4 py-3 flex items-center gap-4">
 					<div class="min-w-0 flex-1">
-						<span class="text-sm text-surface-200">Stager</span>
-						<p class="text-xs text-surface-500">Stages actions from events</p>
+						<span class="text-laya-base text-surface-200">Stager</span>
+						<p class="text-laya-secondary text-surface-500">Stages actions from events</p>
 					</div>
 					<div class="w-48 shrink-0">
 						<ModelSelect
@@ -949,8 +949,8 @@
 				<!-- Interactive Models -->
 				<div class="px-4 py-3 flex items-center gap-4">
 					<div class="min-w-0 flex-1">
-						<span class="text-sm text-surface-200">Chat</span>
-						<p class="text-xs text-surface-500">Conversational assistant</p>
+						<span class="text-laya-base text-surface-200">Chat</span>
+						<p class="text-laya-secondary text-surface-500">Conversational assistant</p>
 					</div>
 					<div class="w-48 shrink-0">
 						<ModelSelect
@@ -964,8 +964,8 @@
 				</div>
 				<div class="px-4 py-3 flex items-center gap-4">
 					<div class="min-w-0 flex-1">
-						<span class="text-sm text-surface-200">Coherence</span>
-						<p class="text-xs text-surface-500">Narratives & summaries</p>
+						<span class="text-laya-base text-surface-200">Coherence</span>
+						<p class="text-laya-secondary text-surface-500">Narratives & summaries</p>
 					</div>
 					<div class="w-48 shrink-0">
 						<ModelSelect
@@ -979,8 +979,8 @@
 				</div>
 				<div class="px-4 py-3 flex items-center gap-4">
 					<div class="min-w-0 flex-1">
-						<span class="text-sm text-surface-200">Omni</span>
-						<p class="text-xs text-surface-500">Cross-platform digest</p>
+						<span class="text-laya-base text-surface-200">Omni</span>
+						<p class="text-laya-secondary text-surface-500">Cross-platform digest</p>
 					</div>
 					<div class="w-48 shrink-0">
 						<ModelSelect
@@ -995,14 +995,14 @@
 				<!-- Coding Agent -->
 				<div class="px-4 py-3 flex items-center gap-4">
 					<div class="min-w-0 flex-1">
-						<span class="text-sm text-surface-200">Coding Agent</span>
-						<p class="text-xs text-surface-500">CLI agent for engineer tasks</p>
+						<span class="text-laya-base text-surface-200">Coding Agent</span>
+						<p class="text-laya-secondary text-surface-500">CLI agent for engineer tasks</p>
 					</div>
 					<div class="w-48 shrink-0">
 						<select
 							value={formCodingAgent}
 							onchange={(e) => (formCodingAgent = (e.target as HTMLSelectElement).value)}
-							class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100"
+							class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100"
 						>
 							{#each agentOptions as opt}
 								<option value={opt.value}>{opt.label}</option>
@@ -1018,13 +1018,13 @@
 			<button
 				onclick={saveSpace}
 				disabled={!formName.trim() || saving}
-				class="rounded-md bg-laya-orange px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-laya-orange/90 disabled:opacity-50"
+				class="rounded-md bg-laya-orange px-4 py-2 text-laya-base font-medium text-white transition-colors hover:bg-laya-orange/90 disabled:opacity-50"
 			>
 				{saving ? 'Saving...' : isInline ? 'Update Space' : 'Create Space'}
 			</button>
 			<button
 				onclick={cancelForm}
-				class="rounded-md px-4 py-2 text-sm text-surface-400 transition-colors hover:text-surface-200"
+				class="rounded-md px-4 py-2 text-laya-base text-surface-400 transition-colors hover:text-surface-200"
 			>
 				Cancel
 			</button>

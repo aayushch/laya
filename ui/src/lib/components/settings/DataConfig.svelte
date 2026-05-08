@@ -64,16 +64,16 @@
 <div class="space-y-6">
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 		<h3 class="mb-1 font-medium">Card Retention</h3>
-		<p class="mb-4 text-sm text-surface-400">
+		<p class="mb-4 text-laya-base text-surface-400">
 			Cards in archived, dismissed, completed, or failed states that are older than the retention
 			period are automatically deleted each day. Active cards are never auto-deleted.
 		</p>
 
 		{#if loading}
-			<p class="text-sm text-surface-500">Loading…</p>
+			<p class="text-laya-base text-surface-500">Loading…</p>
 		{:else}
 			<div class="flex flex-col gap-1">
-				<label class="text-xs font-medium text-surface-300" for="retention-days">
+				<label class="text-laya-secondary font-medium text-surface-300" for="retention-days">
 					Retention period (days)
 				</label>
 				<input
@@ -83,15 +83,15 @@
 					max="3650"
 					bind:value={retentionDays}
 					oninput={() => debouncedSave('card')}
-					class="h-9 w-32 rounded-md border border-surface-600 bg-surface-700 px-3 text-sm text-surface-50 focus:border-laya-orange/50 focus:outline-none"
+					class="h-9 w-32 rounded-md border border-surface-600 bg-surface-700 px-3 text-laya-base text-surface-50 focus:border-laya-orange/50 focus:outline-none"
 				/>
 			</div>
 
 			{#if errorSection === 'card' && error}
-				<p class="mt-2 text-xs text-red-400">{error}</p>
+				<p class="mt-2 text-laya-secondary text-red-400">{error}</p>
 			{/if}
 
-			<p class="mt-3 text-xs text-surface-500">
+			<p class="mt-3 text-laya-secondary text-surface-500">
 				{#if savingSection === 'card'}
 					<span class="text-laya-orange">Saving…</span>
 				{:else if savedSection === 'card'}
@@ -108,14 +108,14 @@
 
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 		<h3 class="mb-1 font-medium">Chat Retention</h3>
-		<p class="mb-4 text-sm text-surface-400">
+		<p class="mb-4 text-laya-base text-surface-400">
 			Conversations that have been idle for longer than the retention period are automatically
 			deleted each day, along with all their messages.
 		</p>
 
 		{#if !loading}
 			<div class="flex flex-col gap-1">
-				<label class="text-xs font-medium text-surface-300" for="chat-retention-days">
+				<label class="text-laya-secondary font-medium text-surface-300" for="chat-retention-days">
 					Retention period (days)
 				</label>
 				<input
@@ -125,15 +125,15 @@
 					max="3650"
 					bind:value={chatRetentionDays}
 					oninput={() => debouncedSave('chat')}
-					class="h-9 w-32 rounded-md border border-surface-600 bg-surface-700 px-3 text-sm text-surface-50 focus:border-laya-orange/50 focus:outline-none"
+					class="h-9 w-32 rounded-md border border-surface-600 bg-surface-700 px-3 text-laya-base text-surface-50 focus:border-laya-orange/50 focus:outline-none"
 				/>
 			</div>
 
 			{#if errorSection === 'chat' && error}
-				<p class="mt-2 text-xs text-red-400">{error}</p>
+				<p class="mt-2 text-laya-secondary text-red-400">{error}</p>
 			{/if}
 
-			<p class="mt-3 text-xs text-surface-500">
+			<p class="mt-3 text-laya-secondary text-surface-500">
 				{#if savingSection === 'chat'}
 					<span class="text-laya-orange">Saving…</span>
 				{:else if savedSection === 'chat'}
@@ -150,13 +150,13 @@
 
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 		<h3 class="mb-1 font-medium">Audit Log Retention</h3>
-		<p class="mb-4 text-sm text-surface-400">
+		<p class="mb-4 text-laya-base text-surface-400">
 			LLM call audit logs older than the retention period are automatically deleted each day.
 		</p>
 
 		{#if !loading}
 			<div class="flex flex-col gap-1">
-				<label class="text-xs font-medium text-surface-300" for="audit-retention-days">
+				<label class="text-laya-secondary font-medium text-surface-300" for="audit-retention-days">
 					Retention period (days)
 				</label>
 				<input
@@ -166,15 +166,15 @@
 					max="3650"
 					bind:value={auditRetentionDays}
 					oninput={() => debouncedSave('audit')}
-					class="h-9 w-32 rounded-md border border-surface-600 bg-surface-700 px-3 text-sm text-surface-50 focus:border-laya-orange/50 focus:outline-none"
+					class="h-9 w-32 rounded-md border border-surface-600 bg-surface-700 px-3 text-laya-base text-surface-50 focus:border-laya-orange/50 focus:outline-none"
 				/>
 			</div>
 
 			{#if errorSection === 'audit' && error}
-				<p class="mt-2 text-xs text-red-400">{error}</p>
+				<p class="mt-2 text-laya-secondary text-red-400">{error}</p>
 			{/if}
 
-			<p class="mt-3 text-xs text-surface-500">
+			<p class="mt-3 text-laya-secondary text-surface-500">
 				{#if savingSection === 'audit'}
 					<span class="text-laya-orange">Saving…</span>
 				{:else if savedSection === 'audit'}
@@ -187,14 +187,14 @@
 
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 		<h3 class="mb-1 font-medium">Omni Retention</h3>
-		<p class="mb-4 text-sm text-surface-400">
+		<p class="mb-4 text-laya-base text-surface-400">
 			Omni timeline snapshots older than the retention period are automatically deleted each day.
 			The latest snapshot per space is always preserved.
 		</p>
 
 		{#if !loading}
 			<div class="flex flex-col gap-1">
-				<label class="text-xs font-medium text-surface-300" for="omni-retention-days">
+				<label class="text-laya-secondary font-medium text-surface-300" for="omni-retention-days">
 					Retention period (days)
 				</label>
 				<input
@@ -204,15 +204,15 @@
 					max="365"
 					bind:value={omniRetentionDays}
 					oninput={() => debouncedSave('omni')}
-					class="h-9 w-32 rounded-md border border-surface-600 bg-surface-700 px-3 text-sm text-surface-50 focus:border-laya-orange/50 focus:outline-none"
+					class="h-9 w-32 rounded-md border border-surface-600 bg-surface-700 px-3 text-laya-base text-surface-50 focus:border-laya-orange/50 focus:outline-none"
 				/>
 			</div>
 
 			{#if errorSection === 'omni' && error}
-				<p class="mt-2 text-xs text-red-400">{error}</p>
+				<p class="mt-2 text-laya-secondary text-red-400">{error}</p>
 			{/if}
 
-			<p class="mt-3 text-xs text-surface-500">
+			<p class="mt-3 text-laya-secondary text-surface-500">
 				{#if savingSection === 'omni'}
 					<span class="text-laya-orange">Saving…</span>
 				{:else if savedSection === 'omni'}
@@ -225,14 +225,14 @@
 
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 		<h3 class="mb-1 font-medium">Ingestion Errors Retention</h3>
-		<p class="mb-4 text-sm text-surface-400">
+		<p class="mb-4 text-laya-base text-surface-400">
 			Captured n8n ingestion failures older than the retention period are automatically deleted
 			each day. Cleared errors are also subject to this retention.
 		</p>
 
 		{#if !loading}
 			<div class="flex flex-col gap-1">
-				<label class="text-xs font-medium text-surface-300" for="ingestion-retention-days">
+				<label class="text-laya-secondary font-medium text-surface-300" for="ingestion-retention-days">
 					Retention period (days)
 				</label>
 				<input
@@ -242,15 +242,15 @@
 					max="365"
 					bind:value={ingestionErrorsRetentionDays}
 					oninput={() => debouncedSave('ingestion')}
-					class="h-9 w-32 rounded-md border border-surface-600 bg-surface-700 px-3 text-sm text-surface-50 focus:border-laya-orange/50 focus:outline-none"
+					class="h-9 w-32 rounded-md border border-surface-600 bg-surface-700 px-3 text-laya-base text-surface-50 focus:border-laya-orange/50 focus:outline-none"
 				/>
 			</div>
 
 			{#if errorSection === 'ingestion' && error}
-				<p class="mt-2 text-xs text-red-400">{error}</p>
+				<p class="mt-2 text-laya-secondary text-red-400">{error}</p>
 			{/if}
 
-			<p class="mt-3 text-xs text-surface-500">
+			<p class="mt-3 text-laya-secondary text-surface-500">
 				{#if savingSection === 'ingestion'}
 					<span class="text-laya-orange">Saving…</span>
 				{:else if savedSection === 'ingestion'}
@@ -263,7 +263,7 @@
 
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 		<h3 class="mb-1 font-medium">Manual Deletion</h3>
-		<p class="text-sm text-surface-400">
+		<p class="text-laya-base text-surface-400">
 			To delete a card manually, first <span class="text-surface-300">archive</span> it — a trash
 			icon will appear on the card. Clicking it opens a confirmation before permanently removing the
 			card and all its related data.

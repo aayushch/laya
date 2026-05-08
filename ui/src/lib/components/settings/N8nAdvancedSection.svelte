@@ -284,7 +284,7 @@
 {:else}
 	<div class="space-y-6">
 		{#if error}
-			<div class="rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-sm text-red-300">
+			<div class="rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-laya-base text-red-300">
 				{error}
 			</div>
 		{/if}
@@ -303,7 +303,7 @@
 						></span>
 						<span class="font-medium">n8n</span>
 					</div>
-					<span class="text-sm text-surface-400">
+					<span class="text-laya-base text-surface-400">
 						{#if hasN8nKey && n8nHealth === 'healthy'}
 							Connected and ready
 						{:else if n8nHealth === 'healthy' && !hasN8nKey}
@@ -321,20 +321,20 @@
 						<button
 							onclick={doBootstrap}
 							disabled={bootstrapping || n8nHealth === 'unreachable'}
-							class="rounded-md bg-primary-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-primary-500 disabled:opacity-50"
+							class="rounded-md bg-primary-600 px-4 py-1.5 text-laya-base font-medium text-white transition-colors hover:bg-primary-500 disabled:opacity-50"
 						>
 							{bootstrapping ? 'Configuring...' : 'Auto-configure'}
 						</button>
 						<button
 							onclick={() => (showManualKeyInput = !showManualKeyInput)}
-							class="rounded-md px-3 py-1.5 text-sm text-surface-400 transition-colors hover:text-surface-200"
+							class="rounded-md px-3 py-1.5 text-laya-base text-surface-400 transition-colors hover:text-surface-200"
 						>
 							Manual
 						</button>
 					{:else}
 						<button
 							onclick={() => (showAdvanced = !showAdvanced)}
-							class="rounded-md px-3 py-1.5 text-sm text-surface-400 transition-colors hover:text-surface-200"
+							class="rounded-md px-3 py-1.5 text-laya-base text-surface-400 transition-colors hover:text-surface-200"
 						>
 							{showAdvanced ? 'Hide' : 'Settings'}
 						</button>
@@ -343,7 +343,7 @@
 			</div>
 
 			{#if bootstrapResult}
-				<div class="mt-3 flex items-center gap-2 text-sm">
+				<div class="mt-3 flex items-center gap-2 text-laya-base">
 					<span
 						class="h-2 w-2 rounded-full {bootstrapResult.status === 'ready' ||
 						bootstrapResult.status === 'already_configured'
@@ -367,12 +367,12 @@
 						type="password"
 						bind:value={n8nApiKey}
 						placeholder="Enter n8n API key"
-						class="flex-1 rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+						class="flex-1 rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
 					/>
 					<button
 						onclick={saveN8nApiKey}
 						disabled={savingApiKey || !n8nApiKey.trim()}
-						class="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-500 disabled:opacity-50"
+						class="rounded-md bg-primary-600 px-4 py-2 text-laya-base font-medium text-white transition-colors hover:bg-primary-500 disabled:opacity-50"
 					>
 						{savingApiKey ? 'Saving...' : 'Save Key'}
 					</button>
@@ -387,20 +387,20 @@
 							bind:value={baseUrl}
 							onblur={saveSettings}
 							placeholder="http://localhost:45678"
-							class="flex-1 rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+							class="flex-1 rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
 						/>
 						<button
 							onclick={() => checkHealth()}
-							class="rounded-md bg-surface-600 px-3 py-2 text-sm font-medium transition-colors hover:bg-surface-500"
+							class="rounded-md bg-surface-600 px-3 py-2 text-laya-base font-medium transition-colors hover:bg-surface-500"
 						>
 							Test
 						</button>
 					</div>
 					<div class="flex items-center gap-3">
-						<span class="text-xs text-surface-500">API Key configured</span>
+						<span class="text-laya-secondary text-surface-500">API Key configured</span>
 						<button
 							onclick={removeN8nApiKey}
-							class="text-xs text-red-400 hover:text-red-300"
+							class="text-laya-secondary text-red-400 hover:text-red-300"
 						>
 							Remove API Key
 						</button>
@@ -409,7 +409,7 @@
 						href={baseUrl}
 						target="_blank"
 						rel="noopener noreferrer"
-						class="inline-flex items-center gap-1.5 rounded-md border border-surface-600 px-3 py-1.5 text-xs font-medium text-surface-300 transition-colors hover:border-laya-orange/40 hover:text-laya-orange"
+						class="inline-flex items-center gap-1.5 rounded-md border border-surface-600 px-3 py-1.5 text-laya-secondary font-medium text-surface-300 transition-colors hover:border-laya-orange/40 hover:text-laya-orange"
 					>
 						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -428,14 +428,14 @@
 					<div class="pointer-events-auto absolute left-0 right-0 top-0 z-10">
 						{#if workflowError}
 							<div class="flex items-center gap-2 rounded-md border border-red-800/50 bg-surface-800 px-3 py-1.5 shadow-lg">
-								<span class="text-[11px] text-red-300 flex-1 truncate">{workflowError}</span>
+								<span class="text-laya-secondary text-red-300 flex-1 truncate">{workflowError}</span>
 								<button onclick={() => (workflowError = null)} aria-label="Dismiss error" class="shrink-0 text-red-500/60 hover:text-red-300 transition-colors">
 									<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
 								</button>
 							</div>
 						{:else if workflowIssues}
 							<div class="flex items-center gap-2 rounded-md border border-yellow-700/40 bg-surface-800 px-3 py-1.5 shadow-lg">
-								<span class="text-[11px] text-yellow-300/90 flex-1 truncate">
+								<span class="text-laya-secondary text-yellow-300/90 flex-1 truncate">
 									<span class="font-medium">Cannot activate "{workflowIssues.name}"</span>
 									<span class="text-yellow-400/60"> — </span>
 									<span class="text-yellow-300/70">{workflowIssues.issues.join('; ')}</span>
@@ -450,15 +450,15 @@
 			{/if}
 
 			{#if loadingWorkflows}
-				<div class="py-8 text-center text-sm text-surface-400">Loading workflows...</div>
+				<div class="py-8 text-center text-laya-base text-surface-400">Loading workflows...</div>
 			{:else if workflows.length === 0}
 				<div class="rounded-lg border border-dashed border-surface-700 px-6 py-8 text-center">
-					<p class="text-sm text-surface-400">No workflows found in n8n</p>
-					<p class="mt-1 text-xs text-surface-500">Create workflows in the n8n dashboard to see them here</p>
+					<p class="text-laya-base text-surface-400">No workflows found in n8n</p>
+					<p class="mt-1 text-laya-secondary text-surface-500">Create workflows in the n8n dashboard to see them here</p>
 				</div>
 			{:else}
 				<!-- Stats bar -->
-				<div class="flex items-center gap-4 text-xs text-surface-400">
+				<div class="flex items-center gap-4 text-laya-secondary text-surface-400">
 					<span>{workflowStats.total} workflows</span>
 					<span class="text-surface-600">|</span>
 					<span class="flex items-center gap-1">
@@ -483,12 +483,12 @@
 
 				{#each groupedWorkflows as group}
 					<div>
-						<h3 class="mb-3 text-xs font-semibold uppercase tracking-wider text-surface-400">
+						<h3 class="mb-3 text-laya-secondary font-semibold uppercase tracking-wider text-surface-400">
 							{group.label}
 						</h3>
 						<div class="overflow-hidden {$glassTheme ? 'rounded-xl border border-white/[0.06]' : 'rounded-xl border border-surface-700'}">
-							<table class="w-full text-sm">
-								<thead class="{$glassTheme ? 'bg-white/[0.03]' : 'bg-surface-900'} text-left text-xs uppercase tracking-wider text-surface-500">
+							<table class="w-full text-laya-base">
+								<thead class="{$glassTheme ? 'bg-white/[0.03]' : 'bg-surface-900'} text-left text-laya-secondary uppercase tracking-wider text-surface-500">
 									<tr>
 										<th class="px-4 py-2.5">Workflow</th>
 										<th class="px-4 py-2.5">Platform</th>
@@ -507,18 +507,18 @@
 													</div>
 													<div class="min-w-0">
 														<div class="truncate font-medium text-surface-100" title={wf.name}>{wf.name}</div>
-														<div class="truncate text-[10px] text-surface-500 font-mono" title={wf.workflow_id}>{wf.workflow_id}</div>
+														<div class="truncate text-laya-micro text-surface-500 font-mono" title={wf.workflow_id}>{wf.workflow_id}</div>
 													</div>
 												</div>
 											</td>
 											<td class="px-4 py-3">
-												<span class="text-xs font-medium text-surface-300">{wf.platform}</span>
+												<span class="text-laya-secondary font-medium text-surface-300">{wf.platform}</span>
 											</td>
 											<td class="px-4 py-3">
 												<button
 													onclick={() => toggleWorkflowActive(wf)}
 													disabled={togglingWorkflow === wf.workflow_id}
-													class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors
+													class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-laya-micro font-medium transition-colors
 														{wf.active
 															? 'bg-green-900/30 text-green-400 hover:bg-green-900/50'
 															: ($glassTheme ? 'bg-white/[0.08] text-surface-400 hover:bg-white/[0.14]' : 'bg-surface-700 text-surface-400 hover:bg-surface-600')}
@@ -539,12 +539,12 @@
 														{#if source.space_name}
 															<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {source.space_name === 'Default' ? '#F97316' : '#6366f1'}"></span>
 														{/if}
-														<span class="text-xs text-surface-300" title="Registered as source: {source.name} in {source.space_name ?? 'Default'}">
+														<span class="text-laya-secondary text-surface-300" title="Registered as source: {source.name} in {source.space_name ?? 'Default'}">
 															{source.space_name ?? 'Default'}
 														</span>
 													</div>
 												{:else}
-													<span class="text-xs text-surface-500">—</span>
+													<span class="text-laya-secondary text-surface-500">—</span>
 												{/if}
 											</td>
 										</tr>
@@ -564,8 +564,8 @@
 				class="flex w-full items-center justify-between p-4 text-left transition-colors {$glassTheme ? 'hover:bg-white/[0.04]' : 'hover:bg-surface-700/50'}"
 			>
 				<div>
-					<span class="text-sm font-medium">Advanced: Webhook Mappings</span>
-					<span class="ml-2 text-xs text-surface-500"
+					<span class="text-laya-base font-medium">Advanced: Webhook Mappings</span>
+					<span class="ml-2 text-laya-secondary text-surface-500"
 						>({Object.keys(webhooks).length} configured)</span
 					>
 				</div>
@@ -588,17 +588,17 @@
 
 			{#if showWebhooks}
 				<div class="border-t border-surface-700 p-5">
-					<p class="mb-4 text-sm text-surface-400">
+					<p class="mb-4 text-laya-base text-surface-400">
 						Map each platform to its n8n webhook path. The full URL will be
-						<code class="rounded bg-surface-700 px-1 py-0.5 text-xs"
+						<code class="rounded bg-surface-700 px-1 py-0.5 text-laya-secondary"
 							>{baseUrl}/webhook/&lt;path&gt;</code
 						>
 					</p>
 
 					<div class="overflow-hidden {$glassTheme ? 'rounded-xl border border-white/[0.06]' : 'rounded-xl border border-surface-700'}">
-						<table class="w-full text-sm">
+						<table class="w-full text-laya-base">
 							<thead
-								class="{$glassTheme ? 'bg-white/[0.03]' : 'bg-surface-900'} text-left text-xs uppercase tracking-wider text-surface-400"
+								class="{$glassTheme ? 'bg-white/[0.03]' : 'bg-surface-900'} text-left text-laya-secondary uppercase tracking-wider text-surface-400"
 							>
 								<tr>
 									<th class="px-4 py-3">Platform</th>
@@ -615,7 +615,7 @@
 												<input
 													type="text"
 													bind:value={editPath}
-													class="w-full rounded border border-surface-600 bg-surface-700 px-2 py-1 text-sm"
+													class="w-full rounded border border-surface-600 bg-surface-700 px-2 py-1 text-laya-base"
 												/>
 											{:else}
 												<code class="text-surface-300">{path}</code>
@@ -660,7 +660,7 @@
 					</div>
 
 					{#if testResult?.webhook}
-						<div class="mt-3 flex items-center gap-2 text-sm">
+						<div class="mt-3 flex items-center gap-2 text-laya-base">
 							<span
 								class="h-2 w-2 rounded-full {testResult.webhook.reachable
 									? 'bg-green-500'
@@ -684,31 +684,31 @@
 								type="text"
 								bind:value={newPlatform}
 								placeholder="Platform (e.g. github)"
-								class="rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+								class="rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
 							/>
 							<input
 								type="text"
 								bind:value={newPath}
 								placeholder="Webhook path"
-								class="flex-1 rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+								class="flex-1 rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
 							/>
 							<button
 								onclick={addWebhook}
 								disabled={!newPlatform.trim() || !newPath.trim()}
-								class="rounded-md bg-surface-600 px-4 py-2 text-sm font-medium hover:bg-surface-500 disabled:opacity-50"
+								class="rounded-md bg-surface-600 px-4 py-2 text-laya-base font-medium hover:bg-surface-500 disabled:opacity-50"
 							>
 								Add
 							</button>
 							<button
 								onclick={() => (showAddWebhook = false)}
-								class="text-sm text-surface-400 hover:text-surface-200"
+								class="text-laya-base text-surface-400 hover:text-surface-200"
 							>
 								Cancel
 							</button>
 						</div>
 					{:else}
 						<button
-							class="mt-4 rounded-lg border border-dashed border-surface-600 px-4 py-2 text-sm text-surface-400 transition-colors hover:border-surface-400 hover:text-surface-200"
+							class="mt-4 rounded-lg border border-dashed border-surface-600 px-4 py-2 text-laya-base text-surface-400 transition-colors hover:border-surface-400 hover:text-surface-200"
 							onclick={() => (showAddWebhook = true)}
 						>
 							+ Add Webhook
@@ -716,7 +716,7 @@
 					{/if}
 
 					{#if saving}
-						<p class="mt-2 text-xs text-surface-400">Saving...</p>
+						<p class="mt-2 text-laya-secondary text-surface-400">Saving...</p>
 					{/if}
 				</div>
 			{/if}

@@ -77,12 +77,12 @@
 	<div class="text-surface-400">Loading agent settings...</div>
 {:else}
 	{#if error}
-		<div class="rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-sm text-red-300">{error}</div>
+		<div class="rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-laya-base text-red-300">{error}</div>
 	{/if}
 
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-4">
-		<h3 class="mb-1 text-sm font-medium">Coding Agent</h3>
-		<p class="mb-4 text-xs text-surface-400">Select which CLI coding agent Laya uses for ENGINEER tasks</p>
+		<h3 class="mb-1 text-laya-base font-medium">Coding Agent</h3>
+		<p class="mb-4 text-laya-secondary text-surface-400">Select which CLI coding agent Laya uses for ENGINEER tasks</p>
 
 		<div class="space-y-2">
 			{#each agents as agent}
@@ -101,20 +101,20 @@
 						{/if}
 					</div>
 					<div class="flex-1">
-						<div class="text-sm font-medium">{agent.label}</div>
-						<div class="text-xs text-surface-400">{agent.description}</div>
+						<div class="text-laya-base font-medium">{agent.label}</div>
+						<div class="text-laya-secondary text-surface-400">{agent.description}</div>
 					</div>
 					{#if agent.value !== 'none' && agentPaths[agent.value]}
-						<span class="text-[10px] text-green-400/70" title={agentPaths[agent.value]}>detected</span>
+						<span class="text-laya-micro text-green-400/70" title={agentPaths[agent.value]}>detected</span>
 					{:else if agent.value !== 'none'}
-						<span class="text-[10px] text-surface-500">not found</span>
+						<span class="text-laya-micro text-surface-500">not found</span>
 					{/if}
 				</button>
 			{/each}
 		</div>
 
 		{#if saving}
-			<div class="mt-3 text-xs text-surface-400">Saving...</div>
+			<div class="mt-3 text-laya-secondary text-surface-400">Saving...</div>
 		{/if}
 	</div>
 
@@ -122,8 +122,8 @@
 	<div class="mt-4 {$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-4 {!hasAgent ? 'opacity-50' : ''}">
 		<div class="mb-3 flex items-center justify-between">
 			<div>
-				<h3 class="text-sm font-medium">Agent Binary Path</h3>
-				<p class="text-xs text-surface-400">
+				<h3 class="text-laya-base font-medium">Agent Binary Path</h3>
+				<p class="text-laya-secondary text-surface-400">
 					{#if hasAgent}
 						Path to the agent CLI binary. Auto-detected on startup, or set manually.
 					{:else}
@@ -133,7 +133,7 @@
 			</div>
 			{#if hasAgent}
 				<button
-					class="rounded-md border border-surface-600 bg-surface-700 px-3 py-1.5 text-xs font-medium transition-colors hover:bg-surface-600 disabled:opacity-50"
+					class="rounded-md border border-surface-600 bg-surface-700 px-3 py-1.5 text-laya-secondary font-medium transition-colors hover:bg-surface-600 disabled:opacity-50"
 					onclick={detectPaths}
 					disabled={detecting || !hasAgent}
 				>
@@ -146,7 +146,7 @@
 			<div class="flex items-center gap-2">
 				<input
 					type="text"
-					class="flex-1 rounded-md border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-200 placeholder-surface-500 focus:border-laya-orange focus:outline-none"
+					class="flex-1 rounded-md border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-200 placeholder-surface-500 focus:border-laya-orange focus:outline-none"
 					placeholder="/path/to/{selected === 'claude_code' ? 'claude' : selected === 'gemini_cli' ? 'gemini' : 'codex'}"
 					value={agentPaths[selected] || ''}
 					onchange={(e) => saveAgentPath(selected, (e.target as HTMLInputElement).value)}
@@ -154,9 +154,9 @@
 				/>
 			</div>
 			{#if agentPaths[selected]}
-				<p class="mt-1.5 text-[11px] text-green-400/70">{agentPaths[selected]}</p>
+				<p class="mt-1.5 text-laya-secondary text-green-400/70">{agentPaths[selected]}</p>
 			{:else}
-				<p class="mt-1.5 text-[11px] text-yellow-400/70">No path configured — agent may not be found in bundled app mode</p>
+				<p class="mt-1.5 text-laya-secondary text-yellow-400/70">No path configured — agent may not be found in bundled app mode</p>
 			{/if}
 		{/if}
 	</div>
