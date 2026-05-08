@@ -93,15 +93,15 @@
 <div class="mx-auto max-w-4xl">
 	<div class="sticky -top-4 z-20 space-y-4 pb-4 -mx-4 px-4 pt-4 {$glassTheme ? 'bg-transparent backdrop-blur-xl' : 'bg-surface-900'}">
 		<div>
-			<h2 class="text-2xl font-semibold">Settings</h2>
-			<p class="text-sm text-surface-400">Manage your team, rules, models, repos, and coding agent</p>
+			<h2 class="text-laya-heading font-semibold">Settings</h2>
+			<p class="text-laya-base text-surface-400">Manage your team, rules, models, repos, and coding agent</p>
 		</div>
 
 		<!-- Tab bar -->
 		<div class="flex justify-between rounded-lg p-1 {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-800'}">
 			{#each tabs as tab}
 				<button
-					class="rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors
+					class="rounded-md px-2.5 py-1.5 text-laya-secondary font-medium transition-colors
 						{activeTab === tab.id
 							? 'bg-laya-orange/15 text-laya-orange'
 							: 'text-surface-400 hover:text-surface-200'}"
@@ -143,9 +143,9 @@
 
 	<!-- Diagnostics footer -->
 	<div class="flex items-center justify-between border-t border-surface-700/50 pt-4 mt-2">
-		<span class="text-xs text-surface-500">Need help troubleshooting? Export diagnostics for support.</span>
+		<span class="text-laya-secondary text-surface-500">Need help troubleshooting? Export diagnostics for support.</span>
 		<button
-			class="rounded-md border border-surface-600 px-3 py-1 text-xs text-surface-400 transition-colors hover:border-surface-500 hover:text-surface-200 disabled:opacity-50"
+			class="rounded-md border border-surface-600 px-3 py-1 text-laya-secondary text-surface-400 transition-colors hover:border-surface-500 hover:text-surface-200 disabled:opacity-50"
 			onclick={exportDiagnostics}
 			disabled={exporting}
 		>

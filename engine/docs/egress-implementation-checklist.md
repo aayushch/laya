@@ -4,7 +4,7 @@
 > to be built. Organized by phase with dependencies noted.
 > Part of the [Egress Architecture](egress-architecture.md).
 >
-> **Last updated**: 2026-05-02
+> **Last updated**: 2026-05-08
 
 ---
 
@@ -15,7 +15,9 @@
 - [x] **`engine/laya/egress/__init__.py`** — Public API: `execute()`, `preview()`, `get_capabilities()`, `list_connections()`, `connect()`, `disconnect()`
 - [x] **`engine/laya/egress/models.py`** — `EgressRequest`, `EgressResult`, `EgressPreview`, `EgressCapability`, `Connection`, `ConnectionResult`
 - [x] **`engine/laya/egress/router.py`** — Backend resolution (n8n > SMTP), preview builder with platform-specific summaries and warnings
-- [x] **`engine/laya/egress/registry.py`** — Platform capability matrix: 11 platforms (including Notion), 40+ action types
+- [x] **`engine/laya/egress/registry.py`** — Platform capability matrix: 11 platforms (including Notion), 37 action types
+- [x] **`engine/laya/egress/enrichment.py`** — Event-based payload enrichment shared by execute and preview paths (identifier extraction + platform aliasing)
+- [x] **`engine/laya/egress/summary_helpers.py`** — Computed placeholder helpers for preview summary templates (e.g. `{gh_ref}` for owner/repo#number)
 
 ### 1.2 Backends
 
@@ -25,7 +27,7 @@
 
 ### 1.3 Platform Payload Builders
 
-- [x] **`engine/laya/egress/platforms/gmail.py`** — Body normalization, Re:/Fwd: prefixing, CC/BCC
+- [x] **`engine/laya/egress/platforms/gmail.py`** — Body normalization, Re:/Fwd: prefixing, RFC 2822 MIME encoding
 - [x] **`engine/laya/egress/platforms/jira.py`** — issue_key normalization, comment field mapping, create defaults
 - [x] **`engine/laya/egress/platforms/github.py`** — owner/repo#number parsing, int coercion, merge_method default
 - [x] **`engine/laya/egress/platforms/bitbucket.py`** — workspace/repo/pr_id parsing, merge_strategy default
@@ -37,7 +39,7 @@
 
 ### 1.4 Connection Broker
 
-- [x] **`engine/laya/egress/connections.py`** — Full broker: `create_connection()`, `remove_connection()`, `list_all_connections()`, `test_connection()` with credential validation for 9 platform types (Jira, GitHub, Bitbucket, Slack, Linear, Notion, GitLab, Discord, SMTP)
+- [x] **`engine/laya/egress/connections.py`** — Full broker: `create_connection()`, `remove_connection()`, `list_all_connections()`, `test_connection()` with credential validation for 8 platform types (Jira, GitHub, Bitbucket, Slack, Linear, GitLab, Discord, SMTP) plus 4 OAuth pass-through platforms (Gmail, Calendar, Outlook, Outlook Calendar)
 - [x] **`engine/laya/db/migrations/034_egress_connections.sql`** — `egress_connections` table with indexes
 
 ### 1.5 Refactor Executor
@@ -46,7 +48,7 @@
 
 ### 1.6 API Routes
 
-- [x] **`engine/laya/api/egress_api.py`** — REST endpoints: execute, preview, capabilities, connections CRUD, test, email detection, OAuth start/callback/setup
+- [x] **`engine/laya/api/egress_api.py`** — REST endpoints: execute, preview, capabilities, connections CRUD, test, email detection, OAuth start/callback/setup, ai-assist, polish, email-suggestions, compose-platforms, card-context, connection-names
 - [x] **`engine/laya/main.py`** — Egress router mounted + health monitor wired into lifecycle
 
 ### 1.7 n8n Executor Workflows (NEW)
@@ -54,25 +56,32 @@
 - [x] **`n8n/workflows/jira-executor.json`** — 4 routes: comment, transition (with dynamic transition ID resolution), create_issue, assign
 - [x] **`n8n/workflows/slack-executor.json`** — 3 routes: send_message, reply_thread, react
 - [x] **`n8n/workflows/bitbucket-executor.json`** — 4 routes: comment_pr, approve_pr, decline_pr, merge_pr
-- [x] **`n8n/workflows/notion-executor.json`** — 2 routes: create_page, update_page
+- [x] **`n8n/workflows/notion-executor.json`** — 5 routes: create_page, append_block, update_page_property, archive_page, add_comment
 
-### 1.8 Extend Existing n8n Workflows
+### 1.8 Additional n8n Executor Workflows
+
+- [x] **`n8n/workflows/google-calendar-executor.json`** — 1 route: create_event
+- [x] **`n8n/workflows/outlook-email-executor.json`** — 3 routes: send_email, archive, mark_read
+- [x] **`n8n/workflows/outlook-calendar-executor.json`** — 1 route: create_event
+
+### 1.9 Extend Existing n8n Workflows
 
 - [x] **`n8n/workflows/github-executor.json`** — Extended to 6 routes: close_issue, comment, approve_pr, request_changes, merge_pr, create_issue
 
-### 1.9 Config Updates
+### 1.10 Config Updates
 
 - [x] **`engine/laya/config.py`** — Added google_calendar, linear webhook entries
 
-### 1.10 Tests
+### 1.11 Tests
 
-- [x] **`engine/tests/test_egress_models.py`** — 15 tests for all data models
-- [x] **`engine/tests/test_egress_router.py`** — 20 tests for preview summaries, warnings, impact levels
-- [x] **`engine/tests/test_egress_n8n_backend.py`** — 16 tests for payload building, webhook resolution, execution
-- [x] **`engine/tests/test_egress_platforms.py`** — 48+ tests for all 9 platform payload builders
-- [x] **`engine/tests/test_egress_connections.py`** — 15 tests for credential validation, connection CRUD
+- [x] **`engine/tests/test_egress_models.py`** — 13 tests for all data models
+- [x] **`engine/tests/test_egress_router.py`** — 28 tests for preview summaries, warnings, impact levels
+- [x] **`engine/tests/test_egress_n8n_backend.py`** — 20 tests for payload building, webhook resolution, execution
+- [x] **`engine/tests/test_egress_platforms.py`** — 73 tests for all 9 platform payload builders
+- [x] **`engine/tests/test_egress_connections.py`** — 16 tests for credential validation, connection CRUD
+- [x] **`engine/tests/test_egress_registry_parity.py`** — 11 tests for registry-to-workflow consistency
 
-**Total: 114 tests, all passing.**
+**Total: 161 tests.**
 
 ---
 
@@ -80,17 +89,17 @@
 
 ### 2.1 Tool Definitions
 
-- [x] **`engine/laya/egress/tools.py`** — 8 tool definitions: `send_email`, `comment_on_ticket`, `transition_ticket`, `create_ticket`, `pr_action`, `send_slack_message`, `open_compose`, `confirm_egress`
+- [x] **`engine/laya/egress/tools.py`** — 9 tool definitions: `send_email`, `comment_on_ticket`, `transition_ticket`, `create_ticket`, `pr_action`, `send_slack_message`, `open_compose`, `find_contact`, `confirm_egress`
 
 ### 2.2 Tool Handlers
 
-- [x] **`engine/laya/egress/tool_handlers.py`** — Preview/confirm flow with HMAC-signed execute tokens (5-min TTL), request builders for all 6 action tools, open_compose WebSocket bridge
+- [x] **`engine/laya/egress/tool_handlers.py`** — Preview/confirm flow with HMAC-signed execute tokens (5-min TTL), request builders for 6 previewable action tools + find_contact handler, open_compose WebSocket bridge
 
 ### 2.3 Wire Into Chat Pipeline
 
 - [x] **`engine/laya/llm/tools/definitions.py`** — Egress tools included (30 total tools)
 - [x] **`engine/laya/llm/tools/executor.py`** — Egress tool routing added
-- [x] **`engine/laya/llm/prompts/chat.py`** — Egress guidance in system prompt (6 rules)
+- [x] **`engine/laya/llm/prompts/chat.py`** — Egress guidance in system prompt (7 rules)
 
 ### 2.4 MCP Server Extension
 
@@ -235,12 +244,12 @@
 
 | Phase | Items | Done | Remaining |
 |-------|-------|------|-----------|
-| Phase 1: Foundation | 30 | 30 | 0 |
+| Phase 1: Foundation | 35 | 35 | 0 |
 | Phase 2: Chat Egress | 10 | 10 | 0 |
 | Phase 3: OAuth + Setup | 16 | 14 | 2 (migration, deprecation) |
 | Phase 4: Card UI | 10 | 8 | 2 (CardDetail integration, attachments) |
 | Phase 5: Expansion | 16 | 4 | 12 (autocomplete, MCP backend, chains, templates, scheduled sends) |
-| **Total** | **82** | **66** | **16** |
+| **Total** | **87** | **71** | **16** |
 
 ### Remaining Items (16)
 
@@ -262,19 +271,19 @@
 
 | Category | New Files | Modified Files |
 |----------|-----------|----------------|
-| Egress package (Python) | 23 | 0 |
+| Egress package (Python) | 25 | 0 |
 | API routes | 1 | 1 (main.py) |
 | DB migrations | 1 | 0 |
-| n8n workflows | 5 new | 2 modified |
+| n8n workflows | 8 new | 2 modified |
 | Chat integration | 0 | 3 (definitions.py, executor.py, chat prompt) |
 | Stager prompt | 0 | 1 |
 | Config | 0 | 1 (config.py) |
-| Tests | 5 | 0 |
-| UI egress components | 5 new | 0 |
+| Tests | 6 | 0 |
+| UI egress components | 4 new | 0 |
 | UI settings components | 5 new | 1 (IntegrationsConfig rewrite) |
 | UI stores | 1 new | 0 |
 | UI API/types | 0 | 2 (engine.ts, types.ts) |
 | UI layout | 0 | 1 (+layout.svelte) |
 | UI icons | 0 | 1 (PlatformIcon.svelte) |
 | Documentation | 5 | 0 |
-| **Total** | **~51 new** | **~13 modified** |
+| **Total** | **~56 new** | **~13 modified** |

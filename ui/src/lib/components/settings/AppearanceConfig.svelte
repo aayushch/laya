@@ -25,7 +25,7 @@
 	<!-- Theme toggle -->
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-6">
 		<h3 class="mb-1 font-semibold text-surface-50">Appearance</h3>
-		<p class="mb-5 text-sm text-surface-400">Choose between dark and light interface themes.</p>
+		<p class="mb-5 text-laya-base text-surface-400">Choose between dark and light interface themes.</p>
 
 		<div class="flex gap-3">
 			<!-- Dark -->
@@ -55,10 +55,10 @@
 					</div>
 				</div>
 
-				<span class="text-sm font-medium text-surface-200">Dark</span>
+				<span class="text-laya-base font-medium text-surface-200">Dark</span>
 
 				{#if $theme === 'dark'}
-					<div class="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-laya-orange text-[10px] text-white">✓</div>
+					<div class="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-laya-orange text-laya-micro text-white">✓</div>
 				{/if}
 			</button>
 
@@ -89,10 +89,10 @@
 					</div>
 				</div>
 
-				<span class="text-sm font-medium text-surface-200">Light</span>
+				<span class="text-laya-base font-medium text-surface-200">Light</span>
 
 				{#if $theme === 'light'}
-					<div class="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-laya-orange text-[10px] text-white">✓</div>
+					<div class="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-laya-orange text-laya-micro text-white">✓</div>
 				{/if}
 			</button>
 		</div>
@@ -103,7 +103,7 @@
 		<div class="flex items-center justify-between">
 			<div>
 				<h3 class="mb-1 font-semibold text-surface-50">Glass Theme</h3>
-				<p class="text-sm text-surface-400">Frosted glass effect on cards and list rows. Adds backdrop blur and translucent surfaces.</p>
+				<p class="text-laya-base text-surface-400">Frosted glass effect on cards and list rows. Adds backdrop blur and translucent surfaces.</p>
 			</div>
 			<button
 				class="relative h-6 w-11 shrink-0 rounded-full transition-colors {$glassTheme ? 'bg-laya-orange' : 'bg-surface-600'}"
@@ -126,7 +126,7 @@
 		<div class="flex items-center justify-between">
 			<div>
 				<h3 class="mb-1 font-semibold text-surface-50">Status Colors</h3>
-				<p class="text-sm text-surface-400">Tint cards and list rows by their status. Turn off for a uniform look.</p>
+				<p class="text-laya-base text-surface-400">Tint cards and list rows by their status. Turn off for a uniform look.</p>
 			</div>
 			<button
 				class="relative h-6 w-11 shrink-0 rounded-full transition-colors {$cardColors ? 'bg-laya-orange' : 'bg-surface-600'}"
@@ -145,8 +145,8 @@
 		<div class="mt-5 border-t border-surface-700/60 pt-5 pl-4 {$cardColors ? '' : 'opacity-50'}">
 			<div class="flex items-center justify-between">
 				<div>
-					<h4 class="mb-0.5 text-sm font-semibold text-surface-100">Accessible Colors</h4>
-					<p class="text-xs text-surface-400">Colorblind-friendly palette. Shifts status colors for better contrast across all vision types.</p>
+					<h4 class="mb-0.5 text-laya-base font-semibold text-surface-100">Accessible Colors</h4>
+					<p class="text-laya-secondary text-surface-400">Colorblind-friendly palette. Shifts status colors for better contrast across all vision types.</p>
 				</div>
 				<button
 					class="relative h-6 w-11 shrink-0 rounded-full transition-colors {$accessibleColors && $cardColors ? 'bg-laya-orange' : 'bg-surface-600'} disabled:cursor-not-allowed"
@@ -165,7 +165,7 @@
 
 			<!-- Color legend showing the accessible palette (only when actually active) -->
 			{#if $accessibleColors && $cardColors}
-				<div class="mt-3 flex flex-wrap gap-3 text-[11px] text-surface-400">
+				<div class="mt-3 flex flex-wrap gap-3 text-laya-secondary text-surface-400">
 					<div class="flex items-center gap-1.5">
 						<span class="h-2.5 w-2.5 rounded-full" style="background: oklch(0.69 0.15 230)"></span>
 						Pending
@@ -192,7 +192,7 @@
 		<div class="flex items-center justify-between">
 			<div>
 				<h3 class="mb-1 font-semibold text-surface-50">Reduce Motion</h3>
-				<p class="text-sm text-surface-400">Disable tab transitions, panel slides, and card reflow animations. Recommended if motion causes discomfort.</p>
+				<p class="text-laya-base text-surface-400">Disable tab transitions, panel slides, and card reflow animations. Recommended if motion causes discomfort.</p>
 			</div>
 			<button
 				class="relative h-6 w-11 shrink-0 rounded-full transition-colors {$reducedMotion ? 'bg-laya-orange' : 'bg-surface-600'}"
@@ -213,7 +213,7 @@
 		<div class="flex items-center justify-between">
 			<div>
 				<h3 class="mb-1 font-semibold text-surface-50">Show Card Descriptions</h3>
-				<p class="text-sm text-surface-400">Show summary text on cards in the feed. Turning this off makes cards more compact.</p>
+				<p class="text-laya-base text-surface-400">Show summary text on cards in the feed. Turning this off makes cards more compact.</p>
 			</div>
 			<button
 				class="relative h-6 w-11 shrink-0 rounded-full transition-colors {$cardDescriptions ? 'bg-laya-orange' : 'bg-surface-600'}"
@@ -234,19 +234,19 @@
 		<div class="flex items-center justify-between gap-6">
 			<div>
 				<h3 class="mb-1 font-semibold text-surface-50">Card Size</h3>
-				<p class="text-sm text-surface-400">Compact stacks more cards per screen by inlining metadata and tightening spacing. Relaxed shows the full layout.</p>
+				<p class="text-laya-base text-surface-400">Compact stacks more cards per screen by inlining metadata and tightening spacing. Relaxed shows the full layout.</p>
 			</div>
 			<div role="radiogroup" aria-label="Card size" class="inline-flex shrink-0 rounded-lg border border-surface-700 bg-surface-900/50 p-0.5">
 				<button
 					role="radio"
 					aria-checked={$cardSize === 'compact'}
-					class="rounded-md px-3 py-1 text-xs font-medium transition-colors {$cardSize === 'compact' ? 'bg-laya-orange text-white' : 'text-surface-400 hover:text-surface-200'}"
+					class="rounded-md px-3 py-1 text-laya-secondary font-medium transition-colors {$cardSize === 'compact' ? 'bg-laya-orange text-white' : 'text-surface-400 hover:text-surface-200'}"
 					onclick={() => cardSize.set('compact')}
 				>Compact</button>
 				<button
 					role="radio"
 					aria-checked={$cardSize === 'relaxed'}
-					class="rounded-md px-3 py-1 text-xs font-medium transition-colors {$cardSize === 'relaxed' ? 'bg-laya-orange text-white' : 'text-surface-400 hover:text-surface-200'}"
+					class="rounded-md px-3 py-1 text-laya-secondary font-medium transition-colors {$cardSize === 'relaxed' ? 'bg-laya-orange text-white' : 'text-surface-400 hover:text-surface-200'}"
 					onclick={() => cardSize.set('relaxed')}
 				>Relaxed</button>
 			</div>
@@ -256,7 +256,7 @@
 	<!-- Font scale -->
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-6">
 		<h3 class="mb-1 font-semibold text-surface-50">Text Size</h3>
-		<p class="mb-5 text-sm text-surface-400">Adjust the base font size for chat messages and card content.</p>
+		<p class="mb-5 text-laya-base text-surface-400">Adjust the base font size for chat messages and card content.</p>
 
 		<div class="space-y-3">
 			<!-- Step buttons -->
@@ -269,8 +269,8 @@
 								: 'border-surface-600 bg-surface-900 text-surface-400 hover:border-surface-500'}"
 						onclick={() => fontScale.set(step)}
 					>
-						<span class="block text-xs font-medium">{fontLabels[step]}</span>
-						<span class="block text-[10px] text-surface-500">{step}px</span>
+						<span class="block text-laya-secondary font-medium">{fontLabels[step]}</span>
+						<span class="block text-laya-micro text-surface-500">{step}px</span>
 					</button>
 				{/each}
 			</div>

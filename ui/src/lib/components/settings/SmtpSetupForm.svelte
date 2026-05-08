@@ -72,34 +72,34 @@
 <div class="space-y-4">
 	<!-- Email input with auto-detect -->
 	<div>
-		<label for="smtp-email" class="mb-1 block text-xs font-medium text-surface-400">Email Address</label>
+		<label for="smtp-email" class="mb-1 block text-laya-secondary font-medium text-surface-400">Email Address</label>
 		<input
 			id="smtp-email"
 			type="email"
 			bind:value={email}
 			onblur={detectProvider}
 			placeholder="you@example.com"
-			class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+			class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
 		/>
 		{#if detecting}
-			<p class="mt-1 text-xs text-surface-500">Detecting provider settings...</p>
+			<p class="mt-1 text-laya-secondary text-surface-500">Detecting provider settings...</p>
 		{/if}
 	</div>
 
 	{#if isOAuthRedirect}
 		<!-- OAuth redirect notice -->
 		<div class="rounded-lg border border-laya-orange/30 bg-laya-orange/5 p-4">
-			<p class="text-sm text-laya-orange">
+			<p class="text-laya-base text-laya-orange">
 				{detection?.provider ?? 'This provider'} uses OAuth for authentication.
 			</p>
-			<p class="mt-1 text-xs text-surface-400">
+			<p class="mt-1 text-laya-secondary text-surface-400">
 				{providerNote || 'Use the dedicated platform connection instead of SMTP.'}
 			</p>
 		</div>
 	{:else}
 		<!-- Provider note -->
 		{#if providerNote}
-			<div class="rounded-md border border-surface-600 bg-surface-800/50 px-3 py-2 text-xs text-surface-400">
+			<div class="rounded-md border border-surface-600 bg-surface-800/50 px-3 py-2 text-laya-secondary text-surface-400">
 				{#if detection?.provider}
 					<span class="font-medium text-surface-300">{detection.provider}</span> —
 				{/if}
@@ -109,36 +109,36 @@
 
 		<!-- Password / App Password -->
 		<div>
-			<label for="smtp-password" class="mb-1 block text-xs font-medium text-surface-400">Password / App Password</label>
+			<label for="smtp-password" class="mb-1 block text-laya-secondary font-medium text-surface-400">Password / App Password</label>
 			<input
 				id="smtp-password"
 				type="password"
 				bind:value={password}
 				placeholder="App password or account password"
-				class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+				class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
 			/>
 		</div>
 
 		<!-- SMTP settings -->
 		<div class="grid grid-cols-3 gap-3">
 			<div class="col-span-2">
-				<label for="smtp-host" class="mb-1 block text-xs font-medium text-surface-400">SMTP Server</label>
+				<label for="smtp-host" class="mb-1 block text-laya-secondary font-medium text-surface-400">SMTP Server</label>
 				<input
 					id="smtp-host"
 					type="text"
 					bind:value={smtpHost}
 					placeholder="smtp.example.com"
-					class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+					class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
 				/>
 			</div>
 			<div>
-				<label for="smtp-port" class="mb-1 block text-xs font-medium text-surface-400">Port</label>
+				<label for="smtp-port" class="mb-1 block text-laya-secondary font-medium text-surface-400">Port</label>
 				<input
 					id="smtp-port"
 					type="text"
 					bind:value={smtpPort}
 					placeholder="587"
-					class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+					class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
 				/>
 			</div>
 		</div>
@@ -146,29 +146,29 @@
 		<!-- IMAP settings -->
 		<div class="grid grid-cols-3 gap-3">
 			<div class="col-span-2">
-				<label for="imap-host" class="mb-1 block text-xs font-medium text-surface-400">IMAP Server</label>
+				<label for="imap-host" class="mb-1 block text-laya-secondary font-medium text-surface-400">IMAP Server</label>
 				<input
 					id="imap-host"
 					type="text"
 					bind:value={imapHost}
 					placeholder="imap.example.com"
-					class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+					class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
 				/>
 			</div>
 			<div>
-				<label for="imap-port" class="mb-1 block text-xs font-medium text-surface-400">Port</label>
+				<label for="imap-port" class="mb-1 block text-laya-secondary font-medium text-surface-400">Port</label>
 				<input
 					id="imap-port"
 					type="text"
 					bind:value={imapPort}
 					placeholder="993"
-					class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+					class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
 				/>
 			</div>
 		</div>
 
 		<!-- TLS -->
-		<label class="flex items-center gap-2 text-sm text-surface-300">
+		<label class="flex items-center gap-2 text-laya-base text-surface-300">
 			<input type="checkbox" bind:checked={useTls} class="rounded border-surface-600" />
 			Use TLS/STARTTLS
 		</label>
@@ -177,7 +177,7 @@
 		<button
 			onclick={handleSubmit}
 			disabled={!canSubmit || submitting}
-			class="w-full rounded-md bg-laya-orange px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-laya-gold disabled:opacity-50"
+			class="w-full rounded-md bg-laya-orange px-4 py-2 text-laya-base font-medium text-white transition-colors hover:bg-laya-gold disabled:opacity-50"
 		>
 			{submitting ? 'Connecting...' : 'Connect Email'}
 		</button>

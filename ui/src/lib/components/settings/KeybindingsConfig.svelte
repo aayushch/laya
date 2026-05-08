@@ -26,31 +26,31 @@
 <div class="space-y-8">
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-6">
 		<h3 class="mb-1 font-semibold text-surface-50">Keyboard Shortcuts</h3>
-		<p class="mb-5 text-sm text-surface-400">View all available keyboard shortcuts across the application.</p>
+		<p class="mb-5 text-laya-base text-surface-400">View all available keyboard shortcuts across the application.</p>
 
 		<div class="overflow-hidden rounded-lg border {$glassTheme ? 'border-white/[0.06]' : 'border-surface-700'}">
-			<table class="w-full text-sm">
+			<table class="w-full text-laya-base">
 				<thead>
 					<tr class="border-b {$glassTheme ? 'border-white/[0.06] bg-white/[0.03]' : 'border-surface-700 bg-surface-900/50'}">
-						<th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-surface-400">Key</th>
-						<th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-surface-400">Action</th>
-						<th class="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-surface-400">Scope</th>
+						<th class="px-4 py-2.5 text-left text-laya-secondary font-medium uppercase tracking-wider text-surface-400">Key</th>
+						<th class="px-4 py-2.5 text-left text-laya-secondary font-medium uppercase tracking-wider text-surface-400">Action</th>
+						<th class="px-4 py-2.5 text-left text-laya-secondary font-medium uppercase tracking-wider text-surface-400">Scope</th>
 					</tr>
 				</thead>
 				<tbody>
 					{#each keybindings as binding, i}
 						<tr class="border-b last:border-0 {$glassTheme ? 'border-white/[0.04]' : 'border-surface-700/50'} {$glassTheme ? (i % 2 === 0 ? 'bg-white/[0.02]' : 'bg-transparent') : (i % 2 === 0 ? 'bg-surface-800' : 'bg-surface-850/30')}">
 							<td class="px-4 py-2.5">
-								<kbd class="inline-flex min-w-[2rem] items-center justify-center rounded-md border px-2 py-0.5 font-mono text-xs text-surface-200 {$glassTheme ? 'border-white/[0.12] bg-white/[0.06]' : 'border-surface-600 bg-surface-900'}">{binding.key}</kbd>
+								<kbd class="inline-flex min-w-[2rem] items-center justify-center rounded-md border px-2 py-0.5 font-mono text-laya-secondary text-surface-200 {$glassTheme ? 'border-white/[0.12] bg-white/[0.06]' : 'border-surface-600 bg-surface-900'}">{binding.key}</kbd>
 							</td>
 							<td class="px-4 py-2.5 text-surface-200">
 								{binding.description}
 								{#if binding.note}
-									<span class="ml-1 text-xs text-surface-500">({binding.note})</span>
+									<span class="ml-1 text-laya-secondary text-surface-500">({binding.note})</span>
 								{/if}
 							</td>
 							<td class="px-4 py-2.5">
-								<span class="rounded-full {$glassTheme ? 'bg-white/[0.06]' : 'bg-surface-700/50'} px-2 py-0.5 text-xs text-surface-400">{binding.scope}</span>
+								<span class="rounded-full {$glassTheme ? 'bg-white/[0.06]' : 'bg-surface-700/50'} px-2 py-0.5 text-laya-secondary text-surface-400">{binding.scope}</span>
 							</td>
 						</tr>
 					{/each}

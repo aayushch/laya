@@ -130,13 +130,13 @@
 	<div class="text-surface-400">Loading repos...</div>
 {:else}
 	{#if error}
-		<div class="rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-sm text-red-300">{error}</div>
+		<div class="rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-laya-base text-red-300">{error}</div>
 	{/if}
 
 	<!-- Repo table -->
 	<div class="overflow-hidden {$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700'}">
-		<table class="w-full table-fixed text-sm">
-			<thead class="{$glassTheme ? 'bg-white/[0.03]' : 'bg-surface-800'} text-left text-xs uppercase tracking-wider text-surface-400">
+		<table class="w-full table-fixed text-laya-base">
+			<thead class="{$glassTheme ? 'bg-white/[0.03]' : 'bg-surface-800'} text-left text-laya-secondary uppercase tracking-wider text-surface-400">
 				<tr>
 					<th class="w-[15%] px-4 py-3">Name</th>
 					<th class="w-[25%] px-4 py-3">Path</th>
@@ -149,10 +149,10 @@
 				{#each repos as repo, i}
 					<tr class="{$glassTheme ? 'bg-white/[0.02] hover:bg-white/[0.05]' : 'bg-surface-900 hover:bg-surface-800'}">
 						<td class="truncate px-4 py-3 font-medium" onmouseenter={showTooltipIfTruncated} onmouseleave={hideTooltip}>{repo.name}</td>
-						<td class="truncate px-4 py-3 font-mono text-xs text-surface-300" onmouseenter={showTooltipIfTruncated} onmouseleave={hideTooltip}>{repo.path}</td>
+						<td class="truncate px-4 py-3 font-mono text-laya-secondary text-surface-300" onmouseenter={showTooltipIfTruncated} onmouseleave={hideTooltip}>{repo.path}</td>
 						<td class="px-4 py-3">
 							{#if repo.platform}
-								<span class="rounded-full bg-surface-700 px-2 py-0.5 text-xs">{repo.platform}</span>
+								<span class="rounded-full bg-surface-700 px-2 py-0.5 text-laya-secondary">{repo.platform}</span>
 							{:else}
 								<span class="text-surface-500">-</span>
 							{/if}
@@ -174,43 +174,43 @@
 	<!-- Add/Edit form -->
 	{#if showAddForm || editingIndex !== null}
 		<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-4">
-			<h3 class="mb-3 text-sm font-medium">{editingIndex !== null ? 'Edit Repository' : 'Add Repository'}</h3>
+			<h3 class="mb-3 text-laya-base font-medium">{editingIndex !== null ? 'Edit Repository' : 'Add Repository'}</h3>
 			<div class="mb-3 flex items-center gap-3">
 				<button
-					class="rounded-lg border border-surface-600 bg-surface-700 px-3 py-2 text-sm font-medium transition-colors hover:bg-surface-600 disabled:opacity-50"
+					class="rounded-lg border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base font-medium transition-colors hover:bg-surface-600 disabled:opacity-50"
 					onclick={browseRepo}
 					disabled={browsing}
 				>
 					{browsing ? 'Opening…' : 'Browse…'}
 				</button>
 				{#if detectionStatus}
-					<span class="text-sm {detectionStatus.ok ? 'text-green-400' : 'text-red-400'}">
+					<span class="text-laya-base {detectionStatus.ok ? 'text-green-400' : 'text-red-400'}">
 						{detectionStatus.ok ? '✓' : '✗'} {detectionStatus.msg}
 					</span>
 				{/if}
 			</div>
 			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-				<input bind:value={formName} placeholder="Name (e.g. payments-service)" class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500" />
-				<input bind:value={formPath} placeholder="Local path (e.g. /home/user/repos/payments)" class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500" />
-				<input bind:value={formPlatform} placeholder="Platform (e.g. github, bitbucket)" class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500" />
-				<input bind:value={formRemoteId} placeholder="Remote ID (e.g. org/repo)" class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-sm text-surface-50 placeholder-surface-500" />
+				<input bind:value={formName} placeholder="Name (e.g. payments-service)" class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500" />
+				<input bind:value={formPath} placeholder="Local path (e.g. /home/user/repos/payments)" class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500" />
+				<input bind:value={formPlatform} placeholder="Platform (e.g. github, bitbucket)" class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500" />
+				<input bind:value={formRemoteId} placeholder="Remote ID (e.g. org/repo)" class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500" />
 			</div>
 			<div class="mt-3 flex gap-2">
 				<button
-					class="rounded-lg bg-surface-600 px-4 py-2 text-sm font-medium hover:bg-surface-500"
+					class="rounded-lg bg-surface-600 px-4 py-2 text-laya-base font-medium hover:bg-surface-500"
 					onclick={editingIndex !== null ? saveEdit : addRepo}
 					disabled={!formName || !formPath}
 				>
 					{saving ? 'Saving...' : editingIndex !== null ? 'Save' : 'Add'}
 				</button>
-				<button class="rounded-lg px-4 py-2 text-sm text-surface-400 hover:text-surface-200" onclick={resetForm}>
+				<button class="rounded-lg px-4 py-2 text-laya-base text-surface-400 hover:text-surface-200" onclick={resetForm}>
 					Cancel
 				</button>
 			</div>
 		</div>
 	{:else}
 		<button
-			class="rounded-lg border border-dashed border-surface-600 px-4 py-2 text-sm text-surface-400 transition-colors hover:border-surface-400 hover:text-surface-200"
+			class="rounded-lg border border-dashed border-surface-600 px-4 py-2 text-laya-base text-surface-400 transition-colors hover:border-surface-400 hover:text-surface-200"
 			onclick={() => (showAddForm = true)}
 		>
 			+ Add Repository
@@ -221,7 +221,7 @@
 {#if fixedTooltip}
 	<span
 		use:portal
-		class="pointer-events-none fixed z-[100] max-w-sm rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium whitespace-normal break-all"
+		class="pointer-events-none fixed z-[100] max-w-sm rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium whitespace-normal break-all"
 		style="top: {fixedTooltip.top}px; left: {fixedTooltip.left}px;"
 	>
 		{fixedTooltip.text}

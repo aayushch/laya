@@ -398,8 +398,8 @@
 	<div class="space-y-8">
 		<!-- API Keys -->
 		<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
-			<h3 class="mb-4 text-lg font-medium">API Keys</h3>
-			<p class="mb-4 text-sm text-surface-400">
+			<h3 class="mb-4 text-laya-heading font-medium">API Keys</h3>
+			<p class="mb-4 text-laya-base text-surface-400">
 				Keys are stored securely in your OS keychain. They are never sent to the UI.
 			</p>
 			<div class="space-y-4">
@@ -411,14 +411,14 @@
 									? 'bg-green-500'
 									: 'bg-surface-500'}"
 							></span>
-							<span class="text-sm text-surface-300">{provider.label}</span>
+							<span class="text-laya-base text-surface-300">{provider.label}</span>
 						</div>
 
 						{#if apiKeys[provider.id]}
-							<span class="text-sm text-green-400">Configured</span>
+							<span class="text-laya-base text-green-400">Configured</span>
 							<button
 								onclick={() => removeApiKey(provider.id)}
-								class="ml-auto text-sm text-red-400 transition-colors hover:text-red-300"
+								class="ml-auto text-laya-base text-red-400 transition-colors hover:text-red-300"
 							>
 								Remove
 							</button>
@@ -427,12 +427,12 @@
 								type="password"
 								bind:value={keyInputs[provider.id]}
 								placeholder="Enter API key..."
-								class="flex-1 rounded-md border border-surface-600 bg-surface-700 px-3 py-1.5 text-sm text-surface-100 placeholder:text-surface-500"
+								class="flex-1 rounded-md border border-surface-600 bg-surface-700 px-3 py-1.5 text-laya-base text-surface-100 placeholder:text-surface-500"
 							/>
 							<button
 								onclick={() => saveApiKey(provider.id)}
 								disabled={!keyInputs[provider.id].trim() || savingKey === provider.id}
-								class="rounded-md bg-primary-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-primary-500 disabled:opacity-50"
+								class="rounded-md bg-primary-600 px-3 py-1.5 text-laya-base font-medium text-white transition-colors hover:bg-primary-500 disabled:opacity-50"
 							>
 								{savingKey === provider.id ? 'Saving...' : 'Save'}
 							</button>
@@ -446,12 +446,12 @@
 		<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 			<div class="mb-4 flex items-center justify-between">
 				<div>
-					<h3 class="mb-1 text-lg font-medium">Local Providers</h3>
-					<p class="text-xs text-surface-500">Connect to LM Studio, Ollama, or any OpenAI-compatible server running on your machine.</p>
+					<h3 class="mb-1 text-laya-heading font-medium">Local Providers</h3>
+					<p class="text-laya-secondary text-surface-500">Connect to LM Studio, Ollama, or any OpenAI-compatible server running on your machine.</p>
 				</div>
 				<button
 					onclick={() => { showAddProvider = !showAddProvider; addError = ''; }}
-					class="rounded-md border border-surface-600 px-3 py-1.5 text-sm text-surface-400 transition-colors hover:border-surface-500 hover:text-surface-300"
+					class="rounded-md border border-surface-600 px-3 py-1.5 text-laya-base text-surface-400 transition-colors hover:border-surface-500 hover:text-surface-300"
 				>
 					{showAddProvider ? 'Cancel' : '+ Add Provider'}
 				</button>
@@ -464,7 +464,7 @@
 						{#each providerTypes as pt}
 							<button
 								onclick={() => handleProviderTypeChange(pt.id)}
-								class="rounded-md border px-3 py-2 text-sm transition-colors
+								class="rounded-md border px-3 py-2 text-laya-base transition-colors
 									{newProvider.provider_type === pt.id
 										? 'border-laya-orange/50 bg-laya-orange/10 text-laya-orange'
 										: 'border-surface-600 text-surface-400 hover:border-surface-500 hover:text-surface-300'}"
@@ -478,29 +478,29 @@
 							type="text"
 							bind:value={newProvider.name}
 							placeholder="Display name (e.g. My LM Studio)"
-							class="rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+							class="rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
 						/>
 						<input
 							type="text"
 							bind:value={newProvider.base_url}
 							placeholder={providerTypes.find(p => p.id === newProvider.provider_type)?.defaultUrl ?? 'http://localhost:1234'}
-							class="rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+							class="rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
 						/>
 					</div>
 										<input
 						type="password"
 						bind:value={newProvider.api_key}
 						placeholder="API key (optional — leave blank if not required)"
-						class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-500"
+						class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
 					/>
 					{#if addError}
-						<p class="text-sm text-red-400">{addError}</p>
+						<p class="text-laya-base text-red-400">{addError}</p>
 					{/if}
 					<div class="flex justify-end">
 						<button
 							onclick={addProvider}
 							disabled={!newProvider.name.trim() || !newProvider.base_url.trim() || addingProvider}
-							class="rounded-md bg-laya-orange px-4 py-2 text-sm font-medium text-surface-900 transition-colors hover:bg-laya-gold disabled:opacity-50"
+							class="rounded-md bg-laya-orange px-4 py-2 text-laya-base font-medium text-surface-900 transition-colors hover:bg-laya-gold disabled:opacity-50"
 						>
 							{addingProvider ? 'Adding...' : 'Add Provider'}
 						</button>
@@ -511,8 +511,8 @@
 			<!-- Provider List -->
 			{#if customProviders.length === 0 && !showAddProvider}
 				<div class="rounded-md border border-dashed border-surface-600 py-8 text-center">
-					<p class="text-sm text-surface-500">No local providers configured</p>
-					<p class="mt-1 text-xs text-surface-600">Add LM Studio, Ollama, or another local server to use local models</p>
+					<p class="text-laya-base text-surface-500">No local providers configured</p>
+					<p class="mt-1 text-laya-secondary text-surface-600">Add LM Studio, Ollama, or another local server to use local models</p>
 				</div>
 			{:else}
 				<div class="space-y-3">
@@ -532,8 +532,8 @@
 									</svg>
 									<div class="min-w-0 flex-1">
 										<div class="flex items-center gap-2">
-											<span class="text-sm font-medium text-surface-200">{provider.name}</span>
-											<span class="rounded-full bg-surface-600 px-2 py-0.5 text-[10px] text-surface-400">
+											<span class="text-laya-base font-medium text-surface-200">{provider.name}</span>
+											<span class="rounded-full bg-surface-600 px-2 py-0.5 text-laya-micro text-surface-400">
 												{getTypeLabel(provider.provider_type)}
 											</span>
 											{#if testResults[provider.id]}
@@ -541,7 +541,7 @@
 												<span class="h-2 w-2 rounded-full {tr.reachable ? (tr.inference_ok ? 'bg-green-500' : 'bg-yellow-500') : 'bg-red-500'}"></span>
 											{/if}
 										</div>
-										<p class="mt-0.5 truncate text-xs text-surface-500">{provider.base_url}</p>
+										<p class="mt-0.5 truncate text-laya-secondary text-surface-500">{provider.base_url}</p>
 									</div>
 								</button>
 
@@ -549,7 +549,7 @@
 									<button
 										onclick={() => testProvider(provider.id)}
 										disabled={testingProvider === provider.id}
-										class="rounded px-2 py-1 text-xs text-surface-400 transition-colors hover:bg-surface-600 hover:text-surface-300 disabled:opacity-50"
+										class="rounded px-2 py-1 text-laya-secondary text-surface-400 transition-colors hover:bg-surface-600 hover:text-surface-300 disabled:opacity-50"
 										title="Test connection"
 									>
 										{#if testingProvider === provider.id}
@@ -563,14 +563,14 @@
 									</button>
 									<button
 										onclick={() => startEdit(provider)}
-										class="rounded px-2 py-1 text-xs text-surface-400 transition-colors hover:bg-surface-600 hover:text-surface-300"
+										class="rounded px-2 py-1 text-laya-secondary text-surface-400 transition-colors hover:bg-surface-600 hover:text-surface-300"
 									>
 										Edit
 									</button>
 									<button
 										onclick={() => deleteProvider(provider.id)}
 										disabled={deletingProvider === provider.id}
-										class="rounded px-2 py-1 text-xs text-red-400/70 transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+										class="rounded px-2 py-1 text-laya-secondary text-red-400/70 transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
 									>
 										{deletingProvider === provider.id ? '...' : 'Remove'}
 									</button>
@@ -580,7 +580,7 @@
 							<!-- Test result -->
 							{#if testResults[provider.id]}
 								{@const tr = testResults[provider.id]}
-								<div class="border-t border-surface-600/50 px-4 py-2 text-xs">
+								<div class="border-t border-surface-600/50 px-4 py-2 text-laya-secondary">
 									{#if tr.reachable}
 										<div class="flex items-center gap-4 text-surface-400">
 											<span class="text-green-400">Connected</span>
@@ -602,32 +602,32 @@
 											type="text"
 											bind:value={editForm.name}
 											placeholder="Display name"
-											class="rounded-md border border-surface-600 bg-surface-700 px-3 py-1.5 text-sm text-surface-100 placeholder:text-surface-500"
+											class="rounded-md border border-surface-600 bg-surface-700 px-3 py-1.5 text-laya-base text-surface-100 placeholder:text-surface-500"
 										/>
 										<input
 											type="text"
 											bind:value={editForm.base_url}
 											placeholder="Base URL"
-											class="rounded-md border border-surface-600 bg-surface-700 px-3 py-1.5 text-sm text-surface-100 placeholder:text-surface-500"
+											class="rounded-md border border-surface-600 bg-surface-700 px-3 py-1.5 text-laya-base text-surface-100 placeholder:text-surface-500"
 										/>
 									</div>
 									<input
 										type="password"
 										bind:value={editForm.api_key}
 										placeholder="New API key (leave blank to keep current)"
-										class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-1.5 text-sm text-surface-100 placeholder:text-surface-500"
+										class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-1.5 text-laya-base text-surface-100 placeholder:text-surface-500"
 									/>
 									<div class="flex justify-end gap-2">
 										<button
 											onclick={() => { editingProvider = null; }}
-											class="rounded-md px-3 py-1.5 text-sm text-surface-400 hover:text-surface-300"
+											class="rounded-md px-3 py-1.5 text-laya-base text-surface-400 hover:text-surface-300"
 										>
 											Cancel
 										</button>
 										<button
 											onclick={() => saveEdit(provider.id)}
 											disabled={editSaving}
-											class="rounded-md bg-laya-orange px-3 py-1.5 text-sm font-medium text-surface-900 transition-colors hover:bg-laya-gold disabled:opacity-50"
+											class="rounded-md bg-laya-orange px-3 py-1.5 text-laya-base font-medium text-surface-900 transition-colors hover:bg-laya-gold disabled:opacity-50"
 										>
 											{editSaving ? 'Saving...' : 'Save'}
 										</button>
@@ -639,13 +639,13 @@
 							{#if expandedProvider === provider.id}
 								<div class="border-t border-surface-600/50 px-4 py-3">
 									{#if !providerModels[provider.id]}
-										<p class="text-xs text-surface-500">Loading models...</p>
+										<p class="text-laya-secondary text-surface-500">Loading models...</p>
 									{:else if providerModels[provider.id].length === 0}
-										<p class="text-xs text-surface-500">No models found. Is the server running?</p>
+										<p class="text-laya-secondary text-surface-500">No models found. Is the server running?</p>
 									{:else}
 										<div class="space-y-1.5">
 											{#each providerModels[provider.id] as model}
-												<div class="flex items-center gap-3 rounded px-2 py-1.5 text-xs hover:bg-surface-700/50">
+												<div class="flex items-center gap-3 rounded px-2 py-1.5 text-laya-secondary hover:bg-surface-700/50">
 													<div class="flex items-center gap-1.5 min-w-0 flex-1">
 														{#if model.loaded}
 															<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-green-500" title="Loaded"></span>
@@ -687,13 +687,13 @@
 		<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 			<div class="mb-4 flex items-center justify-between">
 				<div>
-					<h3 class="mb-1 text-lg font-medium">Model Selection</h3>
-					<p class="text-xs text-surface-500">Choose any model for each pipeline stage. Local provider models appear alongside cloud models.</p>
+					<h3 class="mb-1 text-laya-heading font-medium">Model Selection</h3>
+					<p class="text-laya-secondary text-surface-500">Choose any model for each pipeline stage. Local provider models appear alongside cloud models.</p>
 				</div>
 				<button
 					onclick={() => fetchModels(true)}
 					disabled={modelsLoading}
-					class="rounded-md border border-surface-600 px-2.5 py-1.5 text-xs text-surface-400 transition-colors hover:border-surface-500 hover:text-surface-300 disabled:opacity-50"
+					class="rounded-md border border-surface-600 px-2.5 py-1.5 text-laya-secondary text-surface-400 transition-colors hover:border-surface-500 hover:text-surface-300 disabled:opacity-50"
 					title="Refresh model list"
 				>
 					{#if modelsLoading}
@@ -710,15 +710,15 @@
 				{#each roles as role}
 					<div class="grid grid-cols-[140px_auto_1fr] items-center gap-2">
 						<div>
-							<label for="{role.id}-model" class="text-sm text-surface-400">{role.label}</label>
-							<p class="text-[10px] text-surface-500">{role.hint}</p>
+							<label for="{role.id}-model" class="text-laya-base text-surface-400">{role.label}</label>
+							<p class="text-laya-micro text-surface-500">{role.hint}</p>
 						</div>
 						<div class="group/tip relative">
 							<svg class="h-3.5 w-3.5 shrink-0 text-surface-600 transition-colors group-hover/tip:text-laya-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01" />
 								<circle cx="12" cy="12" r="10" stroke-width="2" />
 							</svg>
-							<div class="pointer-events-none absolute left-1/2 top-full z-30 mt-2 w-64 -translate-x-1/2 rounded-lg border border-surface-600 bg-surface-800 px-3 py-2.5 text-[11px] leading-relaxed text-surface-300 opacity-0 shadow-lg transition-opacity duration-150 group-hover/tip:pointer-events-auto group-hover/tip:opacity-100">
+							<div class="pointer-events-none absolute left-1/2 top-full z-30 mt-2 w-64 -translate-x-1/2 rounded-lg border border-surface-600 bg-surface-800 px-3 py-2.5 text-laya-secondary leading-relaxed text-surface-300 opacity-0 shadow-lg transition-opacity duration-150 group-hover/tip:pointer-events-auto group-hover/tip:opacity-100">
 								{role.guide}
 							</div>
 						</div>
@@ -732,15 +732,15 @@
 				{/each}
 			</div>
 			{#if saving}
-				<p class="mt-3 text-xs text-surface-400">Saving...</p>
+				<p class="mt-3 text-laya-secondary text-surface-400">Saving...</p>
 			{/if}
 		</div>
 
 		<!-- Cost Control -->
 		<div id="cost-control" class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 			<div class="mb-4">
-				<h3 class="mb-1 text-lg font-medium">Cost Control</h3>
-				<p class="text-xs text-surface-500">Set a monthly budget to automatically pause workflows when the limit is reached.</p>
+				<h3 class="mb-1 text-laya-heading font-medium">Cost Control</h3>
+				<p class="text-laya-secondary text-surface-500">Set a monthly budget to automatically pause workflows when the limit is reached.</p>
 			</div>
 
 			<!-- Budget paused alert -->
@@ -750,14 +750,14 @@
 						<svg class="h-4 w-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
 						</svg>
-						<span class="text-sm text-red-300">
+						<span class="text-laya-base text-red-300">
 							Budget exceeded — {pausedWorkflowCount} workflow{pausedWorkflowCount !== 1 ? 's' : ''} paused
 						</span>
 					</div>
 					<button
 						onclick={handleResume}
 						disabled={resumingBudget}
-						class="rounded-md bg-red-500/20 px-3 py-1.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/30 disabled:opacity-50"
+						class="rounded-md bg-red-500/20 px-3 py-1.5 text-laya-secondary font-medium text-red-300 transition-colors hover:bg-red-500/30 disabled:opacity-50"
 					>
 						{resumingBudget ? 'Resuming...' : 'Resume Workflows'}
 					</button>
@@ -774,17 +774,17 @@
 					>
 						<span class="inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform {budgetEnabled ? 'translate-x-4' : 'translate-x-0.5'}"></span>
 					</button>
-					<span class="text-sm text-surface-300">Enable monthly budget limit</span>
+					<span class="text-laya-base text-surface-300">Enable monthly budget limit</span>
 				</div>
 
 				{#if budgetEnabled}
 					<div class="grid grid-cols-[200px_1fr] items-center gap-4">
 						<div>
-							<label for="budget-limit" class="text-sm text-surface-300">Monthly Limit</label>
-							<p class="text-[10px] text-surface-500">Workflows pause when this amount is reached.</p>
+							<label for="budget-limit" class="text-laya-base text-surface-300">Monthly Limit</label>
+							<p class="text-laya-micro text-surface-500">Workflows pause when this amount is reached.</p>
 						</div>
 						<div class="flex items-center gap-2">
-							<span class="text-sm text-surface-400">$</span>
+							<span class="text-laya-base text-surface-400">$</span>
 							<input
 								id="budget-limit"
 								type="number"
@@ -793,11 +793,11 @@
 								placeholder="e.g. 10.00"
 								bind:value={budgetLimitInput}
 								oninput={debounceSaveBudget}
-								class="w-32 rounded-md border border-surface-600 bg-surface-700 px-3 py-1.5 text-sm text-surface-200 placeholder:text-surface-500"
+								class="w-32 rounded-md border border-surface-600 bg-surface-700 px-3 py-1.5 text-laya-base text-surface-200 placeholder:text-surface-500"
 							/>
-							<span class="text-xs text-surface-500">USD / month</span>
+							<span class="text-laya-secondary text-surface-500">USD / month</span>
 							{#if savingBudget}
-								<span class="text-xs text-surface-400">Saving...</span>
+								<span class="text-laya-secondary text-surface-400">Saving...</span>
 							{/if}
 						</div>
 					</div>
@@ -825,7 +825,7 @@
 									style="width: {budgetPercent}%"
 								></div>
 							</div>
-							<div class="mt-1.5 text-right text-[10px] text-surface-500">
+							<div class="mt-1.5 text-right text-laya-micro text-surface-500">
 								{budgetPercent.toFixed(0)}% used
 							</div>
 						{/if}
@@ -834,7 +834,7 @@
 						{#if Object.keys(budgetByModel).length > 0}
 							<div class="mt-3 space-y-1">
 								{#each Object.entries(budgetByModel).sort((a, b) => b[1] - a[1]) as [model, cost]}
-									<div class="flex items-center justify-between text-[11px]">
+									<div class="flex items-center justify-between text-laya-secondary">
 										<span class="truncate text-surface-400">{model}</span>
 										<span class="shrink-0 text-surface-300">${cost.toFixed(4)}</span>
 									</div>
@@ -848,7 +848,7 @@
 				<div>
 					<button
 						onclick={() => { showHistory = !showHistory; if (showHistory) loadHistory(); }}
-						class="flex items-center gap-1.5 text-xs text-surface-400 transition-colors hover:text-surface-300"
+						class="flex items-center gap-1.5 text-laya-secondary text-surface-400 transition-colors hover:text-surface-300"
 					>
 						<svg
 							class="h-3.5 w-3.5 transition-transform {showHistory ? 'rotate-90' : ''}"
@@ -861,14 +861,14 @@
 					{#if showHistory}
 						<div class="mt-2 space-y-1.5">
 							{#if historyLoading}
-								<p class="text-xs text-surface-500">Loading...</p>
+								<p class="text-laya-secondary text-surface-500">Loading...</p>
 							{:else if budgetHistory.length === 0}
-								<p class="text-xs text-surface-500">No cost history yet. History is recorded at the end of each month.</p>
+								<p class="text-laya-secondary text-surface-500">No cost history yet. History is recorded at the end of each month.</p>
 							{:else}
 								{#each budgetHistory as entry}
 									<div class="flex items-center justify-between rounded-md border border-surface-700 bg-surface-900/30 px-3 py-2">
-										<span class="text-xs text-surface-400">{formatMonth(entry.year_month)}</span>
-										<span class="text-xs font-medium text-surface-200">${entry.total_cost_usd.toFixed(2)}</span>
+										<span class="text-laya-secondary text-surface-400">{formatMonth(entry.year_month)}</span>
+										<span class="text-laya-secondary font-medium text-surface-200">${entry.total_cost_usd.toFixed(2)}</span>
 									</div>
 								{/each}
 							{/if}
@@ -885,8 +885,8 @@
 				class="flex w-full items-center justify-between p-5 text-left"
 			>
 				<div>
-					<h3 class="text-lg font-medium">Advanced</h3>
-					<p class="text-xs text-surface-500">Model timeout, retry attempts, and request concurrency</p>
+					<h3 class="text-laya-heading font-medium">Advanced</h3>
+					<p class="text-laya-secondary text-surface-500">Model timeout, retry attempts, and request concurrency</p>
 				</div>
 				<svg
 					class="h-5 w-5 shrink-0 text-surface-400 transition-transform {showAdvanced ? 'rotate-180' : ''}"
@@ -901,8 +901,8 @@
 					<!-- Model Timeout -->
 					<div class="grid grid-cols-[200px_1fr_auto] items-center gap-4">
 						<div>
-							<label for="model-timeout" class="text-sm text-surface-300">Model Timeout</label>
-							<p class="text-[10px] text-surface-500">Max seconds to wait for an LLM response. Increase for slow local models.</p>
+							<label for="model-timeout" class="text-laya-base text-surface-300">Model Timeout</label>
+							<p class="text-laya-micro text-surface-500">Max seconds to wait for an LLM response. Increase for slow local models.</p>
 						</div>
 						<input
 							id="model-timeout"
@@ -921,17 +921,17 @@
 								max="900"
 								bind:value={pipeline.model_timeout}
 								oninput={debounceSavePipeline}
-								class="w-16 rounded-md border border-surface-600 bg-surface-700 px-2 py-1 text-center text-sm text-surface-200"
+								class="w-16 rounded-md border border-surface-600 bg-surface-700 px-2 py-1 text-center text-laya-base text-surface-200"
 							/>
-							<span class="text-xs text-surface-500">sec</span>
+							<span class="text-laya-secondary text-surface-500">sec</span>
 						</div>
 					</div>
 
 					<!-- LLM Retries (per call) -->
 					<div class="grid grid-cols-[200px_1fr_auto] items-center gap-4">
 						<div>
-							<label for="llm-retries" class="text-sm text-surface-300">LLM Retries</label>
-							<p class="text-[10px] text-surface-500">Retries per LLM call on timeout or transient error (fast, seconds apart).</p>
+							<label for="llm-retries" class="text-laya-base text-surface-300">LLM Retries</label>
+							<p class="text-laya-micro text-surface-500">Retries per LLM call on timeout or transient error (fast, seconds apart).</p>
 						</div>
 						<input
 							id="llm-retries"
@@ -950,17 +950,17 @@
 								max="5"
 								bind:value={pipeline.llm_retries}
 								oninput={debounceSavePipeline}
-								class="w-16 rounded-md border border-surface-600 bg-surface-700 px-2 py-1 text-center text-sm text-surface-200"
+								class="w-16 rounded-md border border-surface-600 bg-surface-700 px-2 py-1 text-center text-laya-base text-surface-200"
 							/>
-							<span class="text-xs text-surface-500">tries</span>
+							<span class="text-laya-secondary text-surface-500">tries</span>
 						</div>
 					</div>
 
 					<!-- Event Queue Retries -->
 					<div class="grid grid-cols-[200px_1fr_auto] items-center gap-4">
 						<div>
-							<label for="max-retries" class="text-sm text-surface-300">Event Queue Retries</label>
-							<p class="text-[10px] text-surface-500">Times a failed event is re-queued with exponential backoff (slow, minutes apart).</p>
+							<label for="max-retries" class="text-laya-base text-surface-300">Event Queue Retries</label>
+							<p class="text-laya-micro text-surface-500">Times a failed event is re-queued with exponential backoff (slow, minutes apart).</p>
 						</div>
 						<input
 							id="max-retries"
@@ -979,17 +979,17 @@
 								max="10"
 								bind:value={pipeline.max_retry_attempts}
 								oninput={debounceSavePipeline}
-								class="w-16 rounded-md border border-surface-600 bg-surface-700 px-2 py-1 text-center text-sm text-surface-200"
+								class="w-16 rounded-md border border-surface-600 bg-surface-700 px-2 py-1 text-center text-laya-base text-surface-200"
 							/>
-							<span class="text-xs text-surface-500">tries</span>
+							<span class="text-laya-secondary text-surface-500">tries</span>
 						</div>
 					</div>
 
 					<!-- Request Concurrency -->
 					<div class="grid grid-cols-[200px_1fr_auto] items-center gap-4">
 						<div>
-							<label for="max-concurrent" class="text-sm text-surface-300">Request Concurrency</label>
-							<p class="text-[10px] text-surface-500">Max events processed in parallel. Lower for local GPU models.</p>
+							<label for="max-concurrent" class="text-laya-base text-surface-300">Request Concurrency</label>
+							<p class="text-laya-micro text-surface-500">Max events processed in parallel. Lower for local GPU models.</p>
 						</div>
 						<input
 							id="max-concurrent"
@@ -1008,14 +1008,14 @@
 								max="20"
 								bind:value={pipeline.max_concurrent_events}
 								oninput={debounceSavePipeline}
-								class="w-16 rounded-md border border-surface-600 bg-surface-700 px-2 py-1 text-center text-sm text-surface-200"
+								class="w-16 rounded-md border border-surface-600 bg-surface-700 px-2 py-1 text-center text-laya-base text-surface-200"
 							/>
-							<span class="text-xs text-surface-500">events</span>
+							<span class="text-laya-secondary text-surface-500">events</span>
 						</div>
 					</div>
 
 					{#if savingPipeline}
-						<p class="text-xs text-surface-400">Saving...</p>
+						<p class="text-laya-secondary text-surface-400">Saving...</p>
 					{/if}
 				</div>
 			{/if}

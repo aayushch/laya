@@ -142,7 +142,7 @@
 		{id}
 		onclick={toggle}
 		onkeydown={handleKeydown}
-		class="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm text-surface-100 transition-colors {$glassTheme ? 'glass-input hover:border-white/25' : 'border-surface-600 bg-surface-700 hover:border-surface-500'}"
+		class="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-laya-base text-surface-100 transition-colors {$glassTheme ? 'glass-input hover:border-white/25' : 'border-surface-600 bg-surface-700 hover:border-surface-500'}"
 	>
 		<span class="truncate {!value && !allowEmpty ? 'text-surface-500' : ''}">{displayLabel}</span>
 		<svg
@@ -173,7 +173,7 @@
 					onkeydown={handleKeydown}
 					type="text"
 					placeholder="Search models..."
-					class="w-full rounded border px-2 py-1.5 text-sm text-surface-100 placeholder:text-surface-500 focus:outline-none {$glassTheme ? 'glass-input' : 'border-surface-600 bg-surface-700 focus:border-surface-500'}"
+					class="w-full rounded border px-2 py-1.5 text-laya-base text-surface-100 placeholder:text-surface-500 focus:outline-none {$glassTheme ? 'glass-input' : 'border-surface-600 bg-surface-700 focus:border-surface-500'}"
 				/>
 			</div>
 
@@ -183,7 +183,7 @@
 					<button
 						type="button"
 						onclick={() => select('')}
-						class="w-full px-3 py-1.5 text-left text-sm transition-colors {value === ''
+						class="w-full px-3 py-1.5 text-left text-laya-base transition-colors {value === ''
 							? ($glassTheme ? 'bg-white/10 text-surface-100' : 'bg-surface-600 text-surface-100')
 							: ($glassTheme ? 'text-surface-400 hover:bg-white/8' : 'text-surface-400 hover:bg-surface-700')}"
 					>
@@ -192,7 +192,7 @@
 				{/if}
 
 				{#each filteredProviders as providerGroup}
-					<div class="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-surface-500">
+					<div class="px-3 pb-0.5 pt-2 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">
 						{providerGroup.label}
 					</div>
 					{#each providerGroup.models as model, i}
@@ -200,7 +200,7 @@
 						<button
 							type="button"
 							onclick={() => select(model.id)}
-							class="w-full truncate px-3 py-1.5 text-left text-sm transition-colors
+							class="w-full truncate px-3 py-1.5 text-left text-laya-base transition-colors
 								{model.id === value
 								? ($glassTheme ? 'bg-white/[0.12] text-surface-100 font-medium' : 'bg-surface-600 text-surface-100 font-medium')
 								: flatIdx === highlightIndex
@@ -213,7 +213,7 @@
 				{/each}
 
 				{#if filteredProviders.length === 0}
-					<div class="px-3 py-3 text-center text-sm text-surface-500">
+					<div class="px-3 py-3 text-center text-laya-base text-surface-500">
 						{providers.length === 0 ? 'No API keys configured' : 'No models match your search'}
 					</div>
 				{/if}
