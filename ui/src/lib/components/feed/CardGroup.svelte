@@ -454,6 +454,18 @@
 			<span class="line-clamp-2 text-laya-base {group.unread_count > 0 ? 'font-bold text-surface-50' : 'font-normal text-surface-200'} leading-snug">
 				{group.entity_title}
 			</span>
+			{#if group.tags?.length}
+				<div class="flex flex-wrap gap-1 mt-1">
+					{#each group.tags as tag}
+						<span
+							class="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none"
+							style="background-color: {tag.color ?? '#6B7280'}20; color: {tag.color ?? '#9CA3AF'}"
+						>
+							{tag.tag_name}
+						</span>
+					{/each}
+				</div>
+			{/if}
 		</div>
 
 		<!-- Collapsed-only content: summary + status footer (instant show/hide) -->

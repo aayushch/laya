@@ -88,6 +88,7 @@ def build_summarizer_messages(
     card_persona: str | None = None,
     actor_name: str | None = None,
     source_platform: str | None = None,
+    card_tags: list[str] | None = None,
 ) -> list[dict[str, str]]:
     """Build messages for incorporating a new card into the daily summary."""
     current_text = ""
@@ -100,6 +101,8 @@ def build_summarizer_messages(
     intel_text = ""
     if card_intelligence:
         intel_text = "\nKey findings:\n" + "\n".join(f"  - {i}" for i in card_intelligence[:5])
+
+    tags_text = f"\nTags: {', '.join(card_tags)}" if card_tags else ""
 
     user_message = f"""\
 {current_timestamp_line()}
@@ -115,7 +118,7 @@ Priority: {card_priority}
 Category: {card_category}
 Persona: {card_persona or 'N/A'}
 Platform: {source_platform or 'N/A'}
-Actor: {actor_name or 'N/A'}{intel_text}
+Actor: {actor_name or 'N/A'}{intel_text}{tags_text}
 [END NEW CARD]
 
 Produce the updated summary JSON matching the required schema."""

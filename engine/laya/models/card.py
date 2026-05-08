@@ -34,6 +34,27 @@ class ActionCardData(BaseModel):
     staged_output: StagedOutput
     suggested_actions: list[SuggestedAction] = Field(default_factory=list)
     privacy_tier: int = Field(default=2, ge=1, le=3)
+    suggested_tags: list[str] = Field(default_factory=list)
+
+
+class TagResponse(BaseModel):
+    """A tag definition."""
+
+    tag_id: int
+    name: str
+    color: str | None = None
+    is_system: bool = False
+    created_at: str | None = None
+
+
+class TagAssignment(BaseModel):
+    """A tag applied to a target (card, entity group, or context group)."""
+
+    tag_id: int
+    tag_name: str
+    color: str | None = None
+    is_system: bool = False
+    assigned_by: str = "user"
 
 
 class CardResponse(BaseModel):
@@ -74,6 +95,7 @@ class CardResponse(BaseModel):
     group_active_at: str | None = None
     context_id: str | None = None
     last_error: str | None = None
+    tags: list[TagAssignment] = Field(default_factory=list)
 
 
 class CardsListResponse(BaseModel):
@@ -124,6 +146,7 @@ class CardGroup(BaseModel):
     context_label: str | None = None
     platforms: list[str] | None = None  # All distinct platforms in linked groups
     group_summary: GroupSummaryResponse | None = None
+    tags: list[TagAssignment] = Field(default_factory=list)
     sub_groups: list["CardGroup"] | None = None
 
 

@@ -150,6 +150,9 @@ def _serialize_card(card: dict) -> str:
             parts.append("  Key points:")
             for item in intelligence[:5]:
                 parts.append(f"    - {item}")
+    if card.get("tags"):
+        tags = card["tags"] if isinstance(card["tags"], str) else ", ".join(card["tags"])
+        parts.append(f"  Tags: {tags}")
     return "\n".join(parts)
 
 

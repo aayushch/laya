@@ -649,6 +649,23 @@
 		</div>
 	{/if}
 
+	<!-- Tag chips -->
+	{#if card.tags?.length}
+		<div class="mt-1.5 flex flex-wrap gap-1 overflow-hidden max-h-[22px]">
+			{#each (compact ? card.tags.slice(0, 3) : card.tags) as tag}
+				<span
+					class="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none whitespace-nowrap"
+					style="background-color: {tag.color ?? '#6B7280'}20; color: {tag.color ?? '#9CA3AF'}"
+				>
+					{tag.tag_name}
+				</span>
+			{/each}
+			{#if compact && card.tags.length > 3}
+				<span class="text-[10px] text-surface-500">+{card.tags.length - 3}</span>
+			{/if}
+		</div>
+	{/if}
+
 	<!-- Row 5a: Space identifier — own row in relaxed mode only. Compact inlines it into the footer. -->
 	{#if !compact && card.space_name}
 		<div class="mt-3 flex items-center gap-1 text-laya-micro text-surface-500">

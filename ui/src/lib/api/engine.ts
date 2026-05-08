@@ -55,7 +55,9 @@ import type {
 	DeadEventsResponse,
 	RetryDeadEventsResponse,
 	IngestionErrorsResponse,
-	ClearIngestionErrorsResponse
+	ClearIngestionErrorsResponse,
+	Tag,
+	TagAssignment
 } from './types';
 
 import { getEngineUrl } from '$lib/config';
@@ -210,6 +212,7 @@ export const engineApi = {
 		unread_only?: boolean;
 		related_entity_ids?: string;
 		search?: string;
+		tags?: string;
 	}) => {
 		const searchParams = new URLSearchParams();
 		if (params?.status) searchParams.set('status', params.status);
@@ -224,6 +227,7 @@ export const engineApi = {
 		if (params?.unread_only) searchParams.set('unread_only', 'true');
 		if (params?.related_entity_ids) searchParams.set('related_entity_ids', params.related_entity_ids);
 		if (params?.search) searchParams.set('search', params.search);
+		if (params?.tags) searchParams.set('tags', params.tags);
 		searchParams.set('tz', Intl.DateTimeFormat().resolvedOptions().timeZone);
 		const qs = searchParams.toString();
 		return request<GroupedCardsResponse>(`/cards/grouped${qs ? '?' + qs : ''}`);
@@ -897,5 +901,29 @@ export const engineApi = {
 		request<{ status: string; bookmarked: boolean }>('/omni/bookmark', {
 			method: 'POST',
 			body: JSON.stringify(data)
-		})
+		}),
+
+	// Tags
+	listTags: (isSystem?: boolean) => {
+		const qs = isSystem !== undefined ? `?is_system=${isSystem}` : '';
+		return request<{ tags: Tag[] }>(`/tags${qs}`);
+	},
+	createTag: (data: { name: string; color?: string }) =>
+		request<Tag>('/tags', { method: 'POST', body: JSON.stringify(data) }),
+	updateTag: (tagId: number, data: { name?: string; color?: string }) =>
+		request<Tag>(`/tags/${tagId}`, { method: 'PUT', body: JSON.stringify(data) }),
+	deleteTag: (tagId: number) =>
+		request<{ status: string }>(`/tags/${tagId}`, { method: 'DELETE' }),
+	assignTag: (data: { tag_name_or_id: string | number; target_type: string; target_id: string; create_if_missing?: boolean }) =>
+		request<{ status: string; tag_id: number; tag_name: string }>('/tags/assign', {
+			method: 'POST',
+			body: JSON.stringify(data)
+		}),
+	removeTag: (data: { tag_id: number; target_type: string; target_id: string }) =>
+		request<{ status: string }>('/tags/unassign', {
+			method: 'DELETE',
+			body: JSON.stringify(data)
+		}),
+	getTagsFor: (targetType: string, targetId: string) =>
+		request<{ tags: TagAssignment[] }>(`/tags/for/${targetType}/${encodeURIComponent(targetId)}`)
 };

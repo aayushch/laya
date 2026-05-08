@@ -671,6 +671,14 @@ async def _resynthesize_space(
         for row in card_rows
     ]
 
+    # Enrich cards with tags for the LLM prompt
+    from laya.pipeline.tags import batch_load_tags
+    omni_card_ids = [c["card_id"] for c in new_cards]
+    tags_map = await batch_load_tags(omni_card_ids)
+    for c in new_cards:
+        card_tag_entries = tags_map.get(("card", c["card_id"]), [])
+        c["tags"] = ", ".join(t["tag_name"] for t in card_tag_entries) if card_tag_entries else ""
+
     # 4. Separate user-acted cards (for higher weight in prompt)
     acted_cards = [
         c for c in new_cards

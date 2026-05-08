@@ -367,7 +367,10 @@
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') close();
+		if (e.key === 'Escape') {
+			if (dirDropdownOpen) { e.preventDefault(); dirDropdownOpen = false; return; }
+		}
+		if (e.key === '.' && e.metaKey) { e.preventDefault(); close(); return; }
 		if (e.key === 'Enter' && e.metaKey) submit();
 	}
 
@@ -381,7 +384,7 @@
 	});
 
 	function handleBackdrop(e: MouseEvent) {
-		// Intentionally no-op: modal only closes via close button or ESC key.
+		// Intentionally no-op: modal only closes via close button or ⌘.
 		// Backdrop kept as event sink so clicks outside the card don't bleed through.
 	}
 
@@ -843,6 +846,7 @@
 					{/if}
 				</button>
 			</div>
+			<p class="mt-1.5 w-full text-right text-[10px] text-surface-500">Press <kbd class="rounded border border-surface-600 px-1 py-0.5 font-mono text-surface-400">⌘.</kbd> to close</p>
 		</div>
 	</div>
 {/if}

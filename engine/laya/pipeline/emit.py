@@ -223,6 +223,14 @@ async def run_emit(
     )
     await db.commit()
 
+    # Persist stager-suggested tags
+    if stager_output.suggested_tags:
+        from laya.pipeline.tags import persist_suggested_tags
+        try:
+            await persist_suggested_tags(card_id, stager_output.suggested_tags)
+        except Exception as e:
+            log.warning("tag_persist_failed", card_id=card_id, error=str(e))
+
     # Carry forward: update group_active_at for ALL cards in this entity group
     now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     await db.execute(
@@ -297,6 +305,13 @@ async def run_emit(
         category=router_output.category.value,
         entity_refs=entity_refs,
     )
+    # Build tags CSV for ChromaDB metadata (tags NOT in embedding text — preserves semantic space)
+    from laya.pipeline.tags import get_tags_csv
+    try:
+        tags_csv = await get_tags_csv(card_id)
+    except Exception:
+        tags_csv = ""
+
     try:
         await embed_document(
             doc_id=card_id,
@@ -311,6 +326,7 @@ async def run_emit(
                 "priority": router_output.priority.value,
                 "timestamp": event.timestamp.timestamp(),
                 "space_id": space_id or "",
+                "tags": tags_csv,
             },
         )
     except Exception as e:
@@ -413,6 +429,7 @@ async def run_emit(
                 "status": card_status,
                 "has_workspace": has_workspace,
                 "privacy_tier": stager_output.privacy_tier,
+                "suggested_tags": stager_output.suggested_tags,
             },
         }
     )
@@ -457,6 +474,7 @@ async def run_emit(
             card_intelligence=stager_output.intelligence_report,
             actor_name=event.actor.name,
             source_platform=event.source.platform,
+            card_tags=stager_output.suggested_tags,
         ),
         name=f"summary_{card_id}",
     )

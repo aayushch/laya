@@ -214,6 +214,16 @@ In all modes:
 - **A participant roster** may list all known participants. Use it to correctly reference \
 people and their relationships rather than guessing.
 
+## Tags
+
+Suggest 0-3 short lowercase tag names (single words or hyphenated-phrases) that categorize \
+this event. Good tags help users filter and organize their feed. Examples: "billing", \
+"security", "deployment", "code-review", "onboarding", "incident", "compliance". \
+Only suggest tags when they add genuine categorization value beyond what priority, persona, \
+and category already capture. If existing tags are listed in [EXISTING TAGS], prefer reusing \
+them when they fit — avoid synonyms like "deploy" vs "deployment". Return an empty array \
+when no tags are warranted.
+
 ## Context Matching
 
 Among the "Related past cards" listed in the input, identify if any card with a DIFFERENT \
@@ -356,6 +366,7 @@ def build_stager_messages(
     user_identity: dict[str, str] | None = None,
     actor_relationship: str = "external",
     participant_roles: dict[str, Any] | None = None,
+    existing_tags: list[str] | None = None,
 ) -> list[dict[str, str]]:
     """Build the messages array for the Stager LLM call."""
     # Include event metadata so the LLM can use platform-specific IDs
@@ -511,6 +522,14 @@ Body:
         f"\n\n{supported_actions_text}" if supported_actions_text else ""
     )
 
+    existing_tags_text = ""
+    if existing_tags:
+        existing_tags_text = (
+            f"\n\n[EXISTING TAGS]\n{', '.join(existing_tags)}\n"
+            "Prefer reusing these names when they fit. You may also suggest new tags.\n"
+            "[END EXISTING TAGS]"
+        )
+
     user_message = f"""\
 {current_timestamp_line()}
 
@@ -519,7 +538,7 @@ Synthesize the following event and findings into a polished action card.
 {event_text}
 
 Router classification:
-{classification}{entities_text}{plan_text}{workers_text}{context_text}{entity_text}{identity_text}{supported_actions_block}
+{classification}{entities_text}{plan_text}{workers_text}{context_text}{entity_text}{identity_text}{supported_actions_block}{existing_tags_text}
 
 Produce a JSON action card matching the required schema."""
 
@@ -584,6 +603,11 @@ def get_stager_json_schema() -> dict[str, Any]:
                     },
                 },
                 "privacy_tier": {"type": "integer", "minimum": 1, "maximum": 3},
+                "suggested_tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "0-3 short lowercase tag names categorizing this event",
+                },
                 "context_match": {
                     "type": "object",
                     "description": "Cross-entity context match from related cards",
@@ -608,6 +632,7 @@ def get_stager_json_schema() -> dict[str, Any]:
                 "staged_output",
                 "suggested_actions",
                 "privacy_tier",
+                "suggested_tags",
                 "context_match",
             ],
             "additionalProperties": False,

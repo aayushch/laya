@@ -96,6 +96,12 @@ class SendNotificationAction(BaseModel):
     body_template: str
 
 
+class AddTagAction(BaseModel):
+    type: Literal["add_tag"] = "add_tag"
+    tag_name: str
+    create_if_missing: bool = True
+
+
 ProcessingRuleAction = Annotated[
     Union[
         SetStatusAction,
@@ -104,6 +110,7 @@ ProcessingRuleAction = Annotated[
         RunEntityAgentAction,
         ExecuteEgressAction,
         SendNotificationAction,
+        AddTagAction,
     ],
     Field(discriminator="type"),
 ]

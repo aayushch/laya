@@ -16,7 +16,7 @@ from laya.agents.session_manager import cancel_sessions_for_card
 from laya.api.websocket import manager
 from laya.db.sqlite import get_db
 from laya.llm.client import log_to_audit
-from laya.models.card import CardGroup, CardResponse, CardsListResponse, GroupedCardsResponse, GroupSummaryResponse, StagedOutput, SuggestedAction
+from laya.models.card import CardGroup, CardResponse, CardsListResponse, GroupedCardsResponse, GroupSummaryResponse, StagedOutput, SuggestedAction, TagAssignment
 from laya.pipeline.summarize import trigger_summary_status_update
 from laya.tasks import create_task as create_tracked_task
 
@@ -183,6 +183,7 @@ async def get_grouped_cards(
     unread_only: bool = False,
     related_entity_ids: str | None = None,
     search: str | None = None,
+    tags: str | None = None,
 ) -> GroupedCardsResponse:
     """Return cards grouped by entity_id, filtered by date and space."""
     db = await get_db()
@@ -265,11 +266,21 @@ async def get_grouped_cards(
             "c.intelligence", "c.staged_output", "c.suggested_actions",
             "e.subject_title", "e.source_platform",
             "CASE c.privacy_tier WHEN 3 THEN 'confidential' WHEN 2 THEN 'internal' WHEN 1 THEN 'public' ELSE '' END",
+            "(SELECT GROUP_CONCAT(t.name) FROM tag_assignments ta JOIN tags t ON ta.tag_id = t.tag_id WHERE ta.target_type = 'card' AND ta.target_id = c.card_id)",
         ]
         for term in terms:
             like_val = f"%{term}%"
             conditions.append(f"({' OR '.join(f'{f} LIKE ?' for f in search_fields)})")
             params.extend([like_val] * len(search_fields))
+    if tags:
+        tag_names = [t.strip() for t in tags.split(",") if t.strip()]
+        if tag_names:
+            placeholders = ",".join("?" * len(tag_names))
+            conditions.append(
+                f"(c.card_id IN (SELECT ta.target_id FROM tag_assignments ta JOIN tags t ON ta.tag_id = t.tag_id WHERE ta.target_type = 'card' AND LOWER(t.name) IN ({placeholders}))"
+                f" OR c.entity_id IN (SELECT ta.target_id FROM tag_assignments ta JOIN tags t ON ta.tag_id = t.tag_id WHERE ta.target_type = 'entity' AND LOWER(t.name) IN ({placeholders})))"
+            )
+            params.extend([n.lower() for n in tag_names] * 2)
     where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
     rows = await db.execute_fetchall(
@@ -334,9 +345,19 @@ async def get_grouped_cards(
                 updated_at=sr["updated_at"],
             )
 
+    # Batch-fetch tags for all cards and entity groups
+    from laya.pipeline.tags import batch_load_tags
+    all_card_ids = [r["card_id"] for rows_list in groups.values() for r in rows_list]
+    tags_map = await batch_load_tags(all_card_ids, list(all_entity_ids) if all_entity_ids else None)
+
     result: list[CardGroup] = []
     for group_key, entity_rows in groups.items():
         cards = [_row_to_card(r) for r in entity_rows]
+        # Inject tags into each card
+        for card in cards:
+            card_tags = tags_map.get(("card", card.card_id), [])
+            card.tags = [TagAssignment(**t) for t in card_tags]
+
         meta = event_meta.get(entity_rows[0]["event_id"], {})
         top_priority = min(
             (c.priority for c in cards),
@@ -351,6 +372,9 @@ async def get_grouped_cards(
         group_platform = meta.get("source_platform", "")
         group_summary = summary_map.get(entity_id_val) if len(cards) >= 2 else None
 
+        # Entity-level tags
+        entity_tags = tags_map.get(("entity", entity_id_val), [])
+
         result.append(
             CardGroup(
                 entity_id=entity_id_val,
@@ -364,6 +388,7 @@ async def get_grouped_cards(
                 unread_count=unread_count,
                 cards=cards,
                 group_summary=group_summary,
+                tags=[TagAssignment(**t) for t in entity_tags],
             )
         )
 
@@ -690,7 +715,17 @@ async def get_card(card_id: str) -> CardResponse:
     if not rows:
         raise HTTPException(status_code=404, detail="Card not found")
 
-    return _row_to_card(rows[0])
+    card = _row_to_card(rows[0])
+    # Hydrate tags
+    tag_rows = await db.execute_fetchall(
+        """SELECT t.tag_id, t.name AS tag_name, t.color, t.is_system, ta.assigned_by
+           FROM tag_assignments ta JOIN tags t ON ta.tag_id = t.tag_id
+           WHERE ta.target_type = 'card' AND ta.target_id = ?
+           ORDER BY t.name""",
+        (card_id,),
+    )
+    card.tags = [TagAssignment(**dict(r)) for r in tag_rows]
+    return card
 
 
 @router.post("/cards/{card_id}/done")

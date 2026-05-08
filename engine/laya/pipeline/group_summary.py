@@ -151,6 +151,15 @@ async def _initial_generation(
         return None
 
     cards = [dict(r) for r in rows]
+
+    # Enrich cards with tags for the LLM prompt
+    from laya.pipeline.tags import batch_load_tags
+    card_ids_for_tags = [c["card_id"] for c in cards]
+    tags_map = await batch_load_tags(card_ids_for_tags)
+    for c in cards:
+        card_tag_entries = tags_map.get(("card", c["card_id"]), [])
+        c["tags"] = ", ".join(t["tag_name"] for t in card_tag_entries) if card_tag_entries else ""
+
     resolved_space_id = space_id or cards[0].get("space_id") or "default"
 
     messages = build_initial_messages(cards, entity_id)
@@ -242,6 +251,13 @@ async def _rolling_update(
         return None
 
     new_cards = [dict(r) for r in card_rows]
+
+    # Enrich new cards with tags for the LLM prompt
+    from laya.pipeline.tags import batch_load_tags
+    tags_map = await batch_load_tags(new_card_ids)
+    for c in new_cards:
+        card_tag_entries = tags_map.get(("card", c["card_id"]), [])
+        c["tags"] = ", ".join(t["tag_name"] for t in card_tag_entries) if card_tag_entries else ""
 
     existing_summary = {
         "headline": existing_row["headline"],

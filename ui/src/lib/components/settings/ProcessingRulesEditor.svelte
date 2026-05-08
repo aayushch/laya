@@ -3,7 +3,7 @@
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { portal } from '$lib/actions/portal';
-	import type { ProcessingRule, ProcessingRuleAction, ProcessingCondition, ProcessingRuleOperator, ProcessingSimpleCondition, ComposePlatform } from '$lib/api/types';
+	import type { ProcessingRule, ProcessingRuleAction, ProcessingCondition, ProcessingRuleOperator, ProcessingSimpleCondition, ComposePlatform, Tag } from '$lib/api/types';
 
 	let tooltip = $state<{ text: string; top: number; left: number } | null>(null);
 	function showTip(el: HTMLElement, text: string) {
@@ -32,6 +32,9 @@
 	let formCooldownSecs = $state(0);
 	let formMaxDaily = $state(0);
 	let showAdvanced = $state(false);
+
+	// --- Tags for Add Tag action ---
+	let availableTags = $state<Tag[]>([]);
 
 	// --- Preview state ---
 	let previewing = $state(false);
@@ -98,6 +101,7 @@
 		{ value: 'set_status', label: 'Set Status' },
 		{ value: 'set_priority', label: 'Set Priority' },
 		{ value: 'bookmark', label: 'Bookmark' },
+		{ value: 'add_tag', label: 'Add Tag' },
 		{ value: 'run_entity_agent', label: 'Run Agent' },
 		{ value: 'execute_egress', label: 'Execute Egress Action' },
 		{ value: 'send_notification', label: 'Send Notification' },
@@ -181,6 +185,10 @@
 			const s = await engineApi.getProcessingRulesSettings();
 			autoDisableThreshold = s.auto_disable_threshold;
 		} catch { /* settings unavailable, keep default */ }
+		try {
+			const t = await engineApi.listTags();
+			availableTags = t.tags;
+		} catch { /* tags unavailable */ }
 	});
 
 	// --- CRUD ---
@@ -236,6 +244,7 @@
 					return { type: 'execute_egress' as const, platform: a.config.platform || '', action_type: a.config.action_type || '', payload_template: payload, connection_id: a.config.connection_id || undefined };
 				}
 				case 'send_notification': return { type: 'send_notification' as const, title_template: a.config.title_template || '', body_template: a.config.body_template || '' };
+				case 'add_tag': return { type: 'add_tag' as const, tag_name: a.config.tag_name || '', create_if_missing: a.config.create_if_missing !== 'false' };
 				default: return { type: 'bookmark' as const };
 			}
 		});
@@ -274,6 +283,7 @@
 			else if (a.type === 'run_entity_agent') { if (a.prompt_template) config.prompt_template = a.prompt_template; }
 			else if (a.type === 'execute_egress') { config.platform = a.platform; config.action_type = a.action_type; if (a.connection_id) config.connection_id = a.connection_id; Object.entries(a.payload_template).forEach(([k, v]) => { config[k] = v; }); }
 			else if (a.type === 'send_notification') { config.title_template = a.title_template; config.body_template = a.body_template; }
+			else if (a.type === 'add_tag') { config.tag_name = a.tag_name; config.create_if_missing = String(a.create_if_missing ?? true); }
 			return { type: a.type, config };
 		});
 	}
@@ -363,6 +373,7 @@
 			case 'run_entity_agent': return 'Run Agent';
 			case 'execute_egress': return `${a.platform}/${a.action_type}`;
 			case 'send_notification': return 'Notify';
+			case 'add_tag': return `Tag: ${a.tag_name}`;
 			default: return String((a as any).type);
 		}
 	}
@@ -670,6 +681,31 @@
 							</div>
 						{:else if action.type === 'bookmark'}
 							<p class="mt-3 text-laya-base text-surface-500">Card will be bookmarked automatically.</p>
+						{:else if action.type === 'add_tag'}
+							<div class="mt-3 space-y-2">
+								<div class="flex items-center gap-2">
+									<input
+										bind:value={action.config.tag_name}
+										placeholder="Tag name (e.g. billing, spam)"
+										list="tag-suggestions-{i}"
+										class="flex-1 rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500"
+									/>
+									<datalist id="tag-suggestions-{i}">
+										{#each availableTags as tag}
+											<option value={tag.name} />
+										{/each}
+									</datalist>
+								</div>
+								<label class="flex items-center gap-2 text-laya-secondary text-surface-400">
+									<input
+										type="checkbox"
+										checked={action.config.create_if_missing !== 'false'}
+										onchange={(e) => { action.config.create_if_missing = String(e.currentTarget.checked); }}
+										class="rounded border-surface-600"
+									/>
+									Create tag if it doesn't exist
+								</label>
+							</div>
 						{:else if action.type === 'run_entity_agent'}
 							<textarea
 								bind:value={action.config.prompt_template}

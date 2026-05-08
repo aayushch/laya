@@ -11,6 +11,7 @@ export interface FeedFilters {
 	hasWorkspace: boolean;
 	showUnreadOnly: boolean;
 	spaceFilter: string[];
+	tagFilter: string[];
 	// Transient (not persisted) — related cards filter mode
 	showRelated: boolean;
 	relatedEntityIds: string[];
@@ -44,6 +45,7 @@ const defaults: FeedFilters = {
 	hasWorkspace: false,
 	showUnreadOnly: false,
 	spaceFilter: [],
+	tagFilter: [],
 	showRelated: false,
 	relatedEntityIds: [],
 	relatedSourceHeader: '',
@@ -77,6 +79,7 @@ export async function loadFeedFilters(): Promise<void> {
 				hasWorkspace: prefs.hasWorkspace ?? defaults.hasWorkspace,
 				showUnreadOnly: prefs.showUnreadOnly ?? defaults.showUnreadOnly,
 				spaceFilter: Array.isArray(prefs.spaceFilter) ? prefs.spaceFilter : prefs.spaceFilter ? [prefs.spaceFilter] : defaults.spaceFilter,
+				tagFilter: Array.isArray(prefs.tagFilter) ? prefs.tagFilter : defaults.tagFilter,
 				showRelated: false,
 				relatedEntityIds: [],
 				relatedSourceHeader: '',

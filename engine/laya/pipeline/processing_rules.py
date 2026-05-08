@@ -15,6 +15,7 @@ from laya.db.sqlite import get_db
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 from laya.models.processing_rules import (
+    AddTagAction,
     BookmarkAction,
     ExecuteEgressAction,
     ProcessingAllCondition,
@@ -326,6 +327,8 @@ async def _execute_action(
             return await _exec_egress(action, card_id, space_id, context)
         elif isinstance(action, SendNotificationAction):
             return await _exec_notification(action, card_id, context)
+        elif isinstance(action, AddTagAction):
+            return await _exec_add_tag(action, card_id)
         else:
             return {"success": False, "error": f"Unknown action type: {type(action).__name__}"}
     except Exception as e:
@@ -488,6 +491,50 @@ async def _exec_notification(
     return {"success": True, "title": title}
 
 
+async def _exec_add_tag(action: AddTagAction, card_id: str) -> dict[str, Any]:
+    from laya.pipeline.tags import TAG_SOFT_CAP, update_card_tags_in_chromadb
+
+    db = await get_db()
+    tag_name = action.tag_name.strip().lower()
+    if not tag_name:
+        return {"success": False, "error": "Empty tag name"}
+
+    rows = await db.execute_fetchall("SELECT tag_id FROM tags WHERE name = ?", (tag_name,))
+    if rows:
+        tag_id = rows[0]["tag_id"]
+    elif action.create_if_missing:
+        await db.execute("INSERT INTO tags (name) VALUES (?)", (tag_name,))
+        await db.commit()
+        new = await db.execute_fetchall("SELECT tag_id FROM tags WHERE name = ?", (tag_name,))
+        tag_id = new[0]["tag_id"]
+    else:
+        return {"success": False, "error": f"Tag '{tag_name}' not found"}
+
+    count_rows = await db.execute_fetchall(
+        "SELECT COUNT(*) AS cnt FROM tag_assignments WHERE target_type = 'card' AND target_id = ?",
+        (card_id,),
+    )
+    if count_rows[0]["cnt"] >= TAG_SOFT_CAP:
+        return {"success": False, "error": f"Tag cap ({TAG_SOFT_CAP}) reached"}
+
+    await db.execute(
+        "INSERT OR IGNORE INTO tag_assignments (tag_id, target_type, target_id, assigned_by) VALUES (?, 'card', ?, 'rule')",
+        (tag_id, card_id),
+    )
+    await db.commit()
+
+    try:
+        await update_card_tags_in_chromadb(card_id)
+    except Exception as e:
+        log.warning("rule_tag_chromadb_failed", card_id=card_id, error=str(e))
+
+    await manager.broadcast({
+        "type": "tags_changed",
+        "payload": {"target_type": "card", "target_id": card_id, "tag_name": tag_name, "action": "assigned"},
+    })
+    return {"success": True, "tag_name": tag_name}
+
+
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
@@ -536,6 +583,13 @@ async def run_processing_rules(
             event, router_output, card_id, entity_id, space_id,
             actor_relationship, is_carry_forward, entity_card_count,
         )
+
+        # Enrich context with card tags so rules can condition on them
+        try:
+            from laya.pipeline.tags import get_card_tag_names
+            context["card"]["tags"] = await get_card_tag_names(card_id)
+        except Exception:
+            context["card"]["tags"] = []
 
         from laya.models.card_lifecycle import TERMINAL_STATUSES
         firings_this_card = 0

@@ -2,6 +2,7 @@
 	import { compose } from '$lib/stores/compose';
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { portal } from '$lib/actions/portal';
 	import { tick } from 'svelte';
 	import type { EgressConnection, ComposePlatform, ComposeAction, ComposeField } from '$lib/api/types';
 
@@ -33,6 +34,7 @@
 	let emailDebounceTimer = $state<ReturnType<typeof setTimeout> | null>(null);
 	let emailHighlightIndex = $state(-1);
 	let emailListEl = $state<HTMLDivElement | undefined>();
+	let emailDropdownPos = $state({ top: 0, left: 0, width: 0 });
 
 	function handleEmailInput(fieldName: string, value: string) {
 		formValues[fieldName] = value;
@@ -48,6 +50,13 @@
 				emailSuggestions = resp.suggestions;
 				emailDropdownField = resp.suggestions.length > 0 ? fieldName : null;
 				emailHighlightIndex = -1;
+				if (emailDropdownField) {
+					const el = document.getElementById(`compose-${fieldName}`);
+					if (el) {
+						const r = el.getBoundingClientRect();
+						emailDropdownPos = { top: r.bottom + 4, left: r.left, width: r.width };
+					}
+				}
 			} catch {
 				emailSuggestions = [];
 				emailDropdownField = null;
@@ -298,10 +307,16 @@
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') close();
-		// Cmd+Enter (mac) / Ctrl+Enter (win/linux) submits the compose form. Mirrors
-		// the submit button's disabled state so a fast keystroke can't double-fire
-		// while a send is in flight or the success splash is up.
+		if (e.key === 'Escape') {
+			if (emailDropdownField) {
+				e.preventDefault();
+				emailSuggestions = [];
+				emailDropdownField = null;
+				emailHighlightIndex = -1;
+				return;
+			}
+		}
+		if (e.key === '.' && e.metaKey) { e.preventDefault(); close(); return; }
 		if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
 			if (sending || success) return;
 			e.preventDefault();
@@ -316,7 +331,7 @@
 	});
 
 	function handleBackdrop(e: MouseEvent) {
-		// Intentionally no-op: modal only closes via close button or ESC key.
+		// Intentionally no-op: modal only closes via close button or ⌘.
 		// Backdrop kept as event sink so clicks outside the card don't bleed through.
 	}
 
@@ -462,8 +477,10 @@
 									{#if emailDropdownField === field.name && emailSuggestions.length > 0}
 										<!-- svelte-ignore a11y_no_static_element_interactions -->
 										<div
+											use:portal
 											data-email-dropdown
-											class="absolute z-50 mt-1 w-full rounded-md border {$glassTheme ? 'border-surface-600/40 bg-surface-900/95 backdrop-blur-md shadow-lg shadow-black/30' : 'border-surface-600 bg-surface-800 shadow-lg'}"
+											class="fixed z-[100] rounded-md border {$glassTheme ? 'glass-menu' : 'border-surface-600 bg-surface-800 shadow-lg'}"
+											style="top: {emailDropdownPos.top + 4}px; left: {emailDropdownPos.left + 4}px; width: {emailDropdownPos.width - 8}px;"
 										>
 											<div bind:this={emailListEl} class="max-h-40 overflow-y-auto py-1">
 												{#each emailSuggestions as suggestion, i}
@@ -546,6 +563,7 @@
 							{/if}
 						</button>
 					</div>
+					<p class="mt-1.5 w-full text-right text-[10px] text-surface-500">Press <kbd class="rounded border border-surface-600 px-1 py-0.5 font-mono text-surface-400">⌘.</kbd> to close</p>
 				</div>
 			{/if}
 		</div>

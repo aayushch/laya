@@ -135,7 +135,8 @@ export type ProcessingRuleAction =
 	| { type: 'bookmark' }
 	| { type: 'run_entity_agent'; prompt_template?: string }
 	| { type: 'execute_egress'; platform: string; action_type: string; payload_template: Record<string, string>; connection_id?: string }
-	| { type: 'send_notification'; title_template: string; body_template: string };
+	| { type: 'send_notification'; title_template: string; body_template: string }
+	| { type: 'add_tag'; tag_name: string; create_if_missing?: boolean };
 
 /** A processing rule (automated event→action) */
 export interface ProcessingRule {
@@ -364,6 +365,24 @@ export interface SuggestedAction {
 }
 
 /** Full action card from the engine */
+/** A tag definition */
+export interface Tag {
+	tag_id: number;
+	name: string;
+	color?: string;
+	is_system: boolean;
+	created_at?: string;
+}
+
+/** A tag applied to a card, entity group, or context group */
+export interface TagAssignment {
+	tag_id: number;
+	tag_name: string;
+	color?: string;
+	is_system: boolean;
+	assigned_by: string;
+}
+
 export interface ActionCard {
 	card_id: string;
 	event_id: string;
@@ -409,6 +428,7 @@ export interface ActionCard {
 	group_active_at?: string;
 	context_id?: string;
 	last_error?: string;
+	tags?: TagAssignment[];
 }
 
 /** A structured key event with separate timestamp */
@@ -447,6 +467,7 @@ export interface CardGroup {
 	context_label?: string;
 	platforms?: string[];
 	group_summary?: GroupSummary;
+	tags?: TagAssignment[];
 	sub_groups?: CardGroup[];
 }
 

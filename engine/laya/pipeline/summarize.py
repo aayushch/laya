@@ -45,6 +45,7 @@ async def trigger_summary_update(
     card_intelligence: list[str] | None = None,
     actor_name: str | None = None,
     source_platform: str | None = None,
+    card_tags: list[str] | None = None,
 ) -> None:
     """Queue a new card for summary incorporation (debounced, per-space)."""
     card_data = {
@@ -57,6 +58,7 @@ async def trigger_summary_update(
         "card_intelligence": card_intelligence,
         "actor_name": actor_name,
         "source_platform": source_platform,
+        "card_tags": card_tags,
     }
 
     async with _debounce_lock:
@@ -199,6 +201,7 @@ async def _run_summary_update(
             card_persona=card.get("card_persona"),
             actor_name=card.get("actor_name"),
             source_platform=card.get("source_platform"),
+            card_tags=card.get("card_tags"),
         )
 
         try:

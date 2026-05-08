@@ -60,11 +60,21 @@ async def run_stager(
     # 1b. Query existing cards for this entity (prevents redundant research)
     entity_history = await _query_entity_history(event)
 
+    # 1c. Load existing tag names so the LLM prefers reusing them
+    existing_tags: list[str] = []
+    try:
+        db = await get_db()
+        tag_rows = await db.execute_fetchall("SELECT name FROM tags ORDER BY name")
+        existing_tags = [r["name"] for r in tag_rows]
+    except Exception:
+        pass
+
     # 2. Build messages and call LLM
     messages = build_stager_messages(
         event, router_output, worker_results, related_context, entity_history,
         user_identity=user_identity, actor_relationship=actor_relationship,
         participant_roles=participant_roles,
+        existing_tags=existing_tags,
     )
     schema = get_stager_json_schema()
 
@@ -171,6 +181,8 @@ def _parse_stager_response(data: dict, event: LayaEvent) -> ActionCardData:
         )
 
     staged = data.get("staged_output", {})
+    raw_tags = data.get("suggested_tags", [])
+    suggested_tags = [t.strip().lower() for t in raw_tags if isinstance(t, str) and t.strip()][:3]
     return ActionCardData(
         header=data.get("header", event.subject.title)[:80],
         summary=data.get("summary", ""),
@@ -181,6 +193,7 @@ def _parse_stager_response(data: dict, event: LayaEvent) -> ActionCardData:
         ),
         suggested_actions=actions,
         privacy_tier=max(1, min(3, int(data.get("privacy_tier", 2)))),
+        suggested_tags=suggested_tags,
     )
 
 

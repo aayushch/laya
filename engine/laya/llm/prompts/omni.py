@@ -184,10 +184,11 @@ def build_omni_resynthesis_messages(
     if new_cards:
         for card in new_cards:
             acted = " [USER ACTED]" if card.get("user_feedback") else ""
+            tags_str = f" [tags: {card['tags']}]" if card.get("tags") else ""
             cards_text += (
                 f"- [{card.get('priority', 'MEDIUM')}] [{card.get('source_platform', '?')}] "
                 f"{card.get('header', 'Untitled')} — {card.get('summary', '')}"
-                f" (card_id: {card.get('card_id', '?')}){acted}\n"
+                f" (card_id: {card.get('card_id', '?')}){acted}{tags_str}\n"
             )
     else:
         cards_text += "No new cards.\n"

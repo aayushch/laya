@@ -3,7 +3,7 @@
 	import { engineApi } from '$lib/api/engine';
 	import { lastMessage } from '$lib/stores/websocket';
 	import { feedFilters, feedDate, feedPrevDate, feedNextDate, localToday, allDaysSavedDate } from '$lib/stores/feedFilters';
-	import type { ActionCard, CardGroup, GroupSummary, DaySummary, SpaceSummary } from '$lib/api/types';
+	import type { ActionCard, CardGroup, GroupSummary, DaySummary, SpaceSummary, Tag } from '$lib/api/types';
 	import CardGroupComponent from '$lib/components/feed/CardGroup.svelte';
 	import ActionCardComponent from '$lib/components/feed/ActionCard.svelte';
 	import CardDetail from '$lib/components/feed/CardDetail.svelte';
@@ -38,7 +38,8 @@
 	const activeStatusCount = $derived($feedFilters.statusFilters.length);
 	const activePriorityCount = $derived($feedFilters.priorityFilters.length);
 	const activeSpaceCount = $derived($feedFilters.spaceFilter.length);
-	const hasActiveFilters = $derived(activeStatusCount > 0 || activePriorityCount > 0 || $feedFilters.showArchived || $feedFilters.hasWorkspace || $feedFilters.showUnreadOnly || activeSpaceCount > 0);
+	const activeTagCount = $derived($feedFilters.tagFilter.length);
+	const hasActiveFilters = $derived(activeStatusCount > 0 || activePriorityCount > 0 || $feedFilters.showArchived || $feedFilters.hasWorkspace || $feedFilters.showUnreadOnly || activeSpaceCount > 0 || activeTagCount > 0);
 
 	function toggleFilter(arr: string[], value: string): string[] {
 		return arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value];
@@ -63,15 +64,16 @@
 	$effect(() => {
 		if (!toolbarEl) return;
 		function check() {
+			const toolbarWidth = toolbarEl!.getBoundingClientRect().width;
 			if (!feedActionsCollapsed) {
 				const spacer = toolbarEl!.querySelector('[data-feed-spacer]');
 				if (spacer && spacer.getBoundingClientRect().width < 4) {
 					feedActionsCollapsed = true;
-					feedActionsCollapseWidth = window.innerWidth;
+					feedActionsCollapseWidth = toolbarWidth;
 					feedActionsMenuOpen = false;
 				}
 			} else {
-				if (window.innerWidth > feedActionsCollapseWidth + 60) {
+				if (toolbarWidth > feedActionsCollapseWidth + 60) {
 					feedActionsCollapsed = false;
 					feedActionsMenuOpen = false;
 				}
@@ -84,6 +86,7 @@
 
 	let groups = $state<CardGroup[]>([]);
 	let totalGroups = $state(0);
+	let availableTags = $state<Tag[]>([]);
 	let loading = $state(true);
 	let markingAllRead = $state(false);
 	let error = $state<string | null>(null);
@@ -385,7 +388,8 @@
 				related_entity_ids: f.showRelated ? f.relatedEntityIds.join(',') : undefined,
 				has_workspace: f.hasWorkspace || undefined,
 				unread_only: f.showUnreadOnly || undefined,
-				search: f.showAllDaysSearch && searchQuery.trim() ? searchQuery.trim() : undefined
+				search: f.showAllDaysSearch && searchQuery.trim() ? searchQuery.trim() : undefined,
+				tags: f.tagFilter.length ? f.tagFilter.join(',') : undefined
 			});
 			if (id !== _fetchId) return;
 
@@ -470,6 +474,11 @@
 		$feedDate;
 		$feedFilters;
 		loadGroups();
+	});
+
+	// Load available tags for the filter
+	$effect(() => {
+		engineApi.listTags().then(r => { availableTags = r.tags; }).catch(() => {});
 	});
 
 	// Re-query backend when search changes in all-days mode
@@ -1042,7 +1051,8 @@
 			privacyLabel,
 			...(card.intelligence ?? []),
 			card.staged_output?.content,
-			...(card.suggested_actions?.map((a) => a.label) ?? [])
+			...(card.suggested_actions?.map((a) => a.label) ?? []),
+			...(card.tags?.map((t) => t.tag_name) ?? [])
 		]
 			.filter(Boolean)
 			.join(' ')
@@ -1664,6 +1674,34 @@
 					</div>
 				{/if}
 
+				<!-- Tags -->
+				{#if availableTags.length > 0}
+					<div class="mb-3">
+						<div class="mb-1.5 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">Tags</div>
+						<div class="space-y-0.5">
+							{#each availableTags as tag}
+								<button
+									class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-laya-secondary transition-colors hover:bg-surface-700
+										{$feedFilters.tagFilter.includes(tag.name) ? 'text-laya-orange' : 'text-surface-300'}"
+									onclick={() => ($feedFilters.tagFilter = toggleFilter($feedFilters.tagFilter, tag.name))}
+								>
+									<span class="flex h-4 w-4 items-center justify-center rounded border {$feedFilters.tagFilter.includes(tag.name) ? 'border-laya-orange bg-laya-orange/20' : 'border-surface-600'}">
+										{#if $feedFilters.tagFilter.includes(tag.name)}
+											<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+											</svg>
+										{/if}
+									</span>
+									{#if tag.color}
+										<span class="h-2 w-2 rounded-full shrink-0" style="background-color: {tag.color}"></span>
+									{/if}
+									{tag.name}
+								</button>
+							{/each}
+						</div>
+					</div>
+				{/if}
+
 				<!-- Status -->
 				<div class="mb-3">
 					<div class="mb-1.5 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">Status</div>
@@ -1769,6 +1807,7 @@
 								$feedFilters.hasWorkspace = false;
 								$feedFilters.showUnreadOnly = false;
 								$feedFilters.spaceFilter = [];
+								$feedFilters.tagFilter = [];
 								$feedFilters.showRelated = false;
 								$feedFilters.relatedEntityIds = [];
 								$feedFilters.relatedSourceHeader = '';
