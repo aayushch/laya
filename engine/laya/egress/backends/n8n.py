@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 
 import httpx
@@ -23,6 +24,45 @@ log = structlog.get_logger()
 # Refreshed every 5 minutes.
 _webhook_path_cache: dict[str, tuple[str, float]] = {}
 _CACHE_TTL = 300
+
+# Matches standard Jira Cloud accountIds: 24-char hex or "digits:uuid" format.
+_JIRA_ACCOUNT_ID_RE = re.compile(
+    r"^[0-9a-f]{24}$|^\d+:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+)
+
+
+async def _resolve_jira_assignee(
+    assignee: str, domain: str, email: str, api_token: str
+) -> str:
+    """Resolve an email or display name to a Jira Cloud accountId.
+
+    Skips the lookup if the value already looks like an accountId.
+    Raises ``ValueError`` with a user-facing message on failure.
+    """
+    if _JIRA_ACCOUNT_ID_RE.match(assignee):
+        return assignee
+
+    resp = await get_client().get(
+        f"{domain}/rest/api/3/user/search",
+        params={"query": assignee},
+        auth=(email, api_token),
+        timeout=10.0,
+    )
+
+    if resp.status_code != 200:
+        raise ValueError(
+            f"Jira user search failed (HTTP {resp.status_code}): "
+            f"could not resolve assignee '{assignee}'"
+        )
+
+    users = resp.json()
+    if not users:
+        raise ValueError(
+            f"No Jira user found matching '{assignee}'. "
+            f"Check the email or name and try again."
+        )
+
+    return users[0]["accountId"]
 
 
 class N8nBackend(EgressBackend):
@@ -46,7 +86,10 @@ class N8nBackend(EgressBackend):
                 error=f"No n8n executor webhook configured for platform '{request.platform}'",
             )
 
-        n8n_payload = await self._build_payload(request)
+        try:
+            n8n_payload = await self._build_payload(request)
+        except ValueError as exc:
+            return EgressResult(success=False, error=str(exc))
 
         return await self._post_to_n8n(webhook_url, n8n_payload, request)
 
@@ -232,17 +275,31 @@ class N8nBackend(EgressBackend):
         """
         payload, event_ctx = await enrich_payload_from_event(request)
 
-        # Jira executor workflows need the instance base URL to construct
-        # REST endpoints.  Connection-derived, not event-derived, so it
-        # lives here rather than in the shared enrichment module.
-        if request.platform == "jira" and not payload.get("jira_base_url") and request.connection_id:
+        # Jira: retrieve connection credentials once for base URL injection
+        # and assignee resolution (email/name → accountId).
+        if request.platform == "jira" and request.connection_id:
+            jira_creds = None
             try:
                 from laya.egress.connections import _get_from_keychain
                 jira_creds = _get_from_keychain(request.connection_id, "jira")
-                if jira_creds and jira_creds.get("domain"):
-                    payload["jira_base_url"] = jira_creds["domain"].rstrip("/")
             except Exception:
-                pass  # Non-fatal — workflow falls back to placeholder URL
+                pass
+
+            if jira_creds and jira_creds.get("domain") and not payload.get("jira_base_url"):
+                payload["jira_base_url"] = jira_creds["domain"].rstrip("/")
+
+            if (
+                request.action_type in ("assign", "create_issue")
+                and payload.get("assignee")
+                and jira_creds
+                and all(jira_creds.get(k) for k in ("domain", "email", "apiToken"))
+            ):
+                payload["assignee"] = await _resolve_jira_assignee(
+                    payload["assignee"],
+                    jira_creds["domain"].rstrip("/"),
+                    jira_creds["email"],
+                    jira_creds["apiToken"],
+                )
 
         # Gmail send_email: build the raw MIME message + base64url in Python
         # so the n8n workflow doesn't need a fragile JS expression.

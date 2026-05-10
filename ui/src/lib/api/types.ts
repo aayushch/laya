@@ -1070,6 +1070,11 @@ export interface EgressCapabilitiesResponse {
 	capabilities: EgressCapability[];
 }
 
+export interface ComposeFieldAutocomplete {
+	scope: 'all' | 'platform';
+	sources: string[];
+}
+
 export interface ComposeField {
 	name: string;
 	required: boolean;
@@ -1077,6 +1082,7 @@ export interface ComposeField {
 	label: string;
 	placeholder: string;
 	options?: string[];
+	autocomplete?: ComposeFieldAutocomplete;
 }
 
 export interface ComposeAction {

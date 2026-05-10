@@ -57,6 +57,16 @@ def normalize_payload(action_type: str, payload: dict) -> dict:
         if "type" not in p:
             p["type"] = p.pop("issueType", None) or p.pop("issue_type", None) or "Task"
 
+    # Normalize assignee aliases (LLM may emit various field names)
+    if action_type in ("assign", "create_issue") and not p.get("assignee"):
+        p["assignee"] = (
+            p.pop("account_id", None)
+            or p.pop("accountId", None)
+            or p.pop("user", None)
+            or p.pop("user_email", None)
+            or ""
+        )
+
     return p
 
 

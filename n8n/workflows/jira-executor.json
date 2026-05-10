@@ -229,29 +229,33 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ transition: { id: ($('Get Transitions').first().json.transitions || []).find(t => t.name.toLowerCase() === ($('Webhook').first().json.body.payload.target_status || '').toLowerCase()).id } }) }}",
-        "options": {}
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
       },
       "onError": "continueErrorOutput"
     },
     {
       "name": "Create Issue",
-      "type": "n8n-nodes-base.jira",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [
         900,
         350
       ],
       "parameters": {
-        "resource": "issue",
-        "operation": "create",
-        "project": "={{ $json.body.payload.project }}",
-        "issueType": "={{ $json.body.payload.type || 'Task' }}",
-        "summary": "={{ $json.body.payload.summary }}",
-        "additionalFields": {
-          "description": "={{ $json.body.payload.description || '' }}",
-          "priority": "={{ $json.body.payload.priority || '' }}",
-          "assignee": "={{ $json.body.payload.assignee || '' }}"
-        }
+        "method": "POST",
+        "url": "={{ $json.body.payload.jira_base_url || 'https://your-domain.atlassian.net' }}/rest/api/2/issue",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "jiraSoftwareCloudApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ fields: Object.assign({ project: { key: $json.body.payload.project }, issuetype: { name: $json.body.payload.type || 'Task' }, summary: $json.body.payload.summary }, $json.body.payload.description ? { description: $json.body.payload.description } : {}, $json.body.payload.priority ? { priority: { name: $json.body.payload.priority } } : {}, $json.body.payload.assignee ? { assignee: { accountId: $json.body.payload.assignee } } : {}, $json.body.payload.labels ? { labels: $json.body.payload.labels.split(',').map(function(l) { return l.trim(); }).filter(function(l) { return l; }) } : {}) }) }}",
+        "options": {}
       },
       "credentials": {
         "jiraSoftwareCloudApi": {
@@ -277,7 +281,13 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ accountId: $json.body.payload.assignee }) }}",
-        "options": {}
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
       },
       "onError": "continueErrorOutput"
     },
@@ -304,7 +314,7 @@
       ],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'Jira add comment failed \u2014 check credentials and workflow execution log') }) }}"
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.errorMessages && $json.errorMessages.length ? $json.errorMessages.join('; ') : ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'Jira add comment failed \u2014 check credentials and workflow execution log')) }) }}"
       }
     },
     {
@@ -330,7 +340,7 @@
       ],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'Jira transition failed \u2014 check credentials and workflow execution log') }) }}"
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.errorMessages && $json.errorMessages.length ? $json.errorMessages.join('; ') : ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'Jira transition failed \u2014 check credentials and workflow execution log')) }) }}"
       }
     },
     {
@@ -356,7 +366,7 @@
       ],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'Failed to fetch available transitions for issue \u2014 check credentials and issue_key') }) }}"
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.errorMessages && $json.errorMessages.length ? $json.errorMessages.join('; ') : ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'Failed to fetch available transitions for issue \u2014 check credentials and issue_key')) }) }}"
       }
     },
     {
@@ -382,7 +392,7 @@
       ],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'Jira create issue failed \u2014 check credentials and workflow execution log') }) }}"
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.errorMessages && $json.errorMessages.length ? $json.errorMessages.join('; ') : ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'Jira create issue failed \u2014 check credentials and workflow execution log')) }) }}"
       }
     },
     {
@@ -408,7 +418,7 @@
       ],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'Jira assign issue failed \u2014 check credentials and workflow execution log') }) }}"
+        "responseBody": "={{ JSON.stringify({ success: false, error: ($json.errorMessages && $json.errorMessages.length ? $json.errorMessages.join('; ') : ($json.error ? ($json.error.description || $json.error.message || JSON.stringify($json.error)) : 'Jira assign issue failed \u2014 check credentials and workflow execution log')) }) }}"
       }
     },
     {
@@ -621,6 +631,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.04.1"
+    "laya_version": "2026.05.2"
   }
 }

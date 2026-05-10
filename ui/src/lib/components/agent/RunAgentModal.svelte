@@ -481,11 +481,11 @@
 					</div>
 				</div>
 
-				<!-- Mode selector (only shown when agent has modes) -->
-				{#if hasMultipleModes}
-					<div>
-						<span class={labelClass}>Mode</span>
-						<div class="flex gap-2">
+				<!-- Mode selector — always rendered for stable layout; disabled when agent has no modes -->
+				<div class={hasMultipleModes ? '' : 'opacity-40 pointer-events-none'}>
+					<span class={labelClass}>Mode</span>
+					<div class="flex gap-2">
+						{#if hasMultipleModes}
 							{#each availableModes as mode}
 								<button
 									class="flex-1 rounded-lg border px-3 py-2 text-left transition-colors
@@ -495,14 +495,23 @@
 									onclick={() => (selectedMode = mode)}
 								>
 									<div class="text-xs font-medium">{modeLabels[mode] || mode}</div>
-									<div class="mt-0.5 text-[10px] text-surface-400">
+									<div class="mt-0.5 text-[10px] text-surface-400 h-[2lh] line-clamp-2">
 										{modeDescriptions[mode] || ''}
 									</div>
 								</button>
 							{/each}
-						</div>
+						{:else}
+							<div class="flex-1 rounded-lg border border-surface-600 bg-surface-800 px-3 py-2 text-left">
+								<div class="text-xs font-medium text-surface-400">N/A</div>
+								<div class="mt-0.5 text-[10px] text-surface-500 h-[2lh]">No mode options for this agent</div>
+							</div>
+							<div class="flex-1 rounded-lg border border-surface-600 bg-surface-800 px-3 py-2 text-left">
+								<div class="text-xs font-medium text-surface-400">&nbsp;</div>
+								<div class="mt-0.5 text-[10px] text-surface-500 h-[2lh]">&nbsp;</div>
+							</div>
+						{/if}
 					</div>
-				{/if}
+				</div>
 
 				<!-- Working Directory -->
 				<div class="relative" data-dir-dropdown>
@@ -846,7 +855,7 @@
 					{/if}
 				</button>
 			</div>
-			<p class="mt-1.5 w-full text-right text-[10px] text-surface-500">Press <kbd class="rounded border border-surface-600 px-1 py-0.5 font-mono text-surface-400">⌘.</kbd> to close</p>
+			<p class="px-5 pb-3 pt-1.5 w-full text-right text-[10px] text-surface-500">Press <kbd class="rounded border border-surface-600 px-1 py-0.5 font-mono text-surface-400">⌘.</kbd> to close</p>
 		</div>
 	</div>
 {/if}

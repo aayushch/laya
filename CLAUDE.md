@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is Laya
 
-Laya is a local-first desktop app (Tauri + Svelte + Python) that intercepts professional tool events (Jira, Slack, Gmail, Bitbucket, Calendar), classifies them with LLM-powered personas (Engineer, Comms, Ops), stages actions, and presents Action Cards for user approval. n8n handles event ingestion and outbound action execution.
+Laya is a local-first desktop app (Tauri + Svelte + Python) that intercepts professional tool events (Jira, Slack, Gmail, Bitbucket, Calendar), classifies them with LLM-powered personas (Engineer, Comms, Ops, Sales, HR, Finance), stages actions, and presents Action Cards for user approval. n8n handles event ingestion and outbound action execution.
 
 ## Development Commands
 
@@ -46,20 +46,37 @@ Event Sources → n8n (port 45678) → Engine (port 8420) → UI (Tauri + Svelte
 ```
 
 **Three layers:**
-- **Engine** (`engine/laya/`): Python FastAPI backend. Pipeline processes events through `ingest → router → stager → emit → context_assoc → trace → learn → context_learn → omni`. LLM calls go through LiteLLM (`llm/client.py`). 23 API routers in `api/`. Async throughout (aiosqlite, httpx).
-- **UI** (`ui/src/`): SvelteKit frontend using Svelte 5 runes (`$state`, `$derived`, `$effect`, `$props`). Skeleton UI v4 + Tailwind CSS v4. Static adapter (SPA mode). Key routes: feed, coherence, dashboard, settings, workspace, omni.
+- **Engine** (`engine/laya/`): Python FastAPI backend. Pipeline processes events through `ingest → space_resolution → rules → router → workers → stager → emit` with post-emit async steps (see below). LLM calls go through LiteLLM (`llm/client.py`). 22 API routers in `api/`. Async throughout (aiosqlite, httpx).
+- **UI** (`ui/src/`): SvelteKit frontend using Svelte 5 runes (`$state`, `$derived`, `$effect`, `$props`). Skeleton UI v4 + Tailwind CSS v4. Static adapter (SPA mode). Key routes: feed, coherence, dashboard, settings, workspace, omni, setup, status, legal.
 - **Tauri Shell** (`ui/src-tauri/`): Rust process that manages engine and n8n lifecycle (`sidecar.rs`, `n8n.rs`), tray icon, and native APIs.
 
 **Pipeline flow** (`engine/laya/pipeline/`):
-1. `ingest.py` — receives normalized events from n8n webhooks
-2. `router.py` — classifies event → persona (Engineer/Comms/Ops) with priority
-3. `stager.py` — persona worker stages actions via LLM
-4. `emit.py` — creates Action Cards in SQLite
-5. `trace.py` — indexes into ChromaDB for semantic search
-6. `learn.py` — extracts classification rules from user feedback
-7. `omni.py` — rolling cross-platform summary with progressive summarization
 
-**Egress** (`engine/laya/egress/`): Outbound action execution across 8 platforms (GitHub, Bitbucket, Jira, Linear, Gmail, Slack, Calendar, Outlook). OAuth connections managed via `connections.py` + OS keychain.
+Main pipeline (`queue.py` orchestrates):
+1. `ingest.py` — receives normalized events from n8n webhooks
+2. `space_resolution.py` — resolves event to a space
+3. `rules.py` — applies user-defined filter/routing rules
+4. `router.py` — classifies event → persona with priority
+5. `workers.py` — dispatches persona workers (Engineer/Comms/Ops/Sales/HR/Finance)
+6. `stager.py` — stages actions via LLM
+7. `emit.py` — creates Action Cards in SQLite
+
+Post-emit (triggered by `emit.py`):
+- `entity_resolution.py` — resolves semantic entities across platforms
+- `context_grouping.py` — groups related cards into context groups
+- `trace.py` — indexes into ChromaDB for semantic search
+- `tags.py` — persists stager-suggested tags
+- `group_summary.py` — rolling LLM summary per entity group
+- `omni.py` — rolling cross-platform summary with progressive summarization
+
+Supporting pipelines (triggered separately):
+- `learn.py` / `context_learn.py` — extracts classification rules from user feedback
+- `processing_rules.py` — applies automated processing rules
+- `briefing.py` — generates daily briefings
+- `summarize.py` — daily summary generation
+- `feedback.py` / `budget.py` — feedback processing and token budget tracking
+
+**Egress** (`engine/laya/egress/`): Outbound action execution across 9 platforms (GitHub, Bitbucket, Jira, Linear, Gmail, Slack, Calendar, Outlook, Notion). Platform backends in `platforms/`, connection management via `connections.py` + `oauth.py` + OS keychain, action routing via `router.py` + `registry.py`, and chat-driven egress via `tools.py` + `tool_handlers.py`.
 
 **Spaces**: User-defined contexts grouping event sources. `space_id` threads through the entire pipeline. Default space has `space_id='default'`.
 
@@ -67,8 +84,8 @@ Event Sources → n8n (port 45678) → Engine (port 8420) → UI (Tauri + Svelte
 
 - **Svelte 5 runes only**: Use `$state`, `$derived`, `$effect` — never `$:` reactive declarations
 - **Async everywhere in engine**: All DB access, HTTP, and pipeline functions are async
-- **SQLite migrations**: Numbered files in `engine/laya/db/migrations/` (001-046). New migrations get the next number. Migration runner in `db/migrate.py` applies on startup.
-- **LLM prompts**: Organized by role in `engine/laya/llm/prompts/` (router, stager, engineer, comms, ops, chat, etc.)
+- **SQLite migrations**: Numbered files in `engine/laya/db/migrations/` (001-065). New migrations get the next number. Migration runner in `db/migrate.py` applies on startup.
+- **LLM prompts**: Organized by role in `engine/laya/llm/prompts/` (router, stager, engineer, comms, ops, sales, hr, finance, chat, omni, briefing, group_summary, etc.)
 - **Config files**: User settings live in `~/.laya/` (settings.json, team.json, rules.json, repos.json). API keys stored in OS keychain via `security/keychain.py`.
 - **Test fixtures**: `engine/tests/conftest.py` provides `db` (in-memory SQLite with all migrations), `sample_event`, `bot_event`, `slack_event`, `sample_team`. All test fixtures are async (`@pytest_asyncio.fixture`).
 - **Theme system**: CSS custom properties in `ui/src/app.css` with `--color-laya-*` brand tokens. Dark/light mode via `data-theme` attribute on `<html>`.
@@ -89,7 +106,3 @@ Event Sources → n8n (port 45678) → Engine (port 8420) → UI (Tauri + Svelte
 - **Python**: `engine/requirements.txt` (core), `engine/requirements-ml.txt` (optional: torch + sentence-transformers)
 - **Frontend**: `ui/package.json` — Svelte 5, SvelteKit, Skeleton UI, Tailwind v4, Tauri APIs
 - **Rust**: `ui/src-tauri/Cargo.toml` — Tauri v2, tokio, reqwest
-
-## Pre-existing Issues
-
-Some TypeScript errors exist in `+layout.svelte`, `dashboard/+page.svelte`, `setup/+page.svelte`, and `workspace/[card_id]/+page.svelte` — these are pre-existing and unrelated to feed work.

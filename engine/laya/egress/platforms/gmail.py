@@ -129,6 +129,8 @@ def build_api_payload(action_type: str, payload: dict) -> dict:
     import base64
 
     to = payload.get("to", "")
+    cc = payload.get("cc", "")
+    bcc = payload.get("bcc", "")
     subject = payload.get("subject", "")
     body_text = payload.get("body", "")
     in_reply_to = payload.get("in_reply_to", "")
@@ -137,8 +139,12 @@ def build_api_payload(action_type: str, payload: dict) -> dict:
 
     headers = [
         f"To: {to}",
-        f"Subject: {subject}",
     ]
+    if cc:
+        headers.append(f"Cc: {cc}")
+    if bcc:
+        headers.append(f"Bcc: {bcc}")
+    headers.append(f"Subject: {subject}")
     if in_reply_to:
         headers.append(f"In-Reply-To: {in_reply_to}")
     if references:

@@ -4,7 +4,7 @@
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { portal } from '$lib/actions/portal';
 	import { tick } from 'svelte';
-	import type { EgressConnection, ComposePlatform, ComposeAction, ComposeField } from '$lib/api/types';
+	import type { EgressConnection, ComposePlatform, ComposeAction, ComposeField, ComposeFieldAutocomplete } from '$lib/api/types';
 
 	let connections = $state<EgressConnection[]>([]);
 	let connectionsLoaded = $state(false);
@@ -23,6 +23,8 @@
 
 	// Generic form values keyed by field name
 	let formValues: Record<string, string> = $state({});
+	// Chips for multi-value email fields (to, cc, bcc)
+	let emailChips: Record<string, string[]> = $state({});
 
 	let activePlatform = $state('');
 	let selectedActionType = $state('');
@@ -36,9 +38,43 @@
 	let emailListEl = $state<HTMLDivElement | undefined>();
 	let emailDropdownPos = $state({ top: 0, left: 0, width: 0 });
 
-	function handleEmailInput(fieldName: string, value: string) {
-		formValues[fieldName] = value;
+	function addEmailChip(fieldName: string, email: string) {
+		const current = emailChips[fieldName] ?? [];
+		if (!current.includes(email)) {
+			emailChips[fieldName] = [...current, email];
+		}
+	}
+
+	function removeEmailChip(fieldName: string, index: number) {
+		const current = emailChips[fieldName] ?? [];
+		emailChips[fieldName] = current.filter((_, i) => i !== index);
+	}
+
+	function isEmailField(fieldName: string): boolean {
+		return activeFields.some(f => f.name === fieldName && f.type === 'email');
+	}
+
+	function handleAutocompleteInput(fieldName: string, value: string, ac: ComposeFieldAutocomplete) {
 		if (emailDebounceTimer) clearTimeout(emailDebounceTimer);
+
+		// For email fields, comma creates chips
+		if (isEmailField(fieldName) && value.includes(',')) {
+			const parts = value.split(',').map(s => s.trim());
+			const lastPart = parts.pop() ?? '';
+			for (const part of parts) {
+				if (part) addEmailChip(fieldName, part);
+			}
+			formValues[fieldName] = lastPart;
+			value = lastPart;
+			if (value.trim().length < 2) {
+				emailSuggestions = [];
+				emailDropdownField = null;
+				return;
+			}
+		} else {
+			formValues[fieldName] = value;
+		}
+
 		if (value.trim().length < 2) {
 			emailSuggestions = [];
 			emailDropdownField = null;
@@ -46,14 +82,20 @@
 		}
 		emailDebounceTimer = setTimeout(async () => {
 			try {
-				const resp = await engineApi.emailSuggestions(value.trim());
+				const resp = await engineApi.fieldSuggestions(
+					value.trim(),
+					ac.scope,
+					ac.scope === 'platform' ? activePlatform : '',
+					ac.sources
+				);
 				emailSuggestions = resp.suggestions;
 				emailDropdownField = resp.suggestions.length > 0 ? fieldName : null;
 				emailHighlightIndex = -1;
 				if (emailDropdownField) {
 					const el = document.getElementById(`compose-${fieldName}`);
 					if (el) {
-						const r = el.getBoundingClientRect();
+						const container = el.closest('[data-email-container]') ?? el;
+						const r = container.getBoundingClientRect();
 						emailDropdownPos = { top: r.bottom + 4, left: r.left, width: r.width };
 					}
 				}
@@ -64,8 +106,13 @@
 		}, 250);
 	}
 
-	function selectEmailSuggestion(fieldName: string, email: string) {
-		formValues[fieldName] = email;
+	function selectEmailSuggestion(fieldName: string, value: string) {
+		if (isEmailField(fieldName)) {
+			addEmailChip(fieldName, value);
+			formValues[fieldName] = '';
+		} else {
+			formValues[fieldName] = value;
+		}
 		emailSuggestions = [];
 		emailDropdownField = null;
 		emailHighlightIndex = -1;
@@ -79,6 +126,15 @@
 	}
 
 	function handleEmailKeydown(e: KeyboardEvent, fieldName: string) {
+		// Backspace on empty input removes the last chip
+		if (e.key === 'Backspace' && !(formValues[fieldName] ?? '')) {
+			const chips = emailChips[fieldName];
+			if (chips && chips.length > 0) {
+				emailChips[fieldName] = chips.slice(0, -1);
+				e.preventDefault();
+				return;
+			}
+		}
 		if (emailDropdownField !== fieldName || emailSuggestions.length === 0) return;
 		if (e.key === 'ArrowDown') {
 			e.preventDefault();
@@ -180,12 +236,21 @@
 	function prefillFields() {
 		const pf = $compose.prefill;
 		const newValues: Record<string, string> = {};
+		const newChips: Record<string, string[]> = {};
 		for (const [key, val] of Object.entries(pf)) {
 			if (val != null && val !== '') {
-				newValues[key] = String(val);
+				const strVal = String(val);
+				const field = activeFields.find(f => f.name === key);
+				if (field?.type === 'email' && strVal.includes(',')) {
+					newChips[key] = strVal.split(',').map(s => s.trim()).filter(Boolean);
+					newValues[key] = '';
+				} else {
+					newValues[key] = strVal;
+				}
 			}
 		}
 		formValues = newValues;
+		emailChips = newChips;
 	}
 
 	async function loadPlatforms() {
@@ -215,8 +280,18 @@
 	function buildPayload(): Record<string, unknown> {
 		const payload: Record<string, unknown> = {};
 		for (const [key, val] of Object.entries(formValues)) {
-			if (val && val.trim()) {
+			const chips = emailChips[key];
+			if (chips && chips.length > 0) {
+				const all = [...chips];
+				if (val && val.trim()) all.push(val.trim());
+				payload[key] = all.join(', ');
+			} else if (val && val.trim()) {
 				payload[key] = val;
+			}
+		}
+		for (const [key, chips] of Object.entries(emailChips)) {
+			if (chips.length > 0 && !(key in payload)) {
+				payload[key] = chips.join(', ');
 			}
 		}
 		return payload;
@@ -230,11 +305,13 @@
 			selectedActionType = platform.actions[0].action_type;
 		}
 		formValues = {};
+		emailChips = {};
 	}
 
 	function switchAction(actionType: string) {
 		selectedActionType = actionType;
 		formValues = {};
+		emailChips = {};
 	}
 
 	const submitLabel = $derived(
@@ -254,7 +331,15 @@
 			});
 			const draft = result.draft;
 			for (const [key, val] of Object.entries(draft)) {
-				if (val && (!formValues[key] || !formValues[key].trim())) {
+				if (!val) continue;
+				const hasChips = (emailChips[key]?.length ?? 0) > 0;
+				const hasInput = formValues[key]?.trim();
+				if (hasChips || hasInput) continue;
+				const field = activeFields.find(f => f.name === key);
+				if (field?.type === 'email' && String(val).includes(',')) {
+					emailChips[key] = String(val).split(',').map(s => s.trim()).filter(Boolean);
+					formValues[key] = '';
+				} else {
 					formValues[key] = String(val);
 				}
 			}
@@ -298,6 +383,7 @@
 		aiAssisting = false;
 		selectedConnectionId = '';
 		formValues = {};
+		emailChips = {};
 		initialSyncDone = false;
 	}
 
@@ -341,6 +427,7 @@
 	const inputClass = $derived(`w-full rounded-md border ${$glassTheme ? glassInputBase : solidInputBase} px-3 py-2 text-sm text-surface-200 placeholder-surface-600 focus:border-laya-orange/50 focus:outline-none focus:ring-1 focus:ring-laya-orange/30`);
 	const labelClass = 'block text-xs font-medium text-surface-400 mb-1';
 	const selectClass = $derived(`rounded-md border ${$glassTheme ? glassInputBase : solidInputBase} px-3 py-2 text-sm text-surface-200 focus:border-laya-orange/50 focus:outline-none focus:ring-1 focus:ring-laya-orange/30`);
+	const emailContainerClass = $derived(`w-full rounded-md border ${$glassTheme ? glassInputBase : solidInputBase} px-2 py-1.5 flex flex-wrap items-center gap-1.5 cursor-text has-[:focus]:border-laya-orange/50 has-[:focus]:ring-1 has-[:focus]:ring-laya-orange/30`);
 </script>
 
 {#if $compose.isOpen}
@@ -353,9 +440,9 @@
 		onclick={handleBackdrop}
 		onkeydown={handleKeydown}
 	>
-		<div class="mx-4 w-full max-w-2xl rounded-xl border {$glassTheme ? 'glass-card border-surface-700/40' : 'border-surface-700 bg-surface-900 shadow-2xl'}">
+		<div class="mx-4 w-full max-w-2xl h-[700px] flex flex-col rounded-xl border {$glassTheme ? 'glass-card border-surface-700/40' : 'border-surface-700 bg-surface-900 shadow-2xl'}">
 			<!-- Header -->
-			<div class="flex items-center justify-between border-b px-5 py-3 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
+			<div class="flex shrink-0 items-center justify-between border-b px-5 py-3 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
 				<h2 class="text-sm font-semibold text-surface-50">Compose</h2>
 				<button
 					class="rounded p-1 text-surface-400 transition-colors hover:text-surface-200"
@@ -370,7 +457,7 @@
 
 			<!-- Platform tabs -->
 			<!-- scrollbar-none: Tailwind v4 utility that hides scrollbar across browsers -->
-			<div class="flex gap-0.5 overflow-x-auto scrollbar-none border-b px-5 pt-2 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}"
+			<div class="flex shrink-0 gap-0.5 overflow-x-auto scrollbar-none border-b px-5 pt-2 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}"
 				style="-ms-overflow-style: none; scrollbar-width: none;"
 			>
 				{#each visiblePlatforms as platform}
@@ -387,7 +474,7 @@
 			</div>
 
 			<!-- Form body -->
-			<div class="p-5 space-y-3">
+			<div class="p-5 space-y-3 flex-1 overflow-y-auto">
 				{#if success}
 					<div class="flex items-center gap-2 py-4 text-sm text-green-400">
 						<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -423,17 +510,19 @@
 						</div>
 					{/if}
 
-					<!-- Action type selector (when platform has multiple composable actions) -->
-					{#if availableActions.length > 1}
-						<div>
-							<label class={labelClass} for="compose-action">Action</label>
+					<!-- Action type selector — always rendered for stable layout -->
+					<div>
+						<label class={labelClass} for="compose-action">Action</label>
+						{#if availableActions.length > 1}
 							<select id="compose-action" bind:value={selectedActionType} class="{selectClass} w-full" onchange={(e) => switchAction((e.target as HTMLSelectElement).value)}>
 								{#each availableActions as action}
 									<option value={action.action_type}>{action.label}</option>
 								{/each}
 							</select>
-						</div>
-					{/if}
+						{:else}
+							<p id="compose-action" class="text-sm text-surface-300 px-3 py-2">{currentAction?.label ?? '—'}</p>
+						{/if}
+					</div>
 
 					<!-- Dynamic fields from registry -->
 					{#each activeFields as field (field.name)}
@@ -457,23 +546,66 @@
 										<option value={opt}>{opt}</option>
 									{/each}
 								</select>
-							{:else if field.type === 'email'}
+							{:else if field.autocomplete}
 								<div class="relative">
-									<input
-										id="compose-{field.name}"
-										type="email"
-										value={formValues[field.name] ?? ''}
-										oninput={(e) => handleEmailInput(field.name, (e.target as HTMLInputElement).value)}
-										onkeydown={(e) => handleEmailKeydown(e, field.name)}
-										onfocusout={(e) => {
-											const related = (e as FocusEvent).relatedTarget as HTMLElement | null;
-											if (related?.closest('[data-email-dropdown]')) return;
-											setTimeout(() => { emailDropdownField = null; emailHighlightIndex = -1; }, 100);
-										}}
-										class={inputClass}
-										placeholder={field.placeholder}
-										autocomplete="off"
-									/>
+									{#if field.type === 'email'}
+										<!-- Multi-value email field with chips -->
+										<!-- svelte-ignore a11y_click_events_have_key_events -->
+										<!-- svelte-ignore a11y_no_static_element_interactions -->
+										<div
+											data-email-container
+											class={emailContainerClass}
+											onclick={() => document.getElementById(`compose-${field.name}`)?.focus()}
+										>
+											{#each (emailChips[field.name] ?? []) as chip, i}
+												<span class="inline-flex items-center gap-0.5 rounded-full bg-surface-700 pl-2.5 pr-1 py-0.5 text-xs text-surface-200">
+													{chip}
+													<button
+														type="button"
+														class="rounded-full p-0.5 text-surface-400 hover:text-surface-200 transition-colors"
+														onclick={(e) => { e.stopPropagation(); removeEmailChip(field.name, i); }}
+														aria-label="Remove {chip}"
+													>
+														<svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+															<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+														</svg>
+													</button>
+												</span>
+											{/each}
+											<input
+												id="compose-{field.name}"
+												type="text"
+												value={formValues[field.name] ?? ''}
+												oninput={(e) => handleAutocompleteInput(field.name, (e.target as HTMLInputElement).value, field.autocomplete!)}
+												onkeydown={(e) => handleEmailKeydown(e, field.name)}
+												onfocusout={(e) => {
+													const related = (e as FocusEvent).relatedTarget as HTMLElement | null;
+													if (related?.closest('[data-email-dropdown]')) return;
+													setTimeout(() => { emailDropdownField = null; emailHighlightIndex = -1; }, 100);
+												}}
+												class="flex-1 min-w-[120px] bg-transparent outline-none border-none p-0 text-sm text-surface-200 placeholder-surface-600"
+												placeholder={(emailChips[field.name]?.length ?? 0) > 0 ? '' : field.placeholder}
+												autocomplete="off"
+											/>
+										</div>
+									{:else}
+										<!-- Single-value autocomplete field -->
+										<input
+											id="compose-{field.name}"
+											type="text"
+											value={formValues[field.name] ?? ''}
+											oninput={(e) => handleAutocompleteInput(field.name, (e.target as HTMLInputElement).value, field.autocomplete!)}
+											onkeydown={(e) => handleEmailKeydown(e, field.name)}
+											onfocusout={(e) => {
+												const related = (e as FocusEvent).relatedTarget as HTMLElement | null;
+												if (related?.closest('[data-email-dropdown]')) return;
+												setTimeout(() => { emailDropdownField = null; emailHighlightIndex = -1; }, 100);
+											}}
+											class={inputClass}
+											placeholder={field.placeholder}
+											autocomplete="off"
+										/>
+									{/if}
 									{#if emailDropdownField === field.name && emailSuggestions.length > 0}
 										<!-- svelte-ignore a11y_no_static_element_interactions -->
 										<div
@@ -518,7 +650,7 @@
 
 			<!-- Footer -->
 			{#if !success}
-				<div class="flex items-center justify-between border-t px-5 py-3 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
+				<div class="flex shrink-0 items-center justify-between border-t px-5 py-3 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
 					<button
 						class="inline-flex items-center gap-1.5 rounded-md bg-surface-800 px-3 py-1.5 text-xs font-medium transition-colors
 							{aiAssisting ? 'text-laya-orange cursor-wait' : 'text-surface-400 hover:text-laya-orange hover:bg-surface-700'}"
@@ -563,9 +695,9 @@
 							{/if}
 						</button>
 					</div>
-					<p class="mt-1.5 w-full text-right text-[10px] text-surface-500">Press <kbd class="rounded border border-surface-600 px-1 py-0.5 font-mono text-surface-400">⌘.</kbd> to close</p>
 				</div>
 			{/if}
+			<p class="shrink-0 px-5 pb-3 pt-1.5 w-full text-right text-[10px] text-surface-500">Press <kbd class="rounded border border-surface-600 px-1 py-0.5 font-mono text-surface-400">⌘.</kbd> to close</p>
 		</div>
 	</div>
 {/if}

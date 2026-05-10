@@ -10,7 +10,6 @@
 		platformLabel,
 		isOAuth = false,
 		fields = [],
-		hasExistingConnections = false,
 		onClose,
 		onConnected
 	}: {
@@ -18,7 +17,6 @@
 		platformLabel: string;
 		isOAuth?: boolean;
 		fields?: FieldDef[];
-		hasExistingConnections?: boolean;
 		onClose: () => void;
 		onConnected: () => void;
 	} = $props();
@@ -33,13 +31,11 @@
 	let submitting = $state(false);
 	let error = $state<string | null>(null);
 
-	// Load existing names when adding another account
+	// Load existing names for uniqueness validation
 	$effect(() => {
-		if (hasExistingConnections) {
-			engineApi.getConnectionNames(platform).then(r => {
-				existingNames = r.names;
-			}).catch(() => {});
-		}
+		engineApi.getConnectionNames(platform).then(r => {
+			existingNames = r.names;
+		}).catch(() => {});
 	});
 
 	// OAuth state
@@ -59,7 +55,7 @@
 	});
 
 	async function handleApiKeySubmit() {
-		if (hasExistingConnections && !connectionName.trim()) {
+		if (!connectionName.trim()) {
 			nameError = 'Please provide a name for this account';
 			return;
 		}
@@ -90,7 +86,7 @@
 		try {
 			await engineApi.createEgressConnection({
 				platform: 'smtp',
-				name: `Email (${credentials.email})`,
+				name: connectionName.trim() || `Email (${credentials.email})`,
 				credentials
 			});
 			onConnected();
@@ -102,7 +98,7 @@
 	}
 
 	async function handleOAuthConnect() {
-		if (hasExistingConnections && !connectionName.trim()) {
+		if (!connectionName.trim()) {
 			nameError = 'Please provide a name for this account';
 			return;
 		}
@@ -259,26 +255,24 @@
 				</div>
 			{/if}
 
-			<!-- Account name input (when adding another account) -->
-			{#if hasExistingConnections}
-				<div class="mb-4">
-					<label for="connection-name" class="mb-1 block text-laya-secondary font-medium text-surface-400">Account Name</label>
-					<input
-						id="connection-name"
-						type="text"
-						bind:value={connectionName}
-						placeholder="e.g., Personal, Work"
-						class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
-					/>
-					{#if nameError}
-						<p class="mt-1 text-laya-secondary text-red-400">{nameError}</p>
-					{:else if connectionName && existingNames.includes(connectionName.trim())}
-						<p class="mt-1 text-laya-secondary text-red-400">This name is already in use</p>
-					{:else}
-						<p class="mt-1 text-laya-secondary text-surface-500">A label to identify this account</p>
-					{/if}
-				</div>
-			{/if}
+			<!-- Account name input -->
+			<div class="mb-4">
+				<label for="connection-name" class="mb-1 block text-laya-secondary font-medium text-surface-400">Account Name</label>
+				<input
+					id="connection-name"
+					type="text"
+					bind:value={connectionName}
+					placeholder="e.g., Personal, Work"
+					class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
+				/>
+				{#if nameError}
+					<p class="mt-1 text-laya-secondary text-red-400">{nameError}</p>
+				{:else if connectionName && existingNames.includes(connectionName.trim())}
+					<p class="mt-1 text-laya-secondary text-red-400">This name is already in use</p>
+				{:else}
+					<p class="mt-1 text-laya-secondary text-surface-500">A label to identify this account</p>
+				{/if}
+			</div>
 
 			{#if platform === 'smtp'}
 				<!-- SMTP setup form -->

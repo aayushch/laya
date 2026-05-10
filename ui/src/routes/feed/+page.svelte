@@ -38,8 +38,7 @@
 	const activeStatusCount = $derived($feedFilters.statusFilters.length);
 	const activePriorityCount = $derived($feedFilters.priorityFilters.length);
 	const activeSpaceCount = $derived($feedFilters.spaceFilter.length);
-	const activeTagCount = $derived($feedFilters.tagFilter.length);
-	const hasActiveFilters = $derived(activeStatusCount > 0 || activePriorityCount > 0 || $feedFilters.showArchived || $feedFilters.hasWorkspace || $feedFilters.showUnreadOnly || activeSpaceCount > 0 || activeTagCount > 0);
+	const hasActiveFilters = $derived(activeStatusCount > 0 || activePriorityCount > 0 || $feedFilters.showArchived || $feedFilters.hasWorkspace || $feedFilters.showUnreadOnly || activeSpaceCount > 0);
 
 	function toggleFilter(arr: string[], value: string): string[] {
 		return arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value];
@@ -236,6 +235,60 @@
 	let searchQuery = $state($feedSearchQuery);
 	let searchInputEl: HTMLInputElement | undefined = $state();
 
+	// Tag autocomplete state
+	let showTagAutocomplete = $state(false);
+	let tagAutocompletePos = $state({ top: 0, left: 0 });
+	let tagAutocompleteIdx = $state(0);
+
+	function getCurrentWord(input: HTMLInputElement): string {
+		const pos = input.selectionStart ?? input.value.length;
+		const before = input.value.slice(0, pos);
+		const match = before.match(/(\S+)$/);
+		return match ? match[1] : '';
+	}
+
+	const tagAutocompleteQuery = $derived.by(() => {
+		if (!showTagAutocomplete) return '';
+		const tokens = searchQuery.trim().split(/\s+/);
+		const last = tokens[tokens.length - 1] || '';
+		if (last.startsWith('#')) return last.slice(1).toLowerCase();
+		return '';
+	});
+
+	const tagSuggestions = $derived(
+		tagAutocompleteQuery
+			? availableTags
+				.filter(t => t.name.toLowerCase().includes(tagAutocompleteQuery) && !activeSearchTags.includes(t.name))
+				.slice(0, 6)
+			: []
+	);
+
+	function insertTagToken(name: string) {
+		const parts = searchQuery.trimEnd().split(/\s+/);
+		parts[parts.length - 1] = '#' + name;
+		searchQuery = parts.join(' ') + ' ';
+		showTagAutocomplete = false;
+		tagAutocompleteIdx = 0;
+		searchInputEl?.focus();
+	}
+
+	function removeSearchTag(name: string) {
+		searchQuery = searchQuery.replace(new RegExp(`#${name}\\b\\s*`, 'g'), '').trim();
+	}
+
+	function updateTagAutocomplete() {
+		if (!searchInputEl) return;
+		const word = getCurrentWord(searchInputEl);
+		if (word.startsWith('#')) {
+			showTagAutocomplete = true;
+			const r = searchInputEl.getBoundingClientRect();
+			tagAutocompletePos = { top: r.bottom + 4, left: r.left };
+			tagAutocompleteIdx = 0;
+		} else {
+			showTagAutocomplete = false;
+		}
+	}
+
 	$effect(() => {
 		feedSearchQuery.set(searchQuery);
 	});
@@ -376,20 +429,33 @@
 		error = null;
 		try {
 			const f = $feedFilters;
+			// Extract #tag tokens from search query
+			const _tagTokens: string[] = [];
+			const _textTokens: string[] = [];
+			for (const token of searchQuery.trim().split(/\s+/)) {
+				if (token.startsWith('#') && token.length > 1) {
+					_tagTokens.push(token.slice(1));
+				} else if (token) {
+					_textTokens.push(token);
+				}
+			}
+			const _searchText = _textTokens.join(' ');
+			const isAllDays = f.showAllDaysSearch;
+
 			const data = await engineApi.getGroupedCards({
 				status: f.statusFilters.length ? f.statusFilters.join(',') : undefined,
 				priority: f.priorityFilters.length ? f.priorityFilters.join(',') : undefined,
 				sort: f.sortBy,
 				sort_asc: f.sortAsc || undefined,
 				show_archived: f.showArchived || undefined,
-				date: (f.showBookmarked || f.showRelated || f.showAllDaysSearch) ? undefined : $feedDate,
+				date: (f.showBookmarked || f.showRelated || isAllDays) ? undefined : $feedDate,
 				space_id: f.spaceFilter.length ? f.spaceFilter.join(',') : undefined,
 				bookmarked: f.showBookmarked || undefined,
 				related_entity_ids: f.showRelated ? f.relatedEntityIds.join(',') : undefined,
 				has_workspace: f.hasWorkspace || undefined,
 				unread_only: f.showUnreadOnly || undefined,
-				search: f.showAllDaysSearch && searchQuery.trim() ? searchQuery.trim() : undefined,
-				tags: f.tagFilter.length ? f.tagFilter.join(',') : undefined
+				search: isAllDays && _searchText ? _searchText : undefined,
+				tags: isAllDays && _tagTokens.length ? _tagTokens.join(',') : undefined
 			});
 			if (id !== _fetchId) return;
 
@@ -1061,7 +1127,13 @@
 	}
 
 	const searchTerms = $derived(
-		searchQuery.trim() === '' ? [] : searchQuery.toLowerCase().split(/\s+/).filter(Boolean)
+		searchQuery.trim() === ''
+			? []
+			: searchQuery.toLowerCase().split(/\s+/).filter(Boolean).map(t => t.startsWith('#') ? t.slice(1) : t)
+	);
+
+	const activeSearchTags = $derived(
+		searchQuery.trim().split(/\s+/).filter(t => t.startsWith('#') && t.length > 1).map(t => t.slice(1))
 	);
 
 	const filteredGroups = $derived.by(() => {
@@ -1674,34 +1746,6 @@
 					</div>
 				{/if}
 
-				<!-- Tags -->
-				{#if availableTags.length > 0}
-					<div class="mb-3">
-						<div class="mb-1.5 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">Tags</div>
-						<div class="space-y-0.5">
-							{#each availableTags as tag}
-								<button
-									class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-laya-secondary transition-colors hover:bg-surface-700
-										{$feedFilters.tagFilter.includes(tag.name) ? 'text-laya-orange' : 'text-surface-300'}"
-									onclick={() => ($feedFilters.tagFilter = toggleFilter($feedFilters.tagFilter, tag.name))}
-								>
-									<span class="flex h-4 w-4 items-center justify-center rounded border {$feedFilters.tagFilter.includes(tag.name) ? 'border-laya-orange bg-laya-orange/20' : 'border-surface-600'}">
-										{#if $feedFilters.tagFilter.includes(tag.name)}
-											<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
-											</svg>
-										{/if}
-									</span>
-									{#if tag.color}
-										<span class="h-2 w-2 rounded-full shrink-0" style="background-color: {tag.color}"></span>
-									{/if}
-									{tag.name}
-								</button>
-							{/each}
-						</div>
-					</div>
-				{/if}
-
 				<!-- Status -->
 				<div class="mb-3">
 					<div class="mb-1.5 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">Status</div>
@@ -1807,7 +1851,6 @@
 								$feedFilters.hasWorkspace = false;
 								$feedFilters.showUnreadOnly = false;
 								$feedFilters.spaceFilter = [];
-								$feedFilters.tagFilter = [];
 								$feedFilters.showRelated = false;
 								$feedFilters.relatedEntityIds = [];
 								$feedFilters.relatedSourceHeader = '';
@@ -1832,19 +1875,54 @@
 				bind:this={searchInputEl}
 				type="text"
 				bind:value={searchQuery}
-				placeholder="Search"
+				placeholder="Search or #tag"
 				class="h-7 w-48 rounded-lg border border-surface-700 bg-surface-800/60 pl-7 pr-7 text-laya-secondary text-surface-200 placeholder-surface-500 outline-none transition-colors focus:border-laya-orange/50 focus:ring-1 focus:ring-laya-orange/25"
+				oninput={() => updateTagAutocomplete()}
+				onblur={() => { setTimeout(() => { showTagAutocomplete = false; }, 150); }}
+				onkeydown={(e) => {
+					if (!showTagAutocomplete || tagSuggestions.length === 0) return;
+					if (e.key === 'ArrowDown') {
+						e.preventDefault();
+						tagAutocompleteIdx = (tagAutocompleteIdx + 1) % tagSuggestions.length;
+					} else if (e.key === 'ArrowUp') {
+						e.preventDefault();
+						tagAutocompleteIdx = (tagAutocompleteIdx - 1 + tagSuggestions.length) % tagSuggestions.length;
+					} else if (e.key === 'Enter' || e.key === 'Tab') {
+						e.preventDefault();
+						insertTagToken(tagSuggestions[tagAutocompleteIdx].name);
+					} else if (e.key === 'Escape') {
+						showTagAutocomplete = false;
+					}
+				}}
 			/>
 			{#if searchQuery}
 				<button
 					class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-surface-500 hover:text-surface-300"
-					onclick={() => (searchQuery = '')}
+					onclick={() => { searchQuery = ''; showTagAutocomplete = false; }}
 					title="Clear search"
 				>
 					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
 					</svg>
 				</button>
+			{/if}
+			{#if activeSearchTags.length > 0}
+				<div class="absolute top-full left-0 mt-1 flex flex-wrap gap-1">
+					{#each activeSearchTags as tagName}
+						{@const tag = availableTags.find(t => t.name === tagName)}
+						<span
+							class="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none cursor-default"
+							style="background-color: {tag?.color ?? '#6B7280'}20; color: {tag?.color ?? '#9CA3AF'}"
+						>
+							#{tagName}
+							<button class="hover:opacity-70 cursor-pointer" title="Remove tag" onclick={() => removeSearchTag(tagName)}>
+								<svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12" />
+								</svg>
+							</button>
+						</span>
+					{/each}
+				</div>
 			{/if}
 		</div>
 		<!-- View toggle -->
@@ -2263,5 +2341,30 @@
 				{/if}
 			</div>
 		</div>
+	</div>
+{/if}
+
+{#if showTagAutocomplete && tagSuggestions.length > 0}
+	<div
+		use:portal
+		class="fixed z-[100] w-48 rounded-lg border p-1 {$glassTheme ? 'glass-menu' : 'border-surface-600 bg-surface-900 shadow-xl shadow-black/50'}"
+		style="top: {tagAutocompletePos.top}px; left: {tagAutocompletePos.left}px;"
+		role="listbox"
+	>
+		{#each tagSuggestions as tag, idx}
+			<button
+				class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors cursor-pointer
+					{idx === tagAutocompleteIdx ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-300 hover:bg-surface-700/50'}"
+				role="option"
+				aria-selected={idx === tagAutocompleteIdx}
+				onmousedown={(e) => { e.preventDefault(); insertTagToken(tag.name); }}
+				onmouseenter={() => { tagAutocompleteIdx = idx; }}
+			>
+				{#if tag.color}
+					<span class="h-2 w-2 rounded-full shrink-0" style="background-color: {tag.color}"></span>
+				{/if}
+				{tag.name}
+			</button>
+		{/each}
 	</div>
 {/if}

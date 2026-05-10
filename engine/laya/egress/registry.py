@@ -900,10 +900,10 @@ def get_composable_actions(platform: str) -> list[EgressCapability]:
 # ---------------------------------------------------------------------------
 
 _FIELD_META: dict[str, dict] = {
-    # Email
-    "to": {"label": "To", "type": "email", "placeholder": "recipient@example.com"},
-    "cc": {"label": "CC", "type": "email", "placeholder": "cc@example.com"},
-    "bcc": {"label": "BCC", "type": "email", "placeholder": "bcc@example.com"},
+    # Email — scope "all" because recipients can be anyone
+    "to": {"label": "To", "type": "email", "placeholder": "recipient@example.com", "autocomplete": {"scope": "all", "sources": ["email"]}},
+    "cc": {"label": "CC", "type": "email", "placeholder": "cc@example.com", "autocomplete": {"scope": "all", "sources": ["email"]}},
+    "bcc": {"label": "BCC", "type": "email", "placeholder": "bcc@example.com", "autocomplete": {"scope": "all", "sources": ["email"]}},
     "subject": {"label": "Subject", "type": "text", "placeholder": "Subject"},
     "body": {"label": "Body", "type": "textarea", "placeholder": "Write your message..."},
     # Slack
@@ -925,7 +925,7 @@ _FIELD_META: dict[str, dict] = {
     "issue_id": {"label": "Issue ID", "type": "text", "placeholder": "Issue ID"},
     "team_id": {"label": "Team", "type": "text", "placeholder": "Team key or ID"},
     "state_id": {"label": "State", "type": "text", "placeholder": "State ID"},
-    "assignee_id": {"label": "Assignee", "type": "text", "placeholder": "User ID"},
+    "assignee_id": {"label": "Assignee", "type": "text", "placeholder": "User ID", "autocomplete": {"scope": "platform", "sources": ["email", "username"]}},
     # Notion
     "page_id": {"label": "Page ID", "type": "text", "placeholder": "Notion page ID"},
     "parent_id": {"label": "Parent ID", "type": "text", "placeholder": "Notion parent page/database ID"},
@@ -938,16 +938,16 @@ _FIELD_META: dict[str, dict] = {
     "comment": {"label": "Comment", "type": "textarea", "placeholder": "Write your comment..."},
     "target_status": {"label": "Target Status", "type": "text", "placeholder": "Done"},
     "labels": {"label": "Labels", "type": "text", "placeholder": "bug, enhancement (comma-separated)"},
-    "assignee": {"label": "Assignee", "type": "text", "placeholder": "Username or email"},
-    "assignees": {"label": "Assignees", "type": "text", "placeholder": "Usernames (comma-separated)"},
+    "assignee": {"label": "Assignee", "type": "text", "placeholder": "Username or email", "autocomplete": {"scope": "platform", "sources": ["email", "username"]}},
+    "assignees": {"label": "Assignees", "type": "text", "placeholder": "Usernames (comma-separated)", "autocomplete": {"scope": "platform", "sources": ["email", "username"]}},
     "emoji": {"label": "Emoji", "type": "text", "placeholder": ":thumbsup:"},
     "merge_method": {"label": "Merge Method", "type": "select", "options": ["squash", "merge", "rebase"]},
     "commit_title": {"label": "Commit Title", "type": "text", "placeholder": "Merge commit title"},
-    # Calendar
+    # Calendar — scope "all" because attendees can be anyone
     "start": {"label": "Start", "type": "text", "placeholder": "2026-01-15T09:00"},
     "end": {"label": "End", "type": "text", "placeholder": "2026-01-15T10:00"},
     "location": {"label": "Location", "type": "text", "placeholder": "Room / URL"},
-    "attendees": {"label": "Attendees", "type": "text", "placeholder": "email@example.com (comma-separated)"},
+    "attendees": {"label": "Attendees", "type": "text", "placeholder": "email@example.com (comma-separated)", "autocomplete": {"scope": "all", "sources": ["email"]}},
 }
 
 # Fields that are never shown in the composer — engine-internal IDs or
@@ -1008,6 +1008,8 @@ def get_compose_fields(platform: str, action_type: str) -> list[dict]:
         }
         if "options" in meta:
             entry["options"] = meta["options"]
+        if "autocomplete" in meta:
+            entry["autocomplete"] = meta["autocomplete"]
         fields.append(entry)
 
     for f in cap.requires_fields:
@@ -1015,6 +1017,12 @@ def get_compose_fields(platform: str, action_type: str) -> list[dict]:
 
     for f in cap.optional_fields:
         _add(f, False)
+
+    # Group address fields (To, CC, BCC) together at the top, then text
+    # inputs, then textareas last — so email recipients aren't buried
+    # below the body.
+    _TYPE_ORDER = {"email": 0, "text": 1, "select": 2, "textarea": 3}
+    fields.sort(key=lambda f: _TYPE_ORDER.get(f["type"], 1))
 
     return fields
 

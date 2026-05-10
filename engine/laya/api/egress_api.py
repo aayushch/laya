@@ -390,38 +390,93 @@ async def get_compose_platforms() -> dict:
     return {"platforms": get_compose_platforms_data()}
 
 
-@router.get("/egress/email-suggestions")
-async def email_suggestions(q: str = "") -> dict:
-    """Search known email addresses from events and team config."""
+@router.get("/egress/field-suggestions")
+async def field_suggestions(
+    q: str = "",
+    scope: str = "all",
+    platform: str = "",
+    sources: str = "email",
+) -> dict:
+    """Search known emails/usernames from events and team config.
+
+    Query params:
+        scope    — "all" (search all events) or "platform" (filter by source_platform)
+        platform — platform id, required when scope="platform"
+        sources  — comma-separated: "email", "username"
+    """
     query = q.strip().lower()
     if len(query) < 2:
         return {"suggestions": []}
 
+    source_list = [s.strip() for s in sources.split(",")]
+    include_email = "email" in source_list
+    include_username = "username" in source_list
+
     from laya.db.sqlite import get_db
 
     db = await get_db()
-    rows = await db.execute_fetchall(
-        """SELECT DISTINCT actor_email FROM events
-           WHERE actor_email IS NOT NULL AND actor_email != ''
-             AND LOWER(actor_email) LIKE ?
-           ORDER BY actor_email LIMIT 10""",
-        (f"%{query}%",),
-    )
-    emails = [r["actor_email"] for r in rows]
+    results: list[str] = []
+    seen: set[str] = set()
+
+    def _add(value: str) -> None:
+        low = value.lower()
+        if low not in seen:
+            seen.add(low)
+            results.append(value)
+
+    platform_filter = ""
+    params_suffix: tuple = ()
+    if scope == "platform" and platform:
+        platform_filter = " AND source_platform = ?"
+        params_suffix = (platform,)
+
+    if include_email:
+        rows = await db.execute_fetchall(
+            f"""SELECT DISTINCT actor_email FROM events
+               WHERE actor_email IS NOT NULL AND actor_email != ''
+                 AND LOWER(actor_email) LIKE ?{platform_filter}
+               ORDER BY actor_email LIMIT 10""",
+            (f"%{query}%", *params_suffix),
+        )
+        for r in rows:
+            _add(r["actor_email"])
+
+    if include_username:
+        for col in ("actor_handle", "actor_name"):
+            rows = await db.execute_fetchall(
+                f"""SELECT DISTINCT {col} FROM events
+                   WHERE {col} IS NOT NULL AND {col} != ''
+                     AND LOWER({col}) LIKE ?{platform_filter}
+                   ORDER BY {col} LIMIT 10""",
+                (f"%{query}%", *params_suffix),
+            )
+            for r in rows:
+                _add(r[col])
 
     try:
         team = load_team()
         for m in team.get("members", []):
-            email = m.get("email", "")
-            if email and query in email.lower() and email not in emails:
-                emails.append(email)
-            for alias in m.get("aliases", []):
-                if alias and query in alias.lower() and alias not in emails:
-                    emails.append(alias)
+            if include_email:
+                email = m.get("email", "")
+                if email and query in email.lower():
+                    _add(email)
+                for alias in m.get("aliases", []):
+                    if alias and query in alias.lower():
+                        _add(alias)
+            if include_username:
+                name = m.get("name", "")
+                if name and query in name.lower():
+                    _add(name)
     except Exception:
         pass
 
-    return {"suggestions": emails[:15]}
+    return {"suggestions": results[:15]}
+
+
+@router.get("/egress/email-suggestions")
+async def email_suggestions(q: str = "") -> dict:
+    """Backward-compat alias for field-suggestions with default params."""
+    return await field_suggestions(q=q)
 
 
 @router.get("/egress/capabilities/{platform}")

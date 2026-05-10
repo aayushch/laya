@@ -190,7 +190,10 @@
         "toRecipients": "={{ $json.body.payload.to || $json.body.event_actor_email }}",
         "subject": "={{ $json.body.payload.subject || (($json.body.event_subject || '').toLowerCase().startsWith('re:') ? $json.body.event_subject : 'Re: ' + ($json.body.event_subject || '')) }}",
         "bodyContent": "={{ $json.body.payload.body || $json.body.payload.message || '' }}",
-        "additionalFields": {}
+        "additionalFields": {
+          "ccRecipients": "={{ $json.body.payload.cc || \"\" }}",
+          "bccRecipients": "={{ $json.body.payload.bcc || \"\" }}"
+        }
       },
       "onError": "continueErrorOutput"
     },
@@ -517,6 +520,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.04.4"
+    "laya_version": "2026.05.1"
   }
 }

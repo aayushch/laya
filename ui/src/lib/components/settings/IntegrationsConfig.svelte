@@ -168,7 +168,10 @@
 				<h3 class="mb-3 text-laya-secondary font-semibold uppercase tracking-wider text-surface-500">
 					{group.label}
 				</h3>
-				<div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+				<div class="{$glassTheme
+					? 'glass-section divide-y divide-white/[0.05]'
+					: 'rounded-lg border border-surface-700 bg-surface-800 divide-y divide-surface-700/50'}
+					overflow-hidden">
 					{#each group.items as p}
 						<PlatformCard
 							platformKey={p.key}
@@ -220,7 +223,6 @@
 		platformLabel={connectingLabel}
 		isOAuth={connectingIsOAuth}
 		fields={connectingFields}
-		hasExistingConnections={connections.some(c => c.platform === connectingPlatform)}
 		onClose={closeConnectModal}
 		onConnected={handleConnected}
 	/>

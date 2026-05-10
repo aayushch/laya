@@ -821,6 +821,9 @@ export const engineApi = {
 			body: JSON.stringify({ text, platform })
 		}),
 
+	fieldSuggestions: (q: string, scope: string = 'all', platform: string = '', sources: string[] = ['email']) =>
+		request<{ suggestions: string[] }>(`/egress/field-suggestions?q=${encodeURIComponent(q)}&scope=${scope}&platform=${encodeURIComponent(platform)}&sources=${sources.join(',')}`),
+
 	emailSuggestions: (q: string) =>
 		request<{ suggestions: string[] }>(`/egress/email-suggestions?q=${encodeURIComponent(q)}`),
 
