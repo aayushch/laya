@@ -101,7 +101,7 @@
 		<div class="flex justify-between rounded-lg p-1 {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-800'}">
 			{#each tabs as tab}
 				<button
-					class="rounded-md px-2.5 py-1.5 text-laya-secondary font-medium transition-colors
+					class="rounded-md px-2.5 py-1.5 text-laya-base font-medium transition-colors
 						{activeTab === tab.id
 							? 'bg-laya-orange/15 text-laya-orange'
 							: 'text-surface-400 hover:text-surface-200'}"

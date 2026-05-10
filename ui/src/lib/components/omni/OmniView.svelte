@@ -69,7 +69,7 @@
 				{/if}
 				<div class="flex flex-col">
 					<div class="flex items-center gap-2">
-						<h3 class="text-sm font-semibold text-surface-200">{meta.title}</h3>
+						<h3 class="text-laya-base font-semibold text-surface-200">{meta.title}</h3>
 						{#if section.items.length > 0}
 							<span class="{$glassTheme ? 'glass-badge' : 'rounded-full bg-surface-800'} px-1.5 py-0.5 text-[10px] text-surface-400">
 								{section.items.length}
@@ -84,7 +84,7 @@
 
 			<!-- Items -->
 			{#if section.items.length === 0}
-				<p class="px-3 py-2 text-xs text-surface-500 italic">{meta.emptyText}</p>
+				<p class="px-3 py-2 text-laya-micro text-surface-500 italic">{meta.emptyText}</p>
 			{:else}
 				{@const totalSourceCards = section.items.reduce((sum, i) => sum + i.source_cards.length, 0)}
 				<div class="flex flex-col gap-0.5">

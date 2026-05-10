@@ -61,6 +61,11 @@ html, body {
 	--heading-font-family: 'Inter', system-ui, sans-serif;
 }
 
+[data-system-font] {
+	--base-font-family: system-ui, sans-serif;
+	--heading-font-family: system-ui, sans-serif;
+}
+
 /* ─────────────────────────────────────────────────────────────
    DARK THEME  (default)
    Warm-tinted grays — gives the UI a cozy, branded feel

@@ -250,7 +250,7 @@
 
 <div class="space-y-6">
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
-		<h3 class="mb-1 font-medium">Daily Briefing</h3>
+		<h3 class="mb-1 text-laya-heading font-medium">Daily Briefing</h3>
 		<p class="mb-4 text-laya-base text-surface-400">
 			Laya generates a daily briefing card summarising overnight activity, pending cards, and your
 			calendar. Configure when this briefing runs.
@@ -359,7 +359,7 @@
 	<!-- Context Association -->
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 		<div class="flex items-center gap-2 mb-1">
-			<h3 class="font-medium">Context Association</h3>
+			<h3 class="text-laya-heading font-medium">Context Association</h3>
 			<span class="rounded-full border border-laya-orange/30 bg-laya-orange/10 px-2 py-0.5 text-laya-micro font-semibold uppercase tracking-wider text-laya-orange">Beta</span>
 		</div>
 		<p class="mb-4 text-laya-base text-surface-400">
@@ -413,7 +413,7 @@
 	<!-- Group Summaries -->
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 		<div class="flex items-center gap-2 mb-1">
-			<h3 class="font-medium">Group Summaries</h3>
+			<h3 class="text-laya-heading font-medium">Group Summaries</h3>
 			<span class="rounded-full border border-laya-orange/30 bg-laya-orange/10 px-2 py-0.5 text-laya-micro font-semibold uppercase tracking-wider text-laya-orange">Beta</span>
 		</div>
 		<p class="mb-4 text-laya-base text-surface-400">
@@ -453,7 +453,7 @@
 
 	<!-- Omni settings -->
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
-		<h3 class="mb-1 font-medium">Omni</h3>
+		<h3 class="mb-1 text-laya-heading font-medium">Omni</h3>
 		<p class="mb-4 text-laya-base text-surface-400">
 			Omni maintains a rolling cross-platform summary of your professional activity.
 			Configure when resynthesis runs and how detailed the summary should be.

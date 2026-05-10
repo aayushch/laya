@@ -81,7 +81,7 @@
 	{/if}
 
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-4">
-		<h3 class="mb-1 text-laya-base font-medium">Coding Agent</h3>
+		<h3 class="mb-1 text-laya-heading font-medium">Coding Agent</h3>
 		<p class="mb-4 text-laya-secondary text-surface-400">Select which CLI coding agent Laya uses for ENGINEER tasks</p>
 
 		<div class="space-y-2">

@@ -410,7 +410,7 @@
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-4">
 		<div class="mb-4 flex items-center justify-between">
 			<div>
-				<h3 class="text-laya-base font-medium">Processing Rules</h3>
+				<h3 class="text-laya-heading font-medium">Processing Rules</h3>
 				<p class="text-laya-secondary text-surface-400">Automate actions when events match specific conditions</p>
 			</div>
 		</div>

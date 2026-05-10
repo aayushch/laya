@@ -12,6 +12,7 @@
 	import { theme } from '$lib/stores/theme';
 	import { getEngineUrl } from '$lib/config';
 	import { fontScale } from '$lib/stores/fontScale';
+	import { systemFont } from '$lib/stores/systemFont';
 	import { accessibleColors } from '$lib/stores/accessibleColors';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { glassTheme } from '$lib/stores/glassTheme';
@@ -148,6 +149,15 @@
 	// Apply font scale as CSS custom property on <html>
 	$effect(() => {
 		document.documentElement.style.setProperty('--laya-font-base', `${$fontScale}px`);
+	});
+
+	// Apply system font override on <html>
+	$effect(() => {
+		if ($systemFont) {
+			document.documentElement.setAttribute('data-system-font', '');
+		} else {
+			document.documentElement.removeAttribute('data-system-font');
+		}
 	});
 
 	// Apply accessible color mode attribute on <html>

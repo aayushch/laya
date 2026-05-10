@@ -27,7 +27,7 @@
 
 <div class="space-y-8">
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-6">
-		<h3 class="mb-1 font-semibold text-surface-50">Keyboard Shortcuts</h3>
+		<h3 class="mb-1 text-laya-heading font-semibold text-surface-50">Keyboard Shortcuts</h3>
 		<p class="mb-5 text-laya-base text-surface-400">View all available keyboard shortcuts across the application.</p>
 
 		<div class="overflow-hidden rounded-lg border {$glassTheme ? 'border-white/[0.06]' : 'border-surface-700'}">

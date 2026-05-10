@@ -7,9 +7,10 @@
 	import { cardDescriptions } from '$lib/stores/cardDescriptions';
 	import { cardSize } from '$lib/stores/cardSize';
 	import { fontScale, type FontScale } from '$lib/stores/fontScale';
+	import { systemFont } from '$lib/stores/systemFont';
 
 	const fontSteps: FontScale[] = [12, 13, 14, 15];
-	const fontLabels: Record<FontScale, string> = { 12: 'Compact', 13: 'Default', 14: 'Relaxed', 15: 'Large' };
+	const fontLabels: Record<FontScale, string> = { 12: 'Extra Small', 13: 'Small', 14: 'Regular', 15: 'Large' };
 	let stepIndex = $derived(fontSteps.indexOf($fontScale));
 
 	// Mockup color hues — shift when accessible mode is on
@@ -24,7 +25,7 @@
 
 	<!-- Theme toggle -->
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-6">
-		<h3 class="mb-1 font-semibold text-surface-50">Appearance</h3>
+		<h3 class="mb-1 text-laya-heading font-semibold text-surface-50">Appearance</h3>
 		<p class="mb-5 text-laya-base text-surface-400">Choose between dark and light interface themes.</p>
 
 		<div class="flex gap-3">
@@ -102,7 +103,7 @@
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-6">
 		<div class="flex items-center justify-between">
 			<div>
-				<h3 class="mb-1 font-semibold text-surface-50">Glass Theme</h3>
+				<h3 class="mb-1 text-laya-heading font-semibold text-surface-50">Glass Theme</h3>
 				<p class="text-laya-base text-surface-400">Frosted glass effect on cards and list rows. Adds backdrop blur and translucent surfaces.</p>
 			</div>
 			<button
@@ -125,7 +126,7 @@
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-6">
 		<div class="flex items-center justify-between">
 			<div>
-				<h3 class="mb-1 font-semibold text-surface-50">Status Colors</h3>
+				<h3 class="mb-1 text-laya-heading font-semibold text-surface-50">Status Colors</h3>
 				<p class="text-laya-base text-surface-400">Tint cards and list rows by their status. Turn off for a uniform look.</p>
 			</div>
 			<button
@@ -191,7 +192,7 @@
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-6">
 		<div class="flex items-center justify-between">
 			<div>
-				<h3 class="mb-1 font-semibold text-surface-50">Reduce Motion</h3>
+				<h3 class="mb-1 text-laya-heading font-semibold text-surface-50">Reduce Motion</h3>
 				<p class="text-laya-base text-surface-400">Disable tab transitions, panel slides, and card reflow animations. Recommended if motion causes discomfort.</p>
 			</div>
 			<button
@@ -212,7 +213,7 @@
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-6">
 		<div class="flex items-center justify-between">
 			<div>
-				<h3 class="mb-1 font-semibold text-surface-50">Show Card Descriptions</h3>
+				<h3 class="mb-1 text-laya-heading font-semibold text-surface-50">Show Card Descriptions</h3>
 				<p class="text-laya-base text-surface-400">Show summary text on cards in the feed. Turning this off makes cards more compact.</p>
 			</div>
 			<button
@@ -233,7 +234,7 @@
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-6">
 		<div class="flex items-center justify-between gap-6">
 			<div>
-				<h3 class="mb-1 font-semibold text-surface-50">Card Size</h3>
+				<h3 class="mb-1 text-laya-heading font-semibold text-surface-50">Card Size</h3>
 				<p class="text-laya-base text-surface-400">Compact stacks more cards per screen by inlining metadata and tightening spacing. Relaxed shows the full layout.</p>
 			</div>
 			<div role="radiogroup" aria-label="Card size" class="inline-flex shrink-0 rounded-lg border border-surface-700 bg-surface-900/50 p-0.5">
@@ -253,9 +254,26 @@
 		</div>
 	</div>
 
+	<!-- System font toggle -->
+	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-6">
+		<div class="flex items-center justify-between">
+			<div>
+				<h3 class="mb-1 text-laya-heading font-semibold text-surface-50">System Font</h3>
+				<p class="text-laya-base text-surface-400">Use your operating system's default font instead of Inter.</p>
+			</div>
+			<button
+				class="relative h-6 w-11 rounded-full transition-colors {$systemFont ? 'bg-laya-orange' : 'bg-surface-600'}"
+				onclick={() => systemFont.set(!$systemFont)}
+				aria-label="Toggle system font"
+			>
+				<span class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform {$systemFont ? 'translate-x-5' : ''}"></span>
+			</button>
+		</div>
+	</div>
+
 	<!-- Font scale -->
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-6">
-		<h3 class="mb-1 font-semibold text-surface-50">Text Size</h3>
+		<h3 class="mb-1 text-laya-heading font-semibold text-surface-50">Text Size</h3>
 		<p class="mb-5 text-laya-base text-surface-400">Adjust the base font size for chat messages and card content.</p>
 
 		<div class="space-y-3">

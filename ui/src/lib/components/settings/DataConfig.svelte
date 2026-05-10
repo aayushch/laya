@@ -63,7 +63,7 @@
 
 <div class="space-y-6">
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
-		<h3 class="mb-1 font-medium">Card Retention</h3>
+		<h3 class="mb-1 text-laya-heading font-medium">Card Retention</h3>
 		<p class="mb-4 text-laya-base text-surface-400">
 			Cards in archived, dismissed, completed, or failed states that are older than the retention
 			period are automatically deleted each day. Active cards are never auto-deleted.
@@ -107,7 +107,7 @@
 	</div>
 
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
-		<h3 class="mb-1 font-medium">Chat Retention</h3>
+		<h3 class="mb-1 text-laya-heading font-medium">Chat Retention</h3>
 		<p class="mb-4 text-laya-base text-surface-400">
 			Conversations that have been idle for longer than the retention period are automatically
 			deleted each day, along with all their messages.
@@ -149,7 +149,7 @@
 	</div>
 
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
-		<h3 class="mb-1 font-medium">Audit Log Retention</h3>
+		<h3 class="mb-1 text-laya-heading font-medium">Audit Log Retention</h3>
 		<p class="mb-4 text-laya-base text-surface-400">
 			LLM call audit logs older than the retention period are automatically deleted each day.
 		</p>
@@ -186,7 +186,7 @@
 	</div>
 
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
-		<h3 class="mb-1 font-medium">Omni Retention</h3>
+		<h3 class="mb-1 text-laya-heading font-medium">Omni Retention</h3>
 		<p class="mb-4 text-laya-base text-surface-400">
 			Omni timeline snapshots older than the retention period are automatically deleted each day.
 			The latest snapshot per space is always preserved.
@@ -224,7 +224,7 @@
 	</div>
 
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
-		<h3 class="mb-1 font-medium">Ingestion Errors Retention</h3>
+		<h3 class="mb-1 text-laya-heading font-medium">Ingestion Errors Retention</h3>
 		<p class="mb-4 text-laya-base text-surface-400">
 			Captured n8n ingestion failures older than the retention period are automatically deleted
 			each day. Cleared errors are also subject to this retention.
@@ -262,7 +262,7 @@
 	</div>
 
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
-		<h3 class="mb-1 font-medium">Manual Deletion</h3>
+		<h3 class="mb-1 text-laya-heading font-medium">Manual Deletion</h3>
 		<p class="text-laya-base text-surface-400">
 			To delete a card manually, first <span class="text-surface-300">archive</span> it — a trash
 			icon will appear on the card. Clicking it opens a confirmation before permanently removing the

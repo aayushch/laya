@@ -294,9 +294,9 @@
 	<!-- Left: Title + meta -->
 	<div>
 		<div class="flex items-center gap-3">
-			<h1 class="text-xl font-bold text-surface-50">Laya <span class="text-laya-orange">Omni</span></h1>
+			<h1 class="text-laya-heading font-bold text-surface-50">Laya <span class="text-laya-orange">Omni</span></h1>
 			{#if version > 0}
-				<div class="flex items-center gap-2 text-xs text-surface-500">
+				<div class="flex items-center gap-2 text-laya-micro text-surface-500">
 					<span>v{previewVersion ?? version}</span>
 					<span class="text-surface-700">|</span>
 					<span>{activeLabel}</span>
@@ -308,7 +308,7 @@
 				</div>
 			{/if}
 		</div>
-		<p class="text-xs text-surface-500 mt-0.5">The big picture, at a glance</p>
+		<p class="text-laya-micro text-surface-500 mt-0.5">The big picture, at a glance</p>
 	</div>
 
 	<!-- Right: Controls -->
