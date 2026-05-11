@@ -50,6 +50,7 @@
 	}
 
 	const isToday = $derived($feedDate === localToday());
+	const anyModalOpen = $derived($compose.isOpen || $agentDialog.isOpen || $summaryModalOpen);
 
 	let { children } = $props();
 	let isSetupRoute = $derived(page.url.pathname.startsWith('/setup'));
@@ -478,7 +479,7 @@
 
 </script>
 
-<Titlebar>
+<Titlebar controlsDisabled={anyModalOpen}>
 	{#snippet nav()}
 		{#if navCollapsed}
 			<!-- Overflow menu for narrow windows -->

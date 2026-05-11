@@ -192,7 +192,8 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="flex items-center {indented ? 'pl-6' : ''} {onbulktoggle ? 'gap-1.5' : ''}">
+<div class="flex items-center {indented ? 'pl-6' : ''} {onbulktoggle ? 'gap-1.5' : ''}
+	{isDimmed ? ($glassTheme ? 'glass-dim' : 'opacity-45 hover:opacity-70') : ''}">
 	{#if onbulktoggle}
 		<div class="w-5 shrink-0 flex items-center justify-center">
 			<button
@@ -217,7 +218,7 @@
 		data-status={$glassTheme && $cardColors && !isArchived ? card.status : undefined}
 		class="group/row list-row-hover relative flex flex-1 min-w-0 items-center rounded-lg transition-colors hover:z-20
 			border border-transparent {$cardColors ? (statusRowStyle[card.status] ?? '') : ''}
-			{isArchived ? 'opacity-50 hover:opacity-75' : isDimmed ? ($glassTheme ? 'glass-dim' : 'opacity-45 hover:opacity-70') : ''}
+			{isArchived ? 'opacity-50 hover:opacity-75' : ''}
 			{isLastViewed ? ($cardColors ? 'card-last-viewed card-last-viewed--compact' : 'card-last-viewed-highlight') : ''}"
 		style="{isLastViewed ? '--corner-radius: 0.5rem' : ''}"
 	>

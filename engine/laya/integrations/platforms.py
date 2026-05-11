@@ -139,12 +139,13 @@ PLATFORMS: dict[str, dict] = {
         "fields": [
             {
                 "key": "accessToken",
-                "label": "Bot Token",
+                "label": "User Token or Bot Token",
                 "type": "password",
-                "placeholder": "xoxb-...",
-                "help": "From api.slack.com/apps -> OAuth & Permissions -> Bot User OAuth Token",
+                "placeholder": "xoxp-... or xoxb-...",
+                "help": "User token (xoxp-) reads any channel you're in without a bot. From api.slack.com/apps -> OAuth & Permissions -> User OAuth Token",
             },
         ],
+        "n8n_defaults": {"notice": ""},
     },
     "discord": {
         "label": "Discord",

@@ -6,13 +6,16 @@ relationships via ChromaDB similarity search and optional LLM confirmation,
 then assigns a shared context_id so the feed can group them together.
 """
 
+import asyncio
+import random
 import uuid
 from datetime import datetime, timedelta, timezone
+from functools import partial
 
 import structlog
 
 from laya.config import load_settings
-from laya.db.chromadb_store import memory_search
+from laya.db.chromadb_store import get_collection, memory_search
 from laya.db.sqlite import get_db
 
 log = structlog.get_logger()
@@ -49,6 +52,7 @@ async def resolve_context_group(
 
     confidence_threshold = sg_config.get("confidence_threshold", 0.22)
     auto_confirm_threshold = sg_config.get("auto_confirm_threshold", 0.12)
+    cross_platform = sg_config.get("cross_platform_grouping", True)
 
     # Time window: only consider cards from the last N days
     tuning = settings.get("tuning", {})
@@ -56,16 +60,18 @@ async def resolve_context_group(
     cutoff = (datetime.now(timezone.utc) - timedelta(days=time_window_days)).timestamp()
 
     # Search ChromaDB for semantically similar cards
-    # Filter by space and time window to avoid stale matches
+    # Filter by space, time window, and optionally platform
+    and_conditions: list[dict] = [{"timestamp": {"$gte": cutoff}}]
     if space_id:
-        where_filter: dict | None = {
-            "$and": [
-                {"space_id": space_id},
-                {"timestamp": {"$gte": cutoff}},
-            ]
-        }
+        and_conditions.append({"space_id": space_id})
+    if not cross_platform:
+        and_conditions.append({"source_platform": platform})
+
+    where_filter: dict | None
+    if len(and_conditions) == 1:
+        where_filter = and_conditions[0]
     else:
-        where_filter = {"timestamp": {"$gte": cutoff}}
+        where_filter = {"$and": and_conditions}
 
     try:
         results = await memory_search(
@@ -182,8 +188,12 @@ async def resolve_context_group(
 
     # Assign context_id
     if best["context_id"]:
-        # Join existing context group
+        # Join existing context group — validate against group centroid first
         context_id = best["context_id"]
+        centroid_threshold = sg_config.get("centroid_threshold", 0.25)
+        if not await _passes_centroid_check(context_id, card_id, centroid_threshold):
+            log.info("context_group_centroid_rejected", card_id=card_id, context_id=context_id)
+            return None
         await db.execute(
             "INSERT OR IGNORE INTO context_group_members (context_id, card_id, confidence, link_method) VALUES (?, ?, ?, ?)",
             (context_id, card_id, 1.0 - best["distance"], "semantic"),
@@ -220,6 +230,78 @@ async def resolve_context_group(
         await db.commit()
 
     return context_id
+
+
+async def _passes_centroid_check(
+    context_id: str,
+    new_card_id: str,
+    centroid_threshold: float,
+) -> bool:
+    """Validate a new card against the centroid of an existing context group.
+
+    Prevents semantic chaining — each new card must be close to the group's
+    center of mass, not just one outlier member.  Pure embedding math, no LLM.
+
+    Returns True if the card passes (or on any error — fail-open).
+    """
+    try:
+        import numpy as np
+    except ImportError:
+        return True
+
+    try:
+        db = await get_db()
+        rows = await db.execute_fetchall(
+            "SELECT card_id FROM context_group_members WHERE context_id = ?",
+            (context_id,),
+        )
+        member_ids = [r["card_id"] for r in rows]
+        if len(member_ids) < 3:
+            return True
+
+        sample = random.sample(member_ids, min(10, len(member_ids)))
+        collection = get_collection()
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            partial(collection.get, ids=sample + [new_card_id], include=["embeddings"]),
+        )
+
+        embeddings = result.get("embeddings")
+        ids = result.get("ids", [])
+        if not embeddings or new_card_id not in ids:
+            return True
+
+        new_idx = ids.index(new_card_id)
+        new_emb = np.array(embeddings[new_idx], dtype=np.float32)
+        member_embs = np.array(
+            [embeddings[i] for i in range(len(ids)) if i != new_idx],
+            dtype=np.float32,
+        )
+        if member_embs.shape[0] == 0:
+            return True
+
+        centroid = member_embs.mean(axis=0)
+        dot = np.dot(new_emb, centroid)
+        norms = np.linalg.norm(new_emb) * np.linalg.norm(centroid)
+        if norms == 0:
+            return True
+        distance = 1.0 - float(dot / norms)
+
+        if distance > centroid_threshold:
+            log.info(
+                "centroid_check_failed",
+                new_card_id=new_card_id,
+                context_id=context_id,
+                distance=round(distance, 4),
+                threshold=centroid_threshold,
+                group_size=len(member_ids),
+            )
+            return False
+        return True
+    except Exception as e:
+        log.warning("centroid_check_error", context_id=context_id, error=str(e))
+        return True
 
 
 async def assign_or_join_context_group(
@@ -261,7 +343,13 @@ async def assign_or_join_context_group(
             log.debug("context_group_user_split_stager", card_id=card_id)
             return None
 
-        # Join existing group
+        # Join existing group — validate against group centroid first
+        settings = load_settings()
+        sg_config = settings.get("smart_grouping", {})
+        centroid_threshold = sg_config.get("centroid_threshold", 0.25)
+        if not await _passes_centroid_check(matched_context_id, card_id, centroid_threshold):
+            log.info("context_group_centroid_rejected_stager", card_id=card_id, context_id=matched_context_id)
+            return None
         await db.execute(
             "INSERT OR IGNORE INTO context_group_members (context_id, card_id, confidence, link_method) VALUES (?, ?, ?, ?)",
             (matched_context_id, card_id, 1.0, "stager"),

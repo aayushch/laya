@@ -3,7 +3,7 @@
 	import { onMount } from 'svelte';
 	import type { Snippet } from 'svelte';
 
-	let { nav, center, right }: { nav?: Snippet; center?: Snippet; right?: Snippet } = $props();
+	let { nav, center, right, controlsDisabled = false }: { nav?: Snippet; center?: Snippet; right?: Snippet; controlsDisabled?: boolean } = $props();
 
 	let currentPlatform = $state('');
 	let appWindow: { minimize: () => void; toggleMaximize: () => void; close: () => void; startDragging: () => void } | null = $state(null);
@@ -75,14 +75,14 @@
 
 	<!-- Primary navigation (Pulse / Omni / Coherence) -->
 	{#if nav}
-		<div class="flex items-center ml-2">
+		<div class="flex items-center ml-2 transition-opacity {controlsDisabled ? 'pointer-events-none opacity-40' : ''}">
 			{@render nav()}
 		</div>
 	{/if}
 
 	<!-- Center content (e.g. date navigation) — absolutely centered in the titlebar -->
 	{#if center}
-		<div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+		<div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 transition-opacity {controlsDisabled ? 'pointer-events-none opacity-40' : ''}">
 			{@render center()}
 		</div>
 	{/if}
@@ -93,7 +93,7 @@
 
 	<!-- Right content (e.g. chat, settings, health) -->
 	{#if right}
-		<div class="flex items-center gap-1 pr-2">
+		<div class="flex items-center gap-1 pr-2 transition-opacity {controlsDisabled ? 'pointer-events-none opacity-40' : ''}">
 			{@render right()}
 		</div>
 	{/if}

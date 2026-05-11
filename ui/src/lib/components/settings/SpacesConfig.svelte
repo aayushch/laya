@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { slide } from 'svelte/transition';
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import type { Space, Source, AvailableWorkflow, Repo, ProviderModels } from '$lib/api/types';
 	import ModelSelect from './ModelSelect.svelte';
 
@@ -579,7 +581,7 @@
 
 				<!-- Expanded Detail -->
 				{#if isExpanded}
-					<div class="border-t {$glassTheme ? 'border-white/[0.06]' : 'border-surface-700'} p-4 space-y-5">
+					<div transition:slide={{ duration: $reducedMotion ? 0 : 200 }} class="border-t {$glassTheme ? 'border-white/[0.06]' : 'border-surface-700'} p-4 space-y-5">
 						{#if isEditing}
 							<!-- Inline edit form -->
 							{@render spaceForm(true)}

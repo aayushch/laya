@@ -97,6 +97,19 @@
 
 	const sourceLabel = $derived(platformLabel[group.platform] ?? group.platform);
 
+	const priorityColors: Record<string, string> = {
+		CRITICAL: 'bg-red-600 text-red-50',
+		HIGH: 'bg-rose-500/25 text-rose-300',
+		MEDIUM: 'bg-amber-500/20 text-amber-300',
+		LOW: 'bg-surface-700/40 text-surface-400'
+	};
+	const priorityLabel: Record<string, string> = {
+		CRITICAL: 'CRIT',
+		HIGH: 'HIGH',
+		MEDIUM: 'MED',
+		LOW: 'LOW'
+	};
+
 	const topCard = $derived(group.cards[0]);
 
 	// Status priority for group color: highest-priority status wins
@@ -393,8 +406,10 @@
 		<!-- Persona spacer — matches ListRow w-[62px] -->
 		<span class="w-[62px] shrink-0 ml-1"></span>
 
-		<!-- Priority spacer — matches ListRow w-[36px] -->
-		<span class="w-[36px] shrink-0 ml-1"></span>
+		<!-- Priority badge — matches ListRow w-[36px] -->
+		<span class="w-[36px] shrink-0 text-center rounded px-1 py-0.5 text-laya-micro font-bold uppercase ml-1 {priorityColors[group.top_priority] ?? priorityColors.MEDIUM}">
+			{priorityLabel[group.top_priority] ?? group.top_priority}
+		</span>
 
 		<!-- Space badge — fixed width, matches ListRow -->
 		<span class="w-[72px] shrink-0 flex items-center gap-1 ml-1 truncate">

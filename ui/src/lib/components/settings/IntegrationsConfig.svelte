@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { slide } from 'svelte/transition';
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import PlatformCard from './PlatformCard.svelte';
 	import ConnectModal from './ConnectModal.svelte';
 	import N8nAdvancedSection from './N8nAdvancedSection.svelte';
@@ -208,7 +210,7 @@
 			</button>
 
 			{#if showN8nAdvanced}
-				<div class="border-t border-surface-700 p-5">
+				<div transition:slide={{ duration: $reducedMotion ? 0 : 200 }} class="border-t border-surface-700 p-5">
 					<N8nAdvancedSection />
 				</div>
 			{/if}

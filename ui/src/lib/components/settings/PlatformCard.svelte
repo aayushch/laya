@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { slide } from 'svelte/transition';
 	import { engineApi } from '$lib/api/engine';
+	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import PlatformIcon from './PlatformIcon.svelte';
 	import type { EgressConnection } from '$lib/api/types';
 
@@ -134,7 +136,7 @@
 
 		<!-- Expanded section -->
 		{#if expanded}
-			<div class="border-t border-surface-700/50 bg-surface-900/30 px-4 py-3 space-y-2">
+			<div transition:slide={{ duration: $reducedMotion ? 0 : 200 }} class="border-t border-surface-700/50 bg-surface-900/30 px-4 py-3 space-y-2">
 				{#each connections as conn (conn.connection_id)}
 					<div class="flex items-center justify-between gap-2 rounded px-3 py-2 bg-surface-800/60">
 						<div class="min-w-0 flex-1">

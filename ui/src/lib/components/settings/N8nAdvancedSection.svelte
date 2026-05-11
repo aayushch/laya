@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { slide } from 'svelte/transition';
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import PlatformIcon from './PlatformIcon.svelte';
 	import type {
 		N8nTestResult,
@@ -380,7 +382,7 @@
 			{/if}
 
 			{#if showAdvanced && hasN8nKey}
-				<div class="mt-4 space-y-3 border-t border-surface-700 pt-4">
+				<div transition:slide={{ duration: $reducedMotion ? 0 : 200 }} class="mt-4 space-y-3 border-t border-surface-700 pt-4">
 					<div class="flex gap-3">
 						<input
 							type="url"

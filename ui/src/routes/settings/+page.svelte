@@ -15,6 +15,8 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { reducedMotion } from '$lib/stores/reducedMotion';
+	import { fade } from 'svelte/transition';
 
 	type TabId = 'team' | 'rules' | 'models' | 'repos' | 'agent' | 'integrations' | 'spaces' | 'scheduling' | 'audit' | 'appearance' | 'keybindings' | 'data';
 	const validTabs = new Set<string>(['team', 'rules', 'models', 'repos', 'agent', 'integrations', 'spaces', 'scheduling', 'audit', 'appearance', 'keybindings', 'data']);
@@ -115,6 +117,8 @@
 
 	<div class="space-y-6">
 
+	{#key activeTab}
+	<div in:fade={{ duration: $reducedMotion ? 0 : 150 }}>
 	{#if activeTab === 'team'}
 		<TeamEditor />
 	{:else if activeTab === 'rules'}
@@ -140,6 +144,8 @@
 	{:else}
 		<AuditLogViewer />
 	{/if}
+	</div>
+	{/key}
 
 	<!-- Diagnostics footer -->
 	<div class="flex items-center justify-between border-t border-surface-700/50 pt-4 mt-2">

@@ -5,15 +5,17 @@
 
 	let {
 		selectedCards,
-		ondelete
+		ondelete,
+		onunlinked
 	}: {
 		selectedCards: ActionCard[];
 		ondelete?: (cardId: string) => void;
+		onunlinked?: (cardIds: string[]) => void;
 	} = $props();
 
 	let open = $state(false);
 	let running = $state(false);
-	let confirm = $state<{ key: string; label: string; applicable: ActionCard[]; total: number; isDelete: boolean } | null>(null);
+	let confirm = $state<{ key: string; label: string; applicable: ActionCard[]; total: number; isDelete: boolean; isLink?: boolean } | null>(null);
 
 	// Close dropdown on outside click
 	$effect(() => {
@@ -32,6 +34,7 @@
 		icon: string;
 		color: string;
 		filter: (c: ActionCard) => boolean;
+		separator?: boolean;
 	}[] = [
 		{
 			key: 'done', label: 'Mark Done',
@@ -64,6 +67,19 @@
 			filter: (c) => c.status === 'archived'
 		},
 		{
+			key: 'link', label: 'Link Selected',
+			icon: 'M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1',
+			color: 'text-laya-orange',
+			filter: () => true,
+			separator: true
+		},
+		{
+			key: 'unlink', label: 'Unlink',
+			icon: 'M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1',
+			color: 'text-surface-400',
+			filter: (c) => !!c.context_id
+		},
+		{
 			key: 'delete', label: 'Delete',
 			icon: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16',
 			color: 'text-red-400',
@@ -74,7 +90,8 @@
 	const actionStats = $derived(
 		actions.map((a) => {
 			const applicable = selectedCards.filter(a.filter);
-			return { ...a, applicable, applicableCount: applicable.length, total: selectedCards.length };
+			const count = a.key === 'link' ? (selectedCards.length >= 2 ? selectedCards.length : 0) : applicable.length;
+			return { ...a, applicable, applicableCount: count, total: selectedCards.length };
 		})
 	);
 
@@ -82,15 +99,18 @@
 		if (stat.applicableCount === 0) return;
 
 		const isDelete = stat.key === 'delete';
+		const isLink = stat.key === 'link';
+		const isUnlink = stat.key === 'unlink';
 		const isPartial = stat.applicableCount < stat.total;
 
-		if (isDelete || isPartial) {
+		if (isDelete || isLink || isUnlink || isPartial) {
 			confirm = {
 				key: stat.key,
 				label: stat.label,
-				applicable: stat.applicable,
+				applicable: isLink ? selectedCards : stat.applicable,
 				total: stat.total,
-				isDelete
+				isDelete,
+				isLink
 			};
 			open = false;
 		} else {
@@ -103,34 +123,42 @@
 		open = false;
 		confirm = null;
 		try {
-			const promises: Promise<unknown>[] = [];
-			for (const card of cards) {
-				switch (actionKey) {
-					case 'done':
-						promises.push(engineApi.markCardDone(card.card_id).then(() => { card.status = 'done'; if (!card.read_at) card.read_at = new Date().toISOString(); }));
-						break;
-					case 'dismiss':
-						promises.push(engineApi.dismissCard(card.card_id).then(() => { card.status = 'dismissed'; if (!card.read_at) card.read_at = new Date().toISOString(); }));
-						break;
-					case 'archive':
-						promises.push(engineApi.archiveCard(card.card_id).then(() => { card.status = 'archived'; if (!card.read_at) card.read_at = new Date().toISOString(); }));
-						break;
-					case 'reopen':
-					case 'unarchive':
-						promises.push(engineApi.reopenCard(card.card_id).then(() => { card.status = 'ready'; }));
-						break;
-					case 'link':
-						// Handled below as a single API call, not per-card
-						break;
-					case 'delete':
-						promises.push(engineApi.deleteCard(card.card_id).then(() => {
-							feedSelection.removeDeleted(card.card_id);
-							ondelete?.(card.card_id);
-						}));
-						break;
+			if (actionKey === 'link') {
+				const cardIds = cards.map((c) => c.card_id);
+				const result = await engineApi.mergeCards(cardIds);
+				for (const card of cards) card.context_id = result.context_id;
+			} else if (actionKey === 'unlink') {
+				await Promise.all(cards.map((card) =>
+					engineApi.unlinkRelatedCard(card.card_id).then(() => { card.context_id = undefined; })
+				));
+				onunlinked?.(cards.map((c) => c.card_id));
+			} else {
+				const promises: Promise<unknown>[] = [];
+				for (const card of cards) {
+					switch (actionKey) {
+						case 'done':
+							promises.push(engineApi.markCardDone(card.card_id).then(() => { card.status = 'done'; if (!card.read_at) card.read_at = new Date().toISOString(); }));
+							break;
+						case 'dismiss':
+							promises.push(engineApi.dismissCard(card.card_id).then(() => { card.status = 'dismissed'; if (!card.read_at) card.read_at = new Date().toISOString(); }));
+							break;
+						case 'archive':
+							promises.push(engineApi.archiveCard(card.card_id).then(() => { card.status = 'archived'; if (!card.read_at) card.read_at = new Date().toISOString(); }));
+							break;
+						case 'reopen':
+						case 'unarchive':
+							promises.push(engineApi.reopenCard(card.card_id).then(() => { card.status = 'ready'; }));
+							break;
+						case 'delete':
+							promises.push(engineApi.deleteCard(card.card_id).then(() => {
+								feedSelection.removeDeleted(card.card_id);
+								ondelete?.(card.card_id);
+							}));
+							break;
+					}
 				}
+				await Promise.all(promises);
 			}
-			await Promise.all(promises);
 			feedSelection.deselectAll();
 		} finally {
 			running = false;
@@ -163,7 +191,7 @@
 	{#if open}
 		<div class="absolute left-0 top-full z-50 mt-1 w-56 rounded-lg border border-surface-600 bg-surface-800 p-1 shadow-xl shadow-black/30">
 			{#each actionStats as stat, i}
-				{#if i === actionStats.length - 1}
+				{#if stat.separator || i === actionStats.length - 1}
 					<div class="my-1 border-t border-surface-700"></div>
 				{/if}
 				<button
@@ -176,10 +204,15 @@
 				>
 					<svg class="h-3 w-3 shrink-0 {stat.applicableCount > 0 ? stat.color : 'text-surface-600'}" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" d={stat.icon} />
+						{#if stat.key === 'unlink'}<line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round" />{/if}
 					</svg>
 					<span class="flex-1 text-left">{stat.label}</span>
 					<span class="text-[10px] {stat.applicableCount === 0 ? 'text-surface-600' : 'text-surface-500'}">
-						{stat.applicableCount} of {stat.total}
+						{#if stat.key === 'link'}
+							{stat.total < 2 ? 'need 2+' : `${stat.total} cards`}
+						{:else}
+							{stat.applicableCount} of {stat.total}
+						{/if}
 					</span>
 				</button>
 			{/each}
@@ -215,6 +248,14 @@
 					{#if confirm.isDelete}
 						<p class="mt-1 text-xs leading-relaxed text-surface-400">
 							This will permanently delete {confirm.applicable.length} card{confirm.applicable.length !== 1 ? 's' : ''}. This action cannot be undone.
+						</p>
+					{:else if confirm.isLink}
+						<p class="mt-1 text-xs leading-relaxed text-surface-400">
+							This will link <span class="font-medium text-laya-orange">{confirm.applicable.length}</span> selected cards into a shared context group.
+						</p>
+					{:else if confirm.key === 'unlink'}
+						<p class="mt-1 text-xs leading-relaxed text-surface-400">
+							This will remove <span class="font-medium text-laya-orange">{confirm.applicable.length}</span> card{confirm.applicable.length !== 1 ? 's' : ''} from their context groups.
 						</p>
 					{:else if confirm.applicable.length < confirm.total}
 						<p class="mt-1 text-xs leading-relaxed text-surface-400">

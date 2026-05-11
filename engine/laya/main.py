@@ -27,6 +27,7 @@ from laya.api.dashboard_api import router as dashboard_router
 from laya.api.diagnostics_api import router as diagnostics_router
 from laya.api.events import router as events_router
 from laya.api.ingestion_errors import router as ingestion_errors_router
+from laya.api.metadata_api import router as metadata_router
 from laya.api.omni_api import router as omni_router
 from laya.api.health import router as health_router
 from laya.api.processing_rules_api import router as processing_rules_router
@@ -383,6 +384,7 @@ app.include_router(diagnostics_router)
 app.include_router(events_router)
 app.include_router(health_router)
 app.include_router(ingestion_errors_router)
+app.include_router(metadata_router)
 app.include_router(omni_router)
 app.include_router(team_router)
 app.include_router(processing_rules_router)

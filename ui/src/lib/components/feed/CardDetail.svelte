@@ -223,9 +223,14 @@
 		try {
 			await engineApi.unlinkRelatedCard(card.card_id);
 			const entityId = card.entity_id ?? '';
-			relatedCount = null;
 			overflowMenuOpen = false;
 			onunlinked?.(card.card_id, entityId);
+			try {
+				const data = await engineApi.getRelatedCards(card.card_id);
+				relatedCount = data.total_related_cards;
+			} catch {
+				relatedCount = 0;
+			}
 		} finally {
 			unlinkingCard = false;
 		}

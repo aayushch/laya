@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { slide } from 'svelte/transition';
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import type { ProviderModels, CustomProvider, CustomProviderTestResult, DiscoveredModel, PipelineSettings, BudgetConfig, MonthlyCostEntry } from '$lib/api/types';
 	import { budgetPaused, loadBudgetStatus } from '$lib/stores/budget';
 	import ModelSelect from './ModelSelect.svelte';
@@ -459,7 +461,7 @@
 
 			<!-- Add Provider Form -->
 			{#if showAddProvider}
-				<div class="mb-5 rounded-md border border-surface-600 bg-surface-700/50 p-4 space-y-3">
+				<div transition:slide={{ duration: $reducedMotion ? 0 : 200 }} class="mb-5 rounded-md border border-surface-600 bg-surface-700/50 p-4 space-y-3">
 					<div class="grid grid-cols-3 gap-3">
 						{#each providerTypes as pt}
 							<button
@@ -637,7 +639,7 @@
 
 							<!-- Expanded model list -->
 							{#if expandedProvider === provider.id}
-								<div class="border-t border-surface-600/50 px-4 py-3">
+								<div transition:slide={{ duration: $reducedMotion ? 0 : 200 }} class="border-t border-surface-600/50 px-4 py-3">
 									{#if !providerModels[provider.id]}
 										<p class="text-laya-secondary text-surface-500">Loading models...</p>
 									{:else if providerModels[provider.id].length === 0}
@@ -897,7 +899,7 @@
 			</button>
 
 			{#if showAdvanced}
-				<div class="border-t border-surface-700 p-5 space-y-5">
+				<div transition:slide={{ duration: $reducedMotion ? 0 : 200 }} class="border-t border-surface-700 p-5 space-y-5">
 					<!-- Model Timeout -->
 					<div class="grid grid-cols-[200px_1fr_auto] items-center gap-4">
 						<div>

@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { slide } from 'svelte/transition';
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { portal } from '$lib/actions/portal';
 	import type { ProcessingRule, ProcessingRuleAction, ProcessingCondition, ProcessingRuleOperator, ProcessingSimpleCondition, ComposePlatform, Tag } from '$lib/api/types';
 
@@ -796,7 +798,7 @@
 				{showAdvanced ? 'Hide' : 'Show'} advanced options
 			</button>
 			{#if showAdvanced}
-				<div class="mt-2 grid grid-cols-3 gap-3">
+				<div transition:slide={{ duration: $reducedMotion ? 0 : 200 }} class="mt-2 grid grid-cols-3 gap-3">
 					<div>
 						<label for="rule-rate-limit" class="mb-1 flex items-center gap-1 text-laya-secondary text-surface-400">
 							Max per hour

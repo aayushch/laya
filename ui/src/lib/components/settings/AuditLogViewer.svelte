@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { slide } from 'svelte/transition';
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { portal } from '$lib/actions/portal';
 	import type { AuditLogEntry, DeadEvent, IngestionError } from '$lib/api/types';
 
@@ -260,7 +262,7 @@
 			</div>
 
 			{#if deadExpanded}
-				<div class="mt-3 overflow-visible {$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700'}">
+				<div transition:slide={{ duration: $reducedMotion ? 0 : 200 }} class="mt-3 overflow-visible {$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700'}">
 					<table class="w-full table-fixed text-left text-laya-secondary">
 						<thead class="border-b {$glassTheme ? 'border-white/[0.06] bg-white/[0.03]' : 'border-surface-700 bg-surface-800'} text-surface-400">
 							<tr>
@@ -364,7 +366,7 @@
 			</div>
 
 			{#if ingestionExpanded}
-				<div class="mt-3 overflow-visible {$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700'}">
+				<div transition:slide={{ duration: $reducedMotion ? 0 : 200 }} class="mt-3 overflow-visible {$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700'}">
 					<table class="w-full table-fixed text-left text-laya-secondary">
 						<thead class="border-b {$glassTheme ? 'border-white/[0.06] bg-white/[0.03]' : 'border-surface-700 bg-surface-800'} text-surface-400">
 							<tr>

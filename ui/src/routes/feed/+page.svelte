@@ -19,6 +19,7 @@
 	import { pendingCardId } from '$lib/stores/chat';
 	import { spaces } from '$lib/stores/spaces';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
+	import { fade, slide } from 'svelte/transition';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { summaryModalOpen as summaryModalStore } from '$lib/stores/summaryModal';
 	import { searchFocusSignal, feedSearchQuery } from '$lib/stores/searchFocus';
@@ -184,30 +185,74 @@
 			$feedFilters.relatedEntityIds = entityIds;
 			$feedFilters.relatedSourceHeader = card.header;
 			$feedFilters.relatedSourceCardId = card.card_id;
+			$feedFilters.relatedSourceEntityId = card.entity_id ?? '';
 		} catch {
 			// Silently fail
 		}
 	}
 
-	function clearRelatedFilter() {
-		_scrollToCardId = selectedCard?.card_id ?? lastDetailCardId ?? lastViewedCardId ?? null;
-		if (!_scrollToCardId) {
-			_scrollToGroupEntityId = selectedGroupSummary?.group.entity_id ?? lastDetailEntityId ?? lastViewedEntityId ?? null;
+	let relatedViewExiting = $state(false);
+
+	function clearRelatedFilter(animated = false) {
+		const doClear = () => {
+			_scrollToCardId = selectedCard?.card_id ?? lastDetailCardId ?? lastViewedCardId ?? null;
+			if (!_scrollToCardId) {
+				_scrollToGroupEntityId = selectedGroupSummary?.group.entity_id ?? lastDetailEntityId ?? lastViewedEntityId ?? null;
+			}
+			_skipNextFlip = true;
+			relatedViewExiting = false;
+			$feedFilters.showRelated = false;
+			$feedFilters.relatedEntityIds = [];
+			$feedFilters.relatedSourceHeader = '';
+			$feedFilters.relatedSourceCardId = '';
+			$feedFilters.relatedSourceEntityId = '';
+		};
+		if (animated && !$reducedMotion) {
+			relatedViewExiting = true;
+			closeDetail();
+			setTimeout(doClear, 250);
+		} else {
+			doClear();
 		}
-		_skipNextFlip = true;
-		$feedFilters.showRelated = false;
-		$feedFilters.relatedEntityIds = [];
-		$feedFilters.relatedSourceHeader = '';
-		$feedFilters.relatedSourceCardId = '';
 	}
 
-	function handleUnlinked(cardId: string, entityId: string) {
+	async function handleUnlinked(cardId: string, entityId: string) {
 		if (!$feedFilters.showRelated) return;
-		const updated = $feedFilters.relatedEntityIds.filter(eid => eid !== entityId);
-		if (updated.length <= 1) {
-			clearRelatedFilter();
-		} else {
-			$feedFilters.relatedEntityIds = updated;
+		const sourceCardId = $feedFilters.relatedSourceCardId;
+		if (!sourceCardId) { clearRelatedFilter(true); return; }
+		try {
+			const data = await engineApi.getRelatedCards(sourceCardId);
+			if (data.total_related_cards === 0) { clearRelatedFilter(true); return; }
+			const sourceEntityId = $feedFilters.relatedSourceEntityId;
+			const entityIds = [...new Set([
+				sourceEntityId,
+				...data.related_cards.map((r: { entity_id: string }) => r.entity_id)
+			].filter(Boolean))] as string[];
+			$feedFilters.relatedEntityIds = entityIds;
+		} catch {
+			clearRelatedFilter(true);
+		}
+	}
+
+	async function handleBulkUnlinked(cardIds: string[]) {
+		if (!$feedFilters.showRelated) return;
+		const sourceCardId = $feedFilters.relatedSourceCardId;
+		if (sourceCardId && cardIds.includes(sourceCardId)) {
+			clearRelatedFilter(true);
+			return;
+		}
+		if (!sourceCardId) { clearRelatedFilter(true); return; }
+		try {
+			const data = await engineApi.getRelatedCards(sourceCardId);
+			if (data.total_related_cards === 0) { clearRelatedFilter(true); return; }
+			const sourceEntityId = $feedFilters.relatedSourceEntityId;
+			const entityIds = [...new Set([
+				sourceEntityId,
+				...data.related_cards.map((r: { entity_id: string }) => r.entity_id)
+			].filter(Boolean))] as string[];
+			$feedFilters.relatedEntityIds = entityIds;
+		} catch {
+			clearRelatedFilter(true);
 		}
 	}
 
@@ -1484,7 +1529,7 @@
 					Deselect All
 				</button>
 				<div class="ml-1">
-					<BulkActionsDropdown {selectedCards} ondelete={handleDelete} />
+					<BulkActionsDropdown {selectedCards} ondelete={handleDelete} onunlinked={handleBulkUnlinked} />
 				</div>
 			</div>
 		{:else}
@@ -1958,7 +2003,7 @@
 	<div class="flex min-h-0 flex-1 gap-4">
 		<!-- Recent Cards drawer -->
 		<div class="flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-in-out {$recentDrawerOpen ? 'w-[260px]' : 'w-0'}">
-			<div class="flex h-full w-[260px] flex-col overflow-hidden rounded-xl border border-surface-700/50 bg-surface-900/60">
+			<div class="flex h-full w-[260px] flex-col overflow-hidden rounded-xl border {$glassTheme ? 'glass-card border-surface-700/40 bg-surface-900/40' : 'border-surface-700/50 bg-surface-900/60'}">
 				<div class="flex items-center justify-between border-b border-surface-700/50 px-3 py-2">
 					<span class="text-laya-secondary font-medium text-surface-300">Recent Cards</span>
 					<div class="flex items-center gap-1">
@@ -2018,9 +2063,9 @@
 			</div>
 		</div>
 		<!-- Cards / Summary / List section -->
-		<div bind:this={containerEl} class="flex min-w-0 flex-1 flex-col overflow-y-auto p-3">
+		<div bind:this={containerEl} class="flex min-w-0 flex-1 flex-col overflow-y-auto p-3 transition-opacity duration-[250ms] ease-out {relatedViewExiting ? 'opacity-0' : 'opacity-100'}">
 			{#if $feedFilters.showRelated}
-				<div class="mb-3 flex items-center gap-2 rounded-lg border border-laya-orange/30 bg-laya-orange/10 px-3 py-2">
+				<div transition:slide={{ duration: $reducedMotion ? 0 : 200 }} class="mb-3 flex items-center gap-2 rounded-lg border border-laya-orange/30 bg-laya-orange/10 px-3 py-2">
 					<svg class="h-4 w-4 shrink-0 text-laya-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
 					</svg>
@@ -2028,7 +2073,7 @@
 						Related to "<span class="font-medium">{$feedFilters.relatedSourceHeader}</span>"
 					</span>
 					<button
-						onclick={clearRelatedFilter}
+						onclick={() => clearRelatedFilter()}
 						class="shrink-0 rounded p-0.5 text-laya-orange/70 transition-colors hover:bg-laya-orange/20 hover:text-laya-orange"
 						aria-label="Clear related cards filter"
 					>
@@ -2052,7 +2097,7 @@
 					<p class="text-laya-heading">{$feedFilters.showRelated ? 'No related cards found' : $feedFilters.showBookmarked ? 'No bookmarked cards' : `No cards for ${formatDateLabel($feedDate)}`}</p>
 					<p class="mt-1 text-laya-base">
 						{#if $feedFilters.showRelated}
-							<button class="text-laya-orange hover:underline" onclick={clearRelatedFilter}>Back to feed</button>
+							<button class="text-laya-orange hover:underline" onclick={() => clearRelatedFilter()}>Back to feed</button>
 						{:else if $feedFilters.showBookmarked}
 							Bookmark cards to save them for later
 						{:else if $feedPrevDate}

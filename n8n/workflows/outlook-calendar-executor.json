@@ -27,8 +27,8 @@
         "resource": "event",
         "operation": "create",
         "calendarId": "calendar",
+        "subject": "={{ $json.body.payload.title || $json.body.event_subject || 'Laya Event' }}",
         "additionalFields": {
-          "subject": "={{ $json.body.payload.title || $json.body.event_subject || 'Laya Event' }}",
           "bodyContent": "={{ $json.body.payload.description || ('Created by Laya from: ' + ($json.body.event_subject || '')) }}",
           "bodyContentType": "text",
           "start": "={{ $json.body.payload.start_time }}",
@@ -103,6 +103,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.03.1"
+    "laya_version": "2026.05.1"
   }
 }

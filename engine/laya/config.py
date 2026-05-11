@@ -110,6 +110,8 @@ DEFAULT_SETTINGS = {
         "smart_display": True,
         "confidence_threshold": 0.22,
         "auto_confirm_threshold": 0.12,
+        "centroid_threshold": 0.25,
+        "cross_platform_grouping": True,
     },
     "tuning": {
         # Context association
