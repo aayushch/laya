@@ -199,7 +199,6 @@
 			if (!_scrollToCardId) {
 				_scrollToGroupEntityId = selectedGroupSummary?.group.entity_id ?? lastDetailEntityId ?? lastViewedEntityId ?? null;
 			}
-			_skipNextFlip = true;
 			relatedViewExiting = false;
 			$feedFilters.showRelated = false;
 			$feedFilters.relatedEntityIds = [];
@@ -2065,7 +2064,7 @@
 		<!-- Cards / Summary / List section -->
 		<div bind:this={containerEl} class="flex min-w-0 flex-1 flex-col overflow-y-auto p-3 transition-opacity duration-[250ms] ease-out {relatedViewExiting ? 'opacity-0' : 'opacity-100'}">
 			{#if $feedFilters.showRelated}
-				<div transition:slide={{ duration: $reducedMotion ? 0 : 200 }} class="mb-3 flex items-center gap-2 rounded-lg border border-laya-orange/30 bg-laya-orange/10 px-3 py-2">
+				<div class="mb-3 flex items-center gap-2 rounded-lg border border-laya-orange/30 bg-laya-orange/10 px-3 py-2">
 					<svg class="h-4 w-4 shrink-0 text-laya-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
 					</svg>
@@ -2141,11 +2140,13 @@
 						{#if !isCollapsed}
 							<div class="flex flex-col gap-1 mb-2">
 								{#each sectionGroups as group (group.entity_id)}
+									<div data-entity-id={group.entity_id}>
 									{#if group.card_count === 1}
 										<ListRow card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} bulkSelected={$feedSelection.has(group.cards[0].card_id)} onbulktoggle={handleBulkToggle} hasSelection={hasAnySelection} lastViewedCardId={lastViewedCardId ?? ''} />
 									{:else}
 										<ListGroupComponent {group} onselect={selectCard} onselectgroup={selectGroupSummary} ondelete={handleDelete} onlink={handleLinkGroup} selectedCardId={selectedCard?.card_id ?? ''} {selectedEntityId} scrollToCardId={_scrollToCardId} bulkSelectedIds={$feedSelection} onbulktoggle={handleBulkToggle} onbulktogglegroup={handleBulkToggleGroup} hasSelection={hasAnySelection} lastViewedCardId={lastViewedCardId ?? ''} lastViewedEntityId={lastViewedEntityId ?? ''} />
 									{/if}
+									</div>
 								{/each}
 							</div>
 						{/if}
@@ -2154,11 +2155,13 @@
 					<!-- Default list view -->
 					<div class="flex flex-col gap-1">
 						{#each filteredGroups as group (group.entity_id)}
+							<div data-entity-id={group.entity_id}>
 							{#if group.card_count === 1}
 								<ListRow card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} bulkSelected={$feedSelection.has(group.cards[0].card_id)} onbulktoggle={handleBulkToggle} hasSelection={hasAnySelection} lastViewedCardId={lastViewedCardId ?? ''} />
 							{:else}
 								<ListGroupComponent {group} onselect={selectCard} onselectgroup={selectGroupSummary} ondelete={handleDelete} onlink={handleLinkGroup} selectedCardId={selectedCard?.card_id ?? ''} {selectedEntityId} scrollToCardId={_scrollToCardId} bulkSelectedIds={$feedSelection} onbulktoggle={handleBulkToggle} onbulktogglegroup={handleBulkToggleGroup} hasSelection={hasAnySelection} lastViewedCardId={lastViewedCardId ?? ''} lastViewedEntityId={lastViewedEntityId ?? ''} />
 							{/if}
+							</div>
 						{/each}
 					</div>
 				{/if}
