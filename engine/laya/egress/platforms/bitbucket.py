@@ -44,6 +44,13 @@ def normalize_payload(action_type: str, payload: dict) -> dict:
     """Normalize Bitbucket executor payload fields."""
     p = dict(payload)
 
+    # Split "workspace/repo" into separate workspace and repo fields
+    repo_val = p.get("repo", "")
+    if isinstance(repo_val, str) and "/" in repo_val and "workspace" not in p:
+        workspace, repo = repo_val.split("/", 1)
+        p["workspace"] = workspace
+        p["repo"] = repo
+
     # Normalize comment field
     if action_type == "comment_pr" and "comment" not in p:
         p["comment"] = (

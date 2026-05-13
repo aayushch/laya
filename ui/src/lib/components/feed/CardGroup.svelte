@@ -458,8 +458,8 @@
 				<div class="flex flex-wrap gap-1 mt-1">
 					{#each group.tags as tag}
 						<span
-							class="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none"
-							style="background-color: {tag.color ?? '#6B7280'}20; color: {tag.color ?? '#9CA3AF'}"
+							class="{tag.is_system ? 'tag-chip-system' : 'tag-chip-user'} inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none"
+							style="--tag-color: {tag.color ?? (tag.is_system ? '#6B7280' : '#C4956B')}"
 						>
 							{tag.tag_name}
 						</span>

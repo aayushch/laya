@@ -3,6 +3,7 @@
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import ProcessingRulesEditor from './ProcessingRulesEditor.svelte';
+	import Dropdown from '$lib/components/Dropdown.svelte';
 	import type { Rule, RuleCondition, SimpleCondition, ClassificationRule } from '$lib/api/types';
 
 	const operators: SimpleCondition['operator'][] = ['equals', 'not_equals', 'contains', 'starts_with', 'ends_with', 'in'];
@@ -333,9 +334,13 @@
 								</div>
 								<p class="mt-1 pl-12 font-mono text-laya-secondary text-surface-400">{conditionSummary(rule.condition)}</p>
 							</div>
-							<div class="flex gap-2">
-								<button class="text-laya-base text-surface-400 hover:text-surface-100" onclick={() => startEdit(i)}>Edit</button>
-								<button class="text-laya-base text-red-400 hover:text-red-300" onclick={() => removeRule(i)}>Remove</button>
+							<div class="flex items-center gap-1">
+								<button class="rounded p-1 text-surface-500 transition-colors hover:text-surface-200" onclick={() => startEdit(i)} aria-label="Edit rule" title="Edit">
+									<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+								</button>
+								<button class="rounded p-1 text-surface-500 transition-colors hover:text-red-400" onclick={() => removeRule(i)} aria-label="Remove rule" title="Remove">
+									<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+								</button>
 							</div>
 						</div>
 					</div>
@@ -470,25 +475,23 @@
 				{#each clsRules as rule (rule.id)}
 					{#if clsEditingId === rule.id}
 						<!-- Inline edit form -->
-						<div class="rounded-xl border border-laya-orange/30 bg-surface-800 p-4 space-y-3">
+						<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} border-laya-orange/30 p-4 space-y-3">
 							<div class="flex gap-3">
 								<input
 									bind:value={clsFormText}
 									placeholder="Rule text"
 									class="flex-1 rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500"
 								/>
-								<select
-									bind:value={clsFormField}
-									class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50"
-								>
-									{#each clsFieldOptions as opt}
-										<option value={opt.value}>{opt.label}</option>
-									{/each}
-								</select>
+								<Dropdown
+									value={clsFormField ?? ''}
+									options={clsFieldOptions.map((o) => ({ value: o.value ?? '', label: o.label }))}
+									onchange={(v) => { clsFormField = v || null; }}
+									placeholder="Field…"
+								/>
 							</div>
 							<div class="flex gap-2">
 								<button
-									class="rounded-lg bg-surface-600 px-4 py-2 text-laya-base font-medium hover:bg-surface-500 disabled:opacity-50"
+									class="rounded-lg {$glassTheme ? 'bg-white/10 hover:bg-white/15' : 'bg-surface-600 hover:bg-surface-500'} px-4 py-2 text-laya-base font-medium disabled:opacity-50"
 									onclick={saveClsEdit}
 									disabled={!clsFormValid || clsSaving}
 								>
@@ -523,9 +526,13 @@
 										<p class="mt-1 text-laya-base {rule.active ? 'text-surface-200' : 'text-surface-500'}">{rule.rule_text}</p>
 									</div>
 								</div>
-								<div class="flex gap-2 shrink-0">
-									<button class="text-laya-base text-surface-400 hover:text-surface-100" onclick={() => startClsEdit(rule)}>Edit</button>
-									<button class="text-laya-base text-red-400 hover:text-red-300" onclick={() => removeClsRule(rule)}>Remove</button>
+								<div class="flex items-center gap-1 shrink-0">
+									<button class="rounded p-1 text-surface-500 transition-colors hover:text-surface-200" onclick={() => startClsEdit(rule)} aria-label="Edit rule" title="Edit">
+										<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+									</button>
+									<button class="rounded p-1 text-surface-500 transition-colors hover:text-red-400" onclick={() => removeClsRule(rule)} aria-label="Remove rule" title="Remove">
+										<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+									</button>
 								</div>
 							</div>
 						</div>
@@ -547,18 +554,16 @@
 							placeholder='e.g., "Always treat emails from legal@acme.com as HIGH priority"'
 							class="flex-1 rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500"
 						/>
-						<select
-							bind:value={clsFormField}
-							class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50"
-						>
-							{#each clsFieldOptions as opt}
-								<option value={opt.value}>{opt.label}</option>
-							{/each}
-						</select>
+						<Dropdown
+							value={clsFormField ?? ''}
+							options={clsFieldOptions.map((o) => ({ value: o.value ?? '', label: o.label }))}
+							onchange={(v) => { clsFormField = v || null; }}
+							placeholder="Field…"
+						/>
 					</div>
 					<div class="flex gap-2">
 						<button
-							class="rounded-lg bg-surface-600 px-4 py-2 text-laya-base font-medium hover:bg-surface-500 disabled:opacity-50"
+							class="rounded-lg {$glassTheme ? 'bg-white/10 hover:bg-white/15' : 'bg-surface-600 hover:bg-surface-500'} px-4 py-2 text-laya-base font-medium disabled:opacity-50"
 							onclick={addClsRule}
 							disabled={!clsFormValid || clsSaving}
 						>
@@ -581,5 +586,6 @@
 	</div>
 
 	<!-- Processing Rules -->
+	<hr class="my-6 border-surface-700" />
 	<ProcessingRulesEditor />
 {/if}

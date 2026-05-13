@@ -280,7 +280,7 @@
 	</span>
 
 	<!-- Action buttons — fixed width slot (visible on hover) -->
-	<div class="w-[68px] shrink-0 flex items-center justify-end gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
+	<div class="col-actions w-[68px] shrink-0 flex items-center justify-end gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
 		{#if card.status === 'ready'}
 			<button aria-label="Mark as Done" class="h-5 w-5 flex items-center justify-center rounded text-green-400/60 hover:bg-green-500/15 hover:text-green-400 disabled:opacity-40" onclick={markDone} disabled={markingDone} onmouseenter={(e) => showTooltip(e.currentTarget, 'Done')} onmouseleave={hideTooltip}>
 				<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
@@ -321,7 +321,7 @@
 	</div>
 
 	<!-- Persona badge — fixed width -->
-	<span class="w-[62px] shrink-0 text-center rounded border px-1 py-0.5 text-laya-micro font-bold uppercase ml-1 {personaColors[card.persona] ?? personaColors.ENGINEER}">
+	<span class="col-persona w-[62px] shrink-0 text-center rounded border px-1 py-0.5 text-laya-micro font-bold uppercase ml-1 {personaColors[card.persona] ?? personaColors.ENGINEER}">
 		{card.persona}
 	</span>
 
@@ -331,7 +331,7 @@
 	</span>
 
 	<!-- Space badge — fixed width -->
-	<span class="w-[72px] shrink-0 flex items-center gap-1 ml-1 truncate">
+	<span class="col-space w-[72px] shrink-0 flex items-center gap-1 ml-1 truncate">
 		{#if card.space_name}
 			<span class="inline-flex items-center gap-1 rounded border border-surface-700 bg-surface-800/60 px-1.5 py-0.5 text-laya-micro text-surface-400 truncate">
 				<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {card.space_color ?? '#F97316'}"></span>
@@ -341,7 +341,7 @@
 	</span>
 
 	<!-- Time — fixed width -->
-	<span class="w-[52px] shrink-0 text-right text-laya-micro text-surface-500 whitespace-nowrap">{timeAgo(card.created_at)}</span>
+	<span class="col-time w-[52px] shrink-0 text-right text-laya-micro text-surface-500 whitespace-nowrap">{timeAgo(card.created_at)}</span>
 	</div>
 </div>
 </div>
@@ -378,7 +378,7 @@
 {#if fixedTooltip}
 	<span
 		use:portal
-		class="pointer-events-none fixed z-[100] rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium"
+		class="pointer-events-none fixed z-[100] rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium break-words"
 		style="top: {fixedTooltip.top}px; left: {fixedTooltip.left}px;{fixedTooltip.maxWidth ? ` max-width: ${fixedTooltip.maxWidth}px; white-space: normal;` : ' white-space: nowrap;'}"
 	>
 		{fixedTooltip.text}

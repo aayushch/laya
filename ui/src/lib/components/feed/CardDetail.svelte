@@ -628,7 +628,7 @@
 	</div>
 
 	<!-- Scrollable content -->
-	<div class="flex-1 overflow-y-auto px-5 py-4">
+	<div class="flex-1 overflow-y-auto overflow-x-hidden break-words px-5 py-4">
 		<!-- Source platform + subject ID + actor info -->
 		{#if card.entity_id || card.actor_name || card.actor_email}
 			<div class="mb-3 flex flex-col gap-0.5">
@@ -692,8 +692,8 @@
 			<div class="flex flex-wrap items-center gap-1.5">
 				{#each cardTags as tag}
 					<span
-						class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
-						style="background-color: {tag.color ?? '#6B7280'}20; color: {tag.color ?? '#9CA3AF'}"
+						class="{tag.is_system ? 'tag-chip-system' : 'tag-chip-user'} inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+						style="--tag-color: {tag.color ?? (tag.is_system ? '#6B7280' : '#C4956B')}"
 					>
 						{tag.tag_name}
 						{#if !tag.is_system}
@@ -736,9 +736,9 @@
 				<h3 class="mb-2 text-laya-secondary font-semibold uppercase tracking-wider text-surface-400">Intelligence Report</h3>
 				<ul class="space-y-1.5">
 					{#each card.intelligence as point}
-						<li class="flex items-start gap-2 text-laya-base text-surface-300">
+						<li class="flex items-start gap-2 text-laya-base text-surface-300 min-w-0">
 							<span class="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-surface-500"></span>
-							{point}
+							<span class="min-w-0 break-words">{point}</span>
 						</li>
 					{/each}
 				</ul>

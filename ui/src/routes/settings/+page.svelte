@@ -92,8 +92,8 @@
 	}
 </script>
 
-<div class="mx-auto max-w-4xl">
-	<div class="sticky -top-4 z-20 space-y-4 pb-4 -mx-4 px-4 pt-4 {$glassTheme ? 'bg-transparent backdrop-blur-xl' : 'bg-surface-900'}">
+<div class="mx-auto max-w-4xl overflow-x-clip">
+	<div class="sticky -top-4 z-20 relative space-y-4 pb-4 pt-4 before:absolute before:inset-y-0 before:-left-[50vw] before:-right-[50vw] before:z-[-1] {$glassTheme ? 'before:backdrop-blur-xl' : 'before:bg-surface-900'}">
 		<div>
 			<h2 class="text-laya-heading font-semibold">Settings</h2>
 			<p class="text-laya-base text-surface-400">Manage your team, rules, models, repos, and coding agent</p>

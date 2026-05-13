@@ -5,7 +5,21 @@
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { portal } from '$lib/actions/portal';
+	import Dropdown from '$lib/components/Dropdown.svelte';
 	import type { AuditLogEntry, DeadEvent, IngestionError } from '$lib/api/types';
+
+	const AUDIT_STEPS = [
+		'route', 'route_batch', 'stage', 'emit', 'worker',
+		'entity_confirm', 'context_confirm', 'context_learn', 'learn',
+		'chat', 'chat_title',
+		'summarize', 'group_summary_initial', 'group_summary_rolling',
+		'trace', 'trace_filter', 'trace_summary',
+		'omni_resynthesis',
+		'execute', 'lifecycle', 'recovery',
+		'briefing',
+		'egress_draft', 'compose_polish', 'polish_draft',
+		'settings',
+	];
 
 	// ── Ingestion errors state ──
 	let ingestionErrors: IngestionError[] = $state([]);
@@ -75,8 +89,9 @@
 	let loading = $state(true);
 	let error = $state('');
 
-	let filterStep = $state('');
+	let filterSteps = $state<Set<string>>(new Set());
 	let filterSuccess = $state<'' | 'true' | 'false'>('');
+	let searchQuery = $state('');
 	let limit = 25;
 	let offset = $state(0);
 
@@ -153,8 +168,9 @@
 		error = '';
 		try {
 			const params: Record<string, unknown> = { limit, offset };
-			if (filterStep) params.step = filterStep;
+			if (filterSteps.size > 0) params.step = [...filterSteps].join(',');
 			if (filterSuccess !== '') params.success = filterSuccess === 'true';
+			if (searchQuery.trim()) params.search = searchQuery.trim();
 			const resp = await engineApi.getAuditLog(params as Parameters<typeof engineApi.getAuditLog>[0]);
 			entries = resp.entries;
 			total = resp.total;
@@ -439,34 +455,78 @@
 	{/if}
 
 	<!-- Filters -->
-	<div class="flex flex-wrap items-end gap-3">
-		<div>
-			<label for="step-filter" class="mb-1 block text-laya-secondary text-surface-400">Step</label>
+	<div class="space-y-3">
+		<div class="flex flex-wrap items-end gap-3">
+			<div>
+				<span class="mb-1 block text-laya-secondary text-surface-400">Steps</span>
+				<div class="flex flex-wrap items-center gap-1.5 min-h-[38px] rounded-lg border px-2 py-1.5
+					{$glassTheme ? 'glass-input' : 'border-surface-600 bg-surface-900'}">
+					{#each AUDIT_STEPS as step}
+						<button
+							type="button"
+							class="rounded-md px-2 py-0.5 text-laya-micro font-medium transition-colors
+								{filterSteps.has(step)
+									? 'bg-laya-orange/20 text-laya-orange'
+									: ($glassTheme
+										? 'bg-white/[0.06] text-surface-400 hover:bg-white/[0.10] hover:text-surface-200'
+										: 'bg-surface-800 text-surface-400 hover:bg-surface-700 hover:text-surface-200')}"
+							onclick={() => {
+								const next = new Set(filterSteps);
+								if (next.has(step)) next.delete(step); else next.add(step);
+								filterSteps = next;
+							}}
+						>
+							{step}
+						</button>
+					{/each}
+				</div>
+			</div>
+		</div>
+		<div class="flex flex-wrap items-end gap-3">
+			<div class="w-28">
+				<span class="mb-1 block text-laya-secondary text-surface-400">Status</span>
+				<Dropdown
+					bind:value={filterSuccess}
+					options={[
+						{ value: '', label: 'All' },
+						{ value: 'true', label: 'Success' },
+						{ value: 'false', label: 'Failed' },
+					]}
+					onchange={(v) => { filterSuccess = v as typeof filterSuccess; }}
+				/>
+			</div>
+			<button
+				onclick={applyFilter}
+				class="h-[38px] rounded-lg px-4 text-laya-base font-medium text-surface-200 transition-colors {$glassTheme ? 'bg-white/[0.08] hover:bg-white/[0.14]' : 'bg-surface-700 hover:bg-surface-600'}"
+			>
+				Apply
+			</button>
+			{#if filterSteps.size > 0 || filterSuccess !== '' || searchQuery.trim()}
+				<button
+					onclick={() => { filterSteps = new Set(); filterSuccess = ''; searchQuery = ''; applyFilter(); }}
+					class="h-[38px] rounded-lg px-3 text-laya-base text-surface-400 transition-colors hover:text-surface-200"
+				>
+					Clear
+				</button>
+			{/if}
+		</div>
+	</div>
+
+	<!-- Search box -->
+	<div class="flex justify-end">
+		<div class="relative w-64">
+			<svg class="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-surface-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+			</svg>
 			<input
-				id="step-filter"
-				bind:value={filterStep}
-				placeholder="e.g. router"
-				class="h-9 rounded-lg border px-3 text-laya-base text-surface-200 placeholder-surface-500 focus:outline-none {$glassTheme ? 'glass-input focus:border-laya-orange/50' : 'border-surface-600 bg-surface-800 focus:border-blue-500'}"
+				type="text"
+				bind:value={searchQuery}
+				placeholder="Search logs…"
+				onkeydown={(e) => { if (e.key === 'Enter') applyFilter(); }}
+				class="h-[34px] w-full rounded-md border pl-8 pr-3 text-laya-secondary text-surface-200 placeholder-surface-500 focus:outline-none
+					{$glassTheme ? 'glass-input focus:border-laya-orange/50' : 'border-surface-600 bg-surface-900 focus:border-laya-orange/50'}"
 			/>
 		</div>
-		<div>
-			<label for="success-filter" class="mb-1 block text-laya-secondary text-surface-400">Status</label>
-			<select
-				id="success-filter"
-				bind:value={filterSuccess}
-				class="h-9 rounded-lg border px-3 text-laya-base text-surface-200 focus:outline-none {$glassTheme ? 'glass-input focus:border-laya-orange/50' : 'border-surface-600 bg-surface-800 focus:border-blue-500'}"
-			>
-				<option value="">All</option>
-				<option value="true">Success</option>
-				<option value="false">Failed</option>
-			</select>
-		</div>
-		<button
-			onclick={applyFilter}
-			class="h-9 rounded-lg px-4 text-laya-base font-medium text-surface-200 transition-colors {$glassTheme ? 'bg-white/[0.08] hover:bg-white/[0.14]' : 'bg-surface-700 hover:bg-surface-600'}"
-		>
-			Apply
-		</button>
 	</div>
 
 	{#if loading}

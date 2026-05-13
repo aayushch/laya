@@ -1078,7 +1078,7 @@ export interface ComposeFieldAutocomplete {
 export interface ComposeField {
 	name: string;
 	required: boolean;
-	type: 'text' | 'email' | 'textarea' | 'select';
+	type: 'text' | 'email' | 'textarea' | 'select' | 'datetime-local';
 	label: string;
 	placeholder: string;
 	options?: string[];

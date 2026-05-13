@@ -654,8 +654,8 @@
 		<div class="mt-1.5 flex flex-wrap gap-1 overflow-hidden max-h-[22px]">
 			{#each (compact ? card.tags.slice(0, 3) : card.tags) as tag}
 				<span
-					class="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none whitespace-nowrap"
-					style="background-color: {tag.color ?? '#6B7280'}20; color: {tag.color ?? '#9CA3AF'}"
+					class="{tag.is_system ? 'tag-chip-system' : 'tag-chip-user'} inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none whitespace-nowrap"
+					style="--tag-color: {tag.color ?? (tag.is_system ? '#6B7280' : '#C4956B')}"
 				>
 					{tag.tag_name}
 				</span>
@@ -714,13 +714,13 @@
 </div>
 
 {#if fixedTooltip}
-	<span
+	<div
 		use:portal
-		class="pointer-events-none fixed z-[100] rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium"
+		class="pointer-events-none fixed z-[100] rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium break-words"
 		style="top: {fixedTooltip.top}px; left: {fixedTooltip.left}px;{fixedTooltip.maxWidth ? ` max-width: ${fixedTooltip.maxWidth}px; white-space: normal;` : ' white-space: nowrap;'}"
 	>
 		{fixedTooltip.text}
-	</span>
+	</div>
 {/if}
 
 {#if showDeleteConfirm}

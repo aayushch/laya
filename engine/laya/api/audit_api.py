@@ -20,6 +20,7 @@ async def get_audit_log(
     event_id: str | None = None,
     card_id: str | None = None,
     success: bool | None = None,
+    search: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> dict[str, Any]:
@@ -30,8 +31,14 @@ async def get_audit_log(
     params: list[Any] = []
 
     if step:
-        conditions.append("step = ?")
-        params.append(step)
+        steps = [s.strip() for s in step.split(",") if s.strip()]
+        if len(steps) == 1:
+            conditions.append("step = ?")
+            params.append(steps[0])
+        elif steps:
+            placeholders = ",".join("?" for _ in steps)
+            conditions.append(f"step IN ({placeholders})")
+            params.extend(steps)
     if event_id:
         conditions.append("event_id = ?")
         params.append(event_id)
@@ -41,6 +48,12 @@ async def get_audit_log(
     if success is not None:
         conditions.append("success = ?")
         params.append(success)
+    if search:
+        conditions.append(
+            "(step LIKE ? OR model_used LIKE ? OR error LIKE ? OR event_id LIKE ? OR card_id LIKE ?)"
+        )
+        like = f"%{search}%"
+        params.extend([like, like, like, like, like])
 
     where_clause = ""
     if conditions:

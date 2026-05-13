@@ -12,6 +12,7 @@
 		nextSynthesis,
 		spaces,
 		activeSpaceId,
+		compact = false,
 		onVersionChange,
 		onResynthesis,
 		onSpaceChange
@@ -25,6 +26,7 @@
 		nextSynthesis: string | null;
 		spaces: Space[];
 		activeSpaceId: string;
+		compact?: boolean;
 		onVersionChange: (version: number) => void;
 		onResynthesis: () => void;
 		onSpaceChange: (spaceId: string) => void;
@@ -403,83 +405,89 @@
 {#if totalEntryCount > 1}
 	{@const widths = segmentWidths}
 	{@const nonEmptySegments = segments.filter(s => s.entries.length > 0)}
-	<div class="mt-3 rounded-lg px-4 py-3 {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-800'}">
+	<div class="mt-3 rounded-lg transition-all duration-300 ease-in-out {compact ? 'px-4 py-1.5' : 'px-4 py-3'} {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-800'}">
 		<!-- Header row -->
-		<div class="flex items-center justify-between mb-2">
-			<span class="text-[11px] font-medium text-surface-400">
-				<svg class="inline h-3 w-3 mr-0.5 -mt-px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
-				</svg>
-				Timeline
-			</span>
-			<span class="text-[10px] text-surface-500">
-				{#if previewVersion != null}
-					{@const pe = findEntry(previewVersion)}
-					v{previewVersion} — {pe ? formatDate(pe.generated_at) : ''}
-					{#if pe?.snapshot_type}
-						<span class="ml-1 uppercase tracking-wider">{pe.snapshot_type}</span>
+		<div class="overflow-hidden transition-all duration-300 ease-in-out {compact ? 'max-h-0 opacity-0 mb-0' : 'max-h-10 opacity-100 mb-2'}">
+			<div class="flex items-center justify-between">
+				<span class="text-[11px] font-medium text-surface-400">
+					<svg class="inline h-3 w-3 mr-0.5 -mt-px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+					</svg>
+					Timeline
+				</span>
+				<span class="text-[10px] text-surface-500">
+					{#if previewVersion != null}
+						{@const pe = findEntry(previewVersion)}
+						v{previewVersion} — {pe ? formatDate(pe.generated_at) : ''}
+						{#if pe?.snapshot_type}
+							<span class="ml-1 uppercase tracking-wider">{pe.snapshot_type}</span>
+						{/if}
+					{:else}
+						Viewing v{version}
 					{/if}
-				{:else}
-					Viewing v{version}
+				</span>
+				{#if isViewingOlder}
+					<button
+						onclick={() => onVersionChange(latestVersion)}
+						class="ml-2 rounded bg-laya-orange/15 px-2 py-0.5 text-[10px] font-medium text-laya-orange transition-colors hover:bg-laya-orange/25"
+					>Now</button>
 				{/if}
-			</span>
-			{#if isViewingOlder}
-				<button
-					onclick={() => onVersionChange(latestVersion)}
-					class="ml-2 rounded bg-laya-orange/15 px-2 py-0.5 text-[10px] font-medium text-laya-orange transition-colors hover:bg-laya-orange/25"
-				>Now</button>
-			{/if}
+			</div>
 		</div>
 
 		<!-- Segment labels — positioned at distorted midpoints so they shift with the fisheye -->
-		<div class="relative h-4 mb-1 overflow-hidden">
-			{#each segments as seg, si}
-				{#if seg.entries.length > 0}
-					{@const leftEdge = segmentEdges[si].left}
-					{@const rightEdge = segmentEdges[si].right}
-					{@const distLeft = mouseRatio !== null ? fisheye(leftEdge / 100, mouseRatio, 10) * 100 : leftEdge}
-					{@const distRight = mouseRatio !== null ? fisheye(rightEdge / 100, mouseRatio, 10) * 100 : rightEdge}
-					{@const center = (distLeft + distRight) / 2}
-					<span
-						class="absolute -translate-x-1/2 text-[9px] uppercase tracking-wider text-surface-500"
-						style="left: {center}%; transition: left 150ms cubic-bezier(0.25, 0.1, 0.25, 1);"
-					>{seg.label}</span>
-				{/if}
-			{/each}
+		<div class="overflow-hidden transition-all duration-300 ease-in-out {compact ? 'max-h-0 opacity-0 mb-0' : 'max-h-6 opacity-100 mb-1'}">
+			<div class="relative h-4">
+				{#each segments as seg, si}
+					{#if seg.entries.length > 0}
+						{@const leftEdge = segmentEdges[si].left}
+						{@const rightEdge = segmentEdges[si].right}
+						{@const distLeft = mouseRatio !== null ? fisheye(leftEdge / 100, mouseRatio, 10) * 100 : leftEdge}
+						{@const distRight = mouseRatio !== null ? fisheye(rightEdge / 100, mouseRatio, 10) * 100 : rightEdge}
+						{@const center = (distLeft + distRight) / 2}
+						<span
+							class="absolute -translate-x-1/2 text-[9px] uppercase tracking-wider text-surface-500"
+							style="left: {center}%; transition: left 150ms cubic-bezier(0.25, 0.1, 0.25, 1);"
+						>{seg.label}</span>
+					{/if}
+				{/each}
+			</div>
 		</div>
 
 		<!-- Single-container fisheye track -->
 		<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
 		<div
-			class="relative h-10 overflow-hidden cursor-pointer"
+			class="relative overflow-hidden cursor-pointer transition-all duration-300 ease-in-out {compact ? 'h-5' : 'h-10'}"
 			bind:this={timelineEl}
 			bind:clientWidth={timelineWidth}
 			onmousemove={(e) => { handleTimelineMove(e); handleDotHover(e); }}
 			onmouseleave={handleTimelineLeave}
 			onclick={handleDotClick}
 		>
-			<!-- Track line — centered vertically in upper portion -->
+			<!-- Track line -->
 			<div class="absolute left-0 right-0 top-[10px] h-px bg-surface-600"></div>
 
 			<!-- Segment dividers -->
 			{#each dividerPositions as dpos}
 				<div
-					class="absolute w-px h-5 bg-surface-600 top-[3px]"
+					class="absolute w-px bg-surface-600 top-[3px] transition-all duration-300 {compact ? 'h-3' : 'h-5'}"
 					style="left: {mouseRatio !== null ? fisheye(dpos / 100, mouseRatio, 10) * 100 : dpos}%; transition: left 150ms cubic-bezier(0.25, 0.1, 0.25, 1);"
 				></div>
 			{/each}
 
-			<!-- Hour ticks in Today segment — hang well below the track line -->
-			{#each todayHourTicks as tick}
-				{@const tickLeft = mouseRatio !== null ? fisheye(tick.globalPct / 100, mouseRatio, 10) * 100 : tick.globalPct}
-				<div
-					class="absolute flex flex-col items-center -translate-x-1/2 pointer-events-none top-[18px]"
-					style="left: {tickLeft}%; transition: left 150ms cubic-bezier(0.25, 0.1, 0.25, 1);"
-				>
-					<div class="w-px h-2 bg-surface-600/40"></div>
-					<span class="text-[7px] text-surface-600 mt-0.5 leading-none">{tick.label}</span>
-				</div>
-			{/each}
+			<!-- Hour ticks in Today segment — hidden in compact mode -->
+			{#if !compact}
+				{#each todayHourTicks as tick}
+					{@const tickLeft = mouseRatio !== null ? fisheye(tick.globalPct / 100, mouseRatio, 10) * 100 : tick.globalPct}
+					<div
+						class="absolute flex flex-col items-center -translate-x-1/2 pointer-events-none top-[18px]"
+						style="left: {tickLeft}%; transition: left 150ms cubic-bezier(0.25, 0.1, 0.25, 1);"
+					>
+						<div class="w-px h-2 bg-surface-600/40"></div>
+						<span class="text-[7px] text-surface-600 mt-0.5 leading-none">{tick.label}</span>
+					</div>
+				{/each}
+			{/if}
 
 			<!-- All dots — centered on the track line -->
 			{#each flatDots as dot}
@@ -508,13 +516,15 @@
 		</div>
 
 		<!-- Edge labels -->
-		<div class="flex items-center justify-between mt-1">
-			<span class="text-[9px] text-surface-500">
-				{#if nonEmptySegments.length > 0 && nonEmptySegments[0].entries.length > 0}
-					{formatDate(nonEmptySegments[0].entries[0].generated_at)}
-				{/if}
-			</span>
-			<span class="text-[9px] text-surface-400 font-medium">Now</span>
+		<div class="overflow-hidden transition-all duration-300 ease-in-out {compact ? 'max-h-0 opacity-0 mt-0' : 'max-h-6 opacity-100 mt-1'}">
+			<div class="flex items-center justify-between">
+				<span class="text-[9px] text-surface-500">
+					{#if nonEmptySegments.length > 0 && nonEmptySegments[0].entries.length > 0}
+						{formatDate(nonEmptySegments[0].entries[0].generated_at)}
+					{/if}
+				</span>
+				<span class="text-[9px] text-surface-400 font-medium">Now</span>
+			</div>
 		</div>
 	</div>
 {/if}

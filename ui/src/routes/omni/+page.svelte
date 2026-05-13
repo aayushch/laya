@@ -24,6 +24,46 @@
 	let nextSynthesis = $state<string | null>(null);
 	const resynthesizing = $derived($resynthesizingSpaces.has(activeSpaceId));
 
+	// Scroll-direction detection for timeline compaction.
+	// Accumulates delta in one direction; only toggles after a sustained
+	// threshold is crossed — prevents jitter from macOS rubber-band bounce.
+	let timelineCompact = $state(false);
+	let lastScrollY = 0;
+	let accumulatedDelta = 0;
+	const SCROLL_THRESHOLD = 50;
+	let scrollRaf: number | null = null;
+
+	function handleMainScroll(e: Event) {
+		if (scrollRaf) return;
+		scrollRaf = requestAnimationFrame(() => {
+			scrollRaf = null;
+			const el = e.target as HTMLElement;
+			const y = el.scrollTop;
+			const delta = y - lastScrollY;
+			lastScrollY = y;
+
+			// Ignore rubber-band zones (overscroll past boundaries)
+			if (y <= 0 || y >= el.scrollHeight - el.clientHeight) {
+				accumulatedDelta = 0;
+				return;
+			}
+
+			// Reset accumulator on direction change
+			if ((delta > 0 && accumulatedDelta < 0) || (delta < 0 && accumulatedDelta > 0)) {
+				accumulatedDelta = 0;
+			}
+			accumulatedDelta += delta;
+
+			if (accumulatedDelta > SCROLL_THRESHOLD && !timelineCompact) {
+				timelineCompact = true;
+				accumulatedDelta = 0;
+			} else if (accumulatedDelta < -SCROLL_THRESHOLD && timelineCompact) {
+				timelineCompact = false;
+				accumulatedDelta = 0;
+			}
+		});
+	}
+
 	// Use store.subscribe for the WS listener to avoid Svelte 5 tracking
 	// the state writes inside loadOmni/loadTimeline, which causes infinite loops.
 	let unsubWs: Unsubscriber;
@@ -71,7 +111,13 @@
 		}
 	}
 
+	let mainEl: HTMLElement | null = null;
+
 	onMount(async () => {
+		// Attach scroll listener to <main> for timeline compaction
+		mainEl = document.querySelector('main');
+		mainEl?.addEventListener('scroll', handleMainScroll, { passive: true });
+
 		await loadSpaces();
 		await loadOmni();
 		loadTimeline();
@@ -98,6 +144,7 @@
 
 	onDestroy(() => {
 		unsubWs?.();
+		mainEl?.removeEventListener('scroll', handleMainScroll);
 	});
 
 	async function loadOmni(version?: number) {
@@ -239,7 +286,7 @@
 	<title>Omni - Laya</title>
 </svelte:head>
 
-<div class="relative min-h-screen p-6 {$glassTheme ? 'bg-transparent' : 'bg-surface-900'}">
+<div class="relative min-h-screen p-6 overflow-x-clip {$glassTheme ? 'bg-transparent' : 'bg-surface-900'}">
 <div class="max-w-5xl mx-auto">
 	<!-- Loading overlay -->
 	{#if loading && !snapshot}
@@ -259,7 +306,8 @@
 		</div>
 	{/if}
 	{#if snapshot}
-		<!-- Header with controls -->
+		<!-- Header with controls — sticky, edge-to-edge background -->
+		<div class="sticky -top-4 z-20 relative pb-4 pt-4 before:absolute before:inset-y-0 before:-left-[50vw] before:-right-[50vw] before:z-[-1] {$glassTheme ? 'before:backdrop-blur-xl' : 'before:bg-surface-900'}">
 		<OmniHeader
 			version={snapshot.version}
 			generatedAt={snapshot.generated_at}
@@ -270,10 +318,12 @@
 			{nextSynthesis}
 			spaces={$spaces}
 			{activeSpaceId}
+			compact={timelineCompact}
 			onVersionChange={handleVersionChange}
 			onResynthesis={handleResynthesis}
 			onSpaceChange={switchSpace}
 		/>
+		</div>
 
 		<!-- Summary view -->
 		{#if snapshot.sections.length === 0 && snapshot.version === 0}

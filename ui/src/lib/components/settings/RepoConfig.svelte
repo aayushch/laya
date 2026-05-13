@@ -173,7 +173,7 @@
 
 	<!-- Add/Edit form -->
 	{#if showAddForm || editingIndex !== null}
-		<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-4">
+		<div class="mt-4 {$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-4">
 			<h3 class="mb-3 text-laya-base font-medium">{editingIndex !== null ? 'Edit Repository' : 'Add Repository'}</h3>
 			<div class="mb-3 flex items-center gap-3">
 				<button
@@ -210,7 +210,7 @@
 		</div>
 	{:else}
 		<button
-			class="rounded-lg border border-dashed border-surface-600 px-4 py-2 text-laya-base text-surface-400 transition-colors hover:border-surface-400 hover:text-surface-200"
+			class="mt-4 rounded-lg border border-dashed border-surface-600 px-4 py-2 text-laya-base text-surface-400 transition-colors hover:border-surface-400 hover:text-surface-200"
 			onclick={() => (showAddForm = true)}
 		>
 			+ Add Repository

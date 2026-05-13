@@ -72,9 +72,10 @@ PLATFORMS: dict[str, dict] = {
             },
         ],
     },
+    # --- Project Management ---
     "linear": {
         "label": "Linear",
-        "category": "development",
+        "category": "project_management",
         "icon": "linear",
         "n8n_type": "linearApi",
         "n8n_node": "n8n-nodes-base.linear",
@@ -89,7 +90,6 @@ PLATFORMS: dict[str, dict] = {
             },
         ],
     },
-    # --- Project Management ---
     "jira": {
         "label": "Jira Cloud",
         "category": "project_management",
@@ -164,10 +164,10 @@ PLATFORMS: dict[str, dict] = {
             },
         ],
     },
-    # --- Google (OAuth) ---
+    # --- Email ---
     "gmail": {
         "label": "Gmail",
-        "category": "google",
+        "category": "email",
         "icon": "gmail",
         "n8n_type": "gmailOAuth2",
         "n8n_node": "n8n-nodes-base.gmail",
@@ -175,20 +175,9 @@ PLATFORMS: dict[str, dict] = {
         "workflows": ["Laya - Gmail Ingestion", "Laya - Gmail Executor"],
         "fields": [],
     },
-    "calendar": {
-        "label": "Google Calendar",
-        "category": "google",
-        "icon": "calendar",
-        "n8n_type": "googleCalendarOAuth2Api",
-        "n8n_node": "n8n-nodes-base.googleCalendar",
-        "oauth": True,
-        "workflows": ["Laya - Google Calendar Ingestion", "Laya - Google Calendar Executor"],
-        "fields": [],
-    },
-    # --- Microsoft (OAuth) ---
     "outlook": {
         "label": "Outlook / Microsoft 365",
-        "category": "microsoft",
+        "category": "email",
         "icon": "outlook",
         "n8n_type": "microsoftOutlookOAuth2Api",
         "n8n_node": "n8n-nodes-base.microsoftOutlook",
@@ -198,9 +187,20 @@ PLATFORMS: dict[str, dict] = {
         ],
         "fields": [],
     },
+    # --- Calendar ---
+    "calendar": {
+        "label": "Google Calendar",
+        "category": "calendar",
+        "icon": "calendar",
+        "n8n_type": "googleCalendarOAuth2Api",
+        "n8n_node": "n8n-nodes-base.googleCalendar",
+        "oauth": True,
+        "workflows": ["Laya - Google Calendar Ingestion", "Laya - Google Calendar Executor"],
+        "fields": [],
+    },
     "outlook_calendar": {
         "label": "Outlook Calendar",
-        "category": "microsoft",
+        "category": "calendar",
         "icon": "calendar",
         "n8n_type": "microsoftOutlookOAuth2Api",
         "n8n_node": "n8n-nodes-base.microsoftOutlook",
@@ -218,12 +218,12 @@ CATEGORY_LABELS: dict[str, str] = {
     "development": "Development",
     "project_management": "Project Management",
     "communication": "Communication",
-    "google": "Google",
-    "microsoft": "Microsoft",
+    "email": "Email",
+    "calendar": "Calendar",
 }
 
 # Ordered category list for consistent UI rendering
-CATEGORY_ORDER: list[str] = ["development", "project_management", "communication", "google", "microsoft"]
+CATEGORY_ORDER: list[str] = ["development", "project_management", "communication", "email", "calendar"]
 
 
 def get_platform_by_n8n_type(n8n_type: str) -> tuple[str, dict] | None:

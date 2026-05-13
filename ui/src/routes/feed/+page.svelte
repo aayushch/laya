@@ -1951,21 +1951,59 @@
 				</button>
 			{/if}
 			{#if activeSearchTags.length > 0}
-				<div class="absolute top-full left-0 mt-1 flex flex-wrap gap-1">
-					{#each activeSearchTags as tagName}
-						{@const tag = availableTags.find(t => t.name === tagName)}
+				<div class="group/tags absolute top-full left-0 mt-1">
+					{#if activeSearchTags.length === 1}
+						{@const tag = availableTags.find(t => t.name === activeSearchTags[0])}
 						<span
-							class="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none cursor-default"
-							style="background-color: {tag?.color ?? '#6B7280'}20; color: {tag?.color ?? '#9CA3AF'}"
+							class="{tag?.is_system ? 'tag-chip-system' : 'tag-chip-user'} inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none"
+							style="--tag-color: {tag?.color ?? (tag?.is_system ? '#6B7280' : '#C4956B')}"
 						>
-							#{tagName}
-							<button class="hover:opacity-70 cursor-pointer" title="Remove tag" onclick={() => removeSearchTag(tagName)}>
+							#{activeSearchTags[0]}
+							<button class="hover:opacity-70 cursor-pointer" title="Remove" onclick={() => removeSearchTag(activeSearchTags[0])}>
 								<svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12" />
 								</svg>
 							</button>
 						</span>
-					{/each}
+					{:else}
+						{@const firstTag = availableTags.find(t => t.name === activeSearchTags[0])}
+						<div class="flex items-center gap-1 cursor-default">
+							<span
+								class="{firstTag?.is_system ? 'tag-chip-system' : 'tag-chip-user'} inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none"
+								style="--tag-color: {firstTag?.color ?? (firstTag?.is_system ? '#6B7280' : '#C4956B')}"
+							>#{activeSearchTags[0]}</span>
+							<span class="text-[10px] text-surface-500">+{activeSearchTags.length - 1} more</span>
+							<svg class="h-3 w-3 text-surface-500" fill="currentColor" viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18" cy="12" r="1.5"/></svg>
+						</div>
+						<div class="absolute left-0 top-full z-50 hidden group-hover/tags:block pt-1">
+							<div class="rounded-lg border border-surface-700 bg-surface-900 p-2 shadow-xl min-w-[140px]">
+								<div class="flex flex-col gap-1.5">
+									{#each activeSearchTags as tagName}
+										{@const tag = availableTags.find(t => t.name === tagName)}
+										<div class="flex items-center justify-between gap-3">
+											<span
+												class="{tag?.is_system ? 'tag-chip-system' : 'tag-chip-user'} inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none"
+												style="--tag-color: {tag?.color ?? (tag?.is_system ? '#6B7280' : '#C4956B')}"
+											>#{tagName}</span>
+											<button
+												class="rounded p-0.5 text-surface-500 hover:text-red-400 transition-colors cursor-pointer"
+												title="Remove #{tagName}"
+												onclick={() => removeSearchTag(tagName)}
+											>
+												<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+												</svg>
+											</button>
+										</div>
+									{/each}
+								</div>
+								<button
+									class="mt-2 w-full rounded-md py-1 text-[10px] font-medium text-surface-400 hover:text-surface-200 hover:bg-surface-800 transition-colors cursor-pointer"
+									onclick={() => { activeSearchTags.forEach(t => removeSearchTag(t)); }}
+								>Clear all</button>
+							</div>
+						</div>
+					{/if}
 				</div>
 			{/if}
 		</div>
@@ -2062,7 +2100,7 @@
 			</div>
 		</div>
 		<!-- Cards / Summary / List section -->
-		<div bind:this={containerEl} class="flex min-w-0 flex-1 flex-col overflow-y-auto p-3 transition-opacity duration-[250ms] ease-out {relatedViewExiting ? 'opacity-0' : 'opacity-100'}">
+		<div bind:this={containerEl} class="feed-list-container flex min-w-0 flex-1 flex-col overflow-y-auto p-3 transition-opacity duration-[250ms] ease-out {relatedViewExiting ? 'opacity-0' : 'opacity-100'}">
 			{#if $feedFilters.showRelated}
 				<div class="mb-3 flex items-center gap-2 rounded-lg border border-laya-orange/30 bg-laya-orange/10 px-3 py-2">
 					<svg class="h-4 w-4 shrink-0 text-laya-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">

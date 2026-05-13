@@ -944,8 +944,8 @@ _FIELD_META: dict[str, dict] = {
     "merge_method": {"label": "Merge Method", "type": "select", "options": ["squash", "merge", "rebase"]},
     "commit_title": {"label": "Commit Title", "type": "text", "placeholder": "Merge commit title"},
     # Calendar — scope "all" because attendees can be anyone
-    "start": {"label": "Start", "type": "text", "placeholder": "2026-01-15T09:00"},
-    "end": {"label": "End", "type": "text", "placeholder": "2026-01-15T10:00"},
+    "start": {"label": "Start", "type": "datetime-local", "placeholder": ""},
+    "end": {"label": "End", "type": "datetime-local", "placeholder": ""},
     "location": {"label": "Location", "type": "text", "placeholder": "Room / URL"},
     "attendees": {"label": "Attendees", "type": "text", "placeholder": "email@example.com (comma-separated)", "autocomplete": {"scope": "all", "sources": ["email"]}},
 }
@@ -1021,7 +1021,7 @@ def get_compose_fields(platform: str, action_type: str) -> list[dict]:
     # Group address fields (To, CC, BCC) together at the top, then text
     # inputs, then textareas last — so email recipients aren't buried
     # below the body.
-    _TYPE_ORDER = {"email": 0, "text": 1, "select": 2, "textarea": 3}
+    _TYPE_ORDER = {"email": 0, "text": 1, "datetime-local": 1, "select": 2, "textarea": 3}
     fields.sort(key=lambda f: _TYPE_ORDER.get(f["type"], 1))
 
     return fields

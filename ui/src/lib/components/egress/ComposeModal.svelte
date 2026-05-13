@@ -5,6 +5,8 @@
 	import { portal } from '$lib/actions/portal';
 	import { tick } from 'svelte';
 	import type { EgressConnection, ComposePlatform, ComposeAction, ComposeField, ComposeFieldAutocomplete } from '$lib/api/types';
+	import DateTimePicker from './DateTimePicker.svelte';
+	import Dropdown from '$lib/components/Dropdown.svelte';
 
 	let connections = $state<EgressConnection[]>([]);
 	let connectionsLoaded = $state(false);
@@ -426,7 +428,7 @@
 	const solidInputBase = 'border-surface-600 bg-surface-800';
 	const inputClass = $derived(`w-full rounded-md border ${$glassTheme ? glassInputBase : solidInputBase} px-3 py-2 text-sm text-surface-200 placeholder-surface-600 focus:border-laya-orange/50 focus:outline-none focus:ring-1 focus:ring-laya-orange/30`);
 	const labelClass = 'block text-xs font-medium text-surface-400 mb-1';
-	const selectClass = $derived(`rounded-md border ${$glassTheme ? glassInputBase : solidInputBase} px-3 py-2 text-sm text-surface-200 focus:border-laya-orange/50 focus:outline-none focus:ring-1 focus:ring-laya-orange/30`);
+	const selectClass = $derived(`rounded-md border ${$glassTheme ? glassInputBase : solidInputBase} h-[38px] px-3 text-sm text-surface-200 focus:border-laya-orange/50 focus:outline-none focus:ring-1 focus:ring-laya-orange/30`);
 	const emailContainerClass = $derived(`w-full rounded-md border ${$glassTheme ? glassInputBase : solidInputBase} px-2 py-1.5 flex flex-wrap items-center gap-1.5 cursor-text has-[:focus]:border-laya-orange/50 has-[:focus]:ring-1 has-[:focus]:ring-laya-orange/30`);
 </script>
 
@@ -493,85 +495,131 @@
 						{/if}
 					</div>
 				{:else}
-					<!-- Connection selector (when multiple connections for this platform) -->
-					{#if platformConnections.length > 1}
-						<div>
-							<label class={labelClass} for="compose-connection">Account</label>
-							<select id="compose-connection" bind:value={selectedConnectionId} class="{selectClass} w-full">
-								{#each platformConnections as conn}
-									<option value={conn.connection_id}>{conn.name}</option>
-								{/each}
-							</select>
-						</div>
-					{:else if platformConnections.length === 1}
-						<div>
-							<span class={labelClass}>Account</span>
-							<p class="text-sm text-surface-300 px-3 py-2">{platformConnections[0].name}</p>
-						</div>
-					{/if}
-
-					<!-- Action type selector — always rendered for stable layout -->
-					<div>
-						<label class={labelClass} for="compose-action">Action</label>
-						{#if availableActions.length > 1}
-							<select id="compose-action" bind:value={selectedActionType} class="{selectClass} w-full" onchange={(e) => switchAction((e.target as HTMLSelectElement).value)}>
-								{#each availableActions as action}
-									<option value={action.action_type}>{action.label}</option>
-								{/each}
-							</select>
-						{:else}
-							<p id="compose-action" class="text-sm text-surface-300 px-3 py-2">{currentAction?.label ?? '—'}</p>
+					<!-- Account + Action row -->
+					<div class="flex gap-3">
+						{#if platformConnections.length > 1}
+							<div class="flex-1 min-w-0">
+								<label class={labelClass} for="compose-connection">Account</label>
+								<Dropdown
+									id="compose-connection"
+									bind:value={selectedConnectionId}
+									options={platformConnections.map((c) => ({ value: c.connection_id, label: c.name }))}
+									onchange={(v) => { selectedConnectionId = v; }}
+									placeholder="Select account…"
+								/>
+							</div>
+						{:else if platformConnections.length === 1}
+							<div class="flex-1 min-w-0">
+								<span class={labelClass}>Account</span>
+								<p class="text-sm text-surface-300 px-3 py-2">{platformConnections[0].name}</p>
+							</div>
 						{/if}
+
+						<div class="flex-1 min-w-0">
+							<label class={labelClass} for="compose-action">Action</label>
+							{#if availableActions.length > 1}
+								<Dropdown
+									id="compose-action"
+									bind:value={selectedActionType}
+									options={availableActions.map((a) => ({ value: a.action_type, label: a.label }))}
+									onchange={(v) => switchAction(v)}
+									placeholder="Select action…"
+								/>
+							{:else}
+								<p id="compose-action" class="text-sm text-surface-300 px-3 py-2">{currentAction?.label ?? '—'}</p>
+							{/if}
+						</div>
 					</div>
 
 					<!-- Dynamic fields from registry -->
-					{#each activeFields as field (field.name)}
-						<div>
-							<label class={labelClass} for="compose-{field.name}">{field.label}</label>
-							{#if field.type === 'textarea'}
-								<textarea
-									id="compose-{field.name}"
-									bind:value={formValues[field.name]}
-									rows="6"
-									class="{inputClass} resize-y"
-									placeholder={field.placeholder}
-								></textarea>
-							{:else if field.type === 'select' && field.options}
-								<select
-									id="compose-{field.name}"
-									bind:value={formValues[field.name]}
-									class="{selectClass} w-full"
-								>
-									{#each field.options as opt}
-										<option value={opt}>{opt}</option>
-									{/each}
-								</select>
-							{:else if field.autocomplete}
-								<div class="relative">
-									{#if field.type === 'email'}
-										<!-- Multi-value email field with chips -->
-										<!-- svelte-ignore a11y_click_events_have_key_events -->
-										<!-- svelte-ignore a11y_no_static_element_interactions -->
-										<div
-											data-email-container
-											class={emailContainerClass}
-											onclick={() => document.getElementById(`compose-${field.name}`)?.focus()}
-										>
-											{#each (emailChips[field.name] ?? []) as chip, i}
-												<span class="inline-flex items-center gap-0.5 rounded-full bg-surface-700 pl-2.5 pr-1 py-0.5 text-xs text-surface-200">
-													{chip}
-													<button
-														type="button"
-														class="rounded-full p-0.5 text-surface-400 hover:text-surface-200 transition-colors"
-														onclick={(e) => { e.stopPropagation(); removeEmailChip(field.name, i); }}
-														aria-label="Remove {chip}"
-													>
-														<svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-															<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-														</svg>
-													</button>
-												</span>
-											{/each}
+					{#each activeFields as field, i (field.name)}
+						{#if field.type === 'datetime-local' && i > 0 && activeFields[i - 1]?.type === 'datetime-local'}
+							<!-- Already rendered as part of the previous pair -->
+						{:else if field.type === 'datetime-local'}
+							{@const nextField = activeFields[i + 1]?.type === 'datetime-local' ? activeFields[i + 1] : null}
+							<div class={nextField ? 'grid grid-cols-2 gap-3' : ''}>
+								<div>
+									<label class={labelClass} for="compose-{field.name}">{field.label}</label>
+									<DateTimePicker
+										id="compose-{field.name}"
+										value={formValues[field.name] ?? ''}
+										onchange={(v) => { formValues[field.name] = v; }}
+									/>
+								</div>
+								{#if nextField}
+									<div>
+										<label class={labelClass} for="compose-{nextField.name}">{nextField.label}</label>
+										<DateTimePicker
+											id="compose-{nextField.name}"
+											value={formValues[nextField.name] ?? ''}
+											onchange={(v) => { formValues[nextField.name] = v; }}
+										/>
+									</div>
+								{/if}
+							</div>
+						{:else}
+							<div>
+								<label class={labelClass} for="compose-{field.name}">{field.label}</label>
+								{#if field.type === 'textarea'}
+									<textarea
+										id="compose-{field.name}"
+										bind:value={formValues[field.name]}
+										rows="6"
+										class="{inputClass} resize-y"
+										placeholder={field.placeholder}
+									></textarea>
+								{:else if field.type === 'select' && field.options}
+									<Dropdown
+										id="compose-{field.name}"
+										bind:value={formValues[field.name]}
+										options={field.options.map((opt) => ({ value: opt, label: opt }))}
+										onchange={(v) => { formValues[field.name] = v; }}
+										placeholder={field.placeholder ?? 'Select…'}
+									/>
+								{:else if field.autocomplete}
+									<div class="relative">
+										{#if field.type === 'email'}
+											<!-- Multi-value email field with chips -->
+											<!-- svelte-ignore a11y_click_events_have_key_events -->
+											<!-- svelte-ignore a11y_no_static_element_interactions -->
+											<div
+												data-email-container
+												class={emailContainerClass}
+												onclick={() => document.getElementById(`compose-${field.name}`)?.focus()}
+											>
+												{#each (emailChips[field.name] ?? []) as chip, idx}
+													<span class="inline-flex items-center gap-0.5 rounded-full bg-surface-700 pl-2.5 pr-1 py-0.5 text-xs text-surface-200">
+														{chip}
+														<button
+															type="button"
+															class="rounded-full p-0.5 text-surface-400 hover:text-surface-200 transition-colors"
+															onclick={(e) => { e.stopPropagation(); removeEmailChip(field.name, idx); }}
+															aria-label="Remove {chip}"
+														>
+															<svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+																<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+															</svg>
+														</button>
+													</span>
+												{/each}
+												<input
+													id="compose-{field.name}"
+													type="text"
+													value={formValues[field.name] ?? ''}
+													oninput={(e) => handleAutocompleteInput(field.name, (e.target as HTMLInputElement).value, field.autocomplete!)}
+													onkeydown={(e) => handleEmailKeydown(e, field.name)}
+													onfocusout={(e) => {
+														const related = (e as FocusEvent).relatedTarget as HTMLElement | null;
+														if (related?.closest('[data-email-dropdown]')) return;
+														setTimeout(() => { emailDropdownField = null; emailHighlightIndex = -1; }, 100);
+													}}
+													class="flex-1 min-w-[120px] bg-transparent outline-none border-none p-0 text-sm text-surface-200 placeholder-surface-600"
+													placeholder={(emailChips[field.name]?.length ?? 0) > 0 ? '' : field.placeholder}
+													autocomplete="off"
+												/>
+											</div>
+										{:else}
+											<!-- Single-value autocomplete field -->
 											<input
 												id="compose-{field.name}"
 												type="text"
@@ -583,63 +631,46 @@
 													if (related?.closest('[data-email-dropdown]')) return;
 													setTimeout(() => { emailDropdownField = null; emailHighlightIndex = -1; }, 100);
 												}}
-												class="flex-1 min-w-[120px] bg-transparent outline-none border-none p-0 text-sm text-surface-200 placeholder-surface-600"
-												placeholder={(emailChips[field.name]?.length ?? 0) > 0 ? '' : field.placeholder}
+												class={inputClass}
+												placeholder={field.placeholder}
 												autocomplete="off"
 											/>
-										</div>
-									{:else}
-										<!-- Single-value autocomplete field -->
-										<input
-											id="compose-{field.name}"
-											type="text"
-											value={formValues[field.name] ?? ''}
-											oninput={(e) => handleAutocompleteInput(field.name, (e.target as HTMLInputElement).value, field.autocomplete!)}
-											onkeydown={(e) => handleEmailKeydown(e, field.name)}
-											onfocusout={(e) => {
-												const related = (e as FocusEvent).relatedTarget as HTMLElement | null;
-												if (related?.closest('[data-email-dropdown]')) return;
-												setTimeout(() => { emailDropdownField = null; emailHighlightIndex = -1; }, 100);
-											}}
-											class={inputClass}
-											placeholder={field.placeholder}
-											autocomplete="off"
-										/>
-									{/if}
-									{#if emailDropdownField === field.name && emailSuggestions.length > 0}
-										<!-- svelte-ignore a11y_no_static_element_interactions -->
-										<div
-											use:portal
-											data-email-dropdown
-											class="fixed z-[100] rounded-md border {$glassTheme ? 'glass-menu' : 'border-surface-600 bg-surface-800 shadow-lg'}"
-											style="top: {emailDropdownPos.top + 4}px; left: {emailDropdownPos.left + 4}px; width: {emailDropdownPos.width - 8}px;"
-										>
-											<div bind:this={emailListEl} class="max-h-40 overflow-y-auto py-1">
-												{#each emailSuggestions as suggestion, i}
-													<button
-														type="button"
-														data-email-item
-														class="flex w-full px-3 py-1.5 text-left text-xs transition-colors {i === emailHighlightIndex ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-300 hover:bg-surface-700'}"
-														onmousedown={(e) => { e.preventDefault(); selectEmailSuggestion(field.name, suggestion); }}
-														onmouseenter={() => { emailHighlightIndex = i; }}
-													>
-														{suggestion}
-													</button>
-												{/each}
+										{/if}
+										{#if emailDropdownField === field.name && emailSuggestions.length > 0}
+											<!-- svelte-ignore a11y_no_static_element_interactions -->
+											<div
+												use:portal
+												data-email-dropdown
+												class="fixed z-[100] rounded-md border {$glassTheme ? 'glass-menu' : 'border-surface-600 bg-surface-800 shadow-lg'}"
+												style="top: {emailDropdownPos.top + 4}px; left: {emailDropdownPos.left + 4}px; width: {emailDropdownPos.width - 8}px;"
+											>
+												<div bind:this={emailListEl} class="max-h-40 overflow-y-auto py-1">
+													{#each emailSuggestions as suggestion, si}
+														<button
+															type="button"
+															data-email-item
+															class="flex w-full px-3 py-1.5 text-left text-xs transition-colors {si === emailHighlightIndex ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-300 hover:bg-surface-700'}"
+															onmousedown={(e) => { e.preventDefault(); selectEmailSuggestion(field.name, suggestion); }}
+															onmouseenter={() => { emailHighlightIndex = si; }}
+														>
+															{suggestion}
+														</button>
+													{/each}
+												</div>
 											</div>
-										</div>
-									{/if}
-								</div>
-							{:else}
-								<input
-									id="compose-{field.name}"
-									type="text"
-									bind:value={formValues[field.name]}
-									class={inputClass}
-									placeholder={field.placeholder}
-								/>
-							{/if}
-						</div>
+										{/if}
+									</div>
+								{:else}
+									<input
+										id="compose-{field.name}"
+										type="text"
+										bind:value={formValues[field.name]}
+										class={inputClass}
+										placeholder={field.placeholder}
+									/>
+								{/if}
+							</div>
+						{/if}
 					{/each}
 
 					{#if error}
@@ -697,7 +728,14 @@
 					</div>
 				</div>
 			{/if}
-			<p class="shrink-0 px-5 pb-3 pt-1.5 w-full text-right text-[10px] text-surface-500">Press <kbd class="rounded border border-surface-600 px-1 py-0.5 font-mono text-surface-400">⌘.</kbd> to close</p>
+			<div class="shrink-0 flex items-center justify-between px-5 pb-3 pt-1.5 text-[10px] text-surface-500">
+				{#if !success && activeFields.some(f => f.type === 'textarea')}
+					<p>AI Assist uses the <span class="text-surface-400">{activeFields.find(f => f.type === 'textarea')?.label ?? 'body'}</span> field as your prompt</p>
+				{:else}
+					<span></span>
+				{/if}
+				<p>Press <kbd class="rounded border border-surface-600 px-1 py-0.5 font-mono text-surface-400">⌘.</kbd> to close</p>
+			</div>
 		</div>
 	</div>
 {/if}

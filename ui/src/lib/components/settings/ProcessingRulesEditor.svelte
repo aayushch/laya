@@ -5,6 +5,7 @@
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { portal } from '$lib/actions/portal';
+	import Dropdown from '$lib/components/Dropdown.svelte';
 	import type { ProcessingRule, ProcessingRuleAction, ProcessingCondition, ProcessingRuleOperator, ProcessingSimpleCondition, ComposePlatform, Tag } from '$lib/api/types';
 
 	let tooltip = $state<{ text: string; top: number; left: number } | null>(null);
@@ -409,16 +410,14 @@
 		</div>
 	{/if}
 
-	<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-4">
-		<div class="mb-4 flex items-center justify-between">
-			<div>
-				<h3 class="text-laya-heading font-medium">Processing Rules</h3>
-				<p class="text-laya-secondary text-surface-400">Automate actions when events match specific conditions</p>
-			</div>
+	<div class="space-y-4">
+		<div>
+			<h3 class="text-laya-heading font-semibold text-surface-50">Processing Rules</h3>
+			<p class="mt-1 text-laya-base text-surface-400">Automate actions when events match specific conditions</p>
 		</div>
 
 		<!-- Auto-disable threshold setting -->
-		<div class="mb-4 flex items-center gap-3">
+		<div class="flex items-center gap-3">
 			<label for="auto-disable-threshold" class="text-laya-secondary text-surface-400">Auto-disable rules after</label>
 			<input id="auto-disable-threshold" type="number" bind:value={autoDisableThreshold} min="1" max="100"
 				class="w-16 rounded-lg border border-surface-600 bg-surface-900 px-2 py-1 text-laya-base text-surface-50"
@@ -427,20 +426,19 @@
 		</div>
 
 		<!-- Rule list -->
-		<div class="space-y-2">
+		<div class="space-y-3">
 			{#each rules as rule (rule.id)}
 				{#if editingId === rule.id}
 					{@render ruleForm()}
 				{:else}
-					<div class="rounded-lg border px-4 py-3 {rule.enabled ? ($glassTheme ? 'border-white/[0.06] bg-white/[0.03]' : 'border-surface-600 bg-surface-900') : 'border-surface-700/50 bg-surface-900/50 opacity-60'}">
+					<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} px-4 py-3 {rule.enabled ? '' : 'opacity-60'}">
 						<div class="flex items-center gap-3">
 							<button
-								class="flex h-4 w-4 items-center justify-center rounded border transition-colors {rule.enabled ? 'border-laya-orange bg-laya-orange/20' : 'border-surface-500'}"
+								class="relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors {rule.enabled ? 'bg-green-600' : 'bg-surface-600'}"
 								onclick={() => toggleRule(rule.id)}
+								aria-label="Toggle rule"
 							>
-								{#if rule.enabled}
-									<svg class="h-3 w-3 text-laya-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" /></svg>
-								{/if}
+								<span class="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform {rule.enabled ? 'left-[1.125rem]' : 'left-0.5'}"></span>
 							</button>
 							<div class="flex-1 min-w-0">
 								<div class="flex items-center gap-2">
@@ -569,40 +567,29 @@
 				{#each formConditions as cond, i}
 					<div class="flex items-center gap-2">
 						<div class="grid flex-1 grid-cols-[2fr_1fr_2fr] gap-2">
-							<select
+							<Dropdown
 								bind:value={cond.field}
-								class="h-[38px] rounded-lg border border-surface-600 bg-surface-900 px-3 text-laya-base text-surface-50"
-							>
-								{#each fieldGroups as group}
-									<optgroup label={group.label}>
-										{#each group.fields as field}
-											<option value={field}>{fieldLabel(field)}</option>
-										{/each}
-									</optgroup>
-								{/each}
-							</select>
-							<select
+								options={fieldGroups.flatMap((g) => g.fields.map((f) => ({ value: f, label: fieldLabel(f), group: g.label })))}
+								onchange={(v) => { cond.field = v; }}
+								placeholder="Field…"
+							/>
+							<Dropdown
 								bind:value={cond.operator}
-								class="h-[38px] rounded-lg border border-surface-600 bg-surface-900 px-3 text-laya-base text-surface-50"
-							>
-								{#each operatorsForField(cond.field) as op}
-									<option value={op}>{operatorLabels[op]}</option>
-								{/each}
-							</select>
+								options={operatorsForField(cond.field).map((op) => ({ value: op, label: operatorLabels[op] }))}
+								onchange={(v) => { cond.operator = v as ProcessingRuleOperator; }}
+								placeholder="Operator…"
+							/>
 							{#if ['exists', 'not_exists'].includes(cond.operator)}
 								<div></div>
 							{:else}
-								{@const options = getFieldOptions(cond.field)}
-								{#if options}
-									<select
+								{@const opts = getFieldOptions(cond.field)}
+								{#if opts}
+									<Dropdown
 										bind:value={cond.value}
-										class="h-[38px] rounded-lg border border-surface-600 bg-surface-900 px-3 text-laya-base text-surface-50"
-									>
-										<option value="">Select...</option>
-										{#each options as opt}
-											<option value={opt}>{getOptionLabel(cond.field, opt)}</option>
-										{/each}
-									</select>
+										options={[{ value: '', label: 'Select...' }, ...opts.map((o) => ({ value: o, label: getOptionLabel(cond.field, o) }))]}
+										onchange={(v) => { cond.value = v; }}
+										placeholder="Select..."
+									/>
 								{:else}
 									<input
 										bind:value={cond.value}
@@ -642,15 +629,12 @@
 					{@const selectedAction = platformActions.find(a => a.action_type === action.config.action_type)}
 					<div class="rounded-lg border border-surface-700 {$glassTheme ? 'bg-white/[0.02]' : 'bg-surface-900/50'} p-4">
 						<div class="flex items-center gap-2">
-							<select
+							<Dropdown
 								bind:value={action.type}
-								class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50"
-								onchange={() => { action.config = action.type === 'set_status' ? { status: 'dismissed' } : action.type === 'set_priority' ? { priority: 'HIGH' } : {}; }}
-							>
-								{#each actionTypes as at}
-									<option value={at.value}>{at.label}</option>
-								{/each}
-							</select>
+								options={actionTypes.map((at) => ({ value: at.value, label: at.label }))}
+								onchange={(v) => { action.type = v as typeof action.type; action.config = v === 'set_status' ? { status: 'dismissed' } : v === 'set_priority' ? { priority: 'HIGH' } : {}; }}
+								placeholder="Action type…"
+							/>
 							{#if formActions.length > 1}
 								<button
 									class="rounded p-1 text-surface-500 transition-colors hover:bg-surface-700 hover:text-red-400"
@@ -665,21 +649,31 @@
 						<!-- Action-specific config -->
 						{#if action.type === 'set_status'}
 							<div class="mt-3 grid grid-cols-2 gap-2">
-								<select bind:value={action.config.status} class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50">
-									<option value="dismissed">Dismiss</option>
-									<option value="archived">Archive</option>
-									<option value="done">Mark Done</option>
-								</select>
+								<Dropdown
+									bind:value={action.config.status}
+									options={[
+										{ value: 'dismissed', label: 'Dismiss' },
+										{ value: 'archived', label: 'Archive' },
+										{ value: 'done', label: 'Mark Done' },
+									]}
+									onchange={(v) => { action.config.status = v; }}
+									placeholder="Status…"
+								/>
 								<input bind:value={action.config.reason} placeholder="Reason (optional)" class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500" />
 							</div>
 						{:else if action.type === 'set_priority'}
 							<div class="mt-3">
-								<select bind:value={action.config.priority} class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50">
-									<option value="LOW">LOW</option>
-									<option value="MEDIUM">MEDIUM</option>
-									<option value="HIGH">HIGH</option>
-									<option value="CRITICAL">CRITICAL</option>
-								</select>
+								<Dropdown
+									bind:value={action.config.priority}
+									options={[
+										{ value: 'LOW', label: 'LOW' },
+										{ value: 'MEDIUM', label: 'MEDIUM' },
+										{ value: 'HIGH', label: 'HIGH' },
+										{ value: 'CRITICAL', label: 'CRITICAL' },
+									]}
+									onchange={(v) => { action.config.priority = v; }}
+									placeholder="Priority…"
+								/>
 							</div>
 						{:else if action.type === 'bookmark'}
 							<p class="mt-3 text-laya-base text-surface-500">Card will be bookmarked automatically.</p>
@@ -717,26 +711,19 @@
 							></textarea>
 						{:else if action.type === 'execute_egress'}
 							<div class="mt-3 grid grid-cols-2 gap-2">
-								<select
+								<Dropdown
 									bind:value={action.config.platform}
-									class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50"
-									onchange={() => { action.config.action_type = ''; }}
-								>
-									<option value="">Select platform</option>
-									{#each composePlatforms as p}
-										<option value={p.id}>{p.label}</option>
-									{/each}
-								</select>
-								<select
+									options={[{ value: '', label: 'Select platform' }, ...composePlatforms.map((p) => ({ value: p.id, label: p.label }))]}
+									onchange={(v) => { action.config.platform = v; action.config.action_type = ''; }}
+									placeholder="Select platform"
+								/>
+								<Dropdown
 									bind:value={action.config.action_type}
-									class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50"
+									options={[{ value: '', label: 'Select action' }, ...platformActions.map((pa) => ({ value: pa.action_type, label: pa.label }))]}
+									onchange={(v) => { action.config.action_type = v; }}
+									placeholder="Select action"
 									disabled={!action.config.platform}
-								>
-									<option value="">Select action</option>
-									{#each platformActions as pa}
-										<option value={pa.action_type}>{pa.label}</option>
-									{/each}
-								</select>
+								/>
 							</div>
 							{#if selectedAction && selectedAction.fields.length > 0}
 								<div class="mt-2 space-y-2">
@@ -749,15 +736,12 @@
 												class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500"
 											></textarea>
 										{:else if field.type === 'select' && field.options}
-											<select
+											<Dropdown
 												bind:value={action.config[field.name]}
-												class="w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50"
-											>
-												<option value="">{field.placeholder || field.label}</option>
-												{#each field.options as opt}
-													<option value={opt}>{opt}</option>
-												{/each}
-											</select>
+												options={[{ value: '', label: field.placeholder || field.label }, ...field.options.map((opt) => ({ value: opt, label: opt }))]}
+												onchange={(v) => { action.config[field.name] = v; }}
+												placeholder={field.placeholder || field.label}
+											/>
 										{:else}
 											<input
 												bind:value={action.config[field.name]}

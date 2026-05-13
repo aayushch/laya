@@ -379,11 +379,11 @@
 		</div>
 
 		<!-- Three-dot menu — aligned with ListRow action buttons column (w-[68px]) -->
-		<div class="w-[68px] shrink-0 flex items-center justify-end">
+		<div class="col-actions w-[68px] shrink-0 flex items-center justify-end">
 			{#if hasAnyAction}
 				<div class="group-menu relative" bind:this={menuEl}>
 					<button
-						class="flex h-5 w-5 items-center justify-center rounded text-surface-500 hover:bg-surface-700 hover:text-surface-300 disabled:opacity-50 opacity-0 group-hover/grow:opacity-100 transition-opacity"
+						class="flex h-5 w-5 items-center justify-center rounded text-surface-500 {$glassTheme ? 'hover:bg-white/10' : 'hover:bg-surface-700'} hover:text-surface-300 disabled:opacity-50 opacity-0 group-hover/grow:opacity-100 transition-opacity"
 						onclick={toggleGroupMenu}
 						disabled={bulkActionRunning}
 						title="Group actions"
@@ -404,7 +404,7 @@
 		</div>
 
 		<!-- Persona spacer — matches ListRow w-[62px] -->
-		<span class="w-[62px] shrink-0 ml-1"></span>
+		<span class="col-persona w-[62px] shrink-0 ml-1"></span>
 
 		<!-- Priority badge — matches ListRow w-[36px] -->
 		<span class="w-[36px] shrink-0 text-center rounded px-1 py-0.5 text-laya-micro font-bold uppercase ml-1 {priorityColors[group.top_priority] ?? priorityColors.MEDIUM}">
@@ -412,7 +412,7 @@
 		</span>
 
 		<!-- Space badge — fixed width, matches ListRow -->
-		<span class="w-[72px] shrink-0 flex items-center gap-1 ml-1 truncate">
+		<span class="col-space w-[72px] shrink-0 flex items-center gap-1 ml-1 truncate">
 			{#if topCard?.space_name}
 				<span class="inline-flex items-center gap-1 rounded border border-surface-700 bg-surface-800/60 px-1.5 py-0.5 text-laya-micro text-surface-400 truncate">
 					<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {topCard.space_color ?? '#F97316'}"></span>
@@ -422,7 +422,7 @@
 		</span>
 
 		<!-- Time — fixed width, matches ListRow -->
-		<span class="w-[52px] shrink-0 text-right text-laya-micro text-surface-500 whitespace-nowrap">{timeAgo(group.latest_at)}</span>
+		<span class="col-time w-[52px] shrink-0 text-right text-laya-micro text-surface-500 whitespace-nowrap">{timeAgo(group.latest_at)}</span>
 	</div>
 	</div>
 	</div>

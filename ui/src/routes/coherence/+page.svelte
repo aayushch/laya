@@ -545,33 +545,33 @@
 	</div>
 {/if}
 
-<div class="min-h-screen p-6 {$glassTheme ? 'bg-transparent' : 'bg-surface-900'}">
+<div class="min-h-screen p-6 overflow-x-clip {$glassTheme ? 'bg-transparent' : 'bg-surface-900'}">
 	<div class="max-w-5xl mx-auto">
 
-		<!-- Header -->
-		<div class="flex items-center justify-between mb-6">
-			<div>
-				<h1 class="text-xl font-bold text-surface-50">Laya <span class="text-laya-orange">Coherence</span><sup class="text-laya-micro ml-1 text-surface-500 tracking-wider font-medium">BETA</sup></h1>
-				<p class="text-laya-secondary text-surface-500 mt-0.5">
-					{trace ? `"${trace.query}"` : 'Connect the dots across every platform'}
-				</p>
+		<!-- Header + Search — sticky, edge-to-edge background -->
+		<div class="sticky -top-4 z-20 relative pb-4 pt-4 before:absolute before:inset-y-0 before:-left-[50vw] before:-right-[50vw] before:z-[-1] {$glassTheme ? 'before:backdrop-blur-xl' : 'before:bg-surface-900'}">
+			<div class="flex items-center justify-between mb-4">
+				<div>
+					<h1 class="text-xl font-bold text-surface-50">Laya <span class="text-laya-orange">Coherence</span><sup class="text-laya-micro ml-1 text-surface-500 tracking-wider font-medium">BETA</sup></h1>
+					<p class="text-laya-secondary text-surface-500 mt-0.5">
+						{trace ? `"${trace.query}"` : 'Connect the dots across every platform'}
+					</p>
+				</div>
+				{#if trace || (loading && !showHistoryDuringSearch)}
+					<button
+						onclick={handleBack}
+						class="flex items-center gap-1 px-2.5 py-1 rounded-md text-laya-secondary text-surface-400 hover:text-surface-200 transition-colors {$glassTheme ? 'hover:bg-black/[0.06]' : 'hover:bg-surface-800'}"
+						aria-label="Back to search"
+					>
+						<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+						</svg>
+						Back
+					</button>
+				{/if}
 			</div>
-			{#if trace || (loading && !showHistoryDuringSearch)}
-				<button
-					onclick={handleBack}
-					class="flex items-center gap-1 px-2.5 py-1 rounded-md text-laya-secondary text-surface-400 hover:text-surface-200 transition-colors {$glassTheme ? 'hover:bg-black/[0.06]' : 'hover:bg-surface-800'}"
-					aria-label="Back to search"
-				>
-					<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-					</svg>
-					Back
-				</button>
-			{/if}
-		</div>
 
-		<!-- Search bar -->
-		<div class="mb-6">
+			<!-- Search bar -->
 			<TraceSearch
 				onsubmit={handleSearch}
 				{loading}

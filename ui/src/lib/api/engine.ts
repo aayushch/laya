@@ -722,12 +722,14 @@ export const engineApi = {
 	getAuditLog: (params?: {
 		step?: string;
 		success?: boolean;
+		search?: string;
 		limit?: number;
 		offset?: number;
 	}) => {
 		const searchParams = new URLSearchParams();
 		if (params?.step) searchParams.set('step', params.step);
 		if (params?.success !== undefined) searchParams.set('success', String(params.success));
+		if (params?.search) searchParams.set('search', params.search);
 		if (params?.limit) searchParams.set('limit', String(params.limit));
 		if (params?.offset) searchParams.set('offset', String(params.offset));
 		const qs = searchParams.toString();

@@ -157,6 +157,58 @@ html, body {
 [data-theme='light'] .text-cyan-400    { color: oklch(0.40 0.12 200); }
 [data-theme='light'] .text-blue-300    { color: oklch(0.40 0.18 240); }
 
+/* Tag chips — uses --tag-color custom property set via inline style.
+   System tags keep their assigned color; user tags get subtle pastel treatment.
+   Glass variants use frosted translucent backgrounds. */
+
+/* --- System tags: solid --- */
+[data-theme='dark'] .tag-chip-system {
+	background-color: color-mix(in srgb, var(--tag-color) 15%, transparent);
+	color: var(--tag-color);
+}
+[data-theme='light'] .tag-chip-system {
+	background-color: color-mix(in srgb, var(--tag-color) 15%, transparent);
+	color: color-mix(in oklch, var(--tag-color) 80%, oklch(0.20 0 0));
+}
+
+/* --- System tags: glass --- */
+[data-glass-theme] .tag-chip-system {
+	-webkit-backdrop-filter: blur(6px);
+	backdrop-filter: blur(6px);
+	background: color-mix(in srgb, var(--tag-color) 12%, rgb(255 255 255 / 0.06));
+	border: 0.5px solid color-mix(in srgb, var(--tag-color) 25%, rgb(255 255 255 / 0.10));
+	color: var(--tag-color);
+}
+[data-theme='light'][data-glass-theme] .tag-chip-system {
+	background: color-mix(in srgb, var(--tag-color) 10%, rgb(255 255 255 / 0.30));
+	border-color: color-mix(in srgb, var(--tag-color) 20%, rgb(255 255 255 / 0.40));
+	color: color-mix(in oklch, var(--tag-color) 80%, oklch(0.20 0 0));
+}
+
+/* --- User tags: solid — warm laya-orange tint --- */
+[data-theme='dark'] .tag-chip-user {
+	background-color: color-mix(in oklch, var(--tag-color) 10%, oklch(0.22 0.025 60));
+	color: color-mix(in oklch, var(--tag-color) 45%, oklch(0.82 0.06 63));
+}
+[data-theme='light'] .tag-chip-user {
+	background-color: color-mix(in oklch, var(--tag-color) 10%, oklch(0.93 0.03 63));
+	color: color-mix(in oklch, var(--tag-color) 50%, oklch(0.38 0.06 58));
+}
+
+/* --- User tags: glass — warm laya-orange tint --- */
+[data-glass-theme] .tag-chip-user {
+	-webkit-backdrop-filter: blur(6px);
+	backdrop-filter: blur(6px);
+	background: color-mix(in oklch, var(--tag-color) 8%, oklch(0.30 0.03 60 / 0.12));
+	border: 0.5px solid color-mix(in oklch, var(--tag-color) 12%, oklch(0.78 0.08 63 / 0.15));
+	color: color-mix(in oklch, var(--tag-color) 45%, oklch(0.82 0.06 63));
+}
+[data-theme='light'][data-glass-theme] .tag-chip-user {
+	background: color-mix(in oklch, var(--tag-color) 8%, oklch(0.92 0.03 63 / 0.35));
+	border-color: color-mix(in oklch, var(--tag-color) 10%, oklch(0.85 0.05 63 / 0.40));
+	color: color-mix(in oklch, var(--tag-color) 50%, oklch(0.38 0.06 58));
+}
+
 /* Status-dot colors — bright enough for small icons in both themes.
    The global light-theme text overrides above darken colors for text
    readability, but status dots are tiny shapes that need vivid color. */
@@ -593,7 +645,7 @@ html, body {
 .glass-dropdown {
 	-webkit-backdrop-filter: blur(28px) saturate(1.8);
 	backdrop-filter: blur(28px) saturate(1.8);
-	background: rgb(20 18 16 / 0.78);
+	background: rgb(20 18 16 / 0.62);
 	box-shadow:
 		0 8px 32px -4px rgb(0 0 0 / 0.5),
 		inset 0 0.5px 0 rgb(255 255 255 / 0.08);
@@ -604,6 +656,15 @@ html, body {
 	box-shadow:
 		0 8px 32px -4px rgb(0 0 0 / 0.12),
 		inset 0 1px 0 rgb(255 255 255 / 0.7);
+}
+[data-theme='light'] .glass-dropdown .bg-white\/\[0\.14\] {
+	background: rgb(0 0 0 / 0.08) !important;
+}
+[data-theme='light'] .glass-dropdown .bg-white\/\[0\.08\] {
+	background: rgb(0 0 0 / 0.05) !important;
+}
+[data-theme='light'] .glass-dropdown .hover\:bg-white\/\[0\.06\]:hover {
+	background: rgb(0 0 0 / 0.04) !important;
 }
 
 /* Glass panel — same diffusion as glass-section but rectangular,
@@ -648,6 +709,7 @@ html, body {
 .glass-section input:not([type]),
 .glass-section select,
 .glass-section textarea,
+.glass-section [data-dropdown-trigger],
 .glass-dropdown input[type="text"],
 .glass-dropdown input[type="password"],
 .glass-dropdown input[type="email"],
@@ -687,6 +749,7 @@ html, body {
 [data-theme='light'] .glass-section input:not([type]),
 [data-theme='light'] .glass-section select,
 [data-theme='light'] .glass-section textarea,
+[data-theme='light'] .glass-section [data-dropdown-trigger],
 [data-theme='light'] .glass-dropdown input[type="text"],
 [data-theme='light'] .glass-dropdown input[type="password"],
 [data-theme='light'] .glass-dropdown input[type="email"],
@@ -884,7 +947,8 @@ html, body {
 .glass-card input[type="search"],
 .glass-card input:not([type]),
 .glass-card select,
-.glass-card textarea {
+.glass-card textarea,
+.glass-card [data-dropdown-trigger] {
 	-webkit-backdrop-filter: blur(10px) saturate(1.4);
 	backdrop-filter: blur(10px) saturate(1.4);
 	background: rgb(255 255 255 / 0.06) !important;
@@ -911,7 +975,8 @@ html, body {
 [data-theme='light'] .glass-card input[type="search"],
 [data-theme='light'] .glass-card input:not([type]),
 [data-theme='light'] .glass-card select,
-[data-theme='light'] .glass-card textarea {
+[data-theme='light'] .glass-card textarea,
+[data-theme='light'] .glass-card [data-dropdown-trigger] {
 	background: rgb(255 255 255 / 0.28) !important;
 	border-color: rgb(110 60 25 / 0.18) !important;
 }
@@ -920,6 +985,18 @@ html, body {
 [data-theme='light'] .glass-card textarea:focus {
 	border-color: rgb(246 172 105 / 0.55) !important;
 }
+/* Inner inputs inside chip containers already inherit the container's glass
+   treatment — reset them so they don't double-up the frosted background.
+   Specificity must beat [data-theme] .glass-card input[type] selectors. */
+.glass-card [data-email-container] input,
+[data-theme='dark'] .glass-card [data-email-container] input,
+[data-theme='light'] .glass-card [data-email-container] input {
+	background: transparent !important;
+	border-color: transparent !important;
+	-webkit-backdrop-filter: none !important;
+	backdrop-filter: none !important;
+}
+
 /* Surface backgrounds inside glass-card — frosted inner surfaces */
 .glass-card .bg-surface-800 {
 	background: rgb(255 255 255 / 0.06) !important;
@@ -1584,6 +1661,33 @@ html, body {
 }
 [data-theme='light'][data-glass-theme] .bg-red-500\/20 {
 	background-color: oklch(0.88 0.07 25 / 0.50);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LIST VIEW — responsive column hiding via container queries.
+   The feed-list container measures the main content area between
+   the recent drawer and detail panel. Lower-priority columns are
+   progressively hidden as width shrinks.
+   ═══════════════════════════════════════════════════════════════ */
+.feed-list-container {
+	container-type: inline-size;
+	container-name: feed-list;
+}
+
+@container feed-list (max-width: 699px) {
+	.col-space { display: none; }
+}
+
+@container feed-list (max-width: 619px) {
+	.col-persona { display: none; }
+}
+
+@container feed-list (max-width: 549px) {
+	.col-time { display: none; }
+}
+
+@container feed-list (max-width: 489px) {
+	.col-actions { display: none; }
 }
 
 /* ═══════════════════════════════════════════════════════════════

@@ -25,14 +25,13 @@
 	let showN8nAdvanced = $state(false);
 
 	// Category config
-	const CATEGORY_ORDER = ['development', 'project_management', 'communication', 'google', 'microsoft', 'email'];
+	const CATEGORY_ORDER = ['development', 'project_management', 'communication', 'email', 'calendar'];
 	const CATEGORY_LABELS: Record<string, string> = {
 		development: 'Development',
 		project_management: 'Project Management',
 		communication: 'Communication',
-		google: 'Google',
-		microsoft: 'Microsoft',
-		email: 'Email'
+		email: 'Email',
+		calendar: 'Calendar'
 	};
 
 	// Load data on mount (once). loadData() reads `platforms` to decide
@@ -76,8 +75,15 @@
 		for (const cat of CATEGORY_ORDER) {
 			const items: PlatformWithConnections[] = [];
 
+			for (const [key, config] of Object.entries(platforms)) {
+				if (config.category === cat) {
+					const conns = connections.filter((c) => c.platform === key);
+					items.push({ key, config, connections: conns });
+				}
+			}
+
 			if (cat === 'email') {
-				// Add SMTP as a virtual platform
+				// Add SMTP as a virtual platform (not in the engine registry)
 				const smtpConns = connections.filter((c) => c.platform === 'smtp');
 				items.push({
 					key: 'smtp',
@@ -92,13 +98,6 @@
 					},
 					connections: smtpConns
 				});
-			} else {
-				for (const [key, config] of Object.entries(platforms)) {
-					if (config.category === cat) {
-						const conns = connections.filter((c) => c.platform === key);
-						items.push({ key, config, connections: conns });
-					}
-				}
 			}
 
 			if (items.length > 0) {

@@ -16,6 +16,13 @@ def normalize_payload(action_type: str, payload: dict) -> dict:
     """Normalize GitHub executor payload fields."""
     p = dict(payload)
 
+    # Split "owner/repo" into separate owner and repo fields
+    repo_val = p.get("repo", "")
+    if isinstance(repo_val, str) and "/" in repo_val and "owner" not in p:
+        owner, repo = repo_val.split("/", 1)
+        p["owner"] = owner
+        p["repo"] = repo
+
     # Normalize comment field for comment actions
     if action_type in ("comment", "close_issue") and "comment" not in p:
         p["comment"] = (

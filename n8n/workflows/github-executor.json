@@ -366,7 +366,7 @@
         "nodeCredentialType": "githubApi",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ title: $json.body.payload.title || '', body: $json.body.payload.body || '' }) }}",
+        "jsonBody": "={{ JSON.stringify(Object.assign({ title: $json.body.payload.title || '', body: $json.body.payload.body || '' }, ($json.body.payload.labels ? { labels: String($json.body.payload.labels).split(',').map(s => s.trim()).filter(Boolean) } : {}), ($json.body.payload.assignees ? { assignees: String($json.body.payload.assignees).split(',').map(s => s.trim()).filter(Boolean) } : {}))) }}",
         "options": {}
       },
       "onError": "continueErrorOutput"
@@ -787,6 +787,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.04.1"
+    "laya_version": "2026.05.1"
   }
 }
