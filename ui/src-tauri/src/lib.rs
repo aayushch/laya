@@ -336,7 +336,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{
-    menu::{Menu, MenuItem, PredefinedMenuItem},
+    menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::{TrayIcon, TrayIconBuilder},
     Manager,
 };
@@ -500,6 +500,115 @@ pub fn run() {
                         let _ = window.set_icon(icon);
                     }
                 }
+            }
+
+            // Custom app menu with About metadata including GitHub URL
+            {
+                let pkg_info = app.package_info().clone();
+                let about_metadata = AboutMetadata {
+                    name: Some(pkg_info.name.clone()),
+                    version: Some(pkg_info.version.to_string()),
+                    credits: Some("https://github.com/aayushch/laya".to_string()),
+                    website: Some("https://github.com/aayushch/laya".to_string()),
+                    website_label: Some("GitHub".to_string()),
+                    ..Default::default()
+                };
+
+                let handle = app.handle();
+
+                #[cfg(target_os = "macos")]
+                let app_submenu = Submenu::with_items(
+                    handle,
+                    &pkg_info.name,
+                    true,
+                    &[
+                        &PredefinedMenuItem::about(handle, None, Some(about_metadata))?,
+                        &PredefinedMenuItem::separator(handle)?,
+                        &PredefinedMenuItem::services(handle, None)?,
+                        &PredefinedMenuItem::separator(handle)?,
+                        &PredefinedMenuItem::hide(handle, None)?,
+                        &PredefinedMenuItem::hide_others(handle, None)?,
+                        &PredefinedMenuItem::separator(handle)?,
+                        &PredefinedMenuItem::quit(handle, None)?,
+                    ],
+                )?;
+
+                #[cfg(not(target_os = "macos"))]
+                let help_menu = Submenu::with_items(
+                    handle,
+                    "Help",
+                    true,
+                    &[&PredefinedMenuItem::about(handle, None, Some(about_metadata))?],
+                )?;
+
+                let edit_menu = Submenu::with_items(
+                    handle,
+                    "Edit",
+                    true,
+                    &[
+                        &PredefinedMenuItem::undo(handle, None)?,
+                        &PredefinedMenuItem::redo(handle, None)?,
+                        &PredefinedMenuItem::separator(handle)?,
+                        &PredefinedMenuItem::cut(handle, None)?,
+                        &PredefinedMenuItem::copy(handle, None)?,
+                        &PredefinedMenuItem::paste(handle, None)?,
+                        &PredefinedMenuItem::select_all(handle, None)?,
+                    ],
+                )?;
+
+                let window_menu = Submenu::with_items(
+                    handle,
+                    "Window",
+                    true,
+                    &[
+                        &PredefinedMenuItem::minimize(handle, None)?,
+                        &PredefinedMenuItem::maximize(handle, None)?,
+                        #[cfg(target_os = "macos")]
+                        &PredefinedMenuItem::separator(handle)?,
+                        &PredefinedMenuItem::close_window(handle, None)?,
+                    ],
+                )?;
+
+                #[cfg(target_os = "macos")]
+                let view_menu = Submenu::with_items(
+                    handle,
+                    "View",
+                    true,
+                    &[&PredefinedMenuItem::fullscreen(handle, None)?],
+                )?;
+
+                let menu = Menu::with_items(
+                    handle,
+                    &[
+                        #[cfg(target_os = "macos")]
+                        &app_submenu,
+                        #[cfg(not(any(
+                            target_os = "linux",
+                            target_os = "dragonfly",
+                            target_os = "freebsd",
+                            target_os = "netbsd",
+                            target_os = "openbsd"
+                        )))]
+                        &Submenu::with_items(
+                            handle,
+                            "File",
+                            true,
+                            &[
+                                &PredefinedMenuItem::close_window(handle, None)?,
+                                #[cfg(not(target_os = "macos"))]
+                                &PredefinedMenuItem::quit(handle, None)?,
+                            ],
+                        )?,
+                        &edit_menu,
+                        #[cfg(target_os = "macos")]
+                        &view_menu,
+                        &window_menu,
+                        #[cfg(not(target_os = "macos"))]
+                        &help_menu,
+                    ],
+                )?;
+
+                app.set_menu(menu)?;
             }
 
             // Custom titlebar: create overlay titlebar via decorum plugin.

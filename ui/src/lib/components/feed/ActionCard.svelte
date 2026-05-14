@@ -554,7 +554,7 @@
 						onclick={(e: Event) => { e.stopPropagation(); onlink(card); }}
 						onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') { e.stopPropagation(); onlink(card); }}}
 						class="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md transition-all
-							text-surface-600 hover:bg-surface-700/50 hover:text-laya-orange opacity-0 group-hover/card:opacity-100"
+							text-surface-400 hover:bg-laya-orange/15 hover:text-laya-orange opacity-0 group-hover/card:opacity-100"
 					>
 						<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -573,7 +573,7 @@
 					class="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md transition-all disabled:opacity-40
 						{card.bookmarked_at
 							? 'text-laya-orange'
-							: 'text-surface-600 hover:bg-surface-700/50 hover:text-laya-orange opacity-0 group-hover/card:opacity-100'}"
+							: 'text-surface-400 hover:bg-laya-orange/15 hover:text-laya-orange opacity-0 group-hover/card:opacity-100'}"
 				>
 					<svg class="h-3 w-3" fill={card.bookmarked_at ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />

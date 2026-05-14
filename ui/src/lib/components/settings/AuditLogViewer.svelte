@@ -95,6 +95,53 @@
 	let limit = 25;
 	let offset = $state(0);
 
+	let stepsOpen = $state(false);
+	let stepsTriggerRef = $state<HTMLElement | null>(null);
+	let stepsPanelRef = $state<HTMLDivElement | null>(null);
+	let stepsDropPos = $state({ top: 0, left: 0, width: 0, openUp: false });
+
+	let stepsLabel = $derived(
+		filterSteps.size === 0
+			? 'All steps'
+			: filterSteps.size === 1
+				? [...filterSteps][0]
+				: `${filterSteps.size} steps`
+	);
+
+	function positionStepsPanel() {
+		if (!stepsTriggerRef) return;
+		const r = stepsTriggerRef.getBoundingClientRect();
+		const spaceBelow = window.innerHeight - r.bottom;
+		const panelMaxH = 320;
+		const openUp = spaceBelow < panelMaxH && r.top > spaceBelow;
+		stepsDropPos = {
+			top: openUp ? r.top - 4 : r.bottom + 4,
+			left: r.left,
+			width: Math.max(r.width, 220),
+			openUp
+		};
+	}
+
+	function toggleStepsDropdown() {
+		if (stepsOpen) { stepsOpen = false; return; }
+		positionStepsPanel();
+		stepsOpen = true;
+	}
+
+	function toggleStep(step: string) {
+		const next = new Set(filterSteps);
+		if (next.has(step)) next.delete(step); else next.add(step);
+		filterSteps = next;
+	}
+
+	function handleStepsWindowClick(e: MouseEvent) {
+		if (!stepsOpen) return;
+		const target = e.target as Node;
+		if (stepsTriggerRef?.contains(target)) return;
+		if (stepsPanelRef?.contains(target)) return;
+		stepsOpen = false;
+	}
+
 	// ── Dead events state ──
 	let deadEvents: DeadEvent[] = $state([]);
 	let deadTotal = $state(0);
@@ -240,6 +287,8 @@
 
 	function hideTooltip() { fixedTooltip = null; }
 </script>
+
+<svelte:window onclick={handleStepsWindowClick} />
 
 <div class="space-y-4">
 	<!-- Dead Events Recovery -->
@@ -455,66 +504,114 @@
 	{/if}
 
 	<!-- Filters -->
-	<div class="space-y-3">
-		<div class="flex flex-wrap items-end gap-3">
-			<div>
-				<span class="mb-1 block text-laya-secondary text-surface-400">Steps</span>
-				<div class="flex flex-wrap items-center gap-1.5 min-h-[38px] rounded-lg border px-2 py-1.5
-					{$glassTheme ? 'glass-input' : 'border-surface-600 bg-surface-900'}">
-					{#each AUDIT_STEPS as step}
-						<button
-							type="button"
-							class="rounded-md px-2 py-0.5 text-laya-micro font-medium transition-colors
-								{filterSteps.has(step)
-									? 'bg-laya-orange/20 text-laya-orange'
-									: ($glassTheme
-										? 'bg-white/[0.06] text-surface-400 hover:bg-white/[0.10] hover:text-surface-200'
-										: 'bg-surface-800 text-surface-400 hover:bg-surface-700 hover:text-surface-200')}"
-							onclick={() => {
-								const next = new Set(filterSteps);
-								if (next.has(step)) next.delete(step); else next.add(step);
-								filterSteps = next;
-							}}
-						>
-							{step}
-						</button>
-					{/each}
-				</div>
-			</div>
-		</div>
-		<div class="flex flex-wrap items-end gap-3">
-			<div class="w-28">
-				<span class="mb-1 block text-laya-secondary text-surface-400">Status</span>
-				<Dropdown
-					bind:value={filterSuccess}
-					options={[
-						{ value: '', label: 'All' },
-						{ value: 'true', label: 'Success' },
-						{ value: 'false', label: 'Failed' },
-					]}
-					onchange={(v) => { filterSuccess = v as typeof filterSuccess; }}
-				/>
-			</div>
+	<div class="flex flex-wrap items-end gap-3">
+		<!-- Steps multiselect dropdown -->
+		<div class="relative">
+			<span class="mb-1 block text-laya-secondary text-surface-400">Steps</span>
 			<button
-				onclick={applyFilter}
-				class="h-[38px] rounded-lg px-4 text-laya-base font-medium text-surface-200 transition-colors {$glassTheme ? 'bg-white/[0.08] hover:bg-white/[0.14]' : 'bg-surface-700 hover:bg-surface-600'}"
+				bind:this={stepsTriggerRef}
+				type="button"
+				onclick={toggleStepsDropdown}
+				class="flex h-[38px] items-center justify-between gap-2 rounded-md border px-3 text-left text-sm transition-colors
+					{$glassTheme
+						? 'border-surface-600/40 bg-surface-800/40 backdrop-blur-sm text-surface-200 hover:border-surface-500/50'
+						: 'border-surface-600 bg-surface-900 text-surface-200 hover:border-surface-500'}"
+				style="min-width: 160px"
+				aria-haspopup="listbox"
+				aria-expanded={stepsOpen}
 			>
-				Apply
-			</button>
-			{#if filterSteps.size > 0 || filterSuccess !== '' || searchQuery.trim()}
-				<button
-					onclick={() => { filterSteps = new Set(); filterSuccess = ''; searchQuery = ''; applyFilter(); }}
-					class="h-[38px] rounded-lg px-3 text-laya-base text-surface-400 transition-colors hover:text-surface-200"
+				<span class="truncate {filterSteps.size === 0 ? 'text-surface-400' : ''}">{stepsLabel}</span>
+				{#if filterSteps.size > 0}
+					<span class="flex h-4 min-w-4 items-center justify-center rounded-full bg-laya-orange/20 px-1 text-[10px] font-semibold text-laya-orange">{filterSteps.size}</span>
+				{/if}
+				<svg
+					class="h-3.5 w-3.5 shrink-0 text-surface-400 transition-transform {stepsOpen ? 'rotate-180' : ''}"
+					fill="none" stroke="currentColor" viewBox="0 0 24 24"
 				>
-					Clear
-				</button>
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+				</svg>
+			</button>
+			{#if stepsOpen}
+				<div
+					use:portal
+					bind:this={stepsPanelRef}
+					class="fixed z-[100] rounded-lg border p-1 overflow-hidden
+						{$glassTheme
+							? 'glass-dropdown border-white/15'
+							: 'border-surface-600 bg-surface-800 shadow-xl shadow-black/30'}"
+					style="
+						{stepsDropPos.openUp ? `bottom: ${window.innerHeight - stepsDropPos.top}px` : `top: ${stepsDropPos.top}px`};
+						left: {stepsDropPos.left}px;
+						min-width: {stepsDropPos.width}px;
+						max-width: min(280px, calc(100vw - 32px));
+					"
+					role="listbox"
+					aria-multiselectable="true"
+				>
+					<div class="max-h-72 overflow-y-auto">
+						{#each AUDIT_STEPS as step}
+							{@const selected = filterSteps.has(step)}
+							<button
+								type="button"
+								role="option"
+								aria-selected={selected}
+								onclick={() => toggleStep(step)}
+								class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors
+									{selected
+										? ($glassTheme
+											? 'bg-white/[0.14] text-surface-100 font-medium'
+											: 'bg-surface-600 text-surface-100 font-medium')
+										: ($glassTheme
+											? 'text-surface-300 hover:bg-white/[0.06]'
+											: 'text-surface-300 hover:bg-surface-700')}"
+							>
+								<span class="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border transition-colors
+									{selected
+										? 'border-laya-orange bg-laya-orange/20'
+										: ($glassTheme ? 'border-surface-500/50' : 'border-surface-500')}">
+									{#if selected}
+										<svg class="h-2.5 w-2.5 text-laya-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+										</svg>
+									{/if}
+								</span>
+								<span class="truncate">{step}</span>
+							</button>
+						{/each}
+					</div>
+				</div>
 			{/if}
 		</div>
-	</div>
 
-	<!-- Search box -->
-	<div class="flex justify-end">
-		<div class="relative w-64">
+		<div class="w-28">
+			<span class="mb-1 block text-laya-secondary text-surface-400">Status</span>
+			<Dropdown
+				bind:value={filterSuccess}
+				options={[
+					{ value: '', label: 'All' },
+					{ value: 'true', label: 'Success' },
+					{ value: 'false', label: 'Failed' },
+				]}
+				onchange={(v) => { filterSuccess = v as typeof filterSuccess; }}
+			/>
+		</div>
+		<button
+			onclick={applyFilter}
+			class="h-[38px] rounded-lg px-4 text-laya-base font-medium text-surface-200 transition-colors {$glassTheme ? 'bg-white/[0.08] hover:bg-white/[0.14]' : 'bg-surface-700 hover:bg-surface-600'}"
+		>
+			Apply
+		</button>
+		{#if filterSteps.size > 0 || filterSuccess !== '' || searchQuery.trim()}
+			<button
+				onclick={() => { filterSteps = new Set(); filterSuccess = ''; searchQuery = ''; applyFilter(); }}
+				class="h-[38px] rounded-lg px-3 text-laya-base text-surface-400 transition-colors hover:text-surface-200"
+			>
+				Clear
+			</button>
+		{/if}
+
+		<!-- Search box — right-aligned -->
+		<div class="relative ml-auto w-64">
 			<svg class="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-surface-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
 			</svg>
@@ -523,7 +620,7 @@
 				bind:value={searchQuery}
 				placeholder="Search logs…"
 				onkeydown={(e) => { if (e.key === 'Enter') applyFilter(); }}
-				class="h-[34px] w-full rounded-md border pl-8 pr-3 text-laya-secondary text-surface-200 placeholder-surface-500 focus:outline-none
+				class="h-[38px] w-full rounded-md border pl-8 pr-3 text-laya-secondary text-surface-200 placeholder-surface-500 focus:outline-none
 					{$glassTheme ? 'glass-input focus:border-laya-orange/50' : 'border-surface-600 bg-surface-900 focus:border-laya-orange/50'}"
 			/>
 		</div>
