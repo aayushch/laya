@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from laya.llm.prompts import current_timestamp_line
+from laya.llm.prompts.overrides import get_prompt
 from laya.models.trace import TraceCluster
 
 
@@ -197,7 +198,7 @@ def build_summary_messages(
         user_content = user_content[:12000] + "\n\n[... additional data truncated]"
 
     return [
-        {"role": "system", "content": TRACE_SUMMARY_SYSTEM},
+        {"role": "system", "content": get_prompt("trace_summary", TRACE_SUMMARY_SYSTEM)},
         {"role": "user", "content": user_content},
     ]
 
@@ -252,6 +253,6 @@ def build_narrative_messages(
         user_content = user_content[:3000] + "\n\n[... additional cards truncated]"
 
     return [
-        {"role": "system", "content": TRACE_NARRATIVE_SYSTEM},
+        {"role": "system", "content": get_prompt("trace_narrative", TRACE_NARRATIVE_SYSTEM)},
         {"role": "user", "content": user_content},
     ]

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from laya.llm.prompts import current_timestamp_line
+from laya.llm.prompts.overrides import get_prompt
 
 SUMMARIZER_SYSTEM_PROMPT = """\
 You are the Daily Summarizer for Laya, an AI-powered professional work assistant. Your job is \
@@ -124,7 +125,7 @@ Actor: {actor_name or 'N/A'}{intel_text}{tags_text}
 Produce the updated summary JSON matching the required schema."""
 
     return [
-        {"role": "system", "content": SUMMARIZER_SYSTEM_PROMPT},
+        {"role": "system", "content": get_prompt("summarizer", SUMMARIZER_SYSTEM_PROMPT)},
         {"role": "user", "content": user_message},
     ]
 
@@ -156,7 +157,7 @@ New Status: {new_status}
 Produce the full updated summary JSON matching the required schema."""
 
     return [
-        {"role": "system", "content": SUMMARIZER_STATUS_CHANGE_PROMPT},
+        {"role": "system", "content": get_prompt("summarizer_status_change", SUMMARIZER_STATUS_CHANGE_PROMPT)},
         {"role": "user", "content": user_message},
     ]
 

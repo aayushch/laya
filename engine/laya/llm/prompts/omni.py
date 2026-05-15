@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from laya.llm.prompts import current_timestamp_line
+from laya.llm.prompts.overrides import get_prompt
 
 # ---------------------------------------------------------------------------
 # Density presets: structural constraints passed to the LLM
@@ -228,7 +229,7 @@ def build_omni_resynthesis_messages(
     )
 
     return [
-        {"role": "system", "content": OMNI_RESYNTHESIS_SYSTEM_PROMPT},
+        {"role": "system", "content": get_prompt("omni", OMNI_RESYNTHESIS_SYSTEM_PROMPT)},
         {"role": "user", "content": user_message},
     ]
 

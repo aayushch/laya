@@ -6,6 +6,7 @@ from typing import Any
 
 from laya.egress.registry import get_capabilities
 from laya.llm.prompts import current_timestamp_line
+from laya.llm.prompts.overrides import get_prompt
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 from laya.workers.base import WorkerResult
@@ -543,7 +544,7 @@ Router classification:
 Produce a JSON action card matching the required schema."""
 
     return [
-        {"role": "system", "content": STAGER_SYSTEM_PROMPT},
+        {"role": "system", "content": get_prompt("stager", STAGER_SYSTEM_PROMPT)},
         {"role": "user", "content": user_message},
     ]
 

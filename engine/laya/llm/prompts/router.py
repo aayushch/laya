@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from laya.llm.prompts import current_timestamp_line
+from laya.llm.prompts.overrides import get_prompt
 from laya.models.event import LayaEvent
 
 ROUTER_SYSTEM_PROMPT = """\
@@ -179,7 +180,7 @@ Classify this event and plan investigation steps.
 Respond with valid JSON matching the required schema."""
 
     return [
-        {"role": "system", "content": ROUTER_SYSTEM_PROMPT},
+        {"role": "system", "content": get_prompt("router", ROUTER_SYSTEM_PROMPT)},
         {"role": "user", "content": user_message},
     ]
 
@@ -304,7 +305,7 @@ array containing one classification per event, in the same order as presented.
 Respond with valid JSON matching the required schema."""
 
     return [
-        {"role": "system", "content": ROUTER_SYSTEM_PROMPT},
+        {"role": "system", "content": get_prompt("router", ROUTER_SYSTEM_PROMPT)},
         {"role": "user", "content": user_message},
     ]
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from laya.llm.prompts import current_timestamp_line
+from laya.llm.prompts.overrides import get_prompt
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 
@@ -76,7 +77,7 @@ Classification: {router_output.category.value} / {router_output.persona.value} /
 Produce a briefing with key_figures, open_items, and suggested_actions."""
 
     return [
-        {"role": "system", "content": FINANCE_SYSTEM_PROMPT},
+        {"role": "system", "content": get_prompt("finance", FINANCE_SYSTEM_PROMPT)},
         {"role": "user", "content": user_message},
     ]
 

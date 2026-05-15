@@ -510,6 +510,28 @@ async def detect_agents() -> dict:
     return {"agent_paths": paths}
 
 
+# ---------------------------------------------------------------------------
+# Custom prompt overrides
+# ---------------------------------------------------------------------------
+
+
+@router.get("/prompts")
+async def get_prompts() -> dict:
+    """Return override status for all prompt keys."""
+    from laya.llm.prompts.overrides import get_override_status
+
+    return {"prompts": get_override_status()}
+
+
+@router.post("/prompts/reload")
+async def reload_prompts() -> dict:
+    """Re-scan ~/.laya/prompts/ and hot-swap overrides."""
+    from laya.llm.prompts.overrides import load_custom_prompts
+
+    loaded = load_custom_prompts()
+    return {"status": "reloaded", "overridden_keys": sorted(loaded.keys())}
+
+
 @router.get("/repos")
 async def get_repos(platform: str | None = Query(default=None)) -> dict:
     """Return configured repositories, optionally filtered by platform."""

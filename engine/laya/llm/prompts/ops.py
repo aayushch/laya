@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from laya.llm.prompts import current_timestamp_line
+from laya.llm.prompts.overrides import get_prompt
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 
@@ -73,7 +74,7 @@ Classification: {router_output.category.value} / {router_output.persona.value} /
 Produce a briefing with talking points and open items."""
 
     return [
-        {"role": "system", "content": OPS_SYSTEM_PROMPT},
+        {"role": "system", "content": get_prompt("ops", OPS_SYSTEM_PROMPT)},
         {"role": "user", "content": user_message},
     ]
 

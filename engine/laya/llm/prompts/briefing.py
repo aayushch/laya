@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from laya.llm.prompts import current_timestamp_line
+from laya.llm.prompts.overrides import get_prompt
 
 BRIEFING_SYSTEM_PROMPT = """\
 You are generating a daily briefing for a busy professional using Laya. \
@@ -85,6 +86,6 @@ def build_briefing_messages(
     )
 
     return [
-        {"role": "system", "content": BRIEFING_SYSTEM_PROMPT},
+        {"role": "system", "content": get_prompt("briefing", BRIEFING_SYSTEM_PROMPT)},
         {"role": "user", "content": user_message},
     ]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from laya.llm.prompts import current_timestamp_line
+from laya.llm.prompts.overrides import get_prompt
 
 
 TITLE_GENERATION_SYSTEM_PROMPT = """\
@@ -26,7 +27,7 @@ def build_title_generation_messages(user_message: str) -> list[dict[str, str]]:
     """Build messages for the router LLM to generate a short conversation title."""
     truncated = user_message.strip()[:500]
     return [
-        {"role": "system", "content": TITLE_GENERATION_SYSTEM_PROMPT},
+        {"role": "system", "content": get_prompt("chat_title", TITLE_GENERATION_SYSTEM_PROMPT)},
         {"role": "user", "content": truncated},
     ]
 
@@ -143,7 +144,7 @@ def build_chat_messages(
         user_identity: Optional dict with 'name' and 'email' of the Laya user.
         card_context: Optional card context injected as system prompt (used by Omni card view).
     """
-    system_content = CHAT_SYSTEM_PROMPT
+    system_content = get_prompt("chat", CHAT_SYSTEM_PROMPT)
 
     # Inject card context into system prompt so the LLM has full awareness
     # of the card being discussed without the user needing to re-state it.
@@ -215,6 +216,6 @@ def build_polish_messages(draft_text: str, platform: str | None) -> list[dict[st
         f"Return only the polished text."
     )
     return [
-        {"role": "system", "content": POLISH_SYSTEM_PROMPT},
+        {"role": "system", "content": get_prompt("chat_polish", POLISH_SYSTEM_PROMPT)},
         {"role": "user", "content": user_content},
     ]

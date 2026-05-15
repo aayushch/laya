@@ -1904,6 +1904,7 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
         <a href="#doc-pipeline">Processing Pipeline</a>
         <a href="#doc-event-schema">Event Schema</a>
         <a href="#doc-config-files">Config Files</a>
+        <a href="#doc-custom-prompts">Custom Prompts</a>
         <a href="#doc-tuning">Tuning Parameters</a>
         <a href="#doc-troubleshooting">Troubleshooting</a>
       </div>
@@ -2829,6 +2830,72 @@ content.body         content.metadata.*</code></pre>
       <div class="callout callout-info">
         <p><strong>Note:</strong> All config files are created automatically on first run with sensible defaults. You can edit them directly or use the Settings UI.</p>
       </div>
+
+      <h2 id="doc-custom-prompts">Custom Prompts</h2>
+      <p>Laya's AI pipeline uses system prompts at every stage &mdash; routing, staging, summarization, chat, and more. All prompts are hardcoded with sensible defaults, but you can override any of them by placing a text or markdown file in the <code>~/.laya/prompts/</code> directory.</p>
+
+      <div class="callout callout-info">
+        <p><strong>How it works:</strong> On startup (and via the reload API), Laya scans <code>~/.laya/prompts/</code> for recognized filenames. If a file is found, its content replaces the corresponding hardcoded system prompt. If the file is missing or deleted, the built-in default is used. Laya never creates or modifies files in this directory &mdash; your custom prompts are purely additive.</p>
+      </div>
+
+      <h3>Getting Started</h3>
+<pre><code># Create the prompts directory
+mkdir -p ~/.laya/prompts
+
+# Override the router prompt
+cat > ~/.laya/prompts/router.md << 'EOF'
+You are the Router for Laya. Classify incoming events with these priorities:
+- CRITICAL: anything from the CEO or involving production outages
+- HIGH: customer-facing issues, PRs awaiting my review
+- MEDIUM: team discussions, assigned tickets
+- LOW: everything else
+...
+EOF
+
+# Reload without restarting the engine
+curl -X POST http://127.0.0.1:8420/prompts/reload</code></pre>
+
+      <h3>Available Prompt Files</h3>
+      <table>
+        <tr><th>File</th><th>Pipeline Stage</th><th>Description</th></tr>
+        <tr><td><code>router.md</code></td><td>Router</td><td>Event classification (category, persona, priority, entities, research plan)</td></tr>
+        <tr><td><code>stager.md</code></td><td>Stager</td><td>Synthesize worker findings into polished Action Cards with staged actions</td></tr>
+        <tr><td><code>omni.md</code></td><td>Omni</td><td>Rolling cross-platform summary synthesis</td></tr>
+        <tr><td><code>group_summary_initial.md</code></td><td>Group Summary</td><td>First summary for a multi-card entity group</td></tr>
+        <tr><td><code>group_summary_rolling.md</code></td><td>Group Summary</td><td>Rolling update when new cards arrive for an existing group</td></tr>
+        <tr><td><code>briefing.md</code></td><td>Briefing</td><td>Daily morning briefing generation</td></tr>
+        <tr><td><code>summarizer.md</code></td><td>Summarizer</td><td>Incremental daily running summary</td></tr>
+        <tr><td><code>summarizer_status_change.md</code></td><td>Summarizer</td><td>Updates the daily summary when a card's status changes</td></tr>
+        <tr><td><code>engineer.md</code></td><td>Worker</td><td>ENGINEER persona &mdash; coding agent task preparation</td></tr>
+        <tr><td><code>comms.md</code></td><td>Worker</td><td>COMMS persona &mdash; communication reply drafting</td></tr>
+        <tr><td><code>sales.md</code></td><td>Worker</td><td>SALES persona &mdash; customer/prospect reply drafting</td></tr>
+        <tr><td><code>hr.md</code></td><td>Worker</td><td>HR persona &mdash; people/hiring communication</td></tr>
+        <tr><td><code>ops.md</code></td><td>Worker</td><td>OPS persona &mdash; calendar prep and operational briefings</td></tr>
+        <tr><td><code>finance.md</code></td><td>Worker</td><td>FINANCE persona &mdash; financial event synthesis</td></tr>
+        <tr><td><code>chat.md</code></td><td>Chat</td><td>Conversational chat system prompt</td></tr>
+        <tr><td><code>chat_title.md</code></td><td>Chat</td><td>Conversation title generation</td></tr>
+        <tr><td><code>chat_polish.md</code></td><td>Chat</td><td>Message polish/refinement</td></tr>
+        <tr><td><code>learner.md</code></td><td>Learning</td><td>Extracts classification rules from user corrections</td></tr>
+        <tr><td><code>context_learner.md</code></td><td>Learning</td><td>Extracts grouping rules from link/unlink actions</td></tr>
+        <tr><td><code>trace_narrative.md</code></td><td>Coherence</td><td>Generates narrative summaries for entity traces</td></tr>
+        <tr><td><code>trace_summary.md</code></td><td>Coherence</td><td>Generates concise summaries for trace clusters</td></tr>
+        <tr><td><code>trace_filter.md</code></td><td>Coherence</td><td>Relevance filtering for trace search results</td></tr>
+      </table>
+
+      <h3>Important Notes</h3>
+      <ul>
+        <li><strong>Full replacement:</strong> A custom prompt completely replaces the built-in default for that stage. You won't automatically receive improvements to default prompts after engine updates.</li>
+        <li><strong>JSON output prompts:</strong> Several prompts (router, stager, group_summary, omni, summarizer) instruct the LLM to return structured JSON. If your custom prompt omits these format instructions, the pipeline may fail to parse responses. Check the engine logs if cards stop appearing.</li>
+        <li><strong>Template variable:</strong> The <code>group_summary_initial.md</code> and <code>group_summary_rolling.md</code> prompts support <code>{timestamp}</code> &mdash; it will be replaced with the current UTC date/time at call time. All other prompts are plain text.</li>
+        <li><strong>Unrecognized files:</strong> Files that don't match a known filename are ignored. Check the engine logs for warnings about unrecognized files (e.g., a typo in the filename).</li>
+      </ul>
+
+      <h3>API Endpoints</h3>
+      <table>
+        <tr><th>Endpoint</th><th>Description</th></tr>
+        <tr><td><code>GET /prompts</code></td><td>Returns all 22 prompt keys with their override status</td></tr>
+        <tr><td><code>POST /prompts/reload</code></td><td>Re-scans <code>~/.laya/prompts/</code> and hot-swaps overrides without restarting</td></tr>
+      </table>
 
       <h2 id="doc-tuning">Tuning Parameters</h2>
       <p>Laya exposes internal parameters that control the behavior, sensitivity, and resource usage of its AI pipeline. These have sensible defaults and do not need to be changed for normal operation. Advanced users can override them via the <code>tuning</code> section in <code>~/.laya/settings.json</code>.</p>

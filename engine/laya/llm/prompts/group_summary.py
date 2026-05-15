@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from laya.llm.prompts import current_timestamp_line
+from laya.llm.prompts.overrides import get_prompt
 
 # ---------------------------------------------------------------------------
 # System prompts
@@ -162,7 +163,7 @@ def build_initial_messages(
 ) -> list[dict[str, str]]:
     """Build LLM messages for initial summary generation (2+ cards)."""
     ts = current_timestamp_line()
-    system = GROUP_SUMMARY_INITIAL_SYSTEM_PROMPT.format(timestamp=ts)
+    system = get_prompt("group_summary_initial", GROUP_SUMMARY_INITIAL_SYSTEM_PROMPT).replace("{timestamp}", ts)
 
     cards_text = "\n\n".join(_serialize_card(c) for c in cards)
     user_msg = (
@@ -187,7 +188,7 @@ def build_rolling_messages(
     Accepts a single card dict (legacy) or a list of cards (batched).
     """
     ts = current_timestamp_line()
-    system = GROUP_SUMMARY_ROLLING_SYSTEM_PROMPT.format(timestamp=ts)
+    system = get_prompt("group_summary_rolling", GROUP_SUMMARY_ROLLING_SYSTEM_PROMPT).replace("{timestamp}", ts)
 
     # Support both single card (legacy callers) and batched list
     if isinstance(new_cards, dict):

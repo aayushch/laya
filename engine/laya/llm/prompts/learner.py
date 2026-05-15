@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from laya.llm.prompts import current_timestamp_line
+from laya.llm.prompts.overrides import get_prompt
 
 
 LEARNER_SYSTEM_PROMPT = """\
@@ -94,7 +95,7 @@ Extract rules from the patterns you observe. Respond with valid JSON matching th
 If no clear patterns exist (corrections are all one-off), return an empty rules array."""
 
     return [
-        {"role": "system", "content": LEARNER_SYSTEM_PROMPT},
+        {"role": "system", "content": get_prompt("learner", LEARNER_SYSTEM_PROMPT)},
         {"role": "user", "content": user_message},
     ]
 

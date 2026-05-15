@@ -206,6 +206,10 @@ async def lifespan(app: FastAPI):
     # Load API keys from OS keychain into environment
     load_all_keys_to_env()
 
+    # Load custom prompt overrides from ~/.laya/prompts/
+    from laya.llm.prompts.overrides import load_custom_prompts
+    load_custom_prompts()
+
     # Auto-detect agent binary paths (if not already configured)
     try:
         from laya.config import detect_agent_paths, save_settings

@@ -214,6 +214,27 @@ On first launch, the engine creates config files in `~/.laya/`:
 
 API keys (Anthropic, OpenAI, Google, etc.) are stored securely in your OS keychain and can be configured through the Settings UI.
 
+### Custom Prompts
+
+Laya's AI pipeline uses system prompts at every stage (routing, staging, summarization, chat, etc.). All prompts ship with sensible defaults, but you can override any of them by placing files in `~/.laya/prompts/`:
+
+```bash
+mkdir -p ~/.laya/prompts
+
+# Override the router prompt (controls event classification)
+vim ~/.laya/prompts/router.md
+
+# Override a worker persona
+vim ~/.laya/prompts/engineer.md
+
+# Reload without restarting
+curl -X POST http://127.0.0.1:8420/prompts/reload
+```
+
+Available prompt files: `router.md`, `stager.md`, `omni.md`, `group_summary_initial.md`, `group_summary_rolling.md`, `briefing.md`, `summarizer.md`, `summarizer_status_change.md`, `engineer.md`, `comms.md`, `sales.md`, `hr.md`, `ops.md`, `finance.md`, `chat.md`, `chat_title.md`, `chat_polish.md`, `learner.md`, `context_learner.md`, `trace_narrative.md`, `trace_summary.md`, `trace_filter.md`.
+
+Custom prompts fully replace the built-in default for that stage. If a file is deleted, the hardcoded default is used automatically. The engine never creates or modifies files in this directory. Use `GET /prompts` to check which prompts are currently overridden.
+
 ### Data Storage
 
 | Store | Location | Purpose |

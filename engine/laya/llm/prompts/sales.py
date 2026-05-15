@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from laya.llm.prompts import current_timestamp_line
+from laya.llm.prompts.overrides import get_prompt
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 
@@ -125,7 +126,7 @@ Classification: {router_output.category.value} / {router_output.persona.value} /
 Respond with a drafted reply, the tone, a short account_context note, and your reasoning."""
 
     return [
-        {"role": "system", "content": SALES_SYSTEM_PROMPT},
+        {"role": "system", "content": get_prompt("sales", SALES_SYSTEM_PROMPT)},
         {"role": "user", "content": user_message},
     ]
 

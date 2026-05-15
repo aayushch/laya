@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from laya.llm.prompts import current_timestamp_line
+from laya.llm.prompts.overrides import get_prompt
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 
@@ -90,7 +91,7 @@ Research plan from Router:
 Produce a clear, detailed prompt that the coding agent can execute in the repository."""
 
     return [
-        {"role": "system", "content": ENGINEER_SYSTEM_PROMPT},
+        {"role": "system", "content": get_prompt("engineer", ENGINEER_SYSTEM_PROMPT)},
         {"role": "user", "content": user_message},
     ]
 

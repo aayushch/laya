@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from laya.llm.prompts import current_timestamp_line
+from laya.llm.prompts.overrides import get_prompt
 
 
 RELEVANCE_FILTER_SYSTEM = """\
@@ -72,6 +73,6 @@ def build_relevance_filter_messages(
     )
 
     return [
-        {"role": "system", "content": RELEVANCE_FILTER_SYSTEM},
+        {"role": "system", "content": get_prompt("trace_filter", RELEVANCE_FILTER_SYSTEM)},
         {"role": "user", "content": "\n".join(lines)},
     ]
