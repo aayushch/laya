@@ -278,11 +278,15 @@
 	}
 
 	// ── Portal tooltip ──
-	let fixedTooltip = $state<{ text: string; top: number; left: number; maxWidth: number; color?: string } | null>(null);
+	let fixedTooltip = $state<{ text: string; top: number; left?: number; right?: number; maxWidth: number; color?: string } | null>(null);
 
 	function showTooltip(el: HTMLElement, text: string, opts?: { maxWidth?: number; color?: string }) {
 		const rect = el.getBoundingClientRect();
-		fixedTooltip = { text, top: rect.bottom + 4, left: rect.left, maxWidth: opts?.maxWidth ?? 320, color: opts?.color };
+		const useRight = rect.left > window.innerWidth / 2;
+		fixedTooltip = {
+			text, top: rect.bottom + 4, maxWidth: opts?.maxWidth ?? 320, color: opts?.color,
+			...(useRight ? { right: window.innerWidth - rect.right } : { left: rect.left })
+		};
 	}
 
 	function hideTooltip() { fixedTooltip = null; }
@@ -342,11 +346,15 @@
 						<tbody class="divide-y {$glassTheme ? 'divide-white/[0.04]' : 'divide-surface-700/50'}">
 							{#each deadEvents as evt (evt.event_id)}
 								<tr class="transition-all duration-300 ease-out hover:bg-surface-800/50 {dismissing.has(evt.event_id) ? 'opacity-0 translate-x-4' : 'opacity-100 translate-x-0'}">
-									<td class="whitespace-nowrap px-3 py-2 text-surface-300">
-										{formatTime(evt.created_at)}
+									<td class="px-3 py-2 text-surface-300">
+										<span class="block truncate">{formatTime(evt.created_at)}</span>
 									</td>
 									<td class="px-3 py-2">
-										<span class="rounded bg-surface-700 px-1.5 py-0.5 text-surface-300">
+										<span
+											class="inline-block max-w-full truncate rounded bg-surface-700 px-1.5 py-0.5 text-surface-300"
+											onmouseenter={(e) => { const el = e.currentTarget; if (el.scrollWidth > el.clientWidth) showTooltip(el, evt.source_platform); }}
+											onmouseleave={hideTooltip}
+										>
 											{evt.source_platform}
 										</span>
 									</td>
@@ -374,8 +382,8 @@
 											{truncateError(evt.last_error)}
 										</span>
 									</td>
-									<td class="whitespace-nowrap px-3 py-2 text-surface-400">
-										{evt.processing_attempts} attempt{evt.processing_attempts !== 1 ? 's' : ''}{#if evt.manual_retries > 0}, retried {evt.manual_retries}x{/if}
+									<td class="px-3 py-2 text-surface-400">
+										<span class="block truncate">{evt.processing_attempts} attempt{evt.processing_attempts !== 1 ? 's' : ''}{#if evt.manual_retries > 0}, retried {evt.manual_retries}x{/if}</span>
 									</td>
 									<td class="px-3 py-2">
 										<button
@@ -447,12 +455,16 @@
 						<tbody class="divide-y {$glassTheme ? 'divide-white/[0.04]' : 'divide-surface-700/50'}">
 							{#each ingestionErrors as err (err.error_id)}
 								<tr class="transition-all duration-300 ease-out hover:bg-surface-800/50 {dismissingIngestion.has(err.error_id) ? 'opacity-0 translate-x-4' : 'opacity-100 translate-x-0'}">
-									<td class="whitespace-nowrap px-3 py-2 text-surface-300">
-										{formatTime(err.last_occurred_at)}
+									<td class="px-3 py-2 text-surface-300">
+										<span class="block truncate">{formatTime(err.last_occurred_at)}</span>
 									</td>
 									<td class="px-3 py-2">
 										{#if err.platform}
-											<span class="rounded bg-surface-700 px-1.5 py-0.5 text-surface-300">
+											<span
+												class="inline-block max-w-full truncate rounded bg-surface-700 px-1.5 py-0.5 text-surface-300"
+												onmouseenter={(e) => { const el = e.currentTarget; if (el.scrollWidth > el.clientWidth) showTooltip(el, err.platform); }}
+												onmouseleave={hideTooltip}
+											>
 												{err.platform}
 											</span>
 										{:else}
@@ -482,7 +494,7 @@
 											{truncateError(err.error_message)}
 										</span>
 									</td>
-									<td class="whitespace-nowrap px-3 py-2 text-surface-400">
+									<td class="px-3 py-2 text-surface-400">
 										{err.occurrence_count}x
 									</td>
 									<td class="px-3 py-2">
@@ -661,7 +673,7 @@
 								{#if entry.success}
 									<span class="rounded-full bg-green-900/30 px-2 py-0.5 text-green-400">OK</span>
 								{:else}
-									<span class="rounded-full bg-red-900/30 px-2 py-0.5 text-red-400" title={entry.error ?? ''}>ERR</span>
+									<span class="cursor-help rounded-full bg-red-900/30 px-2 py-0.5 text-red-400" onmouseenter={(e) => entry.error && showTooltip(e.currentTarget, entry.error, { maxWidth: 400, color: 'text-red-400' })} onmouseleave={hideTooltip}>ERR</span>
 								{/if}
 							</td>
 						</tr>
@@ -698,7 +710,7 @@
 	<span
 		use:portal
 		class="pointer-events-none fixed z-[100] max-w-sm whitespace-normal break-words rounded-md border border-transparent glass-tooltip px-2.5 py-1.5 text-laya-secondary font-normal {fixedTooltip.color ?? 'text-surface-200'}"
-		style="top: {fixedTooltip.top}px; left: {fixedTooltip.left}px; max-width: {fixedTooltip.maxWidth}px;"
+		style="top: {fixedTooltip.top}px; {fixedTooltip.right != null ? `right: ${fixedTooltip.right}px` : `left: ${fixedTooltip.left}px`}; max-width: {fixedTooltip.maxWidth}px;"
 	>
 		{fixedTooltip.text}
 	</span>

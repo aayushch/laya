@@ -132,15 +132,16 @@
         50
       ],
       "parameters": {
+        "authentication": "oAuth2",
         "resource": "message",
         "operation": "sendMessage",
         "channel": "={{ $json.body.payload.channel }}",
         "text": "={{ $json.body.payload.message }}"
       },
       "credentials": {
-        "slackApi": {
+        "slackOAuth2Api": {
           "id": "",
-          "name": "slackApi"
+          "name": "slackOAuth2Api"
         }
       },
       "onError": "continueErrorOutput"
@@ -154,6 +155,7 @@
         250
       ],
       "parameters": {
+        "authentication": "oAuth2",
         "resource": "message",
         "operation": "sendMessage",
         "channel": "={{ $json.body.payload.channel }}",
@@ -163,9 +165,9 @@
         }
       },
       "credentials": {
-        "slackApi": {
+        "slackOAuth2Api": {
           "id": "",
-          "name": "slackApi"
+          "name": "slackOAuth2Api"
         }
       },
       "onError": "continueErrorOutput"
@@ -179,6 +181,7 @@
         450
       ],
       "parameters": {
+        "authentication": "oAuth2",
         "resource": "reaction",
         "operation": "addReaction",
         "channel": "={{ $json.body.payload.channel }}",
@@ -186,9 +189,9 @@
         "timestamp": "={{ $json.body.payload.timestamp }}"
       },
       "credentials": {
-        "slackApi": {
+        "slackOAuth2Api": {
           "id": "",
-          "name": "slackApi"
+          "name": "slackOAuth2Api"
         }
       },
       "onError": "continueErrorOutput"
@@ -420,6 +423,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.03.2"
+    "laya_version": "2026.05.3"
   }
 }

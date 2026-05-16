@@ -15,6 +15,7 @@ from laya.agents.base import CodingAgent
 from laya.agents.claude_code import ClaudeCodeAgent
 from laya.agents.codex_cli import CodexCliAgent
 from laya.agents.gemini_cli import GeminiCliAgent
+from laya.agents.pi_cli import PiCliAgent
 from laya.config import get_agent_binary, load_settings
 from laya.db.sqlite import get_db
 from laya.models.workspace import AgentType, SessionStatus, WorkspaceEvent
@@ -39,6 +40,8 @@ def _create_agent(agent_type: AgentType) -> CodingAgent:
             return GeminiCliAgent(binary_path=binary)
         case AgentType.CODEX_CLI:
             return CodexCliAgent(binary_path=binary)
+        case AgentType.PI_CLI:
+            return PiCliAgent(binary_path=binary)
         case _:
             raise ValueError(f"Unknown agent type: {agent_type}")
 
@@ -399,6 +402,12 @@ async def resume_conversation(
             codex_agent._thread_id = agent_session_id
             codex_agent._repo_path = repo_path
             agent = codex_agent
+        elif agent_type == AgentType.PI_CLI:
+            pi_agent = PiCliAgent()
+            pi_agent._session_id = session_id
+            pi_agent._pi_session_id = agent_session_id
+            pi_agent._repo_path = repo_path
+            agent = pi_agent
         else:
             raise ValueError(f"Agent type {agent_type.value} does not support session resumption")
 

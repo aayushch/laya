@@ -23,7 +23,26 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "={{ $env.LAYA_ENGINE_URL }}/metadata/slack-channels",
+        "url": "https://slack.com/api/conversations.list",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "slackOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "types",
+              "value": "public_channel,private_channel,im,mpim"
+            },
+            {
+              "name": "exclude_archived",
+              "value": "true"
+            },
+            {
+              "name": "limit",
+              "value": "200"
+            }
+          ]
+        },
         "options": {}
       },
       "name": "Get Channels",
@@ -36,7 +55,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const channels = $input.first().json.value ?? [];\nconst oldest = String(Math.floor((Date.now() - 150000) / 1000));\nreturn channels\n  .filter(c => c.id)\n  .map(c => ({\n    json: {\n      channel_id: c.id,\n      channel_name: c.name || c.id,\n      oldest: oldest\n    }\n  }));"
+        "jsCode": "const channels = $input.first().json.channels ?? [];\nconst oldest = String(Math.floor((Date.now() - 150000) / 1000));\nreturn channels\n  .filter(c => c.id)\n  .map(c => ({\n    json: {\n      channel_id: c.id,\n      channel_name: c.name || c.id,\n      oldest: oldest\n    }\n  }));"
       },
       "name": "Build Channel Items",
       "type": "n8n-nodes-base.code",
@@ -51,7 +70,7 @@
         "method": "GET",
         "url": "https://slack.com/api/conversations.history",
         "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "slackApi",
+        "nodeCredentialType": "slackOAuth2Api",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -225,6 +244,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.05.1"
+    "laya_version": "2026.05.2"
   }
 }

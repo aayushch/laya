@@ -3,6 +3,7 @@
 	import { invoke } from '@tauri-apps/api/core';
 	import { engineApi } from '$lib/api/engine';
 	import type { CustomProvider, DiscoveredModel } from '$lib/api/types';
+	import { CODING_AGENTS } from '$lib/config';
 
 	interface RepoDetection {
 		path: string;
@@ -738,12 +739,7 @@
 			<p class="text-sm text-surface-400">Choose a coding agent for automated code tasks, or skip if you don't need one.</p>
 
 			<div class="space-y-2">
-				{#each [
-					{ value: 'none', label: 'No Agent', desc: 'I\'ll handle code tasks myself' },
-					{ value: 'claude_code', label: 'Claude Code', desc: 'Anthropic CLI agent' },
-					{ value: 'gemini_cli', label: 'Gemini CLI', desc: 'Google CLI agent' },
-					{ value: 'codex_cli', label: 'Codex CLI', desc: 'OpenAI CLI agent' }
-				] as option}
+				{#each CODING_AGENTS as option}
 					<label
 						class="flex cursor-pointer items-center gap-3 rounded-md border p-3 transition-colors
 							{codingAgent === option.value
@@ -753,7 +749,7 @@
 						<input type="radio" bind:group={codingAgent} value={option.value} class="accent-laya-orange" />
 						<div>
 							<div class="text-sm font-medium">{option.label}</div>
-							<div class="text-xs text-surface-400">{option.desc}</div>
+							<div class="text-xs text-surface-400">{option.description}</div>
 						</div>
 					</label>
 				{/each}

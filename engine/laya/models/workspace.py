@@ -13,6 +13,7 @@ class AgentType(str, Enum):
     CLAUDE_CODE = "claude_code"
     GEMINI_CLI = "gemini_cli"
     CODEX_CLI = "codex_cli"
+    PI_CLI = "pi_cli"
 
 
 class SessionStatus(str, Enum):

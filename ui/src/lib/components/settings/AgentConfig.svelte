@@ -2,16 +2,10 @@
 	import { onMount } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
-
-	const agents = [
-		{ value: 'none', label: 'None', description: 'No coding agent — handle code tasks manually' },
-		{ value: 'claude_code', label: 'Claude Code', description: 'Anthropic CLI — structured JSON streaming, approval prompts' },
-		{ value: 'gemini_cli', label: 'Gemini CLI', description: 'Google CLI — structured JSON output' },
-		{ value: 'codex_cli', label: 'Codex CLI', description: 'OpenAI CLI — structured JSON output' }
-	];
+	import { CODING_AGENTS, DEFAULT_AGENT_PATHS, AGENT_BINARY_NAMES } from '$lib/config';
 
 	let selected = $state('claude_code');
-	let agentPaths = $state<Record<string, string>>({ claude_code: '', gemini_cli: '', codex_cli: '' });
+	let agentPaths = $state<Record<string, string>>({ ...DEFAULT_AGENT_PATHS });
 	let loading = $state(true);
 	let saving = $state(false);
 	let detecting = $state(false);
@@ -23,7 +17,7 @@
 		try {
 			const settings = await engineApi.getSettings();
 			selected = settings.coding_agent || 'claude_code';
-			agentPaths = settings.agent_paths || { claude_code: '', gemini_cli: '', codex_cli: '' };
+			agentPaths = settings.agent_paths || { ...DEFAULT_AGENT_PATHS };
 		} catch {
 			error = 'Failed to load settings';
 		} finally {
@@ -85,7 +79,7 @@
 		<p class="mb-4 text-laya-secondary text-surface-400">Select which CLI coding agent Laya uses for ENGINEER tasks</p>
 
 		<div class="space-y-2">
-			{#each agents as agent}
+			{#each CODING_AGENTS as agent}
 				<button
 					class="flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors
 						{selected === agent.value
@@ -143,21 +137,23 @@
 		</div>
 
 		{#if hasAgent}
-			<div class="flex items-center gap-2">
-				<input
-					type="text"
-					class="flex-1 rounded-md border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-200 placeholder-surface-500 focus:border-laya-orange focus:outline-none"
-					placeholder="/path/to/{selected === 'claude_code' ? 'claude' : selected === 'gemini_cli' ? 'gemini' : 'codex'}"
-					value={agentPaths[selected] || ''}
-					onchange={(e) => saveAgentPath(selected, (e.target as HTMLInputElement).value)}
-					disabled={!hasAgent}
-				/>
-			</div>
-			{#if agentPaths[selected]}
-				<p class="mt-1.5 text-laya-secondary text-green-400/70">{agentPaths[selected]}</p>
-			{:else}
-				<p class="mt-1.5 text-laya-secondary text-yellow-400/70">No path configured — agent may not be found in bundled app mode</p>
-			{/if}
+			{#key selected}
+				<div class="flex items-center gap-2">
+					<input
+						type="text"
+						class="flex-1 rounded-md border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-200 placeholder-surface-500 focus:border-laya-orange focus:outline-none"
+						placeholder="/path/to/{AGENT_BINARY_NAMES[selected] || selected}"
+						value={agentPaths[selected] || ''}
+						onchange={(e) => saveAgentPath(selected, (e.target as HTMLInputElement).value)}
+						disabled={!hasAgent}
+					/>
+				</div>
+				{#if agentPaths[selected]}
+					<p class="mt-1.5 text-laya-secondary text-green-400/70">{agentPaths[selected]}</p>
+				{:else}
+					<p class="mt-1.5 text-laya-secondary text-yellow-400/70">No path configured — agent may not be found in bundled app mode</p>
+				{/if}
+			{/key}
 		{/if}
 	</div>
 

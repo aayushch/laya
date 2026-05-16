@@ -854,9 +854,24 @@ html, body {
 	border-color: rgb(0 0 0 / 0.1) !important;
 }
 
+/* Non-glass dividers and borders: surface-600/700 are near-white in light mode */
+[data-theme='light'] .divide-surface-700\/50 > :not([hidden]) ~ :not([hidden]),
+[data-theme='light'] .divide-surface-700 > :not([hidden]) ~ :not([hidden]) {
+	border-color: rgb(0 0 0 / 0.08) !important;
+}
+[data-theme='light'] .border-surface-700,
+[data-theme='light'] .border-surface-700\/50,
+[data-theme='light'] .border-surface-700\/60,
+[data-theme='light'] .border-surface-600,
+[data-theme='light'] .border-surface-600\/50,
+[data-theme='light'] .border-surface-600\/40 {
+	border-color: rgb(0 0 0 / 0.1) !important;
+}
+
 /* White-opacity utilities — invisible on cream backgrounds in
    light mode. Global overrides (glass-theme only) so standalone
    glass elements (e.g. coherence search) also get the fix. */
+[data-theme='light'][data-glass-theme] .border-white\/\[0\.04\],
 [data-theme='light'][data-glass-theme] .border-white\/\[0\.06\],
 [data-theme='light'][data-glass-theme] .border-white\/\[0\.08\],
 [data-theme='light'][data-glass-theme] .border-white\/\[0\.10\],
@@ -890,7 +905,11 @@ html, body {
 [data-theme='light'] .glass-section .divide-white\/\[0\.05\] > :not(:last-child),
 [data-theme='light'] .glass-section .divide-white\/\[0\.06\] > :not(:last-child),
 [data-theme='light'] .glass-section .divide-white\/\[0\.05\] > :not([hidden]) ~ :not([hidden]),
-[data-theme='light'] .glass-section .divide-white\/\[0\.06\] > :not([hidden]) ~ :not([hidden]) {
+[data-theme='light'] .glass-section .divide-white\/\[0\.06\] > :not([hidden]) ~ :not([hidden]),
+[data-theme='light'] .glass-section.divide-white\/\[0\.05\] > :not(:last-child),
+[data-theme='light'] .glass-section.divide-white\/\[0\.06\] > :not(:last-child),
+[data-theme='light'] .glass-section.divide-white\/\[0\.05\] > :not([hidden]) ~ :not([hidden]),
+[data-theme='light'] .glass-section.divide-white\/\[0\.06\] > :not([hidden]) ~ :not([hidden]) {
 	border-color: rgb(0 0 0 / 0.08) !important;
 }
 [data-theme='light'] .glass-section .bg-white\/\[0\.04\],

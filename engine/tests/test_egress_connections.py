@@ -76,33 +76,10 @@ class TestValidateCredentials:
             assert valid is True
 
     @pytest.mark.asyncio
-    async def test_slack_valid(self):
-        with patch("laya.egress.connections.httpx.AsyncClient") as mock_client_cls:
-            mock_client = AsyncMock()
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock()
-            mock_response = MagicMock()
-            mock_response.json.return_value = {"ok": True}
-            mock_client.post = AsyncMock(return_value=mock_response)
-            mock_client_cls.return_value = mock_client
-
-            valid, error = await _validate_credentials("slack", {"accessToken": "xoxb-abc"})
-            assert valid is True
-
-    @pytest.mark.asyncio
-    async def test_slack_invalid(self):
-        with patch("laya.egress.connections.httpx.AsyncClient") as mock_client_cls:
-            mock_client = AsyncMock()
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock()
-            mock_response = MagicMock()
-            mock_response.json.return_value = {"ok": False, "error": "invalid_auth"}
-            mock_client.post = AsyncMock(return_value=mock_response)
-            mock_client_cls.return_value = mock_client
-
-            valid, error = await _validate_credentials("slack", {"accessToken": "bad"})
-            assert valid is False
-            assert "invalid_auth" in error
+    async def test_slack_oauth_skips_validation(self):
+        valid, error = await _validate_credentials("slack", {})
+        assert valid is True
+        assert error is None
 
     @pytest.mark.asyncio
     async def test_bitbucket_valid(self):

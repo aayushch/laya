@@ -2,6 +2,7 @@
 	import { slide } from 'svelte/transition';
 	import { engineApi } from '$lib/api/engine';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
+	import { glassTheme } from '$lib/stores/glassTheme';
 	import PlatformIcon from './PlatformIcon.svelte';
 	import type { EgressConnection } from '$lib/api/types';
 
@@ -75,10 +76,10 @@
 	{#if !hasConnections}
 		<!-- Unconnected: clickable row -->
 		<button
-			class="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-700/30"
+			class="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors {$glassTheme ? 'hover:bg-white/[0.04]' : 'hover:bg-surface-700/30'}"
 			onclick={() => onConnect(platformKey)}
 		>
-			<div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-surface-700/50 text-surface-400">
+			<div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md {$glassTheme ? 'bg-white/[0.06] text-surface-400' : 'bg-surface-700/50 text-surface-400'}">
 				<PlatformIcon platform={platformKey} size={18} />
 			</div>
 			<div class="min-w-0 flex-1">
@@ -89,7 +90,7 @@
 	{:else}
 		<!-- Connected: row with expand toggle -->
 		<button
-			class="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-700/30"
+			class="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors {$glassTheme ? 'hover:bg-white/[0.04]' : 'hover:bg-surface-700/30'}"
 			onclick={() => expanded = !expanded}
 		>
 			<div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md
@@ -136,9 +137,9 @@
 
 		<!-- Expanded section -->
 		{#if expanded}
-			<div transition:slide={{ duration: $reducedMotion ? 0 : 200 }} class="border-t border-surface-700/50 bg-surface-900/30 px-4 py-3 space-y-2">
+			<div transition:slide={{ duration: $reducedMotion ? 0 : 200 }} class="border-t px-4 py-3 space-y-2 {$glassTheme ? 'border-white/[0.06] bg-white/[0.02]' : 'border-surface-700/50 bg-surface-900/30'}">
 				{#each connections as conn (conn.connection_id)}
-					<div class="flex items-center justify-between gap-2 rounded px-3 py-2 bg-surface-800/60">
+					<div class="flex items-center justify-between gap-2 rounded px-3 py-2 {$glassTheme ? 'bg-white/[0.04]' : 'bg-surface-800/60'}">
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-1.5 text-laya-secondary">
 								{#if conn.status === 'connected'}
@@ -197,7 +198,7 @@
 				<!-- Add another account -->
 				<button
 					onclick={(e) => { e.stopPropagation(); onConnect(platformKey); }}
-					class="w-full rounded border border-dashed border-surface-700 px-3 py-1.5 text-laya-secondary text-surface-500 hover:text-surface-300 hover:border-surface-500 transition-colors"
+					class="w-full rounded border border-dashed px-3 py-1.5 text-laya-secondary text-surface-500 hover:text-surface-300 transition-colors {$glassTheme ? 'border-white/[0.08] hover:border-white/[0.15]' : 'border-surface-700 hover:border-surface-500'}"
 				>
 					+ Add another account
 				</button>
@@ -209,7 +210,7 @@
 	{#if confirmDisconnectId}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
-			class="absolute inset-0 z-10 flex items-center justify-center bg-surface-900/95 backdrop-blur-sm"
+			class="absolute inset-0 z-10 flex items-center justify-center backdrop-blur-sm {$glassTheme ? 'bg-black/60' : 'bg-surface-900/95'}"
 			onkeydown={(e) => { if (e.key === 'Escape') confirmDisconnectId = null; }}
 		>
 			<div class="px-4 py-3 text-center">

@@ -132,20 +132,11 @@ PLATFORMS: dict[str, dict] = {
         "label": "Slack",
         "category": "communication",
         "icon": "slack",
-        "n8n_type": "slackApi",
+        "n8n_type": "slackOAuth2Api",
         "n8n_node": "n8n-nodes-base.slack",
-        "oauth": False,
+        "oauth": True,
         "workflows": ["Laya - Slack Ingestion", "Laya - Slack Executor"],
-        "fields": [
-            {
-                "key": "accessToken",
-                "label": "User Token or Bot Token",
-                "type": "password",
-                "placeholder": "xoxp-... or xoxb-...",
-                "help": "User token (xoxp-) reads any channel you're in without a bot. From api.slack.com/apps -> OAuth & Permissions -> User OAuth Token",
-            },
-        ],
-        "n8n_defaults": {"notice": ""},
+        "fields": [],
     },
     "discord": {
         "label": "Discord",

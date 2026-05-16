@@ -35,6 +35,7 @@ DEFAULT_SETTINGS = {
         "claude_code": "",
         "gemini_cli": "",
         "codex_cli": "",
+        "pi_cli": "",
     },
     "privacy": {
         "tier3_sources": ["gmail", "outlook", "slack_dm"],
@@ -310,6 +311,7 @@ _AGENT_BINARIES = {
     "claude_code": "claude",
     "gemini_cli": "gemini",
     "codex_cli": "codex",
+    "pi_cli": "pi",
 }
 
 # Extra PATH locations to search — covers common install paths that

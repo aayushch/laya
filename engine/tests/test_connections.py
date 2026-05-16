@@ -75,7 +75,7 @@ class TestGetConnectionsEndpoint:
 
         mock_creds = [
             {"id": "1", "name": "My Jira", "type": "jiraSoftwareCloudApi", "createdAt": "2026-01-01", "updatedAt": "2026-01-02"},
-            {"id": "2", "name": "My Slack", "type": "slackApi", "createdAt": "2026-01-01", "updatedAt": "2026-01-02"},
+            {"id": "2", "name": "My Slack", "type": "slackOAuth2Api", "createdAt": "2026-01-01", "updatedAt": "2026-01-02"},
             {"id": "3", "name": "Some Custom", "type": "customUnknownApi", "createdAt": "2026-01-01", "updatedAt": "2026-01-02"},
         ]
 
@@ -233,9 +233,9 @@ class TestCreateConnectionEndpoint:
                 resp = await client.post(
                     "/connections",
                     json={
-                        "platform": "slack",
-                        "name": "My Slack",
-                        "credentials": {"accessToken": "xoxb-123"},
+                        "platform": "github",
+                        "name": "My GitHub",
+                        "credentials": {"user": "test", "accessToken": "ghp_123"},
                     },
                 )
 

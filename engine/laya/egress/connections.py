@@ -304,7 +304,7 @@ async def _validate_credentials(platform: str, credentials: dict) -> tuple[bool,
         elif platform == "bitbucket":
             return await _validate_bitbucket(credentials)
         elif platform == "slack":
-            return await _validate_slack(credentials)
+            return True, None
         elif platform == "linear":
             return await _validate_linear(credentials)
         elif platform == "gitlab":
@@ -313,8 +313,7 @@ async def _validate_credentials(platform: str, credentials: dict) -> tuple[bool,
             return await _validate_discord(credentials)
         elif platform == "smtp":
             return await _validate_smtp(credentials)
-        elif platform in ("gmail", "calendar"):
-            # OAuth platforms — tokens are pre-validated during OAuth flow
+        elif platform in ("gmail", "calendar", "outlook", "outlook_calendar"):
             return True, None
         else:
             # Unknown platform — skip validation
@@ -392,26 +391,6 @@ async def _validate_bitbucket(creds: dict) -> tuple[bool, str | None]:
         return False, "Invalid username or app password"
     else:
         return False, f"Bitbucket returned HTTP {resp.status_code}"
-
-
-async def _validate_slack(creds: dict) -> tuple[bool, str | None]:
-    """Validate Slack bot token by calling auth.test."""
-    token = creds.get("accessToken", "")
-    if not token:
-        return False, "Missing accessToken (bot token)"
-
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            "https://slack.com/api/auth.test",
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=10.0,
-        )
-
-    data = resp.json()
-    if data.get("ok"):
-        return True, None
-    else:
-        return False, f"Slack auth failed: {data.get('error', 'unknown error')}"
 
 
 async def _validate_linear(creds: dict) -> tuple[bool, str | None]:

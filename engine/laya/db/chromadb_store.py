@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from functools import partial
 from typing import Any
 
@@ -23,6 +24,8 @@ _client: chromadb.ClientAPI | None = None
 _collection: Collection | None = None
 _embedding_model: Any = None  # Lazy-loaded SentenceTransformer (or None if unavailable)
 _embedding_backend: str = "unknown"  # "nomic", "mpnet", "minilm", or "chromadb_default"
+# Serializes model.encode() calls — nomic's rotary embedding cache is not thread-safe.
+_encode_lock = threading.Lock()
 
 # Supported embedding models for benchmarking.
 # Changing model requires a fresh ChromaDB collection (delete ~/.laya/data/chromadb/).
@@ -92,7 +95,8 @@ class LayaDocumentEmbeddingFunction(EmbeddingFunction[Documents]):
         prefix = _active_model_config["doc_prefix"] if _active_model_config else ""
         if prefix:
             input = [f"{prefix}{doc}" for doc in input]
-        embeddings = model.encode(input).tolist()
+        with _encode_lock:
+            embeddings = model.encode(input).tolist()
         return embeddings
 
 
@@ -104,7 +108,8 @@ class LayaQueryEmbeddingFunction(EmbeddingFunction[Documents]):
         prefix = _active_model_config["query_prefix"] if _active_model_config else ""
         if prefix:
             input = [f"{prefix}{doc}" for doc in input]
-        embeddings = model.encode(input).tolist()
+        with _encode_lock:
+            embeddings = model.encode(input).tolist()
         return embeddings
 
 

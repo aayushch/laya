@@ -81,6 +81,25 @@ OAUTH_PROVIDERS: dict[str, dict] = {
         ],
         "n8n_type": "microsoftOutlookOAuth2Api",
     },
+    "slack": {
+        "auth_url": "https://slack.com/oauth/v2/authorize",
+        "token_url": "https://slack.com/api/oauth.v2.access",
+        "scopes": [],
+        "user_scopes": [
+            "channels:history",
+            "channels:read",
+            "groups:history",
+            "groups:read",
+            "im:history",
+            "im:read",
+            "mpim:history",
+            "mpim:read",
+            "chat:write",
+            "reactions:write",
+            "users:read",
+        ],
+        "n8n_type": "slackOAuth2Api",
+    },
 }
 
 
@@ -174,17 +193,25 @@ def build_auth_url(platform: str, redirect_uri: str, connection_name: str | None
     }
     _cleanup_expired_states()
 
-    params = {
+    params: dict[str, str] = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": " ".join(provider["scopes"]),
         "state": state,
-        "access_type": "offline",  # Google: request refresh token
-        "prompt": "consent",       # Google: always show consent to get refresh token
-        "code_challenge": code_challenge,
-        "code_challenge_method": "S256",
     }
+
+    # Slack OAuth v2 uses "user_scope" for user-token scopes (separate from bot "scope").
+    # Other providers use the standard "scope" param.
+    if provider.get("user_scopes"):
+        params["user_scope"] = ",".join(provider["user_scopes"])
+        if provider["scopes"]:
+            params["scope"] = " ".join(provider["scopes"])
+    else:
+        params["scope"] = " ".join(provider["scopes"])
+        params["access_type"] = "offline"    # Google: request refresh token
+        params["prompt"] = "consent"         # Google: always show consent to get refresh token
+        params["code_challenge"] = code_challenge
+        params["code_challenge_method"] = "S256"
 
     auth_url = f"{provider['auth_url']}?{urlencode(params)}"
 
@@ -247,6 +274,16 @@ async def handle_callback(
         token_data = resp.json()
     except Exception as e:
         return {"error": f"Token exchange failed: {str(e)}"}
+
+    # Slack OAuth v2 nests user tokens under "authed_user" — lift them to top level
+    # so the rest of the flow can treat all providers uniformly.
+    if platform == "slack" and "authed_user" in token_data:
+        authed = token_data["authed_user"]
+        token_data["access_token"] = authed.get("access_token")
+        token_data["refresh_token"] = authed.get("refresh_token")
+        token_data["expires_in"] = authed.get("expires_in", 0)
+        token_data["token_type"] = authed.get("token_type", "bearer")
+        token_data["scope"] = authed.get("scope", "")
 
     access_token = token_data.get("access_token")
     refresh_token = token_data.get("refresh_token")
@@ -465,6 +502,7 @@ async def _provision_oauth_to_n8n(
             "gmailOAuth2": "n8n-nodes-base.gmail",
             "googleCalendarOAuth2Api": "n8n-nodes-base.googleCalendar",
             "microsoftOutlookOAuth2Api": "n8n-nodes-base.microsoftOutlook",
+            "slackOAuth2Api": "n8n-nodes-base.slack",
         }
         node_type = node_type_map.get(n8n_type, "n8n-nodes-base.httpRequest")
 
@@ -548,6 +586,9 @@ _PLATFORM_NODE_TYPES: dict[str, list[str]] = {
         "n8n-nodes-base.microsoftOutlook",
         "n8n-nodes-base.microsoftOutlookTrigger",
     ],
+    "slack": [
+        "n8n-nodes-base.slack",
+    ],
 }
 
 # Some executor workflows use generic HTTP Request nodes with
@@ -564,6 +605,7 @@ _PLATFORM_HTTP_CRED_TYPES: dict[str, str] = {
     "calendar": "googleCalendarOAuth2Api",
     "outlook": "microsoftOutlookOAuth2Api",
     "outlook_calendar": "microsoftOutlookOAuth2Api",
+    "slack": "slackOAuth2Api",
 }
 
 
