@@ -140,6 +140,7 @@
 		failed:             'glass-card bg-rose-950/50   border-transparent   hover:border-rose-700/35',
 		dismissed:          'glass-card bg-surface-800/30 border-transparent hover:border-surface-600/30 opacity-50 hover:opacity-75',
 	};
+	const glassWorkspaceCardStyle = 'glass-card bg-violet-950/45 border-transparent hover:border-violet-700/30';
 
 	const solidStatusCardStyle: Record<string, string> = {
 		pending:            'bg-amber-950/55  border-transparent  hover:border-amber-700/45  card-pulse-amber',
@@ -151,16 +152,28 @@
 		failed:             'bg-rose-950/60   border-transparent   hover:border-rose-700/50',
 		dismissed:          'bg-surface-800/40 border-transparent hover:border-surface-600/40 opacity-50 hover:opacity-75',
 	};
+	const solidWorkspaceCardStyle = 'bg-violet-950/55 border-transparent hover:border-violet-700/40';
 
 	const statusCardStyle = $derived($glassTheme ? glassStatusCardStyle : solidStatusCardStyle);
+	const workspaceCardStyle = $derived($glassTheme ? glassWorkspaceCardStyle : solidWorkspaceCardStyle);
 	const neutralCardStyle = $derived($glassTheme ? 'glass-card bg-surface-800/40 border-transparent hover:border-laya-orange/35' : 'bg-surface-800 border-transparent hover:border-surface-600');
 
-	const baseCardStyle = $derived(
-		isArchived
-			? ($glassTheme ? 'glass-card bg-surface-900/30 border-transparent opacity-50 hover:opacity-80' : 'bg-surface-900/60 border-transparent opacity-50 hover:opacity-80')
-			: $cardColors
-				? (statusCardStyle[card.status] ?? ($glassTheme ? 'glass-card bg-surface-800/40 border-transparent hover:border-laya-orange/35' : 'bg-surface-800 border-transparent hover:border-laya-orange/30'))
-				: neutralCardStyle
+	const terminalStatuses = new Set(['done', 'failed', 'dismissed', 'archived']);
+
+	const baseCardStyle = $derived.by(() => {
+		if (isArchived) return $glassTheme ? 'glass-card bg-surface-900/30 border-transparent opacity-50 hover:opacity-80' : 'bg-surface-900/60 border-transparent opacity-50 hover:opacity-80';
+		if (!$cardColors) return neutralCardStyle;
+		if (card.has_workspace && !terminalStatuses.has(card.status)) {
+			if (card.status === 'agent_running') return statusCardStyle['agent_running'];
+			return workspaceCardStyle;
+		}
+		return statusCardStyle[card.status] ?? ($glassTheme ? 'glass-card bg-surface-800/40 border-transparent hover:border-laya-orange/35' : 'bg-surface-800 border-transparent hover:border-laya-orange/30');
+	});
+
+	const visualStatus = $derived(
+		card.has_workspace && !terminalStatuses.has(card.status) && card.status !== 'agent_running'
+			? 'awaiting_input'
+			: card.status
 	);
 
 	const isDimmed = $derived(!isSelected && hasSelection && !isArchived);
@@ -290,7 +303,7 @@
 	role="button"
 	tabindex="0"
 	data-card-id={card.card_id}
-	data-status={$glassTheme && $cardColors && !isArchived ? card.status : undefined}
+	data-status={$glassTheme && $cardColors && !isArchived ? visualStatus : undefined}
 	class="group/card relative flex min-h-0 w-full cursor-pointer flex-col rounded-xl border {$glassTheme ? '' : 'shadow-lg'} px-4 pb-2 pt-3 text-left transition-colors hover:z-20 {cardStyle}"
 	onclick={() => onselect(card)}
 	onkeydown={(e) => e.key === 'Enter' && onselect(card)}
@@ -588,7 +601,7 @@
 				</span>
 			{/if}
 			<!-- Status indicator -->
-			<span class="ml-1 flex items-center gap-1 min-w-0 overflow-hidden">
+			<span class="ml-1 flex items-center gap-1 min-w-0 overflow-hidden {card.status === 'awaiting_input' ? 'status-glow-violet' : ''}">
 				<StatusDot status={card.status} size="md" errorMessage={card.last_error} />
 				<span class="text-laya-secondary text-surface-400 truncate" title={card.status === 'failed' && card.last_error ? card.last_error : ''}>{statusLabel[card.status] ?? card.status}</span>
 			</span>

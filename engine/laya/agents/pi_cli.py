@@ -272,7 +272,8 @@ class PiCliAgent(CodingAgent):
         # --- message lifecycle ---
         if event_type == "message_start":
             msg = data.get("message", {})
-            if isinstance(msg, dict) and msg.get("role") == "user":
+            role = msg.get("role", "") if isinstance(msg, dict) else ""
+            if role in ("user", "toolResult"):
                 return []
             self._message_buffer = ""
             return []
@@ -282,7 +283,8 @@ class PiCliAgent(CodingAgent):
 
         if event_type == "message_end":
             msg = data.get("message", {})
-            if isinstance(msg, dict) and msg.get("role") == "user":
+            role = msg.get("role", "") if isinstance(msg, dict) else ""
+            if role in ("user", "toolResult"):
                 return []
 
             events: list[WorkspaceEvent] = []
@@ -357,7 +359,7 @@ class PiCliAgent(CodingAgent):
                 "result": result_text,
                 "is_error": is_error,
             }
-            evt_type = WorkspaceEventType.ERROR if is_error else WorkspaceEventType.TOOL_CALL
+            evt_type = WorkspaceEventType.TOOL_CALL
             return [
                 self._make_event(
                     evt_type,

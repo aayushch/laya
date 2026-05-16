@@ -1506,9 +1506,15 @@ async def _stream_agent_to_card(
         )
         return
 
-    # Broadcast workspace availability
+    # Update card status to agent_running and broadcast
+    db_run = await get_db()
+    await db_run.execute(
+        "UPDATE action_cards SET status = 'agent_running', has_workspace = 1, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+        (card_id,),
+    )
+    await db_run.commit()
     await manager.broadcast(
-        {"type": "card_updated", "card_id": card_id, "payload": {"has_workspace": True, "session_id": session_id}}
+        {"type": "card_updated", "card_id": card_id, "payload": {"has_workspace": True, "status": "agent_running", "session_id": session_id}}
     )
 
     # Stream events
@@ -2017,12 +2023,18 @@ async def run_entity_agent(entity_id: str, body: RunEntityAgentRequest) -> dict:
             "UPDATE action_cards SET has_workspace = 1, updated_at = ? WHERE entity_id = ?",
             (now, entity_id),
         )
+        await db.execute(
+            "UPDATE action_cards SET status = 'agent_running' WHERE card_id = ?",
+            (anchor_card_id,),
+        )
         await db.commit()
 
         for card_row in card_rows:
+            payload: dict = {"has_workspace": True}
+            if card_row["card_id"] == anchor_card_id:
+                payload["status"] = "agent_running"
             await manager.broadcast(
-                {"type": "card_updated", "card_id": card_row["card_id"],
-                 "payload": {"has_workspace": True, "status": "agent_running"}}
+                {"type": "card_updated", "card_id": card_row["card_id"], "payload": payload}
             )
 
         resume_text = body.prompt or "Continue working. Check CONTEXT.md for updated entity context."
@@ -2051,12 +2063,18 @@ async def run_entity_agent(entity_id: str, body: RunEntityAgentRequest) -> dict:
         "UPDATE action_cards SET has_workspace = 1, updated_at = ? WHERE entity_id = ?",
         (now, entity_id),
     )
+    await db.execute(
+        "UPDATE action_cards SET status = 'agent_running' WHERE card_id = ?",
+        (anchor_card_id,),
+    )
     await db.commit()
 
     for card_row in card_rows:
+        payload: dict = {"has_workspace": True}
+        if card_row["card_id"] == anchor_card_id:
+            payload["status"] = "agent_running"
         await manager.broadcast(
-            {"type": "card_updated", "card_id": card_row["card_id"],
-             "payload": {"has_workspace": True}}
+            {"type": "card_updated", "card_id": card_row["card_id"], "payload": payload}
         )
 
     session_id, agent = await session_manager.start_session(

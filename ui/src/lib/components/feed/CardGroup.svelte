@@ -141,6 +141,7 @@
 		agent_running:      'glass-card bg-violet-950/45 border-transparent hover:border-violet-700/30 card-pulse-violet',
 		awaiting_input:     'glass-card bg-violet-950/45 border-transparent hover:border-violet-700/30',
 	};
+	const glassWorkspaceGroupStyle = 'glass-card bg-violet-950/45 border-transparent hover:border-violet-700/30';
 
 	const solidGroupStatusStyle: Record<string, string> = {
 		pending:            'bg-amber-950/55  border-transparent  hover:border-amber-700/45  card-pulse-amber',
@@ -152,8 +153,10 @@
 		agent_running:      'bg-violet-950/55 border-transparent hover:border-violet-700/40 card-pulse-violet',
 		awaiting_input:     'bg-violet-950/55 border-transparent hover:border-violet-700/40',
 	};
+	const solidWorkspaceGroupStyle = 'bg-violet-950/55 border-transparent hover:border-violet-700/40';
 
 	const groupStatusStyle = $derived($glassTheme ? glassGroupStatusStyle : solidGroupStatusStyle);
+	const workspaceGroupStyle = $derived($glassTheme ? glassWorkspaceGroupStyle : solidWorkspaceGroupStyle);
 
 	// Determine dominant status across all cards in the group
 	const dominantStatus = $derived.by(() => {
@@ -166,14 +169,18 @@
 
 	const neutralGroupStyle = $derived($glassTheme ? 'glass-card bg-surface-800/40 border-transparent hover:border-laya-orange/20' : 'bg-surface-800 border-transparent hover:border-surface-600');
 
+	const terminalStatuses = new Set(['done', 'failed', 'dismissed', 'archived']);
+
 	const allArchived = $derived(group.cards.every(c => c.status === 'archived'));
-	const groupStyle = $derived(
-		allArchived
-			? ($glassTheme ? 'glass-card bg-surface-900/30 border-transparent opacity-50 hover:opacity-80' : 'bg-surface-900/60 border-transparent opacity-50 hover:opacity-80')
-			: $cardColors
-				? (groupStatusStyle[dominantStatus] ?? ($glassTheme ? 'glass-card bg-surface-800/40 border-transparent hover:border-laya-orange/20' : 'bg-surface-900 border-transparent hover:border-laya-orange/30'))
-				: neutralGroupStyle
-	);
+	const groupStyle = $derived.by(() => {
+		if (allArchived) return $glassTheme ? 'glass-card bg-surface-900/30 border-transparent opacity-50 hover:opacity-80' : 'bg-surface-900/60 border-transparent opacity-50 hover:opacity-80';
+		if (!$cardColors) return neutralGroupStyle;
+		if (groupHasWorkspace && !terminalStatuses.has(dominantStatus)) {
+			if (dominantStatus === 'agent_running') return groupStatusStyle['agent_running'];
+			return workspaceGroupStyle;
+		}
+		return groupStatusStyle[dominantStatus] ?? ($glassTheme ? 'glass-card bg-surface-800/40 border-transparent hover:border-laya-orange/20' : 'bg-surface-900 border-transparent hover:border-laya-orange/30');
+	});
 
 	const priorityColors: Record<string, string> = {
 		CRITICAL: 'bg-red-600 text-red-50',
@@ -246,6 +253,11 @@
 	const compact = $derived($cardSize === 'compact');
 
 	const groupHasWorkspace = $derived(group.cards.some((c) => c.has_workspace));
+	const visualDominantStatus = $derived(
+		groupHasWorkspace && !terminalStatuses.has(dominantStatus) && dominantStatus !== 'agent_running'
+			? 'awaiting_input'
+			: dominantStatus
+	);
 	const hasBookmark = $derived(group.cards.some((c) => c.bookmarked_at));
 	const isGroupSelected = $derived(
 		group.cards.some((c) => c.card_id === selectedCardId) ||
@@ -342,7 +354,7 @@
 		 the header out of view and leaving empty space at the bottom. clip visually
 		 clips the same way but does NOT create a scroll container. -->
 	<div
-		data-status={$glassTheme && $cardColors && !allArchived && !expanded ? dominantStatus : undefined}
+		data-status={$glassTheme && $cardColors && !allArchived && !expanded ? visualDominantStatus : undefined}
 		class="relative rounded-xl border {$glassTheme ? '' : 'shadow-lg'} transition-all duration-200 {expanded ? '' : 'group/card'}
 			{expanded
 				? ($glassTheme ? 'glass-card border-laya-orange/15 bg-surface-900/50' : 'border-surface-600 bg-surface-900')
@@ -517,7 +529,7 @@
 					>
 						<div bind:this={statusEl} class="flex items-center gap-1.5 min-w-0 overflow-hidden">
 							{#each statusSummary as { status, count }}
-								<span class="flex items-center gap-1 shrink-0">
+								<span class="flex items-center gap-1 shrink-0 {status === 'awaiting_input' ? 'status-glow-violet' : ''}">
 									<StatusDot {status} />
 									<span class="text-laya-micro text-surface-400 whitespace-nowrap">{count} {statusSummaryLabel[status] ?? status}</span>
 								</span>

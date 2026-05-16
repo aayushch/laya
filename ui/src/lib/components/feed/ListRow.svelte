@@ -95,6 +95,7 @@
 		dismissed:          'bg-surface-800/40',
 		archived:           'bg-surface-900/60',
 	};
+	const solidWorkspaceRowStyle = 'bg-violet-950/55';
 	const glassRowStyle: Record<string, string> = {
 		pending:            'glass-card-flat bg-amber-950/45 card-pulse-amber',
 		ready:              'glass-card-flat bg-amber-950/45',
@@ -105,7 +106,25 @@
 		dismissed:          'glass-card-flat bg-surface-800/30',
 		archived:           'glass-card-flat bg-surface-900/35',
 	};
+	const glassWorkspaceRowStyle = 'glass-card-flat bg-violet-950/45';
 	const statusRowStyle = $derived($glassTheme ? glassRowStyle : solidRowStyle);
+	const workspaceRowStyle = $derived($glassTheme ? glassWorkspaceRowStyle : solidWorkspaceRowStyle);
+	const terminalStatuses = new Set(['done', 'failed', 'dismissed', 'archived']);
+
+	const rowBgStyle = $derived.by(() => {
+		if (!$cardColors) return '';
+		if (card.has_workspace && !terminalStatuses.has(card.status)) {
+			if (card.status === 'agent_running') return statusRowStyle['agent_running'];
+			return workspaceRowStyle;
+		}
+		return statusRowStyle[card.status] ?? '';
+	});
+
+	const visualStatus = $derived(
+		card.has_workspace && !terminalStatuses.has(card.status) && card.status !== 'agent_running'
+			? 'awaiting_input'
+			: card.status
+	);
 	const statusLabel: Record<string, string> = {
 		pending: 'Processing',
 		ready: 'Ready',
@@ -215,9 +234,9 @@
 
 	<div
 		data-card-id={card.card_id}
-		data-status={$glassTheme && $cardColors && !isArchived ? card.status : undefined}
+		data-status={$glassTheme && $cardColors && !isArchived ? visualStatus : undefined}
 		class="group/row list-row-hover relative flex flex-1 min-w-0 items-center rounded-lg transition-colors hover:z-20
-			border border-transparent {$cardColors ? (statusRowStyle[card.status] ?? '') : ''}
+			border border-transparent {rowBgStyle}
 			{isArchived ? 'opacity-50 hover:opacity-75' : ''}
 			{isLastViewed ? ($cardColors ? 'card-last-viewed card-last-viewed--compact' : 'card-last-viewed-highlight') : ''}"
 		style="{isLastViewed ? '--corner-radius: 0.5rem' : ''}"
@@ -274,13 +293,14 @@
 	</span>
 
 	<!-- Status — fixed width -->
-	<span class="w-[70px] shrink-0 flex items-center gap-1 ml-2">
+	<span class="w-[70px] shrink-0 flex items-center gap-1 ml-2 {card.status === 'awaiting_input' ? 'status-glow-violet' : ''}">
 		<StatusDot status={card.status} size="md" errorMessage={card.last_error} />
 		<span class="text-laya-secondary text-surface-500 whitespace-nowrap truncate" title={card.status === 'failed' && card.last_error ? card.last_error : ''}>{statusLabel[card.status] ?? card.status}</span>
 	</span>
 
-	<!-- Action buttons — fixed width slot (visible on hover) -->
-	<div class="col-actions w-[68px] shrink-0 flex items-center justify-end gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
+	<!-- Action buttons — fixed layout: [actions 64px] [workspace 20px] -->
+	<div class="col-actions w-[88px] shrink-0 flex items-center opacity-0 group-hover/row:opacity-100 transition-opacity">
+		<div class="flex items-center justify-end gap-1 w-[64px]">
 		{#if card.status === 'ready'}
 			<button aria-label="Mark as Done" class="h-5 w-5 flex items-center justify-center rounded text-green-400/60 hover:bg-green-500/15 hover:text-green-400 disabled:opacity-40" onclick={markDone} disabled={markingDone} onmouseenter={(e) => showTooltip(e.currentTarget, 'Done')} onmouseleave={hideTooltip}>
 				<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
@@ -313,11 +333,15 @@
 				<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
 			</button>
 		{/if}
-		{#if card.has_workspace}
-			<a href="/workspace/{card.card_id}" aria-label="Workspace" class="h-5 w-5 flex items-center justify-center rounded text-violet-400/60 hover:bg-violet-500/15 hover:text-violet-400" onclick={(e) => { e.preventDefault(); e.stopPropagation(); goto(`/workspace/${card.card_id}`); }} onmouseenter={(e) => showTooltip(e.currentTarget, 'Workspace')} onmouseleave={hideTooltip}>
-				<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-			</a>
-		{/if}
+		</div>
+		<!-- Workspace slot — always occupies space so action buttons stay fixed -->
+		<span class="w-[24px] shrink-0 flex items-center justify-center">
+			{#if card.has_workspace}
+				<a href="/workspace/{card.card_id}" aria-label="Workspace" class="h-5 w-5 flex items-center justify-center rounded text-violet-400/60 hover:bg-violet-500/15 hover:text-violet-400" onclick={(e) => { e.preventDefault(); e.stopPropagation(); goto(`/workspace/${card.card_id}`); }} onmouseenter={(e) => showTooltip(e.currentTarget, 'Workspace')} onmouseleave={hideTooltip}>
+					<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+				</a>
+			{/if}
+		</span>
 	</div>
 
 	<!-- Persona badge — fixed width -->

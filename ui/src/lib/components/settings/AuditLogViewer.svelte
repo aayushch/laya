@@ -462,7 +462,7 @@
 										{#if err.platform}
 											<span
 												class="inline-block max-w-full truncate rounded bg-surface-700 px-1.5 py-0.5 text-surface-300"
-												onmouseenter={(e) => { const el = e.currentTarget; if (el.scrollWidth > el.clientWidth) showTooltip(el, err.platform); }}
+												onmouseenter={(e) => { const el = e.currentTarget; if (el.scrollWidth > el.clientWidth) showTooltip(el, err.platform!); }}
 												onmouseleave={hideTooltip}
 											>
 												{err.platform}

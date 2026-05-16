@@ -199,7 +199,7 @@ def build_entity_agent_prompt(
         f'You are a research and coding agent working on entity "{entity_id}" for Laya, '
         "an AI-powered professional work assistant.",
         "",
-        "A CONTEXT.md file is available in your research directory with the full context "
+        f"A CONTEXT.md file is available at {research_dir}/CONTEXT.md with the full context "
         "for this entity: group summary, individual card details, and any coding task "
         "prompts prepared by Laya's ENGINEER worker.",
         "",

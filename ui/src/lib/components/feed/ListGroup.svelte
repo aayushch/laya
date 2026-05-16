@@ -58,6 +58,7 @@
 	const subjectId = $derived(group.entity_id?.includes(':') ? group.entity_id.split(':').pop() : group.entity_id);
 
 	const hasBookmark = $derived(group.cards.some((c) => c.bookmarked_at));
+	const groupHasWorkspace = $derived(group.cards.some((c) => c.has_workspace));
 	const isGroupSelected = $derived(
 		group.cards.some((c) => c.card_id === selectedCardId) ||
 		(!!selectedEntityId && group.entity_id === selectedEntityId)
@@ -128,6 +129,7 @@
 		dismissed:          'bg-surface-800/40',
 		archived:           'bg-surface-900/60',
 	};
+	const solidWorkspaceGroupRowStyle = 'bg-violet-950/55';
 	const glassGroupRowStyle: Record<string, string> = {
 		pending:            'glass-card-flat bg-amber-950/45 card-pulse-amber',
 		ready:              'glass-card-flat bg-amber-950/45',
@@ -138,7 +140,10 @@
 		dismissed:          'glass-card-flat bg-surface-800/30',
 		archived:           'glass-card-flat bg-surface-900/35',
 	};
+	const glassWorkspaceGroupRowStyle = 'glass-card-flat bg-violet-950/45';
 	const groupRowStyle = $derived($glassTheme ? glassGroupRowStyle : solidGroupRowStyle);
+	const workspaceGroupRowStyle = $derived($glassTheme ? glassWorkspaceGroupRowStyle : solidWorkspaceGroupRowStyle);
+	const terminalStatuses = new Set(['done', 'failed', 'dismissed', 'archived']);
 
 	const dominantStatus = $derived.by(() => {
 		const statuses = new Set(group.cards.map(c => c.status));
@@ -150,12 +155,20 @@
 
 	const allArchived = $derived(group.cards.every(c => c.status === 'archived'));
 
-	const groupBgStyle = $derived(
-		allArchived
-			? ($glassTheme ? 'glass-card-flat bg-surface-900/30 opacity-50 hover:opacity-80' : 'bg-surface-900/60 opacity-50 hover:opacity-80')
-			: $cardColors
-				? (groupRowStyle[dominantStatus] ?? '')
-				: ''
+	const groupBgStyle = $derived.by(() => {
+		if (allArchived) return $glassTheme ? 'glass-card-flat bg-surface-900/30 opacity-50 hover:opacity-80' : 'bg-surface-900/60 opacity-50 hover:opacity-80';
+		if (!$cardColors) return '';
+		if (groupHasWorkspace && !terminalStatuses.has(dominantStatus)) {
+			if (dominantStatus === 'agent_running') return groupRowStyle['agent_running'];
+			return workspaceGroupRowStyle;
+		}
+		return groupRowStyle[dominantStatus] ?? '';
+	});
+
+	const visualDominantStatus = $derived(
+		groupHasWorkspace && !terminalStatuses.has(dominantStatus) && dominantStatus !== 'agent_running'
+			? 'awaiting_input'
+			: dominantStatus
 	);
 
 	const statusDisplayLabel: Record<string, string> = {
@@ -297,7 +310,7 @@
 		{/if}
 
 		<div data-group-row={group.entity_id}
-			data-status={$glassTheme && $cardColors && !allArchived && !expanded ? dominantStatus : undefined}
+			data-status={$glassTheme && $cardColors && !allArchived && !expanded ? visualDominantStatus : undefined}
 			class="relative flex flex-1 min-w-0 items-center rounded-lg border hover:z-20 transition-colors
 				{expanded
 					? 'border-transparent'
@@ -379,7 +392,7 @@
 		</div>
 
 		<!-- Three-dot menu — aligned with ListRow action buttons column (w-[68px]) -->
-		<div class="col-actions w-[68px] shrink-0 flex items-center justify-end">
+		<div class="col-actions w-[88px] shrink-0 flex items-center justify-end">
 			{#if hasAnyAction}
 				<div class="group-menu relative" bind:this={menuEl}>
 					<button
