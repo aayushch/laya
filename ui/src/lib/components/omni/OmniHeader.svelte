@@ -294,7 +294,7 @@
 
 <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 	<!-- Left: Title + meta -->
-	<div>
+	<div class="[transform:translateZ(0)]">
 		<div class="flex items-center gap-3">
 			<h1 class="text-laya-heading font-bold text-surface-50">Laya <span class="text-laya-orange">Omni</span></h1>
 			{#if version > 0}
@@ -406,9 +406,9 @@
 {#if totalEntryCount > 1}
 	{@const widths = segmentWidths}
 	{@const nonEmptySegments = segments.filter(s => s.entries.length > 0)}
-	<div class="mt-3 rounded-lg transition-all duration-300 ease-in-out {compact ? 'px-4 py-1.5' : 'px-4 py-3'} {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-800'}">
+	<div class="mt-3 rounded-lg transition-[padding] duration-300 ease-in-out {compact ? 'px-4 py-1.5' : 'px-4 py-3'} {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-800'}">
 		<!-- Header row -->
-		<div class="overflow-hidden transition-all duration-300 ease-in-out {compact ? 'max-h-0 opacity-0 mb-0' : 'max-h-10 opacity-100 mb-2'}">
+		<div class="overflow-hidden transition-[max-height,opacity,margin] duration-300 ease-in-out {compact ? 'max-h-0 opacity-0 mb-0' : 'max-h-10 opacity-100 mb-2'}">
 			<div class="flex items-center justify-between">
 				<span class="text-[11px] font-medium text-surface-400">
 					<svg class="inline h-3 w-3 mr-0.5 -mt-px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -437,7 +437,7 @@
 		</div>
 
 		<!-- Segment labels — positioned at distorted midpoints so they shift with the fisheye -->
-		<div class="overflow-hidden transition-all duration-300 ease-in-out {compact ? 'max-h-0 opacity-0 mb-0' : 'max-h-6 opacity-100 mb-1'}">
+		<div class="overflow-hidden transition-[max-height,opacity,margin] duration-300 ease-in-out {compact ? 'max-h-0 opacity-0 mb-0' : 'max-h-6 opacity-100 mb-1'}">
 			<div class="relative h-4">
 				{#each segments as seg, si}
 					{#if seg.entries.length > 0}
@@ -458,7 +458,7 @@
 		<!-- Single-container fisheye track -->
 		<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
 		<div
-			class="relative overflow-hidden cursor-pointer transition-all duration-300 ease-in-out {compact ? 'h-5' : 'h-10'}"
+			class="relative overflow-hidden cursor-pointer transition-[height] duration-300 ease-in-out {compact ? 'h-5' : 'h-10'}"
 			bind:this={timelineEl}
 			bind:clientWidth={timelineWidth}
 			onmousemove={(e) => { handleTimelineMove(e); handleDotHover(e); }}
@@ -471,7 +471,7 @@
 			<!-- Segment dividers -->
 			{#each dividerPositions as dpos}
 				<div
-					class="absolute w-px bg-surface-600 top-[3px] transition-all duration-300 {compact ? 'h-3' : 'h-5'}"
+					class="absolute w-px bg-surface-600 top-[3px] transition-[height] duration-300 {compact ? 'h-3' : 'h-5'}"
 					style="left: {mouseRatio !== null ? fisheye(dpos / 100, mouseRatio, 10) * 100 : dpos}%; transition: left 150ms cubic-bezier(0.25, 0.1, 0.25, 1);"
 				></div>
 			{/each}
@@ -517,7 +517,7 @@
 		</div>
 
 		<!-- Edge labels -->
-		<div class="overflow-hidden transition-all duration-300 ease-in-out {compact ? 'max-h-0 opacity-0 mt-0' : 'max-h-6 opacity-100 mt-1'}">
+		<div class="overflow-hidden transition-[max-height,opacity,margin] duration-300 ease-in-out {compact ? 'max-h-0 opacity-0 mt-0' : 'max-h-6 opacity-100 mt-1'}">
 			<div class="flex items-center justify-between">
 				<span class="text-[9px] text-surface-500">
 					{#if nonEmptySegments.length > 0 && nonEmptySegments[0].entries.length > 0}

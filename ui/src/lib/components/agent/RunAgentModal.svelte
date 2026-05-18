@@ -1,16 +1,19 @@
 <script lang="ts">
 	import { agentDialog } from '$lib/stores/agentDialog';
 	import { engineApi } from '$lib/api/engine';
-	import { getEngineUrl } from '$lib/config';
+	import { getEngineUrl, CODING_AGENTS } from '$lib/config';
 	import { goto } from '$app/navigation';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { portal } from '$lib/actions/portal';
 
-	const agents = [
-		{ value: 'claude_code', label: 'Claude Code', modes: ['plan', 'acceptEdits'] },
-		{ value: 'gemini_cli', label: 'Gemini CLI', modes: [] },
-		{ value: 'codex_cli', label: 'Codex CLI', modes: ['read-only', 'full-auto'] }
-	];
+	const AGENT_MODES: Record<string, string[]> = {
+		claude_code: ['plan', 'acceptEdits'],
+		codex_cli: ['read-only', 'full-auto']
+	};
+
+	const agents = CODING_AGENTS
+		.filter((a) => a.value !== 'none')
+		.map((a) => ({ value: a.value, label: a.label, modes: AGENT_MODES[a.value] ?? [] }));
 
 	const modeLabels: Record<string, string> = {
 		plan: 'Plan',

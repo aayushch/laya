@@ -422,6 +422,30 @@ html, body {
 	border-color: rgb(0 0 0 / 0.08);
 	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.7), 0 8px 32px -8px rgb(0 0 0 / 0.12);
 }
+.glass-menu .hover\:bg-surface-700:hover {
+	background: rgb(255 255 255 / 0.10) !important;
+}
+[data-theme='light'] .glass-menu .hover\:bg-surface-700:hover {
+	background: rgb(0 0 0 / 0.06) !important;
+}
+.glass-menu .bg-surface-900\/60 {
+	background: rgb(255 255 255 / 0.06) !important;
+}
+[data-theme='light'] .glass-menu .bg-surface-900\/60 {
+	background: rgb(0 0 0 / 0.04) !important;
+}
+.glass-menu .border-surface-700 {
+	border-color: rgb(255 255 255 / 0.10) !important;
+}
+[data-theme='light'] .glass-menu .border-surface-700 {
+	border-color: rgb(0 0 0 / 0.08) !important;
+}
+.glass-menu .border-surface-600 {
+	border-color: rgb(255 255 255 / 0.10) !important;
+}
+[data-theme='light'] .glass-menu .border-surface-600 {
+	border-color: rgb(0 0 0 / 0.08) !important;
+}
 [data-theme='light'] .bg-surface-900\/30 { background-color: oklch(0.96 0.004 74); }
 [data-theme='light'] .bg-surface-900\/35 { background-color: oklch(0.955 0.004 74); }
 [data-theme='light'] .bg-surface-900\/50 { background-color: oklch(0.95 0.005 74); }
