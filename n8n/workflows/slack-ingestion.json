@@ -39,13 +39,17 @@
             },
             {
               "name": "limit",
-              "value": "200"
+              "value": "1000"
+            },
+            {
+              "name": "cursor",
+              "value": "={{ $json.cursor || '' }}"
             }
           ]
         },
         "options": {}
       },
-      "name": "Get Channels",
+      "name": "Get Channels Page",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -55,14 +59,55 @@
     },
     {
       "parameters": {
-        "jsCode": "const channels = $input.first().json.channels ?? [];\nconst oldest = String(Math.floor((Date.now() - 150000) / 1000));\nreturn channels\n  .filter(c => c.id)\n  .map(c => ({\n    json: {\n      channel_id: c.id,\n      channel_name: c.name || c.id,\n      oldest: oldest\n    }\n  }));"
+        "jsCode": "const staticData = $getWorkflowStaticData('node');\nconst executionId = $execution.id;\nif (staticData.executionId !== executionId) {\n  staticData.allChannels = [];\n  staticData.executionId = executionId;\n}\nconst page = $input.first().json;\nconst channels = page.channels || [];\nconst cursor = (page.response_metadata && page.response_metadata.next_cursor) || '';\nstaticData.allChannels.push(...channels);\nif (cursor) {\n  return [{ json: { cursor: cursor, _hasMore: true } }];\n} else {\n  const result = staticData.allChannels.slice();\n  staticData.allChannels = [];\n  return [{ json: { channels: result } }];\n}"
       },
-      "name": "Build Channel Items",
+      "name": "Accumulate Channels",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         680,
         300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json._hasMore }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "name": "Has More Pages",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const allChannels = $input.first().json.channels || [];\nconst oldest = String(Math.floor((Date.now() - 150000) / 1000));\nreturn allChannels\n  .filter(c => c.id && c.is_member !== false)\n  .map(c => ({\n    json: {\n      channel_id: c.id,\n      channel_name: c.name || c.id,\n      oldest: oldest\n    }\n  }));"
+      },
+      "name": "Build Channel Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        400
       ]
     },
     {
@@ -98,8 +143,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        900,
-        300
+        1340,
+        400
       ]
     },
     {
@@ -110,8 +155,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1120,
-        300
+        1560,
+        400
       ]
     },
     {
@@ -139,8 +184,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        1340,
-        300
+        1780,
+        400
       ]
     },
     {
@@ -165,8 +210,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1560,
-        200
+        2000,
+        300
       ]
     }
   ],
@@ -175,15 +220,44 @@
       "main": [
         [
           {
-            "node": "Get Channels",
+            "node": "Get Channels Page",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Get Channels": {
+    "Get Channels Page": {
       "main": [
+        [
+          {
+            "node": "Accumulate Channels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Accumulate Channels": {
+      "main": [
+        [
+          {
+            "node": "Has More Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has More Pages": {
+      "main": [
+        [
+          {
+            "node": "Get Channels Page",
+            "type": "main",
+            "index": 0
+          }
+        ],
         [
           {
             "node": "Build Channel Items",
@@ -244,6 +318,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.05.2"
+    "laya_version": "2026.05.5"
   }
 }

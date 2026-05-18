@@ -20,6 +20,8 @@
 		variant?: 'select' | 'link';
 		/** Match input field height — use the same h-[38px] as inputClass/selectClass */
 		size?: 'sm' | 'md';
+		/** Use smaller text-laya-secondary font size to match settings forms */
+		compact?: boolean;
 		disabled?: boolean;
 		class?: string;
 	}
@@ -32,6 +34,7 @@
 		placeholder = 'Select…',
 		variant = 'select',
 		size = 'md',
+		compact = false,
 		disabled = false,
 		class: extraClass = ''
 	}: Props = $props();
@@ -153,6 +156,7 @@
 	}
 
 	const sizeH = $derived(size === 'sm' ? 'h-[32px]' : 'h-[38px]');
+	const textClass = $derived(compact ? 'text-laya-secondary' : 'text-sm');
 </script>
 
 <svelte:window onclick={handleWindowClick} />
@@ -194,13 +198,13 @@
 			{disabled}
 			onclick={toggle}
 			onkeydown={handleKeydown}
-			class="flex w-full items-center justify-between rounded-md border px-3 text-left text-sm transition-colors
+			class="flex w-full items-center justify-between rounded-md border px-3 text-left {textClass} transition-colors
 				{sizeH}
 				{disabled
 					? 'cursor-not-allowed opacity-50'
 					: ''}
 				{$glassTheme
-					? 'border-surface-600/40 bg-surface-800/40 backdrop-blur-sm text-surface-200 hover:border-surface-500/50'
+					? 'glass-input text-surface-200 hover:border-white/25'
 					: 'border-surface-600 bg-surface-900 text-surface-200 hover:border-surface-500'}"
 			aria-haspopup="listbox"
 			aria-expanded={open}
@@ -258,7 +262,7 @@
 							aria-selected={isSelected}
 							onclick={() => select(opt.value)}
 							onmouseenter={() => { if (!opt.disabled) highlightIndex = flatIdx; }}
-							class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors
+							class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left {textClass} transition-colors
 								{opt.disabled
 									? 'text-surface-600 cursor-not-allowed'
 									: isSelected

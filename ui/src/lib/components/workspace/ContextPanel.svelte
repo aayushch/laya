@@ -181,13 +181,13 @@
 						</div>
 					{/if}
 					{#if session.error_message}
-						<div class="mt-1.5 rounded bg-red-900/20 px-2 py-1.5 text-[11px] text-red-300">
+						<div class="mt-1.5 rounded px-2 py-1.5 text-[11px] text-red-300 {$glassTheme ? 'bg-red-400/15' : 'bg-red-900/20'}">
 							{session.error_message}
 						</div>
 					{/if}
 				</div>
 				{#if Object.keys(toolStats).length > 0}
-					<div class="mt-2.5 border-t border-surface-700/50 pt-2">
+					<div class="mt-2.5 border-t {$glassTheme ? 'border-white/[0.08]' : 'border-surface-700/50'} pt-2">
 						<h4 class="mb-1.5 text-[10px] font-medium text-surface-500">Tool Usage</h4>
 						<div class="space-y-1">
 							{#each Object.entries(toolStats) as [label, count]}
@@ -224,12 +224,12 @@
 					{#if filesLoading && !filesLoaded}
 						<p class="mt-2 text-[11px] text-surface-500">Loading files...</p>
 					{:else if researchFiles.length > 0}
-						<div class="mt-2.5 border-t border-surface-700/50 pt-2">
+						<div class="mt-2.5 border-t {$glassTheme ? 'border-white/[0.08]' : 'border-surface-700/50'} pt-2">
 							<h4 class="mb-1.5 text-[10px] font-medium text-surface-500">Generated Files</h4>
 							<div class="space-y-1">
 								{#each researchFiles as file}
 									<button
-										class="flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left transition-colors hover:bg-surface-700/50"
+										class="flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left transition-colors {$glassTheme ? 'hover:bg-white/[0.08]' : 'hover:bg-surface-700/50'}"
 										onclick={() => viewFile(file.path)}
 									>
 										<div class="flex min-w-0 items-center gap-1.5">
@@ -260,7 +260,7 @@
 				<!-- Add Path — available when agent is not running -->
 				{#if !isAgentActive && availableRepos.length > 0}
 					{#if showAddPath}
-						<div class="mt-3 border-t border-surface-700/50 pt-2">
+						<div class="mt-3 border-t {$glassTheme ? 'border-white/[0.08]' : 'border-surface-700/50'} pt-2">
 							<div class="mb-1.5 flex items-center justify-between">
 								<span class="text-[10px] font-semibold uppercase tracking-wider text-surface-500">Add paths</span>
 								<button
@@ -274,13 +274,13 @@
 										class="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[11px] transition-colors
 											{selectedAddDirs.has(repo.path)
 												? 'bg-laya-orange/15 text-laya-orange'
-												: 'text-surface-300 hover:bg-surface-700'}"
+												: $glassTheme ? 'text-surface-300 hover:bg-white/[0.08]' : 'text-surface-300 hover:bg-surface-700'}"
 										onclick={() => toggleDir(repo.path)}
 									>
 										<span class="flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center rounded border text-[9px]
 											{selectedAddDirs.has(repo.path)
 												? 'border-laya-orange/50 bg-laya-orange/20 text-laya-orange'
-												: 'border-surface-600'}"
+												: $glassTheme ? 'border-white/[0.12]' : 'border-surface-600'}"
 										>{selectedAddDirs.has(repo.path) ? '✓' : ''}</span>
 										<span class="truncate font-medium">{repo.name}</span>
 									</button>
@@ -290,7 +290,7 @@
 					{:else}
 						<div class="mt-2.5 flex items-center gap-2">
 							<button
-								class="rounded px-2 py-1 text-[10px] text-surface-400 border border-surface-700 hover:border-surface-500 hover:text-surface-200 transition-colors"
+								class="rounded px-2 py-1 text-[10px] text-surface-400 border transition-colors {$glassTheme ? 'border-white/[0.10] hover:border-white/[0.20]' : 'border-surface-700 hover:border-surface-500'} hover:text-surface-200"
 								onclick={() => { showAddPath = true; }}
 							>
 								+ Add Path
@@ -340,7 +340,7 @@
 					{card.staged_output.type === 'code_fix' ? 'Code Fix' : card.staged_output.type === 'draft_reply' ? 'Draft Reply' : card.staged_output.type === 'briefing' ? 'Briefing' : card.staged_output.type === 'agent_result' ? 'Agent Result' : card.staged_output.type === 'agent_plan' ? 'Implementation Plan' : 'Output'}
 				</h3>
 				{#if card.staged_output.type === 'code_fix'}
-					<pre class="overflow-x-auto rounded bg-surface-900 p-2 text-[11px] text-surface-200 max-h-48">{card.staged_output.content}</pre>
+					<pre class="overflow-x-auto rounded p-2 text-[11px] text-surface-200 max-h-48 {$glassTheme ? 'bg-white/[0.04]' : 'bg-surface-900'}">{card.staged_output.content}</pre>
 				{:else}
 					<p class="text-xs text-surface-200 whitespace-pre-wrap max-h-48 overflow-y-auto">{card.staged_output.content}</p>
 				{/if}
@@ -353,7 +353,7 @@
 				<h3 class="mb-2 text-[10px] font-semibold uppercase tracking-wider text-surface-500">Related Entities</h3>
 				<div class="flex flex-wrap gap-1.5">
 					{#each relatedEntities as entity}
-						<span class="min-w-0 max-w-full truncate rounded bg-surface-700 px-2 py-0.5 text-[11px] text-surface-300" title={entity}>{entity}</span>
+						<span class="min-w-0 max-w-full truncate rounded px-2 py-0.5 text-[11px] text-surface-300 {$glassTheme ? 'bg-white/[0.08]' : 'bg-surface-700'}" title={entity}>{entity}</span>
 					{/each}
 				</div>
 			</div>
@@ -416,9 +416,9 @@
 		onclick={(e) => { if (e.target === e.currentTarget) viewingFile = null; }}
 		onkeydown={(e) => { if (e.key === 'Escape') viewingFile = null; }}
 	>
-		<div class="mx-4 flex h-[80vh] w-full max-w-3xl flex-col rounded-xl border border-surface-600 bg-surface-800 shadow-2xl">
+		<div class="mx-4 flex h-[80vh] w-full max-w-3xl flex-col rounded-xl border shadow-2xl {$glassTheme ? 'glass-modal border-white/[0.12]' : 'border-surface-600 bg-surface-800'}">
 			<!-- Modal header -->
-			<div class="flex shrink-0 items-center justify-between border-b border-surface-700 px-5 py-3">
+			<div class="flex shrink-0 items-center justify-between border-b px-5 py-3 {$glassTheme ? 'border-white/[0.08]' : 'border-surface-700'}">
 				<div class="flex items-center gap-2">
 					<svg class="h-4 w-4 text-cyan-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -428,7 +428,7 @@
 				<div class="flex items-center gap-1">
 					<!-- Copy button -->
 					<button
-						class="rounded-md px-2 py-1 text-[11px] transition-colors {fileCopied ? 'text-green-400' : 'text-surface-400 hover:bg-surface-700 hover:text-surface-200'}"
+						class="rounded-md px-2 py-1 text-[11px] transition-colors {fileCopied ? 'text-green-400' : $glassTheme ? 'text-surface-400 hover:bg-white/[0.08] hover:text-surface-200' : 'text-surface-400 hover:bg-surface-700 hover:text-surface-200'}"
 						onclick={copyFileContent}
 					>
 						{#if fileCopied}
@@ -444,7 +444,7 @@
 					</button>
 					<!-- Close button -->
 					<button
-						class="rounded-md p-1 text-surface-400 transition-colors hover:bg-surface-700 hover:text-surface-200"
+						class="rounded-md p-1 text-surface-400 transition-colors {$glassTheme ? 'hover:bg-white/[0.08]' : 'hover:bg-surface-700'} hover:text-surface-200"
 						onclick={() => (viewingFile = null)}
 						aria-label="Close"
 					>
@@ -457,11 +457,11 @@
 			<!-- Modal body -->
 			<div class="flex-1 overflow-y-auto p-5">
 				{#if viewingFile.name.endsWith('.md')}
-					<div class="research-file-content">
+					<div class="research-file-content" class:research-glass={$glassTheme}>
 						{@html DOMPurify.sanitize(marked(viewingFile.content) as string)}
 					</div>
 				{:else}
-					<pre class="whitespace-pre-wrap break-words rounded-lg bg-surface-900 p-4 font-mono text-[11px] text-surface-200">{viewingFile.content}</pre>
+					<pre class="whitespace-pre-wrap break-words rounded-lg p-4 font-mono text-[11px] text-surface-200 {$glassTheme ? 'bg-white/[0.04]' : 'bg-surface-900'}">{viewingFile.content}</pre>
 				{/if}
 			</div>
 		</div>
@@ -578,5 +578,64 @@
 	}
 	.research-file-content :global(tr:hover td) {
 		background: var(--color-surface-800);
+	}
+	/* Glass-aware overrides for markdown renderer */
+	.research-glass :global(h1),
+	.research-glass :global(h2) {
+		border-bottom-color: rgb(255 255 255 / 0.08);
+	}
+	.research-glass :global(code) {
+		background: rgb(255 255 255 / 0.08);
+	}
+	.research-glass :global(pre) {
+		background: rgb(255 255 255 / 0.05);
+		border-color: rgb(255 255 255 / 0.08);
+	}
+	.research-glass :global(blockquote) {
+		border-left-color: rgb(255 255 255 / 0.12);
+	}
+	.research-glass :global(hr) {
+		border-top-color: rgb(255 255 255 / 0.08);
+	}
+	.research-glass :global(th) {
+		background: rgb(255 255 255 / 0.05);
+	}
+	.research-glass :global(thead) {
+		border-bottom-color: rgb(255 255 255 / 0.10);
+	}
+	.research-glass :global(td) {
+		border-bottom-color: rgb(255 255 255 / 0.06);
+	}
+	.research-glass :global(tr:hover td) {
+		background: rgb(255 255 255 / 0.06);
+	}
+	:global([data-theme='light']) .research-glass :global(h1),
+	:global([data-theme='light']) .research-glass :global(h2) {
+		border-bottom-color: rgb(0 0 0 / 0.10);
+	}
+	:global([data-theme='light']) .research-glass :global(code) {
+		background: rgb(0 0 0 / 0.06);
+	}
+	:global([data-theme='light']) .research-glass :global(pre) {
+		background: rgb(0 0 0 / 0.04);
+		border-color: rgb(0 0 0 / 0.08);
+	}
+	:global([data-theme='light']) .research-glass :global(blockquote) {
+		border-left-color: rgb(0 0 0 / 0.12);
+	}
+	:global([data-theme='light']) .research-glass :global(hr) {
+		border-top-color: rgb(0 0 0 / 0.08);
+	}
+	:global([data-theme='light']) .research-glass :global(th) {
+		background: rgb(0 0 0 / 0.04);
+	}
+	:global([data-theme='light']) .research-glass :global(thead) {
+		border-bottom-color: rgb(0 0 0 / 0.10);
+	}
+	:global([data-theme='light']) .research-glass :global(td) {
+		border-bottom-color: rgb(0 0 0 / 0.06);
+	}
+	:global([data-theme='light']) .research-glass :global(tr:hover td) {
+		background: rgb(0 0 0 / 0.04);
 	}
 </style>

@@ -141,6 +141,7 @@ html, body {
 [data-theme='light'] .text-orange-300   { color: oklch(0.46 0.16 55);  }
 [data-theme='light'] .text-orange-50    { color: oklch(0.98 0.01 65);  }
 [data-theme='light'] .text-red-50       { color: oklch(0.98 0.01 25);  }
+[data-theme='light'] .text-red-200      { color: oklch(0.46 0.16 25);  }
 [data-theme='light'] .text-red-300      { color: oklch(0.44 0.18 25);  }
 [data-theme='light'] .text-red-400      { color: oklch(0.42 0.18 25);  }
 [data-theme='light'] .text-yellow-300   { color: oklch(0.48 0.14 90);  }
@@ -276,12 +277,26 @@ html, body {
 [data-theme='light'] .bg-yellow-700\/50 {
 	background-color: oklch(0.90 0.10 90 / 60%);
 }
+[data-theme='light'] .bg-red-900\/20   { background-color: oklch(0.92 0.08 25 / 45%); }
 [data-theme='light'] .bg-red-900\/30   { background-color: oklch(0.92 0.06 25 / 60%); }
 [data-theme='light'] .bg-red-900\/50   { background-color: oklch(0.88 0.08 25 / 60%); }
 [data-theme='light'] .bg-violet-900\/40,
+[data-theme='light'] .bg-violet-900\/50,
 [data-theme='light'] .bg-violet-900\/60 {
 	background-color: oklch(0.88 0.08 285 / 60%);
 }
+/* Agent status badges & Plan/Act toggle — soft pastel tints for light mode */
+[data-theme='light'] .bg-green-900\/50  { background-color: oklch(0.90 0.08 145 / 50%); }
+[data-theme='light'] .bg-blue-900\/50   { background-color: oklch(0.90 0.08 240 / 50%); }
+[data-theme='light'] .bg-cyan-900\/50   { background-color: oklch(0.90 0.08 200 / 50%); }
+[data-theme='light'] .bg-amber-900\/50  { background-color: oklch(0.92 0.08 75 / 50%); }
+/* Glass badge tints — darken for light mode so they read against cream */
+[data-theme='light'] .bg-green-400\/15  { background-color: oklch(0.55 0.14 145 / 18%); }
+[data-theme='light'] .bg-blue-400\/15   { background-color: oklch(0.55 0.14 240 / 18%); }
+[data-theme='light'] .bg-cyan-400\/15   { background-color: oklch(0.55 0.12 200 / 18%); }
+[data-theme='light'] .bg-amber-400\/15  { background-color: oklch(0.58 0.14 75 / 18%); }
+[data-theme='light'] .bg-violet-400\/15 { background-color: oklch(0.55 0.14 285 / 18%); }
+[data-theme='light'] .bg-red-400\/15    { background-color: oklch(0.55 0.16 25 / 18%); }
 
 /* ─────────────────────────────────────────────────────────────
    LIGHT THEME — status card tints
@@ -634,11 +649,27 @@ html, body {
 		inset 0 1px 0 rgb(255 255 255 / 0.06);
 }
 [data-theme='light'] .glass-section {
-	background: rgb(255 255 255 / 0.28);
-	border: 0.5px solid rgb(255 255 255 / 0.45);
+	background: rgb(255 255 255 / 0.50);
+	border: 0.5px solid rgb(110 60 25 / 0.12);
 	box-shadow:
-		0 4px 18px -10px rgb(0 0 0 / 0.10),
-		inset 0 1px 0 rgb(255 255 255 / 0.4);
+		0 4px 18px -10px rgb(0 0 0 / 0.08),
+		inset 0 1px 0 rgb(255 255 255 / 0.7);
+}
+/* Glass modal — heaviest frosting for large overlays (file viewers, dialogs).
+   Needs to be opaque enough to read long-form content comfortably. */
+.glass-modal {
+	background: rgb(35 30 25 / 0.88);
+	box-shadow:
+		0 12px 48px -8px rgb(0 0 0 / 0.5),
+		inset 0 1px 0 rgb(255 255 255 / 0.12),
+		inset 0 -1px 0 rgb(255 255 255 / 0.04);
+}
+[data-theme='light'] .glass-modal {
+	background: rgb(255 255 255 / 0.88);
+	box-shadow:
+		0 12px 48px -8px rgb(0 0 0 / 0.12),
+		inset 0 1px 0 rgb(255 255 255 / 0.9),
+		inset 0 -1px 0 rgb(255 255 255 / 0.3);
 }
 /* Glass dropdown — heavier frosting for popover menus so they
    read as a solid surface floating above glass sections. */
@@ -651,17 +682,20 @@ html, body {
 		inset 0 0.5px 0 rgb(255 255 255 / 0.08);
 }
 [data-theme='light'] .glass-dropdown {
-	background: rgb(255 255 255 / 0.52);
-	border-color: rgb(255 255 255 / 0.5);
+	background: rgb(255 255 255 / 0.62);
+	border-color: rgb(110 60 25 / 0.14);
 	box-shadow:
 		0 8px 32px -4px rgb(0 0 0 / 0.12),
-		inset 0 1px 0 rgb(255 255 255 / 0.7);
+		inset 0 1px 0 rgb(255 255 255 / 0.8);
 }
 [data-theme='light'] .glass-dropdown .bg-white\/\[0\.14\] {
 	background: rgb(0 0 0 / 0.08) !important;
 }
 [data-theme='light'] .glass-dropdown .bg-white\/\[0\.08\] {
 	background: rgb(0 0 0 / 0.05) !important;
+}
+[data-theme='light'] .glass-dropdown .hover\:bg-white\/\[0\.08\]:hover {
+	background: rgb(0 0 0 / 0.07) !important;
 }
 [data-theme='light'] .glass-dropdown .hover\:bg-white\/\[0\.06\]:hover {
 	background: rgb(0 0 0 / 0.04) !important;
@@ -923,6 +957,9 @@ html, body {
 }
 [data-theme='light'] .glass-section .hover\:bg-white\/\[0\.14\]:hover {
 	background-color: rgb(0 0 0 / 0.08) !important;
+}
+[data-theme='light'] .glass-section .hover\:bg-white\/\[0\.08\]:hover {
+	background-color: rgb(0 0 0 / 0.07) !important;
 }
 [data-theme='light'] .glass-section .hover\:bg-white\/\[0\.06\]:hover {
 	background-color: rgb(0 0 0 / 0.05) !important;

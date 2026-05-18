@@ -320,7 +320,8 @@
 			<div class="relative">
 				<button
 					onclick={() => spaceDropdownOpen = !spaceDropdownOpen}
-					class="flex items-center gap-2 rounded-lg border border-surface-700 px-3 py-1.5 text-xs font-medium transition-colors hover:border-laya-orange/30
+					class="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors hover:border-laya-orange/30
+						{$glassTheme ? 'border-white/[0.10]' : 'border-surface-700'}
 						{spaceDropdownOpen ? 'border-laya-orange/30 text-laya-orange' : 'text-surface-300'}"
 				>
 					{#if activeSpace}
@@ -338,14 +339,14 @@
 					<!-- Backdrop to close on click outside -->
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div class="fixed inset-0 z-40" onclick={() => spaceDropdownOpen = false} onkeydown={() => {}}></div>
-					<div class="absolute right-0 top-full z-50 mt-1 min-w-[160px] rounded-lg border border-surface-700 bg-surface-900 py-1 shadow-xl">
+					<div class="absolute right-0 top-full z-50 mt-1 min-w-[160px] rounded-lg border p-1 shadow-xl {$glassTheme ? 'glass-dropdown border-white/15' : 'border-surface-700 bg-surface-900'}">
 						{#each spaces as space}
 							<button
 								onclick={() => { onSpaceChange(space.space_id); spaceDropdownOpen = false; }}
-								class="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-medium transition-colors
+								class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors
 									{space.space_id === activeSpaceId
 										? 'bg-laya-orange/10 text-laya-orange'
-										: 'text-surface-300 hover:bg-surface-800 hover:text-surface-200'}"
+										: $glassTheme ? 'text-surface-300 hover:bg-white/[0.08] hover:text-surface-200' : 'text-surface-300 hover:bg-surface-800 hover:text-surface-200'}"
 							>
 								<span class="inline-block h-1.5 w-1.5 rounded-full" style="background-color: {space.color}"></span>
 								{space.name}
@@ -365,7 +366,7 @@
 		<button
 			onclick={onResynthesis}
 			disabled={resynthesizing}
-			class="flex items-center gap-1.5 rounded-lg border border-surface-700 px-3 py-1.5 text-xs font-medium text-surface-300 transition-colors hover:border-laya-orange/30 hover:text-laya-orange disabled:opacity-50 disabled:cursor-not-allowed"
+			class="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium text-surface-300 transition-colors hover:border-laya-orange/30 hover:text-laya-orange disabled:opacity-50 disabled:cursor-not-allowed {$glassTheme ? 'border-white/[0.10]' : 'border-surface-700'}"
 		>
 			{#if resynthesizing}
 				<svg class="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">

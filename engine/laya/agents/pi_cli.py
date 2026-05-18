@@ -46,6 +46,7 @@ class PiCliAgent(CodingAgent):
         self._repo_path: str = ""
         self._status: SessionStatus = SessionStatus.STARTING
         self._message_buffer: str = ""
+        self._message_text_emitted: bool = False
 
     @property
     def cc_session_id(self) -> str | None:
@@ -276,6 +277,7 @@ class PiCliAgent(CodingAgent):
             if role in ("user", "toolResult"):
                 return []
             self._message_buffer = ""
+            self._message_text_emitted = False
             return []
 
         if event_type == "message_update":
@@ -291,8 +293,10 @@ class PiCliAgent(CodingAgent):
             text = self._message_buffer
             self._message_buffer = ""
 
-            # Fall back to extracting text blocks from the final message
-            if not text:
+            # Only fall back to extracting from the final message object
+            # if no text was already emitted during streaming (text_delta
+            # flushed by toolcall_start or tool_execution_start).
+            if not text and not self._message_text_emitted:
                 text = self._extract_text_blocks(msg)
 
             if text and text.strip():
@@ -479,6 +483,7 @@ class PiCliAgent(CodingAgent):
             return None
         text = self._message_buffer
         self._message_buffer = ""
+        self._message_text_emitted = True
         return self._make_event(
             WorkspaceEventType.AGENT_MESSAGE,
             WorkspaceEventActor.AGENT,

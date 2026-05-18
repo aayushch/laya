@@ -198,7 +198,15 @@
 		prevEventCount = count;
 	});
 
-	const sessionStatusColors: Record<string, string> = {
+	const sessionStatusColors = $derived<Record<string, string>>($glassTheme ? {
+		starting: 'backdrop-blur-sm bg-cyan-400/15 text-cyan-300',
+		running: 'backdrop-blur-sm bg-blue-400/15 text-blue-300',
+		awaiting_input: 'backdrop-blur-sm bg-violet-400/15 text-violet-300',
+		paused: 'backdrop-blur-sm bg-white/[0.08] text-surface-300',
+		completed: 'backdrop-blur-sm bg-green-400/15 text-green-300',
+		failed: 'backdrop-blur-sm bg-red-400/15 text-red-300',
+		cancelled: 'backdrop-blur-sm bg-white/[0.08] text-surface-400'
+	} : {
 		starting: 'bg-cyan-900/50 text-cyan-300',
 		running: 'bg-blue-900/50 text-blue-300',
 		awaiting_input: 'bg-violet-900/50 text-violet-300',
@@ -206,7 +214,7 @@
 		completed: 'bg-green-900/50 text-green-300',
 		failed: 'bg-red-900/50 text-red-300',
 		cancelled: 'bg-surface-700 text-surface-400'
-	};
+	});
 
 	const toolIconPaths: Record<string, string> = {
 		file_read: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Zm-2 1.5L18.5 10H12V3.5ZM8 13h8v1.5H8V13Zm0 3h5v1.5H8V16Z',
@@ -349,12 +357,12 @@
 				<!-- Plan / Act mode toggle -->
 				<div class="flex rounded text-[10px] font-medium overflow-hidden {canToggleMode ? '' : 'opacity-50 pointer-events-none'}">
 					<button
-						class="px-2 py-0.5 transition-colors {agentMode === 'plan' ? 'bg-blue-900/50 text-blue-300' : $glassTheme ? 'bg-white/[0.04] text-surface-400 hover:text-surface-200' : 'bg-surface-800 text-surface-400 hover:text-surface-200'}"
+						class="px-2 py-0.5 transition-colors {agentMode === 'plan' ? ($glassTheme ? 'backdrop-blur-sm bg-blue-400/15 text-blue-300' : 'bg-blue-900/50 text-blue-300') : $glassTheme ? 'bg-white/[0.04] text-surface-400 hover:text-surface-200' : 'bg-surface-800 text-surface-400 hover:text-surface-200'}"
 						onclick={() => (agentMode = 'plan')}
 						disabled={!canToggleMode}
 					>Plan</button>
 					<button
-						class="px-2 py-0.5 transition-colors {agentMode === 'acceptEdits' ? 'bg-amber-900/50 text-amber-300' : $glassTheme ? 'bg-white/[0.04] text-surface-400 hover:text-surface-200' : 'bg-surface-800 text-surface-400 hover:text-surface-200'}"
+						class="px-2 py-0.5 transition-colors {agentMode === 'acceptEdits' ? ($glassTheme ? 'backdrop-blur-sm bg-amber-400/15 text-amber-300' : 'bg-amber-900/50 text-amber-300') : $glassTheme ? 'bg-white/[0.04] text-surface-400 hover:text-surface-200' : 'bg-surface-800 text-surface-400 hover:text-surface-200'}"
 						onclick={() => (agentMode = 'acceptEdits')}
 						disabled={!canToggleMode}
 					>Act</button>

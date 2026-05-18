@@ -166,32 +166,6 @@ async def update_tag(tag_id: int, req: UpdateTagRequest):
     )
 
 
-@router.delete("/tags/{tag_id}")
-async def delete_tag(tag_id: int):
-    db = await get_db()
-    rows = await db.execute_fetchall("SELECT is_system FROM tags WHERE tag_id = ?", (tag_id,))
-    if not rows:
-        raise HTTPException(404, "Tag not found")
-    if rows[0]["is_system"]:
-        raise HTTPException(403, "Cannot delete system tags")
-    # Collect affected card IDs for ChromaDB update
-    affected = await db.execute_fetchall(
-        "SELECT target_id FROM tag_assignments WHERE tag_id = ? AND target_type = 'card'",
-        (tag_id,),
-    )
-    await db.execute("DELETE FROM tags WHERE tag_id = ?", (tag_id,))
-    await db.commit()
-    # Update ChromaDB metadata for affected cards
-    if affected:
-        from laya.pipeline.tags import update_card_tags_in_chromadb
-        for row in affected:
-            try:
-                await update_card_tags_in_chromadb(row["target_id"])
-            except Exception as e:
-                log.warning("tag_delete_chromadb_update_failed", card_id=row["target_id"], error=str(e))
-    return {"status": "deleted"}
-
-
 @router.post("/tags/assign")
 async def assign_tag(req: AssignTagRequest):
     if req.target_type not in ("card", "entity", "context"):
@@ -236,6 +210,7 @@ async def assign_tag(req: AssignTagRequest):
     return {"status": "assigned", "tag_id": tag["tag_id"], "tag_name": tag["name"]}
 
 
+# Literal path must be registered before /tags/{tag_id} so FastAPI doesn't match "unassign" as a tag_id
 @router.delete("/tags/unassign")
 async def unassign_tag(req: UnassignTagRequest):
     if req.target_type not in ("card", "entity", "context"):
@@ -264,6 +239,32 @@ async def unassign_tag(req: UnassignTagRequest):
         },
     })
     return {"status": "removed"}
+
+
+@router.delete("/tags/{tag_id}")
+async def delete_tag(tag_id: int):
+    db = await get_db()
+    rows = await db.execute_fetchall("SELECT is_system FROM tags WHERE tag_id = ?", (tag_id,))
+    if not rows:
+        raise HTTPException(404, "Tag not found")
+    if rows[0]["is_system"]:
+        raise HTTPException(403, "Cannot delete system tags")
+    # Collect affected card IDs for ChromaDB update
+    affected = await db.execute_fetchall(
+        "SELECT target_id FROM tag_assignments WHERE tag_id = ? AND target_type = 'card'",
+        (tag_id,),
+    )
+    await db.execute("DELETE FROM tags WHERE tag_id = ?", (tag_id,))
+    await db.commit()
+    # Update ChromaDB metadata for affected cards
+    if affected:
+        from laya.pipeline.tags import update_card_tags_in_chromadb
+        for row in affected:
+            try:
+                await update_card_tags_in_chromadb(row["target_id"])
+            except Exception as e:
+                log.warning("tag_delete_chromadb_update_failed", card_id=row["target_id"], error=str(e))
+    return {"status": "deleted"}
 
 
 @router.get("/tags/for/{target_type}/{target_id:path}")

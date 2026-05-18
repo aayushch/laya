@@ -2,6 +2,7 @@
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { portal } from '$lib/actions/portal';
+	import Dropdown from '$lib/components/Dropdown.svelte';
 
 	let strictnessTooltip = $state<{ text: string; top: number; left: number } | null>(null);
 
@@ -504,7 +505,7 @@
 						<div class="flex gap-1 rounded-lg border {$glassTheme ? 'border-white/[0.06] bg-white/[0.02]' : 'border-surface-600 bg-surface-800'} p-1">
 							{#each ['strict', 'balanced', 'lenient'] as preset}
 								<button
-									class="flex-1 rounded-md px-3 py-1.5 text-laya-secondary font-medium transition-colors {contextStrictness === preset ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-200 hover:bg-surface-700/50'}"
+									class="flex-1 rounded-md px-3 py-1.5 text-laya-secondary font-medium transition-colors {contextStrictness === preset ? 'bg-laya-orange/15 text-laya-orange' : $glassTheme ? 'text-surface-400 hover:text-surface-200 hover:bg-white/[0.08]' : 'text-surface-400 hover:text-surface-200 hover:bg-surface-700/50'}"
 									onclick={() => selectContextPreset(preset as 'strict' | 'balanced' | 'lenient')}
 								>
 									{preset.charAt(0).toUpperCase() + preset.slice(1)}
@@ -558,9 +559,9 @@
 						</button>
 
 						{#if contextShowAdvanced}
-							<div class="border-t border-surface-600/50 px-4 py-3 space-y-4">
+							<div class="border-t px-4 py-3 space-y-4 {$glassTheme ? 'border-white/[0.08]' : 'border-surface-600/50'}">
 								<!-- Warning -->
-								<div class="flex items-center gap-2 rounded-md border border-surface-600/50 bg-surface-800/50 px-3 py-2">
+								<div class="flex items-center gap-2 rounded-md border px-3 py-2 {$glassTheme ? 'border-white/[0.08] bg-white/[0.04]' : 'border-surface-600/50 bg-surface-800/50'}">
 									<svg class="h-4 w-4 shrink-0 text-surface-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
 									</svg>
@@ -636,16 +637,19 @@
 								<div>
 									<label for="ctx-overlap" class="text-laya-secondary text-surface-300">Entity ref overlap</label>
 									<p class="text-laya-micro text-surface-500 mb-1">Whether shared identifiers are required for linking</p>
-									<select
+									<Dropdown
 										id="ctx-overlap"
 										bind:value={contextEntityRefOverlap}
-										onchange={handleAdvancedChange}
-										class="rounded-md border border-surface-600 bg-surface-800 px-2 py-1 text-laya-secondary text-surface-200"
-									>
-										<option value="hard_gate">Required (hard gate)</option>
-										<option value="soft_boost">Bonus (soft boost)</option>
-										<option value="disabled">Disabled</option>
-									</select>
+										options={[
+											{ value: 'hard_gate', label: 'Required (hard gate)' },
+											{ value: 'soft_boost', label: 'Bonus (soft boost)' },
+											{ value: 'disabled', label: 'Disabled' }
+										]}
+										onchange={() => handleAdvancedChange()}
+										size="sm"
+										compact
+										class="w-56"
+									/>
 								</div>
 
 								<!-- Always LLM -->

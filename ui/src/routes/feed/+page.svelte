@@ -696,6 +696,34 @@
 			return;
 		}
 
+		if (msg.type === 'tags_changed') {
+			_lastProcessedMsg = msg;
+			engineApi.listTags().then(r => { availableTags = r.tags; }).catch(() => {});
+			const p = msg.payload as { target_type?: string; target_id?: string } | undefined;
+			if (p?.target_type === 'card' && p.target_id) {
+				const cardId = p.target_id;
+				engineApi.getTagsFor('card', cardId).then(r => {
+					const tags = r.tags;
+					groups = groups.map(g => ({
+						...g,
+						cards: g.cards.map(c =>
+							c.card_id === cardId ? { ...c, tags } : c
+						),
+						sub_groups: g.sub_groups?.map(sg => ({
+							...sg,
+							cards: sg.cards.map(c =>
+								c.card_id === cardId ? { ...c, tags } : c
+							),
+						})),
+					}));
+					if (selectedCard?.card_id === cardId) {
+						selectedCard = { ...selectedCard, tags };
+					}
+				}).catch(() => {});
+			}
+			return;
+		}
+
 		if (!['card_created', 'card_deleted', 'card_updated', 'group_carried_forward', 'context_group_unlinked', 'context_group_merged', 'action_payload_updated'].includes(msg.type)) return;
 		_lastProcessedMsg = msg;
 
