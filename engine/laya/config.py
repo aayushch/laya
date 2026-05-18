@@ -109,10 +109,14 @@ DEFAULT_SETTINGS = {
     "smart_grouping": {
         "context_association": True,
         "smart_display": True,
+        "strictness": "strict",
         "confidence_threshold": 0.22,
         "auto_confirm_threshold": 0.12,
         "centroid_threshold": 0.25,
         "cross_platform_grouping": True,
+        "cross_platform_required": True,
+        "entity_ref_overlap_mode": "hard_gate",
+        "always_llm": True,
     },
     "tuning": {
         # Context association

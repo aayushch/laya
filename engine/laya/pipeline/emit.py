@@ -356,8 +356,26 @@ async def run_emit(
                 (matched_card_id,),
             )
             if match_rows and match_rows[0]["entity_id"] != entity_id:
+                # Fetch matched card's entity_refs from ChromaDB metadata
+                matched_refs = ""
+                try:
+                    from laya.db.chromadb_store import get_collection as _get_col
+                    import asyncio
+                    from functools import partial as _partial
+                    _col = _get_col()
+                    _loop = asyncio.get_event_loop()
+                    _meta_result = await _loop.run_in_executor(
+                        None, _partial(_col.get, ids=[matched_card_id], include=["metadatas"])
+                    )
+                    if _meta_result and _meta_result.get("metadatas"):
+                        matched_refs = _meta_result["metadatas"][0].get("entity_refs", "")
+                except Exception:
+                    pass
+
                 context_id = await assign_or_join_context_group(
-                    card_id, matched_card_id, label, space_id
+                    card_id, matched_card_id, label, space_id,
+                    entity_refs=entity_refs,
+                    matched_entity_refs=matched_refs,
                 )
                 if context_id:
                     log.info(
@@ -379,6 +397,7 @@ async def run_emit(
                 embed_text=embed_text,
                 space_id=space_id,
                 platform=event.source.platform,
+                entity_refs=entity_refs,
             )
         except Exception as e:
             log.warning("context_grouping_failed", card_id=card_id, error=str(e))

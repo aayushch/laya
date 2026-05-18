@@ -692,6 +692,10 @@
 					<h3 class="mb-1 text-laya-heading font-medium">Model Selection</h3>
 					<p class="text-laya-secondary text-surface-500">Choose any model for each pipeline stage. Local provider models appear alongside cloud models.</p>
 				</div>
+				<div class="flex items-center gap-3">
+					{#if saving}
+						<span class="text-laya-micro text-laya-orange">Saving…</span>
+					{/if}
 				<button
 					onclick={() => fetchModels(true)}
 					disabled={modelsLoading}
@@ -707,6 +711,7 @@
 						Refresh
 					{/if}
 				</button>
+				</div>
 			</div>
 			<div class="space-y-4">
 				{#each roles as role}
@@ -733,15 +738,17 @@
 					</div>
 				{/each}
 			</div>
-			{#if saving}
-				<p class="mt-3 text-laya-secondary text-surface-400">Saving...</p>
-			{/if}
 		</div>
 
 		<!-- Cost Control -->
 		<div id="cost-control" class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 			<div class="mb-4">
-				<h3 class="mb-1 text-laya-heading font-medium">Cost Control</h3>
+				<div class="mb-1 flex items-center justify-between">
+					<h3 class="text-laya-heading font-medium">Cost Control</h3>
+					{#if savingBudget}
+						<span class="text-laya-micro text-laya-orange">Saving…</span>
+					{/if}
+				</div>
 				<p class="text-laya-secondary text-surface-500">Set a monthly budget to automatically pause workflows when the limit is reached.</p>
 			</div>
 
@@ -798,9 +805,6 @@
 								class="w-32 rounded-md border border-surface-600 bg-surface-700 px-3 py-1.5 text-laya-base text-surface-200 placeholder:text-surface-500"
 							/>
 							<span class="text-laya-secondary text-surface-500">USD / month</span>
-							{#if savingBudget}
-								<span class="text-laya-secondary text-surface-400">Saving...</span>
-							{/if}
 						</div>
 					</div>
 
@@ -890,6 +894,9 @@
 					<h3 class="text-laya-heading font-medium">Advanced</h3>
 					<p class="text-laya-secondary text-surface-500">Model timeout, retry attempts, and request concurrency</p>
 				</div>
+				{#if savingPipeline}
+					<span class="text-laya-micro text-laya-orange">Saving…</span>
+				{/if}
 				<svg
 					class="h-5 w-5 shrink-0 text-surface-400 transition-transform {showAdvanced ? 'rotate-180' : ''}"
 					fill="none" stroke="currentColor" viewBox="0 0 24 24"
@@ -1016,9 +1023,6 @@
 						</div>
 					</div>
 
-					{#if savingPipeline}
-						<p class="text-laya-secondary text-surface-400">Saving...</p>
-					{/if}
 				</div>
 			{/if}
 		</div>

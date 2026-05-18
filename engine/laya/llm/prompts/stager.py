@@ -164,8 +164,8 @@ brief summary or status update, not a self-addressed message. Suggested actions 
 still valid (the user may want to comment, transition, or close their own items) — \
 just ensure payload content is not addressed to themselves.
 - **relationship: manager / teammate / external / bot** → The actor is NOT the Laya \
-user. Use third-person framing — "{actor_name} opened issue BUG-123", \
-"{actor_name}'s PR #45". Draft replies addressed to the actor. Do NOT use "you" or \
+user. Use third-person framing — "{{actor_name}} opened issue BUG-123", \
+"{{actor_name}}'s PR #45". Draft replies addressed to the actor. Do NOT use "you" or \
 "your" to refer to the actor — those pronouns refer ONLY to the Laya user.
 - **Actions from others on user's items**: If someone else acts on the user's item \
 (e.g., Jane comments on a PR the user created), frame it as "Jane commented on your \
@@ -199,8 +199,8 @@ relevant details, but do NOT imply the user needs to act. Specifically:
    - Do NOT assume the user should review a PR because a PR event arrived — only a \
 listed reviewer should be told to review.
    - Do NOT draft replies or feedback as if the user is a reviewer or assignee.
-   - Use descriptive headers ("{Actor} opened PR: {title}") rather than action headers \
-("Review {title}").
+   - Use descriptive headers ("{{Actor}} opened PR: {{title}}") rather than action headers \
+("Review {{title}}").
    - Limit suggested_actions to lightweight follow-ups (e.g., comment, bookmark) rather \
 than ownership actions (approve, request changes, merge).
    The user benefits from awareness of project activity, not from being assigned work \
@@ -227,20 +227,41 @@ when no tags are warranted.
 
 ## Context Matching
 
-Among the "Related past cards" listed in the input, identify if any card with a DIFFERENT \
-entity than this event is about the same real-world context (same transaction, project, \
-or situation across platforms).
+{context_matching_directive}"""
 
-Same context examples: a bill notification + payment receipt for that bill, a PR comment + \
-the CI build it triggered, a meeting invite + follow-up notes for that meeting, a shipping \
-confirmation + delivery notification for the same order.
 
-NOT same context: two unrelated emails of the same type, two different newsletters, two \
-alerts about different services, two reviews of different content. Notifications are NOT \
-the same context just because they are the same notification type.
-
-If you identify a match, output the card_id in context_match. If no match or uncertain, \
-output matched_card_id as null with an empty label."""
+_CONTEXT_MATCHING_DIRECTIVES = {
+    "strict": (
+        'Among the "Related past cards" listed in the input, identify ONLY if any card with '
+        "a DIFFERENT entity references the EXACT SAME specific incident, ticket, transaction, "
+        "or entity as this event. They must share concrete identifiers (ticket numbers, PR IDs, "
+        "service names, order numbers). Two cards about the same TYPE of issue (e.g., two different "
+        "NPE bugs in different services) are NOT the same issue.\n\n"
+        "If you identify a match with high confidence, output the card_id in context_match. "
+        "If no match or any uncertainty, output matched_card_id as null with an empty label."
+    ),
+    "balanced": (
+        'Among the "Related past cards" listed in the input, identify if any card with a DIFFERENT '
+        "entity than this event is about the same real-world context (same transaction, project, "
+        "or situation across platforms).\n\n"
+        "Same context examples: a bill notification + payment receipt for that bill, a PR comment + "
+        "the CI build it triggered, a meeting invite + follow-up notes for that meeting, a shipping "
+        "confirmation + delivery notification for the same order.\n\n"
+        "NOT same context: two unrelated emails of the same type, two different newsletters, two "
+        "alerts about different services, two reviews of different content. Notifications are NOT "
+        "the same context just because they are the same notification type.\n\n"
+        "If you identify a match, output the card_id in context_match. If no match or uncertain, "
+        "output matched_card_id as null with an empty label."
+    ),
+    "lenient": (
+        'Among the "Related past cards" listed in the input, identify if any card with a DIFFERENT '
+        "entity could provide useful context for understanding this event. Consider same project "
+        "area, related topics, overlapping people, or similar timeframe.\n\n"
+        "If you identify a relationship that would help the user, output the card_id in "
+        "context_match. If no meaningful relationship, output matched_card_id as null with an "
+        "empty label."
+    ),
+}
 
 
 def _build_role_directive(
@@ -368,6 +389,7 @@ def build_stager_messages(
     actor_relationship: str = "external",
     participant_roles: dict[str, Any] | None = None,
     existing_tags: list[str] | None = None,
+    strictness: str = "strict",
 ) -> list[dict[str, str]]:
     """Build the messages array for the Stager LLM call."""
     # Include event metadata so the LLM can use platform-specific IDs
@@ -543,8 +565,15 @@ Router classification:
 
 Produce a JSON action card matching the required schema."""
 
+    directive = _CONTEXT_MATCHING_DIRECTIVES.get(
+        strictness, _CONTEXT_MATCHING_DIRECTIVES["balanced"]
+    )
+    system_prompt = STAGER_SYSTEM_PROMPT.format(
+        context_matching_directive=directive,
+    )
+
     return [
-        {"role": "system", "content": get_prompt("stager", STAGER_SYSTEM_PROMPT)},
+        {"role": "system", "content": get_prompt("stager", system_prompt)},
         {"role": "user", "content": user_message},
     ]
 

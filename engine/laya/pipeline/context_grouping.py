@@ -4,6 +4,11 @@ Cards with different entity_ids (e.g. two Gmail threads) may still be about
 the same underlying topic (e.g. a utility bill).  This module detects such
 relationships via ChromaDB similarity search and optional LLM confirmation,
 then assigns a shared context_id so the feed can group them together.
+
+Strictness presets control how aggressively cards are linked:
+- strict: same issue across different platforms (requires shared identifiers)
+- balanced: same broader context/topic
+- lenient: related notifications that provide mutual context
 """
 
 import asyncio
@@ -17,8 +22,15 @@ import structlog
 from laya.config import load_settings
 from laya.db.chromadb_store import get_collection, memory_search
 from laya.db.sqlite import get_db
+from laya.pipeline.context_presets import (
+    _entity_refs_overlap,
+    get_strictness,
+    resolve_context_config,
+)
 
 log = structlog.get_logger()
+
+_SOFT_BOOST_DISCOUNT = 0.05
 
 
 async def resolve_context_group(
@@ -27,6 +39,7 @@ async def resolve_context_group(
     embed_text: str,
     space_id: str | None,
     platform: str,
+    entity_refs: str = "",
 ) -> str | None:
     """Find or create a context group for a newly emitted card.
 
@@ -41,6 +54,7 @@ async def resolve_context_group(
         embed_text: The card's embedding text (already indexed in ChromaDB).
         space_id: Space boundary — only group within same space.
         platform: Source platform of the card.
+        entity_refs: Comma-separated entity references for overlap checking.
 
     Returns:
         context_id if a group was found/created, None otherwise.
@@ -50,8 +64,15 @@ async def resolve_context_group(
     if not sg_config.get("context_association", True):
         return None
 
-    confidence_threshold = sg_config.get("confidence_threshold", 0.22)
-    auto_confirm_threshold = sg_config.get("auto_confirm_threshold", 0.12)
+    ctx_config = resolve_context_config(sg_config)
+    strictness = get_strictness(sg_config)
+    confidence_threshold = ctx_config["confidence_threshold"]
+    auto_confirm_threshold = ctx_config["auto_confirm_threshold"]
+    cross_platform_required = ctx_config["cross_platform_required"]
+    entity_ref_overlap_mode = ctx_config["entity_ref_overlap_mode"]
+    always_llm = ctx_config["always_llm"]
+
+    # Legacy cross_platform_grouping toggle (restricts to same platform)
     cross_platform = sg_config.get("cross_platform_grouping", True)
 
     # Time window: only consider cards from the last N days
@@ -60,12 +81,14 @@ async def resolve_context_group(
     cutoff = (datetime.now(timezone.utc) - timedelta(days=time_window_days)).timestamp()
 
     # Search ChromaDB for semantically similar cards
-    # Filter by space, time window, and optionally platform
+    # Filter by space, time window, and platform constraints
     and_conditions: list[dict] = [{"timestamp": {"$gte": cutoff}}]
     if space_id:
         and_conditions.append({"space_id": space_id})
     if not cross_platform:
         and_conditions.append({"source_platform": platform})
+    elif cross_platform_required:
+        and_conditions.append({"source_platform": {"$ne": platform}})
 
     where_filter: dict | None
     if len(and_conditions) == 1:
@@ -97,6 +120,11 @@ async def resolve_context_group(
         if result_card_id == card_id:
             continue
 
+        # Cross-platform enforcement: double-check after retrieval
+        result_platform = metadata.get("source_platform", "")
+        if cross_platform_required and result_platform == platform:
+            continue
+
         # Look up the candidate's entity_id and context_id
         row = await db.execute_fetchall(
             "SELECT entity_id, context_id, header, summary FROM action_cards WHERE card_id = ?",
@@ -107,8 +135,23 @@ async def resolve_context_group(
 
         candidate_entity_id = row[0]["entity_id"]
         if candidate_entity_id == entity_id:
-            # Already in the same entity group — skip
             continue
+
+        candidate_refs = metadata.get("entity_refs", "")
+        distance = result.get("distance", 1.0)
+
+        # Entity ref overlap check
+        has_ref_overlap = _entity_refs_overlap(entity_refs, candidate_refs)
+        if entity_ref_overlap_mode == "hard_gate" and not has_ref_overlap:
+            log.debug(
+                "context_group_no_ref_overlap",
+                card_id=card_id,
+                candidate=result_card_id,
+                distance=distance,
+            )
+            continue
+        elif entity_ref_overlap_mode == "soft_boost" and has_ref_overlap:
+            distance = max(0.0, distance - _SOFT_BOOST_DISCOUNT)
 
         candidates.append({
             "card_id": result_card_id,
@@ -116,7 +159,7 @@ async def resolve_context_group(
             "context_id": row[0]["context_id"],
             "header": row[0]["header"],
             "summary": row[0]["summary"],
-            "distance": result.get("distance", 1.0),
+            "distance": distance,
         })
 
     if not candidates:
@@ -141,17 +184,16 @@ async def resolve_context_group(
             return None
 
     # Confidence tiers
-    if best["distance"] <= auto_confirm_threshold:
-        # High confidence — assign directly
+    if not always_llm and auto_confirm_threshold and best["distance"] <= auto_confirm_threshold:
         log.info(
             "context_group_auto",
             card_id=card_id,
             matched_card=best["card_id"],
             distance=best["distance"],
+            strictness=strictness,
         )
     elif best["distance"] <= confidence_threshold:
-        # Medium confidence — LLM confirmation needed
-        # Get current card's header/summary for the LLM
+        # LLM confirmation needed
         current_row = await db.execute_fetchall(
             "SELECT header, summary FROM action_cards WHERE card_id = ?",
             (card_id,),
@@ -167,6 +209,7 @@ async def resolve_context_group(
             card_b_header=best["header"],
             card_b_summary=best["summary"],
             space_id=space_id,
+            strictness=strictness,
         )
         if not confirmed:
             log.debug(
@@ -174,6 +217,7 @@ async def resolve_context_group(
                 card_id=card_id,
                 matched_card=best["card_id"],
                 distance=best["distance"],
+                strictness=strictness,
             )
             return None
 
@@ -182,6 +226,7 @@ async def resolve_context_group(
             card_id=card_id,
             matched_card=best["card_id"],
             distance=best["distance"],
+            strictness=strictness,
         )
     else:
         return None
@@ -190,8 +235,8 @@ async def resolve_context_group(
     if best["context_id"]:
         # Join existing context group — validate against group centroid first
         context_id = best["context_id"]
-        centroid_threshold = sg_config.get("centroid_threshold", 0.25)
-        if not await _passes_centroid_check(context_id, card_id, centroid_threshold):
+        centroid_thresh = ctx_config["centroid_threshold"]
+        if not await _passes_centroid_check(context_id, card_id, centroid_thresh):
             log.info("context_group_centroid_rejected", card_id=card_id, context_id=context_id)
             return None
         await db.execute(
@@ -309,6 +354,8 @@ async def assign_or_join_context_group(
     matched_card_id: str,
     label: str,
     space_id: str | None,
+    entity_refs: str = "",
+    matched_entity_refs: str = "",
 ) -> str | None:
     """Assign a card to a context group with the matched card.
 
@@ -316,10 +363,24 @@ async def assign_or_join_context_group(
     If not, a new context group is created for both cards.
 
     Respects user_split — if the user has manually split a group, we don't rejoin.
+    In strict mode, validates entity_ref overlap before accepting stager matches.
 
     Returns:
         context_id if assigned, None if rejected (e.g. user_split).
     """
+    settings = load_settings()
+    sg_config = settings.get("smart_grouping", {})
+    ctx_config = resolve_context_config(sg_config)
+
+    # In strict/hard_gate mode, validate entity ref overlap for stager matches
+    if ctx_config["entity_ref_overlap_mode"] == "hard_gate":
+        if not _entity_refs_overlap(entity_refs, matched_entity_refs):
+            log.debug(
+                "context_group_stager_no_ref_overlap",
+                card_id=card_id,
+                matched_card_id=matched_card_id,
+            )
+            return None
     db = await get_db()
 
     # Look up the matched card's current context state
@@ -344,9 +405,7 @@ async def assign_or_join_context_group(
             return None
 
         # Join existing group — validate against group centroid first
-        settings = load_settings()
-        sg_config = settings.get("smart_grouping", {})
-        centroid_threshold = sg_config.get("centroid_threshold", 0.25)
+        centroid_threshold = ctx_config["centroid_threshold"]
         if not await _passes_centroid_check(matched_context_id, card_id, centroid_threshold):
             log.info("context_group_centroid_rejected_stager", card_id=card_id, context_id=matched_context_id)
             return None

@@ -341,8 +341,13 @@ export interface Settings {
 	smart_grouping?: {
 		context_association: boolean;
 		smart_display: boolean;
+		strictness: 'strict' | 'balanced' | 'lenient' | 'custom';
 		confidence_threshold: number;
 		auto_confirm_threshold: number;
+		centroid_threshold: number;
+		cross_platform_required: boolean;
+		entity_ref_overlap_mode: 'hard_gate' | 'soft_boost' | 'disabled';
+		always_llm: boolean;
 	};
 	group_summaries?: {
 		enabled: boolean;

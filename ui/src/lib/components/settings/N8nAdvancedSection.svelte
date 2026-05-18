@@ -571,6 +571,9 @@
 						>({Object.keys(webhooks).length} configured)</span
 					>
 				</div>
+				{#if saving}
+					<span class="text-laya-micro text-laya-orange">Saving…</span>
+				{/if}
 				<svg
 					class="h-4 w-4 text-surface-400 transition-transform {showWebhooks
 						? 'rotate-180'
@@ -717,9 +720,6 @@
 						</button>
 					{/if}
 
-					{#if saving}
-						<p class="mt-2 text-laya-secondary text-surface-400">Saving...</p>
-					{/if}
 				</div>
 			{/if}
 		</div>

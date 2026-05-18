@@ -337,6 +337,7 @@
 		feedSearchQuery.set(searchQuery);
 	});
 
+
 	$effect(() => {
 		if ($searchFocusSignal && searchInputEl) {
 			searchInputEl.focus();
@@ -1911,99 +1912,89 @@
 		<!-- Separator -->
 		<div class="h-5 w-px bg-surface-700/60 mx-1"></div>
 		<!-- Search -->
-		<div class="relative">
-			<svg class="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-surface-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-			</svg>
-			<input
-				bind:this={searchInputEl}
-				type="text"
-				bind:value={searchQuery}
-				placeholder="Search or #tag"
-				class="h-7 w-48 rounded-lg border border-surface-700 bg-surface-800/60 pl-7 pr-7 text-laya-secondary text-surface-200 placeholder-surface-500 outline-none transition-colors focus:border-laya-orange/50 focus:ring-1 focus:ring-laya-orange/25"
-				oninput={() => updateTagAutocomplete()}
-				onblur={() => { setTimeout(() => { showTagAutocomplete = false; }, 150); }}
-				onkeydown={(e) => {
-					if (!showTagAutocomplete || tagSuggestions.length === 0) return;
-					if (e.key === 'ArrowDown') {
-						e.preventDefault();
-						tagAutocompleteIdx = (tagAutocompleteIdx + 1) % tagSuggestions.length;
-					} else if (e.key === 'ArrowUp') {
-						e.preventDefault();
-						tagAutocompleteIdx = (tagAutocompleteIdx - 1 + tagSuggestions.length) % tagSuggestions.length;
-					} else if (e.key === 'Enter' || e.key === 'Tab') {
-						e.preventDefault();
-						insertTagToken(tagSuggestions[tagAutocompleteIdx].name);
-					} else if (e.key === 'Escape') {
-						showTagAutocomplete = false;
-					}
-				}}
-			/>
-			{#if searchQuery}
-				<button
-					class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-surface-500 hover:text-surface-300"
-					onclick={() => { searchQuery = ''; showTagAutocomplete = false; }}
-					title="Clear search"
-				>
-					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-					</svg>
-				</button>
-			{/if}
+		<div class="group/search relative">
+			<div
+				class="flex items-center h-7 w-48 rounded-lg border border-surface-700 bg-surface-800/60 transition-colors focus-within:border-laya-orange/50 focus-within:ring-1 focus-within:ring-laya-orange/25"
+				onclick={() => searchInputEl?.focus()}
+			>
+				<svg class="pointer-events-none ml-2 h-3.5 w-3.5 shrink-0 text-surface-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+				</svg>
+				{#if activeSearchTags.length > 0}
+					<div class="flex items-center gap-0.5 ml-1 shrink-0">
+						{#each activeSearchTags.slice(0, 4) as tagName}
+							{@const tag = availableTags.find(t => t.name === tagName)}
+							<span class="h-2 w-2 rounded-full shrink-0" style="background-color: {tag?.color ?? (tag?.is_system ? '#6B7280' : '#C4956B')}"></span>
+						{/each}
+						{#if activeSearchTags.length > 4}
+							<span class="text-[8px] leading-none text-surface-500 shrink-0">+{activeSearchTags.length - 4}</span>
+						{/if}
+					</div>
+				{/if}
+				<input
+					bind:this={searchInputEl}
+					type="text"
+					bind:value={searchQuery}
+					placeholder={activeSearchTags.length > 0 ? 'Search...' : 'Search or #tag'}
+					class="h-full flex-1 min-w-0 bg-transparent pl-1.5 pr-7 text-laya-secondary text-surface-200 placeholder-surface-500 outline-none"
+					oninput={() => updateTagAutocomplete()}
+					onblur={() => { setTimeout(() => { showTagAutocomplete = false; }, 150); }}
+					onkeydown={(e) => {
+						if (!showTagAutocomplete || tagSuggestions.length === 0) return;
+						if (e.key === 'ArrowDown') {
+							e.preventDefault();
+							tagAutocompleteIdx = (tagAutocompleteIdx + 1) % tagSuggestions.length;
+						} else if (e.key === 'ArrowUp') {
+							e.preventDefault();
+							tagAutocompleteIdx = (tagAutocompleteIdx - 1 + tagSuggestions.length) % tagSuggestions.length;
+						} else if (e.key === 'Enter' || e.key === 'Tab') {
+							e.preventDefault();
+							insertTagToken(tagSuggestions[tagAutocompleteIdx].name);
+						} else if (e.key === 'Escape') {
+							showTagAutocomplete = false;
+						}
+					}}
+				/>
+				{#if searchQuery}
+					<button
+						class="mr-1.5 rounded p-0.5 text-surface-500 hover:text-surface-300 shrink-0"
+						onclick={() => { searchQuery = ''; showTagAutocomplete = false; }}
+						title="Clear search"
+					>
+						<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				{/if}
+			</div>
 			{#if activeSearchTags.length > 0}
-				<div class="group/tags absolute top-full left-0 mt-1">
-					{#if activeSearchTags.length === 1}
-						{@const tag = availableTags.find(t => t.name === activeSearchTags[0])}
-						<span
-							class="{tag?.is_system ? 'tag-chip-system' : 'tag-chip-user'} inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none"
-							style="--tag-color: {tag?.color ?? (tag?.is_system ? '#6B7280' : '#C4956B')}"
-						>
-							#{activeSearchTags[0]}
-							<button class="hover:opacity-70 cursor-pointer" title="Remove" onclick={() => removeSearchTag(activeSearchTags[0])}>
-								<svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12" />
-								</svg>
-							</button>
-						</span>
-					{:else}
-						{@const firstTag = availableTags.find(t => t.name === activeSearchTags[0])}
-						<div class="flex items-center gap-1 cursor-default">
-							<span
-								class="{firstTag?.is_system ? 'tag-chip-system' : 'tag-chip-user'} inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none"
-								style="--tag-color: {firstTag?.color ?? (firstTag?.is_system ? '#6B7280' : '#C4956B')}"
-							>#{activeSearchTags[0]}</span>
-							<span class="text-[10px] text-surface-500">+{activeSearchTags.length - 1} more</span>
-							<svg class="h-3 w-3 text-surface-500" fill="currentColor" viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18" cy="12" r="1.5"/></svg>
-						</div>
-						<div class="absolute left-0 top-full z-50 hidden group-hover/tags:block pt-1">
-							<div class="rounded-lg border border-surface-700 bg-surface-900 p-2 shadow-xl min-w-[140px]">
-								<div class="flex flex-col gap-1.5">
-									{#each activeSearchTags as tagName}
-										{@const tag = availableTags.find(t => t.name === tagName)}
-										<div class="flex items-center justify-between gap-3">
-											<span
-												class="{tag?.is_system ? 'tag-chip-system' : 'tag-chip-user'} inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none"
-												style="--tag-color: {tag?.color ?? (tag?.is_system ? '#6B7280' : '#C4956B')}"
-											>#{tagName}</span>
-											<button
-												class="rounded p-0.5 text-surface-500 hover:text-red-400 transition-colors cursor-pointer"
-												title="Remove #{tagName}"
-												onclick={() => removeSearchTag(tagName)}
-											>
-												<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-												</svg>
-											</button>
-										</div>
-									{/each}
+				<div class="absolute left-0 top-full z-50 hidden group-hover/search:block pt-1">
+					<div class="rounded-lg border border-surface-700 bg-surface-900 p-2 shadow-xl min-w-[140px]">
+						<div class="flex flex-col gap-1.5">
+							{#each activeSearchTags as tagName}
+								{@const tag = availableTags.find(t => t.name === tagName)}
+								<div class="flex items-center justify-between gap-3">
+									<span
+										class="{tag?.is_system ? 'tag-chip-system' : 'tag-chip-user'} inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none"
+										style="--tag-color: {tag?.color ?? (tag?.is_system ? '#6B7280' : '#C4956B')}"
+									>#{tagName}</span>
+									<button
+										class="rounded p-0.5 text-surface-500 hover:text-red-400 transition-colors cursor-pointer"
+										title="Remove #{tagName}"
+										onclick={() => removeSearchTag(tagName)}
+									>
+										<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+										</svg>
+									</button>
 								</div>
-								<button
-									class="mt-2 w-full rounded-md py-1 text-[10px] font-medium text-surface-400 hover:text-surface-200 hover:bg-surface-800 transition-colors cursor-pointer"
-									onclick={() => { activeSearchTags.forEach(t => removeSearchTag(t)); }}
-								>Clear all</button>
-							</div>
+							{/each}
 						</div>
-					{/if}
+						<button
+							class="mt-2 w-full rounded-md py-1 text-[10px] font-medium text-surface-400 hover:text-surface-200 hover:bg-surface-800 transition-colors cursor-pointer"
+							onclick={() => { activeSearchTags.forEach(t => removeSearchTag(t)); }}
+						>Clear all</button>
+					</div>
 				</div>
 			{/if}
 		</div>

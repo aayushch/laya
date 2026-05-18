@@ -221,12 +221,68 @@ async def confirm_entity_link(
         return False
 
 
+_CONTEXT_SYSTEM_PROMPTS = {
+    "strict": (
+        "You determine whether two notifications reference the EXACT SAME specific "
+        "incident, transaction, ticket, or entity. They must share a concrete "
+        "identifier — a ticket number, PR number, order ID, service name, or "
+        "specific person + situation.\n\n"
+        "Return match: true ONLY if you are highly confident both notifications "
+        "point to a single real-world event or object.\n\n"
+        "Two notifications about the same TYPE of issue (e.g. two different NPE "
+        "bugs, two different payment errors, two security alerts for different "
+        "services) are NOT the same issue. Two notifications that share vocabulary "
+        "or domain but reference different specific entities are NOT a match.\n\n"
+        "When in doubt, return match: false."
+    ),
+    "balanced": (
+        "You determine whether two notifications are about the same "
+        "real-world context or topic. Two notifications are about the "
+        "same context if they refer to the same specific underlying "
+        "entity, transaction, project, or situation — even if they come "
+        "from different senders or platforms.\n\n"
+        "Examples of SAME context:\n"
+        "- A utility bill notification + a payment receipt for that bill\n"
+        "- A PR comment + the CI build it triggered\n"
+        "- A meeting invite + follow-up notes for that meeting\n"
+        "- A shipping confirmation + delivery notification for the same order\n\n"
+        "Examples of NOT same context:\n"
+        "- Two different newsletters from different senders\n"
+        "- Two unrelated promotional emails\n"
+        "- Two reviews of different products or content\n"
+        "- Two alerts about different services or accounts\n"
+        "- Two emails that just happen to have similar subject lines\n\n"
+        "IMPORTANT: Notifications are NOT the same context just because "
+        "they are the same type of notification. Two email reviews, two "
+        "newsletters, or two alerts are NOT the same context unless they "
+        "refer to the exact same underlying thing. When in doubt, return "
+        "match: false."
+    ),
+    "lenient": (
+        "You determine whether two notifications are related enough that "
+        "seeing one would help a user understand or contextualize the other.\n\n"
+        "Return match: true if they share any meaningful relationship: same "
+        "project area, overlapping people, related timeline, same broader "
+        "initiative, or similar enough that grouping them provides value.\n\n"
+        "They do NOT need to be about the exact same event — being about "
+        "related topics or the same general area is sufficient.\n\n"
+        "When in doubt, return match: true."
+    ),
+}
+
+
+def _context_link_system_prompt(strictness: str) -> str:
+    """Return the LLM system prompt for context link confirmation."""
+    return _CONTEXT_SYSTEM_PROMPTS.get(strictness, _CONTEXT_SYSTEM_PROMPTS["balanced"])
+
+
 async def confirm_context_link(
     card_a_header: str,
     card_a_summary: str,
     card_b_header: str,
     card_b_summary: str,
     space_id: str | None = None,
+    strictness: str = "balanced",
 ) -> tuple[bool, str]:
     """LLM confirmation that two cards are about the same real-world context.
 
@@ -244,6 +300,7 @@ async def confirm_context_link(
         card_b_header: Header of the second card.
         card_b_summary: Summary of the second card.
         space_id: Optional space for rule scoping.
+        strictness: Preset name controlling how strict the matching is.
 
     Returns:
         Tuple of (match: bool, label: str). Label is a short description
@@ -265,32 +322,12 @@ async def confirm_context_link(
 
     feedback_prompt = f"\n\n{feedback_section}" if feedback_section else ""
 
+    system_prompt = _context_link_system_prompt(strictness)
+
     messages = [
         {
             "role": "system",
-            "content": (
-                "You determine whether two notifications are about the same "
-                "real-world context or topic. Two notifications are about the "
-                "same context if they refer to the same specific underlying "
-                "entity, transaction, project, or situation — even if they come "
-                "from different senders or platforms.\n\n"
-                "Examples of SAME context:\n"
-                "- A utility bill notification + a payment receipt for that bill\n"
-                "- A PR comment + the CI build it triggered\n"
-                "- A meeting invite + follow-up notes for that meeting\n"
-                "- A shipping confirmation + delivery notification for the same order\n\n"
-                "Examples of NOT same context:\n"
-                "- Two different newsletters from different senders\n"
-                "- Two unrelated promotional emails\n"
-                "- Two reviews of different products or content\n"
-                "- Two alerts about different services or accounts\n"
-                "- Two emails that just happen to have similar subject lines\n\n"
-                "IMPORTANT: Notifications are NOT the same context just because "
-                "they are the same type of notification. Two email reviews, two "
-                "newsletters, or two alerts are NOT the same context unless they "
-                "refer to the exact same underlying thing. When in doubt, return "
-                "match: false."
-            ),
+            "content": system_prompt,
         },
         {
             "role": "user",

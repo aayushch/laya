@@ -63,7 +63,14 @@
 
 <div class="space-y-6">
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
-		<h3 class="mb-1 text-laya-heading font-medium">Card Retention</h3>
+		<div class="mb-1 flex items-center justify-between">
+			<h3 class="text-laya-heading font-medium">Card Retention</h3>
+			{#if savingSection === 'card'}
+				<span class="text-laya-micro text-laya-orange">Saving…</span>
+			{:else if savedSection === 'card'}
+				<span class="text-laya-micro text-green-400">Saved</span>
+			{/if}
+		</div>
 		<p class="mb-4 text-laya-base text-surface-400">
 			Cards in archived, dismissed, completed, or failed states that are older than the retention
 			period are automatically deleted each day. Active cards are never auto-deleted.
@@ -92,11 +99,6 @@
 			{/if}
 
 			<p class="mt-3 text-laya-secondary text-surface-500">
-				{#if savingSection === 'card'}
-					<span class="text-laya-orange">Saving…</span>
-				{:else if savedSection === 'card'}
-					<span class="text-green-400">Saved</span> —
-				{/if}
 				Default: 90 days. Cards created before
 				<span class="text-surface-300">
 					{new Date(Date.now() - retentionDays * 86400000).toLocaleDateString()}
@@ -107,7 +109,14 @@
 	</div>
 
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
-		<h3 class="mb-1 text-laya-heading font-medium">Chat Retention</h3>
+		<div class="mb-1 flex items-center justify-between">
+			<h3 class="text-laya-heading font-medium">Chat Retention</h3>
+			{#if savingSection === 'chat'}
+				<span class="text-laya-micro text-laya-orange">Saving…</span>
+			{:else if savedSection === 'chat'}
+				<span class="text-laya-micro text-green-400">Saved</span>
+			{/if}
+		</div>
 		<p class="mb-4 text-laya-base text-surface-400">
 			Conversations that have been idle for longer than the retention period are automatically
 			deleted each day, along with all their messages.
@@ -134,11 +143,6 @@
 			{/if}
 
 			<p class="mt-3 text-laya-secondary text-surface-500">
-				{#if savingSection === 'chat'}
-					<span class="text-laya-orange">Saving…</span>
-				{:else if savedSection === 'chat'}
-					<span class="text-green-400">Saved</span> —
-				{/if}
 				Default: 90 days. Conversations last active before
 				<span class="text-surface-300">
 					{new Date(Date.now() - chatRetentionDays * 86400000).toLocaleDateString()}
@@ -149,7 +153,14 @@
 	</div>
 
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
-		<h3 class="mb-1 text-laya-heading font-medium">Audit Log Retention</h3>
+		<div class="mb-1 flex items-center justify-between">
+			<h3 class="text-laya-heading font-medium">Audit Log Retention</h3>
+			{#if savingSection === 'audit'}
+				<span class="text-laya-micro text-laya-orange">Saving…</span>
+			{:else if savedSection === 'audit'}
+				<span class="text-laya-micro text-green-400">Saved</span>
+			{/if}
+		</div>
 		<p class="mb-4 text-laya-base text-surface-400">
 			LLM call audit logs older than the retention period are automatically deleted each day.
 		</p>
@@ -175,18 +186,20 @@
 			{/if}
 
 			<p class="mt-3 text-laya-secondary text-surface-500">
-				{#if savingSection === 'audit'}
-					<span class="text-laya-orange">Saving…</span>
-				{:else if savedSection === 'audit'}
-					<span class="text-green-400">Saved</span> —
-				{/if}
 				Default: 90 days.
 			</p>
 		{/if}
 	</div>
 
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
-		<h3 class="mb-1 text-laya-heading font-medium">Omni Retention</h3>
+		<div class="mb-1 flex items-center justify-between">
+			<h3 class="text-laya-heading font-medium">Omni Retention</h3>
+			{#if savingSection === 'omni'}
+				<span class="text-laya-micro text-laya-orange">Saving…</span>
+			{:else if savedSection === 'omni'}
+				<span class="text-laya-micro text-green-400">Saved</span>
+			{/if}
+		</div>
 		<p class="mb-4 text-laya-base text-surface-400">
 			Omni timeline snapshots older than the retention period are automatically deleted each day.
 			The latest snapshot per space is always preserved.
@@ -213,18 +226,20 @@
 			{/if}
 
 			<p class="mt-3 text-laya-secondary text-surface-500">
-				{#if savingSection === 'omni'}
-					<span class="text-laya-orange">Saving…</span>
-				{:else if savedSection === 'omni'}
-					<span class="text-green-400">Saved</span> —
-				{/if}
 				Default: 30 days.
 			</p>
 		{/if}
 	</div>
 
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
-		<h3 class="mb-1 text-laya-heading font-medium">Ingestion Errors Retention</h3>
+		<div class="mb-1 flex items-center justify-between">
+			<h3 class="text-laya-heading font-medium">Ingestion Errors Retention</h3>
+			{#if savingSection === 'ingestion'}
+				<span class="text-laya-micro text-laya-orange">Saving…</span>
+			{:else if savedSection === 'ingestion'}
+				<span class="text-laya-micro text-green-400">Saved</span>
+			{/if}
+		</div>
 		<p class="mb-4 text-laya-base text-surface-400">
 			Captured n8n ingestion failures older than the retention period are automatically deleted
 			each day. Cleared errors are also subject to this retention.
@@ -251,11 +266,6 @@
 			{/if}
 
 			<p class="mt-3 text-laya-secondary text-surface-500">
-				{#if savingSection === 'ingestion'}
-					<span class="text-laya-orange">Saving…</span>
-				{:else if savedSection === 'ingestion'}
-					<span class="text-green-400">Saved</span> —
-				{/if}
 				Default: 30 days.
 			</p>
 		{/if}

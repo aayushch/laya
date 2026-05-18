@@ -4,6 +4,7 @@ import json
 
 import structlog
 
+from laya.config import load_settings
 from laya.db.chromadb_store import memory_search
 from laya.db.sqlite import get_db
 from laya.llm.client import llm_call
@@ -11,6 +12,7 @@ from laya.llm.prompts.stager import build_stager_messages, get_stager_json_schem
 from laya.models.card import ActionCardData, StagedOutput, SuggestedAction
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
+from laya.pipeline.context_presets import get_strictness
 from laya.workers.base import WorkerResult
 
 log = structlog.get_logger()
@@ -70,11 +72,14 @@ async def run_stager(
         pass
 
     # 2. Build messages and call LLM
+    _sg = load_settings().get("smart_grouping", {})
+    _strictness = get_strictness(_sg)
     messages = build_stager_messages(
         event, router_output, worker_results, related_context, entity_history,
         user_identity=user_identity, actor_relationship=actor_relationship,
         participant_roles=participant_roles,
         existing_tags=existing_tags,
+        strictness=_strictness,
     )
     schema = get_stager_json_schema()
 
