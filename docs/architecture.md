@@ -117,12 +117,10 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |  +- Asyncio Pipeline -----------------------------------------+  |    |
 |  |  |                                                            |  |    |
 |  |  | INGEST -> RULES -> ROUTER -> WORKER(s) -> STAGER -> EMIT   |  |    |
-|  |  |                                                    |       |  |    |
-|  |  |                                              CONTEXT ASSOC |  |    |
-|  |  |                                              GROUP SUMMARY |  |    |
-|  |  |                                              TRACE -> LEARN|  |    |
-|  |  |                                              CONTEXT LEARN |  |    |
-|  |  |                                              OMNI          |  |    |
+|  |  |                                                      |     |  |    |
+|  |  |   LEARN CONTEXT <- TRACE <- GROUP SUMMARY <- CONTEXT ASSOC |  |    |
+|  |  |     |                                                      |  |    |
+|  |  |   CONTEXT LEARN -> OMNI                                    |  |    |
 |  |  |                      |                                     |  |    |
 |  |  |           +----------+-----------+                         |  |    |
 |  |  |           |      LiteLLM*        |                         |  |    |
