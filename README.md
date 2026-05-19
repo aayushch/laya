@@ -22,6 +22,12 @@ Your Tools (Jira, Slack, Gmail, Bitbucket, Calendar)
       n8n -- executes approved actions (creates PRs, sends replies, etc.)
 ```
 
+
+
+https://github.com/user-attachments/assets/17cc4242-5d1d-4c54-89b4-dede37122b94
+
+
+
 ## Key Features
 
 - **Multi-persona brain:** Routes events to specialized AI personas (Engineer, Comms, Ops) with domain-specific tools and prompts
