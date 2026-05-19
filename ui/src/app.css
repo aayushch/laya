@@ -1799,6 +1799,31 @@ html, body {
 	.col-actions { display: none; }
 }
 
+/* Skip layout/paint for off-screen list rows during panel slide
+   and general scrolling. Only ~25 visible rows participate in
+   reflow instead of all 1200+. */
+.feed-list-container [data-entity-id] {
+	content-visibility: auto;
+	contain-intrinsic-block-size: auto 34px;
+}
+
+/* During panel transitions, suppress expensive per-element work
+   that is imperceptible during the 300ms slide animation. */
+.panel-transitioning .glass-card-flat {
+	-webkit-backdrop-filter: none !important;
+	backdrop-filter: none !important;
+}
+.panel-transitioning .feed-list-container {
+	contain: layout style;
+	container-type: normal !important;
+}
+.panel-transitioning .list-row-hover {
+	transition: none !important;
+}
+.panel-transitioning .glass-dim {
+	transition: none !important;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    REDUCED MOTION — activated via data-reduced-motion on <html>.
    Neutralizes CSS transitions/animations globally so panels,

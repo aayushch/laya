@@ -40,6 +40,7 @@
 	let reopening = $state(false);
 	let showDeleteConfirm = $state(false);
 	let deleting = $state(false);
+	let sourceEl: HTMLSpanElement | undefined = $state();
 	let actorEl: HTMLSpanElement | undefined = $state();
 	let subjectEl: HTMLSpanElement | undefined = $state();
 	let fixedTooltip = $state<{ text: string; top: number; left: number; maxWidth?: number } | null>(null);
@@ -264,9 +265,12 @@
 		</button>
 
 		<!-- Source — fixed width, brand-colored dot prefix for at-a-glance scanning -->
-	<span class="w-[76px] shrink-0 flex items-center gap-1.5 text-laya-secondary font-semibold uppercase tracking-wider text-surface-500 truncate" title={platform}>
+	<span class="w-[76px] shrink-0 flex items-center gap-1.5 text-laya-secondary font-semibold uppercase tracking-wider text-surface-500 truncate"
+		onmouseenter={() => showTooltipIfTruncated(sourceEl, platform)}
+		onmouseleave={hideTooltip}
+	>
 		<span class="h-1 w-1 rounded-full shrink-0" style="background-color: {platformDotColor(platformKey(card.entity_id))}"></span>
-		<span class="truncate">{platform}</span>
+		<span bind:this={sourceEl} class="truncate">{platform}</span>
 	</span>
 
 	<!-- Icon spacer — matches ListGroup linked icon slot -->

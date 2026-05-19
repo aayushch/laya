@@ -205,6 +205,7 @@
 	const allGroupSelected = $derived(selectedInGroupCount === groupCardIds.length && groupCardIds.length > 0);
 	const someGroupSelected = $derived(selectedInGroupCount > 0 && !allGroupSelected);
 
+	let sourceEl: HTMLSpanElement | undefined = $state();
 	let subjectEl: HTMLSpanElement | undefined = $state();
 	let groupCheckboxEl: HTMLButtonElement | undefined = $state();
 	let fixedTooltip = $state<{ text: string; top: number; left: number; maxWidth?: number } | null>(null);
@@ -353,9 +354,12 @@
 				</div>
 
 				<!-- Source — fixed width, matches ListRow; brand dot prefix mirrors ListRow -->
-		<span class="w-[76px] shrink-0 flex items-center gap-1.5 text-laya-secondary font-semibold uppercase tracking-wider text-surface-500 truncate" title={sourceLabel}>
+		<span class="w-[76px] shrink-0 flex items-center gap-1.5 text-laya-secondary font-semibold uppercase tracking-wider text-surface-500 truncate"
+			onmouseenter={() => showTooltipIfTruncated(sourceEl, sourceLabel)}
+			onmouseleave={hideTooltip}
+		>
 			<span class="h-1 w-1 rounded-full shrink-0" style="background-color: {platformDotColor(group.platform)}"></span>
-			<span class="truncate">{sourceLabel}</span>
+			<span bind:this={sourceEl} class="truncate">{sourceLabel}</span>
 		</span>
 		<!-- Spacer slot — mirrors ListRow's icon spacer so subjectId aligns with ListRow's actor column -->
 		<span class="w-3 shrink-0 ml-2"></span>

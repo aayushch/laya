@@ -2056,7 +2056,7 @@
 	</div>
 
 	<!-- Content area: recent drawer + cards + detail panel side by side -->
-	<div class="flex min-h-0 flex-1 gap-4">
+	<div class="flex min-h-0 flex-1 gap-4" class:panel-transitioning={panelTransitioning}>
 		<!-- Recent Cards drawer -->
 		<div class="flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-in-out {$recentDrawerOpen ? 'w-[260px]' : 'w-0'}">
 			<div class="flex h-full w-[260px] flex-col overflow-hidden rounded-xl border {$glassTheme ? 'glass-card border-surface-700/40 bg-surface-900/40' : 'border-surface-700/50 bg-surface-900/60'}">
