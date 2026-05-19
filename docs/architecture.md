@@ -75,18 +75,18 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |  |  | Context,       | |                 |  | AI narratives |   |  |  |
 |  |  |  | Staged Outputs | +-----------------+  +---------------+   |  |  |
 |  |  |                                                              |  |  |
-|  |  |  +- Omni ---------+                                         |  |  |
+|  |  |  +- Omni ----------+                                         |  |  |
 |  |  |  | Rolling cross-  |                                         |  |  |
 |  |  |  | platform        |                                         |  |  |
 |  |  |  | summary, pins,  |                                         |  |  |
 |  |  |  | time-travel     |                                         |  |  |
-|  |  |  +----------------+                                         |  |  |
+|  |  |  +-----------------+                                         |  |  |
 |  |  |                                                              |  |  |
-|  |  |  +- Settings -----+                                         |  |  |
-|  |  |  | Models, keys,  |                                         |  |  |
-|  |  |  | repos, team,   |                                         |  |  |
-|  |  |  | rules, privacy |                                         |  |  |
-|  |  |  +----------------+                                         |  |  |
+|  |  |  +- Settings -----+                                          |  |  |
+|  |  |  | Models, keys,  |                                          |  |  |
+|  |  |  | repos, team,   |                                          |  |  |
+|  |  |  | rules, privacy |                                          |  |  |
+|  |  |  +----------------+                                          |  |  |
 |  |  |  +----------------+                                          |  |  |
 |  |  +----------------------------+---------------------------------+  |  |
 |  |                               | WebSocket (bidirectional)          |  |
@@ -101,7 +101,7 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |  |  GET  /events/dead     (failed events for retry)           |  |    |
 |  |  |  POST /actions/approve (receives from UI)                  |  |    |
 |  |  |  GET  /cards           (UI fetches feed)                   |  |    |
-|  |  |  POST /cards/run-agent (launch agent on card or entity)     |  |    |
+|  |  |  POST /cards/run-agent (launch agent on card or entity)    |  |    |
 |  |  |  GET  /dashboard       (UI fetches stats)                  |  |    |
 |  |  |  POST /trace           (Coherence entity search)           |  |    |
 |  |  |  POST /egress/execute  (outbound actions)                  |  |    |
@@ -132,7 +132,7 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |  |           +----------------------+                         |  |    |
 |  |  | *Note: LiteLLM can be configured with self-hosted models   |  |    |
 |  |  |                                                            |  |    |
-|  |  | Workers (6 Personas):                                       |  |    |
+|  |  | Workers (6 Personas):                                      |  |    |
 |  |  |   ENGINEER -> Coding Agent (Claude Code/Gemini/Codex PTY)  |  |    |
 |  |  |   COMMS    -> LLM drafting with memory context             |  |    |
 |  |  |   OPS      -> Calendar/event aggregation + LLM synthesis   |  |    |
