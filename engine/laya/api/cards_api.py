@@ -56,6 +56,15 @@ def _row_to_card(row) -> CardResponse:
         except (json.JSONDecodeError, Exception):
             suggested_actions = None
 
+    source_context = None
+    if "content_metadata" in row.keys() and row["content_metadata"]:
+        try:
+            meta = json.loads(row["content_metadata"])
+            if meta.get("slack_channel_name"):
+                source_context = "#" + meta["slack_channel_name"]
+        except (json.JSONDecodeError, TypeError):
+            pass
+
     return CardResponse(
         card_id=row["card_id"],
         event_id=row["event_id"],
@@ -92,6 +101,7 @@ def _row_to_card(row) -> CardResponse:
         group_active_at=row["group_active_at"] if "group_active_at" in row.keys() else None,
         context_id=row["context_id"] if "context_id" in row.keys() else None,
         last_error=row["last_error"] if "last_error" in row.keys() else None,
+        source_context=source_context,
     )
 
 
@@ -148,7 +158,7 @@ async def list_cards(
                    c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at,
                    c.entity_id, c.source_ref, c.source_url, c.selected_action_id,
                    c.space_id, c.bookmarked_at, c.read_at, c.group_active_at,
-                   e.actor_name, e.actor_email,
+                   e.actor_name, e.actor_email, e.content_metadata,
                    s.name AS space_name, s.color AS space_color
             FROM action_cards c
             LEFT JOIN events e ON c.event_id = e.event_id
@@ -290,7 +300,7 @@ async def get_grouped_cards(
                    c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at,
                    c.entity_id, c.source_ref, c.source_url, c.selected_action_id,
                    c.space_id, c.bookmarked_at, c.read_at, c.group_active_at, c.context_id,
-                   e.actor_name, e.actor_email,
+                   e.actor_name, e.actor_email, e.content_metadata,
                    s.name AS space_name, s.color AS space_color
             FROM action_cards c
             LEFT JOIN events e ON c.event_id = e.event_id
@@ -831,6 +841,7 @@ async def delete_card(card_id: str) -> dict:
         log.warning("card_embed_delete_failed", card_id=card_id, error=str(e))
 
     # Clean up research directory if it exists (best-effort)
+    from laya.config import LAYA_HOME
     research_dir = LAYA_HOME / "tmp" / "research" / card_id
     if research_dir.exists():
         try:

@@ -59,6 +59,14 @@
 	let overflowBtnEl: HTMLElement | undefined = $state();
 	let overflowMenuEl: HTMLElement | undefined = $state();
 	let overflowMenuPos = $state({ top: 0, right: 0 });
+	let fixedTooltip = $state<{ text: string; top: number; left: number } | null>(null);
+
+	function showTooltip(el: HTMLElement, text: string) {
+		const rect = el.getBoundingClientRect();
+		fixedTooltip = { text, top: rect.bottom + 4, left: rect.left + rect.width / 2 };
+	}
+
+	function hideTooltip() { fixedTooltip = null; }
 	const hasRelated = $derived(relatedCount != null && relatedCount > 0);
 
 	let egressContext = $state<CardEgressContext | null>(null);
@@ -560,65 +568,61 @@
 		<div class="flex items-center gap-1">
 			<!-- Go to card -->
 			{#if ongotocard}
-				<div class="group/act relative">
-					<button
-						onclick={() => ongotocard?.(card)}
-						class="rounded p-1.5 text-surface-500 transition-colors hover:text-laya-orange"
-						aria-label="Go to card"
-					>
-						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5" />
-						</svg>
-					</button>
-					<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">Go to card</span>
-				</div>
-			{/if}
-			<!-- Copy card ID -->
-			<div class="group/act relative">
 				<button
-					onclick={copyId}
-					aria-label="Copy card ID"
-					class="rounded p-1.5 transition-colors {copied ? 'text-green-400' : 'text-surface-500 hover:text-surface-200'}"
-				>
-					{#if copied}
-						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-						</svg>
-					{:else}
-						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-						</svg>
-					{/if}
-				</button>
-				<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">{copied ? 'Copied!' : 'Copy card ID'}</span>
-			</div>
-			<!-- Chat about this card -->
-			<div class="group/act relative">
-				<button
-					onclick={chatAbout}
-					aria-label="Chat about this card"
+					onclick={() => ongotocard?.(card)}
+					onmouseenter={(e) => showTooltip(e.currentTarget, 'Go to card')}
+					onmouseleave={hideTooltip}
 					class="rounded p-1.5 text-surface-500 transition-colors hover:text-laya-orange"
+					aria-label="Go to card"
 				>
 					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5" />
 					</svg>
 				</button>
-				<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">Chat about card</span>
-			</div>
+			{/if}
+			<!-- Copy card ID -->
+			<button
+				onclick={copyId}
+				onmouseenter={(e) => showTooltip(e.currentTarget, copied ? 'Copied!' : 'Copy card ID')}
+				onmouseleave={hideTooltip}
+				aria-label="Copy card ID"
+				class="rounded p-1.5 transition-colors {copied ? 'text-green-400' : 'text-surface-500 hover:text-surface-200'}"
+			>
+				{#if copied}
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+					</svg>
+				{:else}
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+					</svg>
+				{/if}
+			</button>
+			<!-- Chat about this card -->
+			<button
+				onclick={chatAbout}
+				onmouseenter={(e) => showTooltip(e.currentTarget, 'Chat about card')}
+				onmouseleave={hideTooltip}
+				aria-label="Chat about this card"
+				class="rounded p-1.5 text-surface-500 transition-colors hover:text-laya-orange"
+			>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+				</svg>
+			</button>
 			<!-- Bookmark -->
-			<div class="group/act relative">
-				<button
-					onclick={toggleBookmark}
-					aria-label={card.bookmarked_at ? 'Remove bookmark' : 'Bookmark card'}
-					class="rounded p-1.5 transition-colors {card.bookmarked_at ? 'text-laya-orange' : 'text-surface-500 hover:text-laya-orange'}"
-					disabled={bookmarking}
-				>
-					<svg class="h-4 w-4" fill={card.bookmarked_at ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-					</svg>
-				</button>
-				<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">{card.bookmarked_at ? 'Remove Bookmark' : 'Bookmark'}</span>
-			</div>
+			<button
+				onclick={toggleBookmark}
+				onmouseenter={(e) => showTooltip(e.currentTarget, card.bookmarked_at ? 'Remove Bookmark' : 'Bookmark')}
+				onmouseleave={hideTooltip}
+				aria-label={card.bookmarked_at ? 'Remove bookmark' : 'Bookmark card'}
+				class="rounded p-1.5 transition-colors {card.bookmarked_at ? 'text-laya-orange' : 'text-surface-500 hover:text-laya-orange'}"
+				disabled={bookmarking}
+			>
+				<svg class="h-4 w-4" fill={card.bookmarked_at ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+				</svg>
+			</button>
 			<button aria-label="Dismiss card" class="rounded p-1.5 text-surface-400 transition-colors hover:text-surface-100" onclick={() => ondismiss ? ondismiss() : onclose()}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -635,6 +639,9 @@
 				{#if card.entity_id}
 					<div class="mb-1 flex items-center gap-1.5 min-w-0">
 						<PlatformBadge platform={card.entity_id.split(':')[0]} />
+						{#if card.source_context}
+							<span class="text-laya-secondary text-surface-400">{card.source_context}</span>
+						{/if}
 						{#if card.source_ref}
 							{#if card.source_url}
 								<a
@@ -1149,6 +1156,16 @@
 		{card}
 		onclose={() => (showClassificationDialog = false)}
 	/>
+{/if}
+
+{#if fixedTooltip}
+	<div
+		use:portal
+		class="pointer-events-none fixed z-[100] -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium"
+		style="top: {fixedTooltip.top}px; left: {fixedTooltip.left}px;"
+	>
+		{fixedTooltip.text}
+	</div>
 {/if}
 
 {#if overflowMenuOpen}

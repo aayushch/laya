@@ -619,6 +619,10 @@
 				<span class="h-1 w-1 rounded-full shrink-0" style="background-color: {platformDotColor(platformKey(card.entity_id))}"></span>
 				{platform}
 			</span>
+			{#if card.source_context}
+				<span class="text-laya-micro text-surface-500">·</span>
+				<span class="truncate text-laya-micro font-medium text-surface-400">{card.source_context}</span>
+			{/if}
 			{#if card.source_ref}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div class="relative min-w-0 truncate"

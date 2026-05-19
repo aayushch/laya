@@ -95,6 +95,7 @@ class CardResponse(BaseModel):
     group_active_at: str | None = None
     context_id: str | None = None
     last_error: str | None = None
+    source_context: str | None = None
     tags: list[TagAssignment] = Field(default_factory=list)
 
 

@@ -42,13 +42,44 @@
     },
     {
       "parameters": {
-        "jsCode": "const resp = $input.first().json;\nconst staticData = $getWorkflowStaticData('global');\nstaticData.allowedChannels = resp.value || null;\nreturn [{ json: { cursor: '' } }];"
+        "method": "GET",
+        "url": "https://slack.com/api/users.list",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "slackOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "1000"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "Fetch Users",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const configResp = $('Fetch Channel Config').first().json;\nconst usersResp = $input.first().json;\nconst staticData = $getWorkflowStaticData('global');\n\nstaticData.allowedChannels = configResp.value || null;\n\nconst now = Date.now();\nconst cacheAge = now - (staticData.userMapUpdatedAt || 0);\nif (usersResp.ok !== false && usersResp.members && cacheAge > 600000) {\n  const map = {};\n  for (const m of usersResp.members) {\n    if (m.id && !m.deleted) {\n      const p = m.profile || {};\n      map[m.id] = {\n        name: p.display_name || p.real_name || m.name || m.id,\n        email: p.email || ''\n      };\n    }\n  }\n  staticData.userMap = map;\n  staticData.userMapUpdatedAt = now;\n}\n\nreturn [{ json: { cursor: '' } }];"
       },
       "name": "Build Allowed Set",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        680,
+        900,
         300
       ]
     },
@@ -85,7 +116,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        900,
+        1120,
         300
       ]
     },
@@ -97,7 +128,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1120,
+        1340,
         300
       ]
     },
@@ -126,7 +157,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        1340,
+        1560,
         300
       ]
     },
@@ -138,7 +169,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1560,
+        1780,
         400
       ]
     },
@@ -175,19 +206,19 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1780,
+        2000,
         400
       ]
     },
     {
       "parameters": {
-        "jsCode": "const channelItems = $('Build Channel Items').all();\nconst responses = $input.all();\nconst allEvents = [];\nconst debug = { channels_polled: channelItems.length, responses: responses.length, errors: [], msg_counts: {} };\n\nfor (let i = 0; i < responses.length; i++) {\n  const channel = channelItems[i]?.json ?? {};\n  const channelId = channel.channel_id || '';\n  const channelName = channel.channel_name || channelId;\n  const resp = responses[i].json;\n\n  if (resp.ok === false) {\n    debug.errors.push(channelName + ': ' + (resp.error || 'unknown'));\n    continue;\n  }\n\n  const messages = resp.messages || [];\n  debug.msg_counts[channelName] = messages.length;\n\n  for (const msg of messages) {\n    if (!msg.ts || msg.type !== 'message') continue;\n    const skipSubtypes = ['channel_join', 'channel_leave', 'channel_topic', 'channel_purpose', 'bot_add', 'bot_remove'];\n    if (msg.subtype && skipSubtypes.includes(msg.subtype)) continue;\n\n    const msgTs = parseFloat(msg.ts);\n    const msgTime = new Date(msgTs * 1000);\n\n    let rawEventType = 'message_received';\n    if (msg.thread_ts && msg.thread_ts !== msg.ts) {\n      rawEventType = 'thread_reply';\n    } else if ((msg.text || '').includes('<@')) {\n      rawEventType = 'mention';\n    }\n\n    let channelType = 'channel';\n    if (channelId.startsWith('D')) channelType = 'dm';\n    else if (channelId.startsWith('G')) channelType = 'mpim';\n\n    const eventId = 'evt_slack_' + msg.ts.replace('.', '_') + '_' + channelId;\n\n    allEvents.push({\n      json: {\n        event_id: eventId,\n        timestamp: msgTime.toISOString(),\n        source: {\n          platform: 'slack',\n          connection_id: $workflow.id,\n          raw_event_type: rawEventType\n        },\n        actor: {\n          name: msg.user || 'Unknown',\n          email: '',\n          platform_handle: msg.user || ''\n        },\n        subject: {\n          type: 'thread',\n          id: 'thread-' + channelId + '-' + (msg.thread_ts || msg.ts),\n          title: (msg.text || '').substring(0, 80),\n          url: null\n        },\n        content: {\n          body: msg.text || '',\n          attachments: [],\n          metadata: {\n            slack_channel: channelId,\n            slack_channel_name: channelName,\n            slack_channel_type: channelType,\n            slack_thread_ts: msg.thread_ts || msg.ts,\n            slack_message_ts: msg.ts,\n            slack_is_mention: (msg.text || '').includes('<@'),\n            participants: [\n              { role: 'sender', name: msg.user || '', email: '', handle: msg.user || '' }\n            ]\n          }\n        }\n      }\n    });\n  }\n}\n\nif (allEvents.length === 0) {\n  return [{ json: { _skip: true, _debug: debug } }];\n}\nreturn allEvents;"
+        "jsCode": "const userMap = $getWorkflowStaticData('global').userMap || {};\nfunction resolveUser(uid) {\n  return userMap[uid] || { name: uid, email: '' };\n}\nfunction resolveText(text) {\n  return (text || '').replace(/<@(U[A-Z0-9]+)>/g, (_, uid) => {\n    const u = resolveUser(uid);\n    return '@' + u.name;\n  });\n}\n\nconst channelItems = $('Build Channel Items').all();\nconst responses = $input.all();\nconst allEvents = [];\n\nfor (let i = 0; i < responses.length; i++) {\n  const channel = channelItems[i]?.json ?? {};\n  const channelId = channel.channel_id || '';\n  const channelName = channel.channel_name || channelId;\n  const resp = responses[i].json;\n\n  if (resp.ok === false) continue;\n\n  const messages = resp.messages || [];\n\n  for (const msg of messages) {\n    if (!msg.ts || msg.type !== 'message') continue;\n    const skipSubtypes = ['channel_join', 'channel_leave', 'channel_topic', 'channel_purpose', 'bot_add', 'bot_remove'];\n    if (msg.subtype && skipSubtypes.includes(msg.subtype)) continue;\n\n    const msgTs = parseFloat(msg.ts);\n    const msgTime = new Date(msgTs * 1000);\n    const sender = resolveUser(msg.user);\n    const resolvedText = resolveText(msg.text || '');\n\n    let rawEventType = 'message_received';\n    if (msg.thread_ts && msg.thread_ts !== msg.ts) {\n      rawEventType = 'thread_reply';\n    } else if ((msg.text || '').includes('<@')) {\n      rawEventType = 'mention';\n    }\n\n    let channelType = 'channel';\n    if (channelId.startsWith('D')) channelType = 'dm';\n    else if (channelId.startsWith('G')) channelType = 'mpim';\n\n    const eventId = 'evt_slack_' + msg.ts.replace('.', '_') + '_' + channelId;\n\n    allEvents.push({\n      json: {\n        event_id: eventId,\n        timestamp: msgTime.toISOString(),\n        source: {\n          platform: 'slack',\n          connection_id: $workflow.id,\n          raw_event_type: rawEventType\n        },\n        actor: {\n          name: sender.name,\n          email: sender.email,\n          platform_handle: msg.user || ''\n        },\n        subject: {\n          type: 'thread',\n          id: 'thread-' + channelId + '-' + (msg.thread_ts || msg.ts),\n          title: resolvedText.substring(0, 80),\n          url: null\n        },\n        content: {\n          body: resolvedText,\n          attachments: [],\n          metadata: {\n            slack_channel: channelId,\n            slack_channel_name: channelName,\n            slack_channel_type: channelType,\n            slack_thread_ts: msg.thread_ts || msg.ts,\n            slack_message_ts: msg.ts,\n            slack_is_mention: (msg.text || '').includes('<@'),\n            participants: [\n              { role: 'sender', name: sender.name, email: sender.email, handle: msg.user || '' }\n            ]\n          }\n        }\n      }\n    });\n  }\n}\n\nif (allEvents.length === 0) {\n  return [{ json: { _skip: true } }];\n}\nreturn allEvents;"
       },
       "name": "Normalize & Classify",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2000,
+        2220,
         400
       ]
     },
@@ -216,7 +247,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        2220,
+        2440,
         400
       ]
     },
@@ -242,7 +273,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2440,
+        2660,
         300
       ]
     }
@@ -260,6 +291,17 @@
       ]
     },
     "Fetch Channel Config": {
+      "main": [
+        [
+          {
+            "node": "Fetch Users",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Users": {
       "main": [
         [
           {
@@ -372,6 +414,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.05.7"
+    "laya_version": "2026.05.9"
   }
 }

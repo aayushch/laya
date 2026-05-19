@@ -433,6 +433,7 @@ export interface ActionCard {
 	group_active_at?: string;
 	context_id?: string;
 	last_error?: string;
+	source_context?: string;
 	tags?: TagAssignment[];
 }
 
