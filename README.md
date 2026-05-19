@@ -1,5 +1,7 @@
 # Laya: Your AI Command Centre
 
+![Demo](./laya.gif)
+
 **A cadence for professional orchestration.**
 
 Laya is a local-first desktop application that acts as an AI command centre for professionals. It intercepts events from your professional tools (Jira, Bitbucket, Slack, Gmail, Calendar), performs autonomous research and action-staging using LLM-powered agents, and presents you with ready-to-approve **Action Cards** -- so the answer is ready before you open the notification.
@@ -21,10 +23,6 @@ Your Tools (Jira, Slack, Gmail, Bitbucket, Calendar)
          v
       n8n -- executes approved actions (creates PRs, sends replies, etc.)
 ```
-
-
-![Demo](./laya.gif)
-
 
 ## Key Features
 
