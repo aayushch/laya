@@ -23,9 +23,7 @@ Your Tools (Jira, Slack, Gmail, Bitbucket, Calendar)
 ```
 
 
-
-https://github.com/user-attachments/assets/17cc4242-5d1d-4c54-89b4-dede37122b94
-
+![Demo](./laya.gif)
 
 
 ## Key Features
