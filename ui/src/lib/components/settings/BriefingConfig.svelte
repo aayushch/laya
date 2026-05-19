@@ -526,6 +526,8 @@
 							<svg
 								class="h-3.5 w-3.5 shrink-0 text-surface-600 transition-colors hover:text-laya-orange cursor-help"
 								fill="none" stroke="currentColor" viewBox="0 0 24 24"
+								role="img"
+								aria-label="Strictness info"
 								onmouseenter={showStrictnessTooltip}
 								onmouseleave={hideStrictnessTooltip}
 							>
@@ -628,6 +630,7 @@
 										onclick={() => { contextCrossPlatformRequired = !contextCrossPlatformRequired; handleAdvancedChange(); }}
 										role="switch"
 										aria-checked={contextCrossPlatformRequired}
+										aria-label="Cross-platform required"
 									>
 										<span class="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform {contextCrossPlatformRequired ? 'translate-x-4' : ''}"></span>
 									</button>
@@ -663,6 +666,7 @@
 										onclick={() => { contextAlwaysLlm = !contextAlwaysLlm; handleAdvancedChange(); }}
 										role="switch"
 										aria-checked={contextAlwaysLlm}
+										aria-label="Always use LLM"
 									>
 										<span class="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform {contextAlwaysLlm ? 'translate-x-4' : ''}"></span>
 									</button>

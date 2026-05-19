@@ -3,6 +3,7 @@
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import PlatformIcon from './PlatformIcon.svelte';
 	import SmtpSetupForm from './SmtpSetupForm.svelte';
+	import TagInput from './TagInput.svelte';
 	import type { FieldDef } from '$lib/api/types';
 
 	let {
@@ -37,6 +38,9 @@
 			existingNames = r.names;
 		}).catch(() => {});
 	});
+
+	// Slack channel selection
+	let slackChannels = $state<string[]>([]);
 
 	// OAuth state
 	let oauthPolling = $state(false);
@@ -106,10 +110,19 @@
 			nameError = 'This name is already in use';
 			return;
 		}
+		if (platform === 'slack' && slackChannels.length === 0) {
+			oauthError = 'Please specify at least one channel to monitor.';
+			return;
+		}
 		nameError = null;
 		oauthError = null;
 		try {
-			const result = await engineApi.startOAuthFlow(platform, connectionName.trim() || undefined);
+			const result = await engineApi.startOAuthFlow(
+				platform,
+				connectionName.trim() || undefined,
+				undefined,
+				platform === 'slack' ? slackChannels : undefined
+			);
 			// Open in system browser (works in Tauri and dev).
 			// Tauri's shell plugin opens the default browser; in dev/web
 			// we fall back to window.open.
@@ -273,6 +286,19 @@
 					<p class="mt-1 text-laya-secondary text-surface-500">A label to identify this account</p>
 				{/if}
 			</div>
+
+			{#if platform === 'slack' && isOAuth}
+				<div class="mb-4">
+					<span class="mb-1 block text-laya-secondary font-medium text-surface-400">Channels to Monitor</span>
+					<TagInput
+						bind:tags={slackChannels}
+						placeholder="e.g., general, dev, team-standup"
+					/>
+					<p class="mt-1 text-laya-secondary text-surface-500">
+						Type channel names separated by commas. Only these channels will be monitored.
+					</p>
+				</div>
+			{/if}
 
 			{#if platform === 'smtp'}
 				<!-- SMTP setup form -->

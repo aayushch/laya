@@ -852,10 +852,11 @@ export const engineApi = {
 	detectEmailProvider: (email: string) =>
 		request<EmailProviderDetection>(`/egress/connections/detect?email=${encodeURIComponent(email)}`),
 
-	startOAuthFlow: (platform: string, connectionName?: string, spaceId?: string) => {
+	startOAuthFlow: (platform: string, connectionName?: string, spaceId?: string, channelNames?: string[]) => {
 		const params = new URLSearchParams({ platform });
 		if (connectionName) params.set('connection_name', connectionName);
 		if (spaceId) params.set('space_id', spaceId);
+		if (channelNames && channelNames.length > 0) params.set('channel_names', channelNames.join(','));
 		return request<OAuthStartResponse>(`/egress/connections/oauth/start?${params}`);
 	},
 
@@ -863,6 +864,15 @@ export const engineApi = {
 		request<{ status: string; platform: string }>('/egress/connections/oauth/setup', {
 			method: 'POST',
 			body: JSON.stringify(data)
+		}),
+
+	getSlackChannels: (connectionId: string) =>
+		request<{ channels: string[] }>(`/egress/connections/${connectionId}/channels`),
+
+	updateSlackChannels: (connectionId: string, channels: string[]) =>
+		request<{ channels: string[] }>(`/egress/connections/${connectionId}/channels`, {
+			method: 'PUT',
+			body: JSON.stringify({ channels })
 		}),
 
 	// Omni — rolling cross-platform summary

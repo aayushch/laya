@@ -352,6 +352,7 @@
 									<td class="px-3 py-2">
 										<span
 											class="inline-block max-w-full truncate rounded bg-surface-700 px-1.5 py-0.5 text-surface-300"
+											role="note"
 											onmouseenter={(e) => { const el = e.currentTarget; if (el.scrollWidth > el.clientWidth) showTooltip(el, evt.source_platform); }}
 											onmouseleave={hideTooltip}
 										>
@@ -463,6 +464,7 @@
 											<span
 												class="inline-block max-w-full truncate rounded bg-surface-700 px-1.5 py-0.5 text-surface-300"
 												onmouseenter={(e) => { const el = e.currentTarget; if (el.scrollWidth > el.clientWidth) showTooltip(el, err.platform!); }}
+												role="note"
 												onmouseleave={hideTooltip}
 											>
 												{err.platform}
@@ -673,7 +675,7 @@
 								{#if entry.success}
 									<span class="rounded-full bg-green-900/30 px-2 py-0.5 text-green-400">OK</span>
 								{:else}
-									<span class="cursor-help rounded-full bg-red-900/30 px-2 py-0.5 text-red-400" onmouseenter={(e) => entry.error && showTooltip(e.currentTarget, entry.error, { maxWidth: 400, color: 'text-red-400' })} onmouseleave={hideTooltip}>ERR</span>
+									<span class="cursor-help rounded-full bg-red-900/30 px-2 py-0.5 text-red-400" role="note" onmouseenter={(e) => entry.error && showTooltip(e.currentTarget, entry.error, { maxWidth: 400, color: 'text-red-400' })} onmouseleave={hideTooltip}>ERR</span>
 								{/if}
 							</td>
 						</tr>

@@ -1232,6 +1232,7 @@
 			<button
 				class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-surface-300 transition-colors hover:bg-surface-700/50 cursor-pointer"
 				role="option"
+				aria-selected={false}
 				onmousedown={(e) => { e.preventDefault(); addTag(tag.tag_id); }}
 			>
 				{#if tag.color}

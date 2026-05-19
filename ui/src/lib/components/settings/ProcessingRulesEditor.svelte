@@ -688,7 +688,7 @@
 									/>
 									<datalist id="tag-suggestions-{i}">
 										{#each availableTags as tag}
-											<option value={tag.name} />
+											<option value={tag.name}></option>
 										{/each}
 									</datalist>
 								</div>

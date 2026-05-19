@@ -39,8 +39,9 @@
 
 	// Sync agentMode when session changes (e.g. after poll refresh updates permission_mode)
 	$effect(() => {
-		if (session?.permission_mode) {
-			agentMode = session.permission_mode as 'plan' | 'acceptEdits';
+		const mode = session?.permission_mode;
+		if (mode) {
+			agentMode = mode as 'plan' | 'acceptEdits';
 		}
 	});
 

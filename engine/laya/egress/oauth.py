@@ -158,7 +158,13 @@ def _generate_pkce() -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 
 
-def build_auth_url(platform: str, redirect_uri: str, connection_name: str | None = None, space_id: str | None = None) -> dict:
+def build_auth_url(
+    platform: str,
+    redirect_uri: str,
+    connection_name: str | None = None,
+    space_id: str | None = None,
+    channel_names: str | None = None,
+) -> dict:
     """Build the OAuth authorization URL for a platform.
 
     Returns:
@@ -190,6 +196,7 @@ def build_auth_url(platform: str, redirect_uri: str, connection_name: str | None
         "code_verifier": code_verifier,
         "connection_name": connection_name,
         "space_id": space_id,
+        "channel_names": channel_names,
     }
     _cleanup_expired_states()
 
@@ -239,6 +246,7 @@ async def handle_callback(
     code_verifier = state_data.get("code_verifier")
     connection_name = state_data.get("connection_name")
     space_id = state_data.get("space_id")
+    channel_names = state_data.get("channel_names")
     provider = OAUTH_PROVIDERS.get(platform)
     if not provider:
         return {"error": f"Unknown OAuth platform: {platform}"}
@@ -327,6 +335,9 @@ async def handle_callback(
         )
         all_errors.extend(workflow_errors)
 
+        if platform == "slack" and channel_names and activated > 0:
+            await _store_slack_channel_metadata(connection_id, channel_names)
+
     # Determine final status
     status = "error" if all_errors else "connected"
     error_message = "; ".join(all_errors) if all_errors else None
@@ -358,6 +369,35 @@ async def handle_callback(
         "capabilities": capabilities,
         "error_message": error_message,
     }
+
+
+async def _store_slack_channel_metadata(connection_id: str, channel_names_csv: str) -> None:
+    """Store Slack channel config in metadata, keyed by the ingestion workflow_id."""
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT workflow_id FROM sources WHERE connection_id = ? AND source_type = 'ingestion'",
+        (connection_id,),
+    )
+    if not rows:
+        log.warning("slack_channels_no_ingestion_workflow", connection_id=connection_id)
+        return
+
+    channels = [
+        ch.lstrip("#").strip().lower()
+        for ch in channel_names_csv.split(",")
+        if ch.strip()
+    ]
+    if not channels:
+        return
+
+    workflow_id = rows[0]["workflow_id"]
+    await db.execute(
+        """INSERT INTO metadata (key, value, space_id) VALUES (?, ?, 'default')
+           ON CONFLICT (key, space_id) DO UPDATE SET value = excluded.value""",
+        (f"slack-channels:{workflow_id}", json.dumps(channels)),
+    )
+    await db.commit()
+    log.info("slack_channels_stored", workflow_id=workflow_id, channels=channels)
 
 
 async def refresh_access_token(connection_id: str, platform: str) -> bool:

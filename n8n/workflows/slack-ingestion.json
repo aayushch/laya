@@ -23,6 +23,38 @@
     {
       "parameters": {
         "method": "GET",
+        "url": "={{ $env.LAYA_ENGINE_URL }}/metadata/slack-channels:{{ $workflow.id }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "Fetch Channel Config",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst staticData = $getWorkflowStaticData('global');\nstaticData.allowedChannels = resp.value || null;\nreturn [{ json: { cursor: '' } }];"
+      },
+      "name": "Build Allowed Set",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
         "url": "https://slack.com/api/conversations.list",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "slackOAuth2Api",
@@ -31,7 +63,7 @@
           "parameters": [
             {
               "name": "types",
-              "value": "public_channel,private_channel,im,mpim"
+              "value": "public_channel,private_channel"
             },
             {
               "name": "exclude_archived",
@@ -53,7 +85,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        460,
+        900,
         300
       ]
     },
@@ -65,7 +97,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        680,
+        1120,
         300
       ]
     },
@@ -94,19 +126,19 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        900,
+        1340,
         300
       ]
     },
     {
       "parameters": {
-        "jsCode": "const allChannels = $input.first().json.channels || [];\nconst oldest = String(Math.floor((Date.now() - 150000) / 1000));\nreturn allChannels\n  .filter(c => c.id && c.is_member !== false)\n  .map(c => ({\n    json: {\n      channel_id: c.id,\n      channel_name: c.name || c.id,\n      oldest: oldest\n    }\n  }));"
+        "jsCode": "const allChannels = $input.first().json.channels || [];\nconst oldest = String(Math.floor((Date.now() - 150000) / 1000));\nconst staticData = $getWorkflowStaticData('global');\nconst allowed = staticData.allowedChannels;\n\nreturn allChannels\n  .filter(c => {\n    if (!c.id || c.is_member === false) return false;\n    if (allowed && Array.isArray(allowed)) {\n      return allowed.some(a => a.toLowerCase() === (c.name || '').toLowerCase());\n    }\n    return true;\n  })\n  .map(c => ({\n    json: {\n      channel_id: c.id,\n      channel_name: c.name || c.id,\n      oldest: oldest\n    }\n  }));"
       },
       "name": "Build Channel Items",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1120,
+        1560,
         400
       ]
     },
@@ -143,7 +175,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1340,
+        1780,
         400
       ]
     },
@@ -155,7 +187,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1560,
+        2000,
         400
       ]
     },
@@ -184,7 +216,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        1780,
+        2220,
         400
       ]
     },
@@ -210,13 +242,35 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2000,
+        2440,
         300
       ]
     }
   ],
   "connections": {
     "Every 2 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Fetch Channel Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Channel Config": {
+      "main": [
+        [
+          {
+            "node": "Build Allowed Set",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Allowed Set": {
       "main": [
         [
           {
@@ -318,6 +372,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.05.5"
+    "laya_version": "2026.05.6"
   }
 }

@@ -154,6 +154,27 @@
 		}
 	}
 
+	function handleTimelineKeydown(e: KeyboardEvent) {
+		const sorted = [...flatDots].sort((a, b) => a.entry.version - b.entry.version);
+		if (sorted.length === 0) return;
+		const currentIdx = sorted.findIndex(d => d.entry.version === version);
+		if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+			e.preventDefault();
+			const prev = sorted[Math.max(0, currentIdx - 1)];
+			if (prev) onVersionChange(prev.entry.version);
+		} else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+			e.preventDefault();
+			const next = sorted[Math.min(sorted.length - 1, currentIdx + 1)];
+			if (next) onVersionChange(next.entry.version);
+		} else if (e.key === 'Home') {
+			e.preventDefault();
+			onVersionChange(sorted[0].entry.version);
+		} else if (e.key === 'End') {
+			e.preventDefault();
+			onVersionChange(sorted[sorted.length - 1].entry.version);
+		}
+	}
+
 	/**
 	 * d3-fisheye 1D distortion: stretches positions near `focus`, compresses far away.
 	 * Maps [0,1] → [0,1] preserving endpoints.
@@ -456,14 +477,21 @@
 		</div>
 
 		<!-- Single-container fisheye track -->
-		<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
 		<div
 			class="relative overflow-hidden cursor-pointer transition-[height] duration-300 ease-in-out {compact ? 'h-5' : 'h-10'}"
+			role="slider"
+			tabindex="0"
+			aria-label="Version timeline"
+			aria-valuemin={flatDots.length > 0 ? Math.min(...flatDots.map(d => d.entry.version)) : 0}
+			aria-valuemax={latestVersion}
+			aria-valuenow={version}
+			aria-valuetext="Version {version}, {activeLabel}"
 			bind:this={timelineEl}
 			bind:clientWidth={timelineWidth}
 			onmousemove={(e) => { handleTimelineMove(e); handleDotHover(e); }}
 			onmouseleave={handleTimelineLeave}
 			onclick={handleDotClick}
+			onkeydown={handleTimelineKeydown}
 		>
 			<!-- Track line -->
 			<div class="absolute left-0 right-0 top-[10px] h-px bg-surface-600"></div>

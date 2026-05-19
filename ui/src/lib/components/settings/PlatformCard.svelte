@@ -4,6 +4,7 @@
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import PlatformIcon from './PlatformIcon.svelte';
+	import TagInput from './TagInput.svelte';
 	import type { EgressConnection } from '$lib/api/types';
 
 	let {
@@ -30,6 +31,35 @@
 	let disconnectingId = $state<string | null>(null);
 	let confirmDisconnectId = $state<string | null>(null);
 	let expandedErrors = $state<Set<string>>(new Set());
+
+	// Slack channel editing
+	let editingChannelsId = $state<string | null>(null);
+	let editChannelTags = $state<string[]>([]);
+	let savingChannels = $state(false);
+
+	async function startEditChannels(connId: string) {
+		try {
+			const result = await engineApi.getSlackChannels(connId);
+			editChannelTags = result.channels || [];
+			editingChannelsId = connId;
+		} catch {
+			editChannelTags = [];
+			editingChannelsId = connId;
+		}
+	}
+
+	async function saveChannels() {
+		if (!editingChannelsId || editChannelTags.length === 0) return;
+		savingChannels = true;
+		try {
+			await engineApi.updateSlackChannels(editingChannelsId, editChannelTags);
+			editingChannelsId = null;
+		} catch {
+			// ignore
+		} finally {
+			savingChannels = false;
+		}
+	}
 
 	const hasConnections = $derived(connections.length > 0);
 	const anyConnected = $derived(connections.some(c => c.status === 'connected'));
@@ -171,7 +201,15 @@
 									Reconnect
 								</button>
 							{/if}
-							<button
+							{#if platformKey === 'slack' && conn.status === 'connected'}
+									<button
+										onclick={(e) => { e.stopPropagation(); startEditChannels(conn.connection_id); }}
+										class="text-laya-secondary text-surface-500 hover:text-surface-300 transition-colors"
+									>
+										Channels
+									</button>
+								{/if}
+								<button
 								onclick={(e) => { e.stopPropagation(); handleTest(conn); }}
 								disabled={testingId === conn.connection_id}
 								class="text-laya-secondary text-surface-500 hover:text-surface-300 transition-colors disabled:opacity-50"
@@ -187,6 +225,30 @@
 							</button>
 						</div>
 					</div>
+					{#if editingChannelsId === conn.connection_id}
+						<div class="mx-3 mb-1 rounded p-3 {$glassTheme ? 'bg-white/[0.04]' : 'bg-surface-800/80'}">
+							<span class="mb-1 block text-laya-secondary font-medium text-surface-400">Monitored Channels</span>
+							<TagInput
+								bind:tags={editChannelTags}
+								placeholder="e.g., general, dev"
+							/>
+							<div class="mt-2 flex items-center gap-2">
+								<button
+									onclick={saveChannels}
+									disabled={savingChannels || editChannelTags.length === 0}
+									class="rounded bg-laya-orange px-3 py-1 text-laya-secondary font-medium text-white transition-colors hover:bg-laya-gold disabled:opacity-50"
+								>
+									{savingChannels ? 'Saving...' : 'Save'}
+								</button>
+								<button
+									onclick={() => editingChannelsId = null}
+									class="rounded px-3 py-1 text-laya-secondary text-surface-400 hover:text-surface-200 transition-colors"
+								>
+									Cancel
+								</button>
+							</div>
+						</div>
+					{/if}
 					{#if testResult?.id === conn.connection_id}
 						<div class="mx-3 rounded px-2 py-1 text-laya-secondary
 							{testResult.valid ? 'bg-green-900/20 text-green-400' : 'bg-red-900/20 text-red-400'}">

@@ -768,13 +768,97 @@ async def detect_email_provider(email: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# OAuth endpoints (Phase 3 — placeholder for future implementation)
+# Slack channel configuration
+# ---------------------------------------------------------------------------
+
+
+@router.get("/egress/connections/{connection_id}/channels")
+async def get_slack_channels(connection_id: str) -> dict:
+    """Get the configured Slack channels for a connection."""
+    from laya.db.sqlite import get_db
+    db = await get_db()
+    conn = await db.execute_fetchall(
+        "SELECT platform FROM egress_connections WHERE connection_id = ?",
+        (connection_id,),
+    )
+    if not conn:
+        raise HTTPException(status_code=404, detail="Connection not found")
+    if conn[0]["platform"] != "slack":
+        raise HTTPException(status_code=400, detail="Not a Slack connection")
+
+    rows = await db.execute_fetchall(
+        "SELECT workflow_id FROM sources WHERE connection_id = ? AND source_type = 'ingestion'",
+        (connection_id,),
+    )
+    if not rows:
+        return {"channels": []}
+
+    key = f"slack-channels:{rows[0]['workflow_id']}"
+    meta = await db.execute_fetchall(
+        "SELECT value FROM metadata WHERE key = ? AND space_id = 'default'",
+        (key,),
+    )
+    if not meta:
+        return {"channels": []}
+
+    import json as _json
+    return {"channels": _json.loads(meta[0]["value"])}
+
+
+@router.put("/egress/connections/{connection_id}/channels")
+async def update_slack_channels(connection_id: str, body: dict) -> dict:
+    """Update the configured Slack channels for an existing connection."""
+    from laya.db.sqlite import get_db
+    db = await get_db()
+    conn = await db.execute_fetchall(
+        "SELECT platform FROM egress_connections WHERE connection_id = ?",
+        (connection_id,),
+    )
+    if not conn:
+        raise HTTPException(status_code=404, detail="Connection not found")
+    if conn[0]["platform"] != "slack":
+        raise HTTPException(status_code=400, detail="Not a Slack connection")
+
+    raw_channels = body.get("channels", [])
+    if not isinstance(raw_channels, list) or not raw_channels:
+        raise HTTPException(status_code=400, detail="channels must be a non-empty list of strings")
+
+    channels = [ch.lstrip("#").strip().lower() for ch in raw_channels if isinstance(ch, str) and ch.strip()]
+    if not channels:
+        raise HTTPException(status_code=400, detail="No valid channel names provided")
+
+    rows = await db.execute_fetchall(
+        "SELECT workflow_id FROM sources WHERE connection_id = ? AND source_type = 'ingestion'",
+        (connection_id,),
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="No ingestion workflow found for this connection")
+
+    import json as _json
+    key = f"slack-channels:{rows[0]['workflow_id']}"
+    await db.execute(
+        """INSERT INTO metadata (key, value, space_id) VALUES (?, ?, 'default')
+           ON CONFLICT (key, space_id) DO UPDATE SET value = excluded.value""",
+        (key, _json.dumps(channels)),
+    )
+    await db.commit()
+
+    return {"channels": channels}
+
+
+# ---------------------------------------------------------------------------
+# OAuth endpoints
 # ---------------------------------------------------------------------------
 
 
 @router.get("/egress/connections/oauth/start")
-async def oauth_start(platform: str, connection_name: str | None = None, space_id: str | None = None) -> dict:
-    """Start an OAuth flow for a platform (Gmail, Google Calendar, Outlook).
+async def oauth_start(
+    platform: str,
+    connection_name: str | None = None,
+    space_id: str | None = None,
+    channel_names: str | None = None,
+) -> dict:
+    """Start an OAuth flow for a platform (Gmail, Google Calendar, Outlook, Slack).
 
     Returns the authorization URL to redirect the user's browser to.
     Requires OAuth client credentials to be configured first.
@@ -782,7 +866,12 @@ async def oauth_start(platform: str, connection_name: str | None = None, space_i
     from laya.egress.oauth import build_auth_url
 
     redirect_uri = f"http://localhost:{ENGINE_PORT}/egress/connections/oauth/callback"
-    result = build_auth_url(platform, redirect_uri, connection_name=connection_name, space_id=space_id)
+    result = build_auth_url(
+        platform, redirect_uri,
+        connection_name=connection_name,
+        space_id=space_id,
+        channel_names=channel_names,
+    )
 
     if "error" in result:
         status_code = 422 if result.get("needs_setup") else 400

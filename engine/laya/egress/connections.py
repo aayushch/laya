@@ -823,6 +823,16 @@ async def _remove_connection_workflows(connection_id: str) -> None:
     if not rows:
         return
 
+    # Clean up Slack channel metadata keyed by workflow_id
+    for row in rows:
+        wf_id = row["workflow_id"]
+        if wf_id:
+            await db.execute(
+                "DELETE FROM metadata WHERE key = ?",
+                (f"slack-channels:{wf_id}",),
+            )
+    await db.commit()
+
     api_key = get_api_key("n8n")
     if not api_key:
         return
