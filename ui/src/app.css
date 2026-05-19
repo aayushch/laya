@@ -608,6 +608,15 @@ html, body {
 }
 [data-status="dismissed"]         { --status-rgb: 120 113 108; }
 [data-status="archived"]          { --status-rgb: 120 113 108; }
+/* Expanded group header — keep the status border without glass background.
+   Needs !important to override the Tailwind border-surface-700/50 utility
+   applied when the group is expanded (utility classes are injected late). */
+[data-theme='dark'] [data-group-row][data-status] {
+	border-color: rgb(var(--status-rgb) / 0.4) !important;
+}
+[data-theme='light'] [data-group-row][data-status] {
+	border-color: rgb(var(--status-rgb) / 0.45) !important;
+}
 
 /* Glass dim / focus — de-emphasise non-selected cards while
    preserving warm theme identity. Opacity + mild desaturation
@@ -1801,10 +1810,17 @@ html, body {
 
 /* Skip layout/paint for off-screen list rows during panel slide
    and general scrolling. Only ~25 visible rows participate in
-   reflow instead of all 1200+. */
+   reflow instead of all 1200+.
+   content-visibility:auto implies contain:paint which clips
+   descendant box-shadow (the status glow) at this element's
+   padding box. Padding + compensating negative margin extends
+   the clipping boundary so the glow is visible on all sides
+   without changing visual layout. */
 .feed-list-container [data-entity-id] {
 	content-visibility: auto;
 	contain-intrinsic-block-size: auto 34px;
+	padding: 4px 8px;
+	margin: -4px -8px;
 }
 
 /* During panel transitions, suppress expensive per-element work

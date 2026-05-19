@@ -311,10 +311,10 @@
 		{/if}
 
 		<div data-group-row={group.entity_id}
-			data-status={$glassTheme && $cardColors && !allArchived && !expanded ? visualDominantStatus : undefined}
+			data-status={$glassTheme && $cardColors && !allArchived ? visualDominantStatus : undefined}
 			class="relative flex flex-1 min-w-0 items-center rounded-lg border hover:z-20 transition-colors
 				{expanded
-					? 'border-transparent'
+					? 'border-surface-700/50'
 					: 'list-row-hover border-transparent ' + groupBgStyle}
 				{isGroupLastViewed ? ($cardColors ? 'card-last-viewed card-last-viewed--compact' : 'card-last-viewed-highlight') : ''}">
 
