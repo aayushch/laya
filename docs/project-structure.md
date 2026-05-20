@@ -18,7 +18,7 @@ laya/
 |   |   |-- scheduler.py                  # Background scheduler (briefings, housekeeping)
 |   |   |-- http_client.py                # Shared HTTP client
 |   |   |
-|   |   |-- api/                          # HTTP + WebSocket endpoints (24 routers)
+|   |   |-- api/                          # HTTP + WebSocket endpoints (25 routers)
 |   |   |   |-- __init__.py
 |   |   |   |-- events.py                 # POST /events (receives from n8n)
 |   |   |   |-- cards_api.py              # Card CRUD, grouping, archive/reopen, bookmarks
@@ -31,12 +31,16 @@ laya/
 |   |   |   |-- connections_api.py         # Integration connection status
 |   |   |   |-- rules_api.py              # Event filter rules
 |   |   |   |-- classification_api.py     # Classification rules CRUD, corrections listing
+|   |   |   |-- processing_rules_api.py   # Processing-rules CRUD, preview, history, settings
+|   |   |   |-- tags_api.py               # Tag CRUD, assign/unassign, tags-for-target
+|   |   |   |-- metadata_api.py           # Generic key/value metadata store (per-space)
 |   |   |   |-- trace_api.py              # Coherence entity search, traces, narratives
 |   |   |   |-- egress_api.py             # Outbound action execution, preview, connections
 |   |   |   |-- omni_api.py              # Omni rolling summary: snapshots, pins, resynthesis
 |   |   |   |-- budget_api.py             # Budget tracking and cost controls
 |   |   |   |-- audit_api.py              # Audit log queries
 |   |   |   |-- diagnostics_api.py        # System diagnostics
+|   |   |   |-- ingestion_errors.py       # Failed-ingestion event listing/clear
 |   |   |   |-- health.py                 # GET /health
 |   |   |   |-- team.py                   # Team member endpoints
 |   |   |   |-- websocket.py              # WS /ws handler
@@ -58,6 +62,7 @@ laya/
 |   |   |   |-- entity_resolution.py      # Cross-platform entity linking with context awareness
 |   |   |   |-- group_summary.py           # Rolling LLM summaries for multi-card entity groups
 |   |   |   |-- processing_rules.py       # Processing rules evaluation
+|   |   |   |-- tags.py                   # Persist stager-suggested tags + ChromaDB tag metadata
 |   |   |   |-- omni.py                   # Omni: rolling summary, incremental updates, resynthesis
 |   |   |   |-- budget.py                 # LLM cost tracking by feature and pipeline step
 |   |   |   |-- chat.py                   # Chat assistant pipeline
@@ -112,7 +117,7 @@ laya/
 |   |   |   |-- chromadb_store.py         # ChromaDB vector store (embedded PersistentClient)
 |   |   |   |-- chunking.py              # Document chunking for embeddings
 |   |   |   |-- migrate.py               # Migration runner (check version, apply pending)
-|   |   |   |-- migrations/              # 59 numbered SQL migration files
+|   |   |   |-- migrations/              # 66 numbered SQL migration files
 |   |   |       |-- 001_initial.sql       # Core tables: events, action_cards, action_log
 |   |   |       |-- 002_entities.sql      # Entity resolution: entities table
 |   |   |       |-- ...
@@ -133,7 +138,14 @@ laya/
 |   |   |       |-- 055_context_members_card_level.sql  # Card-level context members
 |   |   |       |-- 057_entity_agent_sessions.sql  # Agent session per entity
 |   |   |       |-- 058_ingestion_errors_cleared.sql  # Ingestion error tracking
-|   |   |       |-- 059_processing_rules.sql  # Processing rules
+|   |   |       |-- 059_processing_rules.sql  # Processing rules + firings
+|   |   |       |-- 060_processing_rules_constraints.sql  # FK + JSON validity checks
+|   |   |       |-- 061_normalize_space_id.sql  # NULL → 'default' for cards/events
+|   |   |       |-- 062_repo_qualify_entity_ids.sql  # Repo-scoped GitHub/Bitbucket entities
+|   |   |       |-- 063_read_at.sql       # read_at column on action_cards
+|   |   |       |-- 064_daily_summaries_per_space.sql  # Daily summaries per (date, space_id)
+|   |   |       |-- 065_tags.sql          # tags + tag_assignments (polymorphic labels)
+|   |   |       |-- 066_metadata.sql      # Generic key/value metadata table
 |   |   |
 |   |   |-- models/                       # Pydantic data models
 |   |   |   |-- __init__.py

@@ -2197,7 +2197,7 @@
 						{#if !isCollapsed}
 							<div class="flex flex-col gap-1 mb-2">
 								{#each sectionGroups as group (group.entity_id)}
-									<div data-entity-id={group.entity_id}>
+									<div data-entity-id={group.entity_id} data-list-row>
 									{#if group.card_count === 1}
 										<ListRow card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} bulkSelected={$feedSelection.has(group.cards[0].card_id)} onbulktoggle={handleBulkToggle} hasSelection={hasAnySelection} lastViewedCardId={lastViewedCardId ?? ''} />
 									{:else}
@@ -2212,7 +2212,7 @@
 					<!-- Default list view -->
 					<div class="flex flex-col gap-1">
 						{#each filteredGroups as group (group.entity_id)}
-							<div data-entity-id={group.entity_id}>
+							<div data-entity-id={group.entity_id} data-list-row>
 							{#if group.card_count === 1}
 								<ListRow card={group.cards[0]} onselect={selectCard} ondelete={handleDelete} selectedCardId={selectedCard?.card_id ?? ''} bulkSelected={$feedSelection.has(group.cards[0].card_id)} onbulktoggle={handleBulkToggle} hasSelection={hasAnySelection} lastViewedCardId={lastViewedCardId ?? ''} />
 							{:else}

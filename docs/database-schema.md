@@ -473,9 +473,125 @@ CREATE TABLE ingestion_errors (
 );
 ```
 
+### processing_rules
+
+Automated event→action wiring (condition/actions DSL with rate limiting).
+
+```sql
+CREATE TABLE processing_rules (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT NOT NULL,
+    description     TEXT,
+    space_id        TEXT REFERENCES spaces(space_id) ON DELETE SET NULL,
+    -- NULL space_id means a global rule (applies to all spaces)
+    enabled         INTEGER NOT NULL DEFAULT 1,
+    position        INTEGER NOT NULL DEFAULT 0,
+    condition_json  TEXT NOT NULL CHECK(json_valid(condition_json)),
+    actions_json    TEXT NOT NULL CHECK(json_valid(actions_json)),
+    rate_limit      INTEGER DEFAULT 0,
+    cooldown_secs   INTEGER DEFAULT 0,
+    max_daily       INTEGER DEFAULT 0,
+    last_fired_at   DATETIME,
+    fire_count      INTEGER NOT NULL DEFAULT 0,
+    error_count     INTEGER NOT NULL DEFAULT 0,
+    last_error      TEXT,
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_proc_rules_space ON processing_rules(space_id);
+CREATE INDEX idx_proc_rules_enabled ON processing_rules(enabled);
+```
+
+### processing_rule_firings
+
+History of each processing_rule firing (for audit and debugging).
+
+```sql
+CREATE TABLE processing_rule_firings (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    rule_id         INTEGER NOT NULL REFERENCES processing_rules(id) ON DELETE CASCADE,
+    card_id         TEXT NOT NULL REFERENCES action_cards(card_id) ON DELETE CASCADE,
+    entity_id       TEXT,
+    event_id        TEXT,
+    fired_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+    actions_json    TEXT,
+    results_json    TEXT,
+    error           TEXT
+);
+
+CREATE INDEX idx_proc_firings_rule ON processing_rule_firings(rule_id, fired_at);
+CREATE INDEX idx_proc_firings_entity ON processing_rule_firings(rule_id, entity_id, fired_at);
+CREATE INDEX idx_proc_firings_card ON processing_rule_firings(card_id);
+```
+
+### tags
+
+Global tag definitions. Tags are polymorphic — they can be assigned to cards, entities, or context groups via `tag_assignments`.
+
+```sql
+CREATE TABLE tags (
+    tag_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    name      TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    color     TEXT,
+    is_system INTEGER NOT NULL DEFAULT 0,    -- system tags cannot be renamed or deleted
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+Seeded system tags: `spam`, `phishing`, `automated`.
+
+### tag_assignments
+
+Polymorphic assignment of tags to cards, entities, or context groups.
+
+```sql
+CREATE TABLE tag_assignments (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    tag_id      INTEGER NOT NULL REFERENCES tags(tag_id) ON DELETE CASCADE,
+    target_type TEXT NOT NULL CHECK(target_type IN ('card', 'entity', 'context')),
+    target_id   TEXT NOT NULL,
+    assigned_by TEXT NOT NULL DEFAULT 'user',  -- 'user' | 'stager' | 'rule'
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(tag_id, target_type, target_id)
+);
+
+CREATE INDEX idx_tag_assignments_target ON tag_assignments(target_type, target_id);
+CREATE INDEX idx_tag_assignments_tag ON tag_assignments(tag_id);
+```
+
+### daily_summaries
+
+Per-space daily summaries used by the briefing/summary view. One row per (date, space_id).
+
+```sql
+CREATE TABLE daily_summaries (
+    date         TEXT NOT NULL,             -- ISO date e.g. '2026-05-19'
+    space_id     TEXT NOT NULL DEFAULT 'default',
+    summary_json TEXT NOT NULL,             -- structured JSON with sections
+    card_ids     TEXT NOT NULL DEFAULT '[]',-- JSON array of card_ids incorporated
+    updated_at   TEXT DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (date, space_id)
+);
+```
+
+### metadata
+
+Generic key/value store for opaque JSON values. Values are owned by whoever reads/writes a given key (n8n workflows, UI preferences, etc.). Keyed by `(key, space_id)`.
+
+```sql
+CREATE TABLE metadata (
+    key       TEXT NOT NULL,
+    value     TEXT NOT NULL,     -- JSON (opaque to this API)
+    space_id  TEXT NOT NULL DEFAULT 'default',
+    PRIMARY KEY (key, space_id)
+);
+```
+
 ## Migration Files
 
-Migrations are numbered SQL files in `engine/laya/db/migrations/`. There are currently 59 migrations (001 through 059), covering:
+Migrations are numbered SQL files in `engine/laya/db/migrations/`. There are currently 66 migrations (001 through 066), covering:
 
 | Range | Description |
 |---|---|
@@ -513,6 +629,13 @@ Migrations are numbered SQL files in `engine/laya/db/migrations/`. There are cur
 | `056` | Drop omni last attempt (superseded) |
 | `057` | **Agent sessions per entity**: entity_agent_sessions linking |
 | `058` | Ingestion errors cleared flag |
-| `059` | **Processing rules**: custom processing rules table |
+| `059` | **Processing rules**: processing_rules and processing_rule_firings tables |
+| `060` | Processing rules constraints: FK on card_id, JSON validity checks |
+| `061` | Normalize space_id: NULL → 'default' for cards/events; FK on processing_rules.space_id |
+| `062` | Repo-qualify entity_ids for GitHub and Bitbucket to prevent cross-repo collisions |
+| `063` | **Read state**: `read_at` column on action_cards (NULL = unread) |
+| `064` | **Daily summaries per space**: rebuilt `daily_summaries` keyed by (date, space_id) |
+| `065` | **Tags**: tags and tag_assignments tables, seeded system tags |
+| `066` | **Metadata**: generic key/value metadata table keyed by (key, space_id) |
 
 The migration runner (`engine/laya/db/migrate.py`) checks `schema_version` on startup and applies any migrations with version > current version.

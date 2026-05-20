@@ -281,8 +281,7 @@
 	}
 </script>
 
-<div bind:this={wrapperEl} class="transition-opacity
-		{isDimmed ? ($glassTheme ? 'glass-dim' : 'opacity-45 hover:opacity-70') : ''}" data-group-entity={group.entity_id}>
+<div bind:this={wrapperEl} class="{isDimmed ? ($glassTheme ? 'glass-dim' : 'opacity-45 hover:opacity-70') : ''}" data-group-entity={group.entity_id}>
 	<div class="flex items-center {onbulktoggle ? 'gap-1.5' : ''}">
 		{#if onbulktoggle}
 			<div class="w-5 shrink-0 flex items-center justify-center">

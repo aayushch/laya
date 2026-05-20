@@ -962,12 +962,233 @@ Returns system diagnostics for troubleshooting.
 {
   "engine_version": "...",
   "python_version": "...",
-  "database": {"size_mb": 42, "migration_version": 59},
+  "database": {"size_mb": 42, "migration_version": 66},
   "chromadb": {"collection_count": 3, "total_embeddings": 1200},
   "n8n": {"status": "healthy", "workflow_count": 21},
   "system": {"platform": "darwin", "memory_mb": 1024}
 }
 ```
+
+### `GET /tags`
+
+List all tags. Optional `is_system` query param filters to system or user tags.
+
+**Response (200):**
+```json
+{
+  "tags": [
+    {"tag_id": 1, "name": "spam", "color": "#EF4444", "is_system": true, "created_at": "..."},
+    {"tag_id": 4, "name": "follow-up", "color": "#3B82F6", "is_system": false, "created_at": "..."}
+  ]
+}
+```
+
+### `POST /tags`
+
+Create a new (user) tag. Name is lowercased and must be unique (≤50 chars). Returns 409 if a tag with that name already exists.
+
+**Request body:**
+```json
+{"name": "follow-up", "color": "#3B82F6"}
+```
+
+### `PUT /tags/{tag_id}`
+
+Update a tag's name or color. Cannot rename system tags (403).
+
+**Request body:**
+```json
+{"name": "later", "color": "#10B981"}
+```
+
+### `DELETE /tags/{tag_id}`
+
+Delete a user tag. Cannot delete system tags (403). Cascades to remove all `tag_assignments` for the tag and refreshes ChromaDB metadata for affected cards.
+
+### `POST /tags/assign`
+
+Assign a tag to a card, entity, or context group. Soft cap of 10 tags per target. If `create_if_missing` is true and `tag_name_or_id` is a string, a new tag is created on the fly.
+
+**Request body:**
+```json
+{
+  "tag_name_or_id": "follow-up",
+  "target_type": "card",
+  "target_id": "card_abc123",
+  "create_if_missing": true
+}
+```
+
+Broadcasts a `tags_changed` WebSocket event.
+
+### `DELETE /tags/unassign`
+
+Remove a tag assignment.
+
+**Request body:**
+```json
+{"tag_id": 4, "target_type": "card", "target_id": "card_abc123"}
+```
+
+### `GET /tags/for/{target_type}/{target_id}`
+
+List tags assigned to a specific target. `target_type` ∈ `card | entity | context`.
+
+**Response (200):**
+```json
+{
+  "tags": [
+    {"tag_id": 4, "tag_name": "follow-up", "color": "#3B82F6", "is_system": false, "assigned_by": "user"}
+  ]
+}
+```
+
+### `GET /processing-rules`
+
+List all processing rules, optionally filtered by `space_id` (includes global rules with `space_id = NULL`).
+
+**Response (200):**
+```json
+{
+  "rules": [
+    {
+      "id": 1,
+      "name": "Auto-archive bot PR notifications",
+      "description": "...",
+      "space_id": null,
+      "enabled": true,
+      "position": 0,
+      "condition": {...},
+      "actions": [{"type": "archive"}],
+      "rate_limit": 0,
+      "cooldown_secs": 0,
+      "max_daily": 0,
+      "last_fired_at": "...",
+      "fire_count": 12,
+      "error_count": 0,
+      "last_error": null,
+      "created_at": "...",
+      "updated_at": "..."
+    }
+  ]
+}
+```
+
+### `POST /processing-rules`
+
+Create a new processing rule. Regex patterns in conditions are validated (length ≤500, must compile). Position is auto-assigned to MAX+1.
+
+### `GET /processing-rules/{rule_id}`
+
+Get a single rule.
+
+### `PUT /processing-rules/{rule_id}`
+
+Update fields on a rule. Re-enabling a rule resets `error_count` to 0.
+
+### `DELETE /processing-rules/{rule_id}`
+
+Delete a rule. Firings cascade.
+
+### `PUT /processing-rules/{rule_id}/toggle`
+
+Toggle `enabled` state. Re-enabling resets `error_count`.
+
+### `PUT /processing-rules/reorder`
+
+Bulk-update rule positions.
+
+**Request body:**
+```json
+{"order": [3, 1, 4, 2]}
+```
+
+### `POST /processing-rules/preview-matches`
+
+Count recent (last 7 days, up to 500) cards matching a candidate condition without saving the rule.
+
+**Request body:**
+```json
+{"condition": {...}}
+```
+
+**Response (200):**
+```json
+{
+  "match_count": 8,
+  "sample_cards": [{"card_id": "...", "header": "...", "priority": "LOW", "persona": "OPS", "status": "pending"}],
+  "period": "last 7 days",
+  "scanned": 500,
+  "skipped": 2
+}
+```
+
+### `GET /processing-rules/{rule_id}/history`
+
+Recent firings for a rule (default 20).
+
+**Response (200):**
+```json
+{
+  "rule_id": 1,
+  "firings": [
+    {
+      "id": 42,
+      "card_id": "card_...",
+      "entity_id": "...",
+      "event_id": "...",
+      "fired_at": "...",
+      "actions": [...],
+      "results": [...],
+      "error": null
+    }
+  ]
+}
+```
+
+### `GET /processing-rules/field-options`
+
+Distinct values observed in the events table for fields that support dropdown selection in the rule builder (platforms, raw event types, subject types, plus the persona/priority/category enums).
+
+### `GET /processing-rules/settings`
+
+Engine-wide processing-rules settings (currently just `auto_disable_threshold`).
+
+### `PUT /processing-rules/settings`
+
+Update engine-wide processing-rules settings. `auto_disable_threshold` is clamped to `[1, 100]`.
+
+### `GET /metadata`
+
+List metadata entries for a space. Values are JSON; the API does not interpret them.
+
+**Query params:** `space_id` (default `default`), `prefix` (optional key prefix filter).
+
+**Response (200):**
+```json
+{
+  "items": [
+    {"key": "ui.feed.density", "value": "compact", "space_id": "default"}
+  ]
+}
+```
+
+### `GET /metadata/{key}`
+
+Get a single metadata value. Returns `{"value": null}` if the key is unset (200, not 404). Key supports `/` (path-style).
+
+### `PUT /metadata/{key}`
+
+Upsert a metadata value.
+
+**Request body:**
+```json
+{"value": <any JSON>, "space_id": "default"}
+```
+
+### `DELETE /metadata/{key}`
+
+Delete a metadata entry. `space_id` is a query param (default `default`).
 
 ## 4. Laya Engine <-> Tauri UI (WebSocket)
 
