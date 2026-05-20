@@ -130,6 +130,7 @@ nav .container {
   transition: color 0.2s;
 }
 .nav-links a:hover { color: var(--laya-orange); }
+.nav-links a.btn-primary, .nav-links a.btn-primary:hover { color: #1a0f05; }
 
 /* ═══════════════════════════════════════════════════
    BUTTONS
@@ -149,10 +150,9 @@ nav .container {
 }
 .btn-primary {
   background: linear-gradient(135deg, var(--laya-orange), var(--laya-amber));
-  color: #fff;
+  color: #1a0f05;
   box-shadow: 0 4px 24px rgba(246, 172, 105, 0.35);
   font-weight: 700;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
 }
 .btn-primary:hover {
   transform: translateY(-2px);
@@ -883,6 +883,13 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
   .nav-links { display: none; }
   section { padding: 64px 0; }
   .hero { min-height: auto; padding: 120px 0 60px; }
+  .hero-badge {
+    flex-direction: column;
+    text-align: center;
+    gap: 6px;
+    padding: 10px 20px;
+  }
+  .showcase-tabs { margin-top: 24px; }
 }
 @media (max-width: 480px) {
   .steps { grid-template-columns: 1fr; }
@@ -894,6 +901,8 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
    ═══════════════════════════════════════════════════ */
 #docs-page { display: none; }
 #docs-page.active { display: flex; }
+#privacy-page { display: none; padding-top: 64px; }
+#privacy-page.active { display: block; }
 #landing-page.hidden { display: none; }
 
 .docs-layout {
@@ -1676,6 +1685,72 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
   </div>
 </section>
 
+<!-- ═══════════════════ CUSTOM PROMPTS ═══════════════════ -->
+<section id="custom-prompts">
+  <div class="container">
+    <div class="feature-showcase animate-on-scroll">
+      <div class="feature-text">
+        <span class="tag">Custom Prompts</span>
+        <h2>Every stage is yours to shape</h2>
+        <p>Laya's pipeline runs through distinct LLM stages — router, stager, the six persona workers, briefings, summaries, semantic chat, and more. Drop a markdown file into <code style="font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85em; padding: 2px 7px; border-radius: 4px; background: rgba(246, 172, 105, 0.12); color: var(--laya-peach);">~/.laya/prompts/</code> for any stage and Laya uses your prompt instead of the default. No fork, no rebuild.</p>
+        <ul>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Override 20+ pipeline stages individually — change one, keep the rest as default</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Tune persona voices, classification rules, or briefing style to your team</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Delete the file to revert — defaults always come back</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Reload picked up on engine restart — version-control your prompts alongside your dotfiles</li>
+        </ul>
+      </div>
+      <div class="feature-image">
+        <div style="background: #15120f; border: 1px solid #2a2520; border-radius: 14px; padding: 22px 24px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.82rem; line-height: 1.7; color: #e8ddd0; overflow-x: auto; box-shadow: 0 12px 40px rgba(0,0,0,0.35);">
+          <div style="color: #6f655a; font-size: 0.72rem; letter-spacing: 0.08em; margin-bottom: 12px;">~/.laya/prompts/</div>
+<pre style="margin: 0; white-space: pre; color: #e8ddd0;"><span style="color: #6f655a;">├─</span> <span style="color: #f6bc66;">router.md</span>          <span style="color: #6f655a;"># classification</span>
+<span style="color: #6f655a;">├─</span> <span style="color: #f6bc66;">stager.md</span>          <span style="color: #6f655a;"># action drafting</span>
+<span style="color: #6f655a;">├─</span> <span style="color: #f6bc66;">engineer.md</span>        <span style="color: #6f655a;"># persona voice</span>
+<span style="color: #6f655a;">├─</span> <span style="color: #f6bc66;">comms.md</span>
+<span style="color: #6f655a;">├─</span> <span style="color: #f6bc66;">briefing.md</span>        <span style="color: #6f655a;"># daily digest</span>
+<span style="color: #6f655a;">├─</span> <span style="color: #f6bc66;">omni.md</span>            <span style="color: #6f655a;"># rolling summary</span>
+<span style="color: #6f655a;">└─</span> <span style="color: #6f655a;">… 16 more</span></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ MCP SERVER ═══════════════════ -->
+<section id="mcp">
+  <div class="container">
+    <div class="feature-showcase reverse animate-on-scroll">
+      <div class="feature-text">
+        <span class="tag">MCP Server</span>
+        <h2>Bring Laya into any AI harness</h2>
+        <p>Whenever Laya is running, a <strong>Model Context Protocol</strong> server is reachable at <code style="font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85em; padding: 2px 7px; border-radius: 4px; background: rgba(246, 172, 105, 0.12); color: var(--laya-peach);">http://127.0.0.1:8420/mcp/sse</code>. Grab a token from Settings → MCP and wire any MCP-compatible client — Claude Desktop, Cursor, VS Code, custom agents — straight into your live data.</p>
+        <ul>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Three scope toggles — Read, Write, Egress — gate what clients can call</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Bearer-token auth or loopback-only mode, your call</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Full surface: search cards, semantic search, mutate, and trigger outbound actions across all 9 connected platforms</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Same transport powers Laya's in-app coding agents — one path, one policy</li>
+        </ul>
+      </div>
+      <div class="feature-image">
+        <div style="background: #15120f; border: 1px solid #2a2520; border-radius: 14px; padding: 22px 24px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.82rem; line-height: 1.7; color: #e8ddd0; overflow-x: auto; box-shadow: 0 12px 40px rgba(0,0,0,0.35);">
+          <div style="color: #6f655a; font-size: 0.72rem; letter-spacing: 0.08em; margin-bottom: 12px;">claude_desktop_config.json</div>
+<pre style="margin: 0; white-space: pre; color: #e8ddd0;"><span style="color: #6f655a;">{</span>
+  <span style="color: #f6bc66;">"mcpServers"</span>: <span style="color: #6f655a;">{</span>
+    <span style="color: #f6bc66;">"laya"</span>: <span style="color: #6f655a;">{</span>
+      <span style="color: #f6bc66;">"type"</span>: <span style="color: #ffdab9;">"sse"</span>,
+      <span style="color: #f6bc66;">"url"</span>:  <span style="color: #ffdab9;">"http://127.0.0.1:8420/mcp/sse"</span>,
+      <span style="color: #f6bc66;">"headers"</span>: <span style="color: #6f655a;">{</span>
+        <span style="color: #f6bc66;">"Authorization"</span>: <span style="color: #ffdab9;">"Bearer lyat_…"</span>
+      <span style="color: #6f655a;">}</span>
+    <span style="color: #6f655a;">}</span>
+  <span style="color: #6f655a;">}</span>
+<span style="color: #6f655a;">}</span></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ═══════════════════ PERSONAS ═══════════════════ -->
 <section>
   <div class="container">
@@ -1726,48 +1801,16 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
       <p>Connect one tool or all of them. Laya normalizes everything into a unified, AI-enriched event stream.</p>
     </div>
     <div class="integrations-grid animate-on-scroll">
-      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></span> Gmail</div>
-      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 10c-.83 0-1.5-.67-1.5-1.5v-5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5z"/><path d="M20.5 10H19V8.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/><path d="M9.5 14c.83 0 1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5S8 21.33 8 20.5v-5c0-.83.67-1.5 1.5-1.5z"/><path d="M3.5 14H5v1.5c0 .83-.67 1.5-1.5 1.5S2 16.33 2 15.5 2.67 14 3.5 14z"/><path d="M14 14.5c0-.83.67-1.5 1.5-1.5h5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-5c-.83 0-1.5-.67-1.5-1.5z"/><path d="M14 20.5c0-.83.67-1.5 1.5-1.5h0c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h0c-.83 0-1.5-.67-1.5-1.5z" style="display:none"/><path d="M15.5 16H14v1.5c0 .83-.67 1.5-1.5 1.5" style="display:none"/><path d="M10 9.5c0 .83-.67 1.5-1.5 1.5h-5C2.67 11 2 10.33 2 9.5S2.67 8 3.5 8h5c.83 0 1.5.67 1.5 1.5z"/><path d="M10 3.5C10 4.33 9.33 5 8.5 5H8v0" style="display:none"/></svg></span> Slack</div>
-      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/></svg></span> Jira</div>
-      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg></span> GitHub</div>
-      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12.5V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h8"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/><path d="M18 15.28c.2-.4.5-.8.9-1a2.1 2.1 0 0 1 2.6.4c.3.4.5.8.5 1.3 0 1.3-2 2-2 2" /><path d="M20 21v.01"/></svg></span> Bitbucket</div>
-      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span> Calendar</div>
-      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/><line x1="2" y1="20" x2="8" y2="13"/><line x1="22" y1="20" x2="16" y2="13"/></svg></span> Outlook</div>
-      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="M7 12l3 3 7-7"/></svg></span> Linear</div>
-      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M7 7h3l7 10h-3z"/><path d="M17 7h-3"/><path d="M7 17h3"/></svg></span> Notion</div>
+      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="#f6ac69"><path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 010 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z"/></svg></span> Gmail</div>
+      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="#ff9770"><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/></svg></span> Slack</div>
+      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="#f6bc66"><path d="M11.571 11.513H0a5.218 5.218 0 0 0 5.232 5.215h2.13v2.057A5.215 5.215 0 0 0 12.575 24V12.518a1.005 1.005 0 0 0-1.005-1.005zm5.723-5.756H5.736a5.215 5.215 0 0 0 5.215 5.214h2.129v2.058a5.218 5.218 0 0 0 5.215 5.214V6.758a1.001 1.001 0 0 0-1.001-1.001zM23.013 0H11.455a5.215 5.215 0 0 0 5.215 5.215h2.129v2.057A5.215 5.215 0 0 0 24 12.483V1.005A1.001 1.001 0 0 0 23.013 0Z"/></svg></span> Jira</div>
+      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="#f6ac69"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg></span> GitHub</div>
+      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="#ff9770"><path d="M.778 1.213a.768.768 0 00-.768.892l3.263 19.81c.084.5.515.868 1.022.873H19.95a.772.772 0 00.77-.646l3.27-20.03a.768.768 0 00-.768-.89zM14.52 15.53H9.522L8.17 8.466h7.561z"/></svg></span> Bitbucket</div>
+      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="#f6bc66"><path d="M18.316 5.684H24v12.632h-5.684V5.684zM5.684 24h12.632v-5.684H5.684V24zM18.316 5.684V0H1.895A1.894 1.894 0 0 0 0 1.895v16.421h5.684V5.684h12.632zm-7.207 6.25v-.065c.272-.144.5-.349.687-.617s.279-.595.279-.982c0-.379-.099-.72-.3-1.025a2.05 2.05 0 0 0-.832-.714 2.703 2.703 0 0 0-1.197-.257c-.6 0-1.094.156-1.481.467-.386.311-.65.671-.793 1.078l1.085.452c.086-.249.224-.461.413-.633.189-.172.445-.257.767-.257.33 0 .602.088.816.264a.86.86 0 0 1 .322.703c0 .33-.12.589-.36.778-.24.19-.535.284-.886.284h-.567v1.085h.633c.407 0 .748.109 1.02.327.272.218.407.499.407.843 0 .336-.129.614-.387.832s-.565.327-.924.327c-.351 0-.651-.103-.897-.311-.248-.208-.422-.502-.521-.881l-1.096.452c.178.616.505 1.082.977 1.401.472.319.984.478 1.538.477a2.84 2.84 0 0 0 1.293-.291c.382-.193.684-.458.902-.794.218-.336.327-.72.327-1.149 0-.429-.115-.797-.344-1.105a2.067 2.067 0 0 0-.881-.689zm2.093-1.931l.602.913L15 10.045v5.744h1.187V8.446h-.827l-2.158 1.557zM22.105 0h-3.289v5.184H24V1.895A1.894 1.894 0 0 0 22.105 0zm-3.289 23.5l4.684-4.684h-4.684V23.5zM0 22.105C0 23.152.848 24 1.895 24h3.289v-5.184H0v3.289z"/></svg></span> Calendar</div>
+      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="#f6ac69"><path d="M7.88 12.04q0 .45-.11.87q-.1.41-.33.74q-.22.33-.58.52q-.37.2-.87.2t-.85-.2q-.35-.21-.57-.55q-.22-.33-.33-.75q-.1-.42-.1-.86t.1-.87t.34-.76q.22-.34.59-.54q.36-.2.87-.2t.86.2q.35.21.57.55t.31.77q.1.43.1.88M24 12v9.38q0 .46-.33.8q-.33.32-.8.32H7.13q-.46 0-.8-.33q-.32-.33-.32-.8V18H1q-.41 0-.7-.3q-.3-.29-.3-.7V7q0-.41.3-.7Q.58 6 1 6h6.5V2.55q0-.44.3-.75q.3-.3.75-.3h12.9q.44 0 .75.3q.3.3.3.75v8.3l1.24.72h.01q.1.07.18.18q.07.12.07.25m-6-8.25v3h3v-3zm0 4.5v3h3v-3zm0 4.5v1.83l3.05-1.83zm-5.25-9v3h3.75v-3zm0 4.5v3h3.75v-3zm0 4.5v2.03l2.41 1.5l1.34-.8v-2.73zM9 3.75V6h2l.13.01l.12.04v-2.3zM5.98 15.98q.9 0 1.6-.3q.7-.32 1.19-.86q.48-.55.73-1.28q.25-.74.25-1.61q0-.83-.25-1.55q-.24-.71-.71-1.24t-1.15-.83t-1.55-.3q-.92 0-1.64.3q-.71.3-1.2.85q-.5.54-.75 1.3q-.25.74-.25 1.63q0 .85.26 1.56q.26.72.74 1.23q.48.52 1.17.81q.69.3 1.56.3zM7.5 21h12.39L12 16.08V17q0 .41-.3.7q-.29.3-.7.3H7.5zm15-.13v-7.24l-5.9 3.54Z"/></svg></span> Outlook</div>
+      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="#f6bc66"><path d="M2.886 4.18A11.982 11.982 0 0 1 11.99 0C18.624 0 24 5.376 24 12.009c0 3.64-1.62 6.903-4.18 9.105L2.887 4.18ZM1.817 5.626l16.556 16.556c-.524.33-1.075.62-1.65.866L.951 7.277c.247-.575.537-1.126.866-1.65ZM.322 9.163l14.515 14.515c-.71.172-1.443.282-2.195.322L0 11.358a12 12 0 0 1 .322-2.195Zm-.17 4.862 9.823 9.824a12.02 12.02 0 0 1-9.824-9.824Z"/></svg></span> Linear</div>
+      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="#f6ac69"><path d="M4.459 4.208c.746.606 1.026.56 2.428.466l13.215-.793c.28 0 .047-.28-.046-.326L18.38 2.33c-.42-.326-.98-.7-2.055-.607L3.48 2.87c-.466.046-.56.28-.374.466l1.353 1.873zm.793 3.08v13.904c0 .747.373 1.027 1.214.98l14.523-.84c.841-.046.935-.56.935-1.166V6.382c0-.606-.233-.933-.747-.886l-15.178.84c-.56.047-.747.327-.747.933zm14.337.745c.093.42 0 .84-.42.888l-.7.14v10.264c-.608.327-1.168.514-1.635.514-.747 0-.935-.234-1.495-.933l-4.577-7.186v6.952l1.448.327s0 .84-1.168.84l-3.222.187c-.093-.187 0-.653.327-.747l.84-.233V9.854L7.23 9.668c-.094-.42.14-1.026.793-1.073l3.456-.233 4.764 7.279v-6.44l-1.215-.14c-.093-.513.28-.886.747-.933l3.222-.187z"/></svg></span> Notion</div>
       <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span> More via n8n</div>
-    </div>
-  </div>
-</section>
-
-<!-- ═══════════════════ MCP SERVER ═══════════════════ -->
-<section id="mcp">
-  <div class="container">
-    <div class="feature-showcase reverse animate-on-scroll">
-      <div class="feature-text">
-        <span class="tag">MCP Server</span>
-        <h2>Bring Laya into any AI client</h2>
-        <p>Laya ships with a built-in <strong>Model Context Protocol</strong> server. Point Claude Desktop, VS Code, Cursor, or any MCP-compatible client at it and your assistant gets first-class access to everything Laya knows — your cards, events, entities, semantic memory, and outbound actions.</p>
-        <ul>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Read tools: search cards, fetch events, trace entities, semantic search across all platforms</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Write tools: dismiss, archive, complete, or reopen cards from any client</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Egress actions: send Slack messages, post PR comments, create Jira issues, and more across all 9 connected platforms</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Stdio transport, runs locally — your data never leaves your machine</li>
-        </ul>
-      </div>
-      <div class="feature-image">
-        <div style="background: #15120f; border: 1px solid #2a2520; border-radius: 14px; padding: 22px 24px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.82rem; line-height: 1.7; color: #e8ddd0; overflow-x: auto; box-shadow: 0 12px 40px rgba(0,0,0,0.35);">
-          <div style="color: #6f655a; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">claude_desktop_config.json</div>
-<pre style="margin: 0; white-space: pre; color: #e8ddd0;"><span style="color: #6f655a;">{</span>
-  <span style="color: #f6bc66;">"mcpServers"</span>: <span style="color: #6f655a;">{</span>
-    <span style="color: #f6bc66;">"laya"</span>: <span style="color: #6f655a;">{</span>
-      <span style="color: #f6bc66;">"command"</span>: <span style="color: #ffdab9;">"python"</span>,
-      <span style="color: #f6bc66;">"args"</span>: <span style="color: #6f655a;">[</span><span style="color: #ffdab9;">"-m"</span>, <span style="color: #ffdab9;">"laya.mcp.server"</span><span style="color: #6f655a;">]</span>
-    <span style="color: #6f655a;">}</span>
-  <span style="color: #6f655a;">}</span>
-<span style="color: #6f655a;">}</span></pre>
-        </div>
-      </div>
     </div>
   </div>
 </section>
@@ -1823,7 +1866,7 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
       <ul class="footer-links">
         <li><a href="https://github.com/aayushch/laya" target="_blank" rel="noopener noreferrer">GitHub</a></li>
         <li><a href="#docs" onclick="event.preventDefault(); showDocs();">Docs</a></li>
-        <li><a href="#">Privacy</a></li>
+        <li><a href="#privacy" onclick="event.preventDefault(); showPrivacy();">Privacy</a></li>
       </ul>
     </div>
   </div>
@@ -1939,6 +1982,7 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
         <a href="#doc-event-schema">Event Schema</a>
         <a href="#doc-config-files">Config Files</a>
         <a href="#doc-custom-prompts">Custom Prompts</a>
+        <a href="#doc-mcp">MCP Server</a>
         <a href="#doc-tuning">Tuning Parameters</a>
         <a href="#doc-troubleshooting">Troubleshooting</a>
       </div>
@@ -2931,6 +2975,60 @@ curl -X POST http://127.0.0.1:8420/prompts/reload</code></pre>
         <tr><td><code>POST /prompts/reload</code></td><td>Re-scans <code>~/.laya/prompts/</code> and hot-swaps overrides without restarting</td></tr>
       </table>
 
+      <h2 id="doc-mcp">MCP Server</h2>
+      <p>Laya exposes its toolset over the <strong>Model Context Protocol</strong>. Any MCP-compatible client &mdash; Claude Desktop, Cursor, VS Code, Zed, custom agents &mdash; can call into Laya to search your cards, fetch events, trace entities, run semantic search, and trigger outbound actions across all 9 connected platforms.</p>
+
+      <div class="callout callout-info">
+        <p><strong>Transport:</strong> the MCP server is mounted on the running engine at <code>http://127.0.0.1:8420/mcp/sse</code> using <strong>Server-Sent Events</strong>. There is no subprocess to spawn &mdash; whenever Laya is running, the endpoint is live. The bundled Tauri app exposes it natively; no source install required. The in-app Claude Code coding agents use the same endpoint, so there is exactly one MCP path in the system.</p>
+      </div>
+
+      <h3>Configuration</h3>
+      <p>Open <strong>Settings &rarr; MCP</strong> in the desktop app. You'll find three controls:</p>
+      <ul>
+        <li><strong>Tool scopes</strong> &mdash; toggles for <em>Read</em>, <em>Write</em>, and <em>Egress</em>. Only enabled categories are exposed to MCP clients. Changes take effect on the next call (no restart).</li>
+        <li><strong>Authentication</strong> &mdash; pick <em>Bearer token</em> (recommended) or <em>Loopback only, no auth</em>.</li>
+        <li><strong>Token</strong> &mdash; when bearer auth is enabled, the current token is shown (with reveal / copy / rotate controls). Rotating immediately invalidates the previous token.</li>
+      </ul>
+
+      <h3>Available Tools</h3>
+      <table>
+        <tr><th>Scope</th><th>Tools</th></tr>
+        <tr><td>Read</td><td><code>search_cards</code>, <code>get_card</code>, <code>search_events</code>, <code>get_event</code>, <code>search_entities</code>, <code>get_entity</code>, <code>get_card_stats</code>, <code>get_recent_activity</code>, <code>get_cards_for_event</code>, <code>get_cards_by_entity</code>, <code>semantic_search</code>, <code>get_settings</code></td></tr>
+        <tr><td>Write</td><td><code>dismiss_card</code>, <code>archive_card</code>, <code>mark_card_done</code>, <code>reopen_card</code>, <code>update_theme</code>, <code>update_retention</code>, <code>update_briefing</code>, <code>update_notifications</code>, <code>update_feed_preferences</code></td></tr>
+        <tr><td>Egress</td><td>Per-platform actions for GitHub, Bitbucket, Jira, Linear, Gmail, Slack, Calendar, Outlook, and Notion (send messages, post comments, create issues, schedule events, &hellip;)</td></tr>
+      </table>
+
+      <h3>Claude Desktop</h3>
+      <p>Edit your Claude Desktop config (<code>~/Library/Application Support/Claude/claude_desktop_config.json</code> on macOS, <code>%APPDATA%\Claude\claude_desktop_config.json</code> on Windows) and add Laya as an SSE server:</p>
+<pre><code>{
+  "mcpServers": {
+    "laya": {
+      "type": "sse",
+      "url": "http://127.0.0.1:8420/mcp/sse",
+      "headers": {
+        "Authorization": "Bearer lyat_…"
+      }
+    }
+  }
+}</code></pre>
+      <p>Copy the bearer value from Settings &rarr; MCP. Restart Claude Desktop &mdash; Laya's tools appear in the picker as <code>mcp__laya__*</code>. If you've set auth mode to <em>none</em>, omit the <code>headers</code> block entirely.</p>
+
+      <h3>Cursor &amp; VS Code</h3>
+      <p>Both Cursor and the VS Code MCP extension accept the same SSE config shape. Add a server entry under <code>mcpServers</code> (Cursor: <code>~/.cursor/mcp.json</code>; VS Code: workspace <code>.vscode/mcp.json</code> or the MCP extension's settings UI) with <code>"type": "sse"</code>, the SSE URL, and (when bearer auth is on) the <code>Authorization</code> header.</p>
+
+      <h3>Scoping to a Space</h3>
+      <p>Append <code>?space_id=&lt;your-space&gt;</code> to the SSE URL to restrict all tool calls in that connection to a single Laya space:</p>
+<pre><code>{
+  "mcpServers": {
+    "laya-work": {
+      "type": "sse",
+      "url": "http://127.0.0.1:8420/mcp/sse?space_id=work",
+      "headers": { "Authorization": "Bearer lyat_…" }
+    }
+  }
+}</code></pre>
+      <p>Register the same MCP server multiple times under different names with different <code>space_id</code> values to give a client scoped views of each space.</p>
+
       <h2 id="doc-tuning">Tuning Parameters</h2>
       <p>Laya exposes internal parameters that control the behavior, sensitivity, and resource usage of its AI pipeline. These have sensible defaults and do not need to be changed for normal operation. Advanced users can override them via the <code>tuning</code> section in <code>~/.laya/settings.json</code>.</p>
 
@@ -3090,14 +3188,99 @@ curl -X POST http://127.0.0.1:8420/prompts/reload</code></pre>
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════
+     PRIVACY POLICY PAGE
+     ═══════════════════════════════════════════════════════════ -->
+<div id="privacy-page">
+
+  <div class="docs-nav-bar">
+    <div class="container">
+      <div class="nav-left">
+        <a href="#" class="nav-logo" onclick="showLanding(); return false;">
+          <img src="images/logo-icon.png" alt="Laya">
+          <span>Laya</span>
+        </a>
+      </div>
+      <a href="#" class="btn btn-primary btn-sm" onclick="showLanding(); return false;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> Back to Home</a>
+    </div>
+  </div>
+
+  <main class="docs-content" style="margin-left: 0; max-width: 800px; margin: 0 auto;">
+
+    <a href="#" class="back-link" onclick="showLanding(); return false;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> Back to Home</a>
+
+    <h1>Privacy Policy</h1>
+    <p class="docs-subtitle">Last updated: May 2026</p>
+
+    <h2>1. Who We Are</h2>
+    <p>Laya is an open-source desktop application distributed under the Apache License 2.0. There is no company, hosted service, or data controller behind Laya. The software runs entirely on your machine. Laya's contributors do not operate servers, collect registrations, or maintain accounts on your behalf.</p>
+
+    <h2>2. Data We Collect</h2>
+    <p><strong>Laya itself collects no personal data from you.</strong> There are no Laya-operated servers to receive data, no analytics endpoints, no crash reporters, and no telemetry transmitted to Laya's contributors.</p>
+    <p>All data that Laya processes &mdash; events from connected platforms, action cards, chat messages, embeddings, settings, and logs &mdash; is stored locally on your machine in the <code>~/.laya/</code> directory. This includes:</p>
+    <ul>
+      <li>SQLite database (events, action cards, chat history, audit logs, feedback)</li>
+      <li>ChromaDB vector store (semantic embeddings for search)</li>
+      <li>Application logs (rotated, 10 MB max, 5 files retained)</li>
+      <li>Configuration files (settings, team definitions, rules)</li>
+    </ul>
+
+    <h2>3. Data Sent to Third-Party LLM Providers</h2>
+    <p>To classify events, generate action suggestions, power chat, and compute semantic embeddings, Laya transmits portions of your professional data to the LLM and embedding providers you configure. The data transmitted may include email content, messages, issue descriptions, PR diffs, calendar details, team member information, and any content you enter in chat or workspace interfaces.</p>
+    <p><strong>You choose which providers receive your data.</strong> Laya supports fully local models (Ollama, LM Studio, any OpenAI-compatible local endpoint) where no data leaves your machine. If you configure cloud providers (Anthropic, OpenAI, Google, OpenRouter), your data is subject to those providers' privacy policies and data-processing terms.</p>
+    <div class="callout callout-info">
+      <p><strong>Local-first recommended.</strong> When using self-hosted models, your data does not leave your machine or local network via Laya. This is the recommended configuration for sensitive data.</p>
+    </div>
+
+    <h2>4. Platform Integrations</h2>
+    <p>Laya connects to third-party platforms (Gmail, Slack, Jira, GitHub, Bitbucket, Calendar, Outlook, Linear, Notion, and others) using credentials you provide (OAuth tokens or API keys). These connections operate under your identity on each platform. Laya ingests events from these platforms and, with your approval, can execute actions on your behalf.</p>
+    <p>Credentials are stored in your operating system's secure credential store (macOS Keychain, Windows Credential Manager, or Linux Secret Service) and are never stored in plain text by Laya.</p>
+
+    <h2>5. MCP Server</h2>
+    <p>Laya exposes a Model Context Protocol (MCP) server on <code>http://127.0.0.1:8420/mcp/sse</code> while running. This local-only endpoint allows MCP-compatible clients (Claude Desktop, Cursor, VS Code, and others) to query your cards, events, entities, and execute actions through Laya.</p>
+    <p>The MCP server is bound to localhost (127.0.0.1) only and is not accessible from the network. Access is controlled via bearer token authentication (configurable in Settings &rarr; MCP) and tool scope toggles that let you restrict which capabilities are exposed. No data is transmitted externally by the MCP server itself.</p>
+
+    <h2>6. Telemetry &amp; Analytics</h2>
+    <p>Laya does not collect, transmit, or share any usage analytics, telemetry, crash reports, or diagnostic data with Laya's contributors or any third party. Dashboard metrics (event counts, cost estimates) are computed and stored locally.</p>
+    <p>Laya bundles third-party components (ChromaDB, n8n, sentence-transformers, HuggingFace Hub client) that may emit anonymous telemetry to their respective maintainers. Laya makes a best-effort attempt to disable all such telemetry via documented opt-out flags at startup, but this cannot be guaranteed across all versions of all dependencies.</p>
+
+    <h2>7. Cookies &amp; Tracking</h2>
+    <p>Laya is a desktop application. It does not use cookies, web beacons, tracking pixels, or any browser-based tracking technology. The only browser storage Laya uses is <code>localStorage</code> within its own embedded webview for UI preferences (theme, font size, tab state). This data never leaves your machine.</p>
+
+    <h2>8. Data Retention &amp; Deletion</h2>
+    <p>All data is stored locally and you have full control over retention. You can configure automatic retention periods in Settings &rarr; Data (card retention, chat history retention, audit log retention). You can also export or delete all data at any time.</p>
+    <p>To completely remove all Laya data from your system, delete the <code>~/.laya/</code> directory. To revoke platform access, remove the corresponding connections in Settings and revoke OAuth grants on each platform's own settings page.</p>
+
+    <h2>9. Children's Privacy</h2>
+    <p>Laya is a professional productivity tool and is not directed at children under 16. By using Laya you represent that you are at least the age of majority in your jurisdiction.</p>
+
+    <h2>10. Your Rights</h2>
+    <p>Because Laya is local-first and Laya's contributors do not hold any of your data, there is no data controller to whom you need to submit access, rectification, or deletion requests. You can inspect, modify, export, or delete all data directly on your machine at any time. For data sent to third-party LLM or platform providers, your rights are governed by those providers' privacy policies.</p>
+
+    <h2>11. Changes to This Policy</h2>
+    <p>This privacy policy may be updated with new releases of Laya. The "Last updated" date at the top reflects the current version. Material changes will be noted in release notes.</p>
+
+    <h2>12. Contact</h2>
+    <p>Laya is an open-source project. For privacy-related questions, open an issue on the <a href="https://github.com/aayushch/laya" target="_blank" rel="noopener noreferrer">GitHub repository</a> or contact the maintainer directly.</p>
+
+  </main>
+</div>
+
 <!-- ═══════════════════ SCRIPTS ═══════════════════ -->
 <script>
-// ── Page Navigation (Landing ↔ Docs) ──
+// ── Page Navigation (Landing ↔ Docs ↔ Privacy) ──
 const landingPage = document.getElementById('landing-page');
 const docsPage = document.getElementById('docs-page');
+const privacyPage = document.getElementById('privacy-page');
+
+function hideAll() {
+  landingPage.classList.add('hidden');
+  docsPage.classList.remove('active');
+  privacyPage.classList.remove('active');
+}
 
 function showDocs(hash) {
-  landingPage.classList.add('hidden');
+  hideAll();
   docsPage.classList.add('active');
   window.scrollTo(0, 0);
   if (hash) {
@@ -3109,8 +3292,16 @@ function showDocs(hash) {
   history.pushState(null, '', '#docs');
 }
 
+function showPrivacy() {
+  hideAll();
+  privacyPage.classList.add('active');
+  window.scrollTo(0, 0);
+  history.pushState(null, '', '#privacy');
+}
+
 function showLanding() {
   docsPage.classList.remove('active');
+  privacyPage.classList.remove('active');
   landingPage.classList.remove('hidden');
   window.scrollTo(0, 0);
   history.pushState(null, '', window.location.pathname);
@@ -3119,11 +3310,13 @@ function showLanding() {
 // Handle browser back/forward
 window.addEventListener('popstate', () => {
   if (window.location.hash === '#docs') showDocs();
-  else { docsPage.classList.remove('active'); landingPage.classList.remove('hidden'); }
+  else if (window.location.hash === '#privacy') showPrivacy();
+  else { docsPage.classList.remove('active'); privacyPage.classList.remove('active'); landingPage.classList.remove('hidden'); }
 });
 
-// Load docs if URL has #docs
+// Load docs/privacy if URL has hash
 if (window.location.hash === '#docs') showDocs();
+else if (window.location.hash === '#privacy') showPrivacy();
 
 // ── Nav scroll effect ──
 const nav = document.getElementById('nav');
@@ -3172,6 +3365,7 @@ document.querySelectorAll('#landing-page a[href^="#"]').forEach(anchor => {
   anchor.addEventListener('click', function(e) {
     const href = this.getAttribute('href');
     if (href === '#docs') { e.preventDefault(); showDocs(); return; }
+    if (href === '#privacy') { e.preventDefault(); showPrivacy(); return; }
     const target = document.querySelector(href);
     if (target && landingPage.contains(target)) {
       e.preventDefault();

@@ -82,6 +82,10 @@ DEFAULT_SETTINGS = {
         },
     },
     "custom_providers": [],
+    "mcp": {
+        "tool_scopes": {"read": True, "write": False, "egress": False},
+        "auth_mode": "bearer",  # "bearer" | "none"
+    },
     "omni": {
         "enabled": True,
         "resynthesis_time": "17:00",

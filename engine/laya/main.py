@@ -27,6 +27,11 @@ from laya.api.dashboard_api import router as dashboard_router
 from laya.api.diagnostics_api import router as diagnostics_router
 from laya.api.events import router as events_router
 from laya.api.ingestion_errors import router as ingestion_errors_router
+from laya.api.mcp_api import (
+    ensure_startup_token as ensure_mcp_startup_token,
+    register_mcp_transport,
+    router as mcp_router,
+)
 from laya.api.metadata_api import router as metadata_router
 from laya.api.omni_api import router as omni_router
 from laya.api.health import router as health_router
@@ -205,6 +210,10 @@ async def lifespan(app: FastAPI):
 
     # Load API keys from OS keychain into environment
     load_all_keys_to_env()
+
+    # Ensure an MCP bearer token exists when auth_mode=bearer so the SSE
+    # endpoint is immediately usable. Token only generated if missing.
+    ensure_mcp_startup_token()
 
     # Load custom prompt overrides from ~/.laya/prompts/
     from laya.llm.prompts.overrides import load_custom_prompts
@@ -388,6 +397,7 @@ app.include_router(diagnostics_router)
 app.include_router(events_router)
 app.include_router(health_router)
 app.include_router(ingestion_errors_router)
+app.include_router(mcp_router)
 app.include_router(metadata_router)
 app.include_router(omni_router)
 app.include_router(team_router)
@@ -398,6 +408,7 @@ app.include_router(spaces_router)
 app.include_router(tags_router)
 app.include_router(trace_router)
 app.include_router(workspace_router)
+register_mcp_transport(app)
 
 
 @app.websocket("/ws")

@@ -10,9 +10,34 @@ def get_all_tool_definitions() -> list[dict]:
     return [
         *_read_tools(),
         *_write_tools(),
-        *_settings_tools(),
+        *_settings_read_tools(),
+        *_settings_write_tools(),
         *get_egress_tool_definitions(),
     ]
+
+
+# Public helpers that derive tool-name sets dynamically from the group functions
+# above. MCP scope filtering uses these so new tools added to any group are
+# automatically picked up — never hardcode names elsewhere.
+
+def _names_of(defs: list[dict]) -> set[str]:
+    return {d["function"]["name"] for d in defs}
+
+
+def read_tool_names() -> set[str]:
+    """Names of read-only data tools (search/fetch cards, events, entities) and
+    the read-only settings introspection tool."""
+    return _names_of(_read_tools()) | _names_of(_settings_read_tools())
+
+
+def write_tool_names() -> set[str]:
+    """Names of mutating tools: card lifecycle changes and settings updates."""
+    return _names_of(_write_tools()) | _names_of(_settings_write_tools())
+
+
+def egress_tool_names() -> set[str]:
+    """Names of outbound-action tools (Slack/Jira/GitHub/... egress)."""
+    return _names_of(get_egress_tool_definitions())
 
 
 def _read_tools() -> list[dict]:
@@ -383,7 +408,7 @@ def _write_tools() -> list[dict]:
     ]
 
 
-def _settings_tools() -> list[dict]:
+def _settings_read_tools() -> list[dict]:
     return [
         {
             "type": "function",
@@ -416,6 +441,11 @@ def _settings_tools() -> list[dict]:
                 },
             },
         },
+    ]
+
+
+def _settings_write_tools() -> list[dict]:
+    return [
         {
             "type": "function",
             "function": {

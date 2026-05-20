@@ -57,7 +57,10 @@ import type {
 	IngestionErrorsResponse,
 	ClearIngestionErrorsResponse,
 	Tag,
-	TagAssignment
+	TagAssignment,
+	McpConfig,
+	McpConfigUpdate,
+	McpToken
 } from './types';
 
 import { getEngineUrl } from '$lib/config';
@@ -940,5 +943,13 @@ export const engineApi = {
 			body: JSON.stringify(data)
 		}),
 	getTagsFor: (targetType: string, targetId: string) =>
-		request<{ tags: TagAssignment[] }>(`/tags/for/${targetType}/${encodeURIComponent(targetId)}`)
+		request<{ tags: TagAssignment[] }>(`/tags/for/${targetType}/${encodeURIComponent(targetId)}`),
+
+	// MCP server config + token management
+	getMcpConfig: () => request<McpConfig>('/mcp/config'),
+	updateMcpConfig: (body: McpConfigUpdate) =>
+		request<McpConfig>('/mcp/config', { method: 'PUT', body: JSON.stringify(body) }),
+	refreshMcpToken: () => request<McpToken>('/mcp/token/refresh', { method: 'POST' }),
+	revealMcpToken: () => request<McpToken>('/mcp/token/reveal'),
+	deleteMcpToken: () => request<{ status: string }>('/mcp/token', { method: 'DELETE' })
 };

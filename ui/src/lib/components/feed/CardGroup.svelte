@@ -513,9 +513,6 @@
 							</span>
 						{/if}
 						{#if topCard.space_name}
-							{#if compact}
-								<span class="text-laya-micro text-surface-600 shrink-0">·</span>
-							{/if}
 							<span class="flex items-center gap-1 shrink-0 text-laya-micro text-surface-500">
 								<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {topCard.space_color ?? '#F97316'}"></span>
 								{topCard.space_name}

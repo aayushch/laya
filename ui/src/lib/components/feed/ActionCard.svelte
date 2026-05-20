@@ -721,7 +721,6 @@
 			</span>
 		{/if}
 		{#if compact && card.space_name}
-			<span class="text-laya-micro text-surface-600 shrink-0">·</span>
 			<span class="flex items-center gap-1 shrink-0 text-laya-micro text-surface-500 truncate">
 				<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {card.space_color ?? '#F97316'}"></span>
 				<span class="truncate">{card.space_name}</span>

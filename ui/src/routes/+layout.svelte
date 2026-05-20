@@ -779,7 +779,7 @@
 			<div class="flex items-center gap-2 text-surface-600">
 				<span class="tabular-nums">{new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
 				<span class="text-surface-700">|</span>
-				<a href="/legal" class="text-surface-600 transition-colors hover:text-surface-300">Terms &amp; License</a>
+				<a href="/legal" class="text-surface-600 transition-colors hover:text-surface-300">Terms, License &amp; Privacy</a>
 			</div>
 			<!-- Center: AI disclaimer -->
 			<div class="pointer-events-none absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-surface-600 md:block">

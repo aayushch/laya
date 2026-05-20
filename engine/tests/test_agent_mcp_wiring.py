@@ -1,62 +1,115 @@
-"""Tests for the MCP callback wiring in spawned CLI agents."""
+"""Tests for the MCP callback wiring in spawned CLI agents.
+
+The in-app Claude Code spawner connects to the same HTTP/SSE MCP endpoint
+that external clients use. These tests assert that the per-spawn config dict
+points at that endpoint with the user's current bearer token, and that the
+`--allowedTools` flags derived from the user's enabled MCP scopes are passed
+through to the `claude -p` command line.
+"""
 
 import json
-import sys
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from laya.agents.claude_code import ClaudeCodeAgent
 from laya.agents.mcp_config import (
-    LAYA_MCP_READ_TOOLS,
     MCP_PROMPT_HINT,
     build_laya_mcp_config,
     build_laya_mcp_config_json,
     laya_allowed_tool_flags,
 )
+from laya.config import ENGINE_HOST, ENGINE_PORT, load_settings, save_settings
+from laya.security.keychain import delete_mcp_token, store_mcp_token
+
+
+@pytest.fixture
+def reset_mcp_settings():
+    """Snapshot and restore the user's MCP settings + keychain token around each test."""
+    settings = load_settings()
+    original_mcp = settings.get("mcp")
+    yield
+    s = load_settings()
+    if original_mcp is None:
+        s.pop("mcp", None)
+    else:
+        s["mcp"] = original_mcp
+    save_settings(s)
+    delete_mcp_token()
 
 
 class TestMcpConfigBuilder:
-    def test_config_uses_engine_python(self):
-        """Child MCP server must launch under the engine's venv interpreter."""
-        cfg = build_laya_mcp_config(space_id="default")
-        laya = cfg["mcpServers"]["laya"]
-        assert laya["command"] == sys.executable
-        assert laya["args"] == ["-m", "laya.mcp"]
-
-    def test_env_contains_skip_migrations(self):
-        cfg = build_laya_mcp_config(space_id="default")
-        env = cfg["mcpServers"]["laya"]["env"]
-        assert env["LAYA_MCP_SKIP_MIGRATIONS"] == "1"
-
-    def test_env_contains_space_id_when_set(self):
-        cfg = build_laya_mcp_config(space_id="space_abc")
-        env = cfg["mcpServers"]["laya"]["env"]
-        assert env["LAYA_SPACE_ID"] == "space_abc"
-
-    def test_env_omits_space_id_when_none(self):
+    def test_config_uses_http_sse_url(self, reset_mcp_settings):
         cfg = build_laya_mcp_config(space_id=None)
-        env = cfg["mcpServers"]["laya"]["env"]
-        assert "LAYA_SPACE_ID" not in env
+        laya = cfg["mcpServers"]["laya"]
+        assert laya["type"] == "sse"
+        assert laya["url"] == f"http://{ENGINE_HOST}:{ENGINE_PORT}/mcp/sse"
 
-    def test_json_form_roundtrips(self):
-        raw = build_laya_mcp_config_json("default")
+    def test_space_id_becomes_query_param(self, reset_mcp_settings):
+        cfg = build_laya_mcp_config(space_id="space_abc")
+        assert cfg["mcpServers"]["laya"]["url"].endswith("?space_id=space_abc")
+
+    def test_bearer_token_in_headers_when_auth_bearer(self, reset_mcp_settings):
+        s = load_settings()
+        s.setdefault("mcp", {})["auth_mode"] = "bearer"
+        save_settings(s)
+        store_mcp_token("lyat_test_xyz")
+        cfg = build_laya_mcp_config(space_id=None)
+        assert cfg["mcpServers"]["laya"]["headers"] == {"Authorization": "Bearer lyat_test_xyz"}
+
+    def test_no_auth_header_when_auth_none(self, reset_mcp_settings):
+        s = load_settings()
+        s.setdefault("mcp", {})["auth_mode"] = "none"
+        save_settings(s)
+        cfg = build_laya_mcp_config(space_id=None)
+        assert cfg["mcpServers"]["laya"]["headers"] == {}
+
+    def test_no_auth_header_when_bearer_but_no_token(self, reset_mcp_settings):
+        s = load_settings()
+        s.setdefault("mcp", {})["auth_mode"] = "bearer"
+        save_settings(s)
+        delete_mcp_token()
+        cfg = build_laya_mcp_config(space_id=None)
+        assert cfg["mcpServers"]["laya"]["headers"] == {}
+
+    def test_json_form_roundtrips(self, reset_mcp_settings):
+        raw = build_laya_mcp_config_json(None)
         parsed = json.loads(raw)
-        assert parsed["mcpServers"]["laya"]["args"] == ["-m", "laya.mcp"]
+        assert parsed["mcpServers"]["laya"]["type"] == "sse"
 
-    def test_allowed_tool_flags_cover_all_read_tools(self):
+    def test_allowed_tool_flags_track_user_scopes(self, reset_mcp_settings):
+        s = load_settings()
+        s["mcp"] = {
+            "tool_scopes": {"read": True, "write": False, "egress": False},
+            "auth_mode": "none",
+        }
+        save_settings(s)
         flags = laya_allowed_tool_flags()
-        # Pairs of [--allowedTools, <tool-pattern>] => 2 entries per tool
-        assert len(flags) == 2 * len(LAYA_MCP_READ_TOOLS)
-        for tool in LAYA_MCP_READ_TOOLS:
-            assert f"mcp__laya__{tool}" in flags
+        names_in_flags = {f for f in flags if f.startswith("mcp__laya__")}
+        assert "mcp__laya__search_cards" in names_in_flags
+        assert "mcp__laya__dismiss_card" not in names_in_flags  # write disabled
+
+        s["mcp"]["tool_scopes"]["write"] = True
+        save_settings(s)
+        flags = laya_allowed_tool_flags()
+        names_in_flags = {f for f in flags if f.startswith("mcp__laya__")}
+        assert "mcp__laya__dismiss_card" in names_in_flags
+
+    def test_allowed_tool_flags_empty_when_scopes_off(self, reset_mcp_settings):
+        s = load_settings()
+        s["mcp"] = {
+            "tool_scopes": {"read": False, "write": False, "egress": False},
+            "auth_mode": "none",
+        }
+        save_settings(s)
+        assert laya_allowed_tool_flags() == []
 
 
 class TestClaudeCodeMcpArgs:
-    """Verify claude -p is spawned with MCP config + Laya allowlist."""
+    """Verify `claude -p` is spawned with the new HTTP/SSE config + Laya allowlist."""
 
     @pytest.mark.asyncio
-    async def test_start_session_passes_mcp_config(self):
+    async def test_start_session_passes_mcp_config(self, reset_mcp_settings):
         agent = ClaudeCodeAgent()
         with patch.object(agent._process, "spawn", new=AsyncMock()) as spawn:
             await agent.start_session(
@@ -66,15 +119,21 @@ class TestClaudeCodeMcpArgs:
                 space_id="space_abc",
             )
         args = spawn.call_args.kwargs["args"]
-        # --mcp-config is present as flag+value pair
         assert "--mcp-config" in args
         cfg_json = args[args.index("--mcp-config") + 1]
         cfg = json.loads(cfg_json)
-        assert cfg["mcpServers"]["laya"]["args"] == ["-m", "laya.mcp"]
-        assert cfg["mcpServers"]["laya"]["env"]["LAYA_SPACE_ID"] == "space_abc"
+        assert cfg["mcpServers"]["laya"]["type"] == "sse"
+        assert cfg["mcpServers"]["laya"]["url"].endswith("?space_id=space_abc")
 
     @pytest.mark.asyncio
-    async def test_start_session_includes_laya_allowlist(self):
+    async def test_start_session_includes_user_scope_allowlist(self, reset_mcp_settings):
+        s = load_settings()
+        s["mcp"] = {
+            "tool_scopes": {"read": True, "write": False, "egress": False},
+            "auth_mode": "none",
+        }
+        save_settings(s)
+
         agent = ClaudeCodeAgent()
         with patch.object(agent._process, "spawn", new=AsyncMock()) as spawn:
             await agent.start_session(
@@ -83,12 +142,11 @@ class TestClaudeCodeMcpArgs:
                 repo_path="/tmp/repo",
             )
         args = spawn.call_args.kwargs["args"]
-        # Every read tool must appear as an allowlist entry
-        for tool in LAYA_MCP_READ_TOOLS:
-            assert f"mcp__laya__{tool}" in args
+        assert "mcp__laya__search_cards" in args
+        assert "mcp__laya__dismiss_card" not in args
 
     @pytest.mark.asyncio
-    async def test_start_session_prepends_mcp_hint_to_prompt(self):
+    async def test_start_session_prepends_mcp_hint_to_prompt(self, reset_mcp_settings):
         agent = ClaudeCodeAgent()
         with patch.object(agent._process, "spawn", new=AsyncMock()) as spawn:
             await agent.start_session(
@@ -97,13 +155,12 @@ class TestClaudeCodeMcpArgs:
                 repo_path="/tmp/repo",
             )
         args = spawn.call_args.kwargs["args"]
-        # The prompt immediately follows the -p flag
         effective_prompt = args[args.index("-p") + 1]
         assert MCP_PROMPT_HINT in effective_prompt
         assert "original user prompt" in effective_prompt
 
     @pytest.mark.asyncio
-    async def test_resume_passes_mcp_config(self):
+    async def test_resume_passes_mcp_config(self, reset_mcp_settings):
         agent = ClaudeCodeAgent()
         agent._cc_session_id = "cc-sess-uuid"
         agent._repo_path = "/tmp/repo"
@@ -118,6 +175,4 @@ class TestClaudeCodeMcpArgs:
         assert "--mcp-config" in args
         cfg_json = args[args.index("--mcp-config") + 1]
         cfg = json.loads(cfg_json)
-        assert cfg["mcpServers"]["laya"]["env"]["LAYA_SPACE_ID"] == "space_xyz"
-        # Resume preserves allowlist
-        assert "mcp__laya__get_card" in args
+        assert cfg["mcpServers"]["laya"]["url"].endswith("?space_id=space_xyz")

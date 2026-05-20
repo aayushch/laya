@@ -74,10 +74,10 @@ class ClaudeCodeAgent(CodingAgent):
         # Edit/Write to paths outside the pattern are blocked.
         permission_mode = mode or "plan"
 
-        # MCP callback: spawn a stdio Laya MCP server as a child of Claude Code
-        # so the agent can search/fetch cards while it works. HTTP MCP servers
-        # silently fail in claude -p mode (issues #34131, #37805), so stdio is
-        # the only reliable transport for non-interactive sessions.
+        # MCP callback: point Claude Code at Laya's running HTTP/SSE MCP
+        # endpoint. The agent inherits the user's Settings → MCP scope and
+        # auth configuration; the in-app agent and external clients share one
+        # transport.
         mcp_config_json = build_laya_mcp_config_json(space_id)
         effective_prompt = augment_prompt_with_mcp_hint(prompt)
 

@@ -123,3 +123,46 @@ def delete_space_api_key(key_ref: str) -> bool:
         return True
     except Exception:
         return False
+
+
+# ---------------------------------------------------------------------------
+# MCP bearer token
+# ---------------------------------------------------------------------------
+
+MCP_TOKEN_KEY = "laya_mcp_bearer"
+
+
+def store_mcp_token(token: str) -> bool:
+    """Store the MCP HTTP bearer token. Overwrites any existing token."""
+    try:
+        import keyring
+
+        keyring.set_password(SERVICE_NAME, MCP_TOKEN_KEY, token)
+        log.info("mcp_token_stored")
+        return True
+    except Exception as e:
+        log.error("mcp_token_store_failed", error=str(e))
+        return False
+
+
+def get_mcp_token() -> str | None:
+    """Retrieve the current MCP bearer token, or None if not set."""
+    try:
+        import keyring
+
+        return keyring.get_password(SERVICE_NAME, MCP_TOKEN_KEY)
+    except Exception as e:
+        log.warning("mcp_token_read_failed", error=str(e))
+        return None
+
+
+def delete_mcp_token() -> bool:
+    """Remove the MCP bearer token from the keychain."""
+    try:
+        import keyring
+
+        keyring.delete_password(SERVICE_NAME, MCP_TOKEN_KEY)
+        log.info("mcp_token_deleted")
+        return True
+    except Exception:
+        return False

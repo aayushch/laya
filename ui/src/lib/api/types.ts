@@ -352,6 +352,35 @@ export interface Settings {
 	group_summaries?: {
 		enabled: boolean;
 	};
+	mcp?: {
+		tool_scopes: McpToolScopes;
+		auth_mode: McpAuthMode;
+	};
+}
+
+export type McpAuthMode = 'bearer' | 'none';
+
+export interface McpToolScopes {
+	read: boolean;
+	write: boolean;
+	egress: boolean;
+}
+
+export interface McpConfig {
+	tool_scopes: McpToolScopes;
+	auth_mode: McpAuthMode;
+	has_token: boolean;
+	token_prefix: string | null;
+	sse_url: string;
+}
+
+export interface McpConfigUpdate {
+	tool_scopes?: McpToolScopes;
+	auth_mode?: McpAuthMode;
+}
+
+export interface McpToken {
+	token: string;
 }
 
 /** Staged output attached to an action card */

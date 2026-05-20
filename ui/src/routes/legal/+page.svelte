@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { page } from '$app/state';
 
-	type TabId = 'terms' | 'license';
+	type TabId = 'terms' | 'license' | 'privacy';
 	let activeTab = $state<TabId>('terms');
 
 	$effect(() => {
 		const tab = page.url.searchParams.get('tab');
-		if (tab === 'terms' || tab === 'license') {
+		if (tab === 'terms' || tab === 'license' || tab === 'privacy') {
 			activeTab = tab;
 		}
 	});
@@ -32,6 +32,13 @@
 					: 'border-transparent text-surface-400 hover:text-surface-200'}"
 			onclick={() => (activeTab = 'license')}
 		>License</button>
+		<button
+			class="px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px
+				{activeTab === 'privacy'
+					? 'border-laya-orange text-laya-orange'
+					: 'border-transparent text-surface-400 hover:text-surface-200'}"
+			onclick={() => (activeTab = 'privacy')}
+		>Privacy Policy</button>
 	</div>
 
 	{#if activeTab === 'terms'}
@@ -442,6 +449,173 @@
 				</p>
 			</section>
 		</div>
+	{:else if activeTab === 'privacy'}
+		<div class="prose-legal space-y-8 text-sm leading-relaxed text-surface-300">
+			<p class="text-surface-500 text-xs">Last updated: May 2026</p>
+
+			<section>
+				<h2 class="mb-3 text-lg font-semibold text-surface-100">1. Who We Are</h2>
+				<p>
+					Laya is an open-source desktop application distributed under the Apache License 2.0.
+					There is no company, hosted service, or data controller behind Laya. The software runs
+					entirely on your machine. Laya's contributors do not operate servers, collect
+					registrations, or maintain accounts on your behalf.
+				</p>
+			</section>
+
+			<section>
+				<h2 class="mb-3 text-lg font-semibold text-surface-100">2. Data We Collect</h2>
+				<p>
+					<strong class="text-surface-200">Laya itself collects no personal data from you.</strong>
+					There are no Laya-operated servers to receive data, no analytics endpoints, no crash
+					reporters, and no telemetry transmitted to Laya's contributors.
+				</p>
+				<p class="mt-2">
+					All data that Laya processes — events from connected platforms, action cards, chat
+					messages, embeddings, settings, and logs — is stored locally on your machine in the
+					<code class="rounded bg-surface-800 px-1.5 py-0.5 text-xs text-surface-200">~/.laya/</code>
+					directory. This includes:
+				</p>
+				<ul class="mt-2 ml-4 list-disc space-y-1 text-surface-400">
+					<li>SQLite database (events, action cards, chat history, audit logs, feedback)</li>
+					<li>ChromaDB vector store (semantic embeddings for search)</li>
+					<li>Application logs (rotated, 10 MB max, 5 files retained)</li>
+					<li>Configuration files (settings, team definitions, rules)</li>
+				</ul>
+			</section>
+
+			<section>
+				<h2 class="mb-3 text-lg font-semibold text-surface-100">3. Data Sent to Third-Party LLM Providers</h2>
+				<p>
+					To classify events, generate action suggestions, power chat, and compute semantic
+					embeddings, Laya transmits portions of your professional data to the LLM and embedding
+					providers you configure. The data transmitted may include email content, messages, issue
+					descriptions, PR diffs, calendar details, team member information, and any content you
+					enter in chat or workspace interfaces.
+				</p>
+				<p class="mt-2">
+					<strong class="text-surface-200">You choose which providers receive your data.</strong>
+					Laya supports fully local models (Ollama, LM Studio, any OpenAI-compatible local
+					endpoint) where no data leaves your machine. If you configure cloud providers
+					(Anthropic, OpenAI, Google, OpenRouter), your data is subject to those providers' privacy
+					policies and data-processing terms. Review their policies before configuring them.
+				</p>
+			</section>
+
+			<section>
+				<h2 class="mb-3 text-lg font-semibold text-surface-100">4. Platform Integrations</h2>
+				<p>
+					Laya connects to third-party platforms (Gmail, Slack, Jira, GitHub, Bitbucket, Calendar,
+					Outlook, Linear, Notion, and others) using credentials you provide (OAuth tokens or API
+					keys). These connections operate under your identity on each platform. Laya ingests
+					events from these platforms and, with your approval, can execute actions on your behalf.
+				</p>
+				<p class="mt-2">
+					Credentials are stored in your operating system's secure credential store (macOS
+					Keychain, Windows Credential Manager, or Linux Secret Service) and are never stored in
+					plain text by Laya.
+				</p>
+			</section>
+
+			<section>
+				<h2 class="mb-3 text-lg font-semibold text-surface-100">5. MCP Server</h2>
+				<p>
+					Laya exposes a Model Context Protocol (MCP) server on
+					<code class="rounded bg-surface-800 px-1.5 py-0.5 text-xs text-surface-200">http://127.0.0.1:8420/mcp/sse</code>
+					while running. This local-only endpoint allows MCP-compatible clients (Claude Desktop,
+					Cursor, VS Code, and others) to query your cards, events, entities, and execute actions
+					through Laya.
+				</p>
+				<p class="mt-2">
+					The MCP server is bound to localhost (127.0.0.1) only and is not accessible from the
+					network. Access is controlled via bearer token authentication (configurable in Settings
+					&rarr; MCP) and tool scope toggles that let you restrict which capabilities are exposed.
+					No data is transmitted externally by the MCP server itself — it serves data from your
+					local database to clients running on your machine.
+				</p>
+			</section>
+
+			<section>
+				<h2 class="mb-3 text-lg font-semibold text-surface-100">6. Telemetry &amp; Analytics</h2>
+				<p>
+					Laya does not collect, transmit, or share any usage analytics, telemetry, crash reports,
+					or diagnostic data with Laya's contributors or any third party. Dashboard metrics
+					(event counts, cost estimates) are computed and stored locally.
+				</p>
+				<p class="mt-2">
+					Laya bundles third-party components (ChromaDB, n8n, sentence-transformers, HuggingFace
+					Hub client) that may emit anonymous telemetry to their respective maintainers. Laya
+					makes a best-effort attempt to disable all such telemetry via documented opt-out flags
+					at startup, but this cannot be guaranteed across all versions of all dependencies. See
+					section 9 of the <button class="text-laya-orange underline underline-offset-2 hover:text-laya-gold" onclick={() => (activeTab = 'terms')}>Terms &amp; Conditions</button>
+					for details.
+				</p>
+			</section>
+
+			<section>
+				<h2 class="mb-3 text-lg font-semibold text-surface-100">7. Cookies &amp; Tracking</h2>
+				<p>
+					Laya is a desktop application. It does not use cookies, web beacons, tracking pixels, or
+					any browser-based tracking technology. The only browser storage Laya uses is
+					<code class="rounded bg-surface-800 px-1.5 py-0.5 text-xs text-surface-200">localStorage</code>
+					within its own embedded webview for UI preferences (theme, font size, tab state). This
+					data never leaves your machine.
+				</p>
+			</section>
+
+			<section>
+				<h2 class="mb-3 text-lg font-semibold text-surface-100">8. Data Retention &amp; Deletion</h2>
+				<p>
+					All data is stored locally and you have full control over retention. You can configure
+					automatic retention periods in <a href="/settings?tab=data" class="text-laya-orange underline underline-offset-2 hover:text-laya-gold">Settings &rarr; Data</a>
+					(card retention, chat history retention, audit log retention). You can also export or
+					delete all data at any time.
+				</p>
+				<p class="mt-2">
+					To completely remove all Laya data from your system, delete the
+					<code class="rounded bg-surface-800 px-1.5 py-0.5 text-xs text-surface-200">~/.laya/</code>
+					directory. To revoke platform access, remove the corresponding connections in Settings
+					and revoke OAuth grants on each platform's own settings page.
+				</p>
+			</section>
+
+			<section>
+				<h2 class="mb-3 text-lg font-semibold text-surface-100">9. Children's Privacy</h2>
+				<p>
+					Laya is a professional productivity tool and is not directed at children under 16. By
+					using Laya you represent that you are at least the age of majority in your jurisdiction.
+				</p>
+			</section>
+
+			<section>
+				<h2 class="mb-3 text-lg font-semibold text-surface-100">10. Your Rights</h2>
+				<p>
+					Because Laya is local-first and Laya's contributors do not hold any of your data, there
+					is no data controller to whom you need to submit access, rectification, or deletion
+					requests. You can inspect, modify, export, or delete all data directly on your machine
+					at any time. For data sent to third-party LLM or platform providers, your rights are
+					governed by those providers' privacy policies.
+				</p>
+			</section>
+
+			<section>
+				<h2 class="mb-3 text-lg font-semibold text-surface-100">11. Changes to This Policy</h2>
+				<p>
+					This privacy policy may be updated with new releases of Laya. The "Last updated" date
+					at the top reflects the current version. Material changes will be noted in release notes.
+				</p>
+			</section>
+
+			<section>
+				<h2 class="mb-3 text-lg font-semibold text-surface-100">12. Contact</h2>
+				<p>
+					Laya is an open-source project. For privacy-related questions, open an issue on the
+					<a href="https://github.com/aayushch/laya" target="_blank" rel="noopener noreferrer" class="text-laya-orange underline underline-offset-2 hover:text-laya-gold">GitHub repository</a>
+					or contact the maintainer directly.
+				</p>
+			</section>
+		</div>
+
 	{:else}
 		<div class="space-y-4">
 			<div class="rounded-lg border border-surface-700 bg-surface-800/50 p-2 px-3">

@@ -1,56 +1,58 @@
 """Build the MCP config that is passed to spawned CLI agents.
 
-Each spawned Claude Code session launches its own stdio MCP server subprocess
-(`python -m laya.mcp`) so it can call back into Laya (search cards, fetch a
-card by id, semantic search, etc.) while it works on the user's task.
+Spawned Claude Code sessions connect to the **same** HTTP/SSE MCP endpoint
+that external clients (Claude Desktop, Cursor, VS Code) use. There is one MCP
+transport in Laya — the FastAPI-mounted `/mcp/sse` route — and every caller
+goes through it. This module just builds the per-spawn config dict.
 
-See `engine/laya/mcp/server.py` for the server itself. We reuse the engine's
-own Python interpreter (`sys.executable`) so the child shares the same venv
-and has the `laya` package importable without extra PATH plumbing.
+The user's Settings → MCP toggles (read / write / egress) gate what tools the
+server returns, and the per-spawn `--allowedTools` flags derived here narrow
+that further to what Claude Code is allowed to call autonomously in
+non-interactive `-p` mode.
 """
 
 from __future__ import annotations
 
 import json
-import sys
 from typing import Any
 
-# Laya MCP tools exposed to spawned agents. Read-only by design — writes,
-# approvals, and egress are intentionally excluded for v1 so a runaway agent
-# can inspect but not mutate the user's cards.
-LAYA_MCP_READ_TOOLS: tuple[str, ...] = (
-    "search_cards",
-    "get_card",
-    "get_card_stats",
-    "get_cards_for_event",
-    "search_events",
-    "get_event",
-    "search_entities",
-    "get_entity",
-    "get_recent_activity",
-    "semantic_search",
-)
+from laya.config import ENGINE_HOST, ENGINE_PORT, load_settings
+from laya.mcp.scope import enabled_tool_names
+from laya.security.keychain import get_mcp_token
 
 LAYA_MCP_SERVER_NAME = "laya"
+
+
+def _sse_url(space_id: str | None) -> str:
+    base = f"http://{ENGINE_HOST}:{ENGINE_PORT}/mcp/sse"
+    if space_id:
+        return f"{base}?space_id={space_id}"
+    return base
+
+
+def _auth_headers() -> dict[str, str]:
+    mcp_cfg = (load_settings().get("mcp", {}) or {})
+    if mcp_cfg.get("auth_mode", "bearer") != "bearer":
+        return {}
+    token = get_mcp_token()
+    if not token:
+        return {}
+    return {"Authorization": f"Bearer {token}"}
 
 
 def build_laya_mcp_config(space_id: str | None) -> dict[str, Any]:
     """Return the JSON-shaped MCP config for `claude --mcp-config`.
 
-    The spawned child inherits the engine's venv via ``sys.executable``, and
-    ``LAYA_MCP_SKIP_MIGRATIONS=1`` tells the child MCP server not to re-run
-    migrations (the engine already ran them; concurrent runs would race).
+    Uses the running engine's `/mcp/sse` endpoint with the user's current
+    bearer token (when bearer auth is enabled). No subprocess, no env vars —
+    the engine is already running.
     """
-    env: dict[str, str] = {"LAYA_MCP_SKIP_MIGRATIONS": "1"}
-    if space_id:
-        env["LAYA_SPACE_ID"] = space_id
-
     return {
         "mcpServers": {
             LAYA_MCP_SERVER_NAME: {
-                "command": sys.executable,
-                "args": ["-m", "laya.mcp"],
-                "env": env,
+                "type": "sse",
+                "url": _sse_url(space_id),
+                "headers": _auth_headers(),
             }
         }
     }
@@ -62,15 +64,17 @@ def build_laya_mcp_config_json(space_id: str | None) -> str:
 
 
 def laya_allowed_tool_flags() -> list[str]:
-    """Return `--allowedTools` argument pairs for the Laya MCP tools.
+    """Return `--allowedTools` flag pairs for the tools the user currently
+    has enabled in Settings → MCP.
 
-    Claude Code's allowlist syntax in non-interactive mode accepts either
-    repeated `--allowedTools <name>` flags or a comma-separated list. We
-    repeat the flag to match the existing pattern in claude_code.py.
+    Claude Code in non-interactive `-p` mode rejects any tool not explicitly
+    allowlisted, so this list must match the user's enabled scopes — otherwise
+    the agent will hang on a permission prompt that never gets answered.
     """
+    scopes = (load_settings().get("mcp", {}) or {}).get("tool_scopes", {}) or {}
     flags: list[str] = []
-    for tool in LAYA_MCP_READ_TOOLS:
-        flags.extend(["--allowedTools", f"mcp__{LAYA_MCP_SERVER_NAME}__{tool}"])
+    for tool_name in sorted(enabled_tool_names(scopes)):
+        flags.extend(["--allowedTools", f"mcp__{LAYA_MCP_SERVER_NAME}__{tool_name}"])
     return flags
 
 
