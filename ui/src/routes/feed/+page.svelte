@@ -1264,6 +1264,10 @@
 	let containerEl = $state<HTMLElement | null>(null);
 	let numColumns = $state(3);
 	let panelTransitioning = $state(false);
+	// When true, the next ResizeObserver-triggered flipColumns uses instant
+	// mode. Set before clearing panelTransitioning so the observer callback
+	// that fires after containment removal doesn't run a FLIP animation.
+	let _resizeInstant = false;
 
 	// Content width excluding padding — matches what ResizeObserver's contentRect.width reports.
 	// closeDetailPanel/openDetailPanel must use this instead of clientWidth (which includes padding)
@@ -1286,12 +1290,13 @@
 	$effect(() => {
 		if (!containerEl) return;
 		const observer = new ResizeObserver(([entry]) => {
-			// Skip intermediate reflows while detail panel is sliding
 			if (panelTransitioning) return;
 
 			const w = entry.contentRect.width;
 			const newCols = Math.max(1, Math.floor((w + COL_GAP) / (CARD_WIDTH + COL_GAP)));
-			flipColumns(newCols);
+			const instant = _resizeInstant;
+			_resizeInstant = false;
+			flipColumns(newCols, instant);
 		});
 		observer.observe(containerEl);
 		return () => observer.disconnect();
@@ -1327,6 +1332,7 @@
 		// Recalculate columns in case the predicted count was wrong. Instant repack
 		// to avoid a visible FLIP animation stacking on top of the panel slide.
 		setTimeout(() => {
+			_resizeInstant = true;
 			panelTransitioning = false;
 			const w = getContentWidth();
 			const correctCols = Math.max(1, Math.floor((w + COL_GAP) / (CARD_WIDTH + COL_GAP)));
@@ -1411,6 +1417,7 @@
 		// the last-active card/group once layout is fully settled. Column correction is
 		// instant (no FLIP animation) so only the final scroll+highlight animates.
 		setTimeout(() => {
+			_resizeInstant = true;
 			panelTransitioning = false;
 			const w = getContentWidth();
 			const correctCols = Math.max(1, Math.floor((w + COL_GAP) / (CARD_WIDTH + COL_GAP)));
@@ -1450,6 +1457,7 @@
 		$recentDrawerOpen = opening;
 
 		setTimeout(() => {
+			_resizeInstant = true;
 			panelTransitioning = false;
 			const w = getContentWidth();
 			const correctCols = Math.max(1, Math.floor((w + COL_GAP) / (CARD_WIDTH + COL_GAP)));

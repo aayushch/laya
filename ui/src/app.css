@@ -1835,15 +1835,14 @@ html, body {
 }
 
 /* During panel transitions, suppress expensive per-element work
-   that is imperceptible during the 300ms slide animation.
-   NOTE: contain/container-type on .feed-list-container is intentionally
-   omitted — removing layout containment at the end of the transition
-   changes the container geometry, which triggers the ResizeObserver to
-   fire a non-instant FLIP animation that races with content-visibility's
-   intersection observer, leaving cards unpainted. */
+   that is imperceptible during the 300ms slide animation. */
 .panel-transitioning .glass-card-flat {
 	-webkit-backdrop-filter: none !important;
 	backdrop-filter: none !important;
+}
+.panel-transitioning .feed-list-container {
+	contain: layout style;
+	container-type: normal !important;
 }
 .panel-transitioning .list-row-hover {
 	transition: none !important;
