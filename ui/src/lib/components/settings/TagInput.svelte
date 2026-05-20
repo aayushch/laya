@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { glassTheme } from '$lib/stores/glassTheme';
+
 	let {
 		tags = $bindable<string[]>([]),
 		placeholder = '',
@@ -54,15 +56,18 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-	class="flex min-h-[38px] w-full cursor-text flex-wrap items-center gap-1.5 rounded-md border border-surface-600 bg-surface-700 px-2.5 py-1.5 text-sm focus-within:border-laya-orange/50 focus-within:ring-1 focus-within:ring-laya-orange/30"
+	class="flex min-h-[38px] w-full cursor-text flex-wrap items-center gap-1.5 rounded-lg px-3 py-2 text-sm
+		{$glassTheme ? 'glass-input' : 'border border-surface-600 bg-surface-700 focus-within:border-laya-orange/50 focus-within:ring-1 focus-within:ring-laya-orange/30'}"
 	onclick={focusInput}
 >
 	{#each tags as tag, i}
-		<span class="inline-flex items-center gap-0.5 rounded-full bg-surface-600 py-0.5 pl-2.5 pr-1 text-xs text-surface-200">
+		<span class="inline-flex items-center gap-0.5 rounded-full py-0.5 pl-2.5 pr-1 text-xs text-surface-200
+			{$glassTheme ? 'bg-white/[0.12]' : 'bg-surface-600'}">
 			{tag}
 			<button
 				type="button"
-				class="ml-0.5 rounded-full p-0.5 text-surface-400 hover:bg-surface-500 hover:text-surface-200"
+				class="ml-0.5 rounded-full p-0.5 text-surface-400 hover:text-surface-200
+					{$glassTheme ? 'hover:bg-white/[0.15]' : 'hover:bg-surface-500'}"
 				aria-label="Remove {tag}"
 				onclick={() => removeTag(i)}
 			>
@@ -76,8 +81,10 @@
 		bind:this={inputEl}
 		bind:value={inputValue}
 		{placeholder}
-		class="min-w-[120px] flex-1 border-none bg-transparent text-sm text-surface-100 outline-none placeholder:text-surface-500"
+		class="min-w-[120px] flex-1 border-none bg-transparent text-sm text-surface-100 outline-none
+			{$glassTheme ? 'placeholder:text-surface-400' : 'placeholder:text-surface-500'}"
 		onkeydown={handleKeydown}
 		oninput={handleInput}
 	/>
 </div>
+<span class="mt-1 block text-xs text-surface-500">Separate channel names with a comma</span>

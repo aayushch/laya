@@ -12,6 +12,7 @@
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { portal } from '$lib/actions/portal';
 	import { platformDotColor } from '$lib/utils/cardVisuals';
+	import PlatformIcon from '$lib/components/settings/PlatformIcon.svelte';
 
 	let {
 		group,
@@ -506,19 +507,18 @@
 				<!-- Status summary footer -->
 				<div class="flex items-center gap-2">
 					<div class="flex items-center gap-2 shrink-0 min-w-0">
+						{#if compact}
+							<span class="text-laya-orange shrink-0">
+								<PlatformIcon platform={group.platform} size={14} />
+							</span>
+						{/if}
 						{#if topCard.space_name}
+							{#if compact}
+								<span class="text-laya-micro text-surface-600 shrink-0">·</span>
+							{/if}
 							<span class="flex items-center gap-1 shrink-0 text-laya-micro text-surface-500">
 								<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {topCard.space_color ?? '#F97316'}"></span>
 								{topCard.space_name}
-							</span>
-						{/if}
-						{#if compact}
-							{#if topCard.space_name}
-								<span class="text-laya-micro text-surface-600 shrink-0">·</span>
-							{/if}
-							<span class="flex items-center gap-1 shrink-0 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">
-								<span class="h-1 w-1 rounded-full shrink-0" style="background-color: {platformDotColor(group.platform)}"></span>
-								{sourceLabel}
 							</span>
 						{/if}
 					</div>

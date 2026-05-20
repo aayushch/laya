@@ -762,7 +762,6 @@ html, body {
 	border-color: rgb(246 172 105 / 0.55);
 	outline: none;
 }
-
 /* Glass-section form controls — auto-apply frosted styling to inputs,
    selects, textareas, and number spinners inside glass sections so
    they don't look like opaque rectangles on a translucent surface. */
@@ -842,6 +841,19 @@ html, body {
 [data-theme='light'] .glass-dropdown textarea:focus {
 	border-color: rgb(246 172 105 / 0.55) !important;
 }
+/* Inputs already inside a glass-input wrapper (e.g. TagInput) must
+   not get the glass-section auto-decoration — the wrapper handles it. */
+.glass-section .glass-input input,
+.glass-section .glass-input input:not([type]),
+[data-theme='light'] .glass-section .glass-input input,
+[data-theme='light'] .glass-section .glass-input input:not([type]) {
+	background: transparent !important;
+	border-color: transparent !important;
+	border: none !important;
+	-webkit-backdrop-filter: none !important;
+	backdrop-filter: none !important;
+}
+
 /* Table rows inside glass sections */
 .glass-section tbody tr {
 	background: transparent !important;

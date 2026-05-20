@@ -15,10 +15,7 @@
       "name": "Every 2 Minutes",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [
-        240,
-        300
-      ]
+      "position": [240, 300]
     },
     {
       "parameters": {
@@ -35,10 +32,7 @@
       "name": "Fetch Channel Config",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        460,
-        300
-      ]
+      "position": [460, 300]
     },
     {
       "parameters": {
@@ -66,10 +60,7 @@
       "name": "Fetch Users",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        680,
-        300
-      ]
+      "position": [680, 300]
     },
     {
       "parameters": {
@@ -78,10 +69,7 @@
       "name": "Build Allowed Set",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        900,
-        300
-      ]
+      "position": [900, 300]
     },
     {
       "parameters": {
@@ -92,22 +80,10 @@
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
-            {
-              "name": "types",
-              "value": "public_channel,private_channel"
-            },
-            {
-              "name": "exclude_archived",
-              "value": "true"
-            },
-            {
-              "name": "limit",
-              "value": "1000"
-            },
-            {
-              "name": "cursor",
-              "value": "={{ $json.cursor || '' }}"
-            }
+            { "name": "types", "value": "public_channel,private_channel" },
+            { "name": "exclude_archived", "value": "true" },
+            { "name": "limit", "value": "1000" },
+            { "name": "cursor", "value": "={{ $json.cursor || '' }}" }
           ]
         },
         "options": {}
@@ -115,10 +91,7 @@
       "name": "Get Channels Page",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        1120,
-        300
-      ]
+      "position": [1120, 300]
     },
     {
       "parameters": {
@@ -127,27 +100,17 @@
       "name": "Accumulate Channels",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        1340,
-        300
-      ]
+      "position": [1340, 300]
     },
     {
       "parameters": {
         "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict"
-          },
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
           "conditions": [
             {
               "leftValue": "={{ $json._hasMore }}",
               "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "equals"
-              }
+              "operator": { "type": "boolean", "operation": "equals" }
             }
           ],
           "combinator": "and"
@@ -156,10 +119,7 @@
       "name": "Has More Pages",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [
-        1560,
-        300
-      ]
+      "position": [1560, 300]
     },
     {
       "parameters": {
@@ -168,10 +128,7 @@
       "name": "Build Channel Items",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        1780,
-        400
-      ]
+      "position": [1780, 400]
     },
     {
       "parameters": {
@@ -182,22 +139,10 @@
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
-            {
-              "name": "channel",
-              "value": "={{ $json.channel_id }}"
-            },
-            {
-              "name": "oldest",
-              "value": "={{ $json.oldest }}"
-            },
-            {
-              "name": "limit",
-              "value": "100"
-            },
-            {
-              "name": "inclusive",
-              "value": "false"
-            }
+            { "name": "channel", "value": "={{ $json.channel_id }}" },
+            { "name": "oldest", "value": "={{ $json.oldest }}" },
+            { "name": "limit", "value": "100" },
+            { "name": "inclusive", "value": "false" }
           ]
         },
         "options": {}
@@ -205,39 +150,64 @@
       "name": "Fetch Messages",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        2000,
-        400
-      ]
+      "position": [2000, 400]
     },
     {
       "parameters": {
-        "jsCode": "const userMap = $getWorkflowStaticData('global').userMap || {};\nfunction resolveUser(uid) {\n  return userMap[uid] || { name: uid, email: '' };\n}\nfunction resolveText(text) {\n  return (text || '').replace(/<@(U[A-Z0-9]+)>/g, (_, uid) => {\n    const u = resolveUser(uid);\n    return '@' + u.name;\n  });\n}\n\nconst channelItems = $('Build Channel Items').all();\nconst responses = $input.all();\nconst allEvents = [];\n\nfor (let i = 0; i < responses.length; i++) {\n  const channel = channelItems[i]?.json ?? {};\n  const channelId = channel.channel_id || '';\n  const channelName = channel.channel_name || channelId;\n  const resp = responses[i].json;\n\n  if (resp.ok === false) continue;\n\n  const messages = resp.messages || [];\n\n  for (const msg of messages) {\n    if (!msg.ts || msg.type !== 'message') continue;\n    const skipSubtypes = ['channel_join', 'channel_leave', 'channel_topic', 'channel_purpose', 'bot_add', 'bot_remove'];\n    if (msg.subtype && skipSubtypes.includes(msg.subtype)) continue;\n\n    const msgTs = parseFloat(msg.ts);\n    const msgTime = new Date(msgTs * 1000);\n    const sender = resolveUser(msg.user);\n    const resolvedText = resolveText(msg.text || '');\n\n    let rawEventType = 'message_received';\n    if (msg.thread_ts && msg.thread_ts !== msg.ts) {\n      rawEventType = 'thread_reply';\n    } else if ((msg.text || '').includes('<@')) {\n      rawEventType = 'mention';\n    }\n\n    let channelType = 'channel';\n    if (channelId.startsWith('D')) channelType = 'dm';\n    else if (channelId.startsWith('G')) channelType = 'mpim';\n\n    const eventId = 'evt_slack_' + msg.ts.replace('.', '_') + '_' + channelId;\n\n    allEvents.push({\n      json: {\n        event_id: eventId,\n        timestamp: msgTime.toISOString(),\n        source: {\n          platform: 'slack',\n          connection_id: $workflow.id,\n          raw_event_type: rawEventType\n        },\n        actor: {\n          name: sender.name,\n          email: sender.email,\n          platform_handle: msg.user || ''\n        },\n        subject: {\n          type: 'thread',\n          id: 'thread-' + channelId + '-' + (msg.thread_ts || msg.ts),\n          title: resolvedText.substring(0, 80),\n          url: null\n        },\n        content: {\n          body: resolvedText,\n          attachments: [],\n          metadata: {\n            slack_channel: channelId,\n            slack_channel_name: channelName,\n            slack_channel_type: channelType,\n            slack_thread_ts: msg.thread_ts || msg.ts,\n            slack_message_ts: msg.ts,\n            slack_is_mention: (msg.text || '').includes('<@'),\n            participants: [\n              { role: 'sender', name: sender.name, email: sender.email, handle: msg.user || '' }\n            ]\n          }\n        }\n      }\n    });\n  }\n}\n\nif (allEvents.length === 0) {\n  return [{ json: { _skip: true } }];\n}\nreturn allEvents;"
+        "jsCode": "const channelItems = $('Build Channel Items').all();\nconst responses = $input.all();\nconst threads = [];\n\nfor (let i = 0; i < responses.length; i++) {\n  const channel = channelItems[i]?.json ?? {};\n  const resp = responses[i].json;\n  if (resp.ok === false) continue;\n  const oldest = channel.oldest || '0';\n  const oldestNum = parseFloat(oldest);\n\n  for (const msg of (resp.messages || [])) {\n    if (msg.reply_count > 0 && msg.latest_reply) {\n      if (parseFloat(msg.latest_reply) > oldestNum) {\n        threads.push({\n          json: {\n            channel_id: channel.channel_id,\n            channel_name: channel.channel_name,\n            thread_ts: msg.thread_ts || msg.ts,\n            oldest: oldest\n          }\n        });\n      }\n    }\n  }\n}\n\nif (threads.length === 0) {\n  return [{ json: { _no_threads: true, channel_id: '', thread_ts: '0', oldest: '0' } }];\n}\nreturn threads;"
+      },
+      "name": "Extract Active Threads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://slack.com/api/conversations.replies",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "slackOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "channel", "value": "={{ $json.channel_id }}" },
+            { "name": "ts", "value": "={{ $json.thread_ts }}" },
+            { "name": "oldest", "value": "={{ $json.oldest }}" },
+            { "name": "limit", "value": "100" },
+            { "name": "inclusive", "value": "false" }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "Fetch Replies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2440, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const userMap = $getWorkflowStaticData('global').userMap || {};\nfunction resolveUser(uid) {\n  return userMap[uid] || { name: uid, email: '' };\n}\nfunction resolveText(text) {\n  return (text || '').replace(/<@(U[A-Z0-9]+)>/g, (_, uid) => {\n    const u = resolveUser(uid);\n    return '@' + u.name;\n  });\n}\n\nconst channelItems = $('Build Channel Items').all();\nconst channelResponses = $('Fetch Messages').all();\nconst threadItems = $('Extract Active Threads').all();\nconst threadResponses = $input.all();\nconst allEvents = [];\nconst seenIds = new Set();\n\nfunction addEvent(msg, channelId, channelName) {\n  if (!msg.ts || msg.type !== 'message') return;\n  const skipSubtypes = ['channel_join', 'channel_leave', 'channel_topic', 'channel_purpose', 'bot_add', 'bot_remove'];\n  if (msg.subtype && skipSubtypes.includes(msg.subtype)) return;\n\n  const eventId = 'evt_slack_' + msg.ts.replace('.', '_') + '_' + channelId;\n  if (seenIds.has(eventId)) return;\n  seenIds.add(eventId);\n\n  const sender = resolveUser(msg.user);\n  const resolvedText = resolveText(msg.text || '');\n  const msgTime = new Date(parseFloat(msg.ts) * 1000);\n\n  let rawEventType = 'message_received';\n  if (msg.thread_ts && msg.thread_ts !== msg.ts) {\n    rawEventType = 'thread_reply';\n  } else if ((msg.text || '').includes('<@')) {\n    rawEventType = 'mention';\n  }\n\n  let channelType = 'channel';\n  if (channelId.startsWith('D')) channelType = 'dm';\n  else if (channelId.startsWith('G')) channelType = 'mpim';\n\n  allEvents.push({\n    json: {\n      event_id: eventId,\n      timestamp: msgTime.toISOString(),\n      source: {\n        platform: 'slack',\n        connection_id: $workflow.id,\n        raw_event_type: rawEventType\n      },\n      actor: {\n        name: sender.name,\n        email: sender.email,\n        platform_handle: msg.user || ''\n      },\n      subject: {\n        type: 'thread',\n        id: 'thread-' + channelId + '-' + (msg.thread_ts || msg.ts),\n        title: resolvedText.substring(0, 80),\n        url: null\n      },\n      content: {\n        body: resolvedText,\n        attachments: [],\n        metadata: {\n          slack_channel: channelId,\n          slack_channel_name: channelName,\n          slack_channel_type: channelType,\n          slack_thread_ts: msg.thread_ts || msg.ts,\n          slack_message_ts: msg.ts,\n          slack_is_mention: (msg.text || '').includes('<@'),\n          participants: [\n            { role: 'sender', name: sender.name, email: sender.email, handle: msg.user || '' }\n          ]\n        }\n      }\n    }\n  });\n}\n\nfor (let i = 0; i < channelResponses.length; i++) {\n  const channel = channelItems[i]?.json ?? {};\n  const resp = channelResponses[i].json;\n  if (resp.ok === false) continue;\n  for (const msg of (resp.messages || [])) {\n    addEvent(msg, channel.channel_id || '', channel.channel_name || '');\n  }\n}\n\nfor (let i = 0; i < threadItems.length; i++) {\n  const item = threadItems[i].json;\n  if (item._no_threads) continue;\n  const resp = threadResponses[i].json;\n  if (resp.ok === false) continue;\n  for (const msg of (resp.messages || [])) {\n    addEvent(msg, item.channel_id || '', item.channel_name || '');\n  }\n}\n\nif (allEvents.length === 0) {\n  return [{ json: { _skip: true } }];\n}\nreturn allEvents;"
       },
       "name": "Normalize & Classify",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        2220,
-        400
-      ]
+      "position": [2660, 400]
     },
     {
       "parameters": {
         "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict"
-          },
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
           "conditions": [
             {
               "leftValue": "={{ $json._skip }}",
               "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "notEquals"
-              }
+              "operator": { "type": "boolean", "operation": "notEquals" }
             }
           ],
           "combinator": "and"
@@ -246,10 +216,7 @@
       "name": "Has Events",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [
-        2440,
-        400
-      ]
+      "position": [2880, 400]
     },
     {
       "parameters": {
@@ -258,10 +225,7 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
+            { "name": "Content-Type", "value": "application/json" }
           ]
         },
         "sendBody": true,
@@ -272,139 +236,52 @@
       "name": "POST to Laya Engine",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        2660,
-        300
-      ]
+      "position": [3100, 300]
     }
   ],
   "connections": {
     "Every 2 Minutes": {
-      "main": [
-        [
-          {
-            "node": "Fetch Channel Config",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Fetch Channel Config", "type": "main", "index": 0 }]]
     },
     "Fetch Channel Config": {
-      "main": [
-        [
-          {
-            "node": "Fetch Users",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Fetch Users", "type": "main", "index": 0 }]]
     },
     "Fetch Users": {
-      "main": [
-        [
-          {
-            "node": "Build Allowed Set",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Build Allowed Set", "type": "main", "index": 0 }]]
     },
     "Build Allowed Set": {
-      "main": [
-        [
-          {
-            "node": "Get Channels Page",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Get Channels Page", "type": "main", "index": 0 }]]
     },
     "Get Channels Page": {
-      "main": [
-        [
-          {
-            "node": "Accumulate Channels",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Accumulate Channels", "type": "main", "index": 0 }]]
     },
     "Accumulate Channels": {
-      "main": [
-        [
-          {
-            "node": "Has More Pages",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Has More Pages", "type": "main", "index": 0 }]]
     },
     "Has More Pages": {
       "main": [
-        [
-          {
-            "node": "Get Channels Page",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Build Channel Items",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Get Channels Page", "type": "main", "index": 0 }],
+        [{ "node": "Build Channel Items", "type": "main", "index": 0 }]
       ]
     },
     "Build Channel Items": {
-      "main": [
-        [
-          {
-            "node": "Fetch Messages",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Fetch Messages", "type": "main", "index": 0 }]]
     },
     "Fetch Messages": {
-      "main": [
-        [
-          {
-            "node": "Normalize & Classify",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Extract Active Threads", "type": "main", "index": 0 }]]
+    },
+    "Extract Active Threads": {
+      "main": [[{ "node": "Fetch Replies", "type": "main", "index": 0 }]]
+    },
+    "Fetch Replies": {
+      "main": [[{ "node": "Normalize & Classify", "type": "main", "index": 0 }]]
     },
     "Normalize & Classify": {
-      "main": [
-        [
-          {
-            "node": "Has Events",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Has Events", "type": "main", "index": 0 }]]
     },
     "Has Events": {
       "main": [
-        [
-          {
-            "node": "POST to Laya Engine",
-            "type": "main",
-            "index": 0
-          }
-        ],
+        [{ "node": "POST to Laya Engine", "type": "main", "index": 0 }],
         []
       ]
     }
@@ -414,6 +291,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.05.9"
+    "laya_version": "2026.05.10"
   }
 }

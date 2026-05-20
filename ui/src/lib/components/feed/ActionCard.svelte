@@ -10,6 +10,7 @@
 	import { cardSize } from '$lib/stores/cardSize';
 	import { portal } from '$lib/actions/portal';
 	import StatusDot from './StatusDot.svelte';
+	import PlatformIcon from '$lib/components/settings/PlatformIcon.svelte';
 	import { platformDotColor, platformKey, actorInitials, actorAvatarColor } from '$lib/utils/cardVisuals';
 
 	let { card, onselect, ondelete, onlink, selectedCardId = '', hasSelection = false, lastViewedCardId = '' }: { card: ActionCard; onselect: (card: ActionCard) => void; ondelete?: (cardId: string) => void; onlink?: (card: ActionCard) => void; selectedCardId?: string; hasSelection?: boolean; lastViewedCardId?: string } = $props();
@@ -696,17 +697,24 @@
 	     Compact: no hairline, tighter top margin, and the platform + space identifier are inlined
 	     between actor and persona separated by · so all metadata lives on a single line. -->
 	<div class="flex items-center gap-1.5 min-w-0 {compact ? 'mt-1.5' : (card.space_name ? 'mt-1.5 pt-2 border-t border-surface-500/30' : 'mt-3 pt-2 border-t border-surface-500/30')}">
+		{#if compact && platform}
+			<span class="text-laya-orange shrink-0">
+				<PlatformIcon platform={platformKey(card.entity_id)} size={14} />
+			</span>
+		{/if}
 		{#if card.actor_name}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<span class="relative flex items-center gap-1.5 min-w-0 text-laya-micro text-surface-500"
 				onmouseenter={() => showTooltipIfTruncated(actorEl, card.actor_name ?? '')}
 				onmouseleave={hideTooltip}
 			>
-				<span
-					class="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-laya-micro font-semibold leading-none text-white/95"
-					style="background-color: {actorAvatarColor(card.actor_name)}"
-					aria-hidden="true"
-				>{actorInitials(card.actor_name)}</span>
+				{#if !compact}
+					<span
+						class="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-laya-micro font-semibold leading-none text-white/95"
+						style="background-color: {actorAvatarColor(card.actor_name)}"
+						aria-hidden="true"
+					>{actorInitials(card.actor_name)}</span>
+				{/if}
 				<span bind:this={actorEl} class="block truncate">
 					{card.actor_name}
 				</span>
@@ -717,13 +725,6 @@
 			<span class="flex items-center gap-1 shrink-0 text-laya-micro text-surface-500 truncate">
 				<span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: {card.space_color ?? '#F97316'}"></span>
 				<span class="truncate">{card.space_name}</span>
-			</span>
-		{/if}
-		{#if compact && platform}
-			<span class="text-laya-micro text-surface-600 shrink-0">·</span>
-			<span class="flex items-center gap-1 shrink-0 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">
-				<span class="h-1 w-1 rounded-full shrink-0" style="background-color: {platformDotColor(platformKey(card.entity_id))}"></span>
-				{platform}
 			</span>
 		{/if}
 		<span class="ml-auto shrink-0 text-laya-micro font-medium {personaColors[card.persona] ?? personaColors.ENGINEER}">{card.persona}</span>

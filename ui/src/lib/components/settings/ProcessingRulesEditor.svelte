@@ -6,7 +6,7 @@
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { portal } from '$lib/actions/portal';
 	import Dropdown from '$lib/components/Dropdown.svelte';
-	import type { ProcessingRule, ProcessingRuleAction, ProcessingCondition, ProcessingRuleOperator, ProcessingSimpleCondition, ComposePlatform, Tag } from '$lib/api/types';
+	import type { ProcessingRule, ProcessingRuleAction, ProcessingCondition, ProcessingRuleOperator, ProcessingSimpleCondition, ComposePlatform, Tag, EgressConnection } from '$lib/api/types';
 
 	let tooltip = $state<{ text: string; top: number; left: number } | null>(null);
 	function showTip(el: HTMLElement, text: string) {
@@ -160,6 +160,7 @@
 
 	// --- Egress platforms registry ---
 	let composePlatforms = $state<ComposePlatform[]>([]);
+	let egressConnections = $state<EgressConnection[]>([]);
 
 	const egressActionsForPlatform = $derived.by(() => {
 		const map = new Map<string, ComposePlatform>();
@@ -181,6 +182,10 @@
 			const cp = await engineApi.getComposePlatforms();
 			composePlatforms = cp.platforms;
 		} catch { /* egress platforms unavailable */ }
+		try {
+			const ec = await engineApi.listEgressConnections();
+			egressConnections = ec.connections;
+		} catch { /* egress connections unavailable */ }
 		try {
 			fieldOptions = await engineApi.getProcessingRuleFieldOptions();
 		} catch { /* field options unavailable */ }
@@ -627,6 +632,7 @@
 					{@const selectedPlatform = egressActionsForPlatform.get(action.config.platform ?? '')}
 					{@const platformActions = selectedPlatform?.actions ?? []}
 					{@const selectedAction = platformActions.find(a => a.action_type === action.config.action_type)}
+					{@const platformConnections = egressConnections.filter(c => c.platform === action.config.platform && c.status === 'connected')}
 					<div class="rounded-lg border border-surface-700 {$glassTheme ? 'bg-white/[0.02]' : 'bg-surface-900/50'} p-4">
 						<div class="flex items-center gap-2">
 							<Dropdown
@@ -710,13 +716,21 @@
 								class="mt-3 w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500"
 							></textarea>
 						{:else if action.type === 'execute_egress'}
-							<div class="mt-3 grid grid-cols-2 gap-2">
+							<div class="mt-3 grid {action.config.platform ? 'grid-cols-3' : 'grid-cols-2'} gap-2">
 								<Dropdown
 									bind:value={action.config.platform}
 									options={[{ value: '', label: 'Select platform' }, ...composePlatforms.map((p) => ({ value: p.id, label: p.label }))]}
-									onchange={(v) => { action.config.platform = v; action.config.action_type = ''; }}
+									onchange={(v) => { action.config.platform = v; action.config.action_type = ''; const conns = egressConnections.filter(c => c.platform === v && c.status === 'connected'); action.config.connection_id = conns.length === 1 ? conns[0].connection_id : ''; }}
 									placeholder="Select platform"
 								/>
+								{#if action.config.platform}
+									<Dropdown
+										bind:value={action.config.connection_id}
+										options={platformConnections.length > 1 ? [{ value: '', label: 'Any account' }, ...platformConnections.map((c) => ({ value: c.connection_id, label: c.name }))] : platformConnections.map((c) => ({ value: c.connection_id, label: c.name }))}
+										onchange={(v) => { action.config.connection_id = v; }}
+										placeholder="Select account"
+									/>
+								{/if}
 								<Dropdown
 									bind:value={action.config.action_type}
 									options={[{ value: '', label: 'Select action' }, ...platformActions.map((pa) => ({ value: pa.action_type, label: pa.label }))]}
