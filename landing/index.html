@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Laya — Your AI Command Center</title>
 <meta name="description" content="Laya enriches your daily workflows with AI — from a smarter email client to a unified command center across all your tools. Connect one platform or eight. Stop reacting. Start commanding.">
+<link rel="icon" type="image/png" href="images/logo-icon.png">
+<link rel="apple-touch-icon" href="images/logo-icon.png">
 <style>
 /* ═══════════════════════════════════════════════════
    RESET & BASE
@@ -1734,6 +1736,38 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
       <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="M7 12l3 3 7-7"/></svg></span> Linear</div>
       <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M7 7h3l7 10h-3z"/><path d="M17 7h-3"/><path d="M7 17h3"/></svg></span> Notion</div>
       <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span> More via n8n</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ MCP SERVER ═══════════════════ -->
+<section id="mcp">
+  <div class="container">
+    <div class="feature-showcase reverse animate-on-scroll">
+      <div class="feature-text">
+        <span class="tag">MCP Server</span>
+        <h2>Bring Laya into any AI client</h2>
+        <p>Laya ships with a built-in <strong>Model Context Protocol</strong> server. Point Claude Desktop, VS Code, Cursor, or any MCP-compatible client at it and your assistant gets first-class access to everything Laya knows — your cards, events, entities, semantic memory, and outbound actions.</p>
+        <ul>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Read tools: search cards, fetch events, trace entities, semantic search across all platforms</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Write tools: dismiss, archive, complete, or reopen cards from any client</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Egress actions: send Slack messages, post PR comments, create Jira issues, and more across all 9 connected platforms</li>
+          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Stdio transport, runs locally — your data never leaves your machine</li>
+        </ul>
+      </div>
+      <div class="feature-image">
+        <div style="background: #15120f; border: 1px solid #2a2520; border-radius: 14px; padding: 22px 24px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.82rem; line-height: 1.7; color: #e8ddd0; overflow-x: auto; box-shadow: 0 12px 40px rgba(0,0,0,0.35);">
+          <div style="color: #6f655a; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">claude_desktop_config.json</div>
+<pre style="margin: 0; white-space: pre; color: #e8ddd0;"><span style="color: #6f655a;">{</span>
+  <span style="color: #f6bc66;">"mcpServers"</span>: <span style="color: #6f655a;">{</span>
+    <span style="color: #f6bc66;">"laya"</span>: <span style="color: #6f655a;">{</span>
+      <span style="color: #f6bc66;">"command"</span>: <span style="color: #ffdab9;">"python"</span>,
+      <span style="color: #f6bc66;">"args"</span>: <span style="color: #6f655a;">[</span><span style="color: #ffdab9;">"-m"</span>, <span style="color: #ffdab9;">"laya.mcp.server"</span><span style="color: #6f655a;">]</span>
+    <span style="color: #6f655a;">}</span>
+  <span style="color: #6f655a;">}</span>
+<span style="color: #6f655a;">}</span></pre>
+        </div>
+      </div>
     </div>
   </div>
 </section>
