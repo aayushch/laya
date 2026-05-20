@@ -903,6 +903,8 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
 #docs-page.active { display: flex; }
 #privacy-page { display: none; padding-top: 64px; }
 #privacy-page.active { display: block; }
+#terms-page { display: none; padding-top: 64px; }
+#terms-page.active { display: block; }
 #landing-page.hidden { display: none; }
 
 .docs-layout {
@@ -1867,6 +1869,7 @@ footer p { font-size: 0.8rem; color: var(--surface-500); }
         <li><a href="https://github.com/aayushch/laya" target="_blank" rel="noopener noreferrer">GitHub</a></li>
         <li><a href="#docs" onclick="event.preventDefault(); showDocs();">Docs</a></li>
         <li><a href="#privacy" onclick="event.preventDefault(); showPrivacy();">Privacy</a></li>
+        <li><a href="#terms" onclick="event.preventDefault(); showTerms();">Terms</a></li>
       </ul>
     </div>
   </div>
@@ -3266,17 +3269,160 @@ curl -X POST http://127.0.0.1:8420/prompts/reload</code></pre>
   </main>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════
+     TERMS & CONDITIONS PAGE
+     ═══════════════════════════════════════════════════════════ -->
+<div id="terms-page">
+
+  <div class="docs-nav-bar">
+    <div class="container">
+      <div class="nav-left">
+        <a href="#" class="nav-logo" onclick="showLanding(); return false;">
+          <img src="images/logo-icon.png" alt="Laya">
+          <span>Laya</span>
+        </a>
+      </div>
+      <a href="#" class="btn btn-primary btn-sm" onclick="showLanding(); return false;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> Back to Home</a>
+    </div>
+  </div>
+
+  <main class="docs-content" style="margin-left: 0; max-width: 800px; margin: 0 auto;">
+
+    <a href="#" class="back-link" onclick="showLanding(); return false;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> Back to Home</a>
+
+    <h1>Terms &amp; Conditions</h1>
+    <p class="docs-subtitle">Last updated: April 2026</p>
+
+    <h2>1. About Laya</h2>
+    <p>Laya is an open-source, local-first desktop application that intercepts events from professional tools (such as Jira, Slack, Gmail, Outlook, GitHub, Bitbucket, GitLab, Google Calendar, Linear, Notion, and others you may connect), classifies them using large language models (LLMs), stages suggested actions, and presents them as Action Cards for your review and approval.</p>
+    <p>Laya runs entirely on your machine. There are no Laya-operated servers, no Laya accounts to create, and no telemetry or analytics data is transmitted to Laya's developers or any third party by the application itself. Laya's developers do not operate any email, messaging, code-hosting, calendar, or other platform accounts on your behalf &mdash; every ingestion connection and every outbound action uses credentials you personally provide and operates under your own identity on each platform.</p>
+
+    <h2>2. Data Processing &amp; Third-Party LLMs</h2>
+    <p><strong>This is the most important section to understand.</strong> To classify events, generate action suggestions, power chat, and compute semantic embeddings, Laya sends portions of your professional data to the LLM and embedding providers you configure. The specific data transmitted on any given request depends on the event type, the persona processing it, and the prompts Laya uses, but may include:</p>
+    <ul>
+      <li>Email subjects, bodies, and attachment metadata from your configured email providers</li>
+      <li>Messages, thread content, reactions, and channel metadata from your configured messaging platforms</li>
+      <li>Issue titles, descriptions, comments, labels, and status metadata from your configured project- or task-management tools</li>
+      <li>Pull or merge request titles, descriptions, code diffs, review comments, and file paths from your configured code-hosting platforms</li>
+      <li>Calendar event titles, descriptions, attendee information, and schedule metadata from your configured calendar providers</li>
+      <li>Page or document titles, content, and metadata from your configured knowledge bases</li>
+      <li>Your team member names, roles, and relationships as configured in Settings</li>
+      <li>Any prompts, files, or context you submit through Laya's chat or workspace interfaces</li>
+      <li>Any additional data surfaced by custom workflows you build or modify in the bundled n8n automation engine</li>
+    </ul>
+    <p>The list above is illustrative and not exhaustive. You should assume that any content ingested from a connected platform is eligible to be transmitted to your configured LLM provider.</p>
+    <div class="callout callout-info">
+      <p><strong>Laya is Local-First.</strong> Laya fully supports self-hosted LLM providers including <strong>Ollama</strong>, <strong>LM Studio</strong>, and any <strong>OpenAI-compatible endpoint</strong>. When using self-hosted models, your data does not leave your machine or local network via Laya. <strong>This is the recommended configuration.</strong></p>
+    </div>
+    <p>Laya also supports cloud-hosted LLM providers such as Anthropic (Claude), OpenAI (GPT), Google (Gemini), OpenRouter, and any other OpenAI-compatible provider you configure. If you configure a cloud provider, the data described above will be transmitted to that provider's servers and will be subject to that provider's privacy policy, data-processing agreement, and terms of service.</p>
+    <p>Different LLM providers handle your data differently. Some retain inputs for abuse monitoring, some offer zero-retention or enterprise endpoints, and some may use your inputs to train or improve their models. <strong>Before configuring a cloud-hosted provider, you are responsible for reviewing that provider's current terms and selecting a plan, tier, or endpoint appropriate for the sensitivity of your data.</strong></p>
+
+    <h2>3. Platform Integrations &amp; Outbound Actions</h2>
+    <p>Laya connects to third-party platforms to ingest events and, with your approval, execute actions on your behalf. <strong>All outbound actions are executed exclusively through the connections you personally authorize</strong> (via OAuth or API keys you provide) and are attributed to your own account on the destination platform. Example actions include:</p>
+    <ul>
+      <li>Sending, replying to, or forwarding email through your configured email providers</li>
+      <li>Posting messages, replies, or reactions through your configured messaging platforms</li>
+      <li>Creating, updating, or commenting on issues through your configured project- or task-management tools</li>
+      <li>Commenting on, approving, requesting changes to, or merging pull or merge requests through your configured code-hosting platforms</li>
+      <li>Creating, updating, or cancelling events through your configured calendar providers</li>
+      <li>Any additional action enabled by workflows you configure in the bundled n8n automation engine</li>
+    </ul>
+    <p>You are solely responsible for the content, timing, recipients, and consequences of every outbound action executed through your connected accounts, regardless of whether that action was originally suggested by an LLM, triggered by a workflow, or produced by a coding agent.</p>
+
+    <h2>4. Manual Approval &amp; Automatic Execution</h2>
+    <p><strong>No action is executed without your explicit approval</strong> unless you have opted into automatic execution for a specific action type, workflow, or rule. LLM-suggested actions may contain errors, hallucinations, factual inaccuracies, incorrect recipients, or otherwise inappropriate content; you are solely responsible for reviewing every staged action before approval.</p>
+    <p>If you enable automatic execution, Laya will carry out those actions on your behalf without per-action confirmation. Automatic execution amplifies the consequences of any LLM error, misclassification, or prompt-injection attempt originating in ingested content. You accept full responsibility for all actions performed under automatic execution rules you configure.</p>
+
+    <h2>5. Credential &amp; API Key Handling</h2>
+    <p>Laya stores your API keys and OAuth tokens in your operating system's secure credential store (macOS Keychain, Windows Credential Manager, or Linux Secret Service). Credentials are <strong>never stored in plain text</strong> on disk by Laya.</p>
+    <p>API keys are transmitted only to their respective service providers. OAuth tokens are used to authenticate with the platforms you have connected. You can revoke any connection at any time from Settings, and you are responsible for revoking credentials on the originating platform as well if you wish to fully terminate Laya's access.</p>
+
+    <h2>6. Local Data Storage &amp; Environment Security</h2>
+    <p>All Laya data is stored locally on your machine in the <code>~/.laya/</code> directory:</p>
+    <ul>
+      <li><strong>SQLite database</strong> &mdash; events, action cards, chat history, audit logs, user feedback</li>
+      <li><strong>ChromaDB vector store</strong> &mdash; semantic embeddings for search and entity resolution</li>
+      <li><strong>Logs</strong> &mdash; application logs (rotated, 10 MB max, 5 files retained)</li>
+      <li><strong>Configuration</strong> &mdash; settings, team definitions, rules, repository paths</li>
+    </ul>
+    <p>You own your data. You may delete the <code>~/.laya/</code> directory at any time to remove all Laya data from your system.</p>
+    <p>Because Laya stores sensitive event content, credentials, and n8n workflow data on disk, the security of that data ultimately depends on the security of your machine. You are responsible for maintaining full-disk encryption, operating-system updates, user-account access controls, endpoint protection, and physical security for any device on which you run Laya.</p>
+
+    <h2>7. Automation Engine (n8n)</h2>
+    <p>Laya bundles <a href="https://n8n.io" target="_blank" rel="noopener noreferrer">n8n</a>, an open-source workflow automation tool, which runs as a local process on your machine (port 45678). n8n handles event ingestion from connected platforms and executes approved outbound actions. n8n's data and encrypted credentials are stored locally in <code>~/.laya/n8n/</code>.</p>
+    <p>You may create, modify, import, or disable n8n workflows beyond those bundled with Laya. Any custom workflows you configure are your own responsibility. n8n is distributed under its own licenses and is not a product of Laya.</p>
+
+    <h2>8. Coding Agents</h2>
+    <p>Laya can optionally integrate with coding agents (such as Claude Code, Gemini CLI, or OpenAI Codex CLI) to execute development tasks on your behalf. When enabled, these agents operate in your local development environment and may:</p>
+    <ul>
+      <li>Read and modify files within your configured repositories</li>
+      <li>Execute arbitrary shell commands on your machine with the privileges of your user account</li>
+      <li>Install dependencies, run build scripts, run tests, and invoke other tooling</li>
+      <li>Transmit source code, file contents, and command output to their respective LLM providers</li>
+    </ul>
+    <p>Coding agents carry significant risk. A misinterpreted instruction, erroneous LLM output, or prompt-injection attempt can result in deleted or corrupted files, credential exposure, unintended git history rewrites, or unwanted changes to your environment. You are solely responsible for reviewing agent-proposed changes, sandboxing agent environments appropriately, and maintaining backups.</p>
+
+    <h2>9. Telemetry &amp; Analytics</h2>
+    <p><strong>Laya itself does not collect, transmit, or share</strong> any usage analytics, telemetry, crash reports, or diagnostic data with Laya's developers or any third party.</p>
+    <p>Laya bundles several open-source third-party components that may emit anonymous telemetry to their respective maintainers by default. <strong>Laya makes a best-effort attempt to disable telemetry in every bundled third-party component that offers an opt-out.</strong> However, this cannot be guaranteed. If you require an absolute guarantee that no network traffic leaves your machine beyond what you explicitly authorize, we recommend running Laya with an outbound firewall.</p>
+
+    <h2>10. Cost &amp; Billing</h2>
+    <p>Laya itself is free and open-source. However, using cloud-hosted LLM, embedding, or platform providers incurs costs billed directly by those providers to your account. Laya provides cost estimation and budget controls in Settings, but these are approximations and do not constitute billing guarantees.</p>
+
+    <h2>11. Compliance With Third-Party Platforms</h2>
+    <p>You are responsible for complying with the terms of service, acceptable-use policies, data-processing agreements, and API rate limits of every platform you connect to Laya. Laya does not monitor or enforce these policies on your behalf.</p>
+    <p>You are also responsible for ensuring that your use of Laya with a given platform is permitted by your employer, organization, or any applicable data-sharing, confidentiality, or regulatory agreement covering the content on that platform.</p>
+
+    <h2>12. Your Responsibilities</h2>
+    <ul>
+      <li>Ensure you have the right to process data from your connected platforms through LLMs</li>
+      <li>Comply with your organization's data-handling, privacy, and acceptable-use policies</li>
+      <li>Review the privacy policies of any LLM or platform provider you configure</li>
+      <li>Review all staged actions before approving execution</li>
+      <li>Secure your machine, as Laya stores sensitive data locally</li>
+      <li>Comply with applicable laws regarding automated communications and data processing</li>
+      <li>Maintain appropriate backups of any data you cannot afford to lose</li>
+    </ul>
+
+    <h2>13. Disclaimer of Warranties</h2>
+    <p>LAYA IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, ACCURACY, AND UNINTERRUPTED OPERATION.</p>
+    <p>LLM-generated suggestions, classifications, summaries, and staged actions may be inaccurate, incomplete, biased, or inappropriate. You are solely responsible for reviewing all suggestions before approval.</p>
+
+    <h2>14. Limitation of Liability</h2>
+    <p>IN NO EVENT SHALL THE AUTHORS, COPYRIGHT HOLDERS, CONTRIBUTORS, OR MAINTAINERS OF LAYA BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING BUT NOT LIMITED TO PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES, LOSS OF USE, DATA, OR PROFITS, BUSINESS INTERRUPTION, REPUTATIONAL HARM, OR REGULATORY PENALTIES) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.</p>
+
+    <h2>15. Indemnification</h2>
+    <p>To the fullest extent permitted by applicable law, you agree to indemnify, defend, and hold harmless Laya's authors, copyright holders, contributors, and maintainers from and against any claim, demand, loss, liability, damage, fine, penalty, or expense arising out of or related to your use of Laya or your violation of these terms.</p>
+
+    <h2>16. Age, Authority &amp; Acceptance</h2>
+    <p>By installing, configuring, or using Laya, you represent that you are at least the age of majority in your jurisdiction and that you have the legal capacity to accept these terms. If you are using Laya on behalf of an employer or organization, you further represent that you have the authority to bind that organization to these terms.</p>
+    <p>If you do not agree with any part of these terms, you must not install or use Laya.</p>
+
+    <h2>17. Software Updates &amp; Changes to These Terms</h2>
+    <p>Laya may be updated from time to time. Updates may modify data formats, adjust pipeline or prompt behavior, add or remove supported platforms, and revise these terms. Continued use of Laya after an update constitutes acceptance of the then-current terms.</p>
+
+    <h2>18. Severability &amp; Entire Agreement</h2>
+    <p>If any provision of these terms is found to be invalid or unenforceable, the remaining provisions will continue in full force and effect. These terms, together with the Apache License 2.0 under which Laya is distributed, constitute the entire agreement between you and Laya's contributors regarding your use of the software.</p>
+
+    <h2>19. Open Source</h2>
+    <p>Laya is open-source software licensed under the Apache License 2.0. You may inspect, modify, and redistribute the source code subject to the license terms. The full license text is available in the <code>LICENSE</code> file in the <a href="https://github.com/aayushch/laya" target="_blank" rel="noopener noreferrer">GitHub repository</a>.</p>
+
+  </main>
+</div>
+
 <!-- ═══════════════════ SCRIPTS ═══════════════════ -->
 <script>
-// ── Page Navigation (Landing ↔ Docs ↔ Privacy) ──
+// ── Page Navigation (Landing ↔ Docs ↔ Privacy ↔ Terms) ──
 const landingPage = document.getElementById('landing-page');
 const docsPage = document.getElementById('docs-page');
 const privacyPage = document.getElementById('privacy-page');
+const termsPage = document.getElementById('terms-page');
 
 function hideAll() {
   landingPage.classList.add('hidden');
   docsPage.classList.remove('active');
   privacyPage.classList.remove('active');
+  termsPage.classList.remove('active');
 }
 
 function showDocs(hash) {
@@ -3299,9 +3445,17 @@ function showPrivacy() {
   history.pushState(null, '', '#privacy');
 }
 
+function showTerms() {
+  hideAll();
+  termsPage.classList.add('active');
+  window.scrollTo(0, 0);
+  history.pushState(null, '', '#terms');
+}
+
 function showLanding() {
   docsPage.classList.remove('active');
   privacyPage.classList.remove('active');
+  termsPage.classList.remove('active');
   landingPage.classList.remove('hidden');
   window.scrollTo(0, 0);
   history.pushState(null, '', window.location.pathname);
@@ -3311,12 +3465,14 @@ function showLanding() {
 window.addEventListener('popstate', () => {
   if (window.location.hash === '#docs') showDocs();
   else if (window.location.hash === '#privacy') showPrivacy();
-  else { docsPage.classList.remove('active'); privacyPage.classList.remove('active'); landingPage.classList.remove('hidden'); }
+  else if (window.location.hash === '#terms') showTerms();
+  else { docsPage.classList.remove('active'); privacyPage.classList.remove('active'); termsPage.classList.remove('active'); landingPage.classList.remove('hidden'); }
 });
 
-// Load docs/privacy if URL has hash
+// Load page if URL has hash
 if (window.location.hash === '#docs') showDocs();
 else if (window.location.hash === '#privacy') showPrivacy();
+else if (window.location.hash === '#terms') showTerms();
 
 // ── Nav scroll effect ──
 const nav = document.getElementById('nav');
@@ -3366,6 +3522,7 @@ document.querySelectorAll('#landing-page a[href^="#"]').forEach(anchor => {
     const href = this.getAttribute('href');
     if (href === '#docs') { e.preventDefault(); showDocs(); return; }
     if (href === '#privacy') { e.preventDefault(); showPrivacy(); return; }
+    if (href === '#terms') { e.preventDefault(); showTerms(); return; }
     const target = document.querySelector(href);
     if (target && landingPage.contains(target)) {
       e.preventDefault();
