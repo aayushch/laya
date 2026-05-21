@@ -1852,8 +1852,20 @@ html, body {
 	-webkit-backdrop-filter: none !important;
 	backdrop-filter: none !important;
 }
+/* IMPORTANT: do NOT add `contain: layout style` (or paint/strict) here.
+   Toggling layout containment on this scroll container while the sibling
+   detail panel runs its 300ms width transition causes WKWebView to
+   invalidate the descendants' display list without re-painting — the
+   entire card-view area stays blank until a scroll forces a repaint.
+   See commits 63c1d04 (original fix + explanation) and fd1b72e
+   (the regression). The `_resizeInstant` flag in +page.svelte does NOT
+   fully mitigate this — it only handles the FLIP-animation race, not
+   WebKit's paint-skip on containment toggle.
+   `container-type: normal !important` is safe and is kept because it
+   freezes the `@container feed-list` queries (col-time / col-actions
+   show-hide rules) during the 300ms slide, removing per-frame query
+   re-evaluation cost on the list view. */
 .panel-transitioning .feed-list-container {
-	contain: layout style;
 	container-type: normal !important;
 }
 .panel-transitioning .list-row-hover {
