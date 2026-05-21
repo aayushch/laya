@@ -1307,8 +1307,19 @@
 	// skipFlip=true when opening because a card was clicked (scroll will follow, so skip jarring FLIP)
 	// skipFlip=false (default) when user manually opens via chevron (normal FLIP animation)
 	function openDetailPanel(skipFlip = false) {
+		// Panel already open: don't re-run the panel-slide / column repack, but DO
+		// scroll the newly-selected card into view (otherwise clicking a second card
+		// while the panel is open leaves the selection off-screen).
 		if (detailPanelOpen || !containerEl) {
 			detailPanelOpen = true;
+			if (skipFlip && containerEl) {
+				const cardId = selectedCard?.card_id;
+				const entityId = lastDetailEntityId;
+				requestAnimationFrame(() => {
+					if (cardId) scrollToCard(cardId);
+					else if (entityId) scrollToGroupElement(entityId);
+				});
+			}
 			return;
 		}
 		// Panel will take DETAIL_PANEL_WIDTH + COL_GAP from the container
@@ -1320,23 +1331,31 @@
 		flipColumns(finalCols, skipFlip);
 		detailPanelOpen = true;
 
-		// Scroll the selected card/group into view after the panel slide finishes
-		if (skipFlip && selectedCard) {
-			setTimeout(() => scrollToCard(selectedCard!.card_id), 320);
-		} else if (skipFlip && lastDetailEntityId) {
-			const entityId = lastDetailEntityId;
-			setTimeout(() => scrollToGroupElement(entityId), 320);
-		}
+		// Snapshot what to scroll to BEFORE the cleanup runs — selectedCard /
+		// lastDetailEntityId could change if the user clicks another card during
+		// the 350ms window.
+		const scrollCardId = skipFlip ? selectedCard?.card_id ?? null : null;
+		const scrollEntityId = skipFlip && !scrollCardId ? lastDetailEntityId : null;
 
 		// Allow ResizeObserver to resume after panel transition ends (300ms duration).
 		// Recalculate columns in case the predicted count was wrong. Instant repack
 		// to avoid a visible FLIP animation stacking on top of the panel slide.
+		// Scroll-to-card runs AFTER the optional final flipColumns so the smooth
+		// scroll target isn't invalidated by a late layout shift.
 		setTimeout(() => {
 			_resizeInstant = true;
 			panelTransitioning = false;
 			const w = getContentWidth();
 			const correctCols = Math.max(1, Math.floor((w + COL_GAP) / (CARD_WIDTH + COL_GAP)));
 			if (correctCols !== numColumns) flipColumns(correctCols, true);
+			// rAF lets Svelte commit any column-count change to the DOM before we
+			// read positions for the scroll.
+			if (scrollCardId || scrollEntityId) {
+				requestAnimationFrame(() => {
+					if (scrollCardId) scrollToCard(scrollCardId);
+					else if (scrollEntityId) scrollToGroupElement(scrollEntityId);
+				});
+			}
 		}, 350);
 	}
 
@@ -2127,7 +2146,10 @@
 			</div>
 		</div>
 		<!-- Cards / Summary / List section -->
-		<div bind:this={containerEl} class="feed-list-container flex min-w-0 flex-1 flex-col overflow-y-auto p-3 transition-opacity duration-[250ms] ease-out {relatedViewExiting ? 'opacity-0' : 'opacity-100'}">
+		<!-- data-view-mode: scopes the panel-transitioning container-type toggle in app.css
+		     to list view only — card view must never have container-type flipped mid-slide,
+		     it causes WKWebView to skip painting descendants. -->
+		<div bind:this={containerEl} data-view-mode={$feedViewMode} class="feed-list-container flex min-w-0 flex-1 flex-col overflow-y-auto p-3 transition-opacity duration-[250ms] ease-out {relatedViewExiting ? 'opacity-0' : 'opacity-100'}">
 			{#if $feedFilters.showRelated}
 				<div class="mb-3 flex items-center gap-2 rounded-lg border border-laya-orange/30 bg-laya-orange/10 px-3 py-2">
 					<svg class="h-4 w-4 shrink-0 text-laya-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">

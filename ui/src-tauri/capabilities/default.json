@@ -18,6 +18,7 @@
     "shell:allow-spawn",
     "shell:allow-stdin-write",
     "dialog:default",
-    "updater:default"
+    "updater:default",
+    "process:default"
   ]
 }
