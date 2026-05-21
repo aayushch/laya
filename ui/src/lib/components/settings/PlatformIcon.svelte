@@ -74,14 +74,13 @@
 	</svg>
 {:else if platform === 'laya'}
 	<svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-		<rect x="8.5" y="0" width="7" height="7" rx="1.5"/>
-		<rect x="17" y="0" width="7" height="7" rx="1.5"/>
-		<rect x="0" y="8.5" width="7" height="7" rx="1.5"/>
-		<rect x="8.5" y="8.5" width="7" height="7" rx="1.5"/>
-		<rect x="17" y="8.5" width="7" height="7" rx="1.5"/>
-		<rect x="0" y="17" width="7" height="7" rx="1.5"/>
-		<rect x="8.5" y="17" width="7" height="7" rx="1.5"/>
-		<rect x="17" y="17" width="7" height="7" rx="1.5"/>
+		<rect x="8.5" y="2.25" width="7" height="5.5" rx="1.2"/>
+		<rect x="17" y="2.25" width="7" height="5.5" rx="1.2"/>
+		<rect x="0" y="9.25" width="7" height="5.5" rx="1.2"/>
+		<rect x="8.5" y="9.25" width="7" height="5.5" rx="1.2"/>
+		<rect x="17" y="9.25" width="7" height="5.5" rx="1.2"/>
+		<rect x="0" y="16.25" width="7" height="5.5" rx="1.2"/>
+		<rect x="8.5" y="16.25" width="7" height="5.5" rx="1.2"/>
 	</svg>
 {:else}
 	<!-- Generic fallback -->
