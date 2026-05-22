@@ -16,7 +16,7 @@ started.
 
 ```bash
 # Clone the repo
-git clone https://github.com/AayushChawla/laya.git
+git clone https://github.com/aayushch/laya.git
 cd laya
 
 # Run the setup script (creates venvs, installs deps)
