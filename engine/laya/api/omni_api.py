@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Omni API — rolling cross-platform summary endpoints."""
 
 from __future__ import annotations

@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """MCP server HTTP/SSE transport + management API.
 
 External MCP clients (Claude Desktop, Cursor, VS Code) and the in-app Claude

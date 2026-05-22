@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """API router for processing rules CRUD and testing."""
 
 from __future__ import annotations

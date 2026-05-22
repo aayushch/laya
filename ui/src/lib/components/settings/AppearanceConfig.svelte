@@ -1,3 +1,5 @@
+<!-- Copyright 2026 Aayush Chawla -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	import { theme, type Theme } from '$lib/stores/theme';
 	import { cardColors } from '$lib/stores/cardColors';

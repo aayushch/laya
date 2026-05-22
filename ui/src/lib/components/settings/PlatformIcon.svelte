@@ -1,3 +1,5 @@
+<!-- Copyright 2026 Aayush Chawla -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	let { platform, size = 24 }: { platform: string; size?: number } = $props();
 </script>

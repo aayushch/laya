@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """SMTP executor backend — generic email for non-Gmail/Outlook providers.
 
 This is the one execution path that runs inside the Laya process rather

@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Centralized search limit constants for chat tools and coherence pipeline."""
 
 # Chat tool limits (per-call max and default)

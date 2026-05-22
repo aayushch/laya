@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Budget REST API — monthly cost limits and workflow pause/resume."""
 
 from __future__ import annotations

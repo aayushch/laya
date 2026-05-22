@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Context association strictness presets.
 
 Maps named presets (strict / balanced / lenient) to concrete threshold

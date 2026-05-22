@@ -1,3 +1,5 @@
+<!-- Copyright 2026 Aayush Chawla -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	import { health, healthError } from '$lib/stores/health';
 	import { wsStatus } from '$lib/stores/websocket';

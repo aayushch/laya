@@ -1,3 +1,6 @@
+// Copyright 2026 Aayush Chawla
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Setup store — manages first-run environment setup state.
  *

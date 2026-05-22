@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """n8n webhook executor backend — primary execution layer for egress actions."""
 
 from __future__ import annotations

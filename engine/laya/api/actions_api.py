@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Actions REST API — execute approved actions via n8n."""
 
 from __future__ import annotations

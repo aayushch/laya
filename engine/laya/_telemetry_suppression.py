@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Suppress telemetry from bundled third-party dependencies.
 
 Laya's Terms guarantee that Laya itself does not emit telemetry and that it

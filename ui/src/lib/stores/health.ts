@@ -1,3 +1,6 @@
+// Copyright 2026 Aayush Chawla
+// SPDX-License-Identifier: Apache-2.0
+
 import { writable, derived } from 'svelte/store';
 import type { HealthResponse } from '$lib/api/types';
 import { getEngineUrl } from '$lib/config';

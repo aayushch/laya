@@ -1,3 +1,6 @@
+// Copyright 2026 Aayush Chawla
+// SPDX-License-Identifier: Apache-2.0
+
 //! n8n process lifecycle management.
 //!
 //! Manages n8n as a local Node.js process instead of a Docker container.

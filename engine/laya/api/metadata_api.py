@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Generic metadata key-value API.
 
 Stores arbitrary JSON values keyed by a consumer-defined string.

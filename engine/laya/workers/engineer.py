@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """ENGINEER Worker — builds coding agent task prompts for entity-level agent runs.
 
 The engineer worker no longer spawns agents directly. It builds a detailed

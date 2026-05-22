@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Automated n8n provisioning — owner account, API key, workflow import."""
 
 from __future__ import annotations

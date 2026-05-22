@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Audit log REST API — filterable, paginated audit log entries."""
 
 from __future__ import annotations

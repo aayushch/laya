@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """HR worker prompt template for drafting people/HR communications."""
 
 from __future__ import annotations

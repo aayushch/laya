@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Session manager for coding agent sessions.
 
 Tracks active sessions, handles lifecycle, persists state to SQLite.

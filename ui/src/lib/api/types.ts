@@ -1,3 +1,6 @@
+// Copyright 2026 Aayush Chawla
+// SPDX-License-Identifier: Apache-2.0
+
 /** Embedding backend info from health endpoint */
 export interface EmbeddingInfo {
 	backend: string;

@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for the HTTP/SSE MCP transport: scope filtering, bearer auth, and
 token management endpoints.
 

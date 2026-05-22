@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Settings-related tool implementations for Laya chat."""
 
 from __future__ import annotations

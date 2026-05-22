@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """OMNI pipeline — maintain a rolling cross-platform summary.
 
 Incremental updates append to the "recent" section without LLM calls.

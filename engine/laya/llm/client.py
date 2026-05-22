@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """LiteLLM wrapper with model selection, retries, and audit logging."""
 
 import asyncio

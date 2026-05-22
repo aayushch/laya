@@ -1,3 +1,5 @@
+<!-- Copyright 2026 Aayush Chawla -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	import { searchFocusSignal } from '$lib/stores/searchFocus';
 	import { glassTheme } from '$lib/stores/glassTheme';

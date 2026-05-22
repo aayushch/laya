@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Semantic context grouping — group cards about the same real-world context.
 
 Cards with different entity_ids (e.g. two Gmail threads) may still be about

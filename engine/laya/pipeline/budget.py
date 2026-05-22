@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Budget enforcement — monthly cost limits with automatic workflow pause/resume."""
 
 from __future__ import annotations

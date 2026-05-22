@@ -1,3 +1,5 @@
+<!-- Copyright 2026 Aayush Chawla -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	import type { TimelineSegment, TimelineEntry, OmniStats, Space } from '$lib/api/types';
 	import { glassTheme } from '$lib/stores/glassTheme';

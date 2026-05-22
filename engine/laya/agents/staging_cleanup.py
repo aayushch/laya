@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Background sweep for the agent-upload staging directory.
 
 Files uploaded via /upload-agent-file land in ~/.laya/tmp/agent-staging/ until

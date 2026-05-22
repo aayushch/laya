@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """INGEST pipeline step — resolve actor relationship from team.json."""
 
 from __future__ import annotations

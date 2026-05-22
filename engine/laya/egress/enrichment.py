@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Event-based payload enrichment — shared by execute and preview paths.
 
 This module turns a raw ``EgressRequest`` payload (as emitted by the stager

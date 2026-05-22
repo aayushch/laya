@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """COMMS worker prompt template for drafting communication replies."""
 
 from __future__ import annotations

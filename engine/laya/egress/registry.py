@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Platform capability registry — single source of truth for what each platform supports.
 
 Each entry here mirrors the action_types handled by the corresponding n8n

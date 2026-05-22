@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Pydantic models for action execution (Engine -> n8n forwarding)."""
 
 from __future__ import annotations

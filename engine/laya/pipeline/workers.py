@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Worker orchestration — dispatch and run workers based on Router output."""
 
 from __future__ import annotations

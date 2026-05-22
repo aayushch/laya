@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Classification learner — extracts rules from accumulated user corrections."""
 
 from __future__ import annotations

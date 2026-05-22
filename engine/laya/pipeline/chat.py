@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Chat processing pipeline — hybrid retrieval, RRF, context packing, tool loop, LLM response."""
 
 from __future__ import annotations

@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """ChromaDB embedded vector store for semantic memory."""
 
 from __future__ import annotations

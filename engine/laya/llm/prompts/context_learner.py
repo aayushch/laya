@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Context association learner prompt — extracts grouping rules from user link/unlink actions."""
 
 from __future__ import annotations

@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """EMIT pipeline step — persist action card to SQLite, ChromaDB, and broadcast."""
 
 import asyncio

@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Cross-platform async subprocess management for coding agent sessions.
 
 Uses asyncio.create_subprocess_exec with PIPE for stdout.

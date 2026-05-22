@@ -1,3 +1,5 @@
+<!-- Copyright 2026 Aayush Chawla -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	import type { ActionCard, WorkspaceEvent, WorkspaceSession } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';

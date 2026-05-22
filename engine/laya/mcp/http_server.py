@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """HTTP/SSE MCP server.
 
 Builds the MCP `Server` instance whose tools are filtered by the user's

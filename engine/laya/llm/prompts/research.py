@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Research prompt template for building agent task descriptions from card context."""
 
 from __future__ import annotations

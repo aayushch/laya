@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """LLM prompt for Trace relevance filtering — second-pass false-positive reduction."""
 
 from __future__ import annotations

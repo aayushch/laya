@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """LLM tool definitions for chat-driven egress.
 
 These tools are added to the chat pipeline so users can trigger platform

@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """SALES worker prompt template for drafting sales/customer communications."""
 
 from __future__ import annotations

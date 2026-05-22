@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Database migration runner. Reads numbered .sql files and applies them in order."""
 
 from pathlib import Path

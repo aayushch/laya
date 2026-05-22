@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Ingestion errors API — receives failure reports from n8n's shared Error Trigger workflow.
 
 n8n's "Laya - Error Handler" workflow is wired as `settings.errorWorkflow` on every

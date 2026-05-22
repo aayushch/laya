@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Computed placeholder helpers for preview summary templates.
 
 ``EgressCapability.summary_template`` strings are rendered against the

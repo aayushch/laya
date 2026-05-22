@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Parity test: registry.get_capabilities(platform) must match the action_types
 handled by n8n/workflows/<platform>-executor.json's Switch node.
 

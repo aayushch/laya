@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Sentence-boundary text chunking for embedding."""
 
 from __future__ import annotations

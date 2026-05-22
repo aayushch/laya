@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Build the MCP config that is passed to spawned CLI agents.
 
 Spawned Claude Code sessions connect to the **same** HTTP/SSE MCP endpoint

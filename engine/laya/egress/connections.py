@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Connection Broker — single pane of glass for all platform credentials.
 
 Users interact with Laya Settings only. The broker handles:

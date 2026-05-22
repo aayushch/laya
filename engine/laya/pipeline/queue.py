@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Database-backed event queue with concurrency control and retry logic.
 
 Events flow: queued → processing → completed | failed

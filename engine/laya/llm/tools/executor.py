@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Tool execution dispatcher — routes tool calls to implementations."""
 
 from __future__ import annotations

@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Summarizer prompt template — incrementally build a running daily summary."""
 
 from __future__ import annotations

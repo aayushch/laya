@@ -1,3 +1,5 @@
+<!-- Copyright 2026 Aayush Chawla -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	import TeamEditor from '$lib/components/settings/TeamEditor.svelte';
 	import RulesEditor from '$lib/components/settings/RulesEditor.svelte';

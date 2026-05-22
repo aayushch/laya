@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """FINANCE Worker — synthesize financial briefings from event content + memory context."""
 
 from __future__ import annotations

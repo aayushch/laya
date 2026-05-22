@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for platform connections API (n8n credential management)."""
 
 from unittest.mock import AsyncMock, patch

@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """ENGINEER worker prompt template for building coding agent task descriptions."""
 
 from __future__ import annotations

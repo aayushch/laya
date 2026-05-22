@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Entity-level context builder for agent sessions.
 
 Builds a CONTEXT.md file containing group summary, individual card details,

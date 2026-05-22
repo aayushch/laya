@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Custom model provider discovery and management (LMStudio, Ollama, OpenAI-compatible)."""
 
 from __future__ import annotations

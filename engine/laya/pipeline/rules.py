@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """RULES ENGINE pipeline step — evaluate event against filter rules."""
 
 from __future__ import annotations

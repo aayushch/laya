@@ -1,3 +1,5 @@
+<!-- Copyright 2026 Aayush Chawla -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { engineApi } from '$lib/api/engine';

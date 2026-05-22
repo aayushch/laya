@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Learner prompt — extracts classification rules from user correction patterns."""
 
 from __future__ import annotations

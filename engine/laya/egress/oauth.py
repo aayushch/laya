@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """OAuth proxy for Gmail and Microsoft 365.
 
 Handles the full OAuth dance so users never need to touch the n8n dashboard.

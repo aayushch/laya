@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for Omni resynthesis: event_threshold clamp, fetch cap, failure watermark."""
 
 from datetime import datetime, timedelta, timezone

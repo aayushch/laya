@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Prompt templates for entity group rolling summaries."""
 
 from __future__ import annotations

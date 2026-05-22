@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for Workers (ENGINEER, COMMS, OPS, SALES, HR, FINANCE) and orchestration."""
 
 import json

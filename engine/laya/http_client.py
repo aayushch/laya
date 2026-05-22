@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Shared httpx.AsyncClient for connection reuse across the engine.
 
 Instead of creating a new ``httpx.AsyncClient`` per request (which opens a

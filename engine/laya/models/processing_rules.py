@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Pydantic models for processing rules — automated event→action wiring."""
 
 from __future__ import annotations

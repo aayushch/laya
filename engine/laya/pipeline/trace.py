@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Trace pipeline — semantic cross-platform entity search.
 
 Three-phase search:

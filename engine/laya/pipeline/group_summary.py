@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Group summary pipeline — rolling LLM summaries for entity-id card groups."""
 
 from __future__ import annotations

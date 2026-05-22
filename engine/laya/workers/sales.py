@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """SALES Worker — draft customer/prospect communications using LLM + memory context."""
 
 from __future__ import annotations

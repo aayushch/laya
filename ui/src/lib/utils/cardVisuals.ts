@@ -1,3 +1,6 @@
+// Copyright 2026 Aayush Chawla
+// SPDX-License-Identifier: Apache-2.0
+
 // Shared visual helpers for feed cards: platform brand dots, actor avatars.
 
 const PLATFORM_DOT_COLORS: Record<string, string> = {

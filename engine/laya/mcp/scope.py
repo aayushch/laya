@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """MCP tool-scope filtering.
 
 The Settings → MCP UI exposes three toggles (read / write / egress). A tool is

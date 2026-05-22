@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Tracked asyncio task creation.
 
 All fire-and-forget background tasks should use ``create_task`` from this

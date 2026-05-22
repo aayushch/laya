@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """GET/PUT /rules — Event filter rules endpoints."""
 
 import structlog

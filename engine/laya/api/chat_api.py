@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Chat REST API — send messages, retrieve history, manage conversations."""
 
 from __future__ import annotations

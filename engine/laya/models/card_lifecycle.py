@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Centralized card status lifecycle — single source of truth for transitions."""
 
 from __future__ import annotations

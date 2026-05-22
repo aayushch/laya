@@ -1,3 +1,5 @@
+<!-- Copyright 2026 Aayush Chawla -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	import type { TraceListItem } from '$lib/api/types';
 	import { slide } from 'svelte/transition';

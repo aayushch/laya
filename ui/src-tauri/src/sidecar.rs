@@ -1,3 +1,6 @@
+// Copyright 2026 Aayush Chawla
+// SPDX-License-Identifier: Apache-2.0
+
 //! Python environment and engine lifecycle management.
 //!
 //! In development: spawns `python -m laya.main` from the engine's dev venv.

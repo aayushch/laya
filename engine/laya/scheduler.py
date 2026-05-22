@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Briefing scheduler and housekeeping — asyncio loop that runs every 60 seconds."""
 
 from __future__ import annotations

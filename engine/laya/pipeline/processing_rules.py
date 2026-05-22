@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Processing rules engine — evaluates post-emit rules and executes actions."""
 
 from __future__ import annotations

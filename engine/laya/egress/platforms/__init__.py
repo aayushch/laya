@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Per-platform helper modules for egress payload handling.
 
 Each module exposes three functions used by ``laya.egress.backends.n8n``:

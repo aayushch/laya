@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Platform credential registry for n8n integrations."""
 
 from __future__ import annotations

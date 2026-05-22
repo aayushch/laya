@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Connection health monitor — periodic validation and OAuth token refresh.
 
 Runs as a background task to:

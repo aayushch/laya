@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Async SQLite connection management via aiosqlite."""
 
 import aiosqlite

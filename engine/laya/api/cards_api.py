@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Cards REST API — list, detail, approve, dismiss action cards."""
 
 from __future__ import annotations

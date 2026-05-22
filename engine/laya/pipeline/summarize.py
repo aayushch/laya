@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """SUMMARIZE pipeline step — maintain a running daily summary of processed cards, per space."""
 
 import asyncio

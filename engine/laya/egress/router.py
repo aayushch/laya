@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Egress router — resolves the best backend for each request and dispatches."""
 
 from __future__ import annotations

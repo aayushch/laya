@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Entity Resolution Layers 2 & 3 — semantic matching + LLM confirmation."""
 
 import json

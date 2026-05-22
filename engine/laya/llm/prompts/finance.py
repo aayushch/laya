@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """FINANCE worker prompt template for financial briefings and synthesis."""
 
 from __future__ import annotations

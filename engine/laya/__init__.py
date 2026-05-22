@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Laya engine package.
 
 Import `_telemetry_suppression` first — it sets env vars to disable telemetry

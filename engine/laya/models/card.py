@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Pydantic models for Action Cards (Stager output + API responses)."""
 
 from __future__ import annotations

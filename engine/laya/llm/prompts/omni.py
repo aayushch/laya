@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Omni prompt templates — rolling cross-platform summary synthesis."""
 
 from __future__ import annotations

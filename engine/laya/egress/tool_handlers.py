@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Execution handlers for egress chat tools.
 
 These handlers are called by the chat tool loop when the LLM invokes

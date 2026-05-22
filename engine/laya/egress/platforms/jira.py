@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Jira-specific payload normalization, validation, and event-derived identifiers."""
 
 from __future__ import annotations

@@ -1,3 +1,6 @@
+# Copyright 2026 Aayush Chawla
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for the MCP callback wiring in spawned CLI agents.
 
 The in-app Claude Code spawner connects to the same HTTP/SSE MCP endpoint
