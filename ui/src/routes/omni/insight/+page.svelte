@@ -6,7 +6,7 @@
 	import { onMount, untrack } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
 	import type { ActionCard } from '$lib/api/types';
-	import { marked } from 'marked';
+	import MarkdownRender from '$lib/components/MarkdownRender.svelte';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { lastMessage } from '$lib/stores/websocket';
 	import { chatOpen, chatCardContext, chatCardIds, chatListOpen } from '$lib/stores/chat';
@@ -476,9 +476,10 @@
 							{:else if card.staged_output.type === 'draft_reply' && draftAction}
 								{@render draftPreview(draftAction)}
 							{:else}
-								<div class="prose-plan overflow-y-auto overflow-x-auto rounded-lg p-4 text-laya-base text-surface-200 {$glassTheme ? 'omni-glass-panel' : 'border border-surface-700 bg-surface-900/50'}">
-									{@html marked(card.staged_output.content)}
-								</div>
+								<MarkdownRender
+									content={card.staged_output.content}
+									class="overflow-y-auto overflow-x-auto rounded-lg p-4 text-laya-base text-surface-200 {$glassTheme ? 'omni-glass-panel' : 'border border-surface-700 bg-surface-900/50'}"
+								/>
 							{/if}
 						</div>
 					{/if}

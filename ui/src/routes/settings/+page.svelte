@@ -15,14 +15,15 @@
 	import DataConfig from '$lib/components/settings/DataConfig.svelte';
 	import BriefingConfig from '$lib/components/settings/BriefingConfig.svelte';
 	import MCPConfig from '$lib/components/settings/MCPConfig.svelte';
+	import AboutConfig from '$lib/components/settings/AboutConfig.svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { fade } from 'svelte/transition';
 
-	type TabId = 'team' | 'rules' | 'models' | 'repos' | 'agent' | 'integrations' | 'spaces' | 'scheduling' | 'mcp' | 'audit' | 'appearance' | 'keybindings' | 'data';
-	const validTabs = new Set<string>(['team', 'rules', 'models', 'repos', 'agent', 'integrations', 'spaces', 'scheduling', 'mcp', 'audit', 'appearance', 'keybindings', 'data']);
+	type TabId = 'team' | 'rules' | 'models' | 'repos' | 'agent' | 'integrations' | 'spaces' | 'scheduling' | 'mcp' | 'audit' | 'appearance' | 'keybindings' | 'data' | 'about';
+	const validTabs = new Set<string>(['team', 'rules', 'models', 'repos', 'agent', 'integrations', 'spaces', 'scheduling', 'mcp', 'audit', 'appearance', 'keybindings', 'data', 'about']);
 	const SETTINGS_TAB_KEY = 'laya-settings-tab';
 	let activeTab = $state<TabId>('team');
 
@@ -71,7 +72,8 @@
 		{ id: 'audit',        label: 'Audit' },
 		{ id: 'appearance',   label: 'Appearance' },
 		{ id: 'keybindings',  label: 'Keys' },
-		{ id: 'data',         label: 'Data' }
+		{ id: 'data',         label: 'Data' },
+		{ id: 'about',        label: 'About' }
 	];
 
 	let exporting = $state(false);
@@ -148,6 +150,8 @@
 		<KeybindingsConfig />
 	{:else if activeTab === 'data'}
 		<DataConfig />
+	{:else if activeTab === 'about'}
+		<AboutConfig />
 	{:else}
 		<AuditLogViewer />
 	{/if}

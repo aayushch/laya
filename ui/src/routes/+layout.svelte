@@ -34,7 +34,7 @@
 	import RunAgentModal from '$lib/components/agent/RunAgentModal.svelte';
 	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
 	import Titlebar from '$lib/components/Titlebar.svelte';
-	import { checkForUpdate } from '$lib/stores/updater';
+	import { startPeriodicCheck, stopPeriodicCheck } from '$lib/stores/updater';
 	import { onMount } from 'svelte';
 
 	function formatDateLabel(dateStr: string): string {
@@ -219,11 +219,12 @@
 		loadBudgetStatus();
 	});
 
-	// Check for app updates after startup
+	// Check for app updates after startup, then re-check periodically while
+	// the app stays open (every 2 hours — see updater store for rationale).
 	$effect(() => {
 		if (!$startupReady) return;
-		const timer = setTimeout(checkForUpdate, 5000);
-		return () => clearTimeout(timer);
+		startPeriodicCheck(5000);
+		return () => stopPeriodicCheck();
 	});
 
 	// React to budget WebSocket messages

@@ -6,8 +6,7 @@
 	import { sendMessage } from '$lib/stores/websocket';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { tick } from 'svelte';
-	import { marked } from 'marked';
-	import DOMPurify from 'dompurify';
+	import MarkdownRender from '$lib/components/MarkdownRender.svelte';
 
 	let {
 		card,
@@ -504,7 +503,10 @@
 						{:else if event.event_type === 'approval_request'}
 							<!-- Regular approval request -->
 							<div class="mb-2 text-xs text-yellow-300 font-medium">Approval Required</div>
-							<div class="prose-plan break-words text-xs">{@html DOMPurify.sanitize(marked(String(event.content.description ?? event.content.message ?? JSON.stringify(event.content))) as string)}</div>
+							<MarkdownRender
+								content={String(event.content.description ?? event.content.message ?? JSON.stringify(event.content))}
+								class="break-words text-xs"
+							/>
 							{#if showDenyInput !== event.event_id}
 								<div class="mt-2 flex gap-2">
 									<button
@@ -541,11 +543,15 @@
 							<div class="mb-1 flex items-center gap-2">
 								<span class="text-xs font-medium text-laya-gold">Implementation Plan</span>
 							</div>
-							<div class="prose-plan break-words text-xs">
-								{@html DOMPurify.sanitize(marked(getPlanText(event)) as string)}
-							</div>
+							<MarkdownRender
+								content={getPlanText(event)}
+								class="break-words text-xs"
+							/>
 						{:else}
-							<div class="prose-plan break-words text-xs">{@html DOMPurify.sanitize(marked(String(event.content.text ?? event.content.message ?? JSON.stringify(event.content))) as string)}</div>
+							<MarkdownRender
+								content={String(event.content.text ?? event.content.message ?? JSON.stringify(event.content))}
+								class="break-words text-xs"
+							/>
 						{/if}
 
 						<p class="mt-1 text-[10px] text-surface-500">

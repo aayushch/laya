@@ -9,7 +9,7 @@
 //! Python source in `Contents/Resources/engine/`.
 
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
@@ -195,9 +195,26 @@ fn sanitize_python_cmd(cmd: &mut Command) {
 
 // ── Python detection ────────────────────────────────────────────────────
 
-/// Find a Python 3.10+ interpreter on the system.
-/// Returns (path, version_string).
+/// Find a Python 3.10+ interpreter, preferring Laya's managed install at
+/// `~/.laya/python/` (if present) over whatever the user has on `PATH`.
+///
+/// The managed install is pinned to a known-good version that has been
+/// tested against Laya's requirements, so picking it first avoids surprise
+/// behavior changes when the user upgrades their system Python.
 pub fn find_python() -> Result<(PathBuf, String), String> {
+    if let Some(managed) = crate::runtime::managed_python() {
+        if let Some(ver) = probe_python_version(&managed) {
+            return Ok((managed, ver));
+        }
+    }
+    find_python_system()
+}
+
+/// Search the system for a Python 3.10+ interpreter, ignoring any managed
+/// install in `~/.laya/python/`.  Used by the runtime provisioner to decide
+/// whether a download is necessary; the regular `find_python()` entry point
+/// is what the rest of the codebase should call.
+pub fn find_python_system() -> Result<(PathBuf, String), String> {
     let candidates: Vec<&str> = if cfg!(target_os = "windows") {
         vec!["python3.13", "python3.12", "python3.11", "python3.10", "python3", "python", "py"]
     } else {
@@ -254,6 +271,32 @@ pub fn find_python() -> Result<(PathBuf, String), String> {
     }
 
     Err("Python 3.10+ not found. Please install Python 3.13 or newer.".to_string())
+}
+
+/// Probe a specific interpreter and return its version string if it runs
+/// successfully and reports Python 3.10+.
+fn probe_python_version(path: &Path) -> Option<String> {
+    let mut cmd = Command::new(path);
+    cmd.args(["--version"]);
+    no_window(&mut cmd);
+    sanitize_python_cmd(&mut cmd);
+    let output = cmd.output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let ver = raw.strip_prefix("Python ")?;
+    let parts: Vec<&str> = ver.split('.').collect();
+    if parts.len() < 2 {
+        return None;
+    }
+    let major: u32 = parts[0].parse().ok()?;
+    let minor: u32 = parts[1].parse().ok()?;
+    if major == 3 && minor >= 10 {
+        Some(ver.to_string())
+    } else {
+        None
+    }
 }
 
 /// Resolve a bare command name to its absolute path using the `which` crate.

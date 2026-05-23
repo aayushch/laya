@@ -30,6 +30,10 @@ tokio = { version = "1", features = ["time", "process"] }
 tauri-plugin-decorum = "1.1.1"
 tauri-plugin-os = "2.3.2"
 which = "6"
+flate2 = "1"
+tar = "0.4"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+sha2 = "0.10"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

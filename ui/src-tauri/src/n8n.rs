@@ -8,7 +8,7 @@
 //! in ~/.laya/n8n/.
 
 use std::io::BufRead;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -107,14 +107,54 @@ fn which(name: &str) -> Option<PathBuf> {
     ::which::which(name).ok()
 }
 
-/// Find a Node.js 22+ installation, preferring the highest version.
-/// Returns (absolute_path, version_string).
+/// Find a Node.js 22+ installation, preferring Laya's managed install at
+/// `~/.laya/node/` (if present) over whatever the user has on `PATH`.
+///
+/// The managed install is pinned to a known-good LTS, so picking it first
+/// avoids surprise behavior changes when the user upgrades their system
+/// Node.  When no managed install exists this falls back to the same
+/// system search that has always lived here.
+pub fn find_node() -> Result<(String, String), String> {
+    if let Some(managed) = crate::runtime::managed_node() {
+        if let Some(version) = probe_node_version(&managed) {
+            return Ok((managed.to_string_lossy().to_string(), version));
+        }
+    }
+    find_node_system()
+}
+
+/// Probe a specific Node binary; returns its `node --version` output (e.g.
+/// `v22.12.0`) when it runs successfully and reports major >= 22.
+fn probe_node_version(path: &Path) -> Option<String> {
+    let mut cmd = Command::new(path);
+    no_window(&mut cmd);
+    cmd.arg("--version")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    sanitize_node_cmd(&mut cmd);
+    let output = cmd.output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let ver_body = raw.strip_prefix('v')?;
+    let major: u32 = ver_body.split('.').next()?.parse().ok()?;
+    if major >= 22 {
+        Some(raw)
+    } else {
+        None
+    }
+}
+
+/// Search the system for Node.js 22+, ignoring any managed install in
+/// `~/.laya/node/`.  Used by the runtime provisioner to decide whether a
+/// download is necessary; everything else should call `find_node()`.
 ///
 /// When multiple Node.js installations exist (e.g. distro `/usr/bin/node`
 /// v20 and user-installed `/usr/local/bin/node` v24), the old logic
 /// returned whichever came first in the candidate list. Now we probe
 /// all candidates and pick the newest one that meets the minimum version.
-pub fn find_node() -> Result<(String, String), String> {
+pub fn find_node_system() -> Result<(String, String), String> {
     let mut candidates: Vec<PathBuf> = vec![PathBuf::from("node")];
     if !cfg!(target_os = "windows") {
         for dir in NODE_SEARCH_DIRS {

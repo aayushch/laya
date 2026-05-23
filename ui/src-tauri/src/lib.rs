@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 mod n8n;
+mod runtime;
 mod sidecar;
 
 /// On Windows, attach CREATE_NO_WINDOW so spawned child processes do not
@@ -195,11 +196,47 @@ fn setup_environment(app: tauri::AppHandle) {
             });
         };
 
-        // ── Step 1: Preflight checks ────────────────────────────────
-        // Fail fast if required runtimes are missing, before spending
-        // minutes on pip install only to fail at the n8n step.
-        emit("preflight", "running", "Checking for Python...");
+        // ── Step 1: Ensure runtimes (auto-download if missing) ─────
+        // Detect system Python/Node first.  If either is missing, download
+        // a managed copy into ~/.laya/{python,node}/ so the user doesn't
+        // have to install runtimes by hand.  See runtime.rs for details.
+        emit("preflight", "running", "Checking runtimes...");
 
+        let app_for_progress = app.clone();
+        let ensure_result = runtime::ensure_runtimes(|p| {
+            let msg = match p {
+                runtime::RuntimeProgress::Phase(s) => s,
+                runtime::RuntimeProgress::Bytes { downloaded, total } => match total {
+                    Some(t) if t > 0 => format!(
+                        "Downloaded {} MB / {} MB",
+                        downloaded / 1_048_576,
+                        t / 1_048_576
+                    ),
+                    _ => format!("Downloaded {} MB", downloaded / 1_048_576),
+                },
+                runtime::RuntimeProgress::Done(s) => s,
+            };
+            let _ = app_for_progress.emit("setup-progress", SetupEvent {
+                step: "preflight",
+                status: "running",
+                message: msg,
+            });
+        });
+
+        if let Err(e) = ensure_result {
+            emit("preflight", "error", &format!("Runtime provisioning failed: {e}"));
+            return;
+        }
+
+        // Re-check after the (potentially long) download so we don't keep
+        // working through a shutdown.
+        if APP_EXITING.load(Ordering::Relaxed) {
+            log::info!("App is exiting, aborting setup");
+            return;
+        }
+
+        // Now resolve the actual interpreter paths — these will pick up the
+        // managed install we may have just provisioned.
         let python_path = match sidecar::find_python() {
             Ok((path, ver)) => {
                 emit("preflight", "running", &format!("Python {} found. Checking for Node.js...", ver));
@@ -213,7 +250,7 @@ fn setup_environment(app: tauri::AppHandle) {
 
         match n8n::find_node() {
             Ok((_, ver)) => {
-                emit("preflight", "done", &format!("Python and Node.js {} found", ver));
+                emit("preflight", "done", &format!("Python and Node.js {} ready", ver));
             }
             Err(e) => {
                 emit("preflight", "error", &format!("Node.js 22+ is required. {}", e));

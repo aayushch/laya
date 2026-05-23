@@ -8,8 +8,7 @@
 	import { chatOpen, chatCardContext, chatCardIds, chatListOpen } from '$lib/stores/chat';
 	import { buildSingleCardContext } from '$lib/utils/cardContext';
 	import { lastMessage } from '$lib/stores/websocket';
-	import { marked } from 'marked';
-	import DOMPurify from 'dompurify';
+	import MarkdownRender from '$lib/components/MarkdownRender.svelte';
 	import ClassificationDialog from './ClassificationDialog.svelte';
 	import PlatformBadge from '$lib/components/PlatformBadge.svelte';
 	import { glassTheme } from '$lib/stores/glassTheme';
@@ -765,13 +764,15 @@
 				{#if card.staged_output.type === 'code_fix'}
 					<pre class="overflow-x-auto rounded-lg bg-surface-900 p-3 text-laya-secondary text-surface-200">{card.staged_output.content}</pre>
 				{:else if card.staged_output.type === 'agent_plan'}
-					<div class="prose-plan max-h-96 overflow-y-auto rounded-lg border border-surface-700 bg-surface-900/50 p-4 text-laya-base text-surface-200">
-						{@html DOMPurify.sanitize(marked(card.staged_output.content) as string)}
-					</div>
+					<MarkdownRender
+						content={card.staged_output.content}
+						class="max-h-96 overflow-y-auto rounded-lg border border-surface-700 bg-surface-900/50 p-4 text-laya-base text-surface-200"
+					/>
 				{:else}
-					<div class="prose-plan max-h-96 overflow-y-auto overflow-x-auto rounded-lg border border-surface-700 bg-surface-900/50 p-4 text-laya-base text-surface-200">
-						{@html DOMPurify.sanitize(marked(card.staged_output.content) as string)}
-					</div>
+					<MarkdownRender
+						content={card.staged_output.content}
+						class="max-h-96 overflow-y-auto overflow-x-auto rounded-lg border border-surface-700 bg-surface-900/50 p-4 text-laya-base text-surface-200"
+					/>
 				{/if}
 			</div>
 		{/if}

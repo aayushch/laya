@@ -31,7 +31,7 @@ export const needsSetup = writable<boolean | null>(null);
 
 /** Current setup steps with their progress. */
 export const setupSteps = writable<SetupStep[]>([
-	{ id: 'preflight', label: 'Preflight checks', status: 'waiting', message: 'Checking prerequisites...' },
+	{ id: 'preflight', label: 'Preparing runtimes', status: 'waiting', message: 'Checking prerequisites...' },
 	{ id: 'environment', label: 'Setting up environment', status: 'waiting', message: 'Creating virtual environment...' },
 	{ id: 'deps', label: 'Installing dependencies', status: 'waiting', message: 'Installing packages...' },
 	{ id: 'automation', label: 'Setting up automation', status: 'waiting', message: 'Installing n8n...' },

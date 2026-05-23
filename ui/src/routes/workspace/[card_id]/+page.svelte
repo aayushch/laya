@@ -119,24 +119,26 @@
 				const payload = msg.payload;
 				if (payload.status) {
 					if (card) card.status = payload.status as ActionCard['status'];
-					// Agent just started — reload to get session info
-					if (payload.status === 'agent_running') loadWorkspace();
+					// Agent just started — refresh to get session info.
+					// pollWorkspace (not loadWorkspace) so we don't flip the
+					// route-level `loading` flag and unmount the whole panel.
+					if (payload.status === 'agent_running') pollWorkspace();
 				}
 				break;
 			}
 
 			case 'approval_request': {
-				loadWorkspace();
+				pollWorkspace();
 				break;
 			}
 
 			case 'agent_error': {
-				loadWorkspace();
+				pollWorkspace();
 				break;
 			}
 
 			case 'agent_completed': {
-				loadWorkspace();
+				pollWorkspace();
 				break;
 			}
 
