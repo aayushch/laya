@@ -39,10 +39,15 @@
 		(session?.permission_mode as 'plan' | 'acceptEdits') || 'plan'
 	);
 
-	// Sync agentMode when session changes (e.g. after poll refresh updates permission_mode)
+	// Sync agentMode when the DB value actually changes (not on every poll cycle).
+	// Without tracking lastSyncedMode, each 5s poll replaces the session object
+	// and overwrites the user's local toggle before they can send a message.
+	let lastSyncedMode = $state<string | null>(null);
+
 	$effect(() => {
 		const mode = session?.permission_mode;
-		if (mode) {
+		if (mode && mode !== lastSyncedMode) {
+			lastSyncedMode = mode;
 			agentMode = mode as 'plan' | 'acceptEdits';
 		}
 	});
