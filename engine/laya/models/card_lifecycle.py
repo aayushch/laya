@@ -21,7 +21,7 @@ VALID_STATUS_TRANSITIONS: dict[str, set[str]] = {
     "agent_running":     {"ready", "done", "failed", "dismissed", "awaiting_input", "executing"},
     "awaiting_input":    {"ready", "done", "dismissed", "agent_running"},
     "executing":         {"done", "failed"},
-    "done":              {"archived"},
+    "done":              {"archived", "agent_running"},  # agent_running: user resumed a completed workspace session with a new prompt
     "failed":            {"ready", "dismissed", "archived", "executing"},
     "dismissed":         {"ready", "archived"},
     "archived":          set(),

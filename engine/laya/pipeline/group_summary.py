@@ -117,6 +117,18 @@ async def _run_group_summary(
         else:
             await _initial_generation(db, entity_id, space_id)
 
+        # Refresh CONTEXT.md if this entity already has one (i.e. user has
+        # previously started an agent session on it). Keeps the file fresh
+        # so the agent has up-to-date info on the next resume — avoids the
+        # case where a card arrives after a session completed and the user
+        # has to manually re-explain context. Skips when no CONTEXT.md
+        # exists, so first-card entities pay nothing.
+        try:
+            from laya.agents.entity_context import refresh_entity_context_if_exists
+            await refresh_entity_context_if_exists(entity_id, space_id)
+        except Exception:
+            log.exception("entity_context_refresh_failed", entity_id=entity_id)
+
     except Exception:
         log.exception(
             "group_summary_failed", entity_id=entity_id, card_ids=new_card_ids

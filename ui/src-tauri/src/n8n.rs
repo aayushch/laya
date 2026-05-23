@@ -629,7 +629,17 @@ pub enum N8nStartResult {
 pub fn startup_n8n() -> N8nStartResult {
     // 1. Already running? (check HTTP health)
     if is_n8n_running() {
-        return N8nStartResult::AlreadyRunning;
+        // If we hold a handle, we spawned it — reuse. Otherwise it's a
+        // stale orphan from a previous session (e.g. dev-mode exit that
+        // didn't fire RunEvent::Exit). Kill it and respawn so the new
+        // process gets the correct environment variables.
+        let we_own_it = N8N_PROCESS.lock().map(|g| g.is_some()).unwrap_or(false);
+        if we_own_it {
+            return N8nStartResult::AlreadyRunning;
+        }
+        log::warn!("Orphaned n8n on port {} — killing and respawning", N8N_PORT);
+        crate::kill_process_on_port(N8N_PORT);
+        std::thread::sleep(Duration::from_secs(1));
     }
 
     // 2. Node.js available?
@@ -698,7 +708,7 @@ fn spawn_n8n() -> Result<Child, String> {
         )
         .env("N8N_SECURE_COOKIE", "false")
         .env("N8N_PUBLIC_API_DISABLED", "false")
-        .env("N8N_RUNNERS_DISABLED", "true")
+        .env("N8N_RUNNERS_ENABLED", "false")
         // Disable all of n8n's upstream network chatter (diagnostics,
         // version-check pings, personalization survey, hiring banner,
         // frontend hooks, template gallery). Laya's Terms §9 commits to a

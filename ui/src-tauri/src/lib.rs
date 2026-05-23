@@ -432,9 +432,10 @@ fn start_health_polling(tray: TrayIcon) {
 }
 
 /// Best-effort kill of any process listening on the given TCP port.
-/// Used as a safety net during shutdown to catch orphaned engine processes.
+/// Used as a safety net during shutdown to catch orphaned engine processes,
+/// and by n8n startup to reclaim the port from stale instances.
 #[cfg(unix)]
-fn kill_process_on_port(port: u16) {
+pub(crate) fn kill_process_on_port(port: u16) {
     if let Ok(output) = std::process::Command::new("lsof")
         .args(["-ti", &format!("tcp:{}", port)])
         .output()
@@ -452,7 +453,7 @@ fn kill_process_on_port(port: u16) {
 }
 
 #[cfg(windows)]
-fn kill_process_on_port(port: u16) {
+pub(crate) fn kill_process_on_port(port: u16) {
     let mut netstat = std::process::Command::new("netstat");
     no_window(&mut netstat);
     if let Ok(output) = netstat.args(["-ano", "-p", "tcp"]).output() {

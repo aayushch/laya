@@ -188,6 +188,26 @@ async def write_entity_context_file(
     return context_path
 
 
+async def refresh_entity_context_if_exists(
+    entity_id: str,
+    space_id: str | None = None,
+) -> bool:
+    """Refresh CONTEXT.md only if it already exists for this entity.
+
+    Used by the post-emit pipeline so that when a new card arrives for an
+    entity that already has a workspace (CONTEXT.md was previously written
+    by run-agent), the agent gets up-to-date info on its next resume
+    without requiring the user to re-explain what changed.
+
+    Returns True if the file was refreshed, False if it didn't exist.
+    """
+    context_path = LAYA_HOME / "tmp" / "research" / sanitize_entity_id(entity_id) / "CONTEXT.md"
+    if not context_path.exists():
+        return False
+    await write_entity_context_file(entity_id, space_id)
+    return True
+
+
 def build_entity_agent_prompt(
     entity_id: str,
     research_dir: str,

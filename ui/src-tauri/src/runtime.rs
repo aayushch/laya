@@ -32,17 +32,22 @@ use sha2::{Digest, Sha256};
 //
 // These pins determine which prebuilt archive Laya downloads.  Update them
 // in lock-step with Laya releases; mismatched pins surface as an HTTP 404
-// at download time.  Both archives are < 35 MB compressed.
+// at download time.  Both archives are < 50 MB compressed.
+//
+// PYTHON_VERSION must exist within PBS_RELEASE_TAG — each indygreg tag
+// rebuilds every supported CPython version, so the (tag, version) pair
+// must match what is actually published.
 
 /// CPython version shipped by python-build-standalone (Astral/indygreg).
-const PYTHON_VERSION: &str = "3.12.8";
+const PYTHON_VERSION: &str = "3.12.13";
 
 /// indygreg release tag that contains the above CPython version.
-/// Releases are dated YYYYMMDD; see https://github.com/astral-sh/python-build-standalone/releases
-const PBS_RELEASE_TAG: &str = "20241016";
+/// Releases are dated YYYYMMDD; see
+/// https://github.com/astral-sh/python-build-standalone/releases
+const PBS_RELEASE_TAG: &str = "20260510";
 
 /// Node.js LTS version from nodejs.org/dist.
-const NODE_VERSION: &str = "22.12.0";
+const NODE_VERSION: &str = "22.22.3";
 
 // ── Path helpers ────────────────────────────────────────────────────────
 
@@ -179,7 +184,6 @@ fn managed_node_version_matches() -> bool {
 
 fn provision_python<F: FnMut(RuntimeProgress)>(on_progress: &mut F) -> Result<(), String> {
     let url = python_download_url()?;
-    let sha_url = format!("{}.sha256", url);
     let filename = url
         .rsplit('/')
         .next()
@@ -197,7 +201,7 @@ fn provision_python<F: FnMut(RuntimeProgress)>(on_progress: &mut F) -> Result<()
     download_with_retry(&url, &archive, on_progress)?;
 
     on_progress(RuntimeProgress::Phase("Verifying Python checksum".to_string()));
-    let expected = fetch_python_sha256(&sha_url)?;
+    let expected = fetch_python_sha256(&filename)?;
     verify_sha256(&archive, &expected).inspect_err(|_| {
         let _ = fs::remove_file(&archive);
     })?;
@@ -246,9 +250,12 @@ fn python_target_triple() -> Result<&'static str, String> {
         ("macos", "x86_64") => Ok("x86_64-apple-darwin"),
         ("linux", "x86_64") => Ok("x86_64-unknown-linux-gnu"),
         ("linux", "aarch64") => Ok("aarch64-unknown-linux-gnu"),
-        // Windows: the "install_only" flavour links against python3.dll and
-        // contains a usable `python.exe` + venv + pip out of the box.
-        ("windows", "x86_64") => Ok("x86_64-pc-windows-msvc-shared"),
+        // Windows: only the bare `x86_64-pc-windows-msvc` triple is published
+        // for the install_only flavour in recent releases.  An earlier
+        // `-shared-install_only` variant existed in older 2024 releases but
+        // was dropped — using it now yields a 404 (Issue #4 regression).
+        ("windows", "x86_64") => Ok("x86_64-pc-windows-msvc"),
+        ("windows", "aarch64") => Ok("aarch64-pc-windows-msvc"),
         (os, arch) => Err(format!(
             "Unsupported platform for managed Python: {}/{}",
             os, arch
@@ -256,21 +263,19 @@ fn python_target_triple() -> Result<&'static str, String> {
     }
 }
 
-/// python-build-standalone publishes a `<archive>.sha256` sidecar file
-/// containing the SHA-256 of the archive in hex.  Format is either bare
-/// `<hex>` or `<hex>  <filename>` (older releases).
-fn fetch_python_sha256(sha_url: &str) -> Result<String, String> {
-    let text = fetch_text(sha_url)?;
-    let line = text.lines().next().unwrap_or("").trim();
-    let hex = line.split_whitespace().next().unwrap_or("");
-    if hex.len() == 64 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
-        Ok(hex.to_lowercase())
-    } else {
-        Err(format!(
-            "Could not parse SHA-256 from {} (got: {:?})",
-            sha_url, line
-        ))
-    }
+/// python-build-standalone publishes a single `SHA256SUMS` file per release
+/// (since ~2025) — same format as Node's `SHASUMS256.txt`: one
+/// `<hex>  <filename>` line per published artifact.  Older releases shipped
+/// per-archive `<archive>.sha256` sidecars; we don't try to support those
+/// because the pinned tag controls which format is in play.
+fn fetch_python_sha256(filename: &str) -> Result<String, String> {
+    let url = format!(
+        "https://github.com/astral-sh/python-build-standalone/releases/download/{}/SHA256SUMS",
+        PBS_RELEASE_TAG
+    );
+    let text = fetch_text(&url)?;
+    lookup_sha256(&text, filename)
+        .ok_or_else(|| format!("SHA-256 for {} not found in {}", filename, url))
 }
 
 // ── Provisioning: Node ──────────────────────────────────────────────────
@@ -357,18 +362,24 @@ fn node_filename() -> Result<String, String> {
 fn fetch_node_sha256(filename: &str) -> Result<String, String> {
     let url = format!("https://nodejs.org/dist/v{}/SHASUMS256.txt", NODE_VERSION);
     let text = fetch_text(&url)?;
+    lookup_sha256(&text, filename)
+        .ok_or_else(|| format!("SHA-256 for {} not found in {}", filename, url))
+}
+
+/// Parse a `<hex>  <filename>` index (BSD `shasum -a 256` style — also what
+/// nodejs.org and python-build-standalone publish) and return the lowercased
+/// hex digest for `filename`.
+fn lookup_sha256(text: &str, filename: &str) -> Option<String> {
     for line in text.lines() {
         let mut parts = line.split_whitespace();
-        if let (Some(hex), Some(name)) = (parts.next(), parts.next()) {
-            if name == filename && hex.len() == 64 {
-                return Ok(hex.to_lowercase());
+        match (parts.next(), parts.next()) {
+            (Some(hex), Some(name)) if name == filename && hex.len() == 64 => {
+                return Some(hex.to_lowercase());
             }
+            _ => continue,
         }
     }
-    Err(format!(
-        "SHA-256 for {} not found in {}",
-        filename, url
-    ))
+    None
 }
 
 // ── Download / verify / extract ─────────────────────────────────────────
