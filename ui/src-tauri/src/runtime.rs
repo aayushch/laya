@@ -494,10 +494,19 @@ fn provision_uv<F: FnMut(RuntimeProgress)>(on_progress: &mut F) -> Result<(), St
         extract_tar_gz(&archive, &staging)?;
     }
 
-    // uv archives extract into a directory like `uv-aarch64-apple-darwin/`
-    // containing the uv (and uvx) binary.  We install just the directory.
-    let extracted = find_only_subdir(&staging)?;
-    install_atomically(&extracted, &uv_dir())?;
+    // uv archive layouts differ by platform:
+    //   - Unix tar.gz wraps the binaries in a single `uv-<triple>/` dir
+    //     (uv, uvx), so we install that subdir.
+    //   - Windows zip extracts the binaries (uv.exe, uvw.exe, uvx.exe)
+    //     directly at the archive root with no wrapping dir, so the staging
+    //     dir itself is what we install.
+    let uv_bin = if cfg!(target_os = "windows") { "uv.exe" } else { "uv" };
+    let install_src = if staging.join(uv_bin).exists() {
+        staging.clone()
+    } else {
+        find_only_subdir(&staging)?
+    };
+    install_atomically(&install_src, &uv_dir())?;
 
     let _ = fs::remove_dir_all(&staging);
     let _ = fs::remove_file(&archive);
