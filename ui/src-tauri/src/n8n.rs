@@ -7,7 +7,7 @@
 //! n8n is installed via npm into ~/.laya/n8n_module/ and stores its data
 //! in ~/.laya/n8n/.
 
-use std::io::BufRead;
+use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Mutex, OnceLock};
@@ -372,6 +372,14 @@ pub fn install_n8n<F: FnMut(&str)>(mut on_line: F) -> Result<(), String> {
     std::fs::create_dir_all(n8n_data_dir())
         .map_err(|e| format!("Failed to create n8n data directory: {e}"))?;
 
+    // Start a fresh install log for this setup run. run_npm_install and
+    // rebuild_native_addon append to it; truncating here means each run starts
+    // clean while both install attempts (1 = native, 2 = --ignore-scripts) are
+    // preserved within the run for debugging.
+    let log_dir = laya_home().join("logs");
+    std::fs::create_dir_all(&log_dir).ok();
+    let _ = std::fs::File::create(n8n_install_log_path());
+
     let path = augmented_path();
 
     // Resolve a Python with setuptools for node-gyp (distutils shim).
@@ -518,6 +526,14 @@ fn rebuild_native_addon<F: FnMut(&str)>(
 
     match cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output() {
         Ok(output) => {
+            // Append the rebuild output to the install log to complete the trace.
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true).append(true).open(n8n_install_log_path())
+            {
+                let _ = writeln!(f, "\n=== npm rebuild {} ===", package);
+                let _ = f.write_all(&output.stdout);
+                let _ = f.write_all(&output.stderr);
+            }
             if output.status.success() {
                 log::info!("Rebuilt {} successfully", package);
                 on_line(&format!("{} ready", package));
@@ -531,6 +547,12 @@ fn rebuild_native_addon<F: FnMut(&str)>(
             log::warn!("Failed to run npm rebuild {}: {}", package, e);
         }
     }
+}
+
+/// Path to the npm install log (distinct from the runtime `n8n.log` that the
+/// n8n server process writes when it starts).
+fn n8n_install_log_path() -> PathBuf {
+    laya_home().join("logs").join("n8n-install.log")
 }
 
 /// Run `npm install` and stream output. Returns Ok(()) on success.
@@ -587,9 +609,17 @@ fn run_npm_install<F: FnMut(&str)>(
         })
     });
 
+    // Tee npm's streamed output to the install log (append: install_n8n may
+    // call this twice — native attempt then --ignore-scripts fallback).
+    let mut log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(n8n_install_log_path())
+        .ok();
     let mut output_lines: Vec<String> = Vec::new();
     for line in rx {
         on_line(&line);
+        if let Some(f) = log.as_mut() { let _ = writeln!(f, "{line}"); }
         output_lines.push(line);
     }
 

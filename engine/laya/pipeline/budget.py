@@ -11,6 +11,7 @@ from datetime import datetime
 import structlog
 
 from laya.db.sqlite import get_db
+from laya.tz import safe_zoneinfo
 
 log = structlog.get_logger()
 
@@ -45,13 +46,7 @@ STEP_TO_FEATURE: dict[str, str] = {
 
 def _current_year_month_local(tz_name: str = "America/New_York") -> str:
     """Return 'YYYY-MM' in the user's configured timezone."""
-    try:
-        from zoneinfo import ZoneInfo
-        tz = ZoneInfo(tz_name)
-    except Exception:
-        from zoneinfo import ZoneInfo
-        tz = ZoneInfo("UTC")
-    return datetime.now(tz).strftime("%Y-%m")
+    return datetime.now(safe_zoneinfo(tz_name)).strftime("%Y-%m")
 
 
 def _user_timezone() -> str:
@@ -96,15 +91,10 @@ async def get_current_month_cost(tz_name: str | None = None) -> dict:
     tz = tz_name or _user_timezone()
     year_month = _current_year_month_local(tz)
     # Convert local month start to UTC for querying audit_log (stored in UTC)
-    try:
-        from zoneinfo import ZoneInfo
-        local_tz = ZoneInfo(tz)
-    except Exception:
-        from zoneinfo import ZoneInfo
-        local_tz = ZoneInfo("UTC")
+    local_tz = safe_zoneinfo(tz)
 
     month_start_local = datetime.strptime(f"{year_month}-01", "%Y-%m-%d").replace(tzinfo=local_tz)
-    month_start_utc = month_start_local.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%d %H:%M:%S")
+    month_start_utc = month_start_local.astimezone(safe_zoneinfo("UTC")).strftime("%Y-%m-%d %H:%M:%S")
 
     db = await get_db()
     rows = await db.execute_fetchall(
@@ -268,12 +258,7 @@ async def snapshot_month(year_month: str) -> None:
     Should be called once when rolling over to a new month.
     """
     tz = _user_timezone()
-    try:
-        from zoneinfo import ZoneInfo
-        local_tz = ZoneInfo(tz)
-    except Exception:
-        from zoneinfo import ZoneInfo
-        local_tz = ZoneInfo("UTC")
+    local_tz = safe_zoneinfo(tz)
 
     # Compute UTC boundaries for the local month
     month_start_local = datetime.strptime(f"{year_month}-01", "%Y-%m-%d").replace(tzinfo=local_tz)
@@ -285,8 +270,8 @@ async def snapshot_month(year_month: str) -> None:
     else:
         next_start_local = month_start_local.replace(month=m + 1)
 
-    start_utc = month_start_local.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%d %H:%M:%S")
-    end_utc = next_start_local.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%d %H:%M:%S")
+    start_utc = month_start_local.astimezone(safe_zoneinfo("UTC")).strftime("%Y-%m-%d %H:%M:%S")
+    end_utc = next_start_local.astimezone(safe_zoneinfo("UTC")).strftime("%Y-%m-%d %H:%M:%S")
 
     db = await get_db()
     rows = await db.execute_fetchall(

@@ -55,6 +55,7 @@
 	let addingSelfHosted = $state(false);
 	let selfHostedError = $state('');
 	let selfHostedProvider = $state<CustomProvider | null>(null);
+	let selfHostedEditing = $state(false);
 	let selfHostedTesting = $state(false);
 	let selfHostedTestOk = $state<boolean | null>(null);
 	let selfHostedModels = $state<DiscoveredModel[]>([]);
@@ -190,13 +191,22 @@
 		addingSelfHosted = true;
 		selfHostedError = '';
 		try {
-			const resp = await engineApi.addCustomProvider({
+			const payload = {
 				name: selfHostedName.trim(),
 				base_url: selfHostedUrl.trim(),
 				provider_type: selfHostedProviderType,
 				api_key: selfHostedApiKey.trim() || undefined
-			});
+			};
+			// Editing an existing provider (e.g. correcting a wrong URL): update in place
+			// so we don't orphan the bad record that was created on the first attempt.
+			const resp = selfHostedProvider
+				? await engineApi.updateCustomProvider(selfHostedProvider.id, payload)
+				: await engineApi.addCustomProvider(payload);
 			selfHostedProvider = resp.provider;
+			selfHostedEditing = false;
+			// Reset prior test/model state before re-testing the (possibly new) URL
+			selfHostedTestOk = null;
+			selfHostedModels = [];
 			// Auto-test and discover models
 			await testAndDiscoverModels(resp.provider.id);
 		} catch (e: any) {
@@ -204,6 +214,17 @@
 		} finally {
 			addingSelfHosted = false;
 		}
+	}
+
+	function editSelfHostedProvider() {
+		// Re-show the form (pre-filled from retained state) so the user can fix the URL.
+		selfHostedEditing = true;
+		selfHostedError = '';
+	}
+
+	function cancelEditSelfHosted() {
+		selfHostedEditing = false;
+		selfHostedError = '';
 	}
 
 	async function testAndDiscoverModels(providerId: string) {
@@ -546,8 +567,10 @@
 			<!-- Self-hosted provider setup (shown when self-hosted is the choice) -->
 			{#if selfHostedOnly || defaultProvider === 'self-hosted'}
 				<div class="space-y-4 rounded-lg border border-surface-600 bg-surface-900/50 p-4">
-					{#if !selfHostedProvider}
-						<h3 class="text-sm font-semibold text-surface-200">Add Local Provider</h3>
+					{#if !selfHostedProvider || selfHostedEditing}
+						<h3 class="text-sm font-semibold text-surface-200">
+							{selfHostedProvider ? 'Edit Local Provider' : 'Add Local Provider'}
+						</h3>
 
 						<div class="space-y-3">
 							<label class="block text-sm font-medium">
@@ -592,13 +615,27 @@
 								/>
 							</label>
 
-							<button
-								class="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-500 disabled:opacity-50"
-								onclick={addSelfHostedProvider}
-								disabled={!selfHostedName.trim() || !selfHostedUrl.trim() || addingSelfHosted}
-							>
-								{addingSelfHosted ? 'Adding...' : 'Add & Discover Models'}
-							</button>
+							<div class="flex items-center gap-3">
+								<button
+									class="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-500 disabled:opacity-50"
+									onclick={addSelfHostedProvider}
+									disabled={!selfHostedName.trim() || !selfHostedUrl.trim() || addingSelfHosted}
+								>
+									{#if addingSelfHosted}
+										{selfHostedProvider ? 'Updating...' : 'Adding...'}
+									{:else}
+										{selfHostedProvider ? 'Update & Discover Models' : 'Add & Discover Models'}
+									{/if}
+								</button>
+								{#if selfHostedProvider}
+									<button
+										class="text-xs text-surface-400 hover:text-surface-200"
+										onclick={cancelEditSelfHosted}
+									>
+										Cancel
+									</button>
+								{/if}
+							</div>
 
 							{#if selfHostedError}
 								<p class="text-sm text-red-400">{selfHostedError}</p>
@@ -614,18 +651,31 @@
 							</div>
 							{#if selfHostedTesting}
 								<span class="text-xs text-surface-400">Testing...</span>
-							{:else if selfHostedTestOk === false}
-								<button
-									class="text-xs text-primary-400 hover:text-primary-300"
-									onclick={() => selfHostedProvider && testAndDiscoverModels(selfHostedProvider.id)}
-								>
-									Retry
-								</button>
+							{:else}
+								<div class="ml-auto flex items-center gap-3">
+									{#if selfHostedTestOk === false}
+										<button
+											class="text-xs text-primary-400 hover:text-primary-300"
+											onclick={() => selfHostedProvider && testAndDiscoverModels(selfHostedProvider.id)}
+										>
+											Retry
+										</button>
+									{/if}
+									<button
+										class="text-xs text-surface-400 hover:text-surface-200"
+										onclick={editSelfHostedProvider}
+									>
+										Change URL
+									</button>
+								</div>
 							{/if}
 						</div>
 
 						{#if selfHostedTestOk === false}
-							<p class="text-sm text-red-400">Could not connect to provider. Make sure it's running and try again.</p>
+							<p class="text-sm text-red-400">
+								Could not connect to provider. Check the Base URL is correct and the server is
+								running, then use "Change URL" to fix it or "Retry".
+							</p>
 						{/if}
 
 						{#if selfHostedModelsLoading}

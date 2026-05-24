@@ -8,7 +8,7 @@
 //! from the bundled `requirements.txt`, and runs the engine from the bundled
 //! Python source in `Contents/Resources/engine/`.
 
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
@@ -446,6 +446,8 @@ fn uv_pip_install<F: FnMut(&str)>(
             "-r", &req.to_string_lossy(),
             "--python", &python.to_string_lossy(),
             "--only-binary", ":all:",
+            // Keep the streamed output / log free of ANSI escape codes.
+            "--color", "never",
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -473,12 +475,13 @@ fn legacy_pip_install<F: FnMut(&str)>(
 
     let mut cmd = Command::new(&python);
     no_window(&mut cmd);
+    // No --log: run_install_cmd tees the streamed stdout/stderr to log_path,
+    // so a pip --log here would be a second writer racing the same file.
     cmd.args([
             "-m", "pip",
             "install", "-r", &req.to_string_lossy(),
             "--only-binary", ":all:",
             "--progress-bar", "off",
-            "--log", &log_path.to_string_lossy(),
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -497,6 +500,10 @@ fn run_install_cmd<F: FnMut(&str)>(
     let mut child = cmd.spawn()
         .map_err(|e| format!("Failed to start {label}: {e}"))?;
 
+    // Tee streamed output to the log file. uv (unlike pip) has no --log flag,
+    // so without this the log file would never be written; the legacy pip path
+    // no longer passes --log either, so this is the single writer for both.
+    let mut log = std::fs::File::create(log_path).ok();
     let mut output_lines: Vec<String> = Vec::new();
 
     if let Some(stdout) = child.stdout.take() {
@@ -505,6 +512,7 @@ fn run_install_cmd<F: FnMut(&str)>(
         for line in reader.lines() {
             if let Ok(line) = line {
                 on_line(&line);
+                if let Some(f) = log.as_mut() { let _ = writeln!(f, "{line}"); }
                 output_lines.push(line);
             }
         }
@@ -513,6 +521,7 @@ fn run_install_cmd<F: FnMut(&str)>(
             for line in reader.lines() {
                 if let Ok(line) = line {
                     on_line(&line);
+                    if let Some(f) = log.as_mut() { let _ = writeln!(f, "{line}"); }
                     output_lines.push(line);
                 }
             }
@@ -552,6 +561,12 @@ pub fn install_requirements<F: FnMut(&str)>(mut on_line: F) -> Result<(), String
     // ML dependencies (torch, sentence-transformers, onnxruntime) — optional.
     // These may fail on platforms without compatible wheels (e.g., macOS x86_64).
     let ml_req = requirements_ml_path();
+    if ml_req.exists() {
+        // uv runs quiet (no live progress bar in non-TTY), so the torch wheel
+        // (~hundreds of MB) downloads with no output. Surface a hint so the
+        // footer holds an explanatory message instead of looking frozen.
+        on_line("Downloading large ML packages (torch, sentence-transformers) — this can take several minutes...");
+    }
     match pip_install(&ml_req, "pip-install-ml.log", &mut on_line) {
         Ok(true) => {
             log::info!("ML dependencies installed successfully");

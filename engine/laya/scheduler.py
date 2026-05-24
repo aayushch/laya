@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 import structlog
 
 from laya.config import load_settings
+from laya.tz import safe_zoneinfo
 
 log = structlog.get_logger()
 
@@ -265,12 +266,7 @@ async def _scheduler_loop() -> None:
             briefing_cfg = settings.get("briefing", {})
             if briefing_cfg.get("enabled", False):
                 tz_name = briefing_cfg.get("timezone", "America/New_York")
-                try:
-                    from zoneinfo import ZoneInfo
-                    tz = ZoneInfo(tz_name)
-                except Exception:
-                    from zoneinfo import ZoneInfo
-                    tz = ZoneInfo("UTC")
+                tz = safe_zoneinfo(tz_name)
 
                 now = datetime.now(tz)
                 target_time = briefing_cfg.get("time", "07:00")
@@ -312,12 +308,7 @@ async def _scheduler_loop() -> None:
             omni_cfg = settings.get("omni", {})
             if omni_cfg.get("enabled", False):
                 omni_tz_name = omni_cfg.get("timezone", "America/New_York")
-                try:
-                    from zoneinfo import ZoneInfo
-                    omni_tz = ZoneInfo(omni_tz_name)
-                except Exception:
-                    from zoneinfo import ZoneInfo
-                    omni_tz = ZoneInfo("UTC")
+                omni_tz = safe_zoneinfo(omni_tz_name)
 
                 omni_now = datetime.now(omni_tz)
                 omni_target = omni_cfg.get("resynthesis_time", "17:00")
@@ -476,11 +467,7 @@ async def _scheduler_loop() -> None:
             # --- Budget month rollover (local timezone) ---
             try:
                 tz_name = settings.get("briefing", {}).get("timezone", "America/New_York")
-                from zoneinfo import ZoneInfo
-                try:
-                    tz = ZoneInfo(tz_name)
-                except Exception:
-                    tz = ZoneInfo("UTC")
+                tz = safe_zoneinfo(tz_name)
                 current_month = datetime.now(tz).strftime("%Y-%m")
 
                 if _last_budget_month is None:

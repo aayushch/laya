@@ -39,6 +39,12 @@ PyYAML>=6.0.3
 pydantic>=2.12.5
 jsonschema>=4.26.0
 
+# IANA timezone database. The Windows-bundled CPython ships without the
+# system tz database, so `zoneinfo.ZoneInfo("UTC")` (and any named zone)
+# raises ZoneInfoNotFoundError unless this pure-Python package is present.
+# Without it the budget endpoint 500s and the scheduler loop crashes on Windows.
+tzdata>=2025.1
+
 # Utilities
 tqdm>=4.67.3
 tenacity>=9.1.4
