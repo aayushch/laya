@@ -1,24 +1,26 @@
 // Copyright 2026 Aayush Chawla
 // SPDX-License-Identifier: Apache-2.0
 
-//! Automatic provisioning of Python and Node.js runtimes into `~/.laya/`.
+//! Automatic provisioning of Python, Node.js, and uv runtimes into `~/.laya/`.
 //!
 //! On first launch, when the system lacks a Python 3.10+ or Node.js 22+
 //! installation, this module downloads prebuilt binaries — python-build-
-//! standalone (Astral/indygreg) for Python and the official `nodejs.org`
-//! tarballs/zips for Node — verifies their SHA-256, extracts them, and
-//! exposes the resulting binaries via `managed_python()` /
-//! `managed_node()` so the rest of the startup flow can use them
-//! transparently.
+//! standalone (Astral/indygreg) for Python, the official `nodejs.org`
+//! tarballs/zips for Node, and `uv` (Astral) as a fast pip replacement —
+//! verifies their SHA-256, extracts them, and exposes the resulting
+//! binaries via `managed_python()` / `managed_node()` / `managed_uv()`
+//! so the rest of the startup flow can use them transparently.
 //!
 //! Design:
 //!   1. Detect a working runtime (managed first, then system).
 //!   2. Only download what is missing.
-//!   3. Stream to `~/.laya/runtimes/<file>`, verify checksum, extract into
+//!   3. Downloads run in parallel threads; progress events are multiplexed
+//!      through an `mpsc` channel back to the caller's callback.
+//!   4. Stream to `~/.laya/runtimes/<file>`, verify checksum, extract into
 //!      `~/.laya/runtimes/staging-<kind>/`, then atomically rename into
-//!      `~/.laya/python/` or `~/.laya/node/`.  No half-installed runtime is
-//!      ever visible to detection.
-//!   4. Re-launch is fast: a `.version` marker short-circuits re-download
+//!      `~/.laya/python/`, `~/.laya/node/`, or `~/.laya/uv/`.  No half-
+//!      installed runtime is ever visible to detection.
+//!   5. Re-launch is fast: a `.version` marker short-circuits re-download
 //!      when the pinned version already matches.
 
 use std::fs;
@@ -49,6 +51,10 @@ const PBS_RELEASE_TAG: &str = "20260510";
 /// Node.js LTS version from nodejs.org/dist.
 const NODE_VERSION: &str = "22.22.3";
 
+/// uv version (Astral's fast pip/venv replacement).
+/// Releases: https://github.com/astral-sh/uv/releases
+const UV_VERSION: &str = "0.7.12";
+
 // ── Path helpers ────────────────────────────────────────────────────────
 
 fn home_dir() -> Option<PathBuf> {
@@ -72,6 +78,10 @@ fn python_dir() -> PathBuf {
 
 fn node_dir() -> PathBuf {
     laya_home().join("node")
+}
+
+fn uv_dir() -> PathBuf {
+    laya_home().join("uv")
 }
 
 fn runtimes_dir() -> PathBuf {
@@ -118,6 +128,20 @@ pub fn managed_node() -> Option<PathBuf> {
     }
 }
 
+/// Path to the `uv` binary inside the managed runtime, if present.
+pub fn managed_uv() -> Option<PathBuf> {
+    let candidate = if cfg!(target_os = "windows") {
+        uv_dir().join("uv.exe")
+    } else {
+        uv_dir().join("uv")
+    };
+    if candidate.exists() {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
 /// Progress events emitted during `ensure_runtimes`.  The caller decides
 /// how to surface them — Laya forwards them as `setup-progress` Tauri
 /// events on the existing `preflight` step.
@@ -130,37 +154,78 @@ pub enum RuntimeProgress {
     Done(String),
 }
 
-/// Ensure both Python (3.10+) and Node (22+) runtimes are available, either
-/// from the system or downloaded into `~/.laya/{python,node}/`.
+/// Ensure Python (3.10+), Node (22+), and uv runtimes are available, either
+/// from the system or downloaded into `~/.laya/{python,node,uv}/`.
 ///
+/// Downloads run in parallel when multiple runtimes are needed.
 /// Detects system installs first; only downloads what is missing.
 /// Idempotent across launches via `.version` marker files.
 pub fn ensure_runtimes<F: FnMut(RuntimeProgress)>(mut on_progress: F) -> Result<(), String> {
     fs::create_dir_all(laya_home())
         .map_err(|e| format!("Failed to create ~/.laya: {e}"))?;
 
-    // ── Python ──────────────────────────────────────────────────────
-    // Provision when: no managed install OR managed install is the wrong
-    // pinned version AND no usable system Python is available.
     let python_needed = match managed_python() {
         Some(_) => !managed_python_version_matches(),
         None => crate::sidecar::find_python_system().is_err(),
     };
-    if python_needed {
-        provision_python(&mut on_progress)?;
-    } else {
-        on_progress(RuntimeProgress::Done("Python ready".to_string()));
-    }
-
-    // ── Node ────────────────────────────────────────────────────────
     let node_needed = match managed_node() {
         Some(_) => !managed_node_version_matches(),
         None => crate::n8n::find_node_system().is_err(),
     };
+    let uv_needed = managed_uv().is_none() || !managed_uv_version_matches();
+
+    if !python_needed && !node_needed && !uv_needed {
+        on_progress(RuntimeProgress::Done("All runtimes ready".to_string()));
+        return Ok(());
+    }
+
+    // Emit ready status for runtimes that don't need downloading.
+    if !python_needed { on_progress(RuntimeProgress::Done("Python ready".to_string())); }
+    if !node_needed { on_progress(RuntimeProgress::Done("Node.js ready".to_string())); }
+
+    // Download needed runtimes in parallel.  Each thread sends progress
+    // events through an mpsc channel; the calling thread drains them
+    // into the original callback.
+    let (tx, rx) = std::sync::mpsc::channel::<RuntimeProgress>();
+    let mut handles: Vec<std::thread::JoinHandle<Result<(), String>>> = Vec::new();
+
+    if python_needed {
+        let tx = tx.clone();
+        handles.push(std::thread::spawn(move || {
+            provision_python(&mut |p| { let _ = tx.send(p); })
+        }));
+    }
     if node_needed {
-        provision_node(&mut on_progress)?;
-    } else {
-        on_progress(RuntimeProgress::Done("Node.js ready".to_string()));
+        let tx = tx.clone();
+        handles.push(std::thread::spawn(move || {
+            provision_node(&mut |p| { let _ = tx.send(p); })
+        }));
+    }
+    if uv_needed {
+        let tx = tx.clone();
+        handles.push(std::thread::spawn(move || {
+            provision_uv(&mut |p| { let _ = tx.send(p); })
+        }));
+    }
+
+    // Close sender so the rx iterator ends when all threads finish.
+    drop(tx);
+
+    for progress in rx {
+        on_progress(progress);
+    }
+
+    // Collect thread results.
+    let mut errors = Vec::new();
+    for h in handles {
+        match h.join() {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => errors.push(e),
+            Err(_) => errors.push("Thread panicked during runtime provisioning".to_string()),
+        }
+    }
+    if !errors.is_empty() {
+        return Err(errors.join("; "));
     }
 
     Ok(())
@@ -177,6 +242,12 @@ fn managed_python_version_matches() -> bool {
 fn managed_node_version_matches() -> bool {
     fs::read_to_string(version_marker(&node_dir()))
         .map(|s| s.trim() == NODE_VERSION)
+        .unwrap_or(false)
+}
+
+fn managed_uv_version_matches() -> bool {
+    fs::read_to_string(version_marker(&uv_dir()))
+        .map(|s| s.trim() == UV_VERSION)
         .unwrap_or(false)
 }
 
@@ -382,6 +453,109 @@ fn lookup_sha256(text: &str, filename: &str) -> Option<String> {
     None
 }
 
+// ── Provisioning: uv ───────────────────────────────────────────────────
+
+fn provision_uv<F: FnMut(RuntimeProgress)>(on_progress: &mut F) -> Result<(), String> {
+    let (url, is_zip) = uv_download_url()?;
+    let filename = url
+        .rsplit('/')
+        .next()
+        .ok_or_else(|| "Bad uv URL".to_string())?
+        .to_string();
+
+    fs::create_dir_all(runtimes_dir())
+        .map_err(|e| format!("Failed to create runtimes dir: {e}"))?;
+    let archive = runtimes_dir().join(&filename);
+
+    on_progress(RuntimeProgress::Phase(format!("Downloading uv {}", UV_VERSION)));
+    download_with_retry(&url, &archive, on_progress)?;
+
+    on_progress(RuntimeProgress::Phase("Verifying uv checksum".to_string()));
+    let expected = fetch_uv_sha256(&filename)?;
+    verify_sha256(&archive, &expected).inspect_err(|_| {
+        let _ = fs::remove_file(&archive);
+    })?;
+
+    on_progress(RuntimeProgress::Phase("Extracting uv".to_string()));
+    let staging = runtimes_dir().join("staging-uv");
+    let _ = fs::remove_dir_all(&staging);
+    fs::create_dir_all(&staging).map_err(|e| format!("Failed to create staging: {e}"))?;
+
+    if is_zip {
+        #[cfg(target_os = "windows")]
+        {
+            extract_zip(&archive, &staging)?;
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            return Err("zip extraction only supported on Windows".to_string());
+        }
+    } else {
+        extract_tar_gz(&archive, &staging)?;
+    }
+
+    // uv archives extract into a directory like `uv-aarch64-apple-darwin/`
+    // containing the uv (and uvx) binary.  We install just the directory.
+    let extracted = find_only_subdir(&staging)?;
+    install_atomically(&extracted, &uv_dir())?;
+
+    let _ = fs::remove_dir_all(&staging);
+    let _ = fs::remove_file(&archive);
+
+    #[cfg(target_os = "macos")]
+    remove_quarantine(&uv_dir());
+
+    let _ = fs::write(version_marker(&uv_dir()), UV_VERSION);
+
+    log::info!("Managed uv {} installed at {}", UV_VERSION, uv_dir().display());
+    on_progress(RuntimeProgress::Done(format!("uv {} ready", UV_VERSION)));
+    Ok(())
+}
+
+/// Returns (url, is_zip).
+fn uv_download_url() -> Result<(String, bool), String> {
+    let (triple, is_zip) = uv_target_triple()?;
+    let ext = if is_zip { "zip" } else { "tar.gz" };
+    Ok((
+        format!(
+            "https://github.com/astral-sh/uv/releases/download/{ver}/uv-{triple}.{ext}",
+            ver = UV_VERSION,
+            triple = triple,
+            ext = ext,
+        ),
+        is_zip,
+    ))
+}
+
+fn uv_target_triple() -> Result<(&'static str, bool), String> {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("macos", "aarch64") => Ok(("aarch64-apple-darwin", false)),
+        ("macos", "x86_64") => Ok(("x86_64-apple-darwin", false)),
+        ("linux", "x86_64") => Ok(("x86_64-unknown-linux-gnu", false)),
+        ("linux", "aarch64") => Ok(("aarch64-unknown-linux-gnu", false)),
+        ("windows", "x86_64") => Ok(("x86_64-pc-windows-msvc", true)),
+        ("windows", "aarch64") => Ok(("aarch64-pc-windows-msvc", true)),
+        (os, arch) => Err(format!("Unsupported platform for uv: {}/{}", os, arch)),
+    }
+}
+
+/// uv publishes per-archive SHA-256 checksums as `<archive>.sha256` sidecar
+/// files, each containing just the hex digest on a single line.
+fn fetch_uv_sha256(filename: &str) -> Result<String, String> {
+    let url = format!(
+        "https://github.com/astral-sh/uv/releases/download/{}/{}.sha256",
+        UV_VERSION, filename
+    );
+    let text = fetch_text(&url)?;
+    // The sidecar file may contain just the hash, or `<hash>  <filename>`.
+    let hash = text.trim().split_whitespace().next()
+        .ok_or_else(|| format!("Empty SHA-256 file for {}", filename))?;
+    if hash.len() != 64 {
+        return Err(format!("Invalid SHA-256 in {}: '{}'", url, hash));
+    }
+    Ok(hash.to_lowercase())
+}
+
 // ── Download / verify / extract ─────────────────────────────────────────
 
 fn fetch_text(url: &str) -> Result<String, String> {
@@ -516,7 +690,7 @@ fn hex_lower(bytes: &[u8]) -> String {
     s
 }
 
-fn extract_tar_gz(archive: &Path, dest: &Path) -> Result<(), String> {
+pub(crate) fn extract_tar_gz(archive: &Path, dest: &Path) -> Result<(), String> {
     let file = fs::File::open(archive)
         .map_err(|e| format!("Open archive {}: {e}", archive.display()))?;
     let decoder = flate2::read::GzDecoder::new(file);
@@ -619,6 +793,11 @@ mod tests {
     #[test]
     fn node_filename_format_matches_nodejs_dist() {
         let _ = node_filename();
+    }
+
+    #[test]
+    fn uv_url_format_matches_github_releases() {
+        let _ = uv_download_url();
     }
 
     #[test]

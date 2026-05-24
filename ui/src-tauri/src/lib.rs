@@ -272,46 +272,66 @@ fn setup_environment(app: tauri::AppHandle) {
             emit("environment", "done", "Python environment ready");
         }
 
-        // ── Step 3: Install dependencies ────────────────────────────
+        // ── Steps 3+4: Install deps and n8n in parallel ───────────
+        // pip writes to ~/.laya/venv/ and npm writes to ~/.laya/n8n_module/
+        // so there are no filesystem conflicts.  Running both at once
+        // overlaps their network downloads and roughly halves wall-clock
+        // time on the slowest first-run step.
         let env = sidecar::check_environment();
-        if !env.deps_installed {
-            emit("deps", "running", "Installing packages (this may take a few minutes)...");
+        let deps_needed = !env.deps_installed;
+        let n8n_needed = !n8n::is_n8n_installed();
 
-            let app_clone = app.clone();
-            match sidecar::install_requirements(|line| {
-                let _ = app_clone.emit("setup-progress", SetupEvent {
-                    step: "deps",
-                    status: "running",
-                    message: line.to_string(),
-                });
-            }) {
-                Ok(()) => emit("deps", "done", "All packages installed"),
-                Err(e) => {
-                    emit("deps", "error", &e);
-                    return;
-                }
-            }
-        } else {
-            emit("deps", "done", "Packages up to date");
+        if deps_needed {
+            emit("deps", "running", "Installing Python packages (usually 2-5 minutes)...");
+        }
+        if n8n_needed {
+            emit("automation", "running", "Installing n8n (this may take several minutes)...");
         }
 
-        // ── Step 4: Set up automation (n8n) ─────────────────────────
-        if !n8n::is_n8n_installed() {
-            emit("automation", "running", "Installing n8n...");
-            let app_clone = app.clone();
-            match n8n::install_n8n(|line| {
-                let _ = app_clone.emit("setup-progress", SetupEvent {
-                    step: "automation",
-                    status: "running",
-                    message: line.to_string(),
-                });
-            }) {
-                Ok(()) => {}
-                Err(e) => {
-                    emit("automation", "error", &e);
-                    return;
-                }
-            }
+        let deps_handle = if deps_needed {
+            let app_deps = app.clone();
+            Some(std::thread::spawn(move || -> Result<(), String> {
+                sidecar::install_requirements(|line| {
+                    let _ = app_deps.emit("setup-progress", SetupEvent {
+                        step: "deps",
+                        status: "running",
+                        message: line.to_string(),
+                    });
+                })
+            }))
+        } else { None };
+
+        let n8n_handle = if n8n_needed {
+            let app_n8n = app.clone();
+            Some(std::thread::spawn(move || -> Result<(), String> {
+                n8n::install_n8n(|line| {
+                    let _ = app_n8n.emit("setup-progress", SetupEvent {
+                        step: "automation",
+                        status: "running",
+                        message: line.to_string(),
+                    });
+                })
+            }))
+        } else { None };
+
+        // Wait for deps thread.
+        match deps_handle {
+            Some(h) => match h.join() {
+                Ok(Ok(())) => emit("deps", "done", "All packages installed"),
+                Ok(Err(e)) => { emit("deps", "error", &e); return; }
+                Err(_) => { emit("deps", "error", "Package installation crashed"); return; }
+            },
+            None => emit("deps", "done", "Packages up to date"),
+        }
+
+        // Wait for n8n install thread.
+        match n8n_handle {
+            Some(h) => match h.join() {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => { emit("automation", "error", &e); return; }
+                Err(_) => { emit("automation", "error", "n8n installation crashed"); return; }
+            },
+            None => {}
         }
 
         if APP_EXITING.load(Ordering::Relaxed) {
@@ -323,15 +343,10 @@ fn setup_environment(app: tauri::AppHandle) {
         emit("automation", "running", "Starting n8n...");
         match n8n::startup_n8n() {
             n8n::N8nStartResult::Started | n8n::N8nStartResult::AlreadyRunning => {
-                // Wait for the full REST API, not just /healthz.
-                // On a fresh install n8n can take 15-30s to initialise its DB
-                // before /rest/settings responds.  Without this the engine's
-                // ensure_n8n_ready() races and skips provisioning.
                 emit("automation", "running", "Waiting for n8n API...");
                 if n8n::wait_for_n8n_api(std::time::Duration::from_secs(60)) {
                     emit("automation", "done", "n8n running");
                 } else {
-                    // Non-fatal: engine has its own retry logic, but warn the user.
                     log::warn!("n8n REST API did not become ready in time — engine will retry");
                     emit("automation", "done", "n8n started (API still loading)");
                 }

@@ -313,6 +313,7 @@ fn which(name: &str) -> Option<PathBuf> {
 // ── Venv management ─────────────────────────────────────────────────────
 
 /// Create a venv at ~/.laya/venv using the given Python interpreter.
+/// Prefers `uv venv` (near-instant) with fallback to `python -m venv`.
 pub fn create_venv(python: &PathBuf) -> Result<(), String> {
     let venv = venv_dir();
     log::info!("Creating venv at {} using {}", venv.display(), python.display());
@@ -320,11 +321,31 @@ pub fn create_venv(python: &PathBuf) -> Result<(), String> {
     std::fs::create_dir_all(laya_home())
         .map_err(|e| format!("Failed to create ~/.laya: {e}"))?;
 
+    // Try uv venv first — it's near-instant (no pip/setuptools bootstrap).
+    if let Some(uv) = find_uv() {
+        log::info!("Using uv for venv creation: {}", uv.display());
+        let mut cmd = Command::new(&uv);
+        no_window(&mut cmd);
+        cmd.args(["venv", &venv.to_string_lossy(), "--python", &python.to_string_lossy()]);
+        sanitize_python_cmd(&mut cmd);
+
+        let output = cmd.output();
+        match output {
+            Ok(out) if out.status.success() => return Ok(()),
+            Ok(out) => {
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                log::warn!("uv venv failed, falling back to python -m venv: {stderr}");
+            }
+            Err(e) => {
+                log::warn!("uv venv failed to start, falling back: {e}");
+            }
+        }
+    }
+
+    // Fallback: python -m venv
     let mut cmd = Command::new(python);
     no_window(&mut cmd);
     cmd.args(["-m", "venv", &venv.to_string_lossy()]);
-    // AppImage sets PYTHONHOME/PYTHONPATH/LD_LIBRARY_PATH which break the
-    // system Python's stdlib resolution (see sanitize_python_cmd).
     sanitize_python_cmd(&mut cmd);
 
     let output = cmd.output()
@@ -336,6 +357,10 @@ pub fn create_venv(python: &PathBuf) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn find_uv() -> Option<PathBuf> {
+    crate::runtime::managed_uv()
 }
 
 /// Check if installed deps match the bundled requirements files (by hash).
@@ -377,7 +402,8 @@ fn simple_hash(s: &str) -> String {
     format!("{:016x}", h.finish())
 }
 
-/// Run pip install for a given requirements file.
+/// Run package install for a given requirements file.
+/// Prefers `uv pip install` (10-100x faster) with fallback to regular pip.
 /// Returns Ok(true) on success, Ok(false) if the file doesn't exist (skipped),
 /// or Err on failure.
 fn pip_install<F: FnMut(&str)>(
@@ -389,6 +415,19 @@ fn pip_install<F: FnMut(&str)>(
         return Ok(false);
     }
 
+    if let Some(uv) = find_uv() {
+        return uv_pip_install(&uv, req, log_name, on_line);
+    }
+    legacy_pip_install(req, log_name, on_line)
+}
+
+/// Install packages using uv (Astral's fast pip replacement).
+fn uv_pip_install<F: FnMut(&str)>(
+    uv: &Path,
+    req: &Path,
+    log_name: &str,
+    on_line: &mut F,
+) -> Result<bool, String> {
     let python = venv_python();
     if !python.exists() {
         return Err("Python not found in venv — venv may be corrupt".to_string());
@@ -398,23 +437,65 @@ fn pip_install<F: FnMut(&str)>(
     std::fs::create_dir_all(&log_dir).ok();
     let log_path = log_dir.join(log_name);
 
-    log::info!("Installing from {} (log: {})", req.display(), log_path.display());
+    log::info!("Installing from {} via uv (log: {})", req.display(), log_path.display());
+
+    let mut cmd = Command::new(uv);
+    no_window(&mut cmd);
+    cmd.args([
+            "pip", "install",
+            "-r", &req.to_string_lossy(),
+            "--python", &python.to_string_lossy(),
+            "--only-binary", ":all:",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    sanitize_python_cmd(&mut cmd);
+
+    run_install_cmd(&mut cmd, &log_path, on_line, "uv pip install")
+}
+
+/// Install packages using regular pip (fallback when uv is unavailable).
+fn legacy_pip_install<F: FnMut(&str)>(
+    req: &Path,
+    log_name: &str,
+    on_line: &mut F,
+) -> Result<bool, String> {
+    let python = venv_python();
+    if !python.exists() {
+        return Err("Python not found in venv — venv may be corrupt".to_string());
+    }
+
+    let log_dir = laya_home().join("logs");
+    std::fs::create_dir_all(&log_dir).ok();
+    let log_path = log_dir.join(log_name);
+
+    log::info!("Installing from {} via pip (log: {})", req.display(), log_path.display());
 
     let mut cmd = Command::new(&python);
     no_window(&mut cmd);
     cmd.args([
             "-m", "pip",
             "install", "-r", &req.to_string_lossy(),
+            "--only-binary", ":all:",
             "--progress-bar", "off",
             "--log", &log_path.to_string_lossy(),
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    // AppImage env vars break even the venv Python (see sanitize_python_cmd).
     sanitize_python_cmd(&mut cmd);
 
+    run_install_cmd(&mut cmd, &log_path, on_line, "pip install")
+}
+
+/// Shared logic for running an install command and streaming output.
+fn run_install_cmd<F: FnMut(&str)>(
+    cmd: &mut Command,
+    log_path: &Path,
+    on_line: &mut F,
+    label: &str,
+) -> Result<bool, String> {
     let mut child = cmd.spawn()
-        .map_err(|e| format!("Failed to start pip: {e}"))?;
+        .map_err(|e| format!("Failed to start {label}: {e}"))?;
 
     let mut output_lines: Vec<String> = Vec::new();
 
@@ -438,12 +519,12 @@ fn pip_install<F: FnMut(&str)>(
         }
     }
 
-    let status = child.wait().map_err(|e| format!("pip wait failed: {e}"))?;
+    let status = child.wait().map_err(|e| format!("{label} wait failed: {e}"))?;
     if !status.success() {
         let tail: Vec<&str> = output_lines.iter().rev().take(5).map(|s| s.as_str()).collect();
         let detail = tail.into_iter().rev().collect::<Vec<_>>().join("\n");
         let msg = format!(
-            "pip install failed (exit code {}).\nSee full log: {}\n\nLast output:\n{}",
+            "{label} failed (exit code {}).\nSee full log: {}\n\nLast output:\n{}",
             status.code().unwrap_or(-1),
             log_path.display(),
             detail

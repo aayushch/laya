@@ -54,6 +54,22 @@ jobs:
         shell: bash
         run: bash scripts/bundle-engine.sh
 
+      - name: Download VC++ Redistributable (Windows only)
+        # ChromaDB's Rust bindings (chromadb_rust_bindings.*.pyd) link against
+        # vcruntime140_1.dll and msvcp140.dll, which the bundled
+        # python-build-standalone runtime does NOT include. Without these DLLs
+        # the engine's lifespan crashes on `connect_chromadb()` with a
+        # "DLL load failed" ImportError and uvicorn exits before /health
+        # ever responds. The NSIS installer hook runs this on the user's
+        # machine (skipping when the runtime is already registered).
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dest = "ui/src-tauri/resources/runtime"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" `
+                            -OutFile "$dest/vc_redist.x64.exe"
+
       - name: Set version from tag
         shell: bash
         run: |
