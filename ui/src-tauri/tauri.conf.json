@@ -38,8 +38,7 @@
     "targets": "all",
     "createUpdaterArtifacts": true,
     "resources": [
-      "resources/engine/**/*",
-      "resources/runtime/*"
+      "resources/engine/**/*"
     ],
     "icon": [
       "icons/32x32.png",

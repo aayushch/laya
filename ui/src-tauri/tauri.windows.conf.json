@@ -1,0 +1,8 @@
+{
+  "bundle": {
+    "resources": [
+      "resources/engine/**/*",
+      "resources/runtime/*"
+    ]
+  }
+}

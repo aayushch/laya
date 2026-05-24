@@ -272,66 +272,47 @@ fn setup_environment(app: tauri::AppHandle) {
             emit("environment", "done", "Python environment ready");
         }
 
-        // ── Steps 3+4: Install deps and n8n in parallel ───────────
-        // pip writes to ~/.laya/venv/ and npm writes to ~/.laya/n8n_module/
-        // so there are no filesystem conflicts.  Running both at once
-        // overlaps their network downloads and roughly halves wall-clock
-        // time on the slowest first-run step.
+        // ── Step 3: Install Python dependencies ─────────────────────
+        // Deliberately runs to completion BEFORE the n8n install (step 4),
+        // not in parallel.  n8n's npm install drives node-gyp with the venv
+        // Python (npm_config_python) because node-gyp needs setuptools for
+        // its distutils shim on Python 3.12+ (see n8n.rs).  That setuptools
+        // lives in the venv and is mutated by pip during this step (torch in
+        // requirements-ml.txt depends on it, so resolution can uninstall→
+        // reinstall it).  Overlapping the two would race node-gyp's read
+        // against pip's write of setuptools, so we keep them ordered.
         let env = sidecar::check_environment();
-        let deps_needed = !env.deps_installed;
-        let n8n_needed = !n8n::is_n8n_installed();
-
-        if deps_needed {
+        if !env.deps_installed {
             emit("deps", "running", "Installing Python packages (usually 2-5 minutes)...");
-        }
-        if n8n_needed {
-            emit("automation", "running", "Installing n8n (this may take several minutes)...");
-        }
-
-        let deps_handle = if deps_needed {
             let app_deps = app.clone();
-            Some(std::thread::spawn(move || -> Result<(), String> {
-                sidecar::install_requirements(|line| {
-                    let _ = app_deps.emit("setup-progress", SetupEvent {
-                        step: "deps",
-                        status: "running",
-                        message: line.to_string(),
-                    });
-                })
-            }))
-        } else { None };
-
-        let n8n_handle = if n8n_needed {
-            let app_n8n = app.clone();
-            Some(std::thread::spawn(move || -> Result<(), String> {
-                n8n::install_n8n(|line| {
-                    let _ = app_n8n.emit("setup-progress", SetupEvent {
-                        step: "automation",
-                        status: "running",
-                        message: line.to_string(),
-                    });
-                })
-            }))
-        } else { None };
-
-        // Wait for deps thread.
-        match deps_handle {
-            Some(h) => match h.join() {
-                Ok(Ok(())) => emit("deps", "done", "All packages installed"),
-                Ok(Err(e)) => { emit("deps", "error", &e); return; }
-                Err(_) => { emit("deps", "error", "Package installation crashed"); return; }
-            },
-            None => emit("deps", "done", "Packages up to date"),
+            match sidecar::install_requirements(|line| {
+                let _ = app_deps.emit("setup-progress", SetupEvent {
+                    step: "deps",
+                    status: "running",
+                    message: line.to_string(),
+                });
+            }) {
+                Ok(()) => emit("deps", "done", "All packages installed"),
+                Err(e) => { emit("deps", "error", &e); return; }
+            }
+        } else {
+            emit("deps", "done", "Packages up to date");
         }
 
-        // Wait for n8n install thread.
-        match n8n_handle {
-            Some(h) => match h.join() {
-                Ok(Ok(())) => {}
-                Ok(Err(e)) => { emit("automation", "error", &e); return; }
-                Err(_) => { emit("automation", "error", "n8n installation crashed"); return; }
-            },
-            None => {}
+        // ── Step 4: Install n8n ─────────────────────────────────────
+        if !n8n::is_n8n_installed() {
+            emit("automation", "running", "Installing n8n (this may take several minutes)...");
+            let app_n8n = app.clone();
+            match n8n::install_n8n(|line| {
+                let _ = app_n8n.emit("setup-progress", SetupEvent {
+                    step: "automation",
+                    status: "running",
+                    message: line.to_string(),
+                });
+            }) {
+                Ok(()) => {}
+                Err(e) => { emit("automation", "error", &e); return; }
+            }
         }
 
         if APP_EXITING.load(Ordering::Relaxed) {
