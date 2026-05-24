@@ -50,7 +50,7 @@ from laya.api.workspace_api import router as workspace_router
 from laya.api.ws_router import handle_ws_message
 from laya.config import ENGINE_HOST, ENGINE_PORT, ensure_directories, load_repos, load_rules, load_settings, load_team
 from laya.http_client import close_client as close_http_client
-from laya.integrations.n8n_bootstrap import ensure_n8n_ready, sync_workflows_background
+from laya.integrations.n8n_bootstrap import provision_n8n_background, sync_workflows_background
 from laya.db.chromadb_store import connect_chromadb, disconnect_chromadb
 from laya.db.migrate import run_migrations
 from laya.db.sqlite import connect, disconnect
@@ -236,16 +236,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         log.warning("agent_path_detection_failed", error=str(e))
 
-    # Auto-provision n8n (owner account + API key)
-    try:
-        n8n_result = await ensure_n8n_ready()
-        log.info("n8n_bootstrap", **n8n_result)
-    except Exception as e:
-        log.warning("n8n_bootstrap_failed", error=str(e))
+    # Auto-provision n8n (owner account + API key) in the background.
+    # NOT awaited: uvicorn serves no route (incl. /health) until this lifespan
+    # startup returns, and n8n can take minutes to finish its DB migrations on
+    # a slow first launch. Awaiting it here would keep /health down past the
+    # Tauri shell's wait_for_engine() budget, surfacing a spurious "engine not
+    # responding" + retry loop. Defer it so the engine is ready immediately.
+    from laya.tasks import create_task as create_tracked_task
+    create_tracked_task(provision_n8n_background())
 
     # Import any new bundled workflows in the background — retries for up to
     # 10 min so a slow-starting n8n is handled gracefully.
-    from laya.tasks import create_task as create_tracked_task
     _workflow_sync_task = create_tracked_task(sync_workflows_background())  # noqa: F841
 
     # Connect ChromaDB vector store

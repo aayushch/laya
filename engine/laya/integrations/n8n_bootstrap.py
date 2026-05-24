@@ -747,6 +747,34 @@ async def sync_workflows_background() -> None:
     log.warning("n8n_background_workflow_sync_timeout")
 
 
+async def provision_n8n_background() -> None:
+    """Provision n8n (owner account + API key) without blocking engine startup.
+
+    Called as a fire-and-forget task from the FastAPI lifespan instead of
+    awaiting ensure_n8n_ready() inline — n8n can take minutes to finish its DB
+    migrations on a slow/first launch, and blocking the lifespan keeps /health
+    down past the Tauri shell's readiness budget (spurious "engine not
+    responding" + retry loop).
+
+    Retries until ensure_n8n_ready() reaches a terminal status or a 10-minute
+    deadline. Only "unreachable" is retried; "ready"/"already_configured" mean
+    success and "error" means manual intervention is needed (retrying won't
+    help). Idempotent, like ensure_n8n_ready() itself.
+    """
+    deadline = asyncio.get_event_loop().time() + 600  # 10 min
+    while asyncio.get_event_loop().time() < deadline:
+        try:
+            result = await ensure_n8n_ready()
+            log.info("n8n_bootstrap", **result)
+            if result.get("status") != "unreachable":
+                return
+        except Exception as e:
+            log.warning("n8n_bootstrap_failed", error=str(e))
+        await asyncio.sleep(15.0)
+
+    log.warning("n8n_bootstrap_deadline_exceeded")
+
+
 async def ensure_n8n_ready(*, _retries: int = 3, _backoff: float = 10.0) -> dict:
     """Ensure n8n is fully provisioned with owner account + API key.
 
