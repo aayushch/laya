@@ -40,7 +40,7 @@
 	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 		<h3 class="mb-1 text-laya-heading font-medium">About Laya</h3>
 		<p class="mb-4 text-laya-base text-surface-400">
-			The AI operating system for your professional life.
+			Your AI command center for professional life.
 		</p>
 
 		<dl class="space-y-2 text-laya-base">

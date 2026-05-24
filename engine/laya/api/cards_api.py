@@ -773,6 +773,15 @@ async def mark_card_done(card_id: str) -> dict:
         {"type": "card_updated", "card_id": card_id, "payload": {"status": "done"}}
     )
 
+    # Audit the lifecycle change to match the dismiss/archive/reopen endpoints, which
+    # all write a "lifecycle" entry — done was the lone gap.
+    await log_to_audit(
+        event_id=None, card_id=card_id, step="lifecycle",
+        model="n/a", input_tokens=0, output_tokens=0, latency_ms=0,
+        success=True,
+        metadata={"action": "done", "previous_status": current},
+    )
+
     log.info("card_done", card_id=card_id)
 
     # Update daily summary with status change

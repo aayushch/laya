@@ -111,6 +111,16 @@
 		}
 	});
 
+	// Focus the input when entering the chat view (e.g. after starting a new
+	// chat via '+', or opening a conversation) so the user can type immediately
+	// without having to click into the textarea first. The textarea only renders
+	// once we leave the list view, so wait a tick for it to mount.
+	$effect(() => {
+		if ($chatOpen && !showList) {
+			tick().then(() => textareaEl?.focus());
+		}
+	});
+
 	// Auto-resize textarea to fit content, capped at 240px
 	$effect(() => {
 		if (!textareaEl) return;

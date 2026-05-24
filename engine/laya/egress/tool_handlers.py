@@ -124,6 +124,25 @@ async def handle_confirm_egress(
     # Execute
     result = await egress.execute(request)
 
+    # Audit the outbound action. This is the real send/post moment for chat-driven
+    # egress; the executor.py path audits UI-triggered actions the same way, so this
+    # closes the gap where chat egress left no persistent record. source="chat"
+    # marks the path. Local import avoids an import cycle with the LLM client.
+    from laya.llm.client import log_to_audit
+
+    await log_to_audit(
+        event_id=None, card_id=None, step="execute",
+        model="n/a", input_tokens=0, output_tokens=0, latency_ms=0,
+        success=result.success,
+        error=result.error,
+        metadata={
+            "action_type": request.action_type,
+            "target_platform": request.platform,
+            "result_url": result.result_url,
+            "source": "chat",
+        },
+    )
+
     if result.success:
         response: dict[str, Any] = {
             "status": "done",

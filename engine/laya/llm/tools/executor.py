@@ -103,4 +103,18 @@ async def execute_tool(
         return json.dumps(result, default=str)
     except Exception as e:
         log.error("tool_execution_failed", tool=name, error=str(e))
+        # Persist the crash to the audit log — log.error alone is ephemeral and gets
+        # rotated away, leaving no record that a chat tool failed. Never let auditing
+        # break the error path. Local import avoids an import cycle with the LLM client.
+        try:
+            from laya.llm.client import log_to_audit
+
+            await log_to_audit(
+                event_id=None, card_id=None, step="tool",
+                model="n/a", input_tokens=0, output_tokens=0, latency_ms=0,
+                success=False, error=str(e),
+                metadata={"tool": name, "source": "chat"},
+            )
+        except Exception:
+            pass
         return json.dumps({"error": f"Tool '{name}' failed: {str(e)}"})

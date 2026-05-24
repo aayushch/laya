@@ -300,6 +300,19 @@ async def _update_card_status(card_id: str, new_status: str) -> dict[str, Any]:
         {"type": "card_updated", "card_id": card_id, "payload": {"status": new_status}}
     )
 
+    # Mirror the audit trail the REST card-lifecycle endpoints write (cards_api.py),
+    # so a card mutated via chat is recorded the same as one mutated via the UI.
+    # source="chat" distinguishes the path. Local import avoids an import cycle with
+    # the LLM client, matching the lazy-import style used elsewhere in this module.
+    from laya.llm.client import log_to_audit
+
+    await log_to_audit(
+        event_id=None, card_id=card_id, step="lifecycle",
+        model="n/a", input_tokens=0, output_tokens=0, latency_ms=0,
+        success=True,
+        metadata={"action": new_status, "previous_status": old_status, "source": "chat"},
+    )
+
     return {
         "card_id": card_id,
         "old_status": old_status,
