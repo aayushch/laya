@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Laya — Privacy</title>
+<meta name="description" content="Laya privacy policy.">
+<link rel="icon" type="image/svg+xml" href="images/favicon.svg">
+<link rel="apple-touch-icon" href="images/logo-icon.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="privacy-page">
+
+  <div class="docs-nav-bar">
+    <div class="container">
+      <div class="nav-left">
+        <a href="index.html" class="nav-logo">
+          <img src="images/logo-icon.png" alt="Laya">
+          <span>Laya</span>
+        </a>
+      </div>
+      <a href="index.html" class="btn btn-primary btn-sm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> Back to Home</a>
+    </div>
+  </div>
+
+  <main class="docs-content" style="margin-left: 0; max-width: 800px; margin: 0 auto;">
+
+    <a href="index.html" class="back-link"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> Back to Home</a>
+
+    <h1>Privacy Policy</h1>
+    <p class="docs-subtitle">Last updated: May 2026</p>
+
+    <h2>1. Who We Are</h2>
+    <p>Laya is an open-source desktop application distributed under the Apache License 2.0. There is no company, hosted service, or data controller behind Laya. The software runs entirely on your machine. Laya's contributors do not operate servers, collect registrations, or maintain accounts on your behalf.</p>
+
+    <h2>2. Data We Collect</h2>
+    <p><strong>Laya itself collects no personal data from you.</strong> There are no Laya-operated servers to receive data, no analytics endpoints, no crash reporters, and no telemetry transmitted to Laya's contributors.</p>
+    <p>All data that Laya processes &mdash; events from connected platforms, action cards, chat messages, embeddings, settings, and logs &mdash; is stored locally on your machine in the <code>~/.laya/</code> directory. This includes:</p>
+    <ul>
+      <li>SQLite database (events, action cards, chat history, audit logs, feedback)</li>
+      <li>ChromaDB vector store (semantic embeddings for search)</li>
+      <li>Application logs (rotated, 10 MB max, 5 files retained)</li>
+      <li>Configuration files (settings, team definitions, rules)</li>
+    </ul>
+
+    <h2>3. Data Sent to Third-Party LLM Providers</h2>
+    <p>To classify events, generate action suggestions, power chat, and compute semantic embeddings, Laya transmits portions of your professional data to the LLM and embedding providers you configure. The data transmitted may include email content, messages, issue descriptions, PR diffs, calendar details, team member information, and any content you enter in chat or workspace interfaces.</p>
+    <p><strong>You choose which providers receive your data.</strong> Laya supports fully local models (Ollama, LM Studio, any OpenAI-compatible local endpoint) where no data leaves your machine. If you configure cloud providers (Anthropic, OpenAI, Google, OpenRouter), your data is subject to those providers' privacy policies and data-processing terms.</p>
+    <div class="callout callout-info">
+      <p><strong>Local-first recommended.</strong> When using self-hosted models, your data does not leave your machine or local network via Laya. This is the recommended configuration for sensitive data.</p>
+    </div>
+
+    <h2>4. Platform Integrations</h2>
+    <p>Laya connects to third-party platforms (Gmail, Slack, Jira, GitHub, Bitbucket, Calendar, Outlook, Linear, Notion, and others) using credentials you provide (OAuth tokens or API keys). These connections operate under your identity on each platform. Laya ingests events from these platforms and, with your approval, can execute actions on your behalf.</p>
+    <p>Credentials are stored in your operating system's secure credential store (macOS Keychain, Windows Credential Manager, or Linux Secret Service) and are never stored in plain text by Laya.</p>
+
+    <h2>5. MCP Server</h2>
+    <p>Laya exposes a Model Context Protocol (MCP) server on <code>http://127.0.0.1:8420/mcp/sse</code> while running. This local-only endpoint allows MCP-compatible clients (Claude Desktop, Cursor, VS Code, and others) to query your cards, events, entities, and execute actions through Laya.</p>
+    <p>The MCP server is bound to localhost (127.0.0.1) only and is not accessible from the network. Access is controlled via bearer token authentication (configurable in Settings &rarr; MCP) and tool scope toggles that let you restrict which capabilities are exposed. No data is transmitted externally by the MCP server itself.</p>
+
+    <h2>6. Telemetry &amp; Analytics</h2>
+    <p>Laya does not collect, transmit, or share any usage analytics, telemetry, crash reports, or diagnostic data with Laya's contributors or any third party. Dashboard metrics (event counts, cost estimates) are computed and stored locally.</p>
+    <p>Laya bundles third-party components (ChromaDB, n8n, sentence-transformers, HuggingFace Hub client) that may emit anonymous telemetry to their respective maintainers. Laya makes a best-effort attempt to disable all such telemetry via documented opt-out flags at startup, but this cannot be guaranteed across all versions of all dependencies.</p>
+
+    <h2>7. Cookies &amp; Tracking</h2>
+    <p>Laya is a desktop application. It does not use cookies, web beacons, tracking pixels, or any browser-based tracking technology. The only browser storage Laya uses is <code>localStorage</code> within its own embedded webview for UI preferences (theme, font size, tab state). This data never leaves your machine.</p>
+
+    <h2>8. Data Retention &amp; Deletion</h2>
+    <p>All data is stored locally and you have full control over retention. You can configure automatic retention periods in Settings &rarr; Data (card retention, chat history retention, audit log retention). You can also export or delete all data at any time.</p>
+    <p>To completely remove all Laya data from your system, delete the <code>~/.laya/</code> directory. To revoke platform access, remove the corresponding connections in Settings and revoke OAuth grants on each platform's own settings page.</p>
+
+    <h2>9. Children's Privacy</h2>
+    <p>Laya is a professional productivity tool and is not directed at children under 16. By using Laya you represent that you are at least the age of majority in your jurisdiction.</p>
+
+    <h2>10. Your Rights</h2>
+    <p>Because Laya is local-first and Laya's contributors do not hold any of your data, there is no data controller to whom you need to submit access, rectification, or deletion requests. You can inspect, modify, export, or delete all data directly on your machine at any time. For data sent to third-party LLM or platform providers, your rights are governed by those providers' privacy policies.</p>
+
+    <h2>11. Changes to This Policy</h2>
+    <p>This privacy policy may be updated with new releases of Laya. The "Last updated" date at the top reflects the current version. Material changes will be noted in release notes.</p>
+
+    <h2>12. Contact</h2>
+    <p>Laya is an open-source project. For privacy-related questions, open an issue on the <a href="https://github.com/aayushch/laya" target="_blank" rel="noopener noreferrer">GitHub repository</a> or contact the maintainer directly.</p>
+
+  </main>
+</div>
+
+</body>
+</html>

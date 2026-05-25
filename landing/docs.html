@@ -1,0 +1,1358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Laya — Docs</title>
+<meta name="description" content="Laya documentation — setup, configuration, and how the AI command center works.">
+<link rel="icon" type="image/svg+xml" href="images/favicon.svg">
+<link rel="apple-touch-icon" href="images/logo-icon.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="docs-page">
+
+  <!-- Docs Nav -->
+  <div class="docs-nav-bar">
+    <div class="container">
+      <div class="nav-left">
+        <a href="index.html" class="nav-logo">
+          <img src="images/logo-icon.png" alt="Laya">
+          <span>Laya</span>
+        </a>
+        <span class="breadcrumb">/ <span>Documentation</span></span>
+      </div>
+      <a href="index.html" class="btn btn-primary btn-sm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> Back to Home</a>
+    </div>
+  </div>
+
+  <div class="docs-layout">
+
+    <!-- Sidebar -->
+    <aside class="docs-sidebar" id="docs-sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-title">Getting Started</div>
+        <a href="#doc-overview">Overview</a>
+        <a href="#doc-prerequisites">Prerequisites</a>
+        <a href="#doc-installation">Installation</a>
+        <a href="#doc-first-run">First Run</a>
+        <a href="#doc-setup-wizard">Setup Wizard</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">n8n Integration</div>
+        <a href="#doc-n8n-overview">How n8n Works</a>
+        <a href="#doc-n8n-docker">Local Installation</a>
+        <a href="#doc-n8n-bootstrap">Auto-Provisioning</a>
+        <a href="#doc-n8n-manual">Manual Setup</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Connecting Platforms</div>
+        <a href="#doc-platforms-overview">Overview</a>
+        <a href="#doc-gmail">Gmail</a>
+        <a href="#doc-slack">Slack</a>
+        <a href="#doc-jira">Jira</a>
+        <a href="#doc-github">GitHub</a>
+        <a href="#doc-bitbucket">Bitbucket</a>
+        <a href="#doc-calendar">Google Calendar</a>
+        <a href="#doc-outlook">Outlook</a>
+        <a href="#doc-notion">Notion</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">The Pulse</div>
+        <a href="#doc-feed-views">Views &amp; Layouts</a>
+        <a href="#doc-feed-filters">Filters &amp; Sort</a>
+        <a href="#doc-feed-actions">Card Actions</a>
+        <a href="#doc-feed-statuses">Card Statuses</a>
+        <a href="#doc-feed-bookmarks">Bookmarks</a>
+        <a href="#doc-feed-research">Run Agent</a>
+        <a href="#doc-daily-briefing">Daily Briefing</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Omni</div>
+        <a href="#doc-omni-overview">Rolling Summary</a>
+        <a href="#doc-omni-layers">Temporal Layers</a>
+        <a href="#doc-omni-pins">Pins &amp; Time Travel</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Coherence</div>
+        <a href="#doc-coherence-overview">Entity Search</a>
+        <a href="#doc-coherence-traces">Traces &amp; Narratives</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Context Association</div>
+        <a href="#doc-context-overview">Semantic Grouping</a>
+        <a href="#doc-context-learning">Learning Pipeline</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Egress</div>
+        <a href="#doc-egress-overview">Outbound Actions</a>
+        <a href="#doc-egress-connections">Connections</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Configuration</div>
+        <a href="#doc-settings-models">AI Models</a>
+        <a href="#doc-settings-custom">Self-Hosted Models</a>
+        <a href="#doc-settings-agents">Coding Agents</a>
+        <a href="#doc-settings-spaces">Spaces &amp; Sources</a>
+        <a href="#doc-settings-rules">Rules &amp; Filters</a>
+        <a href="#doc-settings-team">Team Directory</a>
+        <a href="#doc-settings-repos">Repositories</a>
+        <a href="#doc-settings-briefing">Briefing Schedule</a>
+        <a href="#doc-settings-appearance">Appearance</a>
+        <a href="#doc-settings-budget">Budget &amp; Costs</a>
+        <a href="#doc-settings-data">Data &amp; Retention</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Privacy &amp; Security</div>
+        <a href="#doc-privacy-tiers">Privacy Tiers</a>
+        <a href="#doc-privacy-keys">API Key Storage</a>
+        <a href="#doc-privacy-local">Local-Only Mode</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Advanced</div>
+        <a href="#doc-keybindings">Keyboard Shortcuts</a>
+        <a href="#doc-pipeline">Processing Pipeline</a>
+        <a href="#doc-event-schema">Event Schema</a>
+        <a href="#doc-config-files">Config Files</a>
+        <a href="#doc-custom-prompts">Custom Prompts</a>
+        <a href="#doc-mcp">MCP Server</a>
+        <a href="#doc-tuning">Tuning Parameters</a>
+        <a href="#doc-troubleshooting">Troubleshooting</a>
+      </div>
+    </aside>
+
+    <!-- Content -->
+    <main class="docs-content">
+
+      <a href="index.html" class="back-link"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> Back to Home</a>
+
+      <h1>Laya Documentation</h1>
+      <p class="docs-subtitle">Everything you need to set up, configure, and master Laya.</p>
+
+      <!-- ─── GETTING STARTED ─── -->
+      <h2 id="doc-overview">Overview</h2>
+      <p>Laya is an open-source, local-first AI command center that intercepts notifications from your professional tools (Gmail, Slack, Jira, GitHub, Calendar, and more), processes them through a multi-stage AI pipeline, and delivers ready-to-approve <strong>Action Cards</strong> to your desktop.</p>
+      <p>By the time you open Laya, the AI has already researched context, drafted responses, classified priorities, and packaged everything into one-click actions.</p>
+
+      <div class="callout callout-info">
+        <p><strong>Architecture at a glance:</strong> Laya consists of three components &mdash; the <strong>Engine</strong> (Python/FastAPI backend), the <strong>UI</strong> (Svelte 5/Tauri desktop app), and <strong>n8n</strong> (local Node.js integration gateway). All data stays on your machine.</p>
+      </div>
+
+      <h2 id="doc-prerequisites">Prerequisites</h2>
+      <ul>
+        <li><strong>macOS, Windows, or Linux</strong> desktop</li>
+        <li><strong>Node.js 18+</strong> &mdash; required for n8n (the integration gateway). n8n is installed automatically as a local npm module.</li>
+        <li><strong>Python 3.11+</strong> &mdash; for the Laya Engine (bundled in releases)</li>
+        <li><strong>An LLM provider</strong> &mdash; either a cloud API key (Anthropic, OpenAI, Google, OpenRouter) <em>or</em> a self-hosted model server like <strong>Ollama</strong>, <strong>LM Studio</strong>, or any OpenAI-compatible endpoint. No API key needed for local models.</li>
+        <li><strong>OS Keychain access</strong> &mdash; macOS Keychain, Windows Credential Manager, or Linux Secret Service (for storing API keys securely)</li>
+      </ul>
+
+      <h2 id="doc-installation">Installation</h2>
+
+      <h3>Option A: Download Release</h3>
+      <p>Download the latest release from GitHub. The desktop app bundles the Engine and automatically installs n8n on first launch.</p>
+
+      <h3>Option B: Build from Source</h3>
+<pre><code># Clone the repository
+git clone https://github.com/your-org/laya.git
+cd laya
+
+# One-time setup (installs Python deps, Node deps, and n8n)
+./scripts/setup-dev.sh
+
+# Run the app (starts Engine + Tauri dev server + n8n)
+./scripts/dev.sh</code></pre>
+
+      <p>If you prefer to run each step manually instead of using the scripts above:</p>
+<pre><code># Install n8n locally
+mkdir -p ~/.laya/n8n_module ~/.laya/n8n
+npm install --prefix ~/.laya/n8n_module n8n
+
+# Start the Engine
+cd engine
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python -m laya.main
+
+# Start the UI (in a separate terminal)
+cd ui
+npm install
+npm run dev</code></pre>
+
+      <h2 id="doc-first-run">First Run</h2>
+      <p>When Laya starts for the first time, it automatically:</p>
+      <ol>
+        <li>Creates the <code>~/.laya/</code> directory with default config files</li>
+        <li>Detects Node.js and installs n8n locally (into <code>~/.laya/n8n_module/</code>)</li>
+        <li>Starts n8n as a local process on port <code>45678</code></li>
+        <li>Initializes the SQLite database and runs all migrations</li>
+        <li>Sets up ChromaDB for semantic search</li>
+        <li>Bootstraps n8n (creates admin account, imports workflows)</li>
+        <li>Auto-detects installed coding agent CLIs</li>
+        <li>Opens the Setup Wizard in the UI</li>
+      </ol>
+
+      <h2 id="doc-setup-wizard">Setup Wizard</h2>
+      <p>The 5-step onboarding wizard walks you through initial configuration:</p>
+      <ol>
+        <li><strong>LLM Provider</strong> &mdash; Enter a cloud API key (Anthropic, OpenAI, Google, OpenRouter) or connect a self-hosted model server (Ollama, LM Studio, or any OpenAI-compatible endpoint)</li>
+        <li><strong>n8n Check</strong> &mdash; Detects Node.js, installs n8n locally if needed, and auto-configures it</li>
+        <li><strong>Coding Agent + Repo</strong> &mdash; Select an agent (Claude Code, Gemini CLI, or Codex) and add your first repository</li>
+        <li><strong>Team Setup</strong> &mdash; Add team members so Laya can recognize actors in events</li>
+        <li><strong>Rules</strong> &mdash; Configure basic event filtering (e.g., ignore bot messages)</li>
+      </ol>
+
+      <!-- ─── N8N ─── -->
+      <h2 id="doc-n8n-overview">How n8n Works with Laya</h2>
+      <p><strong>n8n</strong> is the integration gateway that connects Laya to your external services. It runs as a <strong>local Node.js process</strong> on port <code>45678</code> and handles all platform-specific communication.</p>
+      <p>There are two types of n8n workflows:</p>
+      <ul>
+        <li><strong>Ingestion workflows</strong> &mdash; Listen to external services (Gmail, Slack, Jira, etc.) and forward normalized events to the Laya Engine at <code>POST http://127.0.0.1:8420/events</code></li>
+        <li><strong>Executor workflows</strong> &mdash; Receive action payloads from Laya and execute them on the target platform (send an email, post a Slack message, create a Jira comment)</li>
+      </ul>
+
+      <h2 id="doc-n8n-docker">n8n Local Installation</h2>
+      <p>n8n runs as a local Node.js process. The Tauri desktop app manages the n8n lifecycle automatically (starts on app launch, stops on quit).</p>
+
+      <table>
+        <tr><th>Setting</th><th>Value</th></tr>
+        <tr><td>Port</td><td><code>45678</code> (avoids conflict with a user's own n8n on default 5678)</td></tr>
+        <tr><td>Installation path</td><td><code>~/.laya/n8n_module/</code> (installed via npm)</td></tr>
+        <tr><td>n8n binary</td><td><code>~/.laya/n8n_module/node_modules/.bin/n8n</code></td></tr>
+        <tr><td>Data directory</td><td><code>~/.laya/n8n/</code> (N8N_USER_FOLDER)</td></tr>
+        <tr><td>Default admin email</td><td><code>laya@local.host</code></td></tr>
+        <tr><td>Default admin password</td><td><code>LayaAutoAdmin2026!</code></td></tr>
+      </table>
+
+      <p>If you're building from source, the setup script installs n8n for you:</p>
+<pre><code># Automatic (via setup script)
+./scripts/setup-dev.sh
+
+# Manual installation
+mkdir -p ~/.laya/n8n_module ~/.laya/n8n
+npm install --prefix ~/.laya/n8n_module n8n</code></pre>
+
+      <div class="callout callout-info">
+        <p><strong>Lightweight footprint:</strong> n8n runs as a simple Node.js process &mdash; no containers, no VMs. It starts fast, uses minimal memory, and is easy to debug.</p>
+      </div>
+
+      <h2 id="doc-n8n-bootstrap">Auto-Provisioning</h2>
+      <p>On startup, the Tauri app starts n8n as a local process, then the Engine provisions it automatically:</p>
+      <ol>
+        <li>Tauri detects Node.js and starts <code>~/.laya/n8n_module/node_modules/.bin/n8n</code> on port 45678</li>
+        <li>Engine waits for n8n to become healthy (up to 30 seconds)</li>
+        <li>Creates the admin account (or logs in if it already exists)</li>
+        <li>Generates an API key with full workflow and credential scopes</li>
+        <li>Imports all bundled ingestion &amp; executor workflows from <code>n8n/workflows/</code></li>
+        <li>Stores the API key and admin password in the OS keychain</li>
+      </ol>
+      <p>This process is fully idempotent &mdash; it's safe to restart and won't create duplicates. n8n is automatically stopped when you quit the Laya app.</p>
+
+      <h2 id="doc-n8n-manual">Manual Setup</h2>
+      <p>If auto-provisioning doesn't work (e.g., custom n8n instance or external server), you can configure manually:</p>
+      <ol>
+        <li>Open the n8n dashboard at <code>http://localhost:45678</code></li>
+        <li>Create an account and generate an API key under <strong>Settings &rarr; API</strong></li>
+        <li>In Laya, go to <strong>Settings &rarr; Integrations</strong> and enter the API key manually</li>
+        <li>Import workflows from the <code>n8n/workflows/</code> directory via n8n's import UI</li>
+      </ol>
+
+      <h3>Environment Variables</h3>
+      <table>
+        <tr><th>Variable</th><th>Default</th><th>Description</th></tr>
+        <tr><td><code>N8N_URL</code></td><td><code>http://localhost:45678</code></td><td>Override n8n base URL</td></tr>
+        <tr><td><code>LAYA_N8N_OWNER_EMAIL</code></td><td><code>laya@local.host</code></td><td>Admin account email</td></tr>
+        <tr><td><code>LAYA_N8N_OWNER_PASSWORD</code></td><td><code>LayaAutoAdmin2026!</code></td><td>Admin account password</td></tr>
+      </table>
+
+      <!-- ─── PLATFORMS ─── -->
+      <h2 id="doc-platforms-overview">Connecting Platforms</h2>
+      <p>All integrations are set up directly through the Laya UI &mdash; you never need to log into n8n. When you connect a platform, Laya automatically creates the n8n credentials, clones the appropriate ingestion and executor workflows, and activates them.</p>
+
+      <h3>General Steps</h3>
+      <ol>
+        <li>Go to <strong>Settings &rarr; Integrations</strong></li>
+        <li>Click the platform you want to connect</li>
+        <li>Enter your credentials (API key or OAuth) in the modal</li>
+        <li>Laya validates the credentials, provisions n8n workflows, and activates them automatically</li>
+        <li>A green indicator confirms the connection is active</li>
+      </ol>
+
+      <h3>Multi-Account Support</h3>
+      <p>You can connect multiple accounts for the same platform (e.g., "Work Gmail" and "Personal Gmail"). Each connection gets its own credentials, workflows, and event stream. Give each a unique name when connecting.</p>
+
+      <h2 id="doc-gmail">Gmail</h2>
+      <table>
+        <tr><th>Property</th><th>Value</th></tr>
+        <tr><td>Auth</td><td>OAuth2 (opens Google sign-in in your browser)</td></tr>
+        <tr><td>Trigger</td><td>Polling (every minute, INBOX only)</td></tr>
+        <tr><td>Actions</td><td>Send, reply, forward emails</td></tr>
+      </table>
+      <p>Requires a Google OAuth client (client ID + secret). If you haven't set one up, Laya will prompt you to enter your OAuth app credentials first, then open the Google consent screen in your browser.</p>
+
+      <h2 id="doc-slack">Slack</h2>
+      <table>
+        <tr><th>Property</th><th>Value</th></tr>
+        <tr><td>Auth</td><td>Bot Token (API key)</td></tr>
+        <tr><td>Trigger</td><td>Webhook (real-time via Slack Events API)</td></tr>
+        <tr><td>Actions</td><td>Send messages, post thread replies</td></tr>
+      </table>
+      <p>Enter your Slack Bot Token in the connect modal. Events arrive in real-time with channel, thread, and mention metadata.</p>
+
+      <h2 id="doc-jira">Jira</h2>
+      <table>
+        <tr><th>Property</th><th>Value</th></tr>
+        <tr><td>Auth</td><td>API Token (email + token)</td></tr>
+        <tr><td>Trigger</td><td>Polling (every minute)</td></tr>
+        <tr><td>Actions</td><td>Add comments, update ticket fields</td></tr>
+      </table>
+      <p>Enter your Jira email and API token. The workflow polls for recently updated issues and includes project, labels, priority, and status metadata.</p>
+
+      <h2 id="doc-github">GitHub</h2>
+      <table>
+        <tr><th>Property</th><th>Value</th></tr>
+        <tr><td>Auth</td><td>Personal Access Token</td></tr>
+        <tr><td>Trigger</td><td>Webhook (real-time)</td></tr>
+        <tr><td>Actions</td><td>Create PRs, add comments</td></tr>
+      </table>
+      <p>Enter your GitHub username and PAT. Supports PRs, issues, pushes, reviews, and CI checks.</p>
+
+      <h2 id="doc-bitbucket">Bitbucket</h2>
+      <table>
+        <tr><th>Property</th><th>Value</th></tr>
+        <tr><td>Auth</td><td>App Password</td></tr>
+        <tr><td>Trigger</td><td>Webhook (real-time)</td></tr>
+        <tr><td>Actions</td><td>Create PRs, add comments</td></tr>
+      </table>
+      <p>Handles PR events, build status changes, branch pushes, and code review requests.</p>
+
+      <h2 id="doc-calendar">Google Calendar</h2>
+      <table>
+        <tr><th>Property</th><th>Value</th></tr>
+        <tr><td>Auth</td><td>OAuth2 (opens Google sign-in in your browser)</td></tr>
+        <tr><td>Trigger</td><td>Polling (scheduled)</td></tr>
+        <tr><td>Actions</td><td>Create and update events</td></tr>
+      </table>
+      <p>Uses the same Google OAuth client as Gmail. If you've already set up Gmail, the OAuth client credentials are reused automatically.</p>
+
+      <h2 id="doc-outlook">Outlook</h2>
+      <table>
+        <tr><th>Property</th><th>Value</th></tr>
+        <tr><td>Auth</td><td>Microsoft OAuth2</td></tr>
+        <tr><td>Trigger</td><td>Polling / Webhook (depending on Graph API config)</td></tr>
+        <tr><td>Actions</td><td>Send/reply emails, create/update calendar events</td></tr>
+      </table>
+      <p>Covers both Outlook email and calendar. Requires a Microsoft OAuth client (client ID + secret).</p>
+
+      <h2 id="doc-linear">Linear</h2>
+      <table>
+        <tr><th>Property</th><th>Value</th></tr>
+        <tr><td>Auth</td><td>API Key</td></tr>
+        <tr><td>Actions</td><td>Create issues, add comments</td></tr>
+      </table>
+      <p>Enter your Linear API key. Linear events are ingested and actions are executed via the GraphQL API.</p>
+
+      <h2 id="doc-notion">Notion</h2>
+      <table>
+        <tr><th>Property</th><th>Value</th></tr>
+        <tr><td>Auth</td><td>Internal Integration Token</td></tr>
+        <tr><td>Trigger</td><td>Polling (page updates in configured databases)</td></tr>
+        <tr><td>Actions</td><td>Create pages, update properties</td></tr>
+      </table>
+      <p>Create a Notion internal integration, share the relevant databases with it, and enter the integration token. Laya polls for page changes and can create or update pages via the Notion API.</p>
+
+      <h3>Removing a Connection</h3>
+      <p>To disconnect a platform, click the connection name in <strong>Settings &rarr; Integrations</strong> and select <strong>Remove</strong>. Laya will deactivate and delete the cloned workflows, remove the n8n credential, and clear the keychain entry.</p>
+
+      <!-- ─── CUSTOM WORKFLOWS ─── -->
+      <h2 id="doc-custom-workflows">Custom Workflows</h2>
+      <p>Laya's built-in integrations cover the most common platforms, but you can create your own n8n workflows to ingest events from any source. The only requirement is that your workflow normalizes its output into the <strong>Laya Event format</strong> and POSTs it to the Engine.</p>
+
+      <h3>How It Works</h3>
+      <ol>
+        <li>Open the n8n dashboard at <code>http://localhost:45678</code> (credentials are shown in the n8n section above)</li>
+        <li>Create a new workflow with a trigger of your choice (webhook, polling, cron, etc.)</li>
+        <li>Add your platform-specific nodes to fetch or receive data</li>
+        <li>Add a <strong>Set</strong> node to transform the data into the Laya Event format (see schema below)</li>
+        <li>Add an <strong>HTTP Request</strong> node as the final step to POST the normalized event to <code>http://127.0.0.1:8420/events</code></li>
+        <li>Activate the workflow</li>
+      </ol>
+
+      <h3>The Laya Event Format</h3>
+      <p>Every event POSTed to Laya must conform to this JSON schema. The endpoint is <code>POST http://127.0.0.1:8420/events</code> with <code>Content-Type: application/json</code>.</p>
+
+<pre><code>{
+  "event_id": "evt_myplatform_unique_id_here",
+  "timestamp": "2026-04-05T14:30:00Z",
+  "source": {
+    "platform": "myplatform",
+    "connection_id": "optional_workflow_or_account_id",
+    "raw_event_type": "task_created"
+  },
+  "actor": {
+    "name": "Jane Smith",
+    "email": "jane@company.com",
+    "platform_handle": "jsmith"
+  },
+  "subject": {
+    "type": "ticket",
+    "id": "TASK-42",
+    "title": "Investigate payment timeout errors",
+    "url": "https://myplatform.com/tasks/42"
+  },
+  "content": {
+    "body": "Payment gateway timing out for EU customers since 3pm.",
+    "attachments": [],
+    "metadata": {
+      "custom_priority": "high",
+      "project": "payments"
+    }
+  }
+}</code></pre>
+
+      <h3>Field Reference</h3>
+      <table>
+        <tr><th>Field</th><th>Required</th><th>Description</th></tr>
+        <tr><td><code>event_id</code></td><td>Yes</td><td>Globally unique ID. Use a deterministic format (e.g., <code>evt_{platform}_{item_id}_{timestamp}</code>) so retries are deduplicated.</td></tr>
+        <tr><td><code>timestamp</code></td><td>Yes</td><td>ISO 8601 UTC timestamp of when the event occurred in the source system.</td></tr>
+        <tr><td><code>source.platform</code></td><td>Yes</td><td>Short name for your platform (e.g., <code>"notion"</code>, <code>"trello"</code>, <code>"pagerduty"</code>). Use lowercase, no spaces.</td></tr>
+        <tr><td><code>source.connection_id</code></td><td>No</td><td>Identifier for the specific account or workflow. Used by Laya to resolve which Space the event belongs to.</td></tr>
+        <tr><td><code>source.raw_event_type</code></td><td>Yes</td><td>Platform-specific event type (e.g., <code>"task_created"</code>, <code>"alert_fired"</code>). Preserved for classification and debugging.</td></tr>
+        <tr><td><code>actor.name</code></td><td>Yes</td><td>Display name of the person or system that triggered the event.</td></tr>
+        <tr><td><code>actor.email</code></td><td>Yes</td><td>Email address. Laya uses this to match against your Team Directory and determine the actor's relationship (teammate, manager, external, etc.). Use <code>""</code> if unavailable.</td></tr>
+        <tr><td><code>actor.platform_handle</code></td><td>No</td><td>Platform-specific username. Used as a fallback for team matching.</td></tr>
+        <tr><td><code>subject.type</code></td><td>Yes</td><td>One of: <code>ticket</code>, <code>pull_request</code>, <code>build</code>, <code>thread</code>, <code>email_thread</code>, <code>meeting</code>. Choose the closest match.</td></tr>
+        <tr><td><code>subject.id</code></td><td>Yes</td><td>Platform-specific identifier (e.g., <code>"TASK-42"</code>, <code>"#312"</code>).</td></tr>
+        <tr><td><code>subject.title</code></td><td>Yes</td><td>Human-readable title or subject line.</td></tr>
+        <tr><td><code>subject.url</code></td><td>No</td><td>Direct link to the item in the source platform.</td></tr>
+        <tr><td><code>content.body</code></td><td>Yes</td><td>Main text content (description, message body, comment text). Use <code>""</code> if unavailable.</td></tr>
+        <tr><td><code>content.attachments</code></td><td>No</td><td>Array of attachment URLs or filenames. Defaults to <code>[]</code>.</td></tr>
+        <tr><td><code>content.metadata</code></td><td>No</td><td>Object for any platform-specific fields (labels, priority, assignee, etc.). Defaults to <code>{}</code>. These are stored and available to the AI pipeline for enrichment.</td></tr>
+      </table>
+
+      <h3>Choosing <code>subject.type</code></h3>
+      <p>Pick the type that best describes the item:</p>
+      <table>
+        <tr><th>Type</th><th>Use for</th></tr>
+        <tr><td><code>ticket</code></td><td>Jira issues, Linear issues, Trello cards, support tickets, tasks</td></tr>
+        <tr><td><code>pull_request</code></td><td>GitHub/Bitbucket PRs, merge requests, code reviews</td></tr>
+        <tr><td><code>build</code></td><td>CI/CD results, deployment notifications, build failures</td></tr>
+        <tr><td><code>thread</code></td><td>Slack messages, Discord messages, chat threads</td></tr>
+        <tr><td><code>email_thread</code></td><td>Emails, newsletters, support inbox messages</td></tr>
+        <tr><td><code>meeting</code></td><td>Calendar events, standups, scheduled calls</td></tr>
+      </table>
+
+      <h3>The Final n8n Node</h3>
+      <p>Your workflow's last node should be an <strong>HTTP Request</strong> node configured as:</p>
+      <table>
+        <tr><th>Setting</th><th>Value</th></tr>
+        <tr><td>Method</td><td><code>POST</code></td></tr>
+        <tr><td>URL</td><td><code>http://127.0.0.1:8420/events</code></td></tr>
+        <tr><td>Body Content Type</td><td><code>JSON</code></td></tr>
+        <tr><td>Body</td><td>The normalized event object (use expressions to map fields from previous nodes)</td></tr>
+      </table>
+
+      <h3>Testing Your Workflow</h3>
+      <p>You can test the event format directly from your terminal before wiring up the full workflow:</p>
+<pre><code>curl -X POST http://localhost:8420/events \
+  -H "Content-Type: application/json" \
+  -d '{
+    "event_id": "evt_test_001",
+    "timestamp": "2026-04-05T14:30:00Z",
+    "source": {
+      "platform": "test",
+      "raw_event_type": "test_event"
+    },
+    "actor": {
+      "name": "Test User",
+      "email": "test@example.com"
+    },
+    "subject": {
+      "type": "ticket",
+      "id": "TEST-1",
+      "title": "Test Event"
+    },
+    "content": {
+      "body": "Testing custom workflow integration."
+    }
+  }'</code></pre>
+      <p>A successful response returns <code>HTTP 202</code> with:</p>
+<pre><code>{ "event_id": "evt_test_001", "status": "queued" }</code></pre>
+      <p>The event will appear in your feed within seconds as the AI pipeline processes it into an Action Card.</p>
+
+      <div class="callout callout-info">
+        <p><strong>Tip:</strong> Use deterministic <code>event_id</code> values based on the source data (e.g., platform + item ID + timestamp) rather than random UUIDs. This ensures that if n8n retries a delivery, Laya deduplicates it instead of creating a duplicate card.</p>
+      </div>
+
+      <div class="callout callout-info">
+        <p><strong>Tip:</strong> The <code>content.metadata</code> field is your escape hatch for platform-specific data. Anything you put here is stored and visible to the AI pipeline &mdash; the router and stager models can use it for better classification and action suggestions. For example, including a <code>"severity": "critical"</code> field will help Laya prioritize the event correctly.</p>
+      </div>
+
+      <!-- ─── THE PULSE ─── -->
+      <h2 id="doc-feed-views">Views &amp; Layouts</h2>
+      <p>The Pulse is the main feed for interacting with your Action Cards. It supports two view modes accessible from the header:</p>
+      <ul>
+        <li><strong>Card View</strong> &mdash; 3-column grid of grouped cards, best for visual scanning. Context-grouped cards are clustered together automatically when smart grouping is enabled.</li>
+        <li><strong>List View</strong> &mdash; Dense tabular layout, best for rapid triage of many items</li>
+      </ul>
+      <p>Click any card to open its <strong>Detail Panel</strong> on the right, showing the full intelligence report, staged output (draft replies, code diffs), and action buttons.</p>
+
+      <h2 id="doc-feed-filters">Filters &amp; Sort</h2>
+      <p>The header toolbar provides comprehensive filtering:</p>
+      <table>
+        <tr><th>Control</th><th>Options</th><th>Default</th></tr>
+        <tr><td><strong>Date Navigation</strong></td><td>Previous/Next day, Today button</td><td>Today</td></tr>
+        <tr><td><strong>Space Filter</strong></td><td>All Spaces, or specific space</td><td>All Spaces</td></tr>
+        <tr><td><strong>Sort</strong></td><td>Newest, Priority, Persona, Category, Source</td><td>Newest</td></tr>
+        <tr><td><strong>Status Filter</strong></td><td>Processing, Ready, Needs Approval, Running, Failed, Done, Dismissed</td><td>All</td></tr>
+        <tr><td><strong>Priority Filter</strong></td><td>Critical, High, Medium, Low</td><td>All</td></tr>
+        <tr><td><strong>Archived</strong></td><td>Show/hide archived cards</td><td>Hidden</td></tr>
+        <tr><td><strong>Search</strong></td><td>Text search with optional "Search all days" mode</td><td>Empty</td></tr>
+      </table>
+      <p>Filters are persisted to the backend so they survive page reloads and app restarts. The <strong>Search all days</strong> mode searches across all dates, not just the currently selected day.</p>
+
+      <h3>Bulk Actions</h3>
+      <p>Select multiple cards and apply actions in bulk via the bulk actions dropdown:</p>
+      <ul>
+        <li><strong>Mark Done</strong> &mdash; Mark all selected cards as done</li>
+        <li><strong>Dismiss</strong> &mdash; Dismiss all selected cards</li>
+        <li><strong>Reopen</strong> &mdash; Reopen dismissed/done/failed cards</li>
+        <li><strong>Archive</strong> / <strong>Unarchive</strong> &mdash; Bulk archive or unarchive</li>
+        <li><strong>Delete</strong> &mdash; Permanently remove selected archived cards</li>
+      </ul>
+
+      <h2 id="doc-feed-actions">Card Actions</h2>
+      <p>Each card provides quick actions depending on its status:</p>
+      <table>
+        <tr><th>Action</th><th>Description</th></tr>
+        <tr><td><strong>Mark as Done</strong></td><td>Confirm the card is handled. Moves to <code>done</code> status.</td></tr>
+        <tr><td><strong>Dismiss</strong></td><td>Reject or skip the card. Optionally provide a reason (used for AI learning).</td></tr>
+        <tr><td><strong>Archive</strong></td><td>Hide from feed. Can be reopened later. Preserves original status.</td></tr>
+        <tr><td><strong>Reopen</strong></td><td>Bring back a dismissed, archived, or failed card for reprocessing.</td></tr>
+        <tr><td><strong>Approve Agent</strong></td><td>Start a coding agent to work on the task (for <code>requires_approval</code> cards).</td></tr>
+        <tr><td><strong>Execute Action</strong></td><td>Run a suggested action (send email, post comment) via n8n.</td></tr>
+        <tr><td><strong>Run Agent</strong></td><td>Run a coding agent (Claude Code, Gemini CLI, Codex) on the card or its entity group. Provide a custom prompt and interact via the workspace.</td></tr>
+        <tr><td><strong>Delete</strong></td><td>Permanently remove an archived card and all its data.</td></tr>
+      </table>
+
+      <h2 id="doc-feed-statuses">Card Statuses</h2>
+      <p>Cards flow through a lifecycle of statuses:</p>
+      <table>
+        <tr><th>Status</th><th>Meaning</th><th>Visual</th></tr>
+        <tr><td><code>pending</code></td><td>Event received, being processed by AI pipeline</td><td>Amber pulse glow</td></tr>
+        <tr><td><code>ready</code></td><td>Card fully processed, ready for user action</td><td>Warm peach tint</td></tr>
+        <tr><td><code>requires_approval</code></td><td>Coding agent needs user approval before starting</td><td>Violet pulse glow</td></tr>
+        <tr><td><code>agent_running</code></td><td>Coding agent actively working in a workspace</td><td>Lavender tint</td></tr>
+        <tr><td><code>awaiting_input</code></td><td>Agent paused, waiting for user decision</td><td>Amber tint</td></tr>
+        <tr><td><code>done</code></td><td>Completed and confirmed by user</td><td>Soft emerald</td></tr>
+        <tr><td><code>failed</code></td><td>Processing or execution error (can be reopened)</td><td>Soft red</td></tr>
+        <tr><td><code>dismissed</code></td><td>Rejected by user (can be reopened)</td><td>Muted gray</td></tr>
+        <tr><td><code>archived</code></td><td>Hidden from feed (can be reopened or deleted)</td><td>Dashed border</td></tr>
+      </table>
+
+      <h2 id="doc-feed-bookmarks">Bookmarks</h2>
+      <p>Bookmark any card for quick access later. Bookmarked cards appear across all dates and statuses when the bookmark filter is active.</p>
+      <ul>
+        <li>Click the <strong>bookmark icon</strong> on any card (list view, card view, or card detail)</li>
+        <li>Toggle the bookmark filter in the feed header to show only bookmarked cards</li>
+        <li>Bookmarks persist across sessions and ignore date navigation</li>
+        <li>Unbookmark by clicking the icon again</li>
+      </ul>
+
+      <h2 id="doc-feed-research">Run Agent</h2>
+      <p>Any card or entity group can have a coding agent run against it. Press <strong>Ctrl+A</strong> (Cmd+A on Mac) or click <strong>Run Agent</strong> on a card to open the agent dialog:</p>
+      <ul>
+        <li><strong>Custom prompt</strong> &mdash; Describe what you want the agent to do (investigate, code, research, etc.)</li>
+        <li><strong>Agent selection</strong> &mdash; Choose Claude Code, Gemini CLI, or Codex (defaults to your configured agent)</li>
+        <li><strong>Working directory</strong> &mdash; Defaults to <code>~/.laya/tmp/research/&lt;card_id&gt;/</code> for research sessions, or your repo directory for code tasks</li>
+        <li><strong>Additional directories</strong> &mdash; Pass extra repo paths for the agent to access</li>
+      </ul>
+      <p>During execution, the agent streams progress to the workspace timeline. You can:</p>
+      <ul>
+        <li><strong>Answer questions</strong> &mdash; The agent may ask for approval or clarification; respond directly in the workspace</li>
+        <li><strong>Dismiss questions</strong> &mdash; Skip pending prompts without answering</li>
+        <li><strong>Resume sessions</strong> &mdash; Continue a completed or paused session with a new freeform prompt</li>
+        <li><strong>Browse files</strong> &mdash; View output files created during research sessions</li>
+      </ul>
+      <p>Agent sessions can also run at the <strong>entity group level</strong>, where a single session covers all cards in a group. The agent receives a <code>CONTEXT.md</code> file with the group summary and card details.</p>
+
+      <h2 id="doc-daily-briefing">Daily Briefing</h2>
+      <p>Laya generates a synthesized daily briefing at your configured time (default 7:00 AM). The briefing aggregates overnight activity into three sections:</p>
+      <ul>
+        <li><strong>Events &amp; Meetings</strong> &mdash; Calendar events and notable communications</li>
+        <li><strong>Action Items</strong> &mdash; Tasks requiring your attention, ranked by priority</li>
+        <li><strong>Key Updates</strong> &mdash; Important changes filtered from noise</li>
+      </ul>
+      <p>Configure the briefing schedule under <strong>Settings &rarr; Briefing</strong>.</p>
+
+      <!-- ─── COHERENCE ─── -->
+      <h2 id="doc-coherence-overview">Coherence &mdash; Entity Search</h2>
+      <p>Coherence is Laya's cross-platform entity search and lifecycle tracking feature. Access it from the <strong>Coherence</strong> tab in the main navigation.</p>
+      <p>Search for any entity &mdash; a person, ticket ID, PR number, project name &mdash; and Coherence traces its complete history across all connected platforms.</p>
+
+      <h3>How It Works</h3>
+      <p>Coherence uses a three-phase search algorithm:</p>
+      <ol>
+        <li><strong>Discovery</strong> &mdash; Runs semantic search (ChromaDB), fuzzy/SQLite search, and entity table lookup in parallel, then merges results via Reciprocal Rank Fusion (RRF)</li>
+        <li><strong>Expansion</strong> &mdash; Fetches all cards for matched entities plus cross-references</li>
+        <li><strong>Clustering</strong> &mdash; Groups results by connected entities, orders chronologically, and auto-detects narrative chapters</li>
+      </ol>
+
+      <h3>Features</h3>
+      <ul>
+        <li>Supports identifier patterns like <code>PR-540</code>, <code>BUG-123</code>, or natural language queries</li>
+        <li>AI-generated narratives explain each cluster's story with chapter detection</li>
+        <li>Real-time narrative streaming via WebSocket</li>
+        <li>Remove irrelevant clusters from results, or restore them later</li>
+        <li>Export traces as markdown</li>
+        <li>Save and rerun traces as new data arrives</li>
+      </ul>
+
+      <h2 id="doc-coherence-traces">Traces &amp; Narratives</h2>
+      <p>Each search creates a <strong>trace</strong> that is saved for later reference. Traces contain:</p>
+      <ul>
+        <li><strong>Clusters</strong> &mdash; Groups of related entities with timelines</li>
+        <li><strong>Chapters</strong> &mdash; Auto-detected lifecycle phases (Created, Discussion, Code Review, Resolved, etc.)</li>
+        <li><strong>Narrative</strong> &mdash; AI-generated summary of the entity's story</li>
+        <li><strong>Search metadata</strong> &mdash; Diagnostics about which search methods contributed results</li>
+      </ul>
+      <p>Traces can be rerun to pick up new events, and exported as markdown reports.</p>
+
+      <!-- ─── CONTEXT ASSOCIATION ─── -->
+      <h2 id="doc-context-overview">Context Association &mdash; Semantic Grouping</h2>
+      <p>Context association automatically links related cards across different platforms and entity types. When a new card is emitted, Laya searches for semantically similar existing cards and groups them together if they belong to the same real-world context.</p>
+
+      <h3>How It Works</h3>
+      <ol>
+        <li><strong>Semantic search</strong> &mdash; New cards are compared against existing cards in ChromaDB using vector similarity</li>
+        <li><strong>Confidence thresholds</strong> &mdash; Matches below 0.20 distance are auto-confirmed; matches between 0.20&ndash;0.30 are confirmed via LLM call</li>
+        <li><strong>Context groups</strong> &mdash; Linked cards share a <code>context_id</code> and display a context label in the feed</li>
+        <li><strong>User overrides</strong> &mdash; Manual merge (Link Dialog) and unlink operations are respected; user-split groups are never re-merged</li>
+      </ol>
+
+      <h3>Smart Grouping in Feed</h3>
+      <p>When smart grouping is enabled (Settings &rarr; Briefing &rarr; Smart Grouping), context-associated cards are clustered together in the feed. Cards show a "linked" badge when they belong to a context group.</p>
+
+      <h2 id="doc-context-learning">Context Association &mdash; Learning Pipeline</h2>
+      <p>Laya learns from your link and unlink corrections to improve future grouping accuracy. The learning pipeline runs every 6 hours and:</p>
+      <ol>
+        <li>Collects unprocessed link/unlink corrections (up to 40 per batch)</li>
+        <li>Sends them to the LLM to extract generalizable rules (e.g., "bills and payment receipts for the same service should be grouped")</li>
+        <li>Stores extracted rules in the <code>context_rules</code> table</li>
+        <li>Injects these rules into future context confirmation prompts</li>
+      </ol>
+      <p>Rules are per-space and improve automatically as more corrections are processed. View active rules and correction history in <strong>Settings &rarr; Audit Log</strong>.</p>
+
+      <!-- ─── EGRESS ─── -->
+      <h2 id="doc-egress-overview">Egress &mdash; Outbound Actions</h2>
+      <p>The egress system handles all outbound communication with external platforms. Instead of switching to Slack or Gmail to take action, do it directly from Laya.</p>
+
+      <h3>Supported Actions</h3>
+      <table>
+        <tr><th>Platform</th><th>Actions</th></tr>
+        <tr><td>Gmail / Outlook</td><td>Send, reply, forward emails</td></tr>
+        <tr><td>Slack</td><td>Post messages, reply in threads</td></tr>
+        <tr><td>Jira</td><td>Add comments, update tickets</td></tr>
+        <tr><td>GitHub / Bitbucket</td><td>Create PRs, add comments</td></tr>
+        <tr><td>Calendar</td><td>Create and update events</td></tr>
+        <tr><td>Linear</td><td>Create issues, add comments</td></tr>
+        <tr><td>Notion</td><td>Create pages, update properties</td></tr>
+      </table>
+
+      <h3>How to Use</h3>
+      <ul>
+        <li><strong>From a card</strong> &mdash; Click "Execute" on a suggested action. Laya shows a preview before sending.</li>
+        <li><strong>Compose modal</strong> &mdash; Press <code>Ctrl+C</code> (Cmd+C on Mac) to open the compose modal and send a new message to any connected platform.</li>
+        <li><strong>Card-triggered</strong> &mdash; Approve suggested actions directly from Action Cards.</li>
+      </ul>
+
+      <h2 id="doc-egress-connections">Connections</h2>
+      <p>Platform connections are managed under <strong>Settings &rarr; Integrations</strong>. Each connection tracks its status, credentials (stored in your OS keychain), and available capabilities. Use the <strong>Test Connection</strong> button to verify connectivity before sending.</p>
+
+      <!-- ─── OMNI ─── -->
+      <h2 id="doc-omni-overview">Omni &mdash; Rolling Summary</h2>
+      <p>Omni is Laya's cross-platform summary engine. It synthesizes all professional activity across every connected platform into a single, unified "big picture" view. Access it from the <strong>Omni</strong> tab in the main navigation.</p>
+      <p>Unlike the feed (which shows individual cards) or briefings (which cover a single morning), Omni maintains a <strong>rolling summary</strong> that progressively compresses older information while keeping recent details sharp.</p>
+
+      <h2 id="doc-omni-layers">Temporal Layers</h2>
+      <p>Every Omni snapshot is organized into four temporal layers:</p>
+      <table>
+        <tr><th>Layer</th><th>Scope</th><th>Content</th></tr>
+        <tr><td><strong>Attention</strong></td><td>Needs action now</td><td>Aging PRs, unanswered emails, stale blockers</td></tr>
+        <tr><td><strong>Recent</strong></td><td>Last 24&ndash;48 hours</td><td>Specific details &mdash; named PRs, email threads, decisions</td></tr>
+        <tr><td><strong>Period</strong></td><td>This week / sprint</td><td>Aggregates and trends, compressed from recent items</td></tr>
+        <tr><td><strong>Milestone</strong></td><td>Older inflection points</td><td>Releases, team changes, architecture shifts that still matter</td></tr>
+      </table>
+      <p>Each refresh re-synthesizes older layers, folding detail into aggregates: Recent &rarr; Period &rarr; Milestone &rarr; Gone. This ensures the summary stays dense and useful without unbounded growth.</p>
+
+      <h3>Hybrid Generation</h3>
+      <p>Omni uses two generation strategies to balance cost and freshness:</p>
+      <ul>
+        <li><strong>Incremental updates</strong> &mdash; When new cards arrive, they are appended to the Recent layer as structured items. No LLM call needed; updates are debounced in 10-second batches.</li>
+        <li><strong>Full resynthesis</strong> &mdash; The LLM compresses all layers, folds older items, and produces a clean versioned snapshot. Three triggers can fire resynthesis:
+          <ul>
+            <li><strong>Scheduled (EOD)</strong> &mdash; Runs once daily at a configurable time (default 5:00 PM in your timezone).</li>
+            <li><strong>Rolling interval</strong> &mdash; Triggers every N hours (default 4). Set to 0 to disable.</li>
+            <li><strong>Event threshold</strong> &mdash; Triggers after N new events since the last resynthesis (default 50). Set to 0 to disable.</li>
+          </ul>
+        </li>
+      </ul>
+
+      <h3>Density Modes</h3>
+      <p>Control how much detail each Omni snapshot contains under <strong>Settings</strong>:</p>
+      <table>
+        <tr><th>Mode</th><th>Items per Section</th><th>Words per Item</th><th>Best for</th></tr>
+        <tr><td><strong>Compact</strong> (default)</td><td>3</td><td>~25</td><td>One-screen glance</td></tr>
+        <tr><td><strong>Standard</strong></td><td>5</td><td>~40</td><td>Balanced detail</td></tr>
+        <tr><td><strong>Detailed</strong></td><td>8</td><td>~50</td><td>Comprehensive overview</td></tr>
+      </table>
+
+      <h2 id="doc-omni-pins">Pins &amp; Time Travel</h2>
+      <p><strong>Pins</strong> let you mark items that must survive compression. Pinned items appear in every resynthesized snapshot exactly as written, placed in the appropriate temporal layer.</p>
+      <p><strong>Time travel</strong> &mdash; use the version slider in the Omni header to browse previous snapshots. Each resynthesis creates a new versioned snapshot, so you can see how your summary evolved over time.</p>
+
+      <h3>Drill-Down</h3>
+      <p>Click on any item's source card links to open the <strong>Insight</strong> view &mdash; a side-by-side panel showing full card details alongside a contextual chat interface where you can ask questions about those specific cards.</p>
+
+      <h3>Space Awareness</h3>
+      <p>Each space maintains its own independent Omni summary. Switch between spaces using the tabs at the top of the Omni page.</p>
+
+      <h3>Omni Settings</h3>
+      <p>Configure under <strong>Settings</strong>:</p>
+      <table>
+        <tr><th>Setting</th><th>Default</th><th>Description</th></tr>
+        <tr><td>Resynthesis Time</td><td>17:00</td><td>Daily scheduled resynthesis time (HH:MM, local timezone)</td></tr>
+        <tr><td>Density</td><td>compact</td><td>Summary detail level: <code>compact</code>, <code>standard</code>, or <code>detailed</code></td></tr>
+        <tr><td>Rolling Interval</td><td>4 hours</td><td>Trigger resynthesis every N hours (0 to disable)</td></tr>
+        <tr><td>Event Threshold</td><td>50</td><td>Trigger resynthesis after N new events (0 to disable)</td></tr>
+      </table>
+
+      <!-- ─── CONFIGURATION ─── -->
+      <h2 id="doc-settings-models">AI Models</h2>
+      <p>Laya uses multiple AI models for different pipeline stages. Configure under <strong>Settings &rarr; Models</strong>.</p>
+
+      <h3>Pipeline Roles</h3>
+      <table>
+        <tr><th>Role</th><th>Purpose</th><th>Recommendation</th></tr>
+        <tr><td><strong>Router</strong></td><td>Fast classification (priority, category, persona)</td><td>Use a fast, cheap model</td></tr>
+        <tr><td><strong>Stager</strong></td><td>Synthesize action cards, intelligence reports, and Omni summaries</td><td>Use a capable model</td></tr>
+        <tr><td><strong>Chat</strong></td><td>Conversational responses in chat interface</td><td>Use a conversational model</td></tr>
+        <tr><td><strong>Coherence</strong></td><td>Cross-platform entity search and narrative generation</td><td>Use a capable model</td></tr>
+      </table>
+
+      <h3>Supported Cloud Providers</h3>
+      <table>
+        <tr><th>Provider</th><th>Model Format</th><th>Example</th></tr>
+        <tr><td>Anthropic</td><td><code>anthropic/model-name</code></td><td><code>anthropic/claude-sonnet-4-6</code></td></tr>
+        <tr><td>OpenAI</td><td><code>openai/model-name</code></td><td><code>openai/gpt-4o</code></td></tr>
+        <tr><td>Google</td><td><code>gemini/model-name</code></td><td><code>gemini/gemini-2.0-flash-exp</code></td></tr>
+        <tr><td>OpenRouter</td><td><code>openrouter/provider/model</code></td><td><code>openrouter/openai/gpt-4-turbo</code></td></tr>
+      </table>
+
+      <h3>Advanced Pipeline Settings</h3>
+      <table>
+        <tr><th>Setting</th><th>Default</th><th>Description</th></tr>
+        <tr><td>Model Timeout</td><td>480s</td><td>Maximum wait time for LLM API responses</td></tr>
+        <tr><td>LLM Retries</td><td>3</td><td>Retry attempts for failed LLM calls (exponential backoff)</td></tr>
+        <tr><td>Event Queue Retries</td><td>3</td><td>Max retries for failed event processing</td></tr>
+        <tr><td>Concurrency</td><td>4</td><td>Number of events to process simultaneously</td></tr>
+        <tr><td>Summary Debounce</td><td>30s</td><td>Quiet period before incorporating new cards into the daily summary</td></tr>
+        <tr><td>Group Summary Debounce</td><td>15s</td><td>Quiet period per entity before updating the group summary</td></tr>
+        <tr><td>Event Batch Window</td><td>3s</td><td>Collection window before batch-routing multiple events. Set to 0 to disable.</td></tr>
+        <tr><td>Event Batch Max Size</td><td>10</td><td>Maximum events classified in one router call</td></tr>
+      </table>
+
+      <h2 id="doc-settings-custom">Self-Hosted Models</h2>
+      <p>Laya supports self-hosted model providers. Add them under <strong>Settings &rarr; Models &rarr; Local Providers</strong>.</p>
+
+      <h3>Supported Provider Types</h3>
+      <table>
+        <tr><th>Type</th><th>Software</th><th>Default URL</th><th>Auto-Discovery</th></tr>
+        <tr><td><code>lmstudio</code></td><td>LM Studio</td><td><code>http://localhost:1234</code></td><td>Rich metadata with capabilities</td></tr>
+        <tr><td><code>ollama</code></td><td>Ollama</td><td><code>http://localhost:11434</code></td><td>Basic model list</td></tr>
+        <tr><td><code>openai_compatible</code></td><td>vLLM, LMStack, etc.</td><td>Custom</td><td>Standard OpenAI format</td></tr>
+      </table>
+
+      <p>After adding a provider, its models appear in the model selection dropdowns. Use them like: <code>my-provider-id/model-name</code>.</p>
+
+      <div class="callout callout-info">
+        <p><strong>Tip:</strong> Use the <strong>Test Connection</strong> button to verify provider connectivity and check model capabilities (tool calling, structured output, vision).</p>
+      </div>
+
+      <h2 id="doc-settings-agents">Coding Agents</h2>
+      <p>Laya can spawn real coding agent CLIs to work on tasks in your repositories. Configure under <strong>Settings &rarr; Agent</strong>.</p>
+
+      <h3>Supported Agents</h3>
+      <table>
+        <tr><th>Agent</th><th>Binary</th><th>Provider</th></tr>
+        <tr><td>Claude Code</td><td><code>claude</code></td><td>Anthropic</td></tr>
+        <tr><td>Gemini CLI</td><td><code>gemini</code></td><td>Google</td></tr>
+        <tr><td>Codex CLI</td><td><code>codex</code></td><td>OpenAI</td></tr>
+      </table>
+
+      <h3>Execution Modes</h3>
+      <ul>
+        <li><strong>Requires Approval</strong> (recommended) &mdash; Card status becomes <code>requires_approval</code>; you must click "Approve" before the agent starts</li>
+        <li><strong>Automatic</strong> &mdash; Agent runs immediately when an ENGINEER card is ready (use with caution)</li>
+      </ul>
+      <p>Agent paths are auto-detected on startup. If detection fails, specify the binary path manually in settings.</p>
+
+      <h2 id="doc-settings-spaces">Spaces &amp; Sources</h2>
+      <p>Spaces let you organize your workflow into separate contexts (e.g., Work, Personal, Side Projects). Configure under <strong>Settings &rarr; Spaces</strong>.</p>
+
+      <h3>What Spaces Control</h3>
+      <ul>
+        <li><strong>Event routing</strong> &mdash; Events from assigned sources land in the correct space</li>
+        <li><strong>Feed filtering</strong> &mdash; Filter the feed by space in the header toolbar</li>
+        <li><strong>Model overrides</strong> &mdash; Each space can use different AI models</li>
+        <li><strong>API key overrides</strong> &mdash; Each space can have its own provider API keys</li>
+        <li><strong>Repository assignment</strong> &mdash; Link repos to spaces for coding agent context</li>
+        <li><strong>Pause/resume</strong> &mdash; Temporarily stop all ingestion for a space</li>
+      </ul>
+
+      <div class="callout callout-info">
+        <p><strong>Default Space:</strong> A "Default" space always exists and cannot be deleted. Unknown or unassigned sources automatically land here.</p>
+      </div>
+
+      <h3>Source Management</h3>
+      <p>Sources are n8n workflows linked to spaces. When an ingestion workflow sends an event, Laya resolves the space via the workflow ID (<code>source.connection_id</code>). You can reassign sources between spaces at any time under the Spaces settings.</p>
+
+      <h2 id="doc-settings-rules">Rules &amp; Filters</h2>
+      <p>Rules let you automatically filter incoming events before they hit the AI pipeline. Configure under <strong>Settings &rarr; Rules</strong>.</p>
+
+      <h3>Rule Structure</h3>
+      <p>Each rule has a <strong>condition</strong> and an <strong>action</strong>:</p>
+      <ul>
+        <li><strong>Drop</strong> &mdash; Discard the event silently</li>
+        <li><strong>Allow</strong> &mdash; Bypass remaining rules and allow the event through</li>
+      </ul>
+      <p>Rules are evaluated in order. The first matching rule determines the outcome. If no rule matches, the event passes through.</p>
+
+      <h3>Available Fields</h3>
+<pre><code>actor.email          actor.name           actor.platform_handle
+source.platform      source.connection_id source.raw_event_type
+subject.type         subject.id           subject.title
+content.body         content.metadata.*</code></pre>
+
+      <h3>Operators</h3>
+      <table>
+        <tr><th>Operator</th><th>Behavior</th></tr>
+        <tr><td><code>equals</code></td><td>Case-insensitive exact match</td></tr>
+        <tr><td><code>not_equals</code></td><td>Negation of equals</td></tr>
+        <tr><td><code>contains</code></td><td>Substring match (case-insensitive)</td></tr>
+        <tr><td><code>starts_with</code></td><td>Prefix match</td></tr>
+        <tr><td><code>ends_with</code></td><td>Suffix match</td></tr>
+        <tr><td><code>in</code></td><td>List membership</td></tr>
+      </table>
+
+      <h3>Examples</h3>
+<pre><code>// Ignore all bot messages
+{ "field": "actor.email", "operator": "contains", "value": "bot" } → drop
+
+// Ignore a specific Slack channel
+{ "field": "content.metadata.slack_channel", "operator": "equals", "value": "#random" } → drop
+
+// Always allow critical priority
+{ "field": "priority", "operator": "equals", "value": "CRITICAL" } → allow</code></pre>
+
+      <h3>Classification Feedback &amp; Learned Rules</h3>
+      <p>Laya learns from your corrections. When you change a card's priority or persona, the correction is logged. After enough corrections accumulate (15+), Laya's learning pipeline extracts generalizable rules from the patterns.</p>
+      <ul>
+        <li><strong>Manual rules</strong> &mdash; Created by you in Settings &rarr; Rules</li>
+        <li><strong>Learned rules</strong> &mdash; Automatically extracted by the AI from your correction patterns</li>
+      </ul>
+      <p>Both manual and learned rules are injected into the router prompt to improve future classifications. Over time, Laya requires fewer corrections as it learns your preferences.</p>
+
+      <h2 id="doc-settings-team">Team Directory</h2>
+      <p>The team directory helps Laya recognize actors in events and understand organizational relationships. Configure under <strong>Settings &rarr; Team</strong>.</p>
+      <table>
+        <tr><th>Field</th><th>Description</th></tr>
+        <tr><td><strong>Name</strong></td><td>Display name</td></tr>
+        <tr><td><strong>Email</strong></td><td>Email address (used to match event actors)</td></tr>
+        <tr><td><strong>Role</strong></td><td>Job title or function</td></tr>
+        <tr><td><strong>Relationship</strong></td><td>manager, teammate, direct_report, peer, or external</td></tr>
+      </table>
+      <p>When an event arrives, the Engine matches <code>actor.email</code> against the team directory to enrich context with role and relationship information.</p>
+
+      <h2 id="doc-settings-repos">Repositories</h2>
+      <p>Add your code repositories so coding agents can operate in the right context. Configure under <strong>Settings &rarr; Repos</strong>.</p>
+      <ul>
+        <li>Use the <strong>Browse</strong> button to select a local directory</li>
+        <li>Laya auto-detects the platform (GitHub, Bitbucket) and remote ID</li>
+        <li>Assign repos to Spaces so the right agent gets the right context</li>
+      </ul>
+
+      <h2 id="doc-settings-briefing">Features &amp; Scheduling</h2>
+      <p>Configure feature toggles and scheduling under <strong>Settings &rarr; Features</strong>.</p>
+
+      <h3>Daily Briefing</h3>
+      <table>
+        <tr><th>Setting</th><th>Default</th><th>Description</th></tr>
+        <tr><td>Enabled</td><td>On</td><td>Toggle briefing generation</td></tr>
+        <tr><td>Time</td><td>07:00</td><td>Time of day (24-hour format)</td></tr>
+        <tr><td>Timezone</td><td>America/New_York</td><td>IANA timezone (46 timezones available)</td></tr>
+      </table>
+
+      <h3>Context Association</h3>
+      <table>
+        <tr><th>Setting</th><th>Default</th><th>Description</th></tr>
+        <tr><td>Enabled</td><td>On</td><td>Toggle automatic semantic grouping of related cards</td></tr>
+      </table>
+
+      <h3>Group Summaries</h3>
+      <table>
+        <tr><th>Setting</th><th>Default</th><th>Description</th></tr>
+        <tr><td>Enabled</td><td>On</td><td>Toggle rolling LLM summaries for multi-card entity groups</td></tr>
+      </table>
+
+      <h2 id="doc-settings-appearance">Appearance</h2>
+      <p>Customize Laya's visual style under <strong>Settings &rarr; Appearance</strong>.</p>
+      <table>
+        <tr><th>Setting</th><th>Default</th><th>Description</th></tr>
+        <tr><td>Theme</td><td>Dark</td><td>Switch between <strong>Dark</strong> (warm-tinted dark grays) and <strong>Light</strong> (warm cream background with inverted surface scale)</td></tr>
+        <tr><td>Glass effect</td><td>Off</td><td>Frosted glassmorphism overlay with backdrop blur on cards, tooltips, and menus</td></tr>
+        <tr><td>Card colors</td><td>On</td><td>Enable color-coded card borders based on priority or persona</td></tr>
+        <tr><td>Accessible colors</td><td>Off</td><td>Shift color hues for improved contrast and color-blind accessibility</td></tr>
+        <tr><td>Card descriptions</td><td>On</td><td>Show card description text in feed views</td></tr>
+        <tr><td>Card size</td><td>Default</td><td>Toggle between compact and relaxed card layout</td></tr>
+        <tr><td>Font scale</td><td>14 (Default)</td><td>Adjust font size: Compact (12), Default (14), Relaxed (15), Large (16)</td></tr>
+        <tr><td>Reduced motion</td><td>Off</td><td>Disable animations for motion-sensitive users</td></tr>
+      </table>
+      <p>All preferences are stored in localStorage and applied instantly.</p>
+
+      <h2 id="doc-settings-budget">Budget &amp; Costs</h2>
+      <p>Track and control LLM spending under <strong>Settings &rarr; Budget</strong> or the <strong>Dashboard</strong>.</p>
+      <table>
+        <tr><th>Feature</th><th>Description</th></tr>
+        <tr><td><strong>Feature breakdown</strong></td><td>Costs grouped by feature: Pulse, Coherence, Omni, Chat, Briefing, Egress, System</td></tr>
+        <tr><td><strong>Step breakdown</strong></td><td>Expandable per-feature cost details: Routing, Entity Resolution, Context Learning, Stager, Trace, etc.</td></tr>
+        <tr><td><strong>Monthly history</strong></td><td>Monthly cost aggregation with trend tracking</td></tr>
+        <tr><td><strong>Monthly cap</strong></td><td>Set a maximum monthly spend. When exceeded, Laya pauses AI processing and notifies you.</td></tr>
+        <tr><td><strong>Pause/Resume</strong></td><td>Manually pause or resume AI processing to control costs</td></tr>
+      </table>
+      <p>The Dashboard includes an interactive Feature Cost Chart that visualizes costs by feature with expandable step-level details.</p>
+
+      <h2 id="doc-settings-data">Data &amp; Retention</h2>
+      <p>Configure how long Laya retains historical data under <strong>Settings &rarr; Data</strong>.</p>
+      <table>
+        <tr><th>Setting</th><th>Default</th><th>Applies to</th></tr>
+        <tr><td>Card Retention</td><td>90 days</td><td>Cards in terminal states: archived, dismissed, done, failed</td></tr>
+        <tr><td>Chat Retention</td><td>90 days</td><td>Idle chat conversations</td></tr>
+        <tr><td>Audit Retention</td><td>90 days</td><td>Audit log entries</td></tr>
+        <tr><td>Omni Retention</td><td>30 days</td><td>Omni snapshots (latest per space is always preserved)</td></tr>
+      </table>
+      <p>A housekeeping task runs daily at ~00:00 UTC to remove expired data. Active cards and recent conversations are never auto-deleted.</p>
+
+      <!-- ─── PRIVACY ─── -->
+      <h2 id="doc-privacy-tiers">Privacy Tiers</h2>
+      <p>Laya classifies event data into three privacy tiers:</p>
+      <table>
+        <tr><th>Tier</th><th>Sources</th><th>Processing</th></tr>
+        <tr><td><strong>Tier 1</strong> (Metadata)</td><td>All sources</td><td>Always cloud-processable</td></tr>
+        <tr><td><strong>Tier 2</strong> (Default)</td><td>Jira, Bitbucket, Slack channels, Calendar</td><td>Cloud OK with audit trail</td></tr>
+        <tr><td><strong>Tier 3</strong> (Sensitive)</td><td>Gmail, Outlook, Slack DMs</td><td>Warning or local-only</td></tr>
+      </table>
+
+      <h3>Tier 3 Processing Modes</h3>
+      <ul>
+        <li><code>cloud_with_warning</code> (default) &mdash; Allow cloud models but show a privacy indicator on the card</li>
+        <li><code>local_only</code> &mdash; Force all Tier 3 data through local models only (e.g., Ollama)</li>
+      </ul>
+
+      <h2 id="doc-privacy-keys">API Key Storage</h2>
+      <p>All API keys are stored in your <strong>operating system's keychain</strong>, never in config files or environment variables:</p>
+      <ul>
+        <li><strong>macOS</strong> &mdash; Keychain Access (service: <code>laya-engine</code>)</li>
+        <li><strong>Windows</strong> &mdash; Credential Manager</li>
+        <li><strong>Linux</strong> &mdash; Secret Service / Pass</li>
+      </ul>
+      <p>On engine startup, keys are loaded from the keychain into memory. They never touch disk in plaintext.</p>
+
+      <h2 id="doc-privacy-local">Local-Only Mode</h2>
+      <p>For maximum privacy, you can run Laya entirely without cloud models:</p>
+      <ol>
+        <li>Install <strong>Ollama</strong> or <strong>LM Studio</strong> locally</li>
+        <li>Add the local provider under <strong>Settings &rarr; Models &rarr; Local Providers</strong></li>
+        <li>Set all model roles (Router, Stager, Chat) to local models</li>
+        <li>Set <code>tier3_processing</code> to <code>local_only</code></li>
+      </ol>
+      <p>In this mode, no data ever leaves your machine &mdash; complete air-gapped privacy.</p>
+
+      <!-- ─── ADVANCED ─── -->
+      <h2 id="doc-pipeline">Processing Pipeline</h2>
+      <p>Every event flows through Laya's multi-stage AI pipeline:</p>
+      <ol>
+        <li><strong>INGEST</strong> &mdash; Parse event, resolve actor from team directory, store raw event, resolve space</li>
+        <li><strong>RULES</strong> &mdash; Evaluate user-defined filter rules; drop or pass</li>
+        <li><strong>ROUTER</strong> (Fast LLM) &mdash; Classify priority, category, persona; extract entities; build research plan; query memory for related events</li>
+        <li><strong>WORKERS</strong> (6 Specialized Personas) &mdash; Engineer (code analysis, agent spawning), Comms (draft replies), Ops (calendar synthesis), Finance (invoices, budgets), HR (people ops), Sales (pipeline tracking)</li>
+        <li><strong>STAGER</strong> (Strong LLM) &mdash; Synthesize research + drafts into polished card; generate intelligence report; prepare suggested actions</li>
+        <li><strong>EMIT</strong> &mdash; Store card in database, embed summary in ChromaDB, attempt context association with related cards, trigger group summary, push to UI via WebSocket</li>
+        <li><strong>GROUP SUMMARY</strong> &mdash; Generate or update rolling LLM summaries for multi-card entity groups (fire-and-forget background task)</li>
+        <li><strong>TRACE</strong> &mdash; Index entities into ChromaDB for Coherence search</li>
+        <li><strong>LEARN</strong> &mdash; Extract classification rules from user feedback (priority/persona corrections)</li>
+        <li><strong>CONTEXT LEARN</strong> &mdash; Extract context grouping rules from user link/unlink corrections (runs periodically)</li>
+        <li><strong>OMNI</strong> &mdash; Append card to rolling cross-platform summary (debounced incremental update)</li>
+      </ol>
+      <p>Every step is recorded in the <strong>Audit Log</strong> (Settings &rarr; Audit) with model used, token counts, latency, and success/failure status. Failed events retry with exponential backoff (up to 3 attempts); permanently failed events are visible in <strong>Settings &rarr; Audit Log</strong> and can be manually retried.</p>
+
+      <h2 id="doc-event-schema">Event Schema</h2>
+      <p>Events sent from n8n to the Laya Engine follow this schema:</p>
+<pre><code>{
+  "event_id": "evt_unique-id",
+  "timestamp": "2026-03-19T14:30:00Z",
+  "source": {
+    "platform": "gmail|slack|jira|github|bitbucket|calendar|outlook|linear|notion",
+    "connection_id": "n8n-workflow-id",
+    "raw_event_type": "platform_specific_type"
+  },
+  "actor": {
+    "name": "Alice Smith",
+    "email": "alice@company.com",
+    "platform_handle": "@alice"
+  },
+  "subject": {
+    "type": "ticket|pull_request|build|thread|email_thread|meeting",
+    "id": "PROJ-123",
+    "title": "Fix login timeout bug",
+    "url": "https://jira.company.com/browse/PROJ-123"
+  },
+  "content": {
+    "body": "Full event content text...",
+    "metadata": { "platform_specific": "fields" }
+  }
+}</code></pre>
+
+      <h2 id="doc-config-files">Configuration Files</h2>
+      <p>All user configuration lives in <code>~/.laya/</code>:</p>
+      <table>
+        <tr><th>File</th><th>Purpose</th></tr>
+        <tr><td><code>settings.json</code></td><td>Main engine configuration (models, pipeline, privacy, briefing, n8n)</td></tr>
+        <tr><td><code>team.json</code></td><td>Team member directory</td></tr>
+        <tr><td><code>rules.json</code></td><td>Event filter rules</td></tr>
+        <tr><td><code>repos.json</code></td><td>Repository definitions</td></tr>
+        <tr><td><code>data/laya.db</code></td><td>SQLite database (events, cards, actions, audit log)</td></tr>
+        <tr><td><code>data/chromadb/</code></td><td>ChromaDB vector store for semantic search</td></tr>
+        <tr><td><code>n8n_module/</code></td><td>n8n npm installation (binary at <code>node_modules/.bin/n8n</code>)</td></tr>
+        <tr><td><code>n8n/</code></td><td>n8n data directory (database, encryption key, credentials)</td></tr>
+        <tr><td><code>logs/</code></td><td>Application log files</td></tr>
+      </table>
+
+      <div class="callout callout-info">
+        <p><strong>Note:</strong> All config files are created automatically on first run with sensible defaults. You can edit them directly or use the Settings UI.</p>
+      </div>
+
+      <h2 id="doc-custom-prompts">Custom Prompts</h2>
+      <p>Laya's AI pipeline uses system prompts at every stage &mdash; routing, staging, summarization, chat, and more. All prompts are hardcoded with sensible defaults, but you can override any of them by placing a text or markdown file in the <code>~/.laya/prompts/</code> directory.</p>
+
+      <div class="callout callout-info">
+        <p><strong>How it works:</strong> On startup (and via the reload API), Laya scans <code>~/.laya/prompts/</code> for recognized filenames. If a file is found, its content replaces the corresponding hardcoded system prompt. If the file is missing or deleted, the built-in default is used. Laya never creates or modifies files in this directory &mdash; your custom prompts are purely additive.</p>
+      </div>
+
+      <h3>Getting Started</h3>
+<pre><code># Create the prompts directory
+mkdir -p ~/.laya/prompts
+
+# Override the router prompt
+cat > ~/.laya/prompts/router.md << 'EOF'
+You are the Router for Laya. Classify incoming events with these priorities:
+- CRITICAL: anything from the CEO or involving production outages
+- HIGH: customer-facing issues, PRs awaiting my review
+- MEDIUM: team discussions, assigned tickets
+- LOW: everything else
+...
+EOF
+
+# Reload without restarting the engine
+curl -X POST http://127.0.0.1:8420/prompts/reload</code></pre>
+
+      <h3>Available Prompt Files</h3>
+      <table>
+        <tr><th>File</th><th>Pipeline Stage</th><th>Description</th></tr>
+        <tr><td><code>router.md</code></td><td>Router</td><td>Event classification (category, persona, priority, entities, research plan)</td></tr>
+        <tr><td><code>stager.md</code></td><td>Stager</td><td>Synthesize worker findings into polished Action Cards with staged actions</td></tr>
+        <tr><td><code>omni.md</code></td><td>Omni</td><td>Rolling cross-platform summary synthesis</td></tr>
+        <tr><td><code>group_summary_initial.md</code></td><td>Group Summary</td><td>First summary for a multi-card entity group</td></tr>
+        <tr><td><code>group_summary_rolling.md</code></td><td>Group Summary</td><td>Rolling update when new cards arrive for an existing group</td></tr>
+        <tr><td><code>briefing.md</code></td><td>Briefing</td><td>Daily morning briefing generation</td></tr>
+        <tr><td><code>summarizer.md</code></td><td>Summarizer</td><td>Incremental daily running summary</td></tr>
+        <tr><td><code>summarizer_status_change.md</code></td><td>Summarizer</td><td>Updates the daily summary when a card's status changes</td></tr>
+        <tr><td><code>engineer.md</code></td><td>Worker</td><td>ENGINEER persona &mdash; coding agent task preparation</td></tr>
+        <tr><td><code>comms.md</code></td><td>Worker</td><td>COMMS persona &mdash; communication reply drafting</td></tr>
+        <tr><td><code>sales.md</code></td><td>Worker</td><td>SALES persona &mdash; customer/prospect reply drafting</td></tr>
+        <tr><td><code>hr.md</code></td><td>Worker</td><td>HR persona &mdash; people/hiring communication</td></tr>
+        <tr><td><code>ops.md</code></td><td>Worker</td><td>OPS persona &mdash; calendar prep and operational briefings</td></tr>
+        <tr><td><code>finance.md</code></td><td>Worker</td><td>FINANCE persona &mdash; financial event synthesis</td></tr>
+        <tr><td><code>chat.md</code></td><td>Chat</td><td>Conversational chat system prompt</td></tr>
+        <tr><td><code>chat_title.md</code></td><td>Chat</td><td>Conversation title generation</td></tr>
+        <tr><td><code>chat_polish.md</code></td><td>Chat</td><td>Message polish/refinement</td></tr>
+        <tr><td><code>learner.md</code></td><td>Learning</td><td>Extracts classification rules from user corrections</td></tr>
+        <tr><td><code>context_learner.md</code></td><td>Learning</td><td>Extracts grouping rules from link/unlink actions</td></tr>
+        <tr><td><code>trace_narrative.md</code></td><td>Coherence</td><td>Generates narrative summaries for entity traces</td></tr>
+        <tr><td><code>trace_summary.md</code></td><td>Coherence</td><td>Generates concise summaries for trace clusters</td></tr>
+        <tr><td><code>trace_filter.md</code></td><td>Coherence</td><td>Relevance filtering for trace search results</td></tr>
+      </table>
+
+      <h3>Important Notes</h3>
+      <ul>
+        <li><strong>Full replacement:</strong> A custom prompt completely replaces the built-in default for that stage. You won't automatically receive improvements to default prompts after engine updates.</li>
+        <li><strong>JSON output prompts:</strong> Several prompts (router, stager, group_summary, omni, summarizer) instruct the LLM to return structured JSON. If your custom prompt omits these format instructions, the pipeline may fail to parse responses. Check the engine logs if cards stop appearing.</li>
+        <li><strong>Template variable:</strong> The <code>group_summary_initial.md</code> and <code>group_summary_rolling.md</code> prompts support <code>{timestamp}</code> &mdash; it will be replaced with the current UTC date/time at call time. All other prompts are plain text.</li>
+        <li><strong>Unrecognized files:</strong> Files that don't match a known filename are ignored. Check the engine logs for warnings about unrecognized files (e.g., a typo in the filename).</li>
+      </ul>
+
+      <h3>API Endpoints</h3>
+      <table>
+        <tr><th>Endpoint</th><th>Description</th></tr>
+        <tr><td><code>GET /prompts</code></td><td>Returns all 22 prompt keys with their override status</td></tr>
+        <tr><td><code>POST /prompts/reload</code></td><td>Re-scans <code>~/.laya/prompts/</code> and hot-swaps overrides without restarting</td></tr>
+      </table>
+
+      <h2 id="doc-mcp">MCP Server</h2>
+      <p>Laya exposes its toolset over the <strong>Model Context Protocol</strong>. Any MCP-compatible client &mdash; Claude Desktop, Cursor, VS Code, Zed, custom agents &mdash; can call into Laya to search your cards, fetch events, trace entities, run semantic search, and trigger outbound actions across all 9 connected platforms.</p>
+
+      <div class="callout callout-info">
+        <p><strong>Transport:</strong> the MCP server is mounted on the running engine at <code>http://127.0.0.1:8420/mcp/sse</code> using <strong>Server-Sent Events</strong>. There is no subprocess to spawn &mdash; whenever Laya is running, the endpoint is live. The bundled Tauri app exposes it natively; no source install required. The in-app Claude Code coding agents use the same endpoint, so there is exactly one MCP path in the system.</p>
+      </div>
+
+      <h3>Configuration</h3>
+      <p>Open <strong>Settings &rarr; MCP</strong> in the desktop app. You'll find three controls:</p>
+      <ul>
+        <li><strong>Tool scopes</strong> &mdash; toggles for <em>Read</em>, <em>Write</em>, and <em>Egress</em>. Only enabled categories are exposed to MCP clients. Changes take effect on the next call (no restart).</li>
+        <li><strong>Authentication</strong> &mdash; pick <em>Bearer token</em> (recommended) or <em>Loopback only, no auth</em>.</li>
+        <li><strong>Token</strong> &mdash; when bearer auth is enabled, the current token is shown (with reveal / copy / rotate controls). Rotating immediately invalidates the previous token.</li>
+      </ul>
+
+      <h3>Available Tools</h3>
+      <table>
+        <tr><th>Scope</th><th>Tools</th></tr>
+        <tr><td>Read</td><td><code>search_cards</code>, <code>get_card</code>, <code>search_events</code>, <code>get_event</code>, <code>search_entities</code>, <code>get_entity</code>, <code>get_card_stats</code>, <code>get_recent_activity</code>, <code>get_cards_for_event</code>, <code>get_cards_by_entity</code>, <code>semantic_search</code>, <code>get_settings</code></td></tr>
+        <tr><td>Write</td><td><code>dismiss_card</code>, <code>archive_card</code>, <code>mark_card_done</code>, <code>reopen_card</code>, <code>update_theme</code>, <code>update_retention</code>, <code>update_briefing</code>, <code>update_notifications</code>, <code>update_feed_preferences</code></td></tr>
+        <tr><td>Egress</td><td>Per-platform actions for GitHub, Bitbucket, Jira, Linear, Gmail, Slack, Calendar, Outlook, and Notion (send messages, post comments, create issues, schedule events, &hellip;)</td></tr>
+      </table>
+
+      <h3>Claude Desktop</h3>
+      <p>Edit your Claude Desktop config (<code>~/Library/Application Support/Claude/claude_desktop_config.json</code> on macOS, <code>%APPDATA%\Claude\claude_desktop_config.json</code> on Windows) and add Laya as an SSE server:</p>
+<pre><code>{
+  "mcpServers": {
+    "laya": {
+      "type": "sse",
+      "url": "http://127.0.0.1:8420/mcp/sse",
+      "headers": {
+        "Authorization": "Bearer lyat_…"
+      }
+    }
+  }
+}</code></pre>
+      <p>Copy the bearer value from Settings &rarr; MCP. Restart Claude Desktop &mdash; Laya's tools appear in the picker as <code>mcp__laya__*</code>. If you've set auth mode to <em>none</em>, omit the <code>headers</code> block entirely.</p>
+
+      <h3>Cursor &amp; VS Code</h3>
+      <p>Both Cursor and the VS Code MCP extension accept the same SSE config shape. Add a server entry under <code>mcpServers</code> (Cursor: <code>~/.cursor/mcp.json</code>; VS Code: workspace <code>.vscode/mcp.json</code> or the MCP extension's settings UI) with <code>"type": "sse"</code>, the SSE URL, and (when bearer auth is on) the <code>Authorization</code> header.</p>
+
+      <h3>Scoping to a Space</h3>
+      <p>Append <code>?space_id=&lt;your-space&gt;</code> to the SSE URL to restrict all tool calls in that connection to a single Laya space:</p>
+<pre><code>{
+  "mcpServers": {
+    "laya-work": {
+      "type": "sse",
+      "url": "http://127.0.0.1:8420/mcp/sse?space_id=work",
+      "headers": { "Authorization": "Bearer lyat_…" }
+    }
+  }
+}</code></pre>
+      <p>Register the same MCP server multiple times under different names with different <code>space_id</code> values to give a client scoped views of each space.</p>
+
+      <h2 id="doc-tuning">Tuning Parameters</h2>
+      <p>Laya exposes internal parameters that control the behavior, sensitivity, and resource usage of its AI pipeline. These have sensible defaults and do not need to be changed for normal operation. Advanced users can override them via the <code>tuning</code> section in <code>~/.laya/settings.json</code>.</p>
+
+      <div class="callout">
+        <p><strong>How to override:</strong> Add a <code>tuning</code> object to your <code>~/.laya/settings.json</code>. Only include the parameters you want to change &mdash; omitted parameters use their defaults. Changes take effect on the next pipeline run (no restart required).</p>
+      </div>
+
+<pre><code>{
+  "tuning": {
+    "context_association_time_window_days": 14,
+    "trace_semantic_max_distance": 0.50
+  }
+}</code></pre>
+
+      <h3>Context Association</h3>
+      <p>Controls how Laya detects semantic relationships between cards from different sources.</p>
+      <table>
+        <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+        <tr><td><code>context_association_time_window_days</code></td><td>7</td><td>Only consider cards within this many days for grouping. Lower = fewer but more relevant matches. Higher = broader but more false positives.</td></tr>
+      </table>
+      <p>The distance thresholds for context association live in the <code>smart_grouping</code> section (not <code>tuning</code>):</p>
+      <table>
+        <tr><th>Setting</th><th>Default</th><th>Description</th></tr>
+        <tr><td><code>smart_grouping.auto_confirm_threshold</code></td><td>0.12</td><td>ChromaDB cosine distance below which cards are auto-grouped without LLM confirmation. Lower = stricter.</td></tr>
+        <tr><td><code>smart_grouping.confidence_threshold</code></td><td>0.22</td><td>Max distance for LLM-confirmed grouping. Cards beyond this are never grouped.</td></tr>
+      </table>
+
+      <h3>Entity Resolution</h3>
+      <table>
+        <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+        <tr><td><code>semantic_entity_threshold</code></td><td>0.35</td><td>Cosine distance threshold for semantic entity linking. Controls when entities (tickets, people, repos) are considered related across cards.</td></tr>
+        <tr><td><code>entity_search_results</code></td><td>5</td><td>Number of ChromaDB results fetched per entity during semantic resolution.</td></tr>
+      </table>
+
+      <h3>Classification Learning</h3>
+      <p>Controls how Laya learns classification rules from user corrections (priority/persona adjustments).</p>
+      <table>
+        <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+        <tr><td><code>classification_learn_threshold</code></td><td>15</td><td>Minimum unprocessed corrections per space before the learner triggers.</td></tr>
+        <tr><td><code>classification_learn_batch</code></td><td>50</td><td>Max corrections sent to the LLM in a single learning call.</td></tr>
+        <tr><td><code>classification_learn_interval_hours</code></td><td>6</td><td>How often the scheduler checks for unprocessed corrections.</td></tr>
+      </table>
+
+      <h3>Context Learning</h3>
+      <p>Controls how Laya learns from user link/unlink actions to improve context grouping.</p>
+      <table>
+        <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+        <tr><td><code>context_learn_threshold</code></td><td>10</td><td>Minimum unprocessed context corrections before the learner triggers.</td></tr>
+        <tr><td><code>context_learn_batch</code></td><td>40</td><td>Max context corrections sent to the LLM per learning call.</td></tr>
+        <tr><td><code>context_learn_interval_hours</code></td><td>6</td><td>Scheduler interval for context learning checks.</td></tr>
+        <tr><td><code>context_rules_max_injection</code></td><td>20</td><td>Max learned rules injected into the LLM confirmation prompt.</td></tr>
+        <tr><td><code>context_corrections_max_injection</code></td><td>10</td><td>Max recent user link/unlink actions injected as examples.</td></tr>
+      </table>
+
+      <h3>Trace / RAG Search</h3>
+      <table>
+        <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+        <tr><td><code>trace_search_results</code></td><td>30</td><td>Results per search strategy (identifier, semantic, entity, text, fuzzy).</td></tr>
+        <tr><td><code>trace_max_seeds</code></td><td>20</td><td>Max seed results retained after merging all search strategies.</td></tr>
+        <tr><td><code>trace_semantic_max_distance</code></td><td>0.65</td><td>Max cosine distance for semantic search in traces. Lower = fewer but more relevant.</td></tr>
+      </table>
+
+      <h3>Chat Retrieval</h3>
+      <table>
+        <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+        <tr><td><code>chat_semantic_max_distance</code></td><td>0.60</td><td>Max cosine distance for semantic search in chat context.</td></tr>
+        <tr><td><code>chat_context_items</code></td><td>12</td><td>Max context items (cards, events, entities) included in the chat prompt.</td></tr>
+      </table>
+
+      <h3>Router &amp; Feedback</h3>
+      <table>
+        <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+        <tr><td><code>router_related_context_results</code></td><td>3</td><td>Related past cards fetched to provide context during event classification.</td></tr>
+        <tr><td><code>feedback_time_window_days</code></td><td>30</td><td>Time window for querying user feedback patterns (approval/dismissal rates).</td></tr>
+        <tr><td><code>corrections_retention_days</code></td><td>30</td><td>Days to keep processed corrections before automatic deletion.</td></tr>
+      </table>
+
+      <h3>Pipeline Debounce &amp; Batching</h3>
+      <p>Control how Laya batches LLM calls to reduce costs during burst activity. Located under <code>pipeline.debounce</code> in settings.json.</p>
+      <table>
+        <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+        <tr><td><code>pipeline.debounce.daily_summary_seconds</code></td><td>30</td><td>Quiet period before processing accumulated cards into the daily summary. Higher = fewer LLM calls during bursts.</td></tr>
+        <tr><td><code>pipeline.debounce.group_summary_seconds</code></td><td>15</td><td>Per-entity quiet period before updating the group summary. Cards arriving within this window are batched into one LLM call.</td></tr>
+        <tr><td><code>pipeline.debounce.event_batch_window_seconds</code></td><td>3</td><td>Collection window for batch-routing. Set to <code>0</code> to disable (events process immediately).</td></tr>
+        <tr><td><code>pipeline.debounce.event_batch_max_size</code></td><td>10</td><td>Max events per batch-router call. Larger = more savings but higher per-call latency.</td></tr>
+      </table>
+
+      <h3>Cosine Distance Reference</h3>
+      <p>Laya uses cosine distance in ChromaDB (range 0.0&ndash;1.0). The embedding model is <code>nomic-ai/nomic-embed-text-v1.5</code> (768 dimensions).</p>
+      <table>
+        <tr><th>Distance</th><th>Meaning</th><th>Typical Use</th></tr>
+        <tr><td>0.00&ndash;0.10</td><td>Near-identical content</td><td>Same event, different wording</td></tr>
+        <tr><td>0.10&ndash;0.20</td><td>Very similar</td><td>Same topic, closely related</td></tr>
+        <tr><td>0.20&ndash;0.35</td><td>Moderately similar</td><td>Related topics, same domain</td></tr>
+        <tr><td>0.35&ndash;0.50</td><td>Loosely related</td><td>Same category, different subjects</td></tr>
+        <tr><td>0.50+</td><td>Unrelated</td><td>Different domains</td></tr>
+      </table>
+
+      <h2 id="doc-keybindings">Keyboard Shortcuts</h2>
+      <p>Laya supports keyboard shortcuts for common actions. Customize them under <strong>Settings &rarr; Keys</strong>.</p>
+      <table>
+        <tr><th>Shortcut</th><th>Action</th></tr>
+        <tr><td><code>Ctrl+A</code> / <code>Cmd+A</code></td><td>Open Run Agent dialog</td></tr>
+        <tr><td><code>Ctrl+C</code> / <code>Cmd+C</code></td><td>Open Compose modal</td></tr>
+        <tr><td><code>Ctrl+B</code></td><td>Toggle bookmarks filter</td></tr>
+        <tr><td><code>Ctrl+L</code></td><td>Toggle chat panel</td></tr>
+        <tr><td><code>Ctrl+O</code></td><td>Go to Omni</td></tr>
+        <tr><td><code>Ctrl+P</code></td><td>Go to Pulse (feed)</td></tr>
+        <tr><td><code>Ctrl+F</code></td><td>Focus search box</td></tr>
+        <tr><td><code>Ctrl+D</code></td><td>Toggle card descriptions</td></tr>
+        <tr><td><code>Ctrl+Shift+D</code></td><td>Toggle compact/relaxed layout</td></tr>
+        <tr><td><code>Ctrl+Enter</code></td><td>Send compose form</td></tr>
+        <tr><td><code>R</code></td><td>Toggle recent items</td></tr>
+        <tr><td><code>S</code></td><td>Toggle day summary</td></tr>
+        <tr><td><code>Ctrl+[</code> / <code>Ctrl+]</code></td><td>Navigate back / forward</td></tr>
+      </table>
+
+      <h2 id="doc-troubleshooting">Troubleshooting</h2>
+
+      <h3>n8n won't connect</h3>
+      <ul>
+        <li>Check Node.js is installed: <code>node --version</code> (requires 18+)</li>
+        <li>Check n8n is installed: <code>ls ~/.laya/n8n_module/node_modules/.bin/n8n</code></li>
+        <li>Check n8n health: <code>curl http://localhost:45678/healthz</code></li>
+        <li>Manually start n8n: <code>N8N_PORT=45678 N8N_USER_FOLDER=~/.laya/n8n ~/.laya/n8n_module/node_modules/.bin/n8n start</code></li>
+        <li>Try manual bootstrap: Settings &rarr; Integrations &rarr; Auto-Configure</li>
+      </ul>
+
+      <h3>Events not appearing</h3>
+      <ul>
+        <li>Verify the n8n workflow is <strong>active</strong> (green toggle in n8n dashboard)</li>
+        <li>Check n8n workflow execution history for errors</li>
+        <li>Verify credentials are configured in the n8n trigger node</li>
+        <li>Check if a rule is dropping the event (Settings &rarr; Rules)</li>
+        <li>Check engine logs at <code>~/.laya/logs/</code></li>
+      </ul>
+
+      <h3>LLM errors</h3>
+      <ul>
+        <li>Verify your API key is valid (Settings &rarr; Models, check green dot)</li>
+        <li>Check the Audit Log for specific error messages</li>
+        <li>Try increasing the model timeout (Settings &rarr; Models &rarr; Advanced)</li>
+        <li>If using local models, ensure the provider is running and accessible</li>
+      </ul>
+
+      <h3>Coding agent not detected</h3>
+      <ul>
+        <li>Ensure the CLI binary is installed and in your PATH</li>
+        <li>Try <strong>Auto-Detect</strong> in Settings &rarr; Agent</li>
+        <li>Or set the binary path manually</li>
+      </ul>
+
+      <h3>Export diagnostics</h3>
+      <p>For debugging, use the <strong>Export Diagnostics</strong> button at the bottom of the Settings page. This creates a ZIP file containing system info, sanitized config, recent logs, and database statistics.</p>
+
+    </main>
+  </div>
+</div>
+
+<!-- ═══════════════════ SCRIPTS ═══════════════════ -->
+<script>
+// ── Docs sidebar active state on scroll ──
+const docsSidebar = document.getElementById('docs-sidebar');
+if (docsSidebar) {
+  const sidebarLinks = docsSidebar.querySelectorAll('a[href^="#doc-"]');
+  const docSections = [];
+  sidebarLinks.forEach(link => {
+    const id = link.getAttribute('href').slice(1);
+    const el = document.getElementById(id);
+    if (el) docSections.push({ id, el, link });
+  });
+  window.addEventListener('scroll', () => {
+    let current = docSections[0];
+    for (const s of docSections) {
+      if (s.el.getBoundingClientRect().top <= 120) current = s;
+    }
+    sidebarLinks.forEach(l => l.classList.remove('active'));
+    if (current) current.link.classList.add('active');
+  });
+  // Docs sidebar link clicks
+  sidebarLinks.forEach(link => {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+      const id = this.getAttribute('href').slice(1);
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+}
+</script>
+
+</body>
+</html>
