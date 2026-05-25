@@ -81,6 +81,11 @@ with questions directed at the user, stale blockers, overdue tasks. These MAY be
 individual items because each is a specific actionable thing. But when multiple items \
 share a theme, aggregate them: "3 PRs awaiting your review (oldest: 5 days)."
 
+ONLY surface things that are still OPEN and still need action. A subject that has been \
+RESOLVED (PR merged, ticket closed, blocker cleared, card marked done/dismissed) or \
+DE-ESCALATED (no longer HIGH/CRITICAL) MUST NOT appear in attention — it no longer \
+needs attention. See the resolution rules below.
+
 ### recent
 What happened in the last 24-48 hours. EVERY item MUST be an aggregate with counts. \
 NO individual events are allowed in this section. Group related events into clusters \
@@ -148,7 +153,43 @@ compression boundaries. A closed sprint becomes a period aggregate or milestone.
 3 minor fixes" is useful. "Several PRs were merged" is useless and FORBIDDEN.
 
 12. **No emoji or icons.** Never use emoji or icon characters (e.g., 🔴, ✅, 📌, ⚠️) \
-anywhere in your output. Use plain text only."""
+anywhere in your output. Use plain text only.
+
+13. **Tag entity_ids on every item.** Each item's entity_ids array MUST list the \
+entity_id of every contributing card (e.g., ["jira:ticket:PROJ-89", \
+"github:pull_request:org/repo/#412"]). The new-card lines give you each card's \
+entity_id. This is the stable identity Omni uses to drop a subject once it resolves \
+— an item with no entity_ids cannot be reconciled later.
+
+## RESOLUTION RULES — drop what's no longer open
+
+You receive two extra inputs that tell you what has changed state since the prior \
+snapshot was written:
+
+- [CURRENT STATE OF PRIOR SNAPSHOT ITEMS]: for each item already in the snapshot, \
+whether all of its source subjects are now resolved, and the highest priority still \
+live among them.
+- [RESOLVED SINCE LAST SYNTHESIS]: subjects (by entity_id) that reached a terminal \
+state (done / dismissed / archived / merged / closed) since the last synthesis.
+
+Apply these rules:
+
+R1. **Remove resolved subjects from attention.** If a subject is resolved, it does \
+NOT belong in attention. Drop it.
+
+R2. **Recompute aggregates, don't freeze them.** If a resolved subject was part of an \
+aggregate ("3 PRs awaiting your review"), rebuild the aggregate WITHOUT it and \
+decrement the count ("2 PRs awaiting your review"). If every member of an aggregate \
+resolved, drop the whole item from attention.
+
+R3. **De-escalation leaves attention too.** If a prior-snapshot item's highest live \
+priority has dropped below HIGH, it no longer belongs in attention — move it into \
+recent/period or drop it.
+
+R4. **Reflect completion as progress, don't vanish silently.** Resolved work should \
+surface in recent or period as a positive aggregate ("3 blockers cleared this week, \
+incl. PR #412 merged and PROJ-89 closed") rather than disappearing without a trace. \
+Attention is for what's still open; recent/period record what got done."""
 
 
 def _density_instructions(density: str) -> str:
@@ -174,8 +215,17 @@ def build_omni_resynthesis_messages(
     pinned_items: list[dict[str, Any]],
     density: str = "compact",
     space_id: str = "default",
+    item_states: list[dict[str, Any]] | None = None,
+    resolved_cards: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, str]]:
-    """Build messages for a full Omni resynthesis."""
+    """Build messages for a full Omni resynthesis.
+
+    item_states: per-item live state of the CURRENT snapshot, so the LLM can drop
+        resolved/de-escalated subjects. Each entry: {text, all_resolved,
+        live_max_priority}.
+    resolved_cards: subjects that reached a terminal state since the last synthesis.
+        Each entry: {entity_id, header, status}.
+    """
 
     # Current snapshot
     if current_snapshot:
@@ -189,14 +239,40 @@ def build_omni_resynthesis_messages(
         for card in new_cards:
             acted = " [USER ACTED]" if card.get("user_feedback") else ""
             tags_str = f" [tags: {card['tags']}]" if card.get("tags") else ""
+            entity_str = f" [entity: {card['entity_id']}]" if card.get("entity_id") else ""
             cards_text += (
                 f"- [{card.get('priority', 'MEDIUM')}] [{card.get('source_platform', '?')}] "
                 f"{card.get('header', 'Untitled')} — {card.get('summary', '')}"
-                f" (card_id: {card.get('card_id', '?')}){acted}{tags_str}\n"
+                f" (card_id: {card.get('card_id', '?')}){entity_str}{acted}{tags_str}\n"
             )
     else:
         cards_text += "No new cards.\n"
     cards_text += "[END NEW CARDS]\n"
+
+    # Per-item live state of the current snapshot — lets the LLM drop resolved /
+    # de-escalated subjects instead of carrying them forward forever.
+    state_text = ""
+    if item_states:
+        state_text = "\n[CURRENT STATE OF PRIOR SNAPSHOT ITEMS]\n"
+        for st in item_states:
+            snippet = (st.get("text") or "")[:80]
+            if st.get("all_resolved"):
+                state_text += f"- \"{snippet}\" -> ALL source subjects RESOLVED (drop from attention)\n"
+            else:
+                lmp = st.get("live_max_priority") or "none"
+                state_text += f"- \"{snippet}\" -> highest live priority now {lmp}\n"
+        state_text += "[END CURRENT STATE]\n"
+
+    # Subjects that reached a terminal state since the last synthesis.
+    resolved_text = ""
+    if resolved_cards:
+        resolved_text = "\n[RESOLVED SINCE LAST SYNTHESIS]\n"
+        for rc in resolved_cards:
+            resolved_text += (
+                f"- {rc.get('entity_id', '?')} — {rc.get('header', 'Untitled')} "
+                f"(resolved: {rc.get('status', 'done')})\n"
+            )
+        resolved_text += "[END RESOLVED]\n"
 
     # User-acted cards (higher weight)
     acted_text = ""
@@ -224,6 +300,8 @@ def build_omni_resynthesis_messages(
         f"{current_timestamp_line()}\n\n"
         f"Synthesize the Omni summary for space '{space_id}'.\n"
         f"{snapshot_text}\n"
+        f"{state_text}"
+        f"{resolved_text}"
         f"{cards_text}"
         f"{acted_text}"
         f"{pins_text}"
@@ -259,6 +337,15 @@ def get_omni_json_schema(density: str = "compact") -> dict[str, Any]:
                 "items": {"type": "string"},
                 "description": "card_ids that contributed to this item",
             },
+            "entity_ids": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "entity_ids of ALL contributing cards (the stable subject "
+                    "identity, e.g. 'jira:ticket:PROJ-89'). Used to correlate "
+                    "resolved/de-escalated subjects across resyntheses."
+                ),
+            },
             "platforms": {
                 "type": "array",
                 "items": {"type": "string"},
@@ -273,7 +360,9 @@ def get_omni_json_schema(density: str = "compact") -> dict[str, Any]:
                 "description": "True if this is a pinned item",
             },
         },
-        "required": ["text", "source_cards", "platforms", "priority", "pinned"],
+        "required": [
+            "text", "source_cards", "entity_ids", "platforms", "priority", "pinned",
+        ],
         "additionalProperties": False,
     }
 

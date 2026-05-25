@@ -18,6 +18,12 @@ class OmniItem(BaseModel):
     pinned: bool = False
     bookmarked: bool = False
     entity_id: str | None = None  # for entity-level fusion in recent section
+    # entity_ids carries ALL contributing entities for a synthesized (aggregate)
+    # item. It is the stable join key that lets a later resynthesis correlate a
+    # resolved/de-escalated entity with the aggregate bullet it belongs to —
+    # source_cards alone don't survive correlation because a resolving event
+    # produces a NEW card_id on the same entity_id.
+    entity_ids: list[str] = []
     space_id: str = "default"
 
 

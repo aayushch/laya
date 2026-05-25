@@ -546,6 +546,60 @@ async def _append_to_recent(cards: list[dict]) -> None:
 # Full resynthesis (LLM-powered)
 # ---------------------------------------------------------------------------
 
+# Terminal statuses mean a subject is resolved and should leave the attention
+# section. Kept local (rather than importing card_lifecycle) so the pipeline has
+# no dependency on the API/lifecycle layer; mirror card_lifecycle.TERMINAL_STATUSES.
+_TERMINAL_STATUSES = {"done", "dismissed", "archived"}
+_PRIORITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+
+
+async def _fetch_card_meta(db, card_ids: list[str]) -> dict[str, dict]:
+    """Fetch {card_id: {status, priority, entity_id}} for a set of card_ids."""
+    if not card_ids:
+        return {}
+    unique_ids = list(dict.fromkeys(card_ids))
+    placeholders = ",".join("?" for _ in unique_ids)
+    rows = await db.execute_fetchall(
+        f"""SELECT card_id, status, priority, entity_id
+            FROM action_cards WHERE card_id IN ({placeholders})""",
+        unique_ids,
+    )
+    return {
+        r["card_id"]: {
+            "status": r["status"],
+            "priority": r["priority"],
+            "entity_id": r["entity_id"],
+        }
+        for r in rows
+    }
+
+
+def _item_source_cards(item: dict) -> list[str]:
+    return [c for c in item.get("source_cards", []) if c]
+
+
+def _live_max_priority(card_ids: list[str], meta: dict[str, dict]) -> str | None:
+    """Highest priority among non-terminal source cards, or None if all resolved/unknown."""
+    best: str | None = None
+    best_rank = 99
+    for cid in card_ids:
+        m = meta.get(cid)
+        if not m or m.get("status") in _TERMINAL_STATUSES:
+            continue
+        rank = _PRIORITY_ORDER.get(m.get("priority", "MEDIUM"), 2)
+        if rank < best_rank:
+            best_rank = rank
+            best = m.get("priority", "MEDIUM")
+    return best
+
+
+def _all_resolved(card_ids: list[str], meta: dict[str, dict]) -> bool:
+    """True if there is at least one known source card and ALL are terminal."""
+    known = [meta[cid] for cid in card_ids if cid in meta]
+    if not known:
+        return False
+    return all(m.get("status") in _TERMINAL_STATUSES for m in known)
+
 
 async def run_omni_resynthesis(
     space_id: str | None = None,
@@ -643,6 +697,11 @@ async def _resynthesize_space(
     # otherwise string comparison fails (space 0x20 < 'T' 0x54).
     raw = last_synth_row[0]["generated_at"] if last_synth_row else None
     since = raw.replace("T", " ").split("+")[0] if raw else "2000-01-01 00:00:00"
+    # `resolved_at` is stored as datetime.isoformat() (keeps the 'T' and the +00:00
+    # offset), so it must be compared against the RAW generated_at — not the
+    # space-normalized `since` above. Both are ISO UTC strings, so a lexicographic
+    # comparison is valid. Using the wrong form here silently matches nothing.
+    since_iso = raw if raw else "2000-01-01T00:00:00"
 
     # Fetch cap scales with event_threshold so users who tolerate larger
     # per-run batches get proportional headroom for failure recovery. Floor
@@ -651,7 +710,7 @@ async def _resynthesize_space(
 
     card_rows = await db.execute_fetchall(
         """SELECT ac.card_id, ac.header, ac.summary, ac.priority, ac.persona,
-                  ac.status, ac.user_feedback, ac.category,
+                  ac.status, ac.user_feedback, ac.category, ac.entity_id,
                   e.source_platform, e.actor_name
            FROM action_cards ac
            LEFT JOIN events e ON ac.event_id = e.event_id
@@ -670,6 +729,7 @@ async def _resynthesize_space(
             "source_platform": row["source_platform"] or "unknown",
             "user_feedback": row["user_feedback"],
             "status": row["status"],
+            "entity_id": row["entity_id"],
         }
         for row in card_rows
     ]
@@ -709,6 +769,59 @@ async def _resynthesize_space(
             since=since,
         )
 
+    # 4b. Derive the live state of the CURRENT snapshot's items so the LLM can
+    # drop subjects that have since resolved or de-escalated. Resynthesis is
+    # otherwise blind to status-only transitions of cards created before `since`
+    # (they don't reappear in `new_cards`), so without this an attention item
+    # sticks forever. We compute state from each item's source_cards because the
+    # auto-resolution path (emit.py) transitions the very sibling cards embedded
+    # in the aggregate to a terminal status.
+    item_states: list[dict] = []
+    if current_snapshot:
+        snapshot_card_ids: list[str] = []
+        for section in current_snapshot.get("sections", []):
+            if section.get("type") not in ("attention", "recent"):
+                continue
+            for item in section.get("items", []):
+                snapshot_card_ids.extend(_item_source_cards(item))
+        snap_meta = await _fetch_card_meta(db, snapshot_card_ids)
+        for section in current_snapshot.get("sections", []):
+            if section.get("type") not in ("attention", "recent"):
+                continue
+            for item in section.get("items", []):
+                cids = _item_source_cards(item)
+                if not cids:
+                    continue
+                item_states.append({
+                    "text": item.get("text", ""),
+                    "all_resolved": _all_resolved(cids, snap_meta),
+                    "live_max_priority": _live_max_priority(cids, snap_meta),
+                })
+
+    # 4c. Subjects that reached a terminal state since the last synthesis.
+    # Compared against `since_iso` (raw ISO), NOT the space-normalized `since`.
+    resolved_rows = await db.execute_fetchall(
+        """SELECT entity_id, header, status, resolved_at
+           FROM action_cards
+           WHERE space_id = ? AND resolved_at IS NOT NULL AND resolved_at > ?
+             AND status IN ('done', 'dismissed', 'archived')
+           ORDER BY resolved_at DESC LIMIT 100""",
+        (space_id, since_iso),
+    )
+    resolved_cards: list[dict] = []
+    _seen_entities: set[str] = set()
+    for r in resolved_rows:
+        eid = r["entity_id"]
+        if eid and eid in _seen_entities:
+            continue  # dedupe by entity — one resolution line per subject
+        if eid:
+            _seen_entities.add(eid)
+        resolved_cards.append({
+            "entity_id": eid,
+            "header": r["header"],
+            "status": r["status"],
+        })
+
     # 5. Build LLM prompt
     messages = build_omni_resynthesis_messages(
         current_snapshot=current_snapshot,
@@ -717,6 +830,8 @@ async def _resynthesize_space(
         pinned_items=pinned_items,
         density=density,
         space_id=space_id,
+        item_states=item_states,
+        resolved_cards=resolved_cards,
     )
 
     schema = get_omni_json_schema(density)
@@ -757,6 +872,42 @@ async def _resynthesize_space(
     for section in result_sections:
         for item in section.get("items", []):
             item["space_id"] = space_id
+
+    # 7b. Deterministic safety-net prune + entity_ids backfill.
+    # The prompt asks the LLM to drop resolved subjects, but a stubborn model can
+    # carry them anyway, and the status-only-transition path gives the LLM only a
+    # derived hint. So we authoritatively drop any *attention* item whose source
+    # cards are ALL terminal — that item cannot need attention. We also backfill
+    # entity_ids from source_cards when the LLM left them empty, so the NEXT
+    # resynthesis can correlate this subject reliably.
+    output_card_ids: list[str] = []
+    for section in result_sections:
+        for item in section.get("items", []):
+            output_card_ids.extend(_item_source_cards(item))
+    out_meta = await _fetch_card_meta(db, output_card_ids)
+
+    pruned_attention = 0
+    for section in result_sections:
+        is_attention = section.get("type") == "attention"
+        kept_items = []
+        for item in section.get("items", []):
+            cids = _item_source_cards(item)
+            if is_attention and _all_resolved(cids, out_meta):
+                pruned_attention += 1
+                continue  # every source subject resolved — drop from attention
+            # Backfill entity_ids the LLM omitted, from the live card metadata.
+            if not item.get("entity_ids"):
+                eids = []
+                for cid in cids:
+                    eid = (out_meta.get(cid) or {}).get("entity_id")
+                    if eid and eid not in eids:
+                        eids.append(eid)
+                item["entity_ids"] = eids
+            kept_items.append(item)
+        section["items"] = kept_items
+
+    if pruned_attention:
+        log.info("omni_attention_pruned", space_id=space_id, dropped=pruned_attention)
 
     # 8. Build stats
     cards_acted_count = len(acted_cards)
