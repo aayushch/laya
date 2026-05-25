@@ -688,6 +688,34 @@ html, body {
 		0 4px 18px -10px rgb(0 0 0 / 0.08),
 		inset 0 1px 0 rgb(255 255 255 / 0.7);
 }
+/* Expanded chat overlay floats over a dark scrim. The default 50%-translucent
+   light glass-section lets that darkness bleed through, muddying the surface and
+   wrecking contrast for the dark light-theme text. Bump to near-opaque so it reads
+   as a solid frosted panel. We keep the glass-section class (rather than swapping to
+   glass-modal) so all the descendant [data-theme='light'] .glass-section overrides
+   that make bubbles/inputs/tables legible still apply. Dark theme is unaffected —
+   its near-transparent panel over the dark scrim already reads fine. */
+/* Dark theme: give the panel a moderately-translucent frosted body of its own
+   rather than leaning on the near-transparent default glass-section (~3.5%),
+   which let the feed bleed straight through and read as muddy. ~0.62 is glassy
+   (you sense depth + the backdrop blur) without distracting content bleed. */
+.glass-section.chat-overlay-surface {
+	background: rgb(30 26 21 / 0.62);
+}
+/* Light theme: mostly-opaque so the dark text stays readable over the dark
+   scrim behind, but kept translucent enough (~0.80) to retain a frosted-glass
+   feel rather than reading as a flat opaque panel. */
+[data-theme='light'] .glass-section.chat-overlay-surface {
+	background: rgb(255 255 255 / 0.80);
+}
+/* Scrim behind the expanded chat overlay — now that the panel has its own body,
+   the scrim only dims the surroundings for focus. */
+.chat-scrim {
+	background-color: rgb(0 0 0 / 0.42);
+}
+[data-theme='light'] .chat-scrim {
+	background-color: rgb(0 0 0 / 0.50);
+}
 /* Glass modal — heaviest frosting for large overlays (file viewers, dialogs).
    Needs to be opaque enough to read long-form content comfortably. */
 .glass-modal {

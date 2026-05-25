@@ -11,6 +11,7 @@
 		activeConversationId,
 		conversations,
 		chatListOpen,
+		chatExpanded,
 		chatCardContext,
 		chatCardIds
 	} from '$lib/stores/chat';
@@ -19,7 +20,7 @@
 	import type { ChatMessage as ChatMessageType } from '$lib/api/types';
 	import ChatMessage from './ChatMessage.svelte';
 	import ChatConversationList from './ChatConversationList.svelte';
-	import { fly } from 'svelte/transition';
+	import { fly, fade } from 'svelte/transition';
 	import { tick } from 'svelte';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { glassTheme } from '$lib/stores/glassTheme';
@@ -41,6 +42,21 @@
 
 	// Show list view when explicitly requested (chatListOpen controls this)
 	const showList = $derived($chatListOpen);
+
+	// Reset the wide overlay whenever the chat closes, so reopening always starts
+	// in the default sidebar layout (the expand state is intentionally ephemeral).
+	$effect(() => {
+		if (!$chatOpen) chatExpanded.set(false);
+	});
+
+	function handleSidebarKeydown(e: KeyboardEvent) {
+		// Escape collapses the wide overlay back to the normal sidebar (without
+		// closing the chat). When not expanded, let Escape bubble normally.
+		if (e.key === 'Escape' && $chatExpanded) {
+			e.stopPropagation();
+			chatExpanded.set(false);
+		}
+	}
 
 	function scrollToBottom() {
 		if (messagesEl) {
@@ -424,15 +440,29 @@
 	}
 </script>
 
+{#if $chatOpen && $chatExpanded}
+	<!-- Dim scrim behind the wide overlay for a focused feel; click to collapse.
+	     Inset to the content band so the titlebar/footer stay visible & clickable.
+	     z-30 keeps it below the panel (z-40). -->
+	<button
+		aria-label="Collapse chat"
+		onclick={() => chatExpanded.set(false)}
+		class="fixed inset-x-0 z-30 cursor-default chat-scrim backdrop-blur-sm"
+		style="top: var(--header-h, 38px); bottom: var(--footer-h, 33px);"
+		transition:fade={{ duration: $reducedMotion ? 0 : 150 }}
+	></button>
+{/if}
 {#if $chatOpen}
+	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 	<aside
-		class="fixed right-0 z-40 flex w-[460px] flex-col"
+		onkeydown={handleSidebarKeydown}
+		class="fixed right-0 z-40 flex flex-col transition-[width] duration-200 {$chatExpanded ? 'w-[75vw] min-w-[460px] max-w-[1100px]' : 'w-[460px]'}"
 		style="top: var(--header-h, 45px); bottom: var(--footer-h, 33px);"
 		transition:fly={{ x: 460, duration: $reducedMotion ? 0 : 250, opacity: 1 }}
 	>
 	<!-- Inner container: margins align with main content padding so the panel
 	     floats above the footer with consistent spacing -->
-	<div class="flex flex-1 flex-col overflow-hidden my-4 mr-4 rounded-xl {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-900'}">
+	<div class="flex flex-1 flex-col overflow-hidden my-4 mr-4 rounded-xl {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-900'} {$chatExpanded ? 'shadow-2xl' : ''} {$glassTheme && $chatExpanded ? 'chat-overlay-surface' : ''}">
 		{#if showList}
 			<ChatConversationList />
 		{:else}
@@ -504,6 +534,23 @@
 							</span>
 						</div>
 					{/if}
+					<!-- Expand / collapse the wide overlay -->
+					<button
+						onclick={() => chatExpanded.set(!$chatExpanded)}
+						aria-label={$chatExpanded ? 'Collapse chat' : 'Expand chat'}
+						title={$chatExpanded ? 'Collapse' : 'Expand'}
+						class="shrink-0 rounded-md p-1 text-surface-400 transition-colors hover:text-surface-200"
+					>
+						{#if $chatExpanded}
+							<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 9L4 4m0 0v4m0-4h4m7 5l5-5m0 0v4m0-4h-4M9 15l-5 5m0 0v-4m0 4h4m7-5l5 5m0 0v-4m0 4h-4" />
+							</svg>
+						{:else}
+							<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+							</svg>
+						{/if}
+					</button>
 					<button
 						onclick={handleClose}
 						aria-label="Close chat"

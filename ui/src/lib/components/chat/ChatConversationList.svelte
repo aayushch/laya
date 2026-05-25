@@ -7,7 +7,8 @@
 		activeConversationId,
 		chatListOpen,
 		chatMessages,
-		chatOpen
+		chatOpen,
+		chatExpanded
 	} from '$lib/stores/chat';
 	import type { Conversation } from '$lib/api/types';
 	import { glassTheme } from '$lib/stores/glassTheme';
@@ -169,6 +170,23 @@
 				<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
 				</svg>
+			</button>
+			<!-- Expand / collapse the wide overlay -->
+			<button
+				onclick={() => chatExpanded.set(!$chatExpanded)}
+				aria-label={$chatExpanded ? 'Collapse chat' : 'Expand chat'}
+				title={$chatExpanded ? 'Collapse' : 'Expand'}
+				class="rounded-md p-1 text-surface-400 transition-colors {$glassTheme ? 'glass-hover' : 'hover:bg-surface-800'} hover:text-laya-orange"
+			>
+				{#if $chatExpanded}
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 9L4 4m0 0v4m0-4h4m7 5l5-5m0 0v4m0-4h-4M9 15l-5 5m0 0v-4m0 4h4m7-5l5 5m0 0v-4m0 4h-4" />
+					</svg>
+				{:else}
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+					</svg>
+				{/if}
 			</button>
 			<!-- Close -->
 			<button

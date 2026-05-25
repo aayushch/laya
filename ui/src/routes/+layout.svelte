@@ -10,7 +10,7 @@
 	import { startHealthPolling, stopHealthPolling, startupReady } from '$lib/stores/health';
 	import StartupScreen from '$lib/components/StartupScreen.svelte';
 	import { needsSetup, setupComplete } from '$lib/stores/setup';
-	import { chatOpen, chatListOpen } from '$lib/stores/chat';
+	import { chatOpen, chatListOpen, chatExpanded } from '$lib/stores/chat';
 	import { theme } from '$lib/stores/theme';
 	import { getEngineUrl } from '$lib/config';
 	import { fontScale } from '$lib/stores/fontScale';
@@ -765,7 +765,7 @@
 		<UpdateBanner />
 
 		<!-- Main content — add right padding when chat sidebar is open so content isn't hidden behind it -->
-		<main class="flex-1 overflow-auto p-4 {$chatOpen ? 'pr-[476px]' : ''}">
+		<main class="flex-1 overflow-auto p-4 {$chatOpen && !$chatExpanded ? 'pr-[476px]' : ''}">
 			{#key page.url.pathname}
 				<div
 					class="h-full"

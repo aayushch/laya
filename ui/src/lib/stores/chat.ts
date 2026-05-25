@@ -23,6 +23,11 @@ export const conversations = writable<Conversation[]>([]);
 /** Whether the chat list panel is shown (vs the active chat view) */
 export const chatListOpen = writable(true);
 
+/** When true, the chat sidebar widens into a focused overlay. Session-only
+ *  (not persisted) and reset on close, so reopening always starts in the
+ *  default sidebar layout. */
+export const chatExpanded = writable(false);
+
 /** Card ID to navigate to in the feed (set by chat card links, consumed by feed page) */
 export const pendingCardId = writable<string | null>(null);
 
