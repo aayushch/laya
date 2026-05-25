@@ -157,7 +157,7 @@
 <div class="flex h-full flex-col">
 	<!-- Header -->
 	<div class="flex items-center justify-between border-b {$glassTheme ? 'border-white/[0.06]' : 'border-surface-700'} px-4 py-3">
-		<h3 class="text-sm font-semibold">Conversations</h3>
+		<h3 class="text-laya-base font-semibold">Conversations</h3>
 		<div class="flex items-center gap-1">
 			<!-- New Chat -->
 			<button
@@ -186,16 +186,16 @@
 	<!-- List -->
 	<div class="flex-1 overflow-auto">
 		{#if loading}
-			<p class="p-4 text-center text-sm text-surface-500">Loading...</p>
+			<p class="p-4 text-center text-laya-base text-surface-500">Loading...</p>
 		{:else if $conversations.length === 0}
 			<div class="flex flex-col items-center gap-3 p-8 text-center">
 				<svg class="h-10 w-10 text-surface-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
 				</svg>
-				<p class="text-sm text-surface-500">No conversations yet</p>
+				<p class="text-laya-base text-surface-500">No conversations yet</p>
 				<button
 					onclick={startNewChat}
-					class="rounded-md bg-laya-orange/80 px-3 py-1.5 text-xs font-medium text-surface-900 transition-colors hover:bg-laya-orange"
+					class="rounded-md bg-laya-orange/80 px-3 py-1.5 text-laya-secondary font-medium text-surface-900 transition-colors hover:bg-laya-orange"
 				>
 					Start a new chat
 				</button>
@@ -208,67 +208,68 @@
 						tabindex="0"
 						onclick={() => openConversation(conv)}
 						onkeydown={(e) => { if (e.key === 'Enter') openConversation(conv); }}
-						class="group flex w-full cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors {$glassTheme ? 'glass-hover' : 'hover:bg-surface-800'}"
+						class="group w-full cursor-pointer rounded-lg px-3 py-2.5 text-left transition-colors {$glassTheme ? 'glass-hover' : 'hover:bg-surface-800'}"
 					>
-						<div class="min-w-0 flex-1">
-							<div class="flex items-center justify-between gap-2">
-								{#if editingId === conv.conversation_id}
-									<input
-										bind:this={editInputEl}
-										bind:value={editTitle}
-										onclick={(e) => e.stopPropagation()}
-										onkeydown={(e) => handleEditKey(e, conv.conversation_id)}
-										onblur={() => commitEdit(conv.conversation_id)}
-										maxlength={100}
-										aria-label="Rename conversation"
-										class="min-w-0 flex-1 rounded border border-laya-orange/40 {$glassTheme ? 'bg-white/[0.05]' : 'bg-surface-800'} px-1.5 py-0.5 text-sm font-medium text-surface-100 focus:border-laya-orange focus:outline-none"
-									/>
-								{:else}
-									<span class="truncate text-sm font-medium text-surface-200">{conv.title}</span>
-									<span class="shrink-0 text-[10px] text-surface-500">{relativeTime(conv.updated_at)}</span>
-								{/if}
-							</div>
-							{#if conv.preview}
-								<p class="mt-0.5 truncate text-xs text-surface-500">{conv.preview}</p>
-							{/if}
-							<span class="mt-0.5 text-[10px] text-surface-600">{conv.message_count} message{conv.message_count === 1 ? '' : 's'}</span>
-						</div>
-						<!-- Actions -->
-						<div class="flex shrink-0 items-start gap-0.5">
-							{#if editingId !== conv.conversation_id}
-								<!-- Rename -->
-								<button
-									onclick={(e) => startEdit(e, conv)}
-									class="rounded p-1 text-surface-600 opacity-0 transition-all hover:text-laya-orange group-hover:opacity-100"
+						<div class="flex items-center justify-between gap-2">
+							{#if editingId === conv.conversation_id}
+								<input
+									bind:this={editInputEl}
+									bind:value={editTitle}
+									onclick={(e) => e.stopPropagation()}
+									onkeydown={(e) => handleEditKey(e, conv.conversation_id)}
+									onblur={() => commitEdit(conv.conversation_id)}
+									maxlength={100}
 									aria-label="Rename conversation"
-									title="Rename"
-								>
-									<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-									</svg>
-								</button>
+									class="min-w-0 flex-1 rounded border border-laya-orange/40 {$glassTheme ? 'bg-white/[0.05]' : 'bg-surface-800'} px-1.5 py-0.5 text-laya-base font-medium text-surface-100 focus:border-laya-orange focus:outline-none"
+								/>
+							{:else}
+								<span class="min-w-0 flex-1 truncate text-laya-base font-medium text-surface-200">{conv.title}</span>
+								<!-- Right slot swaps timestamp ↔ actions on hover so the title can span
+									 the full width (no permanently reserved action column). The timestamp
+									 stays in normal flow and defines the slot's width (min-w guarantees the
+									 actions fit), so nothing reflows on hover (no jitter). The actions are
+									 absolutely positioned over the slot so each button's hitbox lines up
+									 exactly with its icon. While a delete is pending the actions stay shown
+									 even without hover. -->
+								<div class="relative flex min-w-12 shrink-0 items-center justify-end">
+									<span class="text-laya-micro text-surface-500 transition-opacity {deletingId === conv.conversation_id ? 'opacity-0' : 'group-hover:opacity-0'}">{relativeTime(conv.updated_at)}</span>
+									<div class="absolute right-0 top-1/2 flex -translate-y-1/2 items-center gap-0.5 transition-opacity {deletingId === conv.conversation_id ? 'opacity-100' : 'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100'}">
+										<!-- Rename -->
+										<button
+											onclick={(e) => startEdit(e, conv)}
+											class="rounded p-1 text-surface-500 transition-colors hover:text-laya-orange"
+											aria-label="Rename conversation"
+											title="Rename"
+										>
+											<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+											</svg>
+										</button>
+										<!-- Delete -->
+										<div class="group/del relative">
+											<button
+												onclick={(e) => deleteConversation(e, conv.conversation_id)}
+												class="rounded p-1 transition-colors {deletingId === conv.conversation_id ? 'text-red-400' : 'text-surface-500 hover:text-red-400'}"
+												aria-label={deletingId === conv.conversation_id ? 'Click again to confirm delete' : 'Double-click to delete'}
+											>
+												<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+												</svg>
+											</button>
+											<span class="pointer-events-none absolute right-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-transparent glass-tooltip glass-tooltip-dense px-2 py-1 text-[10px] font-medium shadow-lg
+												opacity-0 transition-opacity duration-75 group-hover/del:opacity-100
+												{deletingId === conv.conversation_id ? '!border-red-400/30 !bg-red-950 !text-red-300' : ''}">
+												{deletingId === conv.conversation_id ? 'Click again to confirm' : 'Double-click to delete'}
+											</span>
+										</div>
+									</div>
+								</div>
 							{/if}
-							<!-- Delete -->
-							<div class="group/del relative">
-								<button
-									onclick={(e) => deleteConversation(e, conv.conversation_id)}
-									class="rounded p-1 text-surface-600 opacity-0 transition-all hover:text-red-400 group-hover:opacity-100
-										{deletingId === conv.conversation_id ? '!opacity-100 !text-red-400' : ''}"
-									aria-label={deletingId === conv.conversation_id ? 'Click again to confirm delete' : 'Double-click to delete'}
-								>
-									<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-									</svg>
-								</button>
-								<span class="pointer-events-none absolute right-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border px-2 py-1 text-[10px] font-medium shadow-lg
-									opacity-0 transition-opacity duration-75 group-hover/del:opacity-100
-									{deletingId === conv.conversation_id
-										? 'border-red-400/30 bg-red-950 text-red-300'
-										: $glassTheme ? 'border-white/[0.08] bg-white/[0.06] text-surface-400' : 'border-surface-600 bg-surface-800 text-surface-400'}">
-									{deletingId === conv.conversation_id ? 'Click again to confirm' : 'Double-click to delete'}
-								</span>
-							</div>
 						</div>
+						{#if conv.preview}
+							<p class="mt-0.5 truncate text-laya-secondary text-surface-500">{conv.preview}</p>
+						{/if}
+						<span class="mt-0.5 text-laya-micro text-surface-600">{conv.message_count} message{conv.message_count === 1 ? '' : 's'}</span>
 					</div>
 				{/each}
 			</div>

@@ -6,6 +6,7 @@
 	import DOMPurify from 'dompurify';
 	import { goto } from '$app/navigation';
 	import { pendingCardId } from '$lib/stores/chat';
+	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { portal } from '$lib/actions/portal';
 
@@ -71,12 +72,27 @@
 		return { thinking: null, response: content, isThinking: false };
 	});
 
-	// Replace [card:ID] and [event:ID] markers with clickable links
+	// Inline card glyph — the link renders this icon rather than the raw id, which
+	// is noisy in prose. The id is revealed on hover via the laya tooltip.
+	const CARD_ICON =
+		'<svg class="inline-block h-3.5 w-3.5 align-text-bottom" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>';
+
+	function cardButton(id: string): string {
+		return `<button data-card-link="${id}" aria-label="Open card ${id}" class="inline-flex items-center align-text-bottom text-laya-orange hover:text-laya-peach cursor-pointer">${CARD_ICON}</button>`;
+	}
+
+	// Linkify card references. We match two forms in a single pass: the explicit
+	// [card:ID] marker the prompt asks for, AND bare card_<hex> ids — the LLM often
+	// emits the bare id (e.g. in a bold list) instead of wrapping it, so without
+	// this they'd render as plain text. The alternation consumes a whole [card:...]
+	// marker before the bare-id branch can see its inner id, so each reference is
+	// linkified exactly once. Card ids are card_ + 12 hex chars (engine queue.py).
+	// Note: linkification is by shape only — the click handler validates the card
+	// actually exists before navigating, so a stale/look-alike id fails gracefully.
 	function replaceMarkers(text: string): string {
 		return text
-			.replace(
-				/\[card:([^\]]+)\]/g,
-				'<button data-card-link="$1" class="text-laya-orange underline hover:text-laya-peach cursor-pointer">card:$1</button>'
+			.replace(/\[card:([^\]]+)\]|\bcard_[0-9a-f]{12}\b/g, (full, bracketId) =>
+				cardButton(bracketId ?? full)
 			)
 			.replace(
 				/\[event:([^\]]+)\]/g,
@@ -88,15 +104,61 @@
 		return DOMPurify.sanitize(replaceMarkers(marked(text) as string));
 	}
 
-	function handleClick(e: MouseEvent | KeyboardEvent) {
+	// Tracks the card id whose tooltip is currently shown on hover, so we don't
+	// re-trigger showTooltip on every pointer move.
+	let hoverCardId = $state<string | null>(null);
+	// While set (a timestamp in the future), a "Card not found" flash is showing
+	// and hover must not overwrite it.
+	let flashUntil = 0;
+
+	async function handleClick(e: MouseEvent | KeyboardEvent) {
 		if (e instanceof KeyboardEvent && e.key !== 'Enter') return;
 		const target = (e.target as HTMLElement).closest('[data-card-link]') as HTMLElement | null;
 		if (!target) return;
 		const cardId = target.dataset.cardLink;
 		if (!cardId) return;
 		e.preventDefault();
+		// Feed normalizes a missing prefix; mirror that when validating.
+		const fullId = cardId.startsWith('card_') ? cardId : `card_${cardId}`;
+		try {
+			await engineApi.getCard(fullId);
+		} catch {
+			// Look-alike / stale id — surface it instead of navigating to a dead view.
+			flashUntil = Date.now() + 2000;
+			hoverCardId = null;
+			showTooltip(target, 'Card not found');
+			setTimeout(() => {
+				if (Date.now() >= flashUntil) hideTooltip();
+			}, 2000);
+			return;
+		}
 		pendingCardId.set(cardId);
 		goto('/feed');
+	}
+
+	// Hover over a card link → show its id in the laya tooltip. Uses event
+	// delegation on the message container because the links are injected as raw HTML.
+	function handleHover(e: PointerEvent) {
+		if (Date.now() < flashUntil) return;
+		const link = (e.target as HTMLElement).closest?.('[data-card-link]') as HTMLElement | null;
+		if (link) {
+			const id = link.dataset.cardLink;
+			if (id && hoverCardId !== id) {
+				hoverCardId = id;
+				showTooltip(link, id);
+			}
+		} else if (hoverCardId) {
+			hoverCardId = null;
+			hideTooltip();
+		}
+	}
+
+	function handleHoverLeave() {
+		if (Date.now() < flashUntil) return;
+		if (hoverCardId) {
+			hoverCardId = null;
+			hideTooltip();
+		}
 	}
 </script>
 
@@ -109,7 +171,7 @@
 		{#if isUser}
 			<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="whitespace-pre-wrap break-words" onclick={handleClick} onkeydown={handleClick}>{@html DOMPurify.sanitize(replaceMarkers(message.content))}</div>
+			<div class="whitespace-pre-wrap break-words" onclick={handleClick} onkeydown={handleClick} onpointerover={handleHover} onpointerleave={handleHoverLeave}>{@html DOMPurify.sanitize(replaceMarkers(message.content))}</div>
 		{:else}
 			<!-- Thinking indicator / collapsible block -->
 			{#if parsed.isThinking}
@@ -142,7 +204,7 @@
 			{#if parsed.response}
 				<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<div class="prose-plan break-words" onclick={handleClick} onkeydown={handleClick}>{@html renderMarkdown(parsed.response)}{#if streaming}<span class="animate-pulse text-laya-orange">|</span>{/if}</div>
+				<div class="prose-plan break-words" onclick={handleClick} onkeydown={handleClick} onpointerover={handleHover} onpointerleave={handleHoverLeave}>{@html renderMarkdown(parsed.response)}{#if streaming}<span class="animate-pulse text-laya-orange">|</span>{/if}</div>
 			{:else if streaming && !parsed.isThinking}
 				<span class="inline-flex gap-1 text-surface-400">
 					<span class="animate-bounce">.</span>
@@ -152,7 +214,7 @@
 			{/if}
 		{/if}
 		{#if !streaming}
-			<div class="mt-1 flex items-center gap-2 text-[10px] {isUser ? 'text-laya-orange/60' : 'text-surface-500'}">
+			<div class="mt-1 flex items-center gap-2 text-laya-micro {isUser ? 'text-laya-orange/60' : 'text-surface-500'}">
 				<span>{time}</span>
 				{#if !isUser && parsed.response}
 					<button

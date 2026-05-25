@@ -449,7 +449,7 @@
 						</svg>
 					</button>
 					{#if inCardMode}
-						<h3 class="truncate text-sm font-semibold">
+						<h3 class="truncate text-laya-base font-semibold">
 							{$chatCardIds?.length === 1 ? 'Chat about this card' : `Chat about ${$chatCardIds?.length} cards`}
 						</h3>
 					{:else if renaming}
@@ -460,7 +460,7 @@
 							onblur={commitRename}
 							maxlength={100}
 							aria-label="Rename conversation"
-							class="min-w-0 flex-1 rounded border border-laya-orange/40 {$glassTheme ? 'bg-white/[0.05]' : 'bg-surface-800'} px-1.5 py-0.5 text-sm font-semibold text-surface-100 focus:border-laya-orange focus:outline-none"
+							class="min-w-0 flex-1 rounded border border-laya-orange/40 {$glassTheme ? 'bg-white/[0.05]' : 'bg-surface-800'} px-1.5 py-0.5 text-laya-base font-semibold text-surface-100 focus:border-laya-orange focus:outline-none"
 						/>
 					{:else}
 						<button
@@ -470,7 +470,7 @@
 							class="flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors {$glassTheme ? 'enabled:hover:bg-white/[0.05]' : 'enabled:hover:bg-surface-800'} disabled:cursor-default"
 							title={$activeConversationId ? 'Rename conversation' : ''}
 						>
-							<h3 class="truncate text-sm font-semibold">{conversationTitle()}</h3>
+							<h3 class="truncate text-laya-base font-semibold">{conversationTitle()}</h3>
 							{#if $activeConversationId}
 								<svg
 									class="h-3 w-3 shrink-0 text-surface-500 opacity-0 transition-opacity group-hover:opacity-100"
@@ -497,11 +497,9 @@
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
 								</svg>
 							</button>
-							<span class="pointer-events-none absolute right-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border px-2 py-1 text-[10px] font-medium shadow-lg
+							<span class="pointer-events-none absolute right-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-transparent glass-tooltip glass-tooltip-dense px-2 py-1 text-[10px] font-medium shadow-lg
 								opacity-0 transition-opacity duration-75 group-hover/clr:opacity-100
-								{clearPending
-									? 'border-red-400/30 bg-red-950 text-red-300'
-									: $glassTheme ? 'border-white/[0.08] bg-white/[0.06] text-surface-400' : 'border-surface-600 bg-surface-800 text-surface-400'}">
+								{clearPending ? '!border-red-400/30 !bg-red-950 !text-red-300' : ''}">
 								{clearPending ? 'Click again to confirm' : 'Clear chat'}
 							</span>
 						</div>
@@ -521,7 +519,7 @@
 			<!-- Messages -->
 			<div bind:this={messagesEl} onscroll={handleMessagesScroll} class="flex-1 space-y-3 overflow-auto p-4">
 				{#if $chatMessages.length === 0}
-					<p class="text-center text-sm text-surface-500">
+					<p class="text-center text-laya-base text-surface-500">
 						{#if inCardMode}
 							Ask anything about {$chatCardIds?.length === 1 ? 'this card' : `these ${$chatCardIds?.length} cards`}. Laya has full context of their intelligence, outputs, and metadata.
 						{:else}
@@ -537,7 +535,7 @@
 				<!-- Tool calling indicator -->
 				{#if $activeTools.length > 0}
 					<div class="flex justify-start">
-						<div class="rounded-xl {$glassTheme ? 'bg-white/[0.05] ring-1 ring-white/[0.08]' : 'bg-surface-800 ring-1 ring-surface-600'} px-3.5 py-2 text-xs text-surface-400">
+						<div class="rounded-xl {$glassTheme ? 'bg-white/[0.05] ring-1 ring-white/[0.08]' : 'bg-surface-800 ring-1 ring-surface-600'} px-3.5 py-2 text-laya-secondary text-surface-400">
 							<span class="mr-1.5 inline-block h-2 w-2 animate-pulse rounded-full bg-laya-orange"></span>
 							Looking up: {$activeTools.join(', ')}
 						</div>
