@@ -7,6 +7,7 @@ import type {
 	Settings,
 	ReposConfig,
 	ActionCard,
+	SourceEvent,
 	CardsListResponse,
 	GroupedCardsResponse,
 	ExecuteActionResponse,
@@ -205,6 +206,8 @@ export const engineApi = {
 		return request<CardsListResponse>(`/cards${qs ? '?' + qs : ''}`);
 	},
 	getCard: (cardId: string) => request<ActionCard>(`/cards/${cardId}`),
+	getCardSourceEvent: (cardId: string) =>
+		request<SourceEvent>(`/cards/${encodeURIComponent(cardId)}/source-event`),
 	getGroupedCards: (params?: {
 		status?: string;
 		priority?: string;

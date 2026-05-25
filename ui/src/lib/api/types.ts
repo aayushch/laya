@@ -469,6 +469,23 @@ export interface ActionCard {
 	tags?: TagAssignment[];
 }
 
+/** The original ingested event behind a card — raw body + platform metadata. */
+export interface SourceEvent {
+	event_id: string;
+	platform: string;
+	raw_event_type: string;
+	timestamp?: string;
+	actor_name?: string;
+	actor_email?: string;
+	actor_handle?: string;
+	subject_type?: string;
+	subject_id?: string;
+	subject_title?: string;
+	subject_url?: string;
+	body?: string;
+	metadata: Record<string, unknown>;
+}
+
 /** A structured key event with separate timestamp */
 export interface KeyEvent {
 	event: string;

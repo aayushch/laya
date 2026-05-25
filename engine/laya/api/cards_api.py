@@ -741,6 +741,75 @@ async def get_card(card_id: str) -> CardResponse:
     return card
 
 
+class SourceEventResponse(BaseModel):
+    """The original event that produced a card — raw body + platform metadata."""
+
+    event_id: str
+    platform: str
+    raw_event_type: str
+    timestamp: str | None = None
+    actor_name: str | None = None
+    actor_email: str | None = None
+    actor_handle: str | None = None
+    subject_type: str | None = None
+    subject_id: str | None = None
+    subject_title: str | None = None
+    subject_url: str | None = None
+    body: str | None = None
+    metadata: dict[str, Any] = {}
+
+
+@router.get("/cards/{card_id}/source-event")
+async def get_card_source_event(card_id: str) -> SourceEventResponse:
+    """Return the original ingested event behind a card (raw message + metadata).
+
+    Powers the "Show original content" modal. The full event is always stored at
+    ingest time (events.content_body / content_metadata), so no LLM call or
+    re-fetch is needed — we just join back through action_cards.event_id.
+    """
+    if not card_id.startswith("card_"):
+        card_id = f"card_{card_id}"
+    db = await get_db()
+
+    rows = await db.execute_fetchall(
+        """SELECT e.event_id, e.source_platform, e.source_raw_event_type, e.timestamp,
+                  e.actor_name, e.actor_email, e.actor_handle,
+                  e.subject_type, e.subject_id, e.subject_title, e.subject_url,
+                  e.content_body, e.content_metadata
+           FROM action_cards c JOIN events e ON c.event_id = e.event_id
+           WHERE c.card_id = ?""",
+        (card_id,),
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Source event not found")
+
+    row = rows[0]
+    metadata: dict[str, Any] = {}
+    if row["content_metadata"]:
+        try:
+            parsed = json.loads(row["content_metadata"])
+            if isinstance(parsed, dict):
+                metadata = parsed
+        except (json.JSONDecodeError, TypeError):
+            pass  # malformed metadata shouldn't break the modal — show body only
+
+    return SourceEventResponse(
+        event_id=row["event_id"],
+        platform=row["source_platform"],
+        raw_event_type=row["source_raw_event_type"],
+        timestamp=row["timestamp"],
+        actor_name=row["actor_name"],
+        actor_email=row["actor_email"],
+        actor_handle=row["actor_handle"],
+        subject_type=row["subject_type"],
+        subject_id=row["subject_id"],
+        subject_title=row["subject_title"],
+        subject_url=row["subject_url"],
+        body=row["content_body"],
+        metadata=metadata,
+    )
+
+
 @router.post("/cards/{card_id}/done")
 async def mark_card_done(card_id: str) -> dict:
     """Mark an action card as done (user has reviewed/acted on it)."""
