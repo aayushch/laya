@@ -1270,6 +1270,13 @@
 	// mode. Set before clearing panelTransitioning so the observer callback
 	// that fires after containment removal doesn't run a FLIP animation.
 	let _resizeInstant = false;
+	// Last known scroll anchor (top-most visible feed item + its viewport offset),
+	// tracked while scrolling so it reflects a STABLE layout. We can't measure it
+	// inside the ResizeObserver because by then the container has already narrowed
+	// while still showing the old column count (the flex-wrap row has reflowed), so
+	// positions there are transient/wrong.
+	let _topAnchor: { entityId: string; offset: number } | null = null;
+	let _anchorRaf = 0;
 
 	// Content width excluding padding — matches what ResizeObserver's contentRect.width reports.
 	// closeDetailPanel/openDetailPanel must use this instead of clientWidth (which includes padding)
@@ -1289,19 +1296,80 @@
 		animateFlip(oldPositions, instant);
 	}
 
+	// Scroll-anchor preservation across width-driven re-columns (chat panel
+	// open/close, window resize, recent-drawer toggle). The detail panel handles
+	// its own scroll-to-card via the panelTransitioning early-return below, so this
+	// only runs for the bare observer path — which previously re-columned with no
+	// scroll handling, drifting whatever you were looking at off-screen.
+	//
+	// We anchor on the top-most visible feed item. Each top-level item is a
+	// `<div data-entity-id>` keyed by entity_id, so the element survives repacking
+	// (Svelte moves it between columns rather than destroying it).
+	function captureTopAnchor(): { entityId: string; offset: number } | null {
+		if (!containerEl) return null;
+		const containerTop = containerEl.getBoundingClientRect().top;
+		let best: { entityId: string; offset: number } | null = null;
+		for (const el of containerEl.querySelectorAll<HTMLElement>('[data-entity-id]')) {
+			const id = el.dataset.entityId;
+			if (!id) continue;
+			// Offset of this item relative to the scroll viewport's top edge.
+			const offset = el.getBoundingClientRect().top - containerTop;
+			// The item straddling / nearest the top fold is the user's visual anchor.
+			if (!best || Math.abs(offset) < Math.abs(best.offset)) best = { entityId: id, offset };
+		}
+		return best;
+	}
+
+	function restoreTopAnchor(anchor: { entityId: string; offset: number }) {
+		if (!containerEl) return;
+		const el = containerEl.querySelector<HTMLElement>(
+			`[data-entity-id="${CSS.escape(anchor.entityId)}"]`
+		);
+		if (!el) return;
+		const newOffset = el.getBoundingClientRect().top - containerEl.getBoundingClientRect().top;
+		// Nudge the scroll so the anchor item returns to the same viewport offset.
+		containerEl.scrollTop += newOffset - anchor.offset;
+	}
+
+	// Refresh the stored anchor from the current (stable) layout, throttled to one
+	// read per frame. Skipped during panel transitions (the detail panel owns scroll
+	// then). getBoundingClientRect-based scan is overlay-agnostic, so it stays
+	// accurate even while the chat scrim covers the feed.
+	function recordTopAnchor() {
+		if (_anchorRaf) return;
+		_anchorRaf = requestAnimationFrame(() => {
+			_anchorRaf = 0;
+			if (!panelTransitioning) _topAnchor = captureTopAnchor();
+		});
+	}
+
 	$effect(() => {
 		if (!containerEl) return;
+		const el = containerEl;
+		el.addEventListener('scroll', recordTopAnchor, { passive: true });
 		const observer = new ResizeObserver(([entry]) => {
 			if (panelTransitioning) return;
 
 			const w = entry.contentRect.width;
 			const newCols = Math.max(1, Math.floor((w + COL_GAP) / (CARD_WIDTH + COL_GAP)));
-			const instant = _resizeInstant;
 			_resizeInstant = false;
-			flipColumns(newCols, instant);
+			if (newCols === numColumns) return; // width changed but layout won't move
+
+			// Restore the anchor captured from the pre-reflow stable layout (not measured
+			// here — see _topAnchor). Repack instantly so the restore reads final positions
+			// on the next frame rather than mid-FLIP transforms. Fall back to an in-place
+			// scan when no anchor is tracked yet (only at the very top, where it's accurate).
+			const anchor = _topAnchor ?? captureTopAnchor();
+			flipColumns(newCols, true);
+			if (anchor) requestAnimationFrame(() => restoreTopAnchor(anchor));
 		});
-		observer.observe(containerEl);
-		return () => observer.disconnect();
+		observer.observe(el);
+		return () => {
+			el.removeEventListener('scroll', recordTopAnchor);
+			if (_anchorRaf) cancelAnimationFrame(_anchorRaf);
+			_anchorRaf = 0;
+			observer.disconnect();
+		};
 	});
 
 	// Pre-calculate final column count when detail panel opens/closes
