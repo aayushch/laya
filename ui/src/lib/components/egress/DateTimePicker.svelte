@@ -2,6 +2,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { theme } from '$lib/stores/theme';
 	import { portal } from '$lib/actions/portal';
 	import { tick } from 'svelte';
 
@@ -234,6 +235,13 @@
 	const popoverClass = $derived($glassTheme
 		? 'glass-card border-white/[0.12]'
 		: 'border-surface-600 bg-surface-800 shadow-2xl');
+
+	// Drum-picker fade masks must match the popover background so they don't paint
+	// a dark band over the light theme. Non-glass fades to the actual surface bg var
+	// (theme-adaptive); glass keeps a translucent tint matched to light/dark.
+	const fadeColor = $derived($glassTheme
+		? ($theme === 'light' ? 'rgba(250,247,242,0.85)' : 'rgba(30,28,25,0.85)')
+		: 'var(--color-surface-800)');
 </script>
 
 <button
@@ -306,8 +314,8 @@
 			></div>
 
 			<!-- Fade masks -->
-			<div class="pointer-events-none absolute inset-x-0 top-0 z-10 rounded-t-lg" style="height: {CENTER_OFFSET}px; background: linear-gradient(to bottom, {$glassTheme ? 'rgba(30,28,25,0.85)' : 'rgba(24,24,27,0.9)'}, transparent);"></div>
-			<div class="pointer-events-none absolute inset-x-0 bottom-0 z-10 rounded-b-lg" style="height: {CENTER_OFFSET}px; background: linear-gradient(to top, {$glassTheme ? 'rgba(30,28,25,0.85)' : 'rgba(24,24,27,0.9)'}, transparent);"></div>
+			<div class="pointer-events-none absolute inset-x-0 top-0 z-10 rounded-t-lg" style="height: {CENTER_OFFSET}px; background: linear-gradient(to bottom, {fadeColor}, transparent);"></div>
+			<div class="pointer-events-none absolute inset-x-0 bottom-0 z-10 rounded-b-lg" style="height: {CENTER_OFFSET}px; background: linear-gradient(to top, {fadeColor}, transparent);"></div>
 
 			<!-- Columns -->
 			<div class="absolute inset-0 flex">

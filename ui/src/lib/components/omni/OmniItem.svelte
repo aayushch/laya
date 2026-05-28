@@ -48,7 +48,7 @@
 
 	<!-- Content -->
 	<div class="flex-1 min-w-0">
-		<p class="text-laya-base leading-relaxed {priorityColors[item.priority] || 'text-surface-300'}">
+		<p class="text-laya-base leading-relaxed break-words [overflow-wrap:anywhere] {priorityColors[item.priority] || 'text-surface-300'}">
 			{item.text}
 		</p>
 

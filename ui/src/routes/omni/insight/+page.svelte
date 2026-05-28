@@ -327,22 +327,22 @@
 									href={card.source_url}
 									target="_blank"
 									rel="noopener noreferrer"
-									class="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs text-surface-300 transition-colors hover:border-laya-orange/30 hover:text-laya-orange {$glassTheme ? 'border-white/[0.08] bg-white/[0.04]' : 'border-surface-700'}"
+									class="inline-flex max-w-full items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs text-surface-300 transition-colors hover:border-laya-orange/30 hover:text-laya-orange {$glassTheme ? 'border-white/[0.08] bg-white/[0.04]' : 'border-surface-700'}"
 								>
-									<svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+									<svg class="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 										<path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" />
 									</svg>
-									{card.source_ref}
+									<span class="min-w-0 break-all">{card.source_ref}</span>
 								</a>
 							{:else}
-								<span class="inline-flex items-center rounded-md border px-3 py-1.5 text-xs font-medium text-surface-300 {$glassTheme ? 'border-white/[0.08] bg-white/[0.04]' : 'border-surface-700'}">{card.source_ref}</span>
+								<span class="inline-flex max-w-full items-center break-all rounded-md border px-3 py-1.5 text-xs font-medium text-surface-300 {$glassTheme ? 'border-white/[0.08] bg-white/[0.04]' : 'border-surface-700'}">{card.source_ref}</span>
 							{/if}
 						</div>
 					{/if}
 
 					<!-- Header + summary -->
-					<h2 class="mb-2 text-lg font-semibold text-surface-50">{card.header}</h2>
-					<p class="mb-5 text-laya-base leading-relaxed text-surface-300">{card.summary}</p>
+					<h2 class="mb-2 text-lg font-semibold text-surface-50 break-words [overflow-wrap:anywhere]">{card.header}</h2>
+					<p class="mb-5 text-laya-base leading-relaxed text-surface-300 break-words [overflow-wrap:anywhere]">{card.summary}</p>
 
 					<!-- Intelligence report -->
 					{#if card.intelligence && card.intelligence.length > 0}

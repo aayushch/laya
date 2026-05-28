@@ -76,6 +76,54 @@
 		{ id: 'about',        label: 'About' }
 	];
 
+	// Responsive tab bar: keep as many tabs inline as fit, collapse the rest into an
+	// overflow "More" menu when the bar narrows (same principle as the feed toolbar).
+	let tabBarEl = $state<HTMLElement>();
+	let measureEl = $state<HTMLElement>();
+	let visibleCount = $state(tabs.length);
+	let overflowMenuOpen = $state(false);
+	const visibleTabs = $derived(tabs.slice(0, visibleCount));
+	const overflowTabs = $derived(tabs.slice(visibleCount));
+
+	$effect(() => {
+		if (!tabBarEl || !measureEl) return;
+		const recompute = () => {
+			const inner = tabBarEl!.clientWidth - 8; // subtract p-1 (4px each side)
+			const widths = (Array.from(measureEl!.children) as HTMLElement[]).map((el) => el.offsetWidth);
+			const gap = 4; // gap-1
+			const total = widths.reduce((a, b) => a + b, 0) + gap * Math.max(0, widths.length - 1);
+			if (total <= inner) {
+				visibleCount = tabs.length;
+				return;
+			}
+			// Reserve room for the "More" button when at least one tab overflows.
+			const moreReserve = 70;
+			let used = 0;
+			let count = 0;
+			for (let i = 0; i < widths.length; i++) {
+				const add = widths[i] + (i > 0 ? gap : 0);
+				if (used + add + gap + moreReserve <= inner) {
+					used += add;
+					count++;
+				} else break;
+			}
+			visibleCount = Math.max(1, count);
+		};
+		const observer = new ResizeObserver(recompute);
+		observer.observe(tabBarEl);
+		recompute();
+		return () => observer.disconnect();
+	});
+
+	$effect(() => {
+		function onClick(e: MouseEvent) {
+			const target = e.target as HTMLElement;
+			if (!target.closest('.settings-overflow-menu')) overflowMenuOpen = false;
+		}
+		document.addEventListener('click', onClick);
+		return () => document.removeEventListener('click', onClick);
+	});
+
 	let exporting = $state(false);
 
 	async function exportDiagnostics() {
@@ -107,10 +155,13 @@
 		</div>
 
 		<!-- Tab bar -->
-		<div class="flex justify-between rounded-lg p-1 {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-800'}">
-			{#each tabs as tab}
+		<div
+			bind:this={tabBarEl}
+			class="relative flex items-center gap-1 rounded-lg p-1 {overflowTabs.length === 0 ? 'justify-between' : ''} {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-800'}"
+		>
+			{#each visibleTabs as tab}
 				<button
-					class="rounded-md px-2.5 py-1.5 text-laya-base font-medium transition-colors
+					class="whitespace-nowrap rounded-md px-2.5 py-1.5 text-laya-base font-medium transition-colors
 						{activeTab === tab.id
 							? 'bg-laya-orange/15 text-laya-orange'
 							: 'text-surface-400 hover:text-surface-200'}"
@@ -119,6 +170,45 @@
 					{tab.label}
 				</button>
 			{/each}
+
+			{#if overflowTabs.length > 0}
+				<div class="settings-overflow-menu relative ml-auto">
+					<button
+						class="flex items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1.5 text-laya-base font-medium transition-colors
+							{overflowTabs.some((t) => t.id === activeTab)
+								? 'bg-laya-orange/15 text-laya-orange'
+								: 'text-surface-400 hover:text-surface-200'}"
+						onclick={() => (overflowMenuOpen = !overflowMenuOpen)}
+						aria-label="More tabs"
+					>
+						More
+						<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+						</svg>
+					</button>
+					{#if overflowMenuOpen}
+						<!-- bg-surface-900 (not -800) avoids the .glass-section tooltip override in app.css that makes -800 nearly transparent -->
+						<div class="absolute right-0 top-full z-[100] mt-1 flex min-w-[160px] flex-col rounded-lg border border-surface-600 py-1 shadow-lg {$glassTheme ? 'bg-surface-900/90 backdrop-blur-xl' : 'bg-surface-800'}">
+							{#each overflowTabs as tab}
+								<button
+									class="w-full whitespace-nowrap px-4 py-1.5 text-left text-laya-base font-medium transition-colors hover:bg-surface-700
+										{activeTab === tab.id ? 'text-laya-orange' : 'text-surface-300'}"
+									onclick={() => { switchTab(tab.id as TabId); overflowMenuOpen = false; }}
+								>
+									{tab.label}
+								</button>
+							{/each}
+						</div>
+					{/if}
+				</div>
+			{/if}
+
+			<!-- Hidden full-width measurement row: mirrors button sizing so we can compute how many tabs fit -->
+			<div bind:this={measureEl} aria-hidden="true" class="pointer-events-none invisible absolute left-1 top-0 flex items-center gap-1">
+				{#each tabs as tab}
+					<span class="whitespace-nowrap rounded-md px-2.5 py-1.5 text-laya-base font-medium">{tab.label}</span>
+				{/each}
+			</div>
 		</div>
 	</div>
 
