@@ -51,10 +51,16 @@ def _read_tools() -> list[dict]:
                 "name": "search_cards",
                 "description": (
                     "Search action cards by keyword, status, priority, or category. "
-                    "Results are grouped by entity — cards about the same ticket, PR, thread, etc. appear together "
-                    "with a rolling group_summary (headline, current_status, pending_actions) that reflects the "
-                    "latest state of the entity even if only some of its cards matched the search. "
-                    "Pagination is card-based — check 'has_more' and use 'offset' to retrieve additional pages."
+                    "By default uses semantic (meaning-based) search: the query is "
+                    "matched by concept and results are ranked by relevance. Set "
+                    "semantic=false for exact keyword matching where every word must "
+                    "appear literally (AND logic, ranked by recency). "
+                    "Results are grouped by entity — cards about the same ticket, "
+                    "PR, thread, etc. appear together with a rolling group_summary "
+                    "(headline, current_status, pending_actions) that reflects the "
+                    "latest state even if only some cards matched. "
+                    "Pagination is card-based — check 'has_more' and use 'offset' "
+                    "to retrieve additional pages."
                 ),
                 "parameters": {
                     "type": "object",
@@ -62,6 +68,20 @@ def _read_tools() -> list[dict]:
                         "query": {
                             "type": "string",
                             "description": "Free-text search query to match against card header, summary, and intelligence.",
+                        },
+                        "semantic": {
+                            "type": "boolean",
+                            "description": (
+                                "When true (default), uses meaning-based search via "
+                                "embeddings — the query is matched by concept, not exact "
+                                "keywords, and results are ranked by relevance. When false, "
+                                "uses SQL keyword search — the query is split into words "
+                                "(min 2 chars each) and every word must appear in at least "
+                                "one of header/summary/intelligence (AND logic). Results "
+                                "are ranked by recency. Use false for exact identifier "
+                                "lookups (ticket numbers, PR titles, exact names)."
+                            ),
+                            "default": True,
                         },
                         "status": {
                             "type": "string",

@@ -24,21 +24,76 @@ def _parse_entity_platform(entity_id: str) -> str:
     return entity_id.split(":", 1)[0] if entity_id else ""
 
 
-async def search_cards(
-    query: str | None = None,
-    status: str | None = None,
-    priority: str | None = None,
-    limit: int = CHAT_SEARCH_DEFAULT,
-    offset: int = 0,
-    space_id: str | None = None,
-) -> dict[str, Any]:
-    """Search action cards by keyword, status, priority.
+async def _search_semantic(
+    query: str,
+    status: str | None,
+    priority: str | None,
+    capped_limit: int,
+    offset: int,
+    space_id: str | None,
+) -> tuple[list[Any], int, bool]:
+    """ChromaDB semantic search → SQLite hydration.  Returns (rows, total, has_more)."""
+    from laya.db.chromadb_store import memory_search
 
-    Results are grouped by entity so the caller sees which cards belong
-    together.  Each group carries a lean rolling summary (headline,
-    current_status, pending_actions) when one exists, giving the full
-    picture even if the search only matched a subset of the entity's cards.
-    """
+    # Build ChromaDB where filter from metadata-available params
+    chroma_filters: list[dict[str, Any]] = []
+    if space_id:
+        chroma_filters.append({"space_id": space_id})
+    if priority:
+        chroma_filters.append({"priority": priority})
+
+    chroma_where: dict[str, Any] | None = None
+    if len(chroma_filters) == 1:
+        chroma_where = chroma_filters[0]
+    elif len(chroma_filters) > 1:
+        chroma_where = {"$and": chroma_filters}
+
+    fetch_n = offset + capped_limit
+    chroma_results = await memory_search(
+        query=query, n_results=fetch_n, where=chroma_where,
+    )
+
+    total = len(chroma_results)
+    has_more = total >= fetch_n
+    page = chroma_results[offset:]
+
+    if not page:
+        return [], total, False
+
+    # Extract card_ids preserving relevance order
+    card_ids = [r["metadata"].get("card_id", r["id"]) for r in page]
+    position = {cid: i for i, cid in enumerate(card_ids)}
+
+    # Hydrate from SQLite — parameterized IN query
+    db = await get_db()
+    ph = ",".join("?" * len(card_ids))
+    hydrate_params: list[Any] = list(card_ids)
+    status_clause = ""
+    if status:
+        status_clause = " AND status = ?"
+        hydrate_params.append(status)
+
+    rows = await db.execute_fetchall(
+        f"""SELECT card_id, event_id, entity_id, context_id, header, summary,
+                   status, priority, persona, category, created_at, space_id
+            FROM action_cards WHERE card_id IN ({ph}){status_clause}""",
+        hydrate_params,
+    )
+
+    # Re-sort by ChromaDB relevance order
+    rows = sorted(rows, key=lambda r: position.get(r["card_id"], 999))
+    return rows, total, has_more
+
+
+async def _search_keyword(
+    query: str | None,
+    status: str | None,
+    priority: str | None,
+    capped_limit: int,
+    offset: int,
+    space_id: str | None,
+) -> tuple[list[Any], int, bool]:
+    """SQL LIKE keyword search.  Returns (rows, total, has_more)."""
     db = await get_db()
     conditions: list[str] = []
     params: list[Any] = []
@@ -64,12 +119,10 @@ async def search_cards(
     where = " AND ".join(conditions) if conditions else "1=1"
 
     count_rows = await db.execute_fetchall(
-        f"SELECT COUNT(*) as cnt FROM action_cards WHERE {where}",
-        params,
+        f"SELECT COUNT(*) as cnt FROM action_cards WHERE {where}", params,
     )
     total = count_rows[0]["cnt"] if count_rows else 0
 
-    capped_limit = min(limit, CHAT_SEARCH_MAX)
     rows = await db.execute_fetchall(
         f"""SELECT card_id, event_id, entity_id, context_id, header, summary,
                    status, priority, persona, category, created_at, space_id
@@ -77,11 +130,14 @@ async def search_cards(
             ORDER BY created_at DESC LIMIT ? OFFSET ?""",
         [*params, capped_limit, offset],
     )
+    return rows, total, offset + len(rows) < total
 
-    # -- Group rows by entity_id ------------------------------------------
+
+def _group_rows(rows: list[Any]) -> "OrderedDict[str | None, list[dict[str, Any]]]":
+    """Group card rows by entity_id, preserving input order."""
     from collections import OrderedDict
 
-    groups_map: OrderedDict[str | None, list[dict[str, Any]]] = OrderedDict()
+    groups: OrderedDict[str | None, list[dict[str, Any]]] = OrderedDict()
     for r in rows:
         eid = r["entity_id"] or None
         card = {
@@ -95,12 +151,45 @@ async def search_cards(
             "category": r["category"],
             "created_at": r["created_at"],
         }
-        groups_map.setdefault(eid, []).append(card)
+        groups.setdefault(eid, []).append(card)
+    return groups
 
-    # Distinct non-null entity_ids on this page
+
+async def search_cards(
+    query: str | None = None,
+    status: str | None = None,
+    priority: str | None = None,
+    semantic: bool = True,
+    limit: int = CHAT_SEARCH_DEFAULT,
+    offset: int = 0,
+    space_id: str | None = None,
+) -> dict[str, Any]:
+    """Search action cards with semantic or keyword matching.
+
+    Results are grouped by entity so the caller sees which cards belong
+    together.  Each group carries a lean rolling summary (headline,
+    current_status, pending_actions) when one exists, giving the full
+    picture even if the search only matched a subset of the entity's cards.
+    """
+    capped_limit = min(limit, CHAT_SEARCH_MAX)
+
+    # Semantic search when enabled and a text query is provided;
+    # fall back to SQL keyword search otherwise.
+    if semantic and query:
+        rows, total, has_more = await _search_semantic(
+            query, status, priority, capped_limit, offset, space_id,
+        )
+    else:
+        rows, total, has_more = await _search_keyword(
+            query, status, priority, capped_limit, offset, space_id,
+        )
+
+    # -- Group rows by entity_id ------------------------------------------
+    groups_map = _group_rows(rows)
     entity_ids = [eid for eid in groups_map if eid is not None]
 
     # -- Batch-fetch group summaries --------------------------------------
+    db = await get_db()
     summary_map: dict[str, dict[str, Any]] = {}
     if entity_ids:
         ph = ",".join("?" * len(entity_ids))
@@ -148,7 +237,6 @@ async def search_cards(
                 "cards": cards,
             }
         else:
-            # Singletons — cards with no entity_id get their own group each
             for card in cards:
                 group = {
                     "entity_id": None,
@@ -167,7 +255,7 @@ async def search_cards(
         "groups": groups,
         "total_cards": total,
         "offset": offset,
-        "has_more": offset + len(rows) < total,
+        "has_more": has_more,
     }
 
 
