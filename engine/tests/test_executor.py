@@ -181,3 +181,63 @@ class TestExecutor:
                 result = await execute_action("card_agrun", "act_1")
 
         assert result["status"] == "done"
+
+    async def test_execute_open_url_success(self, db):
+        """open_url skips egress and returns the URL for client-side opening."""
+        await insert_test_card(
+            db, "card_url", "evt_url", status="pending",
+            actions=[{
+                "action_id": "act_1", "label": "Unsubscribe",
+                "action_type": "open_url", "target_platform": "gmail",
+                "payload": {"url": "https://example.com/unsubscribe?token=abc"},
+            }],
+        )
+
+        with patch("laya.egress.route_and_execute", new_callable=AsyncMock) as mock_egress:
+            with patch("laya.pipeline.executor.manager.broadcast", new_callable=AsyncMock):
+                from laya.pipeline.executor import execute_action
+
+                result = await execute_action("card_url", "act_1")
+                mock_egress.assert_not_called()
+
+        assert result["status"] == "done"
+        assert result["result_url"] == "https://example.com/unsubscribe?token=abc"
+        assert result["error"] is None
+
+    async def test_execute_open_url_rejects_bad_scheme(self, db):
+        """open_url rejects non-HTTP(S) URLs."""
+        await insert_test_card(
+            db, "card_badurl", "evt_badurl", status="pending",
+            actions=[{
+                "action_id": "act_1", "label": "Suspicious Link",
+                "action_type": "open_url", "target_platform": "gmail",
+                "payload": {"url": "javascript:alert(1)"},
+            }],
+        )
+
+        with patch("laya.pipeline.executor.manager.broadcast", new_callable=AsyncMock):
+            from laya.pipeline.executor import execute_action
+
+            result = await execute_action("card_badurl", "act_1")
+
+        assert result["status"] == "failed"
+        assert "Invalid URL scheme" in result["error"]
+
+    async def test_execute_open_url_rejects_missing_url(self, db):
+        """open_url fails gracefully when no URL is provided."""
+        await insert_test_card(
+            db, "card_nourl", "evt_nourl", status="pending",
+            actions=[{
+                "action_id": "act_1", "label": "Open Link",
+                "action_type": "open_url", "target_platform": "gmail",
+                "payload": {},
+            }],
+        )
+
+        with patch("laya.pipeline.executor.manager.broadcast", new_callable=AsyncMock):
+            from laya.pipeline.executor import execute_action
+
+            result = await execute_action("card_nourl", "act_1")
+
+        assert result["status"] == "failed"
+        assert "No URL provided" in result["error"]

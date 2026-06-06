@@ -388,7 +388,7 @@ async def insert_test_card(db, card_id="card_test", event_id="evt_test",
                            priority="HIGH", persona="ENGINEER", category="CODE",
                            status="pending", header="Test Card Header",
                            summary="Test summary", space_id=None,
-                           entity_id=None):
+                           entity_id=None, actions=None):
     """Insert a card with its parent event for testing."""
     # Ensure parent event exists
     existing = await db.execute_fetchall(
@@ -399,10 +399,13 @@ async def insert_test_card(db, card_id="card_test", event_id="evt_test",
 
     intelligence = json.dumps(["Finding 1", "Finding 2"])
     staged_output = json.dumps({"type": "code_fix", "content": "Add null check"})
-    suggested_actions = json.dumps([
-        {"action_id": "act_1", "label": "Post Comment", "action_type": "comment",
-         "target_platform": "jira", "payload": {"body": "Fix found"}}
-    ])
+    if actions is not None:
+        suggested_actions = json.dumps(actions)
+    else:
+        suggested_actions = json.dumps([
+            {"action_id": "act_1", "label": "Post Comment", "action_type": "comment",
+             "target_platform": "jira", "payload": {"body": "Fix found"}}
+        ])
     await db.execute(
         """INSERT INTO action_cards
            (card_id, event_id, priority, persona, category, header, summary,

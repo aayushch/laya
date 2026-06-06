@@ -11,7 +11,7 @@ import structlog
 from laya.api.websocket import manager
 from laya.db.sqlite import get_db
 from laya.egress import execute as egress_execute
-from laya.egress.models import EgressRequest
+from laya.egress.models import EgressRequest, EgressResult
 from laya.llm.client import log_to_audit
 
 log = structlog.get_logger()
@@ -103,38 +103,49 @@ async def execute_action(
         log.warning("action_type_remapped", original="send_message", corrected="send_email", platform=target_platform)
         action_type = "send_email"
 
-    # 6. Resolve connection_id from the originating event so the egress
-    # module picks the correct executor workflow when multiple connections
-    # exist for the same platform (e.g. two Jira instances).
-    # The event stores the n8n workflow_id as source_connection_id, so we
-    # look up the corresponding egress connection_id from the sources table.
-    connection_id = None
-    if card_row["event_id"]:
-        evt_rows = await db.execute_fetchall(
-            "SELECT source_connection_id FROM events WHERE event_id = ?",
-            (card_row["event_id"],),
-        )
-        if evt_rows and evt_rows[0]["source_connection_id"]:
-            workflow_id = evt_rows[0]["source_connection_id"]
-            conn_rows = await db.execute_fetchall(
-                "SELECT connection_id FROM sources WHERE workflow_id = ? AND connection_id IS NOT NULL LIMIT 1",
-                (workflow_id,),
+    # 6. Client-side-only actions: skip egress, return URL for the UI to open.
+    if action_type == "open_url":
+        url = payload.get("url")
+        if not url or not isinstance(url, str):
+            result = EgressResult(success=False, error="No URL provided in open_url payload")
+        elif not url.startswith(("https://", "http://")):
+            result = EgressResult(success=False, error=f"Invalid URL scheme: {url}")
+        else:
+            result = EgressResult(success=True, result_url=url, result_data={"url": url, "client_action": "open_url"})
+        connection_id = None
+    else:
+        # 7. Resolve connection_id from the originating event so the egress
+        # module picks the correct executor workflow when multiple connections
+        # exist for the same platform (e.g. two Jira instances).
+        # The event stores the n8n workflow_id as source_connection_id, so we
+        # look up the corresponding egress connection_id from the sources table.
+        connection_id = None
+        if card_row["event_id"]:
+            evt_rows = await db.execute_fetchall(
+                "SELECT source_connection_id FROM events WHERE event_id = ?",
+                (card_row["event_id"],),
             )
-            if conn_rows:
-                connection_id = conn_rows[0]["connection_id"]
+            if evt_rows and evt_rows[0]["source_connection_id"]:
+                workflow_id = evt_rows[0]["source_connection_id"]
+                conn_rows = await db.execute_fetchall(
+                    "SELECT connection_id FROM sources WHERE workflow_id = ? AND connection_id IS NOT NULL LIMIT 1",
+                    (workflow_id,),
+                )
+                if conn_rows:
+                    connection_id = conn_rows[0]["connection_id"]
 
-    # 7. Delegate to egress module
-    request = EgressRequest(
-        platform=target_platform,
-        action_type=action_type,
-        payload=payload,
-        connection_id=connection_id,
-        source_card_id=card_id,
-        source_event_id=card_row["event_id"],
-        space_id=card_row["space_id"],
-    )
+        # 8. Delegate to egress module
+        request = EgressRequest(
+            platform=target_platform,
+            action_type=action_type,
+            payload=payload,
+            connection_id=connection_id,
+            source_card_id=card_id,
+            source_event_id=card_row["event_id"],
+            space_id=card_row["space_id"],
+        )
 
-    result = await egress_execute(request)
+        result = await egress_execute(request)
 
     # 8. Store in action_log
     result_status = "done" if result.success else "failed"

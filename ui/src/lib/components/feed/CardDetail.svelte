@@ -348,6 +348,17 @@
 			} else {
 				card.last_error = undefined;
 			}
+			if (result.result_url && result.status === 'done') {
+				const action = card.suggested_actions?.find(a => a.action_id === actionId);
+				if (action?.action_type === 'open_url') {
+					try {
+						const { open } = await import('@tauri-apps/plugin-shell');
+						await open(result.result_url);
+					} catch {
+						window.open(result.result_url, '_blank', 'noopener,noreferrer');
+					}
+				}
+			}
 			editingActionId = null;
 			editedPayload = {};
 		} catch (err) {

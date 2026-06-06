@@ -33,10 +33,9 @@
 	let scrollContainer = $state<HTMLElement | null>(null);
 	let sendingPrompt = $state(false);
 
-	// Agent permission mode toggle — 'plan' or 'acceptEdits'
-	let agentMode = $state<'plan' | 'acceptEdits'>(
-		(session?.permission_mode as 'plan' | 'acceptEdits') || 'plan'
-	);
+	// Agent permission mode toggle — 'plan' or 'acceptEdits'.
+	// Initialized to 'plan'; the $effect below syncs from session on mount.
+	let agentMode = $state<'plan' | 'acceptEdits'>('plan');
 
 	// Sync agentMode when the DB value actually changes (not on every poll cycle).
 	// Without tracking lastSyncedMode, each 5s poll replaces the session object

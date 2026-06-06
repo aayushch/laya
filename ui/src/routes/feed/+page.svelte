@@ -2038,9 +2038,8 @@
 		<div class="h-5 w-px bg-surface-700/60 mx-1"></div>
 		<!-- Search -->
 		<div class="group/search relative">
-			<div
+			<label
 				class="flex items-center h-7 w-48 rounded-lg border border-surface-700 bg-surface-800/60 transition-colors focus-within:border-laya-orange/50 focus-within:ring-1 focus-within:ring-laya-orange/25"
-				onclick={() => searchInputEl?.focus()}
 			>
 				<svg class="pointer-events-none ml-2 h-3.5 w-3.5 shrink-0 text-surface-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -2091,7 +2090,7 @@
 						</svg>
 					</button>
 				{/if}
-			</div>
+			</label>
 			{#if activeSearchTags.length > 0}
 				<div class="absolute left-0 top-full z-50 hidden group-hover/search:block pt-1">
 					<div class="rounded-lg border border-surface-700 bg-surface-900 p-2 shadow-xl min-w-[140px]">

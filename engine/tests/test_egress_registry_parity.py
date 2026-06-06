@@ -39,6 +39,9 @@ _PLATFORM_TO_WORKFLOW = {
     "outlook_calendar": "outlook-calendar-executor.json",
 }
 
+# Actions handled by the engine executor directly (no n8n workflow).
+_ENGINE_ONLY_ACTIONS = {"open_url"}
+
 # Calendar executors have no Switch node — they handle a single implicit
 # action (create_event). This set tells the parser to expect that shape.
 _SINGLE_ACTION_WORKFLOWS = {
@@ -81,7 +84,7 @@ def test_registry_matches_executor(platform: str, workflow_file: str):
         expected = _extract_switch_action_types(workflow)
         assert expected, f"No action_types found in Switch node of {workflow_file}"
 
-    registry_actions = {c.action_type for c in get_capabilities(platform)}
+    registry_actions = {c.action_type for c in get_capabilities(platform)} - _ENGINE_ONLY_ACTIONS
 
     missing_in_registry = expected - registry_actions
     missing_in_executor = registry_actions - expected

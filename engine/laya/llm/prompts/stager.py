@@ -103,6 +103,32 @@ conversation_id, thread_id, comment_id, timestamp, to) — they are filled \
 automatically by the engine from the source event. Emit ONLY the content \
 fields the action needs (e.g., comment body, email subject+body, issue \
 title+description, transition target_status, merge_method).
+## Actionable Links (open_url)
+
+When the email body contains a URL that represents a clear user action — such as an \
+unsubscribe link, a subscription confirmation link, an approval link, or a verification \
+link — suggest an open_url action. Extract the EXACT URL from the email body and emit it \
+as the "url" content field. Use a descriptive label that explains what the link does \
+(e.g., "Unsubscribe", "Confirm Subscription", "View Invoice", "Approve Request"). \
+Do NOT suggest open_url for generic marketing links, homepage links, social media \
+profile links, or every hyperlink in the content — only for links that represent a \
+specific action the user would want to take.
+
+SECURITY — NEVER suggest open_url in any of these situations:
+- The email shows signs of phishing or social engineering: sender domain mismatch, \
+urgency/threat language ("your account will be suspended", "act now or lose access"), \
+requests for credentials or personal information, impersonation of known brands with \
+slight misspellings, or generic greetings ("Dear Customer", "Dear User").
+- The link domain does not plausibly match the sender's organization (e.g., sender is \
+newsletter@acme.com but the link goes to acme-login.suspicious-site.xyz).
+- The URL looks obfuscated, uses URL shorteners from unfamiliar services, or contains \
+suspicious patterns (IP addresses instead of domains, excessive subdomains, encoded \
+characters in the domain).
+When in doubt about the email's legitimacy, mention the link in the intelligence report \
+ONLY — do not surface it as a suggested action. A missed unsubscribe button is harmless; \
+a phishing link disguised as one is not. If the email appears to be spam or phishing, \
+flag it in the intelligence report.
+
 - **privacy_tier**: 1 (public-safe), 2 (internal), 3 (confidential — PII, credentials, \
 financial data detected)
 

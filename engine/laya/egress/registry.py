@@ -75,6 +75,16 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             summary_template="Mark email as read",
             impact="low",
         ),
+        EgressCapability(
+            action_type="open_url",
+            label="Open Link",
+            requires_fields=["url"],
+            content_fields=["url"],
+            description="Open a URL from the email in the user's browser (e.g., unsubscribe link, confirmation link, approval link).",
+            confirmation_required=False,
+            summary_template="Open {url}",
+            impact="low",
+        ),
     ],
     # Keep in sync with n8n/workflows/outlook-email-executor.json
     "outlook": [
@@ -105,6 +115,16 @@ _CAPABILITIES: dict[str, list[EgressCapability]] = {
             description="Mark email as read.",
             confirmation_required=False,
             summary_template="Mark email as read",
+            impact="low",
+        ),
+        EgressCapability(
+            action_type="open_url",
+            label="Open Link",
+            requires_fields=["url"],
+            content_fields=["url"],
+            description="Open a URL from the email in the user's browser (e.g., unsubscribe link, confirmation link, approval link).",
+            confirmation_required=False,
+            summary_template="Open {url}",
             impact="low",
         ),
     ],
@@ -935,6 +955,8 @@ _FIELD_META: dict[str, dict] = {
     "property_name": {"label": "Property", "type": "text", "placeholder": "Property name"},
     "property_value": {"label": "Value", "type": "text", "placeholder": "New value"},
     "text": {"label": "Text", "type": "textarea", "placeholder": "Write your text..."},
+    # URL
+    "url": {"label": "URL", "type": "url", "placeholder": "https://..."},
     # Shared
     "title": {"label": "Title", "type": "text", "placeholder": "Title"},
     "description": {"label": "Description", "type": "textarea", "placeholder": "Describe..."},
@@ -976,6 +998,7 @@ _NON_COMPOSABLE_ACTIONS = {
     "archive_page",
     "forward",      # needs original email ID from event context
     "decline_pr",   # destructive — not a compose action
+    "open_url",     # client-side only — no compose form needed
 }
 
 
