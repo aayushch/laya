@@ -556,7 +556,7 @@
       <div class="feature-text">
         <span class="tag">MCP Server</span>
         <h2>Bring Laya into any AI harness</h2>
-        <p>Whenever Laya is running, a <strong>Model Context Protocol</strong> server is reachable at <code style="font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85em; padding: 2px 7px; border-radius: 4px; background: rgba(246, 172, 105, 0.12); color: var(--laya-peach);">http://127.0.0.1:8420/mcp/sse</code>. Grab a token from Settings → MCP and wire any MCP-compatible client — Claude Desktop, Cursor, VS Code, custom agents — straight into your live data.</p>
+        <p>Whenever Laya is running, a <strong>Model Context Protocol</strong> server is reachable at <code style="font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85em; padding: 2px 7px; border-radius: 4px; background: rgba(246, 172, 105, 0.12); color: var(--laya-peach);">http://127.0.0.1:8420/mcp/</code>. Grab a token from Settings → MCP and wire any MCP-compatible client — Claude Desktop, Cursor, VS Code, custom agents — straight into your live data.</p>
         <ul>
           <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Three scope toggles — Read, Write, Egress — gate what clients can call</li>
           <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Bearer-token auth or loopback-only mode, your call</li>
@@ -566,18 +566,38 @@
       </div>
       <div class="feature-image">
         <div style="background: #15120f; border: 1px solid #2a2520; border-radius: 14px; padding: 22px 24px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.82rem; line-height: 1.7; color: #e8ddd0; overflow-x: auto; box-shadow: 0 12px 40px rgba(0,0,0,0.35);">
-          <div style="color: #6f655a; font-size: 0.72rem; letter-spacing: 0.08em; margin-bottom: 12px;">claude_desktop_config.json</div>
-<pre style="margin: 0; white-space: pre; color: #e8ddd0;"><span style="color: #6f655a;">{</span>
+          <div style="display: flex; gap: 6px; margin-bottom: 14px; align-items: center;">
+            <button class="mcp-tab active" data-target="mcp-stdio" style="padding: 5px 14px; border-radius: 100px; background: rgba(246,172,105,0.1); border: 1px solid rgba(246,172,105,0.3); color: #f6ac69; font-size: 0.72rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.25s;">Claude Desktop</button>
+            <button class="mcp-tab" data-target="mcp-http" style="padding: 5px 14px; border-radius: 100px; background: #1a1612; border: 1px solid #2a2520; color: #8a7e70; font-size: 0.72rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.25s;">Claude Code / Cursor / Other</button>
+            <button id="mcp-copy-btn" onclick="copyMcpConfig()" style="margin-left: auto; padding: 5px 14px; border-radius: 100px; background: #1a1612; border: 1px solid #2a2520; color: #8a7e70; font-size: 0.72rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.25s;">Copy</button>
+          </div>
+          <div style="position: relative; min-height: 290px;">
+<pre id="mcp-stdio" style="margin: 0; white-space: pre; color: #e8ddd0; position: absolute; top: 0; left: 0; right: 0;"><span style="color: #6f655a;">{</span>
   <span style="color: #f6bc66;">"mcpServers"</span>: <span style="color: #6f655a;">{</span>
     <span style="color: #f6bc66;">"laya"</span>: <span style="color: #6f655a;">{</span>
-      <span style="color: #f6bc66;">"type"</span>: <span style="color: #ffdab9;">"sse"</span>,
-      <span style="color: #f6bc66;">"url"</span>:  <span style="color: #ffdab9;">"http://127.0.0.1:8420/mcp/sse"</span>,
+      <span style="color: #f6bc66;">"command"</span>: <span style="color: #ffdab9;">"npx"</span>,
+      <span style="color: #f6bc66;">"args"</span>: <span style="color: #6f655a;">[</span>
+        <span style="color: #ffdab9;">"mcp-remote"</span>,
+        <span style="color: #ffdab9;">"http://127.0.0.1:8420/mcp/"</span>,
+        <span style="color: #ffdab9;">"--allow-http"</span>,
+        <span style="color: #ffdab9;">"--header"</span>,
+        <span style="color: #ffdab9;">"Authorization: Bearer lyat_…"</span>
+      <span style="color: #6f655a;">]</span>
+    <span style="color: #6f655a;">}</span>
+  <span style="color: #6f655a;">}</span>
+<span style="color: #6f655a;">}</span></pre>
+<pre id="mcp-http" style="margin: 0; white-space: pre; color: #e8ddd0; position: absolute; top: 0; left: 0; right: 0; display: none;"><span style="color: #6f655a;">{</span>
+  <span style="color: #f6bc66;">"mcpServers"</span>: <span style="color: #6f655a;">{</span>
+    <span style="color: #f6bc66;">"laya"</span>: <span style="color: #6f655a;">{</span>
+      <span style="color: #f6bc66;">"type"</span>: <span style="color: #ffdab9;">"streamable-http"</span>,
+      <span style="color: #f6bc66;">"url"</span>:  <span style="color: #ffdab9;">"http://127.0.0.1:8420/mcp/"</span>,
       <span style="color: #f6bc66;">"headers"</span>: <span style="color: #6f655a;">{</span>
         <span style="color: #f6bc66;">"Authorization"</span>: <span style="color: #ffdab9;">"Bearer lyat_…"</span>
       <span style="color: #6f655a;">}</span>
     <span style="color: #6f655a;">}</span>
   <span style="color: #6f655a;">}</span>
 <span style="color: #6f655a;">}</span></pre>
+          </div>
         </div>
       </div>
     </div>
@@ -745,6 +765,41 @@ document.querySelectorAll('.showcase-tab').forEach(tab => {
     });
   });
 });
+
+// ── MCP config tabs ──
+document.querySelectorAll('.mcp-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.mcp-tab').forEach(t => {
+      t.style.background = '#1a1612';
+      t.style.borderColor = '#2a2520';
+      t.style.color = '#8a7e70';
+      t.classList.remove('active');
+    });
+    tab.style.background = 'rgba(246,172,105,0.1)';
+    tab.style.borderColor = 'rgba(246,172,105,0.3)';
+    tab.style.color = '#f6ac69';
+    tab.classList.add('active');
+    const target = tab.dataset.target;
+    document.getElementById('mcp-stdio').style.display = target === 'mcp-stdio' ? 'block' : 'none';
+    document.getElementById('mcp-http').style.display = target === 'mcp-http' ? 'block' : 'none';
+  });
+});
+
+function copyMcpConfig() {
+  const active = document.querySelector('.mcp-tab.active');
+  const pre = document.getElementById(active ? active.dataset.target : 'mcp-stdio');
+  navigator.clipboard.writeText(pre.textContent).then(() => {
+    const btn = document.getElementById('mcp-copy-btn');
+    btn.textContent = 'Copied';
+    btn.style.color = '#f6ac69';
+    btn.style.borderColor = 'rgba(246,172,105,0.3)';
+    setTimeout(() => {
+      btn.textContent = 'Copy';
+      btn.style.color = '#8a7e70';
+      btn.style.borderColor = '#2a2520';
+    }, 1500);
+  });
+}
 
 // ── Scroll animations ──
 const observer = new IntersectionObserver((entries) => {

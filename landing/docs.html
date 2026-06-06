@@ -1113,7 +1113,7 @@ curl -X POST http://127.0.0.1:8420/prompts/reload</code></pre>
       <p>Laya exposes its toolset over the <strong>Model Context Protocol</strong>. Any MCP-compatible client &mdash; Claude Desktop, Cursor, VS Code, Zed, custom agents &mdash; can call into Laya to search your cards, fetch events, trace entities, run semantic search, and trigger outbound actions across all 9 connected platforms.</p>
 
       <div class="callout callout-info">
-        <p><strong>Transport:</strong> the MCP server is mounted on the running engine at <code>http://127.0.0.1:8420/mcp/sse</code> using <strong>Server-Sent Events</strong>. There is no subprocess to spawn &mdash; whenever Laya is running, the endpoint is live. The bundled Tauri app exposes it natively; no source install required. The in-app Claude Code coding agents use the same endpoint, so there is exactly one MCP path in the system.</p>
+        <p><strong>Transport:</strong> the MCP server is mounted on the running engine at <code>http://127.0.0.1:8420/mcp/</code> using <strong>Streamable HTTP</strong> (with a legacy SSE endpoint at <code>/mcp/sse</code> for backward compatibility). There is no subprocess to spawn &mdash; whenever Laya is running, the endpoint is live. The bundled Tauri app exposes it natively; no source install required. The in-app coding agents use the same endpoint, so there is exactly one MCP path in the system.</p>
       </div>
 
       <h3>Configuration</h3>
@@ -1133,30 +1133,44 @@ curl -X POST http://127.0.0.1:8420/prompts/reload</code></pre>
       </table>
 
       <h3>Claude Desktop</h3>
-      <p>Edit your Claude Desktop config (<code>~/Library/Application Support/Claude/claude_desktop_config.json</code> on macOS, <code>%APPDATA%\Claude\claude_desktop_config.json</code> on Windows) and add Laya as an SSE server:</p>
+      <p>Claude Desktop only supports stdio-based MCP servers. Use <code>mcp-remote</code> (installed automatically via npx) as a bridge to Laya's Streamable HTTP endpoint. Edit your config (<code>~/Library/Application Support/Claude/claude_desktop_config.json</code> on macOS, <code>%APPDATA%\Claude\claude_desktop_config.json</code> on Windows):</p>
 <pre><code>{
   "mcpServers": {
     "laya": {
-      "type": "sse",
-      "url": "http://127.0.0.1:8420/mcp/sse",
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "http://127.0.0.1:8420/mcp/",
+        "--allow-http",
+        "--header",
+        "Authorization: Bearer lyat_…"
+      ]
+    }
+  }
+}</code></pre>
+      <p>Copy the bearer value from Settings &rarr; MCP. Restart Claude Desktop &mdash; Laya's tools appear in the picker as <code>mcp__laya__*</code>. If you've set auth mode to <em>none</em>, omit the <code>--header</code> and <code>Authorization</code> args.</p>
+
+      <h3>Claude Code, Cursor &amp; VS Code</h3>
+      <p>These clients support Streamable HTTP natively. Add a server entry under <code>mcpServers</code> (Claude Code: <code>~/.claude/settings.json</code>; Cursor: <code>~/.cursor/mcp.json</code>; VS Code: workspace <code>.vscode/mcp.json</code>) with the direct HTTP config:</p>
+<pre><code>{
+  "mcpServers": {
+    "laya": {
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:8420/mcp/",
       "headers": {
         "Authorization": "Bearer lyat_…"
       }
     }
   }
 }</code></pre>
-      <p>Copy the bearer value from Settings &rarr; MCP. Restart Claude Desktop &mdash; Laya's tools appear in the picker as <code>mcp__laya__*</code>. If you've set auth mode to <em>none</em>, omit the <code>headers</code> block entirely.</p>
-
-      <h3>Cursor &amp; VS Code</h3>
-      <p>Both Cursor and the VS Code MCP extension accept the same SSE config shape. Add a server entry under <code>mcpServers</code> (Cursor: <code>~/.cursor/mcp.json</code>; VS Code: workspace <code>.vscode/mcp.json</code> or the MCP extension's settings UI) with <code>"type": "sse"</code>, the SSE URL, and (when bearer auth is on) the <code>Authorization</code> header.</p>
 
       <h3>Scoping to a Space</h3>
-      <p>Append <code>?space_id=&lt;your-space&gt;</code> to the SSE URL to restrict all tool calls in that connection to a single Laya space:</p>
+      <p>Append <code>?space_id=&lt;your-space&gt;</code> to the URL to restrict all tool calls in that connection to a single Laya space:</p>
 <pre><code>{
   "mcpServers": {
     "laya-work": {
-      "type": "sse",
-      "url": "http://127.0.0.1:8420/mcp/sse?space_id=work",
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:8420/mcp/?space_id=work",
       "headers": { "Authorization": "Bearer lyat_…" }
     }
   }

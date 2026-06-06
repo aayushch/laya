@@ -358,6 +358,52 @@ def _read_tools() -> list[dict]:
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_daily_summary",
+                "description": (
+                    "Get the daily summary for a given date. The summary is organized "
+                    "into three sections: events_and_meetings (calendar and meeting "
+                    "updates), action_items (tasks requiring attention), and key_updates "
+                    "(status changes, deployments, FYI items). Each item includes the "
+                    "text, linked card_id, priority, and status. Defaults to today. "
+                    "Use this to answer questions about what happened on a specific day "
+                    "or what the user's current workload looks like."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "date": {
+                            "type": "string",
+                            "description": "ISO date (YYYY-MM-DD). Defaults to today.",
+                        },
+                    },
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_omni_summary",
+                "description": (
+                    "Get the latest Omni rolling summary — a cross-platform, "
+                    "progressively compressed overview of the user's work. Contains "
+                    "four sections: attention (items needing action now), recent "
+                    "(last 24-48h aggregated), period (this week/sprint trends), "
+                    "and milestone (older inflection points). Each item has text, "
+                    "source card_ids, platforms, and priority. Use this to answer "
+                    "broad questions like 'what is my current work status', "
+                    "'what needs my attention', or 'what happened this week'."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+            },
+        },
     ]
 
 
