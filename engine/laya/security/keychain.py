@@ -130,6 +130,14 @@ def delete_space_api_key(key_ref: str) -> bool:
 
 # ---------------------------------------------------------------------------
 # MCP bearer token
+#
+# Stored in the OS keychain alongside API keys.  In dev mode (engine spawned
+# as an unsigned Python subprocess by `cargo tauri dev`), macOS Keychain
+# access is occasionally flaky — keyring.get_password() can return None
+# without raising, causing ensure_startup_token() to regenerate the token
+# and break external MCP clients that have the old token.  This is a
+# dev-mode-only issue: production builds run from a signed .app bundle with
+# a stable code-signing identity, so Keychain access is reliable.
 # ---------------------------------------------------------------------------
 
 MCP_TOKEN_KEY = "laya_mcp_bearer"

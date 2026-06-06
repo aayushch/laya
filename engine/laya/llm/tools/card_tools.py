@@ -19,6 +19,11 @@ from laya.llm.tools.constants import (
 )
 
 
+def _parse_entity_platform(entity_id: str) -> str:
+    """Extract the platform prefix from 'platform:subject_type:subject_id'."""
+    return entity_id.split(":", 1)[0] if entity_id else ""
+
+
 async def search_cards(
     query: str | None = None,
     status: str | None = None,
@@ -27,7 +32,13 @@ async def search_cards(
     offset: int = 0,
     space_id: str | None = None,
 ) -> dict[str, Any]:
-    """Search action cards by keyword, status, priority."""
+    """Search action cards by keyword, status, priority.
+
+    Results are grouped by entity so the caller sees which cards belong
+    together.  Each group carries a lean rolling summary (headline,
+    current_status, pending_actions) when one exists, giving the full
+    picture even if the search only matched a subset of the entity's cards.
+    """
     db = await get_db()
     conditions: list[str] = []
     params: list[Any] = []
@@ -67,26 +78,94 @@ async def search_cards(
         [*params, capped_limit, offset],
     )
 
-    return {
-        "cards": [
-            {
-                "card_id": r["card_id"],
-                "event_id": r["event_id"],
-                "entity_id": r["entity_id"],
-                "context_id": r["context_id"],
-                "header": r["header"],
-                "summary": r["summary"],
-                "status": r["status"],
-                "priority": r["priority"],
-                "persona": r["persona"],
-                "category": r["category"],
-                "created_at": r["created_at"],
-                "space_id": r["space_id"],
+    # -- Group rows by entity_id ------------------------------------------
+    from collections import OrderedDict
+
+    groups_map: OrderedDict[str | None, list[dict[str, Any]]] = OrderedDict()
+    for r in rows:
+        eid = r["entity_id"] or None
+        card = {
+            "card_id": r["card_id"],
+            "event_id": r["event_id"],
+            "header": r["header"],
+            "summary": r["summary"],
+            "status": r["status"],
+            "priority": r["priority"],
+            "persona": r["persona"],
+            "category": r["category"],
+            "created_at": r["created_at"],
+        }
+        groups_map.setdefault(eid, []).append(card)
+
+    # Distinct non-null entity_ids on this page
+    entity_ids = [eid for eid in groups_map if eid is not None]
+
+    # -- Batch-fetch group summaries --------------------------------------
+    summary_map: dict[str, dict[str, Any]] = {}
+    if entity_ids:
+        ph = ",".join("?" * len(entity_ids))
+        summary_rows = await db.execute_fetchall(
+            f"SELECT entity_id, headline, current_status, pending_actions "
+            f"FROM group_summaries WHERE entity_id IN ({ph})",
+            entity_ids,
+        )
+        for sr in summary_rows:
+            pending = sr["pending_actions"]
+            if pending:
+                try:
+                    pending = json.loads(pending)
+                except json.JSONDecodeError:
+                    pass
+            summary_map[sr["entity_id"]] = {
+                "headline": sr["headline"],
+                "current_status": sr["current_status"],
+                "pending_actions": pending,
             }
-            for r in rows
-        ],
-        "count": len(rows),
-        "total": total,
+
+    # -- Batch-fetch total card counts per entity -------------------------
+    entity_total_map: dict[str, int] = {}
+    if entity_ids:
+        ph = ",".join("?" * len(entity_ids))
+        count_rows2 = await db.execute_fetchall(
+            f"SELECT entity_id, COUNT(*) as cnt FROM action_cards "
+            f"WHERE entity_id IN ({ph}) GROUP BY entity_id",
+            entity_ids,
+        )
+        for cr in count_rows2:
+            entity_total_map[cr["entity_id"]] = cr["cnt"]
+
+    # -- Build grouped response -------------------------------------------
+    groups: list[dict[str, Any]] = []
+    for eid, cards in groups_map.items():
+        if eid is not None:
+            group: dict[str, Any] = {
+                "entity_id": eid,
+                "entity_title": summary_map[eid]["headline"] if eid in summary_map else cards[0]["header"],
+                "platform": _parse_entity_platform(eid),
+                "matched_cards": len(cards),
+                "total_entity_cards": entity_total_map.get(eid, len(cards)),
+                "group_summary": summary_map.get(eid),
+                "cards": cards,
+            }
+        else:
+            # Singletons — cards with no entity_id get their own group each
+            for card in cards:
+                group = {
+                    "entity_id": None,
+                    "entity_title": card["header"],
+                    "platform": card["category"],
+                    "matched_cards": 1,
+                    "total_entity_cards": 1,
+                    "group_summary": None,
+                    "cards": [card],
+                }
+                groups.append(group)
+            continue
+        groups.append(group)
+
+    return {
+        "groups": groups,
+        "total_cards": total,
         "offset": offset,
         "has_more": offset + len(rows) < total,
     }

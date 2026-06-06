@@ -51,7 +51,10 @@ def _read_tools() -> list[dict]:
                 "name": "search_cards",
                 "description": (
                     "Search action cards by keyword, status, priority, or category. "
-                    "Returns paginated results — check 'has_more' and use 'offset' to retrieve additional pages."
+                    "Results are grouped by entity — cards about the same ticket, PR, thread, etc. appear together "
+                    "with a rolling group_summary (headline, current_status, pending_actions) that reflects the "
+                    "latest state of the entity even if only some of its cards matched the search. "
+                    "Pagination is card-based — check 'has_more' and use 'offset' to retrieve additional pages."
                 ),
                 "parameters": {
                     "type": "object",

@@ -450,6 +450,7 @@ if __name__ == "__main__":
             host=ENGINE_HOST,
             port=ENGINE_PORT,
             reload=True,
+            timeout_keep_alive=65,
         )
     else:
-        uvicorn.run(app, host=ENGINE_HOST, port=ENGINE_PORT)
+        uvicorn.run(app, host=ENGINE_HOST, port=ENGINE_PORT, timeout_keep_alive=65)
