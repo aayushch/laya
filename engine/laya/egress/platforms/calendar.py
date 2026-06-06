@@ -5,6 +5,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 
 def identifiers_from_event(
     action_type: str,
@@ -35,6 +38,21 @@ def normalize_payload(action_type: str, payload: dict) -> dict:
         p["start"] = p.pop("start_time", None) or p.pop("startTime", None) or ""
     if "end" not in p:
         p["end"] = p.pop("end_time", None) or p.pop("endTime", None) or ""
+
+    # Localize naive datetimes to RFC3339 with offset when timezone is provided.
+    # Without this, "2026-06-04T09:00" is ambiguous — the Calendar API may
+    # interpret it as UTC, shifting the event by the user's UTC offset.
+    tz_name = p.get("timezone")
+    if tz_name:
+        try:
+            tz = ZoneInfo(tz_name)
+            for field in ("start", "end"):
+                raw = p.get(field)
+                if raw and "+" not in raw and "Z" not in raw:
+                    dt = datetime.fromisoformat(raw)
+                    p[field] = dt.replace(tzinfo=tz).isoformat()
+        except (ValueError, KeyError):
+            pass
 
     return p
 

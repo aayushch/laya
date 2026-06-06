@@ -1,7 +1,7 @@
 <!-- Copyright 2026 Aayush Chawla -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
@@ -9,6 +9,27 @@
 	import { portal } from '$lib/actions/portal';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import type { AuditLogEntry, DeadEvent, IngestionError } from '$lib/api/types';
+
+	// Ordered list of processing_status values for stable display order.
+	// Mirrors values set in engine/laya/pipeline/queue.py and api/events.py.
+	const EVENT_STATUSES = ['queued', 'processing', 'retrying', 'completed', 'filtered', 'dead'] as const;
+
+	// ── Event counts state (polls /events/counts while mounted) ──
+	let eventCounts = $state<Record<string, number>>({});
+	let eventCountsTotal = $state(0);
+	let eventCountsLoaded = $state(false);
+	let eventCountsPollId: ReturnType<typeof setInterval> | null = null;
+
+	async function loadEventCounts() {
+		try {
+			const resp = await engineApi.getEventCounts();
+			eventCounts = resp.counts;
+			eventCountsTotal = resp.total;
+			eventCountsLoaded = true;
+		} catch {
+			// Silent — supplementary section
+		}
+	}
 
 	const AUDIT_STEPS = [
 		'route', 'route_batch', 'stage', 'emit', 'worker',
@@ -234,6 +255,18 @@
 		load();
 		loadDeadEvents();
 		loadIngestionErrors();
+		// Event counts: poll every 10s while the Audit page is mounted.
+		// onDestroy clears the interval when the user leaves the tab so
+		// the DB isn't queried in the background.
+		loadEventCounts();
+		eventCountsPollId = setInterval(loadEventCounts, 10000);
+	});
+
+	onDestroy(() => {
+		if (eventCountsPollId !== null) {
+			clearInterval(eventCountsPollId);
+			eventCountsPollId = null;
+		}
 	});
 
 	function applyFilter() {
@@ -297,6 +330,24 @@
 <svelte:window onclick={handleStepsWindowClick} />
 
 <div class="space-y-4">
+	<!-- Event Counts by processing_status (live, polled every 10s) -->
+	<div class="rounded-lg border {$glassTheme ? 'glass-section border-white/[0.06]' : 'border-surface-700 bg-surface-900/40'} px-3 py-2 text-laya-secondary">
+		<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+			<span class="font-medium text-surface-300">Events</span>
+			<span class="text-surface-400">
+				<span class="font-medium text-surface-200">{eventCountsLoaded ? eventCountsTotal.toLocaleString() : '—'}</span>
+				total
+			</span>
+			<span class="h-3 w-px bg-surface-700"></span>
+			{#each EVENT_STATUSES as status}
+				<span class="text-surface-400">
+					<span class="font-medium text-surface-200">{eventCountsLoaded ? (eventCounts[status] ?? 0).toLocaleString() : '—'}</span>
+					{status}
+				</span>
+			{/each}
+		</div>
+	</div>
+
 	<!-- Dead Events Recovery -->
 	{#if !deadLoading && deadTotal > 0}
 		<div class="rounded-lg border border-amber-600/50 bg-amber-900/20 p-3">

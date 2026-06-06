@@ -58,6 +58,7 @@ import type {
 	OmniPin,
 	DeadEventsResponse,
 	RetryDeadEventsResponse,
+	EventCountsResponse,
 	IngestionErrorsResponse,
 	ClearIngestionErrorsResponse,
 	Tag,
@@ -759,6 +760,9 @@ export const engineApi = {
 			method: 'POST',
 			body: JSON.stringify(eventIds ? { event_ids: eventIds } : { all: true })
 		}),
+
+	// Event counts by processing_status (Audit page summary)
+	getEventCounts: () => request<EventCountsResponse>('/events/counts'),
 
 	// Ingestion Errors
 	getIngestionErrors: (params?: {

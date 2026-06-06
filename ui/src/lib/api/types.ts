@@ -374,6 +374,7 @@ export interface McpConfig {
 	auth_mode: McpAuthMode;
 	has_token: boolean;
 	token_prefix: string | null;
+	url: string;
 	sse_url: string;
 }
 
@@ -729,6 +730,12 @@ export interface DeadEventsResponse {
 /** Response from retrying dead events */
 export interface RetryDeadEventsResponse {
 	retried: number;
+}
+
+/** Event counts grouped by processing_status */
+export interface EventCountsResponse {
+	counts: Record<string, number>;
+	total: number;
 }
 
 /** Ingestion error captured from n8n workflow failures */

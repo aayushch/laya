@@ -743,8 +743,13 @@
 {/if}
 
 {#if showDeleteConfirm}
+	<!-- Portaled to <body>: glass-card-flat ancestors set backdrop-filter, which makes a
+	     containing block + stacking context for position:fixed descendants. Without the portal
+	     this overlay is trapped inside the card and siblings paint over it. z-[200] keeps it
+	     above the portaled action menu (z-[100]). -->
 	<div
-		class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+		use:portal
+		class="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm"
 		role="dialog"
 		aria-label="Confirm delete"
 		tabindex="-1"

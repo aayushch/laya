@@ -26,8 +26,8 @@
       "parameters": {
         "operation": "create",
         "calendar": "primary",
-        "start": "={{ $json.body.payload.start_time }}",
-        "end": "={{ $json.body.payload.end_time || (new Date(new Date($json.body.payload.start_time).getTime() + ($json.body.payload.duration_minutes || 60) * 60000)).toISOString() }}",
+        "start": "={{ $json.body.payload.start }}",
+        "end": "={{ $json.body.payload.end || (new Date(new Date($json.body.payload.start).getTime() + ($json.body.payload.duration_minutes || 60) * 60000)).toISOString() }}",
         "additionalFields": {
           "summary": "={{ $json.body.payload.title || $json.body.event_subject || 'Laya Event' }}",
           "description": "={{ $json.body.payload.description || ('Created by Laya from: ' + ($json.body.event_subject || '')) }}",
@@ -99,6 +99,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.03.1"
+    "laya_version": "2026.06.1"
   }
 }

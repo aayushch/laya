@@ -20,14 +20,41 @@
 		$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'
 	);
 
-	const exampleConfig = $derived(
+	const desktopConfig = $derived(
 		config
 			? JSON.stringify(
 					{
 						mcpServers: {
 							laya: {
-								type: 'sse',
-								url: config.sse_url,
+								command: 'npx',
+								args: [
+									'mcp-remote',
+									config.url,
+									'--allow-http',
+									...(config.auth_mode === 'bearer'
+										? [
+												'--header',
+												`Authorization: Bearer ${revealedToken ?? (config.token_prefix ? config.token_prefix + '…' : '<your-token>')}`
+										  ]
+										: [])
+								]
+							}
+						}
+					},
+					null,
+					2
+			  )
+			: ''
+	);
+
+	const directConfig = $derived(
+		config
+			? JSON.stringify(
+					{
+						mcpServers: {
+							laya: {
+								type: 'streamable-http',
+								url: config.url,
 								...(config.auth_mode === 'bearer'
 									? {
 											headers: {
@@ -43,6 +70,8 @@
 			  )
 			: ''
 	);
+
+	let showDirectConfig = $state(false);
 
 	const readWarning = $derived(config && !config.tool_scopes.read);
 
@@ -125,7 +154,7 @@
 	}
 
 	async function copyExampleConfig() {
-		await navigator.clipboard.writeText(exampleConfig);
+		await navigator.clipboard.writeText(showDirectConfig ? directConfig : desktopConfig);
 		copiedConfig = true;
 		setTimeout(() => (copiedConfig = false), 1500);
 	}
@@ -151,13 +180,13 @@
 			</p>
 
 			<div class="rounded-lg border border-surface-700 bg-surface-900 p-4">
-				<div class="mb-2 text-laya-micro uppercase tracking-wider text-surface-400">SSE URL</div>
+				<div class="mb-2 text-laya-micro uppercase tracking-wider text-surface-400">URL</div>
 				<div class="flex items-center gap-3">
-					<code class="flex-1 break-all font-mono text-laya-secondary text-laya-peach">{config.sse_url}</code>
+					<code class="flex-1 break-all font-mono text-laya-secondary text-laya-peach">{config.url}</code>
 					<button
 						class="rounded-md border border-surface-600 px-3 py-1.5 text-laya-secondary text-surface-200 transition-colors hover:border-laya-orange hover:text-laya-orange"
 						onclick={() => {
-							navigator.clipboard.writeText(config!.sse_url);
+							navigator.clipboard.writeText(config!.url);
 						}}
 					>
 						Copy
@@ -319,10 +348,25 @@
 		<div class="{sectionClass} p-6">
 			<h3 class="mb-1 text-laya-heading font-semibold text-surface-50">Client Configuration</h3>
 			<p class="mb-5 text-laya-base text-surface-400">
-				Paste this into any MCP-compatible client &mdash; Claude Desktop, Cursor, VS Code, Codex CLI, Gemini CLI,
-				Pi, or custom agent harnesses. For Claude Desktop on macOS the config file is at
+				For Claude Desktop on macOS, paste into
 				<code class="rounded bg-surface-800 px-1.5 py-0.5 font-mono text-laya-micro text-laya-peach">~/Library/Application Support/Claude/claude_desktop_config.json</code>.
+				Requires <code class="rounded bg-surface-800 px-1.5 py-0.5 font-mono text-laya-micro text-laya-peach">npx mcp-remote</code> (installed automatically via npx).
 			</p>
+
+			<div class="mb-3 flex gap-2">
+				<button
+					class="rounded-md px-3 py-1.5 text-laya-secondary transition-colors {!showDirectConfig ? 'bg-laya-orange/15 text-laya-orange border border-laya-orange/30' : 'border border-surface-600 text-surface-300 hover:border-surface-500'}"
+					onclick={() => (showDirectConfig = false)}
+				>
+					Claude Desktop
+				</button>
+				<button
+					class="rounded-md px-3 py-1.5 text-laya-secondary transition-colors {showDirectConfig ? 'bg-laya-orange/15 text-laya-orange border border-laya-orange/30' : 'border border-surface-600 text-surface-300 hover:border-surface-500'}"
+					onclick={() => (showDirectConfig = true)}
+				>
+					Claude Code / Cursor / Other
+				</button>
+			</div>
 
 			<div class="rounded-lg border border-surface-700 bg-surface-900 p-4">
 				<div class="mb-3 flex items-center justify-between">
@@ -334,7 +378,7 @@
 						{copiedConfig ? 'Copied' : 'Copy'}
 					</button>
 				</div>
-				<pre class="overflow-x-auto font-mono text-laya-secondary text-surface-200"><code>{exampleConfig}</code></pre>
+				<pre class="overflow-x-auto font-mono text-laya-secondary text-surface-200"><code>{showDirectConfig ? directConfig : desktopConfig}</code></pre>
 			</div>
 
 			<p class="mt-4 text-laya-secondary text-surface-400">

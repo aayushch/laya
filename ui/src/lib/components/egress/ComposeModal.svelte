@@ -34,6 +34,15 @@
 	let selectedActionType = $state('');
 	let initialSyncDone = $state(false);
 
+	// Timezone for calendar datetime fields — auto-set to browser timezone
+	let composeTz = $state(Intl.DateTimeFormat().resolvedOptions().timeZone);
+	let tzSearchQuery = $state('');
+	let tzDropdownOpen = $state(false);
+	let tzTriggerRef = $state<HTMLButtonElement | undefined>();
+	let tzPanelRef = $state<HTMLDivElement | undefined>();
+	let tzSearchRef = $state<HTMLInputElement | undefined>();
+	let tzPos = $state({ top: 0, left: 0, width: 0 });
+
 	// Email autocomplete
 	let emailSuggestions = $state<string[]>([]);
 	let emailDropdownField = $state<string | null>(null);
@@ -196,6 +205,60 @@
 	// Derived: fields to render
 	const activeFields = $derived(currentAction?.fields ?? []);
 
+	const hasDatetimeFields = $derived(activeFields.some(f => f.type === 'datetime-local'));
+
+	function formatTzOffset(tz: string): string {
+		try {
+			const parts = new Intl.DateTimeFormat('en', { timeZone: tz, timeZoneName: 'shortOffset' }).formatToParts(new Date());
+			return parts.find(p => p.type === 'timeZoneName')?.value ?? '';
+		} catch { return ''; }
+	}
+
+	const ALL_TIMEZONES: string[] = (() => {
+		try { return Intl.supportedValuesOf('timeZone'); }
+		catch { return []; }
+	})();
+
+	const filteredTimezones = $derived(
+		tzSearchQuery.trim().length === 0
+			? ALL_TIMEZONES.slice(0, 30)
+			: ALL_TIMEZONES.filter(tz => tz.toLowerCase().includes(tzSearchQuery.toLowerCase())).slice(0, 30)
+	);
+
+	function positionTzPanel() {
+		if (!tzTriggerRef) return;
+		const r = tzTriggerRef.getBoundingClientRect();
+		const spaceBelow = window.innerHeight - r.bottom;
+		const panelH = 240;
+		tzPos = {
+			top: spaceBelow < panelH && r.top > spaceBelow ? r.top - panelH - 4 : r.bottom + 4,
+			left: r.left,
+			width: Math.max(r.width, 200),
+		};
+	}
+
+	function toggleTzDropdown() {
+		if (tzDropdownOpen) { tzDropdownOpen = false; return; }
+		tzSearchQuery = '';
+		positionTzPanel();
+		tzDropdownOpen = true;
+		requestAnimationFrame(() => tzSearchRef?.focus());
+	}
+
+	function handleTzWindowClick(e: MouseEvent) {
+		if (!tzDropdownOpen) return;
+		const target = e.target as Node;
+		if (tzTriggerRef?.contains(target)) return;
+		if (tzPanelRef?.contains(target)) return;
+		tzDropdownOpen = false;
+	}
+
+	$effect(() => {
+		if (!tzDropdownOpen) return;
+		window.addEventListener('mousedown', handleTzWindowClick, true);
+		return () => window.removeEventListener('mousedown', handleTzWindowClick, true);
+	});
+
 	// Sync state from compose store when modal opens
 	$effect(() => {
 		if ($compose.isOpen) {
@@ -298,6 +361,9 @@
 				payload[key] = chips.join(', ');
 			}
 		}
+		if (hasDatetimeFields) {
+			payload.timezone = composeTz;
+		}
 		return payload;
 	}
 
@@ -389,6 +455,9 @@
 		formValues = {};
 		emailChips = {};
 		initialSyncDone = false;
+		composeTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+		tzDropdownOpen = false;
+		tzSearchQuery = '';
 	}
 
 	function close() {
@@ -559,6 +628,73 @@
 									</div>
 								{/if}
 							</div>
+							<!-- Timezone selector (shown once after the first datetime pair) -->
+							{#if i === 0 || activeFields[i - 1]?.type !== 'datetime-local'}
+								<div>
+									<label class="{labelClass} flex items-center gap-1.5" for="compose-timezone">
+										<svg class="h-3.5 w-3.5 text-surface-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"/><path stroke-width="2" d="M12 2a14.5 14.5 0 000 20 14.5 14.5 0 000-20M2 12h20"/></svg>
+										Timezone
+									</label>
+									<button
+										bind:this={tzTriggerRef}
+										type="button"
+										id="compose-timezone"
+										class="flex w-full items-center justify-between rounded-md border px-3 h-[38px] text-sm transition-colors
+											{$glassTheme
+												? 'glass-input text-surface-200 hover:border-white/25'
+												: 'border-surface-600 bg-surface-900 text-surface-200 hover:border-surface-500'}"
+										onclick={toggleTzDropdown}
+									>
+										<span class="truncate">{composeTz.replace(/_/g, ' ')}</span>
+										<span class="ml-2 shrink-0 text-xs text-surface-400">{formatTzOffset(composeTz)}</span>
+									</button>
+									{#if tzDropdownOpen}
+										<div
+											use:portal
+											bind:this={tzPanelRef}
+											class="fixed z-[100] rounded-lg border overflow-hidden
+												{$glassTheme
+													? 'glass-dropdown border-white/15'
+													: 'border-surface-600 bg-surface-800 shadow-xl shadow-black/30'}"
+											style="top: {tzPos.top}px; left: {tzPos.left}px; width: {tzPos.width}px;"
+										>
+											<input
+												bind:this={tzSearchRef}
+												type="text"
+												class="w-full border-b px-3 py-2 text-sm placeholder-surface-500 focus:outline-none
+													{$glassTheme
+														? 'border-white/[0.08] bg-transparent text-surface-200'
+														: 'border-surface-700 bg-surface-800 text-surface-200'}"
+												placeholder="Search timezones…"
+												bind:value={tzSearchQuery}
+											/>
+											<div class="max-h-48 overflow-y-auto p-1">
+												{#each filteredTimezones as tz}
+													{@const isSelected = tz === composeTz}
+													<button
+														type="button"
+														class="flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-sm transition-colors
+															{isSelected
+																? ($glassTheme
+																	? 'bg-white/[0.14] text-surface-100 font-medium'
+																	: 'bg-surface-600 text-surface-100 font-medium')
+																: ($glassTheme
+																	? 'text-surface-300 hover:bg-white/[0.08]'
+																	: 'text-surface-300 hover:bg-surface-700')}"
+														onclick={() => { composeTz = tz; tzDropdownOpen = false; }}
+													>
+														<span class="truncate">{tz.replace(/_/g, ' ')}</span>
+														<span class="ml-2 shrink-0 text-xs text-surface-500">{formatTzOffset(tz)}</span>
+													</button>
+												{/each}
+												{#if filteredTimezones.length === 0}
+													<div class="px-3 py-3 text-center text-sm text-surface-500">No matches</div>
+												{/if}
+											</div>
+										</div>
+									{/if}
+								</div>
+							{/if}
 						{:else}
 							<div>
 								<label class={labelClass} for="compose-{field.name}">{field.label}</label>

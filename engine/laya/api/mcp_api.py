@@ -34,6 +34,7 @@ from laya.mcp.http_server import (
     build_mcp_server,
     current_space_id,
     sse_transport,
+    streamable_sessions,
 )
 from laya.security.keychain import (
     delete_mcp_token,
@@ -154,12 +155,71 @@ async def _messages_asgi_app(scope: Scope, receive: Receive, send: Send) -> None
     await sse_transport.handle_post_message(scope, receive, send)
 
 
+MCP_SESSION_ID_HEADER = "mcp-session-id"
+
+
+async def _streamable_http_app(scope: Scope, receive: Receive, send: Send) -> None:
+    """Raw ASGI app for the Streamable HTTP transport at ``/mcp/``.
+
+    Handles POST (JSON-RPC), GET (SSE stream), and DELETE (session teardown).
+    New sessions are created on ``initialize`` POSTs (no session header);
+    subsequent requests are routed by ``mcp-session-id``.
+    """
+    if scope["type"] != "http":
+        return
+
+    auth_header: str | None = None
+    for key, val in scope.get("headers", []):
+        if key == b"authorization":
+            auth_header = val.decode("latin-1")
+            break
+
+    if not _check_bearer(auth_header):
+        await JSONResponse({"detail": "unauthorized"}, status_code=401)(scope, receive, send)
+        return
+
+    request = Request(scope, receive)
+    session_id = request.headers.get(MCP_SESSION_ID_HEADER)
+
+    if session_id:
+        session = streamable_sessions.get(session_id)
+        if session is None:
+            await JSONResponse(
+                {"detail": "session not found"}, status_code=404
+            )(scope, receive, send)
+            return
+        await session.transport.handle_request(scope, receive, send)
+        return
+
+    # No session header — must be an initialize POST.  Create a new session.
+    if request.method != "POST":
+        await JSONResponse(
+            {"detail": "missing mcp-session-id header"}, status_code=400
+        )(scope, receive, send)
+        return
+
+    space_id = request.query_params.get("space_id") or None
+    session = await streamable_sessions.create_session(space_id=space_id)
+    await session.transport.handle_request(scope, receive, send)
+
+
 def register_mcp_transport(app: FastAPI) -> None:
-    """Mount the SSE (Route) and messages (Mount) endpoints on the FastAPI app."""
+    """Mount MCP transports on the FastAPI app.
+
+    Order matters — Starlette checks routes sequentially, and the ``/mcp``
+    Mount prefix-matches everything under ``/mcp/*``.  Legacy routes must be
+    registered first so they match before the catch-all Mount.
+
+    - ``/mcp/sse``         — Legacy SSE (kept for the coding-agent spawner)
+    - ``/mcp/messages/``   — Legacy SSE POST receiver
+    - ``/mcp/``            — Streamable HTTP (current, used by Claude Desktop)
+    """
+    # Legacy SSE transport (register first — more specific paths)
     app.add_route("/mcp/sse", _sse_endpoint, methods=["GET"])
-    # Mount strips the prefix before delegating; the SSE transport reads the
-    # session_id query param off the request directly.
     app.router.routes.append(Mount(SSE_MESSAGES_PATH, app=_messages_asgi_app))
+
+    # Streamable HTTP — single Mount handles POST/GET/DELETE
+    app.router.routes.append(Mount("/mcp", app=_streamable_http_app))
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +238,7 @@ class McpConfigResponse(BaseModel):
     auth_mode: str  # "bearer" | "none"
     has_token: bool
     token_prefix: str | None
+    url: str
     sse_url: str
 
 
@@ -212,6 +273,7 @@ def _build_config_response() -> McpConfigResponse:
         auth_mode=mcp.get("auth_mode", "bearer"),
         has_token=get_mcp_token() is not None,
         token_prefix=_token_prefix(),
+        url=f"http://{ENGINE_HOST}:{ENGINE_PORT}/mcp/",
         sse_url=f"http://{ENGINE_HOST}:{ENGINE_PORT}/mcp/sse",
     )
 

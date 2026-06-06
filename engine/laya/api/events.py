@@ -99,6 +99,23 @@ async def receive_event(event: LayaEvent) -> EventResponse:
     return EventResponse(event_id=event.event_id)
 
 
+# ── event counts (audit page summary) ───────────────────────────────────
+
+@router.get("/events/counts")
+async def get_event_counts() -> dict:
+    """Return total event count grouped by processing_status.
+
+    Used by the Audit page to show a live breakdown of pipeline state.
+    """
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT processing_status, COUNT(*) AS count FROM events GROUP BY processing_status"
+    )
+    counts = {r["processing_status"]: r["count"] for r in rows}
+    total = sum(counts.values())
+    return {"counts": counts, "total": total}
+
+
 # ── dead event recovery ─────────────────────────────────────────────────
 
 @router.get("/events/dead")

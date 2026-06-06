@@ -31,10 +31,10 @@
         "additionalFields": {
           "bodyContent": "={{ $json.body.payload.description || ('Created by Laya from: ' + ($json.body.event_subject || '')) }}",
           "bodyContentType": "text",
-          "start": "={{ $json.body.payload.start_time }}",
-          "startTimeZone": "={{ $json.body.payload.timezone || 'UTC' }}",
-          "end": "={{ $json.body.payload.end_time || (new Date(new Date($json.body.payload.start_time).getTime() + ($json.body.payload.duration_minutes || 60) * 60000)).toISOString() }}",
-          "endTimeZone": "={{ $json.body.payload.timezone || 'UTC' }}",
+          "start": "={{ $json.body.payload.start }}",
+          "startTimeZone": "={{ $json.body.payload.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' }}",
+          "end": "={{ $json.body.payload.end || (new Date(new Date($json.body.payload.start).getTime() + ($json.body.payload.duration_minutes || 60) * 60000)).toISOString() }}",
+          "endTimeZone": "={{ $json.body.payload.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' }}",
           "attendees": "={{ ($json.body.payload.attendees || []).map(email => ({ emailAddress: { address: email }, type: 'required' })) }}"
         }
       },
@@ -103,6 +103,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.05.1"
+    "laya_version": "2026.06.1"
   }
 }

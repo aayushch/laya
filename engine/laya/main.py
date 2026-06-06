@@ -320,6 +320,9 @@ async def lifespan(app: FastAPI):
     stop_scheduler()
     await session_manager.cleanup_on_shutdown()
 
+    from laya.mcp.http_server import streamable_sessions as mcp_sessions
+    await mcp_sessions.shutdown()
+
     # Close the HTTP client before cancelling background tasks, while the
     # event loop is still healthy. Closing after aggressive task cancellation
     # caused CancelledError inside httpx's aclose() → anyio sleep(0).
