@@ -6,19 +6,21 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from typing import Any
 
 from laya.db.sqlite import get_db
 
 
 async def get_daily_summary(
-    summary_date: str | None = None,
+    date: str | None = None,
     space_id: str | None = None,
 ) -> dict[str, Any]:
     """Get the daily summary for a given date (defaults to today)."""
+    from datetime import date as date_cls
+
     db = await get_db()
-    target_date = summary_date or date.today().isoformat()
+    target_date = date or date_cls.today().isoformat()
 
     if space_id:
         rows = await db.execute_fetchall(
