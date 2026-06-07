@@ -58,6 +58,7 @@
 
 	// Extract subject ID from entity_id (e.g., "jira:ticket:FERR-1056" → "FERR-1056")
 	const subjectId = $derived(group.entity_id?.includes(':') ? group.entity_id.split(':').pop() : group.entity_id);
+	const isContextGroup = $derived(!!group.context_id);
 
 	const hasBookmark = $derived(group.cards.some((c) => c.bookmarked_at));
 	const groupHasWorkspace = $derived(group.cards.some((c) => c.has_workspace));
@@ -355,17 +356,28 @@
 				</div>
 
 				<!-- Source — fixed width, matches ListRow; brand dot prefix mirrors ListRow -->
-		<span class="w-[76px] shrink-0 flex items-center gap-1.5 text-laya-secondary font-semibold uppercase tracking-wider text-surface-500 truncate"
-			onmouseenter={() => showTooltipIfTruncated(sourceEl, sourceLabel)}
-			onmouseleave={hideTooltip}
-		>
-			<span class="h-1 w-1 rounded-full shrink-0" style="background-color: {platformDotColor(group.platform)}"></span>
-			<span bind:this={sourceEl} class="truncate">{sourceLabel}</span>
-		</span>
+		{#if isContextGroup}
+			<span class="w-[76px] shrink-0 flex items-center gap-1.5 text-laya-orange/60 text-laya-secondary font-semibold uppercase tracking-wider text-surface-500 truncate">
+				<svg class="h-3.5 w-3.5 shrink-0" viewBox="0 0 16 16" fill="none">
+					<rect x="1" y="1" width="8" height="8" rx="2" stroke="currentColor" stroke-width="1.3" />
+					<rect x="7" y="7" width="8" height="8" rx="2" stroke="currentColor" stroke-width="1.3" />
+					<circle cx="8" cy="8" r="1.5" fill="currentColor" />
+				</svg>
+				<span class="truncate text-surface-500">Linked</span>
+			</span>
+		{:else}
+			<span class="w-[76px] shrink-0 flex items-center gap-1.5 text-laya-secondary font-semibold uppercase tracking-wider text-surface-500 truncate"
+				onmouseenter={() => showTooltipIfTruncated(sourceEl, sourceLabel)}
+				onmouseleave={hideTooltip}
+			>
+				<span class="h-1 w-1 rounded-full shrink-0" style="background-color: {platformDotColor(group.platform)}"></span>
+				<span bind:this={sourceEl} class="truncate">{sourceLabel}</span>
+			</span>
+		{/if}
 		<!-- Spacer slot — mirrors ListRow's icon spacer so subjectId aligns with ListRow's actor column -->
 		<span class="w-3 shrink-0 ml-2"></span>
 		<span class="w-[90px] shrink-0 ml-1 text-laya-secondary font-medium text-laya-orange/70 truncate">
-			{subjectId ?? ''}
+			{isContextGroup ? '' : (subjectId ?? '')}
 		</span>
 
 		<!-- Subject (entity title) -->
@@ -374,7 +386,7 @@
 			onmouseleave={hideTooltip}
 		>
 			<span bind:this={subjectEl} class="min-w-0 block truncate text-laya-secondary {group.unread_count > 0 ? 'font-semibold text-surface-100' : 'font-normal text-surface-300'}">
-				{group.entity_title}
+				{group.context_label ?? group.entity_title}
 			</span>
 			{#if hasBookmark}
 				<svg class="h-3 w-3 shrink-0 text-laya-orange/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -447,7 +459,16 @@
 
 	{#if expanded}
 		<div transition:slide={{ duration: $reducedMotion ? 0 : 200 }} class="flex flex-col gap-0.5 pt-1">
-			{#each group.cards as card (card.card_id)}
+			{#each group.cards as card, i (card.card_id)}
+				{@const prevEntityId = i > 0 ? group.cards[i - 1].entity_id : null}
+				{@const showEntityDivider = isContextGroup && card.entity_id && (i === 0 || (prevEntityId && card.entity_id !== prevEntityId))}
+				{#if showEntityDivider}
+					<div class="flex items-center gap-2 py-0.5 px-3 ml-5">
+						<span class="h-1 w-1 rounded-full shrink-0" style="background-color: {platformDotColor(card.entity_id?.split(':')[0] ?? '')}"></span>
+						<span class="text-[10px] font-medium uppercase tracking-wider text-surface-500 truncate">{card.entity_id?.split(':').pop()}</span>
+						<div class="flex-1 border-t border-surface-700/50"></div>
+					</div>
+				{/if}
 				<ListRow {card} {onselect} {ondelete} {selectedCardId} indented={true}
 					{hasSelection} {lastViewedCardId}
 					bulkSelected={bulkSelectedIds?.has(card.card_id) ?? false}
@@ -491,6 +512,22 @@
 			<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
 			Link to...
 		</button>
+		{#if isContextGroup && group.context_id}
+			<button
+				class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary text-surface-300 hover:bg-surface-700 hover:text-red-400"
+				role="menuitem"
+				onclick={async (e) => {
+					e.stopPropagation();
+					groupMenuOpen = false;
+					try {
+						await engineApi.unlinkContextGroup(group.context_id!);
+					} catch { /* reload will handle */ }
+				}}
+			>
+				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+				Unlink Group
+			</button>
+		{/if}
 	</div>
 {/if}
 

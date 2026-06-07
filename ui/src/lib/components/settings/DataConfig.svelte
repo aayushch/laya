@@ -107,6 +107,12 @@
 				</span>
 				would be eligible for deletion.
 			</p>
+
+			<p class="mt-3 text-laya-secondary text-surface-500">
+				To delete a card manually, first <span class="text-surface-300">archive</span> it — a trash
+				icon will appear on the card. Clicking it opens a confirmation before permanently removing the
+				card and all its related data.
+			</p>
 		{/if}
 	</div>
 
@@ -273,12 +279,4 @@
 		{/if}
 	</div>
 
-	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
-		<h3 class="mb-1 text-laya-heading font-medium">Manual Deletion</h3>
-		<p class="text-laya-base text-surface-400">
-			To delete a card manually, first <span class="text-surface-300">archive</span> it — a trash
-			icon will appear on the card. Clicking it opens a confirmation before permanently removing the
-			card and all its related data.
-		</p>
-	</div>
 </div>

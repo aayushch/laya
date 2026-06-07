@@ -108,14 +108,14 @@
 	}
 
 	const featureColors: Record<string, string> = {
-		Pulse: 'bg-blue-500',
-		Omni: 'bg-emerald-500',
-		Chat: 'bg-cyan-500',
-		Coherence: 'bg-violet-500',
-		Briefing: 'bg-amber-500',
-		Egress: 'bg-red-500',
+		Pulse: 'bg-laya-orange',
+		Omni: 'bg-laya-gold',
+		Chat: 'bg-laya-peach',
+		Coherence: 'bg-laya-coral',
+		Briefing: 'bg-laya-amber',
+		Egress: 'bg-laya-terracotta',
 		System: 'bg-surface-500',
-		Other: 'bg-pink-500'
+		Other: 'bg-laya-sand'
 	};
 
 	const stepBarColor = 'bg-surface-400';

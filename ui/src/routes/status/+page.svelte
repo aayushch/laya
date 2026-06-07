@@ -88,9 +88,9 @@
 		const d = dashboard;
 		if (!d) return [];
 		return [
-			{ label: 'Pending', value: d.stats.cards_pending, color: '#facc15' },
-			{ label: 'Approved', value: d.stats.cards_approved, color: '#4ade80' },
-			{ label: 'Dismissed', value: d.stats.cards_dismissed, color: '#64748b' }
+			{ label: 'Pending', value: d.stats.cards_pending, color: '#f6bc66' },
+			{ label: 'Approved', value: d.stats.cards_approved, color: '#f6ac69' },
+			{ label: 'Dismissed', value: d.stats.cards_dismissed, color: '#8b7a62' }
 		];
 	});
 
@@ -98,12 +98,12 @@
 		const d = dashboard;
 		if (!d) return [];
 		return [
-			{ label: 'Completed', value: d.stats.actions_completed, color: '#4ade80' },
-			{ label: 'Failed', value: d.stats.actions_failed, color: '#f87171' },
+			{ label: 'Completed', value: d.stats.actions_completed, color: '#f6ac69' },
+			{ label: 'Failed', value: d.stats.actions_failed, color: '#ff9770' },
 			{
 				label: 'In Progress',
 				value: Math.max(0, d.stats.actions_executed - d.stats.actions_completed - d.stats.actions_failed),
-				color: '#60a5fa'
+				color: '#f6bc66'
 			}
 		];
 	});

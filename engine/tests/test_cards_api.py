@@ -412,3 +412,149 @@ class TestActionPayloadPolish:
         data = resp.json()
         assert "read_at" in data
         assert data["read_at"] is None
+
+
+async def _setup_context_group(db, context_id="ctx_test123"):
+    """Create two entity groups linked by a context_id."""
+    await insert_test_event(db, "evt_jira1", platform="jira",
+                            subject_title="NPE in PaymentService")
+    await insert_test_event(db, "evt_gmail1", platform="gmail",
+                            subject_title="RE: PaymentService crash")
+    await db.execute(
+        """INSERT INTO action_cards
+           (card_id, event_id, priority, persona, category, header, summary,
+            intelligence, staged_output, suggested_actions, status, privacy_tier,
+            entity_id, context_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        ("card_jira", "evt_jira1", "HIGH", "ENGINEER", "CODE",
+         "Jira: NPE in PaymentService", "Null pointer exception",
+         "[]", "{}", "[]", "pending", 2,
+         "jira:ticket:PAY-101", context_id),
+    )
+    await db.execute(
+        """INSERT INTO action_cards
+           (card_id, event_id, priority, persona, category, header, summary,
+            intelligence, staged_output, suggested_actions, status, privacy_tier,
+            entity_id, context_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        ("card_gmail", "evt_gmail1", "MEDIUM", "COMMS", "EMAIL",
+         "Gmail: RE: PaymentService crash", "Thread about crash",
+         "[]", "{}", "[]", "pending", 2,
+         "gmail:email_thread:thr-456", context_id),
+    )
+    await db.execute(
+        "INSERT INTO context_groups (context_id, label) VALUES (?, ?)",
+        (context_id, "PaymentService outage"),
+    )
+    await db.execute(
+        "INSERT OR IGNORE INTO context_group_members (context_id, card_id, confidence, link_method) VALUES (?, ?, ?, ?)",
+        (context_id, "card_jira", 0.85, "semantic"),
+    )
+    await db.execute(
+        "INSERT OR IGNORE INTO context_group_members (context_id, card_id, confidence, link_method) VALUES (?, ?, ?, ?)",
+        (context_id, "card_gmail", 0.85, "semantic"),
+    )
+    await db.commit()
+
+
+@pytest.mark.asyncio
+class TestContextGrouping:
+    """Tests for context_id-based feed grouping (smart_display)."""
+
+    async def test_context_groups_merge_entity_groups(self, db):
+        """Two entity groups sharing a context_id are merged into one feed group."""
+        await _setup_context_group(db)
+
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            with patch("laya.config.load_settings", return_value={
+                "smart_grouping": {"smart_display": True, "context_association": True},
+            }):
+                resp = await client.get("/cards/grouped")
+
+        data = resp.json()
+        assert data["total_groups"] == 1
+        group = data["groups"][0]
+        assert group["context_id"] == "ctx_test123"
+        assert group["context_label"] == "PaymentService outage"
+        assert group["card_count"] == 2
+        assert group["platforms"] is not None
+        assert set(group["platforms"]) == {"jira", "gmail"}
+
+    async def test_smart_display_off_keeps_entity_groups(self, db):
+        """When smart_display=False, entity groups are not merged."""
+        await _setup_context_group(db)
+
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            with patch("laya.config.load_settings", return_value={
+                "smart_grouping": {"smart_display": False},
+            }):
+                resp = await client.get("/cards/grouped")
+
+        data = resp.json()
+        assert data["total_groups"] == 2
+        for g in data["groups"]:
+            assert g["context_id"] is None
+
+    async def test_user_split_excluded_from_context_grouping(self, db):
+        """Context groups with user_split=TRUE are not merged."""
+        await _setup_context_group(db)
+        await db.execute(
+            "UPDATE context_groups SET user_split = 1 WHERE context_id = ?",
+            ("ctx_test123",),
+        )
+        await db.commit()
+
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            with patch("laya.config.load_settings", return_value={
+                "smart_grouping": {"smart_display": True, "context_association": True},
+            }):
+                resp = await client.get("/cards/grouped")
+
+        data = resp.json()
+        assert data["total_groups"] == 2
+
+    async def test_single_entity_context_not_decorated(self, db):
+        """A context group with only 1 entity_id renders as a normal entity group."""
+        await insert_test_event(db, "evt_j1", platform="jira",
+                                subject_title="Bug report")
+        await insert_test_event(db, "evt_j2", platform="jira",
+                                subject_title="Bug report update")
+        entity = "jira:ticket:BUG-99"
+        ctx = "ctx_singleentity"
+        for i, eid in enumerate(["evt_j1", "evt_j2"]):
+            await db.execute(
+                """INSERT INTO action_cards
+                   (card_id, event_id, priority, persona, category, header, summary,
+                    intelligence, staged_output, suggested_actions, status, privacy_tier,
+                    entity_id, context_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (f"card_se{i}", eid, "HIGH", "ENGINEER", "CODE",
+                 f"Card {i}", "Summary", "[]", "{}", "[]", "pending", 2,
+                 entity, ctx),
+            )
+        await db.execute(
+            "INSERT INTO context_groups (context_id, label) VALUES (?, ?)",
+            (ctx, "Bug context"),
+        )
+        await db.commit()
+
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            with patch("laya.config.load_settings", return_value={
+                "smart_grouping": {"smart_display": True, "context_association": True},
+            }):
+                resp = await client.get("/cards/grouped")
+
+        data = resp.json()
+        assert data["total_groups"] == 1
+        group = data["groups"][0]
+        # Should be a normal entity group, not a context group
+        assert group["context_id"] is None
+        assert group["entity_id"] == entity

@@ -100,6 +100,7 @@
 
 	const topCard = $derived(group.cards.find((c) => c.status === 'pending') ?? group.cards[0]);
 	const extraCount = $derived(group.card_count - 1);
+	const isContextGroup = $derived(!!group.context_id);
 
 	// Status summary for collapsed view
 	const statusSummary = $derived.by(() => {
@@ -389,6 +390,9 @@
 				<span class="text-laya-secondary text-surface-400/75 shrink-0">
 					{timeAgo(group.latest_at)}
 				</span>
+				{#if isContextGroup}
+					<span class="text-[9px] font-semibold uppercase tracking-widest text-surface-500 shrink-0">Linked</span>
+				{/if}
 				<div class="ml-auto flex items-center gap-1.5">
 					{#if hasBookmark}
 						<svg class="h-3 w-3 text-laya-orange/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -451,8 +455,9 @@
 
 			<!-- Identity row: subject ID always lives here (close to the header). Relaxed mode
 			     also shows the brand dot + source label inline; compact mode hoists the
-			     platform down into the footer for vertical compression. -->
-			{#if !compact || subjectId}
+			     platform down into the footer for vertical compression.
+			     Context groups skip this row — their linked indicator is in the top row. -->
+			{#if !isContextGroup && (!compact || subjectId)}
 				<div class="flex items-center gap-1.5 min-w-0">
 					{#if !compact}
 						<span class="flex items-center gap-1.5 text-laya-micro font-semibold uppercase tracking-widest text-surface-500 shrink-0">
@@ -467,7 +472,7 @@
 			{/if}
 
 			<span class="line-clamp-2 text-laya-base {group.unread_count > 0 ? 'font-bold text-surface-50' : 'font-normal text-surface-200'} leading-snug">
-				{group.entity_title}
+				{group.context_label ?? group.entity_title}
 			</span>
 			{#if group.tags?.length}
 				<div class="flex flex-wrap gap-1 mt-1">
@@ -509,7 +514,15 @@
 				<!-- Status summary footer -->
 				<div class="flex items-center gap-2">
 					<div class="flex items-center gap-2 shrink-0 min-w-0">
-						{#if compact}
+						{#if isContextGroup}
+							<span class="text-laya-orange/60 shrink-0">
+								<svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none">
+									<rect x="1" y="1" width="8" height="8" rx="2" stroke="currentColor" stroke-width="1.3" />
+									<rect x="7" y="7" width="8" height="8" rx="2" stroke="currentColor" stroke-width="1.3" />
+									<circle cx="8" cy="8" r="1.5" fill="currentColor" />
+								</svg>
+							</span>
+						{:else if compact}
 							<span class="text-laya-orange shrink-0">
 								<PlatformIcon platform={group.platform} size={14} />
 							</span>
@@ -563,7 +576,16 @@
 			<div class="space-y-2 px-3 pb-3 pt-1" transition:slide={{ duration: (skipCollapseTransition || $reducedMotion) ? 0 : 200 }}
 				onoutroend={() => { skipCollapseTransition = false; }}
 			>
-				{#each group.cards as card (card.card_id)}
+				{#each group.cards as card, i (card.card_id)}
+					{@const prevEntityId = i > 0 ? group.cards[i - 1].entity_id : null}
+					{@const showEntityDivider = isContextGroup && card.entity_id && (i === 0 || (prevEntityId && card.entity_id !== prevEntityId))}
+					{#if showEntityDivider}
+						<div class="flex items-center gap-2 py-0.5 px-1">
+							<span class="h-1 w-1 rounded-full shrink-0" style="background-color: {platformDotColor(card.entity_id?.split(':')[0] ?? '')}"></span>
+							<span class="text-[10px] font-medium uppercase tracking-wider text-surface-500 truncate">{card.entity_id?.split(':').pop()}</span>
+							<div class="flex-1 border-t border-surface-700/50"></div>
+						</div>
+					{/if}
 					<ActionCardComponent {card} onselect={onselect} {ondelete} {selectedCardId} {hasSelection} {lastViewedCardId} />
 				{/each}
 			</div>
@@ -618,6 +640,22 @@
 			<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
 			Link to...
 		</button>
+		{#if isContextGroup && group.context_id}
+			<button
+				class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary text-surface-300 transition-colors hover:bg-surface-700 hover:text-red-400"
+				role="menuitem"
+				onclick={async (e) => {
+					e.stopPropagation();
+					groupMenuOpen = false;
+					try {
+						await engineApi.unlinkContextGroup(group.context_id!);
+					} catch { /* reload will handle */ }
+				}}
+			>
+				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+				Unlink Group
+			</button>
+		{/if}
 	</div>
 {/if}
 

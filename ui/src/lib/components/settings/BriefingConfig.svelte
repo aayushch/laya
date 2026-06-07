@@ -49,6 +49,7 @@
 
 	// Context Association settings
 	let contextAssociationEnabled = $state(true);
+	let smartDisplayEnabled = $state(true);
 	let contextStrictness = $state<'strict' | 'balanced' | 'lenient' | 'custom'>('strict');
 	let contextShowAdvanced = $state(false);
 	let contextConfidence = $state(0.15);
@@ -154,6 +155,7 @@
 			omniEventThreshold = s.omni?.event_threshold ?? 50;
 
 			contextAssociationEnabled = s.smart_grouping?.context_association ?? true;
+			smartDisplayEnabled = s.smart_grouping?.smart_display ?? true;
 			contextStrictness = s.smart_grouping?.strictness ?? 'strict';
 			contextConfidence = s.smart_grouping?.confidence_threshold ?? 0.15;
 			contextAutoConfirm = s.smart_grouping?.auto_confirm_threshold ?? null;
@@ -272,6 +274,12 @@
 
 	function handleContextAssociationToggle() {
 		contextAssociationEnabled = !contextAssociationEnabled;
+		if (!contextAssociationEnabled) smartDisplayEnabled = false;
+		saveContextSettings();
+	}
+
+	function handleSmartDisplayToggle() {
+		smartDisplayEnabled = !smartDisplayEnabled;
 		saveContextSettings();
 	}
 
@@ -298,6 +306,7 @@
 		try {
 			const payload: Record<string, unknown> = {
 				context_association: contextAssociationEnabled,
+				smart_display: smartDisplayEnabled,
 				strictness: contextStrictness,
 			};
 			if (contextStrictness === 'custom') {
@@ -492,6 +501,25 @@
 							<p class="text-laya-secondary text-surface-500 flex items-center gap-1.5">
 								Related cards detection is disabled.
 							</p>
+						</div>
+					{:else}
+						<!-- Smart display toggle — nested child of context association -->
+						<div class="border-t {$glassTheme ? 'border-white/[0.06]' : 'border-surface-600/50'}">
+							<div class="flex items-center justify-between px-4 py-2.5 pl-8">
+								<div>
+									<span class="text-laya-secondary font-medium text-surface-200">Show context groups in feed</span>
+									<p class="text-laya-micro text-surface-500">Group related cards from different platforms together in the feed view</p>
+								</div>
+								<button
+									class="relative h-5 w-9 shrink-0 rounded-full transition-colors {smartDisplayEnabled ? 'bg-laya-orange' : 'bg-surface-600'}"
+									onclick={handleSmartDisplayToggle}
+									role="switch"
+									aria-checked={smartDisplayEnabled}
+									aria-label="Toggle context groups in feed"
+								>
+									<span class="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform {smartDisplayEnabled ? 'translate-x-4' : ''}"></span>
+								</button>
+							</div>
 						</div>
 					{/if}
 				</div>

@@ -19,13 +19,13 @@
 	function hideTooltip() { tooltip = null; }
 
 	const barColors = [
-		'bg-blue-500',
-		'bg-emerald-500',
-		'bg-violet-500',
-		'bg-amber-500',
-		'bg-red-500',
-		'bg-cyan-500',
-		'bg-pink-500'
+		'bg-laya-orange',
+		'bg-laya-gold',
+		'bg-laya-coral',
+		'bg-laya-amber',
+		'bg-laya-terracotta',
+		'bg-laya-peach',
+		'bg-laya-sand'
 	];
 </script>
 

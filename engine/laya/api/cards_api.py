@@ -313,12 +313,85 @@ async def get_grouped_cards(
         params,
     )
 
+    # Pass 1: Group by entity_id (structural grouping)
     groups: dict[str, list] = {}
     for row in rows:
         group_key = row["entity_id"] or f"singleton:{row['card_id']}"
         if group_key not in groups:
             groups[group_key] = []
         groups[group_key].append(row)
+
+    # Pass 2: Merge entity groups that share a context_id (semantic grouping)
+    from laya.config import load_settings
+    settings = load_settings()
+    smart_display = settings.get("smart_grouping", {}).get("smart_display", True)
+
+    # Maps context_id -> label, tracks user_split exclusions
+    context_labels: dict[str, str] = {}
+    split_context_ids: set[str] = set()
+
+    if smart_display:
+        # Collect all distinct context_ids across cards
+        all_context_ids: set[str] = set()
+        for entity_rows in groups.values():
+            for r in entity_rows:
+                cid = r["context_id"]
+                if cid:
+                    all_context_ids.add(cid)
+
+        if all_context_ids:
+            placeholders = ",".join("?" * len(all_context_ids))
+            ctx_rows = await db.execute_fetchall(
+                f"SELECT context_id, label, user_split FROM context_groups WHERE context_id IN ({placeholders})",
+                list(all_context_ids),
+            )
+            for cr in ctx_rows:
+                if cr["user_split"]:
+                    split_context_ids.add(cr["context_id"])
+                else:
+                    if cr["label"]:
+                        context_labels[cr["context_id"]] = cr["label"]
+
+            # Build context_id -> list of entity group keys
+            ctx_to_groups: dict[str, list[str]] = {}
+            for group_key, entity_rows in groups.items():
+                # Use the most common context_id across cards in this entity group
+                cid_counts: dict[str, int] = {}
+                for r in entity_rows:
+                    cid = r["context_id"]
+                    if cid and cid not in split_context_ids:
+                        cid_counts[cid] = cid_counts.get(cid, 0) + 1
+                if cid_counts:
+                    dominant_cid = max(cid_counts, key=cid_counts.get)  # type: ignore[arg-type]
+                    ctx_to_groups.setdefault(dominant_cid, []).append(group_key)
+
+            # Merge entity groups that share a context_id (only when 2+ entity groups)
+            _MAX_ENTITY_GROUPS_PER_CONTEXT = 6
+            merged_keys: set[str] = set()
+            for cid, group_keys in ctx_to_groups.items():
+                if len(group_keys) < 2:
+                    continue
+                # Skip context groups with only 1 distinct entity_id
+                distinct_entities = {gk for gk in group_keys if not gk.startswith("singleton:")}
+                if len(distinct_entities) < 2 and len(group_keys) - len(distinct_entities) == 0:
+                    continue
+                # Size cap: don't create mega-groups
+                if len(group_keys) > _MAX_ENTITY_GROUPS_PER_CONTEXT:
+                    continue
+
+                # Merge all rows under the context_id key
+                merged_rows: list = []
+                for gk in group_keys:
+                    merged_rows.extend(groups[gk])
+                    merged_keys.add(gk)
+                # Sort merged cards by created_at descending (latest first)
+                merged_rows.sort(key=lambda r: r["created_at"] or "", reverse=True)
+                groups[cid] = merged_rows
+
+            # Remove the original entity groups that were merged
+            for mk in merged_keys:
+                if mk in groups:
+                    del groups[mk]
 
     event_ids = [rows_list[0]["event_id"] for rows_list in groups.values()]
     event_meta: dict[str, dict] = {}
@@ -365,6 +438,8 @@ async def get_grouped_cards(
 
     result: list[CardGroup] = []
     for group_key, entity_rows in groups.items():
+        is_context_group = group_key.startswith("ctx_")
+
         cards = [_row_to_card(r) for r in entity_rows]
         # Inject tags into each card
         for card in cards:
@@ -380,19 +455,48 @@ async def get_grouped_cards(
         has_pending = any(c.status in ("pending", "ready") for c in cards)
         unread_count = sum(1 for c in cards if c.read_at is None)
 
-        entity_id_val = entity_rows[0]["entity_id"] or group_key
-        entity_title = meta.get("subject_title") or entity_id_val
-        group_platform = meta.get("source_platform", "")
-        group_summary = summary_map.get(entity_id_val) if len(cards) >= 2 else None
+        if is_context_group:
+            entity_id_val = group_key
+            entity_title = context_labels.get(group_key) or meta.get("subject_title") or group_key
+            # Collect distinct platforms from entity_ids
+            seen_platforms: set[str] = set()
+            ordered_platforms: list[str] = []
+            for r in entity_rows:
+                eid = r["entity_id"] or ""
+                plat = eid.split(":")[0] if ":" in eid else ""
+                if plat and plat not in seen_platforms:
+                    seen_platforms.add(plat)
+                    ordered_platforms.append(plat)
+            # Primary platform from the most recent card
+            top_eid = entity_rows[0]["entity_id"] or ""
+            group_platform = top_eid.split(":")[0] if ":" in top_eid else meta.get("source_platform", "")
+        else:
+            entity_id_val = entity_rows[0]["entity_id"] or group_key
+            entity_title = meta.get("subject_title") or entity_id_val
+            group_platform = meta.get("source_platform", "")
+            ordered_platforms = []
 
-        # Entity-level tags
-        entity_tags = tags_map.get(("entity", entity_id_val), [])
+        group_summary = summary_map.get(entity_id_val) if len(cards) >= 2 and not is_context_group else None
+
+        # Entity-level tags (aggregate across all entity_ids in context groups)
+        entity_tags_list: list[dict] = []
+        if is_context_group:
+            seen_tag_ids: set[str] = set()
+            for r in entity_rows:
+                eid = r["entity_id"]
+                if eid:
+                    for t in tags_map.get(("entity", eid), []):
+                        if t["tag_id"] not in seen_tag_ids:
+                            seen_tag_ids.add(t["tag_id"])
+                            entity_tags_list.append(t)
+        else:
+            entity_tags_list = tags_map.get(("entity", entity_id_val), [])
 
         result.append(
             CardGroup(
                 entity_id=entity_id_val,
                 entity_title=entity_title,
-                entity_url=meta.get("subject_url"),
+                entity_url=meta.get("subject_url") if not is_context_group else None,
                 platform=group_platform,
                 card_count=len(cards),
                 top_priority=top_priority,
@@ -400,8 +504,11 @@ async def get_grouped_cards(
                 has_pending=has_pending,
                 unread_count=unread_count,
                 cards=cards,
+                context_id=group_key if is_context_group else None,
+                context_label=context_labels.get(group_key) if is_context_group else None,
+                platforms=ordered_platforms if is_context_group and len(ordered_platforms) > 1 else None,
                 group_summary=group_summary,
-                tags=[TagAssignment(**t) for t in entity_tags],
+                tags=[TagAssignment(**t) for t in entity_tags_list],
             )
         )
 
