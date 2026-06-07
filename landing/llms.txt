@@ -1,0 +1,45 @@
+# Laya
+
+> Laya is an open-source, local-first AI command center that intercepts notifications from professional tools, processes them through a multi-stage AI pipeline, and delivers ready-to-approve Action Cards.
+
+Laya connects to platforms like Gmail, Slack, Jira, GitHub, Bitbucket, Google Calendar, Outlook, Linear, and Notion. Events are ingested via n8n workflows, classified by AI personas (Engineer, Comms, Ops, Sales, HR, Finance), and synthesized into intelligence reports with pre-drafted actions — all before the user opens the app.
+
+## Architecture
+
+- Desktop app: Tauri (Rust) + SvelteKit (Svelte 5) frontend
+- Engine: Python FastAPI backend with async SQLite + ChromaDB
+- Integration gateway: n8n running as a local Node.js process
+- All data stays on the user's machine (local-first)
+- LLM calls go through LiteLLM; supports Anthropic, OpenAI, Google, OpenRouter, Ollama, LM Studio, and any OpenAI-compatible endpoint
+
+## Pipeline
+
+Events flow through: Ingest → Space Resolution → Rules → Router (fast LLM classification) → Persona Workers → Stager (strong LLM synthesis) → Emit → Post-emit steps (entity resolution, context grouping, ChromaDB indexing, group summaries, Omni updates).
+
+## Key Features
+
+- **Action Cards**: AI-generated cards with intelligence reports, priority classification, and one-click actions
+- **6 AI Personas**: Engineer, Comms, Ops, Sales, HR, Finance — each with specialized processing
+- **Coherence**: Cross-platform entity search using semantic + fuzzy + entity search merged via Reciprocal Rank Fusion, with AI-generated narratives
+- **Omni**: Rolling cross-platform summary with four temporal layers (Attention, Recent, Period, Milestone) and progressive summarization
+- **Context Association**: Automatic semantic grouping of related cards across platforms with learning from user corrections
+- **Coding Agents**: Run Claude Code, Gemini CLI, or Codex directly from any card with a dedicated workspace
+- **Agent Studio**: Full agent configuration — runtime, execution mode, working directories, detailed prompts
+- **Composer**: Cross-platform outbound actions from a single interface (9 platform backends)
+- **Daily Briefings**: Synthesized morning briefing with events, action items, and key updates
+- **Spaces**: User-defined contexts with per-space model configs, API keys, and event routing
+- **Chat**: Semantic search across all ingested events with RAG-powered retrieval
+- **Smart Classification**: Multi-model pipeline that learns from user corrections
+- **Budget Tracking**: LLM cost monitoring by feature and pipeline step with monthly caps
+- **Privacy Tiers**: Three-tier system with optional local-only mode for sensitive data
+
+## Integrations
+
+Gmail, Slack, Jira, GitHub, Bitbucket, Google Calendar, Outlook, Linear, Notion. Custom integrations via n8n workflows posting to the Laya Event format.
+
+## Links
+
+- Source code: https://github.com/aayushch/laya
+- Documentation: https://aayushch.github.io/laya/docs.html
+- Privacy policy: https://aayushch.github.io/laya/privacy.html
+- Terms of service: https://aayushch.github.io/laya/terms.html
