@@ -17,7 +17,7 @@
 	import ListGroupComponent from '$lib/components/feed/ListGroup.svelte';
 	import BulkActionsDropdown from '$lib/components/feed/BulkActionsDropdown.svelte';
 	import LinkDialog from '$lib/components/feed/LinkDialog.svelte';
-	import { recentCards, recentDrawerOpen, trackCardVisit, clearRecentCards, type RecentCardEntry } from '$lib/stores/recentCards';
+	import { recentCards, recentDrawerOpen, trackCardVisit, trackGroupVisit, clearRecentCards, type RecentCardEntry } from '$lib/stores/recentCards';
 	import { pendingCardId } from '$lib/stores/chat';
 	import { spaces } from '$lib/stores/spaces';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
@@ -1022,6 +1022,12 @@
 		lastViewedEntityId = group.entity_id;
 		sessionStorage.removeItem(SELECTED_CARD_KEY);
 		sessionStorage.setItem(SELECTED_GROUP_KEY, group.entity_id);
+		const firstCard = group.cards[0];
+		trackGroupVisit({
+			...group,
+			space_id: firstCard?.space_id ?? undefined,
+			space_name: firstCard?.space_name ?? undefined
+		});
 		openDetailPanel(true);
 		scrollToGroupElement(group.entity_id);
 		// Optimistic: mark all cards in group as read
@@ -1116,6 +1122,14 @@
 	function handleRecentCardClick(entry: RecentCardEntry) {
 		// Capture positions before the reorder for FLIP animation
 		flipRecentCards();
+		if (entry.type === 'group') {
+			const group = groups.find((g) => g.entity_id === entry.card_id);
+			if (group) {
+				selectGroupSummary(group);
+				scrollToGroupElement(group.entity_id);
+			}
+			return;
+		}
 		// Find the card in currently loaded groups
 		for (const g of groups) {
 			const found = g.cards.find((c) => c.card_id === entry.card_id);
@@ -2194,8 +2208,8 @@
 						{#each filteredRecentCards as entry (entry.card_id)}
 							<button
 								data-recent-id={entry.card_id}
-								class="flex w-full flex-col gap-0.5 border-b border-surface-800/50 px-3 py-2 text-left transition-colors hover:bg-surface-800/60
-									{selectedCard?.card_id === entry.card_id ? 'bg-laya-orange/5 border-l-2 border-l-laya-orange/40' : ''}"
+								class="flex w-full flex-col gap-0.5 border-b border-surface-800/50 px-3 py-2 text-left transition-colors {$glassTheme ? 'hover:bg-white/[0.06]' : 'hover:bg-surface-800/60'}
+									{(selectedCard?.card_id === entry.card_id || (entry.type === 'group' && selectedGroupSummary?.group.entity_id === entry.card_id)) ? 'bg-laya-orange/5 border-l-2 border-l-laya-orange/40' : ''}"
 								onclick={() => handleRecentCardClick(entry)}
 							>
 								<div class="flex items-start justify-between gap-2">
@@ -2203,7 +2217,11 @@
 									<span class="shrink-0 text-laya-micro text-surface-600">{formatRecentTime(entry.visited_at)}</span>
 								</div>
 								<span class="line-clamp-1 text-laya-micro text-surface-500">
-									{#if entry.source_ref}{entry.source_ref}{:else if entry.entity_id}{entry.entity_id}{:else if entry.category}{entry.category}{/if}
+									{#if entry.type === 'group'}
+										{entry.card_count} cards{#if entry.source_ref} · {entry.source_ref}{/if}
+									{:else}
+										{#if entry.source_ref}{entry.source_ref}{:else if entry.entity_id}{entry.entity_id}{:else if entry.category}{entry.category}{/if}
+									{/if}
 									{#if entry.space_name}
 										<span class="text-surface-600"> · {entry.space_name}</span>
 									{/if}

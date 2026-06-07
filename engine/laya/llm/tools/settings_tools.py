@@ -28,6 +28,8 @@ _SECTION_MAP: dict[str, list[str]] = {
     "briefing": ["briefing"],
     "notifications": ["notifications"],
     "feed_preferences": ["feed_preferences"],
+    "smart_grouping": ["smart_grouping"],
+    "group_summaries": ["group_summaries"],
 }
 
 _VALID_PRIORITIES = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
@@ -302,6 +304,8 @@ async def update_notifications(
 async def update_feed_preferences(
     sortBy: str | None = None,
     showArchived: bool | None = None,
+    showBookmarked: bool | None = None,
+    showUnreadOnly: bool | None = None,
     statusFilters: list[str] | None = None,
     priorityFilters: list[str] | None = None,
     spaceFilter: str | None = None,
@@ -311,6 +315,8 @@ async def update_feed_preferences(
     Args:
         sortBy: Sort order — "newest", "priority", "category", or "platform".
         showArchived: Whether to show archived cards in the feed.
+        showBookmarked: Whether to show only bookmarked cards.
+        showUnreadOnly: Whether to show only unread cards.
         statusFilters: List of statuses to filter by (empty list = show all).
         priorityFilters: List of priorities to filter by (empty list = show all).
         spaceFilter: Space ID to filter cards by, or null for all spaces.
@@ -331,6 +337,8 @@ async def update_feed_preferences(
     if (
         sortBy is None
         and showArchived is None
+        and showBookmarked is None
+        and showUnreadOnly is None
         and statusFilters is None
         and priorityFilters is None
         and spaceFilter is None
@@ -345,6 +353,10 @@ async def update_feed_preferences(
         prefs["sortBy"] = sortBy
     if showArchived is not None:
         prefs["showArchived"] = showArchived
+    if showBookmarked is not None:
+        prefs["showBookmarked"] = showBookmarked
+    if showUnreadOnly is not None:
+        prefs["showUnreadOnly"] = showUnreadOnly
     if statusFilters is not None:
         prefs["statusFilters"] = statusFilters
     if priorityFilters is not None:
@@ -368,5 +380,89 @@ async def update_feed_preferences(
         "section": "feed_preferences",
         "old_value": old_value,
         "new_value": prefs,
+        "success": True,
+    }
+
+
+_VALID_STRICTNESS = {"strict", "balanced", "lenient"}
+
+
+async def update_smart_grouping(
+    context_association: bool | None = None,
+    smart_display: bool | None = None,
+    strictness: str | None = None,
+) -> dict[str, Any]:
+    """Toggle context-based grouping and its display in the feed.
+
+    Context association detects related cards across platforms (e.g. a Jira
+    ticket and a linked PR).  Smart display groups those related cards
+    together visually in the feed.
+
+    Args:
+        context_association: Enable or disable context-based grouping of
+                             related cards across platforms.
+        smart_display: Show or hide context groups in the feed view.
+                       Only takes effect when context_association is enabled.
+        strictness: How aggressively to group cards —
+                    "strict", "balanced", or "lenient".
+
+    Returns:
+        Dict with old and new smart_grouping values.
+    """
+    if context_association is None and smart_display is None and strictness is None:
+        return {"error": "Provide at least one of context_association, smart_display, or strictness"}
+
+    if strictness is not None and strictness not in _VALID_STRICTNESS:
+        return {
+            "error": (
+                f"strictness must be one of {sorted(_VALID_STRICTNESS)} "
+                f"(got '{strictness}')"
+            )
+        }
+
+    settings = load_settings()
+    old_value = dict(settings.get("smart_grouping", {}))
+
+    grouping = dict(settings.get("smart_grouping", {}))
+    if context_association is not None:
+        grouping["context_association"] = context_association
+        if not context_association:
+            grouping["smart_display"] = False
+    if smart_display is not None:
+        grouping["smart_display"] = smart_display
+    if strictness is not None:
+        grouping["strictness"] = strictness
+    settings["smart_grouping"] = grouping
+    save_settings(settings)
+
+    await manager.broadcast(
+        {
+            "type": "settings_changed",
+            "payload": {"section": "smart_grouping", "new_value": grouping},
+        }
+    )
+
+    await _write_settings_audit(
+        "update_smart_grouping", "smart_grouping", old_value, grouping
+    )
+    log.info(
+        "settings_updated_via_chat",
+        tool="update_smart_grouping",
+        old=old_value,
+        new=grouping,
+    )
+
+    return {
+        "section": "smart_grouping",
+        "old_value": {
+            "context_association": old_value.get("context_association"),
+            "smart_display": old_value.get("smart_display"),
+            "strictness": old_value.get("strictness"),
+        },
+        "new_value": {
+            "context_association": grouping.get("context_association"),
+            "smart_display": grouping.get("smart_display"),
+            "strictness": grouping.get("strictness"),
+        },
         "success": True,
     }

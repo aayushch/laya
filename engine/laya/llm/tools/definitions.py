@@ -97,6 +97,25 @@ def _read_tools() -> list[dict]:
                             "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"],
                             "description": "Filter by priority level.",
                         },
+                        "date_from": {
+                            "type": "string",
+                            "description": (
+                                "ISO 8601 date or datetime for the start of a time range "
+                                "filter (inclusive). Examples: '2026-04-01', '2026-04-01T00:00:00Z'. "
+                                "Use when the user mentions a time period like 'last month', "
+                                "'since April', 'past 2 weeks'. Omit if no temporal intent."
+                            ),
+                        },
+                        "date_to": {
+                            "type": "string",
+                            "description": (
+                                "ISO 8601 date or datetime for the end of a time range "
+                                "filter (inclusive). Examples: '2026-04-30', '2026-04-30T23:59:59Z'. "
+                                "Use when the user mentions a bounded time period like "
+                                "'in April', 'last week', 'between March and May'. Omit for "
+                                "open-ended ranges like 'since April'."
+                            ),
+                        },
                         "limit": {
                             "type": "integer",
                             "description": "Max results to return (default 20, max 200).",
@@ -151,6 +170,25 @@ def _read_tools() -> list[dict]:
                         "actor": {
                             "type": "string",
                             "description": "Filter by actor name or email (partial match).",
+                        },
+                        "date_from": {
+                            "type": "string",
+                            "description": (
+                                "ISO 8601 date or datetime for the start of a time range "
+                                "filter (inclusive). Examples: '2026-04-01', '2026-04-01T00:00:00Z'. "
+                                "Use when the user mentions a time period like 'last month', "
+                                "'since April', 'past 2 weeks'. Omit if no temporal intent."
+                            ),
+                        },
+                        "date_to": {
+                            "type": "string",
+                            "description": (
+                                "ISO 8601 date or datetime for the end of a time range "
+                                "filter (inclusive). Examples: '2026-04-30', '2026-04-30T23:59:59Z'. "
+                                "Use when the user mentions a bounded time period like "
+                                "'in April', 'last week', 'between March and May'. Omit for "
+                                "open-ended ranges like 'since April'."
+                            ),
                         },
                         "limit": {
                             "type": "integer",
@@ -353,6 +391,20 @@ def _read_tools() -> list[dict]:
                             "description": "Number of results (default 10).",
                             "default": 10,
                         },
+                        "date_from": {
+                            "type": "string",
+                            "description": (
+                                "ISO 8601 date or datetime for the start of a time range "
+                                "filter (inclusive). Omit if no temporal intent."
+                            ),
+                        },
+                        "date_to": {
+                            "type": "string",
+                            "description": (
+                                "ISO 8601 date or datetime for the end of a time range "
+                                "filter (inclusive). Omit if no temporal intent."
+                            ),
+                        },
                     },
                     "required": ["query"],
                 },
@@ -502,6 +554,8 @@ def _settings_read_tools() -> list[dict]:
                                 "briefing",
                                 "notifications",
                                 "feed_preferences",
+                                "smart_grouping",
+                                "group_summaries",
                                 "agent",
                             ],
                             "description": (
@@ -630,8 +684,8 @@ def _settings_write_tools() -> list[dict]:
             "function": {
                 "name": "update_feed_preferences",
                 "description": (
-                    "Change the default feed view: sort order, archived card visibility, "
-                    "status/priority filters, or space filter."
+                    "Change the default feed view: sort order, archived/bookmarked/unread "
+                    "card visibility, status/priority filters, or space filter."
                 ),
                 "parameters": {
                     "type": "object",
@@ -644,6 +698,14 @@ def _settings_write_tools() -> list[dict]:
                         "showArchived": {
                             "type": "boolean",
                             "description": "Whether to show archived cards in the feed.",
+                        },
+                        "showBookmarked": {
+                            "type": "boolean",
+                            "description": "Whether to show only bookmarked cards.",
+                        },
+                        "showUnreadOnly": {
+                            "type": "boolean",
+                            "description": "Whether to show only unread cards.",
                         },
                         "statusFilters": {
                             "type": "array",
@@ -662,6 +724,48 @@ def _settings_write_tools() -> list[dict]:
                         "spaceFilter": {
                             "type": "string",
                             "description": "Space ID to filter the feed by, or null for all spaces.",
+                        },
+                    },
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "update_smart_grouping",
+                "description": (
+                    "Toggle context-based grouping of related cards and whether "
+                    "context groups are shown in the feed. Context association "
+                    "detects related cards across platforms (e.g. a Jira ticket "
+                    "and its linked PR). Smart display groups them visually in "
+                    "the feed. Also controls grouping strictness."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "context_association": {
+                            "type": "boolean",
+                            "description": (
+                                "Enable or disable context-based grouping of "
+                                "related cards across platforms."
+                            ),
+                        },
+                        "smart_display": {
+                            "type": "boolean",
+                            "description": (
+                                "Show or hide context groups in the feed view. "
+                                "Only effective when context_association is enabled."
+                            ),
+                        },
+                        "strictness": {
+                            "type": "string",
+                            "enum": ["strict", "balanced", "lenient"],
+                            "description": (
+                                "How aggressively to group cards together. "
+                                "'strict' requires strong signals, 'lenient' "
+                                "groups more liberally."
+                            ),
                         },
                     },
                     "required": [],

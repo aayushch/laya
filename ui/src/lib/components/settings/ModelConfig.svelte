@@ -8,7 +8,17 @@
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import type { ProviderModels, CustomProvider, CustomProviderTestResult, DiscoveredModel, PipelineSettings, BudgetConfig, MonthlyCostEntry } from '$lib/api/types';
 	import { budgetPaused, loadBudgetStatus } from '$lib/stores/budget';
+	import { portal } from '$lib/actions/portal';
 	import ModelSelect from './ModelSelect.svelte';
+
+	let guideTooltip = $state<{ text: string; top: number; left: number } | null>(null);
+
+	function showGuide(e: MouseEvent, text: string) {
+		const el = e.currentTarget as HTMLElement;
+		const r = el.getBoundingClientRect();
+		guideTooltip = { text, top: r.bottom + 8, left: r.left + r.width / 2 };
+	}
+	function hideGuide() { guideTooltip = null; }
 
 	const roles = [
 		{ id: 'router', label: 'Router', hint: 'Classifies incoming events',
@@ -722,14 +732,16 @@
 							<label for="{role.id}-model" class="text-laya-base text-surface-400">{role.label}</label>
 							<p class="text-laya-micro text-surface-500">{role.hint}</p>
 						</div>
-						<div class="group/tip relative">
-							<svg class="h-3.5 w-3.5 shrink-0 text-surface-600 transition-colors group-hover/tip:text-laya-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div
+							class="cursor-help"
+							onmouseenter={(e) => showGuide(e, role.guide)}
+							onmouseleave={hideGuide}
+						>
+							<svg class="h-3.5 w-3.5 shrink-0 text-surface-600 transition-colors hover:text-laya-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01" />
 								<circle cx="12" cy="12" r="10" stroke-width="2" />
 							</svg>
-							<div class="pointer-events-none absolute left-1/2 top-full z-30 mt-2 w-64 -translate-x-1/2 rounded-lg border border-surface-600 bg-surface-800 px-3 py-2.5 text-laya-secondary leading-relaxed text-surface-300 opacity-0 shadow-lg transition-opacity duration-150 group-hover/tip:pointer-events-auto group-hover/tip:opacity-100">
-								{role.guide}
-							</div>
 						</div>
 						<ModelSelect
 							id="{role.id}-model"
@@ -1029,4 +1041,14 @@
 			{/if}
 		</div>
 	</div>
+
+	{#if guideTooltip}
+		<div
+			use:portal
+			class="pointer-events-none fixed z-[100] w-64 -translate-x-1/2 rounded-lg border border-transparent glass-tooltip px-3 py-2.5 text-laya-secondary leading-relaxed shadow-lg"
+			style="top: {guideTooltip.top}px; left: {guideTooltip.left}px;"
+		>
+			{guideTooltip.text}
+		</div>
+	{/if}
 {/if}

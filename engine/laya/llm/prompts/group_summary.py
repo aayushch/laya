@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from laya.llm.prompts import current_timestamp_line
 from laya.llm.prompts.overrides import get_prompt
 
 # ---------------------------------------------------------------------------
@@ -20,8 +19,6 @@ You are a concise status synthesizer for a professional event tracking system.
 Given multiple action cards about the same entity (e.g., a pull request, email \
 thread, Jira ticket, Slack conversation), produce a rolling executive summary \
 that captures the entity's journey and current state.
-
-{timestamp}
 
 ## OUTPUT FORMAT (JSON)
 
@@ -59,8 +56,6 @@ professional event tracking system.
 
 You receive the CURRENT summary and one or more NEW event cards. Your job is to \
 integrate the new events into the existing summary, producing an updated version.
-
-{timestamp}
 
 ## TASK
 
@@ -165,8 +160,7 @@ def build_initial_messages(
     entity_id: str,
 ) -> list[dict[str, str]]:
     """Build LLM messages for initial summary generation (2+ cards)."""
-    ts = current_timestamp_line()
-    system = get_prompt("group_summary_initial", GROUP_SUMMARY_INITIAL_SYSTEM_PROMPT).replace("{timestamp}", ts)
+    system = get_prompt("group_summary_initial", GROUP_SUMMARY_INITIAL_SYSTEM_PROMPT)
 
     cards_text = "\n\n".join(_serialize_card(c) for c in cards)
     user_msg = (
@@ -190,8 +184,7 @@ def build_rolling_messages(
 
     Accepts a single card dict (legacy) or a list of cards (batched).
     """
-    ts = current_timestamp_line()
-    system = get_prompt("group_summary_rolling", GROUP_SUMMARY_ROLLING_SYSTEM_PROMPT).replace("{timestamp}", ts)
+    system = get_prompt("group_summary_rolling", GROUP_SUMMARY_ROLLING_SYSTEM_PROMPT)
 
     # Support both single card (legacy callers) and batched list
     if isinstance(new_cards, dict):
@@ -206,6 +199,102 @@ def build_rolling_messages(
         f"--- {label} ---\n{cards_section}"
     )
 
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user_msg},
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Context-group summary (built from entity summaries, not raw cards)
+# ---------------------------------------------------------------------------
+
+CONTEXT_SUMMARY_SYSTEM_PROMPT = """\
+You are a concise status synthesizer for a professional event tracking system.
+You are summarizing a group of related work items that span different platforms \
+or entities. You receive entity-level summaries (already distilled) and \
+optionally some individual cards for entities without summaries.
+
+Produce a cross-cutting executive summary that highlights the connections \
+between these items, their dependencies, and the overall status.
+
+## OUTPUT FORMAT (JSON)
+
+Return a JSON object with these fields:
+- **headline**: One-liner capturing the overall situation across all items \
+  (max 100 characters, present tense).
+- **summary**: 3-5 sentence narrative synthesizing how these items relate, \
+  their combined journey, and where things stand overall. Focus on the \
+  connections and dependencies between entities, not just restating each one.
+- **key_events**: Chronological list of the most significant developments \
+  across all entities (3-7 items, newest last). Each item is an object with:
+  - **event**: One concise sentence.
+  - **timestamp**: ISO 8601 UTC timestamp or "" if unknown.
+- **current_status**: One sentence describing the overall state of this \
+  group of related items right now.
+- **pending_actions**: Array of open items across all entities, or null if \
+  nothing pending.
+
+## RULES
+
+- Synthesize across entities — don't just concatenate individual summaries.
+- Highlight cause-and-effect between items (e.g., "Jira ticket triggered the PR").
+- Use present tense for current state, past tense for history.
+- Include platform context (which item is from Jira, Gmail, etc.) when useful.
+- Never use emoji or icon characters anywhere in your output.
+"""
+
+
+def _serialize_entity_summary(summary: dict, entity_id: str) -> str:
+    """Format an entity-level summary for inclusion in a context summary prompt."""
+    plat = entity_id.split(":")[0] if ":" in entity_id else "unknown"
+    subject = entity_id.split(":")[-1] if ":" in entity_id else entity_id
+    parts = [
+        f"[Entity: {subject} ({plat})]",
+        f"  Headline: {summary.get('headline', '')}",
+        f"  Summary: {summary.get('summary', '')}",
+    ]
+    if summary.get("current_status"):
+        parts.append(f"  Current status: {summary['current_status']}")
+    pending = summary.get("pending_actions")
+    if pending:
+        parts.append("  Pending actions:")
+        for item in pending:
+            parts.append(f"    - {item}")
+    return "\n".join(parts)
+
+
+def build_context_summary_messages(
+    entity_summaries: list[tuple[str, dict]],
+    fallback_cards: list[dict],
+    context_label: str | None,
+) -> list[dict[str, str]]:
+    """Build LLM messages for context-group summary generation.
+
+    Args:
+        entity_summaries: List of (entity_id, summary_dict) tuples.
+        fallback_cards: Raw cards for entities that lack summaries.
+        context_label: Human-readable label for the context group.
+    """
+    system = get_prompt("context_summary", CONTEXT_SUMMARY_SYSTEM_PROMPT)
+
+    sections: list[str] = []
+    if context_label:
+        sections.append(f"Context: {context_label}")
+
+    if entity_summaries:
+        summaries_text = "\n\n".join(
+            _serialize_entity_summary(s, eid) for eid, s in entity_summaries
+        )
+        sections.append(f"--- ENTITY SUMMARIES ---\n\n{summaries_text}")
+
+    if fallback_cards:
+        cards_text = "\n\n".join(_serialize_card(c) for c in fallback_cards)
+        sections.append(
+            f"--- INDIVIDUAL CARDS (no entity summary available) ---\n\n{cards_text}"
+        )
+
+    user_msg = "\n\n".join(sections)
     return [
         {"role": "system", "content": system},
         {"role": "user", "content": user_msg},

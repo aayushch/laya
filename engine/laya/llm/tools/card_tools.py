@@ -16,6 +16,7 @@ from laya.llm.tools.constants import (
     CARDS_BY_ENTITY_MAX,
     CHAT_SEARCH_DEFAULT,
     CHAT_SEARCH_MAX,
+    parse_iso_to_timestamp,
 )
 
 
@@ -31,6 +32,8 @@ async def _search_semantic(
     capped_limit: int,
     offset: int,
     space_id: str | None,
+    date_from_ts: float | None = None,
+    date_to_ts: float | None = None,
 ) -> tuple[list[Any], int, bool]:
     """ChromaDB semantic search → SQLite hydration.  Returns (rows, total, has_more)."""
     from laya.db.chromadb_store import memory_search
@@ -41,6 +44,10 @@ async def _search_semantic(
         chroma_filters.append({"space_id": space_id})
     if priority:
         chroma_filters.append({"priority": priority})
+    if date_from_ts is not None:
+        chroma_filters.append({"timestamp": {"$gte": date_from_ts}})
+    if date_to_ts is not None:
+        chroma_filters.append({"timestamp": {"$lte": date_to_ts}})
 
     chroma_where: dict[str, Any] | None = None
     if len(chroma_filters) == 1:
@@ -92,6 +99,8 @@ async def _search_keyword(
     capped_limit: int,
     offset: int,
     space_id: str | None,
+    date_from_ts: float | None = None,
+    date_to_ts: float | None = None,
 ) -> tuple[list[Any], int, bool]:
     """SQL LIKE keyword search.  Returns (rows, total, has_more)."""
     db = await get_db()
@@ -115,6 +124,13 @@ async def _search_keyword(
     if space_id:
         conditions.append("space_id = ?")
         params.append(space_id)
+
+    if date_from_ts is not None:
+        conditions.append("created_at >= ?")
+        params.append(datetime.fromtimestamp(date_from_ts, tz=timezone.utc).isoformat())
+    if date_to_ts is not None:
+        conditions.append("created_at <= ?")
+        params.append(datetime.fromtimestamp(date_to_ts, tz=timezone.utc).isoformat())
 
     where = " AND ".join(conditions) if conditions else "1=1"
 
@@ -163,6 +179,8 @@ async def search_cards(
     limit: int = CHAT_SEARCH_DEFAULT,
     offset: int = 0,
     space_id: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
 ) -> dict[str, Any]:
     """Search action cards with semantic or keyword matching.
 
@@ -172,16 +190,20 @@ async def search_cards(
     picture even if the search only matched a subset of the entity's cards.
     """
     capped_limit = min(limit, CHAT_SEARCH_MAX)
+    date_from_ts = parse_iso_to_timestamp(date_from)
+    date_to_ts = parse_iso_to_timestamp(date_to)
 
     # Semantic search when enabled and a text query is provided;
     # fall back to SQL keyword search otherwise.
     if semantic and query:
         rows, total, has_more = await _search_semantic(
             query, status, priority, capped_limit, offset, space_id,
+            date_from_ts, date_to_ts,
         )
     else:
         rows, total, has_more = await _search_keyword(
             query, status, priority, capped_limit, offset, space_id,
+            date_from_ts, date_to_ts,
         )
 
     # -- Group rows by entity_id ------------------------------------------

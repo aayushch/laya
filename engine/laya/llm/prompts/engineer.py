@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from laya.llm.prompts import current_timestamp_line
 from laya.llm.prompts.overrides import get_prompt
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
@@ -79,8 +78,6 @@ Body:
             entity_ctx_text += f"  - {ent.get('canonical_name', '?')} ({ent.get('entity_type', '?')})\n"
 
     user_message = f"""\
-{current_timestamp_line()}
-
 Build a task prompt for a coding agent to investigate this issue.
 
 {event_text}

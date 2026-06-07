@@ -16,6 +16,8 @@ export interface RecentCardEntry {
 	space_id?: string;
 	space_name?: string;
 	visited_at: number; // epoch ms
+	type?: 'card' | 'group';
+	card_count?: number;
 }
 
 function loadFromStorage(): RecentCardEntry[] {
@@ -49,6 +51,8 @@ export function trackCardVisit(card: {
 	category?: string;
 	space_id?: string;
 	space_name?: string;
+	type?: 'card' | 'group';
+	card_count?: number;
 }) {
 	update((entries) => {
 		const existing = entries.find((e) => e.card_id === card.card_id);
@@ -63,6 +67,8 @@ export function trackCardVisit(card: {
 			existing.category = card.category;
 			existing.space_id = card.space_id;
 			existing.space_name = card.space_name;
+			existing.type = card.type;
+			existing.card_count = card.card_count;
 			const updated = [existing, ...entries.filter((e) => e.card_id !== card.card_id)];
 			saveToStorage(updated);
 			return updated;
@@ -76,12 +82,37 @@ export function trackCardVisit(card: {
 			category: card.category,
 			space_id: card.space_id,
 			space_name: card.space_name,
-			visited_at: Date.now()
+			visited_at: Date.now(),
+			type: card.type,
+			card_count: card.card_count
 		};
 		const filtered = entries.filter((e) => e.card_id !== card.card_id);
 		const next = [entry, ...filtered].slice(0, MAX_ENTRIES);
 		saveToStorage(next);
 		return next;
+	});
+}
+
+/** Track a group visit. Uses entity_id as the dedup key. */
+export function trackGroupVisit(group: {
+	entity_id: string;
+	entity_title: string;
+	platform: string;
+	card_count: number;
+	group_summary?: { headline: string; summary: string } | null;
+	space_id?: string;
+	space_name?: string;
+}) {
+	trackCardVisit({
+		card_id: group.entity_id,
+		header: group.entity_title,
+		summary: group.group_summary?.headline ?? '',
+		source_ref: group.platform,
+		entity_id: group.entity_id,
+		space_id: group.space_id,
+		space_name: group.space_name,
+		type: 'group',
+		card_count: group.card_count
 	});
 }
 

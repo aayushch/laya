@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from laya.llm.prompts import current_timestamp_line
 from laya.llm.prompts.overrides import get_prompt
 
 SUMMARIZER_SYSTEM_PROMPT = """\
@@ -109,8 +108,6 @@ def build_summarizer_messages(
     tags_text = f"\nTags: {', '.join(card_tags)}" if card_tags else ""
 
     user_message = f"""\
-{current_timestamp_line()}
-
 Update the daily summary to incorporate this new card.
 {current_text}
 
@@ -143,8 +140,6 @@ def build_status_change_messages(
     import json
 
     user_message = f"""\
-{current_timestamp_line()}
-
 A card's status has changed. Update the daily summary accordingly.
 
 [CURRENT SUMMARY]

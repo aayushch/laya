@@ -208,6 +208,40 @@ def _get_custom_provider_meta(model: str) -> dict | None:
     }
 
 
+# ── Current date/time injection ──────────────────────────────────────────
+
+_DATETIME_PREFIX = "[Current date/time:"
+
+
+def _inject_current_datetime(messages: list[dict]) -> list[dict]:
+    """Prepend current date/time to the last user message (non-mutating).
+
+    Targets the last user message because:
+    - Generative flows: it's the only user message
+    - Chat flows: it's the current turn (historical messages don't need it)
+    - Tool loops: role "tool" messages don't have role "user", so the
+      current turn's user message is still the last one
+    """
+    from laya.llm.prompts import current_timestamp_line
+
+    last_user_idx = None
+    for i in range(len(messages) - 1, -1, -1):
+        if messages[i].get("role") == "user":
+            last_user_idx = i
+            break
+    if last_user_idx is None:
+        return messages
+
+    content = messages[last_user_idx].get("content", "")
+    if isinstance(content, str) and content.startswith(_DATETIME_PREFIX):
+        return messages
+
+    hint = f"[{current_timestamp_line()}]"
+    out = list(messages)
+    out[last_user_idx] = {**out[last_user_idx], "content": f"{hint}\n\n{content}"}
+    return out
+
+
 # ── Prompt caching ──────────────────────────────────────────────────────
 
 # Providers where caching is opt-in via cache_control annotation.
@@ -416,6 +450,8 @@ async def llm_call(
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
 
+    # Inject current date/time into user message (cache-safe, not in system prompt)
+    kwargs["messages"] = _inject_current_datetime(kwargs["messages"])
     # Annotate system messages for prompt caching (Anthropic, Gemini)
     kwargs["messages"] = _apply_prompt_caching(model, kwargs["messages"])
 
@@ -696,6 +732,8 @@ async def llm_call_streaming(
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
 
+    # Inject current date/time into user message (cache-safe, not in system prompt)
+    kwargs["messages"] = _inject_current_datetime(kwargs["messages"])
     # Annotate system messages for prompt caching (Anthropic, Gemini)
     kwargs["messages"] = _apply_prompt_caching(model, kwargs["messages"])
 

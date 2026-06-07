@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from laya.llm.prompts import current_timestamp_line
 from laya.llm.prompts.overrides import get_prompt
 from laya.models.event import LayaEvent
 
@@ -174,8 +173,6 @@ Body:
         feedback_section = f"\n\n{feedback_context}"
 
     user_message = f"""\
-{current_timestamp_line()}
-
 Classify this event and plan investigation steps.
 
 {event_text}{context_section}{feedback_section}
@@ -298,8 +295,6 @@ def build_batch_router_messages(
         events_text += f"\n\n--- EVENT {i} ---\n{event_text}\n--- END EVENT {i} ---"
 
     user_message = f"""\
-{current_timestamp_line()}
-
 Classify each event below independently. Return a JSON object with a "classifications" \
 array containing one classification per event, in the same order as presented.
 

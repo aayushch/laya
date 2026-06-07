@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from laya.llm.prompts import current_timestamp_line
 from laya.llm.prompts.overrides import get_prompt
 
 
@@ -82,8 +81,6 @@ def build_learner_messages(
         existing_text = "(none)"
 
     user_message = f"""\
-{current_timestamp_line()}
-
 Analyze these user corrections and extract classification rules.
 
 --- CORRECTIONS ({len(corrections)} total) ---

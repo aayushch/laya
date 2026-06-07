@@ -404,9 +404,11 @@ async def get_grouped_cards(
         for ev in ev_rows:
             event_meta[ev["event_id"]] = dict(ev)
 
-    # Batch-fetch group summaries for all entity_ids present
+    # Batch-fetch group summaries for all entity_ids and context group keys
     all_entity_ids = set()
-    for entity_rows in groups.values():
+    for group_key, entity_rows in groups.items():
+        if group_key.startswith("ctx_"):
+            all_entity_ids.add(group_key)
         for r in entity_rows:
             eid = r["entity_id"]
             if eid:
@@ -476,7 +478,7 @@ async def get_grouped_cards(
             group_platform = meta.get("source_platform", "")
             ordered_platforms = []
 
-        group_summary = summary_map.get(entity_id_val) if len(cards) >= 2 and not is_context_group else None
+        group_summary = summary_map.get(entity_id_val) if len(cards) >= 2 else None
 
         # Entity-level tags (aggregate across all entity_ids in context groups)
         entity_tags_list: list[dict] = []
@@ -1116,13 +1118,19 @@ async def mark_card_read(card_id: str) -> dict:
 
 @router.post("/cards/group/{entity_id:path}/read-all")
 async def mark_group_read(entity_id: str) -> dict:
-    """Mark all cards in an entity group as read."""
+    """Mark all cards in an entity or context group as read."""
     db = await get_db()
     now = datetime.now(timezone.utc).isoformat()
-    cursor = await db.execute(
-        "UPDATE action_cards SET read_at = ? WHERE entity_id = ? AND read_at IS NULL",
-        (now, entity_id),
-    )
+    if entity_id.startswith("ctx_"):
+        cursor = await db.execute(
+            "UPDATE action_cards SET read_at = ? WHERE context_id = ? AND read_at IS NULL",
+            (now, entity_id),
+        )
+    else:
+        cursor = await db.execute(
+            "UPDATE action_cards SET read_at = ? WHERE entity_id = ? AND read_at IS NULL",
+            (now, entity_id),
+        )
     await db.commit()
     return {"status": "read", "entity_id": entity_id, "marked": cursor.rowcount}
 

@@ -57,6 +57,7 @@ def _register_tools() -> None:
         "update_briefing": settings_tools.update_briefing,
         "update_notifications": settings_tools.update_notifications,
         "update_feed_preferences": settings_tools.update_feed_preferences,
+        "update_smart_grouping": settings_tools.update_smart_grouping,
     }
 
 

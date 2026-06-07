@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from laya.llm.prompts import current_timestamp_line
 from laya.llm.prompts.overrides import get_prompt
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
@@ -64,8 +63,6 @@ Body:
         metadata_text = "\n\nEvent metadata:\n" + "\n".join(metadata_lines)
 
     user_message = f"""\
-{current_timestamp_line()}
-
 Prepare an operational briefing for this event.
 
 {event_text}

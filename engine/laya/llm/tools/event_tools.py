@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from typing import Any
 
 from laya.db.sqlite import get_db
@@ -14,6 +15,7 @@ from laya.llm.tools.constants import (
     CHAT_SEARCH_MAX,
     RECENT_ACTIVITY_DEFAULT,
     RECENT_ACTIVITY_MAX,
+    parse_iso_to_timestamp,
 )
 
 
@@ -24,6 +26,8 @@ async def search_events(
     limit: int = CHAT_SEARCH_DEFAULT,
     offset: int = 0,
     space_id: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
 ) -> dict[str, Any]:
     """Search events by keyword, platform, or actor."""
     db = await get_db()
@@ -47,6 +51,15 @@ async def search_events(
     if space_id:
         conditions.append("space_id = ?")
         params.append(space_id)
+
+    date_from_ts = parse_iso_to_timestamp(date_from)
+    date_to_ts = parse_iso_to_timestamp(date_to)
+    if date_from_ts is not None:
+        conditions.append("timestamp >= ?")
+        params.append(datetime.fromtimestamp(date_from_ts, tz=timezone.utc).isoformat())
+    if date_to_ts is not None:
+        conditions.append("timestamp <= ?")
+        params.append(datetime.fromtimestamp(date_to_ts, tz=timezone.utc).isoformat())
 
     where = " AND ".join(conditions) if conditions else "1=1"
 
