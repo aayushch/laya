@@ -199,7 +199,7 @@ nav .container {
   border-radius: 50%;
   animation: pulse-glow 2s ease-in-out infinite;
 }
-.hero-ph-badge { margin-top: 28px; display: flex; justify-content: center; }
+.hero-ph-badge { margin-top: 28px; display: flex; justify-content: center; align-items: center; gap: 16px; flex-wrap: wrap; }
 .hero h1 {
   margin-bottom: 24px;
   color: var(--surface-50);
