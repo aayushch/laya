@@ -391,7 +391,14 @@
 					{timeAgo(group.latest_at)}
 				</span>
 				{#if isContextGroup}
-					<span class="text-[9px] font-semibold uppercase tracking-widest text-surface-500 shrink-0">Linked</span>
+					<span class="linked-badge inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-medium tracking-wide shrink-0">
+						<svg class="h-2.5 w-2.5 shrink-0" viewBox="0 0 16 16" fill="none">
+							<rect x="1" y="1" width="8" height="8" rx="2" stroke="currentColor" stroke-width="1.3" />
+							<rect x="7" y="7" width="8" height="8" rx="2" stroke="currentColor" stroke-width="1.3" />
+							<circle cx="8" cy="8" r="1.5" fill="currentColor" />
+						</svg>
+						Linked
+					</span>
 				{/if}
 				<div class="ml-auto flex items-center gap-1.5">
 					{#if hasBookmark}

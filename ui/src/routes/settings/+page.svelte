@@ -19,6 +19,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { portal } from '$lib/actions/portal';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { fade } from 'svelte/transition';
 
@@ -82,6 +83,15 @@
 	let measureEl = $state<HTMLElement>();
 	let visibleCount = $state(tabs.length);
 	let overflowMenuOpen = $state(false);
+	let moreBtnRef = $state<HTMLElement | null>(null);
+	let overflowPanelRef = $state<HTMLDivElement | null>(null);
+	let overflowPos = $state({ top: 0, right: 0 });
+
+	function positionOverflow() {
+		if (!moreBtnRef) return;
+		const r = moreBtnRef.getBoundingClientRect();
+		overflowPos = { top: r.bottom + 4, right: window.innerWidth - r.right };
+	}
 	const visibleTabs = $derived(tabs.slice(0, visibleCount));
 	const overflowTabs = $derived(tabs.slice(visibleCount));
 
@@ -117,8 +127,10 @@
 
 	$effect(() => {
 		function onClick(e: MouseEvent) {
-			const target = e.target as HTMLElement;
-			if (!target.closest('.settings-overflow-menu')) overflowMenuOpen = false;
+			const target = e.target as Node;
+			if (moreBtnRef?.contains(target)) return;
+			if (overflowPanelRef?.contains(target)) return;
+			overflowMenuOpen = false;
 		}
 		document.addEventListener('click', onClick);
 		return () => document.removeEventListener('click', onClick);
@@ -172,13 +184,14 @@
 			{/each}
 
 			{#if overflowTabs.length > 0}
-				<div class="settings-overflow-menu relative ml-auto">
+				<div class="ml-auto">
 					<button
+						bind:this={moreBtnRef}
 						class="flex items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1.5 text-laya-base font-medium transition-colors
 							{overflowTabs.some((t) => t.id === activeTab)
 								? 'bg-laya-orange/15 text-laya-orange'
 								: 'text-surface-400 hover:text-surface-200'}"
-						onclick={() => (overflowMenuOpen = !overflowMenuOpen)}
+						onclick={() => { positionOverflow(); overflowMenuOpen = !overflowMenuOpen; }}
 						aria-label="More tabs"
 					>
 						More
@@ -186,20 +199,28 @@
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
 						</svg>
 					</button>
-					{#if overflowMenuOpen}
-						<!-- bg-surface-900 (not -800) avoids the .glass-section tooltip override in app.css that makes -800 nearly transparent -->
-						<div class="absolute right-0 top-full z-[100] mt-1 flex min-w-[160px] flex-col rounded-lg border border-surface-600 py-1 shadow-lg {$glassTheme ? 'bg-surface-900/90 backdrop-blur-xl' : 'bg-surface-800'}">
-							{#each overflowTabs as tab}
-								<button
-									class="w-full whitespace-nowrap px-4 py-1.5 text-left text-laya-base font-medium transition-colors hover:bg-surface-700
-										{activeTab === tab.id ? 'text-laya-orange' : 'text-surface-300'}"
-									onclick={() => { switchTab(tab.id as TabId); overflowMenuOpen = false; }}
-								>
-									{tab.label}
-								</button>
-							{/each}
-						</div>
-					{/if}
+				</div>
+			{/if}
+			{#if overflowMenuOpen}
+				<div
+					use:portal
+					bind:this={overflowPanelRef}
+					class="settings-overflow-panel fixed z-[100] flex min-w-[160px] flex-col rounded-lg border py-1 shadow-lg
+						{$glassTheme
+							? 'glass-dropdown border-white/15'
+							: 'border-surface-600 bg-surface-800 shadow-xl shadow-black/30'}"
+					style="top: {overflowPos.top}px; right: {overflowPos.right}px;"
+				>
+					{#each overflowTabs as tab}
+						<button
+							class="w-full whitespace-nowrap px-4 py-1.5 text-left text-laya-base font-medium transition-colors
+								{$glassTheme ? 'hover:bg-white/[0.08]' : 'hover:bg-surface-700'}
+								{activeTab === tab.id ? 'text-laya-orange' : 'text-surface-300'}"
+							onclick={() => { switchTab(tab.id as TabId); overflowMenuOpen = false; }}
+						>
+							{tab.label}
+						</button>
+					{/each}
 				</div>
 			{/if}
 

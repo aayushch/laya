@@ -1869,7 +1869,7 @@
 
 		<!-- Filter popover (rendered outside collapse conditional so it works in both modes) -->
 		{#if filterPopoverOpen}
-			<div use:portal bind:this={filterMenuEl} class="filter-dropdown fixed z-[100] w-64 rounded-xl border p-3 {$glassTheme ? 'glass-menu' : 'border-surface-600 bg-surface-800 shadow-xl shadow-black/30'}" style="top: {filterMenuPos.top}px; left: {filterMenuPos.left}px;">
+			<div use:portal bind:this={filterMenuEl} class="filter-dropdown fixed z-[100] w-64 overflow-y-auto rounded-xl border p-3 {$glassTheme ? 'glass-menu' : 'border-surface-600 bg-surface-800 shadow-xl shadow-black/30'}" style="top: {filterMenuPos.top}px; left: {filterMenuPos.left}px; max-height: calc(100vh - {filterMenuPos.top}px - 16px);">
 				<!-- Sort -->
 				<div class="mb-3">
 					<div class="mb-1.5 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">Sort</div>

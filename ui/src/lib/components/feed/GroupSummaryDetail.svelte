@@ -61,6 +61,10 @@
 	}
 
 	let regenerateError = $state<string | null>(null);
+
+	$effect(() => {
+		if (summary) regenerateError = null;
+	});
 	let relatedCount = $state<number | null>(null);
 	let overflowOpen = $state(false);
 	let overflowBtnEl: HTMLElement | undefined = $state();
@@ -249,6 +253,10 @@
 		try {
 			await engineApi.regenerateGroupSummary(group.entity_id);
 		} catch (e) {
+			// Timeout (AbortError) is expected — LLM generation can exceed the
+			// 30s HTTP timeout.  The backend continues and delivers the result
+			// via WebSocket, so only surface non-timeout errors.
+			if (e instanceof DOMException && e.name === 'AbortError') return;
 			regenerateError = 'Failed to regenerate summary';
 		}
 	}

@@ -1246,6 +1246,24 @@ html, body {
 	border-color: rgb(255 255 255 / 0.5);
 }
 
+/* Linked-group badge — dark default */
+.linked-badge {
+	background: oklch(0.72 0.17 55 / 0.10);
+	color: oklch(0.72 0.17 55 / 0.70);
+}
+[data-theme='light'] .linked-badge {
+	background: oklch(0.55 0.16 55 / 0.15);
+	color: oklch(0.45 0.14 55);
+	border: 0.5px solid oklch(0.55 0.16 55 / 0.25);
+}
+[data-theme='light'][data-glass-theme] .linked-badge {
+	background: oklch(0.55 0.16 55 / 0.12);
+	color: oklch(0.40 0.14 55);
+	border: 0.5px solid oklch(0.55 0.16 55 / 0.20);
+	-webkit-backdrop-filter: blur(6px);
+	backdrop-filter: blur(6px);
+}
+
 /* Glass theme mesh gradient — warm radial orbs on body that
    give backdrop-blur cards something to diffuse through. */
 [data-glass-theme] body {

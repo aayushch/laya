@@ -384,8 +384,9 @@ async def get_grouped_cards(
                 for gk in group_keys:
                     merged_rows.extend(groups[gk])
                     merged_keys.add(gk)
-                # Sort merged cards by created_at descending (latest first)
+                # entity_id ASC (same-entity cards together), created_at DESC within each
                 merged_rows.sort(key=lambda r: r["created_at"] or "", reverse=True)
+                merged_rows.sort(key=lambda r: r["entity_id"] or "")
                 groups[cid] = merged_rows
 
             # Remove the original entity groups that were merged

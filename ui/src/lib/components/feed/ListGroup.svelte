@@ -357,13 +357,15 @@
 
 				<!-- Source — fixed width, matches ListRow; brand dot prefix mirrors ListRow -->
 		{#if isContextGroup}
-			<span class="w-[76px] shrink-0 flex items-center gap-1.5 text-laya-orange/60 text-laya-secondary font-semibold uppercase tracking-wider text-surface-500 truncate">
-				<svg class="h-3.5 w-3.5 shrink-0" viewBox="0 0 16 16" fill="none">
-					<rect x="1" y="1" width="8" height="8" rx="2" stroke="currentColor" stroke-width="1.3" />
-					<rect x="7" y="7" width="8" height="8" rx="2" stroke="currentColor" stroke-width="1.3" />
-					<circle cx="8" cy="8" r="1.5" fill="currentColor" />
-				</svg>
-				<span class="truncate text-surface-500">Linked</span>
+			<span class="w-[76px] shrink-0 flex items-center justify-center">
+				<span class="linked-badge inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-medium tracking-wide">
+					<svg class="h-2.5 w-2.5 shrink-0" viewBox="0 0 16 16" fill="none">
+						<rect x="1" y="1" width="8" height="8" rx="2" stroke="currentColor" stroke-width="1.3" />
+						<rect x="7" y="7" width="8" height="8" rx="2" stroke="currentColor" stroke-width="1.3" />
+						<circle cx="8" cy="8" r="1.5" fill="currentColor" />
+					</svg>
+					Linked
+				</span>
 			</span>
 		{:else}
 			<span class="w-[76px] shrink-0 flex items-center gap-1.5 text-laya-secondary font-semibold uppercase tracking-wider text-surface-500 truncate"

@@ -36,9 +36,17 @@
 	}
 
 	const isUser = $derived(message.role === 'user');
-	const time = $derived(
-		new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-	);
+	const time = $derived.by(() => {
+		const d = new Date(message.timestamp);
+		const hm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+		const now = new Date();
+		const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+		const msgDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+		const diff = today.getTime() - msgDay.getTime();
+		if (diff === 0) return hm;
+		if (diff === 86400000) return `Yesterday ${hm}`;
+		return `${d.toLocaleDateString([], { day: 'numeric', month: 'short' })} ${hm}`;
+	});
 
 	// Parse <think>...</think> blocks from assistant content
 	const parsed = $derived.by(() => {
