@@ -669,7 +669,7 @@ def get_stager_json_schema() -> dict[str, Any]:
                     "description": "Cross-entity context match from related cards",
                     "properties": {
                         "matched_card_id": {
-                            "type": ["string", "null"],
+                            "anyOf": [{"type": "string"}, {"type": "null"}],
                             "description": "card_id of a related card with DIFFERENT entity that shares real-world context, or null",
                         },
                         "label": {

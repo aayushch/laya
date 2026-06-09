@@ -372,7 +372,7 @@ def get_omni_json_schema(density: str = "compact") -> dict[str, Any]:
                 "description": "Section type: attention, recent, period, or milestone",
             },
             "label": {
-                "type": ["string", "null"],
+                "anyOf": [{"type": "string"}, {"type": "null"}],
                 "description": "Optional label (e.g., 'Sprint 14 (Mar 25 – Apr 7)')",
             },
             "items": {

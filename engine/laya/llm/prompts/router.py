@@ -223,7 +223,7 @@ def _single_classification_schema() -> dict[str, Any]:
                     "properties": {
                         "entity_type": {"type": "string"},
                         "value": {"type": "string"},
-                        "platform": {"type": ["string", "null"]},
+                        "platform": {"anyOf": [{"type": "string"}, {"type": "null"}]},
                     },
                     "required": ["entity_type", "value", "platform"],
                     "additionalProperties": False,
@@ -235,8 +235,10 @@ def _single_classification_schema() -> dict[str, Any]:
             },
             "requires_research": {"type": "boolean"},
             "secondary_persona": {
-                "type": ["string", "null"],
-                "enum": ["ENGINEER", "COMMS", "OPS", "SALES", "HR", "FINANCE", None],
+                "anyOf": [
+                    {"type": "string", "enum": ["ENGINEER", "COMMS", "OPS", "SALES", "HR", "FINANCE"]},
+                    {"type": "null"},
+                ],
             },
             "reasoning": {"type": "string"},
         },

@@ -110,8 +110,10 @@ GROUP_SUMMARY_JSON_SCHEMA: dict[str, Any] = {
             },
             "current_status": {"type": "string"},
             "pending_actions": {
-                "type": ["array", "null"],
-                "items": {"type": "string"},
+                "anyOf": [
+                    {"type": "array", "items": {"type": "string"}},
+                    {"type": "null"},
+                ],
             },
         },
         "required": ["headline", "summary", "key_events", "current_status", "pending_actions"],

@@ -123,7 +123,7 @@ async def run_router(
         event_id=event.event_id,
         step="route",
         temperature=0.0,
-        max_tokens=1500,
+        max_tokens=4000,
         space_id=space_id,
     )
 
@@ -202,7 +202,7 @@ async def run_batch_router(
         response_schema=schema,
         step="route_batch",
         temperature=0.0,
-        max_tokens=1500 * len(events_data),
+        max_tokens=4000 * len(events_data),
         space_id=space_id,
     )
 
