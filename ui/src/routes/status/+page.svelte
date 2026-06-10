@@ -6,11 +6,13 @@
 	import { wsStatus, lastMessage } from '$lib/stores/websocket';
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
-	import type { DashboardResponse } from '$lib/api/types';
+	import type { DashboardResponse, ThroughputResponse } from '$lib/api/types';
 	import StatCard from '$lib/components/dashboard/StatCard.svelte';
 	import BarChart from '$lib/components/dashboard/BarChart.svelte';
 	import DonutChart from '$lib/components/dashboard/DonutChart.svelte';
 	import FeatureCostChart from '$lib/components/dashboard/FeatureCostChart.svelte';
+	import ThroughputChart from '$lib/components/dashboard/ThroughputChart.svelte';
+	import WaitTimeChart from '$lib/components/dashboard/WaitTimeChart.svelte';
 
 	const cardClass = $derived($glassTheme ? 'rounded-xl glass-section p-4' : 'rounded-xl border border-surface-700 bg-surface-800 p-4');
 
@@ -28,6 +30,7 @@
 	// n8n process management (available in Tauri)
 	let n8nProcessStatus = $state('checking...');
 	let n8nAction = $state('');
+	let wsExpanded = $state(false);
 
 	async function invoke(cmd: string): Promise<any> {
 		try {
@@ -57,6 +60,24 @@
 		await new Promise((r) => setTimeout(r, 1000));
 		await checkN8nProcess();
 		n8nAction = '';
+	}
+
+	// --- Throughput ---
+	let throughputData: ThroughputResponse | null = $state(null);
+	let throughputLoading = $state(true);
+	let throughputError = $state('');
+	let throughputMinutes = $state(60);
+
+	async function loadThroughput() {
+		throughputLoading = true;
+		throughputError = '';
+		try {
+			throughputData = await engineApi.getThroughput(throughputMinutes);
+		} catch (e) {
+			throughputError = e instanceof Error ? e.message : 'Failed to load throughput';
+		} finally {
+			throughputLoading = false;
+		}
 	}
 
 	// --- Dashboard / Analytics ---
@@ -151,6 +172,7 @@
 	onMount(() => {
 		checkN8nProcess();
 		loadDashboard();
+		loadThroughput();
 	});
 </script>
 
@@ -271,11 +293,61 @@
 			</div>
 		</div>
 
-		<!-- Last WS message -->
+		<!-- Last WS message (collapsible) -->
 		{#if $lastMessage}
+			{@const wsJson = JSON.stringify($lastMessage, null, 2)}
+			{@const wsLines = wsJson.split('\n')}
+			{@const wsOverflows = wsLines.length > 7}
 			<div class="mt-3 {cardClass}">
 				<div class="mb-1.5 text-[10px] uppercase tracking-wider text-surface-400">Last WS Message</div>
-				<pre class="overflow-x-auto text-xs text-surface-300">{JSON.stringify($lastMessage, null, 2)}</pre>
+				<pre
+					class="overflow-x-auto text-xs text-surface-300"
+					style="max-height: {wsExpanded || !wsOverflows ? 'none' : '7.5lh'}; overflow-y: hidden; {wsOverflows && !wsExpanded ? '-webkit-mask-image: linear-gradient(to bottom, black 50%, transparent 100%); mask-image: linear-gradient(to bottom, black 50%, transparent 100%);' : ''}"
+				>{wsJson}</pre>
+				{#if wsOverflows}
+					<button
+						class="mt-1 text-[10px] text-surface-400 transition-colors hover:text-surface-200"
+						onclick={() => wsExpanded = !wsExpanded}
+					>
+						{wsExpanded ? 'Collapse' : `Show all (${wsLines.length} lines)`}
+					</button>
+				{/if}
+			</div>
+		{/if}
+	</section>
+
+	<!-- Throughput & Wait Time section -->
+	<section>
+		<div class="mb-4 flex items-center justify-between">
+			<h2 class="text-lg font-semibold">Throughput & Wait Time</h2>
+			<select
+				bind:value={throughputMinutes}
+				onchange={loadThroughput}
+				class="rounded-lg border px-3 py-1.5 text-sm text-surface-200 focus:border-laya-orange/50 focus:outline-none {$glassTheme ? 'glass-input' : 'border-surface-600 bg-surface-800'}"
+			>
+				<option value={60}>Last 60 min</option>
+				<option value={1440}>Last 24 hours</option>
+				<option value={10080}>Last 7 days</option>
+				<option value={43200}>Last 30 days</option>
+			</select>
+		</div>
+
+		{#if throughputLoading}
+			<div class="flex items-center justify-center py-12">
+				<div class="h-5 w-5 animate-spin rounded-full border-2 border-laya-orange border-t-transparent"></div>
+			</div>
+		{:else if throughputError}
+			<div class="rounded-xl border border-red-800 bg-red-900/20 p-4 text-sm text-red-300">
+				{throughputError}
+			</div>
+		{:else if throughputData && throughputData.buckets.length > 0}
+			<div class="space-y-3">
+				<ThroughputChart buckets={throughputData.buckets} windowMinutes={throughputData.window_minutes} />
+				<WaitTimeChart buckets={throughputData.buckets} windowMinutes={throughputData.window_minutes} />
+			</div>
+		{:else}
+			<div class={cardClass}>
+				<p class="text-sm text-surface-500">No throughput data in the selected window.</p>
 			</div>
 		{/if}
 	</section>

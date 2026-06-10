@@ -62,3 +62,17 @@ class DashboardResponse(BaseModel):
     approval_by_persona: list[PersonaApprovalRate] = []
     response_time: ResponseTimeStats
     period_days: int
+
+
+class ThroughputBucket(BaseModel):
+    minute: str
+    ingested: int = 0
+    processed: int = 0
+    failed: int = 0
+    avg_wait_s: float = 0.0
+    p95_wait_s: float = 0.0
+
+
+class ThroughputResponse(BaseModel):
+    buckets: list[ThroughputBucket]
+    window_minutes: int

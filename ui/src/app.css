@@ -1872,6 +1872,7 @@ html, body {
 
 @container feed-list (max-width: 489px) {
 	.col-actions { display: none; }
+	.col-new-count { display: none; }
 }
 
 /* Skip layout/paint for off-screen list rows during panel slide

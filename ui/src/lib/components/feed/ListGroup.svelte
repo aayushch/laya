@@ -406,7 +406,7 @@
 				onmouseenter={(e) => showTooltip(e.currentTarget, statusSummaryTooltip)}
 				onmouseleave={hideTooltip}
 			>
-				{group.card_count} cards{#if group.unread_count > 0} · {group.unread_count} new{/if}
+				{group.card_count}{#if group.unread_count > 0}<span class="col-new-count"> · {group.unread_count} new</span>{/if}
 			</button>
 		</div>
 

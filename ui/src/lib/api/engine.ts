@@ -65,7 +65,8 @@ import type {
 	TagAssignment,
 	McpConfig,
 	McpConfigUpdate,
-	McpToken
+	McpToken,
+	ThroughputResponse
 } from './types';
 
 import { getEngineUrl } from '$lib/config';
@@ -431,6 +432,11 @@ export const engineApi = {
 	getDashboard: (days?: number) => {
 		const qs = days ? `?days=${days}` : '';
 		return request<DashboardResponse>(`/dashboard${qs}`);
+	},
+
+	getThroughput: (minutes?: number) => {
+		const qs = minutes ? `?minutes=${minutes}` : '';
+		return request<ThroughputResponse>(`/dashboard/throughput${qs}`);
 	},
 
 	// Chat

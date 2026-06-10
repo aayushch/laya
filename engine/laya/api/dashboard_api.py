@@ -9,6 +9,8 @@ import structlog
 from fastapi import APIRouter
 
 from laya.db.sqlite import get_db
+from datetime import datetime, timedelta, timezone
+
 from laya.models.dashboard import (
     DashboardResponse,
     DashboardStats,
@@ -16,6 +18,8 @@ from laya.models.dashboard import (
     PersonaApprovalRate,
     ResponseTimeStats,
     SourceBreakdown,
+    ThroughputBucket,
+    ThroughputResponse,
     TimeSavedEstimate,
 )
 
@@ -233,3 +237,94 @@ async def get_dashboard(days: int = 30) -> DashboardResponse:
         response_time=response_time,
         period_days=days,
     )
+
+
+@router.get("/dashboard/throughput")
+async def get_throughput(minutes: int = 60) -> ThroughputResponse:
+    """Per-bucket throughput and wait-time for the last N minutes.
+
+    Bucket granularity adapts to the window size:
+      <=120 min  → 1-minute buckets  (label HH:MM)
+      <=1440 min → 1-hour buckets    (label Mon HH:00)
+      >1440 min  → 1-day buckets     (label Mon DD)
+    """
+    minutes = max(10, min(minutes, 43200))
+    db = await get_db()
+
+    if minutes <= 120:
+        sql_fmt = "%Y-%m-%dT%H:%M"
+        step = timedelta(minutes=1)
+        truncate = lambda dt: dt.replace(second=0, microsecond=0)
+    elif minutes <= 1440:
+        sql_fmt = "%Y-%m-%dT%H:00"
+        step = timedelta(hours=1)
+        truncate = lambda dt: dt.replace(minute=0, second=0, microsecond=0)
+    else:
+        sql_fmt = "%Y-%m-%d"
+        step = timedelta(days=1)
+        truncate = lambda dt: dt.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    rows = await db.execute_fetchall(
+        f"""SELECT
+                strftime('{sql_fmt}', created_at) AS bucket,
+                processing_status,
+                CASE WHEN processing_started_at IS NOT NULL
+                     THEN (julianday(processing_started_at) - julianday(created_at)) * 86400
+                     ELSE NULL
+                END AS wait_s
+            FROM events
+            WHERE created_at >= datetime('now', '-{minutes} minutes')
+            ORDER BY created_at"""
+    )
+
+    from collections import defaultdict
+
+    counts: dict[str, dict[str, int]] = defaultdict(lambda: {"ingested": 0, "processed": 0, "failed": 0})
+    waits: dict[str, list[float]] = defaultdict(list)
+
+    for row in rows:
+        bucket_key = row[0]
+        status = row[1]
+        wait_s = row[2]
+
+        counts[bucket_key]["ingested"] += 1
+        if status in ("completed", "filtered"):
+            counts[bucket_key]["processed"] += 1
+        elif status == "dead":
+            counts[bucket_key]["failed"] += 1
+
+        if wait_s is not None and wait_s >= 0:
+            waits[bucket_key].append(wait_s)
+
+    now = datetime.now(timezone.utc)
+    start = now - timedelta(minutes=minutes)
+    cursor = truncate(start)
+
+    buckets: list[ThroughputBucket] = []
+    while cursor <= now:
+        key = cursor.strftime(sql_fmt)
+        iso = cursor.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        c = counts.get(key)
+        w = waits.get(key)
+
+        avg_wait = 0.0
+        p95_wait = 0.0
+        if w:
+            avg_wait = round(sum(w) / len(w), 2)
+            sw = sorted(w)
+            p95_wait = round(sw[min(int(len(sw) * 0.95), len(sw) - 1)], 2)
+
+        buckets.append(
+            ThroughputBucket(
+                minute=iso,
+                ingested=c["ingested"] if c else 0,
+                processed=c["processed"] if c else 0,
+                failed=c["failed"] if c else 0,
+                avg_wait_s=avg_wait,
+                p95_wait_s=p95_wait,
+            )
+        )
+        cursor += step
+
+    return ThroughputResponse(buckets=buckets, window_minutes=minutes)

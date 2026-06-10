@@ -652,6 +652,22 @@ export interface DashboardResponse {
 	period_days: number;
 }
 
+/** One minute bucket of throughput + wait-time data */
+export interface ThroughputBucket {
+	minute: string;
+	ingested: number;
+	processed: number;
+	failed: number;
+	avg_wait_s: number;
+	p95_wait_s: number;
+}
+
+/** Response from GET /dashboard/throughput */
+export interface ThroughputResponse {
+	buckets: ThroughputBucket[];
+	window_minutes: number;
+}
+
 /** Chat message */
 export interface ChatMessage {
 	message_id: string;

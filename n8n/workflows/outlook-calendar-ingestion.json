@@ -3,23 +3,42 @@
   "nodes": [
     {
       "parameters": {
-        "pollTimes": {
-          "item": [
+        "rule": {
+          "interval": [
             {
-              "mode": "everyMinute"
+              "field": "minutes",
+              "minutesInterval": 1
             }
           ]
-        },
-        "calendarId": "calendar"
+        }
       },
-      "name": "Outlook Calendar Trigger",
-      "type": "n8n-nodes-base.microsoftOutlookTrigger",
-      "typeVersion": 1,
+      "name": "Every Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
       "position": [
         250,
         300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "event",
+        "operation": "getAll",
+        "fromAllCalendars": true,
+        "returnAll": true,
+        "output": "raw",
+        "filters": {
+          "custom": "={{ 'lastModifiedDateTime ge ' + new Date(Date.now() - 2 * 60 * 1000).toISOString() }}"
+        }
+      },
+      "name": "Get Calendar Events",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        500,
+        300
       ],
-      "notes": "Polls Outlook calendar for new/updated events every minute. Uses the Microsoft Graph API under the hood."
+      "notes": "Fetches calendar events modified in the last 2 minutes from all calendars via Microsoft Graph API. Uses OData filter on lastModifiedDateTime for server-side filtering. Requires microsoftOutlookOAuth2Api credential."
     },
     {
       "parameters": {
@@ -103,7 +122,7 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        500,
+        750,
         300
       ]
     },
@@ -129,13 +148,24 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        750,
+        1000,
         300
       ]
     }
   ],
   "connections": {
-    "Outlook Calendar Trigger": {
+    "Every Minute": {
+      "main": [
+        [
+          {
+            "node": "Get Calendar Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Calendar Events": {
       "main": [
         [
           {
@@ -163,6 +193,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.04.3"
+    "laya_version": "2026.06.2"
   }
 }
