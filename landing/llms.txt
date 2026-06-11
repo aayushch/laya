@@ -1,6 +1,6 @@
 # Laya
 
-> Laya is an open-source, local-first AI command center that intercepts notifications from professional tools, processes them through a multi-stage AI pipeline, and delivers ready-to-approve Action Cards.
+> Laya is an open-source, local-first AI notification command center that aggregates Slack, Gmail, GitHub, Jira, Notion, Outlook, and Calendar notifications — powered by local LLMs via Ollama and LM Studio, or cloud models like Claude and GPT with your own API keys. Notifications are processed through a multi-stage AI pipeline and delivered as ready-to-approve Action Cards.
 
 Laya connects to platforms like Gmail, Slack, Jira, GitHub, Bitbucket, Google Calendar, Outlook, Linear, and Notion. Events are ingested via n8n workflows, classified by AI personas (Engineer, Comms, Ops, Sales, HR, Finance), and synthesized into intelligence reports with pre-drafted actions — all before the user opens the app.
 

@@ -207,6 +207,18 @@ nav .container {
   margin-bottom: 24px;
   color: var(--surface-50);
 }
+/* Keyword-rich positioning line inside the <h1> (SEO/LLM visibility) —
+   styled down to read as a subheading under the tagline */
+.hero h1 .h1-seo {
+  display: block;
+  font-size: clamp(1rem, 1.6vw, 1.15rem);
+  font-weight: 500;
+  line-height: 1.6;
+  letter-spacing: normal;
+  color: var(--surface-300);
+  max-width: 640px;
+  margin: 20px auto 0;
+}
 .hero p.subtitle {
   font-size: clamp(1.1rem, 2vw, 1.35rem);
   color: var(--surface-300);

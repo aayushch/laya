@@ -4,7 +4,27 @@
 
 **A cadence for professional orchestration.**
 
-Laya is a local-first desktop application that acts as a notification aggregator and command center for professionals. It intercepts events from your professional tools (Jira, Bitbucket, Slack, Gmail, Calendar), performs autonomous research and action-staging using LLM-powered agents, and presents you with ready-to-approve **Action Cards** -- so the answer is ready before you open the notification.
+Laya is an open-source, local-first AI notification command center that aggregates Slack, Gmail, GitHub, Jira, Notion, Outlook, and Calendar notifications — powered by local LLMs via Ollama and LM Studio, or cloud models like Claude and GPT with your own API keys. It intercepts events from your professional tools, performs autonomous research and action-staging using LLM-powered agents, and presents you with ready-to-approve **Action Cards** -- so the answer is ready before you open the notification.
+
+**Works with:**
+
+- Ollama and LM Studio (local LLMs)
+- Claude models (Anthropic)
+- GPT models (OpenAI)
+- Gemini models (Google)
+- Llama models and any OpenAI-compatible endpoint — via LiteLLM
+
+**Aggregates:**
+
+- Gmail
+- Slack
+- GitHub
+- Bitbucket
+- Jira
+- Linear
+- Notion
+- Outlook (email and calendar)
+- Google Calendar
 
 ## How It Works
 
@@ -26,8 +46,8 @@ Your Tools (Jira, Slack, Gmail, Bitbucket, Calendar)
 
 ## Key Features
 
-- **Multi-persona brain:** Routes events to specialized AI personas (Engineer, Comms, Ops) with domain-specific tools and prompts
-- **Card Workspaces:** Complex tasks (bug fixes, code reviews) open interactive workspaces where you collaborate with a coding agent (Claude Code, Gemini CLI, or Codex) through multiple approval steps
+- **Multi-persona brain:** Routes events to specialized AI personas (Engineer, Comms, Ops) with domain-specific tools and prompts, with AI prioritization of every notification
+- **Card Workspaces:** Agent workflows for complex tasks (bug fixes, code reviews) — interactive workspaces where you collaborate with a coding agent (Claude Code, Gemini CLI, or Codex) through multiple approval steps
 - **Card Research:** Launch on-demand deep research sessions on any card — a coding agent investigates with web search, semantic context, and sandboxed file access
 - **Spaces:** User-defined contexts grouping event sources with per-space model and API key configurations
 - **Context Association:** Automatically links related cards across platforms using semantic similarity and LLM confirmation. Learns from your corrections to improve grouping accuracy over time
@@ -36,7 +56,7 @@ Your Tools (Jira, Slack, Gmail, Bitbucket, Calendar)
 - **Analytics Dashboard:** Track events processed, time saved, LLM costs (broken down by feature and pipeline step), and approval rates
 - **Budget Tracking:** Monitor LLM costs by feature (Pulse, Omni, Chat, Coherence) with monthly caps and automatic pause when limits are reached
 - **Chat sidebar:** Ask Laya questions about your events, projects, and context
-- **Coherence:** Cross-platform entity search traces any person, ticket, or PR across all platforms with AI-generated narratives
+- **Coherence:** Cross-platform entity search traces any person, ticket, or PR across all platforms using local vector search (ChromaDB), with AI-generated narratives
 - **Egress:** Execute outbound actions (emails, Slack messages, PR comments) directly from Laya with preview-before-send
 - **Omni:** Rolling cross-platform summary that answers "where am I right now?" with four temporal layers (Attention, Recent, Period, Milestone) and progressive AI compression
 - **Bookmarks:** Pin important cards for quick access regardless of date or status
