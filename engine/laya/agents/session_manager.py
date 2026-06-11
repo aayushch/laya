@@ -202,22 +202,49 @@ async def resume_session(session_id: str) -> None:
         await _update_session_status(session_id, SessionStatus.RUNNING)
 
 
-async def cancel_session(session_id: str) -> None:
-    """Cancel an active session."""
+async def cancel_session(session_id: str) -> bool:
+    """Cancel an active session.
+
+    Falls back to a DB-only cancel for orphaned sessions: after an engine
+    restart, _active_sessions is empty but the workspace_sessions row may
+    still say 'running'. Without this fallback, Cancel is a silent no-op
+    and the session appears stuck as running forever.
+
+    Returns True if a session was actually cancelled (process killed and/or
+    DB status updated), False if there was nothing to cancel.
+    """
     agent = _active_sessions.get(session_id)
     if agent:
         await agent.cancel()
-        await _update_session_status(session_id, SessionStatus.CANCELLED)
         _active_sessions.pop(session_id, None)
-        # Clean up reverse mappings
-        for cid, sid in list(_card_sessions.items()):
-            if sid == session_id:
-                _card_sessions.pop(cid, None)
-                break
-        for eid, sid in list(_entity_sessions.items()):
-            if sid == session_id:
-                _entity_sessions.pop(eid, None)
-                break
+    else:
+        # Orphan path: only cancel if the DB row exists and is non-terminal
+        db = await get_db()
+        rows = await db.execute_fetchall(
+            "SELECT status FROM workspace_sessions WHERE session_id = ?",
+            (session_id,),
+        )
+        if not rows:
+            log.warning("cancel_unknown_session", session_id=session_id)
+            return False
+        if rows[0]["status"] in ("completed", "failed", "cancelled"):
+            return False
+        log.info(
+            "cancelling_orphaned_session",
+            session_id=session_id,
+            db_status=rows[0]["status"],
+        )
+    await _update_session_status(session_id, SessionStatus.CANCELLED)
+    # Clean up reverse mappings
+    for cid, sid in list(_card_sessions.items()):
+        if sid == session_id:
+            _card_sessions.pop(cid, None)
+            break
+    for eid, sid in list(_entity_sessions.items()):
+        if sid == session_id:
+            _entity_sessions.pop(eid, None)
+            break
+    return True
 
 
 async def cancel_sessions_for_card(card_id: str) -> None:
@@ -451,6 +478,34 @@ async def _update_session_status(session_id: str, status: SessionStatus) -> None
 def get_active_session_ids() -> list[str]:
     """Return all active session IDs."""
     return list(_active_sessions.keys())
+
+
+async def recover_orphaned_sessions() -> int:
+    """Mark sessions left in active states by a crash/restart as failed.
+
+    Called once at engine startup. Agent subprocesses do not survive an
+    engine restart, and _active_sessions is in-memory only — so any
+    'starting'/'running'/'paused' row found at startup is an orphan whose
+    process is gone. Without this sweep the UI keeps showing the session
+    as running and Pause/Cancel have nothing to act on.
+
+    'awaiting_input' is intentionally excluded: those sessions have no live
+    process by design and remain resumable via the stored agent session ID.
+    """
+    db = await get_db()
+    cursor = await db.execute(
+        """UPDATE workspace_sessions
+           SET status = 'failed',
+               error_message = 'Engine restarted while session was active',
+               completed_at = CURRENT_TIMESTAMP,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE status IN ('starting', 'running', 'paused')"""
+    )
+    await db.commit()
+    count = cursor.rowcount
+    if count:
+        log.warning("orphaned_sessions_recovered", count=count)
+    return count
 
 
 async def cleanup_on_shutdown() -> None:

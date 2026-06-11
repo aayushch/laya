@@ -166,6 +166,93 @@ class TestSessionManager:
         assert row["status"] == "cancelled"
         assert "sess_cancel" not in session_manager._active_sessions
 
+    async def test_cancel_orphaned_session(self, db):
+        """cancel_session cancels a running DB row even when the agent is not
+        in _active_sessions (engine restarted, process gone)."""
+        await insert_test_card(db, card_id="card_orphan", event_id="evt_orphan")
+
+        await db.execute(
+            "INSERT INTO workspace_sessions (session_id, card_id, agent_type, status) VALUES (?, ?, ?, ?)",
+            ("sess_orphan", "card_orphan", "pi_cli", "running"),
+        )
+        await db.commit()
+
+        assert "sess_orphan" not in session_manager._active_sessions
+        acted = await session_manager.cancel_session("sess_orphan")
+        assert acted is True
+
+        async with db.execute(
+            "SELECT status FROM workspace_sessions WHERE session_id = ?",
+            ("sess_orphan",),
+        ) as cursor:
+            row = await cursor.fetchone()
+        assert row["status"] == "cancelled"
+
+    async def test_cancel_unknown_session_is_noop(self, db):
+        """cancel_session returns False for a session that doesn't exist."""
+        acted = await session_manager.cancel_session("sess_does_not_exist")
+        assert acted is False
+
+    async def test_cancel_terminal_session_is_noop(self, db):
+        """cancel_session returns False and leaves status untouched for a
+        session already in a terminal state."""
+        await insert_test_card(db, card_id="card_term", event_id="evt_term")
+
+        await db.execute(
+            "INSERT INTO workspace_sessions (session_id, card_id, agent_type, status) VALUES (?, ?, ?, ?)",
+            ("sess_term", "card_term", "claude_code", "completed"),
+        )
+        await db.commit()
+
+        acted = await session_manager.cancel_session("sess_term")
+        assert acted is False
+
+        async with db.execute(
+            "SELECT status FROM workspace_sessions WHERE session_id = ?",
+            ("sess_term",),
+        ) as cursor:
+            row = await cursor.fetchone()
+        assert row["status"] == "completed"
+
+    async def test_recover_orphaned_sessions(self, db):
+        """recover_orphaned_sessions fails starting/running/paused rows but
+        leaves awaiting_input (resumable) and terminal rows untouched."""
+        await insert_test_card(db, card_id="card_recover", event_id="evt_recover")
+
+        statuses = {
+            "sess_r_starting": "starting",
+            "sess_r_running": "running",
+            "sess_r_paused": "paused",
+            "sess_r_awaiting": "awaiting_input",
+            "sess_r_completed": "completed",
+        }
+        for sid, status in statuses.items():
+            await db.execute(
+                "INSERT INTO workspace_sessions (session_id, card_id, agent_type, status) VALUES (?, ?, ?, ?)",
+                (sid, "card_recover", "claude_code", status),
+            )
+        await db.commit()
+
+        count = await session_manager.recover_orphaned_sessions()
+        assert count == 3
+
+        expected = {
+            "sess_r_starting": "failed",
+            "sess_r_running": "failed",
+            "sess_r_paused": "failed",
+            "sess_r_awaiting": "awaiting_input",
+            "sess_r_completed": "completed",
+        }
+        for sid, want in expected.items():
+            async with db.execute(
+                "SELECT status, error_message FROM workspace_sessions WHERE session_id = ?",
+                (sid,),
+            ) as cursor:
+                row = await cursor.fetchone()
+            assert row["status"] == want, sid
+            if want == "failed":
+                assert row["error_message"] == "Engine restarted while session was active"
+
     async def test_pause_resume_session(self, db):
         """pause_session and resume_session update status."""
         await insert_test_card(db, card_id="card_pause", event_id="evt_pause")

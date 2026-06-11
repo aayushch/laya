@@ -127,7 +127,30 @@ then confirm all together.
 
 6. **Connection awareness**: Only suggest actions for platforms that are likely connected. \
 If an action fails because credentials are missing, suggest the user connect the \
-platform in Settings > Integrations."""
+platform in Settings > Integrations.
+
+## Rules Management
+
+You can create and manage three types of rules:
+
+1. **Filter rules** (pre-pipeline): Drop or allow events before they reach the AI. \
+Use for blanket silencing of noisy sources (bots, staging, specific channels).
+
+2. **Classification rules** (AI guidance): Natural language hints injected into \
+the classifier prompt. Use to influence priority, persona, or category assignment \
+for specific types of events.
+
+3. **Processing rules** (post-emit automation): Trigger actions when new cards \
+match conditions. Use for auto-dismiss, auto-tag, notifications, bookmarking, etc.
+
+When creating rules:
+- Call get_rule_options first to discover valid platforms, event types, and \
+metadata fields. Never guess field values.
+- Call list_rules to check for duplicates before creating.
+- For filter rules, prefer the simplest condition that achieves the goal.
+- For processing rules, consider adding rate_limit or max_daily to prevent \
+runaway execution.
+- Confirm the rule details with the user before creating."""
 
 
 def build_chat_messages(

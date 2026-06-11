@@ -284,6 +284,10 @@ async def lifespan(app: FastAPI):
     # Recover events and cards orphaned by previous crash/shutdown, then start consumer
     await recover_stalled_events()
     await recover_stalled_cards()
+    # Agent sessions never survive a restart (subprocesses die with the
+    # engine, tracking dict is in-memory) — mark leftover rows as failed
+    from laya.agents.session_manager import recover_orphaned_sessions
+    await recover_orphaned_sessions()
     start_consumer()
 
     # Start Omni queue processor — picks up any cards left in omni_queue

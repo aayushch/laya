@@ -5,6 +5,7 @@
 	import { slide } from 'svelte/transition';
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { lastMessage } from '$lib/stores/websocket';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { portal } from '$lib/actions/portal';
 	import Dropdown from '$lib/components/Dropdown.svelte';
@@ -57,7 +58,7 @@
 	}
 
 	// --- Field groups for the condition builder ---
-	const fieldGroups = [
+	const staticFieldGroups = [
 		{
 			label: 'Event',
 			fields: [
@@ -83,7 +84,39 @@
 		},
 	];
 
-	const allFields = fieldGroups.flatMap(g => g.fields);
+	// --- Content metadata fields (platform-contextual) ---
+	let metadataFields = $state<Record<string, string[]>>({});
+
+	const selectedPlatform = $derived.by(() => {
+		const platformCond = formConditions.find(
+			c => c.field === 'event.source.platform' && c.operator === 'equals' && c.value
+		);
+		return platformCond?.value ?? null;
+	});
+
+	$effect(() => {
+		const platform = selectedPlatform;
+		if (!platform) {
+			metadataFields = {};
+			return;
+		}
+		engineApi.getMetadataFields(platform).then(res => {
+			metadataFields = res.keys;
+		}).catch(() => {
+			metadataFields = {};
+		});
+	});
+
+	const fieldGroups = $derived.by(() => {
+		const metaKeys = Object.keys(metadataFields);
+		if (metaKeys.length === 0) return staticFieldGroups;
+		return [
+			...staticFieldGroups,
+			{ label: 'Content Metadata', fields: metaKeys.map(k => `event.content.metadata.${k}`) },
+		];
+	});
+
+	const allFields = $derived(fieldGroups.flatMap(g => g.fields));
 
 	const stringOperators: ProcessingRuleOperator[] = ['equals', 'not_equals', 'contains', 'not_contains', 'starts_with', 'ends_with', 'in', 'not_in', 'matches'];
 	const numericOperators: ProcessingRuleOperator[] = ['equals', 'not_equals', 'gt', 'gte', 'lt', 'lte'];
@@ -145,6 +178,12 @@
 		if (field === 'context.day_of_week') return dayNames.map((_, i) => String(i));
 		if (field === 'context.hour_of_day') return hourLabels.map(h => h.value);
 		if (field === 'classification.requires_research' || field === 'context.is_carry_forward') return ['true', 'false'];
+		const metaPrefix = 'event.content.metadata.';
+		if (field.startsWith(metaPrefix)) {
+			const key = field.slice(metaPrefix.length);
+			const vals = metadataFields[key];
+			return vals?.length ? vals : null;
+		}
 		return null;
 	}
 
@@ -199,6 +238,13 @@
 			const t = await engineApi.listTags();
 			availableTags = t.tags;
 		} catch { /* tags unavailable */ }
+	});
+
+	$effect(() => {
+		const msg = $lastMessage;
+		if (msg?.type === 'rules_changed' && (!msg.payload?.rule_type || msg.payload.rule_type === 'processing')) {
+			engineApi.listProcessingRules().then(data => { rules = data.rules; }).catch(() => {});
+		}
 	});
 
 	// --- CRUD ---

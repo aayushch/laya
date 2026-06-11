@@ -16,7 +16,7 @@ from laya.egress.tool_handlers import (
     handle_open_compose,
 )
 from laya.egress.tools import PREVIEWABLE_EGRESS_TOOLS
-from laya.llm.tools import card_tools, entity_tools, event_tools, search_tools, settings_tools, summary_tools
+from laya.llm.tools import card_tools, entity_tools, event_tools, rules_tools, search_tools, settings_tools, summary_tools
 
 log = structlog.get_logger()
 
@@ -58,6 +58,14 @@ def _register_tools() -> None:
         "update_notifications": settings_tools.update_notifications,
         "update_feed_preferences": settings_tools.update_feed_preferences,
         "update_smart_grouping": settings_tools.update_smart_grouping,
+        # Rule tools
+        "list_rules": rules_tools.list_rules,
+        "get_rule_options": rules_tools.get_rule_options,
+        "create_filter_rule": rules_tools.create_filter_rule,
+        "create_classification_rule": rules_tools.create_classification_rule,
+        "create_processing_rule": rules_tools.create_processing_rule,
+        "update_rule": rules_tools.update_rule,
+        "delete_rule": rules_tools.delete_rule,
     }
 
 

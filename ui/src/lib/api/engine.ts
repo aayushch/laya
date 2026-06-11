@@ -146,6 +146,8 @@ export const engineApi = {
 		),
 	getProcessingRuleFieldOptions: () =>
 		request<Record<string, string[]>>('/processing-rules/field-options'),
+	getMetadataFields: (platform: string) =>
+		request<{ keys: Record<string, string[]> }>(`/processing-rules/metadata-fields?platform=${platform}`),
 	getProcessingRulesSettings: () =>
 		request<{ auto_disable_threshold: number }>('/processing-rules/settings'),
 	updateProcessingRulesSettings: (body: { auto_disable_threshold: number }) =>

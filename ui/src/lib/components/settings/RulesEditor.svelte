@@ -4,6 +4,7 @@
 	import { onMount } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { lastMessage } from '$lib/stores/websocket';
 	import ProcessingRulesEditor from './ProcessingRulesEditor.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import type { Rule, RuleCondition, SimpleCondition, ClassificationRule } from '$lib/api/types';
@@ -77,6 +78,18 @@
 			clsError = 'Failed to load classification rules';
 		} finally {
 			clsLoading = false;
+		}
+	});
+
+	$effect(() => {
+		const msg = $lastMessage;
+		if (msg?.type !== 'rules_changed') return;
+		const ruleType = msg.payload?.rule_type;
+		if (!ruleType || ruleType === 'filter') {
+			engineApi.getRules().then(data => { rules = data.rules; }).catch(() => {});
+		}
+		if (!ruleType || ruleType === 'classification') {
+			engineApi.getClassificationRules().then(data => { clsRules = data; }).catch(() => {});
 		}
 	});
 

@@ -15,6 +15,8 @@ def get_all_tool_definitions() -> list[dict]:
         *_write_tools(),
         *_settings_read_tools(),
         *_settings_write_tools(),
+        *_rules_read_tools(),
+        *_rules_write_tools(),
         *get_egress_tool_definitions(),
     ]
 
@@ -29,13 +31,13 @@ def _names_of(defs: list[dict]) -> set[str]:
 
 def read_tool_names() -> set[str]:
     """Names of read-only data tools (search/fetch cards, events, entities) and
-    the read-only settings introspection tool."""
-    return _names_of(_read_tools()) | _names_of(_settings_read_tools())
+    the read-only settings/rules introspection tools."""
+    return _names_of(_read_tools()) | _names_of(_settings_read_tools()) | _names_of(_rules_read_tools())
 
 
 def write_tool_names() -> set[str]:
-    """Names of mutating tools: card lifecycle changes and settings updates."""
-    return _names_of(_write_tools()) | _names_of(_settings_write_tools())
+    """Names of mutating tools: card lifecycle, settings, and rule changes."""
+    return _names_of(_write_tools()) | _names_of(_settings_write_tools()) | _names_of(_rules_write_tools())
 
 
 def egress_tool_names() -> set[str]:
@@ -769,6 +771,355 @@ def _settings_write_tools() -> list[dict]:
                         },
                     },
                     "required": [],
+                },
+            },
+        },
+    ]
+
+
+def _rules_read_tools() -> list[dict]:
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": "list_rules",
+                "description": (
+                    "List existing rules that control event processing. Returns rules "
+                    "of one or all types: 'filter' (pre-pipeline drop/allow), "
+                    "'classification' (AI classification hints), or 'processing' "
+                    "(post-emit automation). Use this before creating rules to check "
+                    "for duplicates, or when the user asks what rules are configured."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "rule_type": {
+                            "type": "string",
+                            "enum": ["filter", "classification", "processing"],
+                            "description": "Which type of rules to list. Omit to list all types.",
+                        },
+                    },
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_rule_options",
+                "description": (
+                    "Discover available values for building rule conditions. Call this "
+                    "BEFORE creating a rule to find valid platforms, event types, "
+                    "metadata fields, tags, and other field values. "
+                    "Use category='platforms' to list connected platforms, "
+                    "'event_types' for raw event types (optionally filtered by platform), "
+                    "'metadata_fields' to discover content.metadata keys for a platform "
+                    "(requires the platform parameter), "
+                    "'tags' for existing tag names, "
+                    "'field_values' for all processing rule dropdown values "
+                    "(personas, priorities, categories, subject types, etc.), "
+                    "or omit category to get a compact overview of everything."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "category": {
+                            "type": "string",
+                            "enum": ["platforms", "event_types", "metadata_fields", "tags", "field_values"],
+                            "description": "Which category of options to retrieve. Omit for all.",
+                        },
+                        "platform": {
+                            "type": "string",
+                            "description": (
+                                "Filter by platform. Required for 'metadata_fields', "
+                                "optional for 'event_types'."
+                            ),
+                        },
+                    },
+                    "required": [],
+                },
+            },
+        },
+    ]
+
+
+def _rules_write_tools() -> list[dict]:
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": "create_filter_rule",
+                "description": (
+                    "Create a pre-pipeline event filter rule that drops or allows "
+                    "events BEFORE they reach the AI classifier. Use for blanket "
+                    "silencing (e.g., 'drop all bot messages', 'ignore events from "
+                    "staging-bot@company.com', 'only allow Slack messages from "
+                    "#engineering'). "
+                    "For simple single-field conditions, pass field/operator/value "
+                    "directly. For compound logic (AND/OR), pass a condition object. "
+                    "Available fields: actor.email, actor.name, source.platform, "
+                    "source.raw_event_type, subject.type, subject.id, subject.title, "
+                    "content.body, content.metadata.* (e.g., content.metadata.slack_channel_name). "
+                    "Operators: equals, not_equals, contains, starts_with, ends_with, in."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Human-readable rule name (e.g., 'Drop staging bot').",
+                        },
+                        "field": {
+                            "type": "string",
+                            "description": (
+                                "Dot-notation field path for a simple condition "
+                                "(e.g., 'actor.email', 'source.platform', "
+                                "'content.metadata.slack_channel_name'). "
+                                "Ignored if 'condition' is provided."
+                            ),
+                        },
+                        "operator": {
+                            "type": "string",
+                            "enum": ["equals", "not_equals", "contains", "starts_with", "ends_with", "in"],
+                            "description": "Comparison operator. Ignored if 'condition' is provided.",
+                        },
+                        "value": {
+                            "description": (
+                                "Value to compare against. String for most operators; "
+                                "array of strings for 'in'. Ignored if 'condition' is provided."
+                            ),
+                        },
+                        "condition": {
+                            "type": "object",
+                            "description": (
+                                "Full condition object for compound logic. Overrides "
+                                "field/operator/value. Examples: "
+                                '{"field": "actor.email", "operator": "contains", "value": "bot"}, '
+                                '{"all": [{"field": "source.platform", "operator": "equals", "value": "slack"}, '
+                                '{"field": "content.metadata.slack_channel_name", "operator": "equals", "value": "random"}]}'
+                            ),
+                        },
+                        "action": {
+                            "type": "string",
+                            "enum": ["drop", "allow"],
+                            "description": "Whether to drop (silence) or allow (whitelist) matching events. Default: drop.",
+                        },
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Whether the rule starts enabled. Default: true.",
+                        },
+                    },
+                    "required": ["name"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "create_classification_rule",
+                "description": (
+                    "Create a classification guidance rule — a natural language "
+                    "instruction that tells the AI classifier how to handle certain "
+                    "events. Use when the user wants to influence priority, persona, "
+                    "or category assignment (e.g., 'PR approval notifications from "
+                    "Bitbucket should always be LOW priority', 'Messages from the CEO "
+                    "should be CRITICAL priority', 'Calendar events should use the "
+                    "OPS persona'). The rule_text is injected directly into the "
+                    "classifier prompt."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "rule_text": {
+                            "type": "string",
+                            "description": (
+                                "Natural language classification instruction. Be specific "
+                                "about what events it applies to and what the desired "
+                                "classification should be."
+                            ),
+                        },
+                        "field": {
+                            "type": "string",
+                            "enum": ["priority", "persona"],
+                            "description": (
+                                "Which classification field this rule targets. "
+                                "Omit for general rules that may affect multiple fields."
+                            ),
+                        },
+                        "space_id": {
+                            "type": "string",
+                            "description": "Optional space to scope the rule to. Omit for global.",
+                        },
+                    },
+                    "required": ["rule_text"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "create_processing_rule",
+                "description": (
+                    "Create a post-emit automation rule that triggers actions when "
+                    "new cards match conditions. Use for automation like 'auto-dismiss "
+                    "low-priority Slack messages', 'tag all Jira tickets from project X', "
+                    "'notify me when a CRITICAL card arrives', 'bookmark all PRs from "
+                    "Alice'. "
+                    "The condition is a JSON object — simple or nested with all/any/not. "
+                    "Call get_rule_options first to discover valid field values. "
+                    "Available condition fields: event.source.platform, "
+                    "event.source.raw_event_type, event.actor.name, event.actor.email, "
+                    "event.subject.type, event.subject.title, event.content.body, "
+                    "event.content.metadata.*, classification.persona, "
+                    "classification.priority, classification.category, card.space_id, "
+                    "context.actor_relationship, context.hour_of_day, context.day_of_week. "
+                    "Operators: equals, not_equals, contains, not_contains, starts_with, "
+                    "ends_with, in, not_in, matches (regex), gt, gte, lt, lte, exists, not_exists."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Human-readable rule name.",
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": "Optional description of what the rule does.",
+                        },
+                        "condition": {
+                            "type": "object",
+                            "description": (
+                                "Condition tree. Simple: "
+                                '{"field": "event.source.platform", "operator": "equals", "value": "slack"}. '
+                                "Compound: "
+                                '{"all": [{"field": "...", "operator": "...", "value": "..."}, ...]}. '
+                                'Negation: {"not": {"field": "...", "operator": "...", "value": "..."}}.'
+                            ),
+                        },
+                        "actions": {
+                            "type": "array",
+                            "items": {"type": "object"},
+                            "description": (
+                                "Actions to execute. Types: "
+                                'set_status ({"type":"set_status","status":"dismissed|archived|done"}), '
+                                'set_priority ({"type":"set_priority","priority":"LOW|MEDIUM|HIGH|CRITICAL"}), '
+                                'bookmark ({"type":"bookmark"}), '
+                                'add_tag ({"type":"add_tag","tag_name":"my-tag","create_if_missing":true}), '
+                                'send_notification ({"type":"send_notification","title_template":"...","body_template":"..."}), '
+                                'run_entity_agent ({"type":"run_entity_agent","prompt_template":"..."}), '
+                                'execute_egress ({"type":"execute_egress","platform":"slack","action_type":"send_message","payload_template":{...}}). '
+                                "Templates support {{field.path}} placeholders."
+                            ),
+                        },
+                        "space_id": {
+                            "type": "string",
+                            "description": "Optional space to scope the rule to. Omit for global.",
+                        },
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Whether the rule starts enabled. Default: true.",
+                        },
+                        "rate_limit": {
+                            "type": "integer",
+                            "description": "Max firings per hour. 0 = unlimited.",
+                        },
+                        "cooldown_secs": {
+                            "type": "integer",
+                            "description": "Seconds before the rule can fire again for the same entity. 0 = no cooldown.",
+                        },
+                        "max_daily": {
+                            "type": "integer",
+                            "description": "Max firings per day. 0 = unlimited.",
+                        },
+                    },
+                    "required": ["name", "condition", "actions"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "update_rule",
+                "description": (
+                    "Update an existing rule. Can modify any field, toggle enabled/disabled, "
+                    "or change conditions and actions. Use list_rules first to find the "
+                    "rule ID and type."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "rule_type": {
+                            "type": "string",
+                            "enum": ["filter", "classification", "processing"],
+                            "description": "The type of rule being updated.",
+                        },
+                        "rule_id": {
+                            "description": (
+                                "The rule identifier. For filter rules, this is the rule name "
+                                "(string). For classification and processing rules, this is "
+                                "the numeric database ID."
+                            ),
+                        },
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Set enabled state.",
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "New name (filter and processing rules only).",
+                        },
+                        "rule_text": {
+                            "type": "string",
+                            "description": "New rule text (classification rules only).",
+                        },
+                        "field": {
+                            "type": "string",
+                            "description": "New field target (classification rules: 'priority'|'persona').",
+                        },
+                        "condition": {
+                            "type": "object",
+                            "description": "New condition (filter and processing rules).",
+                        },
+                        "actions": {
+                            "type": "array",
+                            "items": {"type": "object"},
+                            "description": "New actions list (processing rules only).",
+                        },
+                        "action": {
+                            "type": "string",
+                            "enum": ["drop", "allow"],
+                            "description": "New action (filter rules only).",
+                        },
+                    },
+                    "required": ["rule_type", "rule_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "delete_rule",
+                "description": (
+                    "Delete an existing rule permanently. Use list_rules first to "
+                    "find the rule ID and confirm with the user before deleting."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "rule_type": {
+                            "type": "string",
+                            "enum": ["filter", "classification", "processing"],
+                            "description": "The type of rule to delete.",
+                        },
+                        "rule_id": {
+                            "description": (
+                                "The rule identifier. For filter rules, this is the rule name. "
+                                "For classification and processing rules, this is the numeric ID."
+                            ),
+                        },
+                    },
+                    "required": ["rule_type", "rule_id"],
                 },
             },
         },

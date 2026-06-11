@@ -120,7 +120,12 @@ async def _handle_session_control(session_id: str | None, msg: dict) -> None:
         case "resume":
             await session_manager.resume_session(session_id)
         case "cancel":
-            await session_manager.cancel_session(session_id)
+            # Skip the status_change event when there was nothing to cancel
+            # (unknown or already-terminal session) — otherwise the timeline
+            # fills with "cancel" entries that had no effect.
+            if not await session_manager.cancel_session(session_id):
+                log.info("ws_cancel_noop", session_id=session_id)
+                return
         case _:
             log.warning("ws_unknown_control_action", action=action)
             return

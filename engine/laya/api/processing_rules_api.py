@@ -193,6 +193,35 @@ async def get_field_options() -> dict:
     }
 
 
+@router.get("/processing-rules/metadata-fields")
+async def get_metadata_fields(platform: str) -> dict:
+    """Discover content_metadata keys and sample values for a given platform."""
+    db = await get_db()
+
+    rows = await db.execute_fetchall(
+        "SELECT content_metadata FROM events WHERE source_platform = ? AND content_metadata IS NOT NULL ORDER BY created_at DESC LIMIT 100",
+        (platform,),
+    )
+
+    keys: dict[str, set[str]] = {}
+    for row in rows:
+        try:
+            meta = json.loads(row["content_metadata"])
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(meta, dict):
+            continue
+        for k, v in meta.items():
+            if isinstance(v, (list, dict)):
+                continue
+            keys.setdefault(k, set())
+            sv = str(v)
+            if len(keys[k]) < 50:
+                keys[k].add(sv)
+
+    return {"keys": {k: sorted(v) for k, v in sorted(keys.items())}}
+
+
 @router.get("/processing-rules/{rule_id}")
 async def get_processing_rule(rule_id: int) -> dict:
     """Get a single processing rule."""
