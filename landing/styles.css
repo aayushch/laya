@@ -163,10 +163,13 @@ nav .container {
    HERO
    ═══════════════════════════════════════════════════ */
 .hero {
-  min-height: 100vh;
+  /* Natural height instead of min-height:100vh — full-viewport centering
+     split the leftover space above/below the content, leaving a large
+     variable gap before the "What is Laya" section on tall windows */
   display: flex;
   align-items: center;
-  padding-top: 80px;
+  padding-top: 150px;
+  padding-bottom: 80px;
   position: relative;
   overflow: hidden;
 }
@@ -248,6 +251,18 @@ nav .container {
   background: var(--laya-coral);
   opacity: 0.1;
 }
+
+/* ═══════════════════════════════════════════════════
+   WHAT IS LAYA (app purpose — required for Google OAuth verification)
+   ═══════════════════════════════════════════════════ */
+.about-section { padding: 0 0 96px; }
+.about-section .about-header { margin-bottom: 0; }
+.about-section .about-header p {
+  color: var(--surface-300);
+  line-height: 1.7;
+  text-align: left;
+}
+.about-section .about-header p + p { margin-top: 18px; }
 
 /* ═══════════════════════════════════════════════════
    SCREENSHOT SHOWCASE
