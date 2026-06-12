@@ -401,6 +401,14 @@
 					</span>
 				{/if}
 				<div class="ml-auto flex items-center gap-1.5">
+					<!-- Card count badge (expanded only — collapsed uses footer indicator).
+					     Lives at the start of the cluster so the icons/menu/chevron keep
+					     their positions when the group expands. -->
+					{#if expanded}
+						<span class="whitespace-nowrap rounded-full bg-laya-orange/10 px-2 py-0.5 text-laya-micro font-semibold text-laya-orange" title="{group.card_count} cards">
+							{group.card_count}
+						</span>
+					{/if}
 					{#if hasBookmark}
 						<svg class="h-3 w-3 text-laya-orange/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke-dasharray="3 2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
@@ -411,12 +419,6 @@
 							<svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
 							</svg>
-						</span>
-					{/if}
-					<!-- Card count badge (expanded only — collapsed uses footer indicator) -->
-					{#if expanded}
-						<span class="whitespace-nowrap rounded-full bg-laya-orange/10 px-2 py-0.5 text-laya-micro font-semibold text-laya-orange">
-							{group.card_count} cards
 						</span>
 					{/if}
 					{#if hasAnyAction}
