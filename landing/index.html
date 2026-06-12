@@ -1,23 +1,27 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Laya — Open-Source, Local-First AI Notification Command Center for Slack, Gmail, GitHub, Jira &amp; More</title>
-<meta name="description" content="Laya is an open-source, local-first AI notification command center that aggregates Slack, Gmail, GitHub, Jira, Notion, Outlook, and Calendar notifications — powered by local LLMs via Ollama and LM Studio, or cloud models like Claude and GPT with your own API keys. Every notification arrives as a ready-to-approve action card.">
-<meta property="og:title" content="Laya — Open-Source, Local-First AI Notification Command Center">
-<meta property="og:description" content="Aggregates Slack, Gmail, GitHub, Jira, Notion, Outlook, and Calendar notifications into ready-to-approve action cards — powered by local LLMs via Ollama and LM Studio, or your own API keys.">
-<meta property="og:url" content="https://aayushch.github.io/laya/">
-<meta property="og:type" content="website">
-<meta property="og:image" content="https://aayushch.github.io/laya/images/card-view.png">
-<meta name="twitter:card" content="summary_large_image">
-<script type="application/ld+json">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Laya — Open-Source, Local-First AI Notification Command Center for Slack, Gmail, GitHub, Jira &amp; More
+  </title>
+  <meta name="description"
+    content="Laya is an open-source, local-first AI notification command center that aggregates notifications from Slack, Gmail, GitHub, Jira, Notion, Outlook, Calendar and more — powered by local LLMs via Ollama and LM Studio, or cloud models like Claude and GPT with your own API keys. Every notification arrives as a ready-to-approve action card.">
+  <meta property="og:title" content="Laya — Open-Source, Local-First AI Notification Command Center">
+  <meta property="og:description"
+    content="Aggregates Slack, Gmail, GitHub, Jira, Notion, Outlook, and Calendar notifications into ready-to-approve action cards — powered by local LLMs via Ollama and LM Studio, or your own API keys.">
+  <meta property="og:url" content="https://aayushch.github.io/laya/">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://aayushch.github.io/laya/images/card-view.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "Laya",
   "url": "https://aayushch.github.io/laya/",
-  "description": "Laya is an open-source, local-first AI notification command center that aggregates Slack, Gmail, GitHub, Jira, Notion, Outlook, and Calendar notifications — powered by local LLMs via Ollama and LM Studio, or cloud models like Claude and GPT with your own API keys.",
+  "description": "Laya is an open-source, local-first AI notification command center that aggregates notifications from Slack, Gmail, GitHub, Jira, Notion, Outlook, Calendar and more — powered by local LLMs via Ollama and LM Studio, or cloud models like Claude and GPT with your own API keys.",
   "applicationCategory": "ProductivityApplication",
   "operatingSystem": "macOS, Windows, Linux",
   "offers": {
@@ -30,594 +34,981 @@
   "downloadUrl": "https://github.com/aayushch/laya/releases/latest"
 }
 </script>
-<link rel="icon" type="image/svg+xml" href="images/favicon.svg">
-<link rel="apple-touch-icon" href="images/logo-icon.png">
-<link rel="stylesheet" href="styles.css">
+  <link rel="icon" type="image/svg+xml" href="images/favicon.svg">
+  <link rel="apple-touch-icon" href="images/logo-icon.png">
+  <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
 
-<!-- Lightbox modal -->
-<div class="lightbox-overlay" id="lightbox">
-  <button class="lightbox-close" id="lightbox-close">&times;</button>
-  <img id="lightbox-img" src="" alt="">
-</div>
-
-<!-- Downloads modal -->
-<div class="downloads-overlay" id="downloads-modal" role="dialog" aria-modal="true" aria-labelledby="downloads-title">
-  <div class="downloads-card" onclick="event.stopPropagation();">
-    <button class="downloads-close" aria-label="Close" onclick="closeDownloads()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-    <h2 id="downloads-title">Download Laya</h2>
-    <p class="downloads-sub" id="downloads-sub">Pick the build for your operating system.</p>
-    <div id="downloads-body">
-      <div class="downloads-loading">Fetching the latest release…</div>
-    </div>
-    <div class="downloads-footer">
-      <span>All releases &amp; signatures are published on GitHub.</span>
-      <a href="https://github.com/aayushch/laya/releases" target="_blank" rel="noopener noreferrer">Browse all releases &rarr;</a>
-    </div>
+  <!-- Lightbox modal -->
+  <div class="lightbox-overlay" id="lightbox">
+    <button class="lightbox-close" id="lightbox-close">&times;</button>
+    <img id="lightbox-img" src="" alt="">
   </div>
-</div>
 
-<!-- ═══════════════════ LANDING PAGE ═══════════════════ -->
-<div id="landing-page">
-
-<!-- ═══════════════════ NAV ═══════════════════ -->
-<nav id="nav">
-  <div class="container">
-    <a href="#" class="nav-logo">
-      <img src="images/logo-icon.png" alt="Laya">
-      <span>Laya</span>
-    </a>
-    <ul class="nav-links">
-      <li><a href="#features">Features</a></li>
-      <li><a href="#how-it-works">How It Works</a></li>
-      <li><a href="#intelligence">Intelligence</a></li>
-      <li><a href="#privacy">Privacy</a></li>
-      <li><a href="https://github.com/aayushch/laya" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> Star on GitHub</a></li>
-    </ul>
-  </div>
-</nav>
-
-<!-- ═══════════════════ HERO ═══════════════════ -->
-<section class="hero">
-  <div class="hero-glow hero-glow-1"></div>
-  <div class="hero-glow hero-glow-2"></div>
-  <div class="particles" id="particles"></div>
-  <div class="container">
-    <div class="hero-content">
-      <div class="hero-badge">
-        <span class="pulse-dot"></span>
-        Open Source &middot; AI-Powered Command Center
+  <!-- Downloads modal -->
+  <div class="downloads-overlay" id="downloads-modal" role="dialog" aria-modal="true" aria-labelledby="downloads-title">
+    <div class="downloads-card" onclick="event.stopPropagation();">
+      <button class="downloads-close" aria-label="Close" onclick="closeDownloads()"><svg width="16" height="16"
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg></button>
+      <h2 id="downloads-title">Download Laya</h2>
+      <p class="downloads-sub" id="downloads-sub">Pick the build for your operating system.</p>
+      <div id="downloads-body">
+        <div class="downloads-loading">Fetching the latest release…</div>
       </div>
-      <!-- The .h1-seo line lives inside the <h1> on purpose: search engines and
+      <div class="downloads-footer">
+        <span>All releases &amp; signatures are published on GitHub.</span>
+        <a href="https://github.com/aayushch/laya/releases" target="_blank" rel="noopener noreferrer">Browse all
+          releases &rarr;</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ LANDING PAGE ═══════════════════ -->
+  <div id="landing-page">
+
+    <!-- ═══════════════════ NAV ═══════════════════ -->
+    <nav id="nav">
+      <div class="container">
+        <a href="#" class="nav-logo">
+          <img src="images/logo-icon.png" alt="Laya">
+          <span>Laya</span>
+        </a>
+        <ul class="nav-links">
+          <li><a href="#features">Features</a></li>
+          <li><a href="#how-it-works">How It Works</a></li>
+          <li><a href="#intelligence">Intelligence</a></li>
+          <li><a href="#privacy">Privacy</a></li>
+          <li><a href="https://github.com/aayushch/laya" target="_blank" rel="noopener noreferrer"
+              class="btn btn-primary btn-sm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polygon
+                  points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+              </svg> Star on GitHub</a></li>
+        </ul>
+      </div>
+    </nav>
+
+    <!-- ═══════════════════ HERO ═══════════════════ -->
+    <section class="hero">
+      <div class="hero-glow hero-glow-1"></div>
+      <div class="hero-glow hero-glow-2"></div>
+      <div class="particles" id="particles"></div>
+      <div class="container">
+        <div class="hero-content">
+          <div class="hero-badge">
+            <span class="pulse-dot"></span>
+            Open Source &middot; AI-Powered Command Center
+          </div>
+          <!-- The .h1-seo line lives inside the <h1> on purpose: search engines and
            LLMs quote H1 text verbatim, so the keyword-rich positioning sentence
            must be part of the heading, not a sibling paragraph -->
-      <h1>Stop Reacting.<br><span class="text-gradient">Start Commanding.</span>
-        <span class="h1-seo">The open-source, local-first AI notification command center for Slack, Gmail, GitHub, Jira, Notion, Outlook &amp; Calendar.</span>
-      </h1>
-      <p class="subtitle">
-        Laya enriches your daily workflows with AI &mdash; whether you connect one platform or many. It researches context, drafts responses, and delivers ready-to-approve action cards before you even open the app &mdash; using local LLMs via Ollama and LM Studio, or your own API keys.
-      </p>
-      <div class="hero-buttons">
-        <div class="download-group">
-          <a id="hero-download-btn" href="https://github.com/aayushch/laya/releases/latest" target="_blank" rel="noopener noreferrer" class="btn btn-primary download-main"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> <span id="hero-download-label">Download Laya</span></a>
-          <button type="button" class="btn btn-primary download-split" aria-label="Other platforms" title="Other platforms" onclick="openDownloads()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+          <h1>Stop Reacting.<br><span class="text-gradient">Start Commanding.</span>
+            <span class="h1-seo">The open-source, local-first AI notification command center for Slack, Gmail, GitHub,
+              Jira, Notion, Outlook, Calendar &amp; more.</span>
+          </h1>
+          <p class="subtitle">
+            Laya enriches your daily workflows with AI &mdash; whether you connect one platform or many. It researches
+            context, drafts responses, and delivers ready-to-approve action cards before you even open the app &mdash;
+            using local LLMs via Ollama and LM Studio, or your own API keys.
+          </p>
+          <div class="hero-buttons">
+            <div class="download-group">
+              <a id="hero-download-btn" href="https://github.com/aayushch/laya/releases/latest" target="_blank"
+                rel="noopener noreferrer" class="btn btn-primary download-main"><svg width="18" height="18"
+                  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+                  stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg> <span id="hero-download-label">Download Laya</span></a>
+              <button type="button" class="btn btn-primary download-split" aria-label="Other platforms"
+                title="Other platforms" onclick="openDownloads()"><svg width="14" height="14" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg></button>
+            </div>
+            <a href="#how-it-works" class="btn btn-ghost">See How It Works</a>
+          </div>
+          <p class="download-meta">
+            <a href="#" onclick="event.preventDefault(); openDownloads();">All platforms</a>
+            <span class="dot">·</span>
+            <span id="hero-download-version">latest release</span>
+            <span class="dot">·</span>
+            <a href="https://github.com/aayushch/laya" target="_blank" rel="noopener noreferrer">View source on
+              GitHub</a>
+          </p>
+          <p class="hero-footnote">Open source. Local-first. Works with one platform or many. Your API keys, your data.
+          </p>
+          <div class="hero-ph-badge">
+            <a href="https://www.producthunt.com/products/laya?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-laya"
+              target="_blank" rel="noopener noreferrer"><img alt="Laya - Your AI command centre | Product Hunt"
+                width="250" height="54"
+                src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1155323&amp;theme=dark&amp;t=1779704563407"></a>
+            <a href="https://peerpush.net/p/laya" target="_blank" rel="noopener"><img
+                src="https://peerpush.net/p/laya/badge.png" alt="Laya on PeerPush"
+                style="width: 230px; filter: invert(0.88) hue-rotate(180deg) saturate(1.8) brightness(1.05); border-radius: 8px;"></a>
+          </div>
         </div>
-        <a href="#how-it-works" class="btn btn-ghost">See How It Works</a>
       </div>
-      <p class="download-meta">
-        <a href="#" onclick="event.preventDefault(); openDownloads();">All platforms</a>
-        <span class="dot">·</span>
-        <span id="hero-download-version">latest release</span>
-        <span class="dot">·</span>
-        <a href="https://github.com/aayushch/laya" target="_blank" rel="noopener noreferrer">View source on GitHub</a>
-      </p>
-      <p class="hero-footnote">Open source. Local-first. Works with one platform or many. Your API keys, your data.</p>
-      <div class="hero-ph-badge">
-        <a href="https://www.producthunt.com/products/laya?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-laya" target="_blank" rel="noopener noreferrer"><img alt="Laya - Your AI command centre | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1155323&amp;theme=dark&amp;t=1779704563407"></a>
-        <a href="https://peerpush.net/p/laya" target="_blank" rel="noopener"><img src="https://peerpush.net/p/laya/badge.png" alt="Laya on PeerPush" style="width: 230px; filter: invert(0.88) hue-rotate(180deg) saturate(1.8) brightness(1.05); border-radius: 8px;"></a>
-      </div>
-    </div>
-  </div>
-</section>
+    </section>
 
-<!-- ═══════════════════ WHAT IS LAYA ═══════════════════ -->
-<!-- Required by Google OAuth verification: the homepage must plainly explain the
-     app's purpose and how it uses Google user data (Gmail, Calendar). Keep this
-     section accurate and in sync with the OAuth consent screen description. -->
-<section class="about-section" id="what-is-laya">
-  <div class="container">
-    <div class="section-header about-header">
-      <h2>What is <span class="text-gradient">Laya</span>?</h2>
-      <p>Laya is an open-source desktop app that brings your work tools &mdash; Gmail, Google Calendar, Slack, Jira, GitHub, and more &mdash; into one intelligent feed. When a new email, meeting invite, ticket, or pull request arrives, Laya's AI reads it, gathers related context from your connected tools, and turns it into an action card with a suggested response &mdash; drafted and ready for your review.</p>
-      <p>You stay in control: nothing is sent or changed on your behalf without your explicit approval. And because Laya is a desktop-only app with no servers behind it, your emails, events, and messages are stored entirely on your computer &mdash; and when you use a local model, they never leave your machine.</p>
-    </div>
-  </div>
-</section>
+    <!-- ═══════════════════ WHAT IS LAYA ═══════════════════ -->
+    <section class="about-section" id="what-is-laya">
+      <div class="container">
+        <div class="section-header about-header">
+          <h2>What is <span class="text-gradient">Laya</span>?</h2>
+          <p>Laya is an open-source desktop app that brings your work tools &mdash; Gmail, Google Calendar, Slack, Jira,
+            GitHub, and more &mdash; into one intelligent feed. When a new email, meeting invite, ticket, or pull
+            request arrives, Laya's AI reads it, gathers related context from your connected tools, and turns it into an
+            action card with a suggested response &mdash; drafted and ready for your review.</p>
+          <p>You stay in control: nothing is sent or changed on your behalf without your explicit approval. And because
+            Laya is a desktop-only app with no servers behind it, your emails, events, and messages are stored entirely
+            on your computer &mdash; and when you use a local model, they never leave your machine.</p>
+        </div>
+      </div>
+    </section>
 
-<!-- ═══════════════════ SHOWCASE ═══════════════════ -->
-<section class="showcase">
-  <div class="container">
-    <div class="showcase-tabs">
-      <button class="showcase-tab active" data-target="shot-cards">Card View</button>
-      <button class="showcase-tab" data-target="shot-list">List View</button>
-      <button class="showcase-tab" data-target="shot-brief">Summary</button>
-    </div>
-    <div class="showcase-frame">
-      <img id="shot-cards" src="images/card-view.png" alt="Laya Card View — grouped action cards in 3-column grid with intelligence reports" style="display: block;">
-      <img id="shot-list" src="images/list-view.png" alt="Laya List View — AI action cards with intelligence reports" style="display: none;">
-      <img id="shot-brief" src="images/summary-view.png" alt="Laya Day Summary — action items and key updates synthesized by AI" style="display: none;">
-    </div>
-  </div>
-</section>
+    <!-- ═══════════════════ SHOWCASE ═══════════════════ -->
+    <section class="showcase">
+      <div class="container">
+        <div class="showcase-tabs">
+          <button class="showcase-tab active" data-target="shot-cards">Card View</button>
+          <button class="showcase-tab" data-target="shot-list">List View</button>
+          <button class="showcase-tab" data-target="shot-brief">Summary</button>
+        </div>
+        <div class="showcase-frame">
+          <img id="shot-cards" src="images/card-view.png"
+            alt="Laya Card View — grouped action cards in 3-column grid with intelligence reports"
+            style="display: block;">
+          <img id="shot-list" src="images/list-view.png"
+            alt="Laya List View — AI action cards with intelligence reports" style="display: none;">
+          <img id="shot-brief" src="images/summary-view.png"
+            alt="Laya Day Summary — action items and key updates synthesized by AI" style="display: none;">
+        </div>
+      </div>
+    </section>
 
-<!-- ═══════════════════ SOCIAL PROOF ═══════════════════ -->
-<section class="proof-bar">
-  <div class="container">
-    <div class="proof-stats">
-      <div class="proof-stat animate-on-scroll">
-        <div class="number">9+</div>
-        <div class="label">Platform Integrations</div>
+    <!-- ═══════════════════ SOCIAL PROOF ═══════════════════ -->
+    <section class="proof-bar">
+      <div class="container">
+        <div class="proof-stats">
+          <div class="proof-stat animate-on-scroll">
+            <div class="number">9+</div>
+            <div class="label">Platform Integrations</div>
+          </div>
+          <div class="proof-stat animate-on-scroll">
+            <div class="number">6</div>
+            <div class="label">AI Personas</div>
+          </div>
+          <div class="proof-stat animate-on-scroll">
+            <div class="number">10-Stage</div>
+            <div class="label">Intelligence Pipeline</div>
+          </div>
+          <div class="proof-stat animate-on-scroll">
+            <div class="number">100%</div>
+            <div class="label">Open Source &amp; Local-First</div>
+          </div>
+        </div>
       </div>
-      <div class="proof-stat animate-on-scroll">
-        <div class="number">6</div>
-        <div class="label">AI Personas</div>
-      </div>
-      <div class="proof-stat animate-on-scroll">
-        <div class="number">10-Stage</div>
-        <div class="label">Intelligence Pipeline</div>
-      </div>
-      <div class="proof-stat animate-on-scroll">
-        <div class="number">100%</div>
-        <div class="label">Open Source &amp; Local-First</div>
-      </div>
-    </div>
-  </div>
-</section>
+    </section>
 
-<!-- ═══════════════════ PROBLEM / SOLUTION ═══════════════════ -->
-<section class="problem-section" id="why-laya">
-  <div class="container">
-    <div class="section-header">
-      <h2 class="text-gradient">Your workflow is broken.</h2>
-      <p>Whether you juggle eight tools or just an overflowing inbox &mdash; every notification demands attention and none of them come with context.</p>
-    </div>
-    <div class="split-grid animate-on-scroll" style="position: relative;">
-      <div class="problem-col">
-        <h3>Without Laya</h3>
-        <ul class="pain-list">
-          <li><span class="icon icon-red"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span> <span>Open Slack notification. No context. Search Jira for the ticket. Open Bitbucket for the PR. Piece together what happened. 15 minutes gone.</span></li>
-          <li><span class="icon icon-red"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span> <span>Miss a critical email buried under 40 promotional messages you need to manually triage.</span></li>
-          <li><span class="icon icon-red"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span> <span>Start your morning with 30 minutes of "catching up" — reading threads, checking calendars, reviewing PRs.</span></li>
-          <li><span class="icon icon-red"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span> <span>Context-switch 50+ times per day between tools. Each switch costs 23 minutes of focus.</span></li>
-        </ul>
+    <!-- ═══════════════════ PROBLEM / SOLUTION ═══════════════════ -->
+    <section class="problem-section" id="why-laya">
+      <div class="container">
+        <div class="section-header">
+          <h2 class="text-gradient">Your workflow is broken.</h2>
+          <p>Whether you juggle eight tools or just an overflowing inbox &mdash; every notification demands attention
+            and none of them come with context.</p>
+        </div>
+        <div class="split-grid animate-on-scroll" style="position: relative;">
+          <div class="problem-col">
+            <h3>Without Laya</h3>
+            <ul class="pain-list">
+              <li><span class="icon icon-red"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="#ef4444" stroke-width="3" stroke-linecap="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg></span> <span>Open Slack notification. No context. Search Jira for the ticket. Open Bitbucket
+                  for the PR. Piece together what happened. 15 minutes gone.</span></li>
+              <li><span class="icon icon-red"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="#ef4444" stroke-width="3" stroke-linecap="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg></span> <span>Miss a critical email buried under 40 promotional messages you need to manually
+                  triage.</span></li>
+              <li><span class="icon icon-red"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="#ef4444" stroke-width="3" stroke-linecap="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg></span> <span>Start your morning with 30 minutes of "catching up" — reading threads, checking
+                  calendars, reviewing PRs.</span></li>
+              <li><span class="icon icon-red"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="#ef4444" stroke-width="3" stroke-linecap="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg></span> <span>Context-switch 50+ times per day between tools. Each switch costs 23 minutes of
+                  focus.</span></li>
+            </ul>
+          </div>
+          <div class="problem-col">
+            <h3>With Laya</h3>
+            <ul class="pain-list">
+              <li><span class="icon icon-green"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> <span>Open Laya. AI already researched the context, cross-referenced the ticket, found
+                  related PRs, and drafted a response. One click to approve.</span></li>
+              <li><span class="icon icon-green"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> <span>AI intelligence reports flag the recruitment email as legitimate, auto-archives 39
+                  promotional ones, surfaces what matters.</span></li>
+              <li><span class="icon icon-green"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> <span>Daily briefing synthesizes overnight activity into Events, Action Items, and Key
+                  Updates — ready at 7 AM.</span></li>
+              <li><span class="icon icon-green"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> <span>One unified feed. Every platform. Every notification pre-processed with
+                  intelligence. Zero context switching.</span></li>
+            </ul>
+          </div>
+        </div>
       </div>
-      <div class="problem-col">
-        <h3>With Laya</h3>
-        <ul class="pain-list">
-          <li><span class="icon icon-green"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> <span>Open Laya. AI already researched the context, cross-referenced the ticket, found related PRs, and drafted a response. One click to approve.</span></li>
-          <li><span class="icon icon-green"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> <span>AI intelligence reports flag the recruitment email as legitimate, auto-archives 39 promotional ones, surfaces what matters.</span></li>
-          <li><span class="icon icon-green"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> <span>Daily briefing synthesizes overnight activity into Events, Action Items, and Key Updates — ready at 7 AM.</span></li>
-          <li><span class="icon icon-green"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> <span>One unified feed. Every platform. Every notification pre-processed with intelligence. Zero context switching.</span></li>
-        </ul>
-      </div>
-    </div>
-  </div>
-</section>
+    </section>
 
-<!-- ═══════════════════ FEATURES ═══════════════════ -->
-<section class="features-section" id="features">
-  <div class="container">
-    <div class="section-header">
-      <h2>Intelligence, <span class="text-orange">not notifications.</span></h2>
-      <p>Every card Laya delivers has already been researched, classified, and prepared for action.</p>
-    </div>
-    <div class="features-grid">
-      <div class="feature-card animate-on-scroll">
-        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg></div>
-        <h3>Intelligence Reports</h3>
-        <p>Every notification gets an AI-generated intelligence report. Sender reputation, cross-platform context, pattern recognition from your history, and actionable insights — all before you read a single word.</p>
+    <!-- ═══════════════════ FEATURES ═══════════════════ -->
+    <section class="features-section" id="features">
+      <div class="container">
+        <div class="section-header">
+          <h2>Intelligence, <span class="text-orange">not notifications.</span></h2>
+          <p>Every card Laya delivers has already been researched, classified, and prepared for action.</p>
+        </div>
+        <div class="features-grid">
+          <div class="feature-card animate-on-scroll">
+            <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                <line x1="11" y1="8" x2="11" y2="14" />
+                <line x1="8" y1="11" x2="14" y2="11" />
+              </svg></div>
+            <h3>Intelligence Reports</h3>
+            <p>Every notification gets an AI-generated intelligence report. Sender reputation, cross-platform context,
+              pattern recognition from your history, and actionable insights — all before you read a single word.</p>
+          </div>
+          <div class="feature-card animate-on-scroll">
+            <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ff9770"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              </svg></div>
+            <h3>Pre-Drafted Actions</h3>
+            <p>Draft replies, code fixes, briefing summaries — ready for one-click approval. The AI does the work. You
+              just say "go" or refine the details.</p>
+          </div>
+          <div class="feature-card animate-on-scroll">
+            <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6bc66"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="5" />
+                <line x1="12" y1="1" x2="12" y2="3" />
+                <line x1="12" y1="21" x2="12" y2="23" />
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                <line x1="1" y1="12" x2="3" y2="12" />
+                <line x1="21" y1="12" x2="23" y2="12" />
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+              </svg></div>
+            <h3>Daily Briefings</h3>
+            <p>Wake up to an AI-synthesized morning briefing. Events & meetings, action items, key updates — organized
+              by priority across all your spaces.</p>
+          </div>
+          <div class="feature-card animate-on-scroll">
+            <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="16 18 22 12 16 6" />
+                <polyline points="8 6 2 12 8 18" />
+                <line x1="14" y1="4" x2="10" y2="20" stroke="#ff9770" />
+              </svg></div>
+            <h3>Coding Agents</h3>
+            <p>Run coding agents (Claude Code, Gemini CLI, Codex) directly from any card. Watch them work in real-time
+              and guide their actions from the workspace.</p>
+          </div>
+          <div class="feature-card animate-on-scroll">
+            <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6bc66"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+              </svg></div>
+            <h3>Smart Classification</h3>
+            <p>Every event is automatically categorized by persona (Engineer, Comms, Ops, Finance, HR, Sales), priority
+              (Critical to Low), and category — using a multi-model AI pipeline that learns from your corrections.</p>
+          </div>
+          <div class="feature-card animate-on-scroll">
+            <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ff9770"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                <polyline points="2 17 12 22 22 17" />
+                <polyline points="2 12 12 17 22 12" />
+              </svg></div>
+            <h3>Spaces</h3>
+            <p>Organize your life into separate contexts — Work, Personal, side projects. Each space has its own
+              sources, model configs, and API keys.</p>
+          </div>
+          <div class="feature-card animate-on-scroll">
+            <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="6" cy="6" r="3" />
+                <circle cx="18" cy="18" r="3" />
+                <circle cx="18" cy="6" r="3" stroke="#ff9770" />
+                <path d="M8.5 8.5L15.5 15.5" />
+                <path d="M15 7L9 7" stroke="#ff9770" />
+                <path d="M18 9v6" />
+              </svg></div>
+            <h3>Coherence Search</h3>
+            <p>Search for any entity across all platforms and trace its full lifecycle — from Jira ticket to PR to Slack
+              thread. AI-generated narratives tell the complete story.</p>
+          </div>
+          <div class="feature-card animate-on-scroll">
+            <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ff9770"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13" />
+                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg></div>
+            <h3>Cross-Platform Composer</h3>
+            <p>Execute outbound actions from a single interface — send emails, post Slack messages, comment on tickets,
+              and more. AI-assisted drafting with full preview before sending.</p>
+          </div>
+          <div class="feature-card animate-on-scroll">
+            <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6bc66"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+              </svg></div>
+            <h3>Bookmarks</h3>
+            <p>Bookmark important cards for quick access. Filter your feed to show only bookmarked items — no matter the
+              date or status.</p>
+          </div>
+          <div class="feature-card animate-on-scroll">
+            <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M2 12h20" />
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+              </svg></div>
+            <h3>Omni</h3>
+            <p>A rolling cross-platform summary that answers "where am I right now?" at a glance. Four temporal layers —
+              from items needing attention to long-term milestones — compressed by AI.</p>
+          </div>
+          <div class="feature-card animate-on-scroll">
+            <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ff9770"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+              </svg></div>
+            <h3>Context Association</h3>
+            <p>Automatically links related cards across platforms using semantic similarity and LLM confirmation. Learns
+              from your link/unlink corrections to improve grouping accuracy over time.</p>
+          </div>
+          <div class="feature-card animate-on-scroll">
+            <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6bc66"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                <path d="M11 8v6" stroke="#ff9770" />
+                <path d="M8 11h6" stroke="#ff9770" />
+              </svg></div>
+            <h3>Agent Studio</h3>
+            <p>Launch a fully configured agent session from any card. Choose your runtime, set an execution mode,
+              configure directories, and write detailed prompts — with Plan or Accept Edits modes for full control.</p>
+          </div>
+          <div class="feature-card animate-on-scroll">
+            <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+              </svg></div>
+            <h3>Budget Tracking</h3>
+            <p>Monitor LLM costs broken down by feature (Pulse, Omni, Chat, Coherence) and pipeline step. Set monthly
+              spending caps with automatic pause when limits are reached.</p>
+          </div>
+        </div>
       </div>
-      <div class="feature-card animate-on-scroll">
-        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
-        <h3>Pre-Drafted Actions</h3>
-        <p>Draft replies, code fixes, briefing summaries — ready for one-click approval. The AI does the work. You just say "go" or refine the details.</p>
-      </div>
-      <div class="feature-card animate-on-scroll">
-        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></div>
-        <h3>Daily Briefings</h3>
-        <p>Wake up to an AI-synthesized morning briefing. Events & meetings, action items, key updates — organized by priority across all your spaces.</p>
-      </div>
-      <div class="feature-card animate-on-scroll">
-        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/><line x1="14" y1="4" x2="10" y2="20" stroke="#ff9770"/></svg></div>
-        <h3>Coding Agents</h3>
-        <p>Run coding agents (Claude Code, Gemini CLI, Codex) directly from any card. Watch them work in real-time and guide their actions from the workspace.</p>
-      </div>
-      <div class="feature-card animate-on-scroll">
-        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
-        <h3>Smart Classification</h3>
-        <p>Every event is automatically categorized by persona (Engineer, Comms, Ops, Finance, HR, Sales), priority (Critical to Low), and category — using a multi-model AI pipeline that learns from your corrections.</p>
-      </div>
-      <div class="feature-card animate-on-scroll">
-        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></div>
-        <h3>Spaces</h3>
-        <p>Organize your life into separate contexts — Work, Personal, side projects. Each space has its own sources, model configs, and API keys.</p>
-      </div>
-      <div class="feature-card animate-on-scroll">
-        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><circle cx="18" cy="6" r="3" stroke="#ff9770"/><path d="M8.5 8.5L15.5 15.5"/><path d="M15 7L9 7" stroke="#ff9770"/><path d="M18 9v6"/></svg></div>
-        <h3>Coherence Search</h3>
-        <p>Search for any entity across all platforms and trace its full lifecycle — from Jira ticket to PR to Slack thread. AI-generated narratives tell the complete story.</p>
-      </div>
-      <div class="feature-card animate-on-scroll">
-        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div>
-        <h3>Cross-Platform Composer</h3>
-        <p>Execute outbound actions from a single interface — send emails, post Slack messages, comment on tickets, and more. AI-assisted drafting with full preview before sending.</p>
-      </div>
-      <div class="feature-card animate-on-scroll">
-        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div>
-        <h3>Bookmarks</h3>
-        <p>Bookmark important cards for quick access. Filter your feed to show only bookmarked items — no matter the date or status.</p>
-      </div>
-      <div class="feature-card animate-on-scroll">
-        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
-        <h3>Omni</h3>
-        <p>A rolling cross-platform summary that answers "where am I right now?" at a glance. Four temporal layers — from items needing attention to long-term milestones — compressed by AI.</p>
-      </div>
-      <div class="feature-card animate-on-scroll">
-        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></div>
-        <h3>Context Association</h3>
-        <p>Automatically links related cards across platforms using semantic similarity and LLM confirmation. Learns from your link/unlink corrections to improve grouping accuracy over time.</p>
-      </div>
-      <div class="feature-card animate-on-scroll">
-        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><path d="M11 8v6" stroke="#ff9770"/><path d="M8 11h6" stroke="#ff9770"/></svg></div>
-        <h3>Agent Studio</h3>
-        <p>Launch a fully configured agent session from any card. Choose your runtime, set an execution mode, configure directories, and write detailed prompts — with Plan or Accept Edits modes for full control.</p>
-      </div>
-      <div class="feature-card animate-on-scroll">
-        <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
-        <h3>Budget Tracking</h3>
-        <p>Monitor LLM costs broken down by feature (Pulse, Omni, Chat, Coherence) and pipeline step. Set monthly spending caps with automatic pause when limits are reached.</p>
-      </div>
-    </div>
-  </div>
-</section>
+    </section>
 
-<!-- ═══════════════════ HOW IT WORKS ═══════════════════ -->
-<section class="how-section" id="how-it-works">
-  <div class="container">
-    <div class="section-header">
-      <h2>How <span class="text-orange">Laya</span> works</h2>
-      <p>A multi-stage AI pipeline transforms raw notifications into ready-to-approve intelligence.</p>
-    </div>
-    <div class="steps">
-      <div class="step animate-on-scroll">
-        <div class="step-number"><span><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg></span></div>
-        <h3>Ingest</h3>
-        <p>Events flow in from Gmail, Slack, Jira, GitHub, Calendar &mdash; connect as many or as few as you need.</p>
+    <!-- ═══════════════════ HOW IT WORKS ═══════════════════ -->
+    <section class="how-section" id="how-it-works">
+      <div class="container">
+        <div class="section-header">
+          <h2>How <span class="text-orange">Laya</span> works</h2>
+          <p>A multi-stage AI pipeline transforms raw notifications into ready-to-approve intelligence.</p>
+        </div>
+        <div class="steps">
+          <div class="step animate-on-scroll">
+            <div class="step-number"><span><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="8 17 12 21 16 17" />
+                  <line x1="12" y1="12" x2="12" y2="21" />
+                  <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29" />
+                </svg></span></div>
+            <h3>Ingest</h3>
+            <p>Events flow in from Gmail, Slack, Jira, GitHub, Calendar &mdash; connect as many or as few as you need.
+            </p>
+          </div>
+          <div class="step animate-on-scroll">
+            <div class="step-number"><span><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f6bc66"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path
+                    d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z" />
+                  <path
+                    d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z" />
+                </svg></span></div>
+            <h3>Route &amp; Classify</h3>
+            <p>Fast AI classifies priority, category, persona, and builds a research plan.</p>
+          </div>
+          <div class="step animate-on-scroll">
+            <div class="step-number"><span><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ff9770"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
+                  <polyline points="10 9 9 9 8 9" />
+                </svg></span></div>
+            <h3>Research &amp; Draft</h3>
+            <p>Specialized workers research context, draft replies, spawn coding agents, gather intelligence.</p>
+          </div>
+          <div class="step animate-on-scroll">
+            <div class="step-number"><span><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path
+                    d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+                  <path d="M5 3v4" stroke="#ff9770" />
+                  <path d="M3 5h4" stroke="#ff9770" />
+                  <path d="M19 17v4" stroke="#f6bc66" />
+                  <path d="M17 19h4" stroke="#f6bc66" />
+                </svg></span></div>
+            <h3>Deliver</h3>
+            <p>Polished action cards land in your feed with intelligence reports and one-click actions.</p>
+          </div>
+        </div>
       </div>
-      <div class="step animate-on-scroll">
-        <div class="step-number"><span><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg></span></div>
-        <h3>Route &amp; Classify</h3>
-        <p>Fast AI classifies priority, category, persona, and builds a research plan.</p>
-      </div>
-      <div class="step animate-on-scroll">
-        <div class="step-number"><span><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span></div>
-        <h3>Research &amp; Draft</h3>
-        <p>Specialized workers research context, draft replies, spawn coding agents, gather intelligence.</p>
-      </div>
-      <div class="step animate-on-scroll">
-        <div class="step-number"><span><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4" stroke="#ff9770"/><path d="M3 5h4" stroke="#ff9770"/><path d="M19 17v4" stroke="#f6bc66"/><path d="M17 19h4" stroke="#f6bc66"/></svg></span></div>
-        <h3>Deliver</h3>
-        <p>Polished action cards land in your feed with intelligence reports and one-click actions.</p>
-      </div>
-    </div>
-  </div>
-</section>
+    </section>
 
-<!-- ═══════════════════ FEATURE DEEP DIVES ═══════════════════ -->
-<section id="intelligence">
-  <div class="container">
+    <!-- ═══════════════════ FEATURE DEEP DIVES ═══════════════════ -->
+    <section id="intelligence">
+      <div class="container">
 
-    <!-- Deep dive 1: Intelligence -->
-    <div class="feature-showcase animate-on-scroll" style="margin-bottom: 100px;">
-      <div class="feature-text">
-        <span class="tag">Intelligence</span>
-        <h2>Every card comes pre-researched</h2>
-        <p>Laya doesn't just forward notifications. It investigates them. Each card includes an AI intelligence report with cross-platform context and pattern-matched history.</p>
-        <ul>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Sender reputation and domain verification</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Cross-referenced past events from memory</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Tracking link analysis and safety flags</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Confidence scoring on every classification</li>
-        </ul>
-      </div>
-      <div class="feature-image">
-        <img src="images/card-view.png" alt="Laya intelligence report showing sender analysis and cross-platform context">
-      </div>
-    </div>
+        <!-- Deep dive 1: Intelligence -->
+        <div class="feature-showcase animate-on-scroll" style="margin-bottom: 100px;">
+          <div class="feature-text">
+            <span class="tag">Intelligence</span>
+            <h2>Every card comes pre-researched</h2>
+            <p>Laya doesn't just forward notifications. It investigates them. Each card includes an AI intelligence
+              report with cross-platform context and pattern-matched history.</p>
+            <ul>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Sender reputation and domain verification</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Cross-referenced past events from memory</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Tracking link analysis and safety flags</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Confidence scoring on every classification</li>
+            </ul>
+          </div>
+          <div class="feature-image">
+            <img src="images/card-view.png"
+              alt="Laya intelligence report showing sender analysis and cross-platform context">
+          </div>
+        </div>
 
-    <!-- Deep dive 2: Multiple Views -->
-    <div class="feature-showcase reverse animate-on-scroll" style="margin-bottom: 100px;">
-      <div class="feature-text">
-        <span class="tag">Views</span>
-        <h2>Your feed, your way</h2>
-        <p>Switch between list view for rapid triage or card view for visual scanning. Sort by newest, priority, category, or platform. Context-grouped cards cluster related items automatically.</p>
-        <ul>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> List and Card view modes with context grouping</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Filter by status, priority, category, space</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Bulk actions — approve, dismiss, archive</li>
-        </ul>
-      </div>
-      <div class="feature-image">
-        <img src="images/list-view.png" alt="Laya list view showing multiple view options">
-      </div>
-    </div>
+        <!-- Deep dive 2: Multiple Views -->
+        <div class="feature-showcase reverse animate-on-scroll" style="margin-bottom: 100px;">
+          <div class="feature-text">
+            <span class="tag">Views</span>
+            <h2>Your feed, your way</h2>
+            <p>Switch between list view for rapid triage or card view for visual scanning. Sort by newest, priority,
+              category, or platform. Context-grouped cards cluster related items automatically.</p>
+            <ul>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> List and Card view modes with context grouping</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Filter by status, priority, category, space</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Bulk actions — approve, dismiss, archive</li>
+            </ul>
+          </div>
+          <div class="feature-image">
+            <img src="images/list-view.png" alt="Laya list view showing multiple view options">
+          </div>
+        </div>
 
-    <!-- Deep dive 3: Briefings -->
-    <div class="feature-showcase animate-on-scroll" style="margin-bottom: 100px;">
-      <div class="feature-text">
-        <span class="tag">Briefings</span>
-        <h2>Your morning, already organized</h2>
-        <p>Every morning, Laya synthesizes overnight activity across all your platforms into a structured briefing. Events, action items, and key updates — prioritized and ready.</p>
-        <ul>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Automated daily synthesis at your preferred time</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Events &amp; meetings with context</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Action items ranked by priority</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Key updates filtered from noise</li>
-        </ul>
-      </div>
-      <div class="feature-image">
-        <img src="images/briefing-view.png" alt="Laya daily briefing showing events, action items, and key updates">
-      </div>
-    </div>
+        <!-- Deep dive 3: Briefings -->
+        <div class="feature-showcase animate-on-scroll" style="margin-bottom: 100px;">
+          <div class="feature-text">
+            <span class="tag">Briefings</span>
+            <h2>Your morning, already organized</h2>
+            <p>Every morning, Laya synthesizes overnight activity across all your platforms into a structured briefing.
+              Events, action items, and key updates — prioritized and ready.</p>
+            <ul>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Automated daily synthesis at your preferred time</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Events &amp; meetings with context</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Action items ranked by priority</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Key updates filtered from noise</li>
+            </ul>
+          </div>
+          <div class="feature-image">
+            <img src="images/briefing-view.png" alt="Laya daily briefing showing events, action items, and key updates">
+          </div>
+        </div>
 
-    <!-- Deep dive 3.5: Day Summary -->
-    <div class="feature-showcase reverse animate-on-scroll">
-      <div class="feature-text">
-        <span class="tag">Summary</span>
-        <h2>Your day at a glance</h2>
-        <p>The Day Summary distills your entire day into a single structured view. Action items with pending counts, key updates filtered from noise, and space-level breakdowns — all generated and updated automatically.</p>
-        <ul>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Action items with pending status and priority</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Key updates from all connected platforms</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Space-level breakdown for multi-context workflows</li>
-        </ul>
-      </div>
-      <div class="feature-image">
-        <img src="images/summary-view.png" alt="Laya Day Summary — structured view of action items and key updates">
-      </div>
-    </div>
+        <!-- Deep dive 3.5: Day Summary -->
+        <div class="feature-showcase reverse animate-on-scroll">
+          <div class="feature-text">
+            <span class="tag">Summary</span>
+            <h2>Your day at a glance</h2>
+            <p>The Day Summary distills your entire day into a single structured view. Action items with pending counts,
+              key updates filtered from noise, and space-level breakdowns — all generated and updated automatically.</p>
+            <ul>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Action items with pending status and priority</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Key updates from all connected platforms</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Space-level breakdown for multi-context workflows</li>
+            </ul>
+          </div>
+          <div class="feature-image">
+            <img src="images/summary-view.png" alt="Laya Day Summary — structured view of action items and key updates">
+          </div>
+        </div>
 
-    <!-- Deep dive 4: Agent Workspace -->
-    <div class="feature-showcase animate-on-scroll" style="margin-top: 100px;">
-      <div class="feature-text">
-        <span class="tag">Workspace</span>
-        <h2>A full workspace for every agent session</h2>
-        <p>Run coding agents — Claude Code, Gemini CLI, or Codex — directly from any card in your feed. Each session gets a dedicated workspace with a live timeline, context panel, and generated files.</p>
-        <ul>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Run an agent from any card with a single click</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Live timeline of agent actions, tool calls, and progress</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Full context panel with card info, implementation plan, and related entities</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Interactive messaging — guide, question, or redirect mid-session</li>
-        </ul>
-      </div>
-      <div class="feature-image">
-        <img src="images/agent-workspace.png" alt="Laya agent workspace — full workspace with timeline, context panel, and agent output">
-      </div>
-    </div>
+        <!-- Deep dive 4: Agent Workspace -->
+        <div class="feature-showcase animate-on-scroll" style="margin-top: 100px;">
+          <div class="feature-text">
+            <span class="tag">Workspace</span>
+            <h2>A full workspace for every agent session</h2>
+            <p>Run coding agents — Claude Code, Gemini CLI, or Codex — directly from any card in your feed. Each session
+              gets a dedicated workspace with a live timeline, context panel, and generated files.</p>
+            <ul>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Run an agent from any card with a single click</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Live timeline of agent actions, tool calls, and progress</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Full context panel with card info, implementation plan, and related entities</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Interactive messaging — guide, question, or redirect mid-session</li>
+            </ul>
+          </div>
+          <div class="feature-image">
+            <img src="images/agent-workspace.png"
+              alt="Laya agent workspace — full workspace with timeline, context panel, and agent output">
+          </div>
+        </div>
 
-  </div>
-</section>
+      </div>
+    </section>
 
-<!-- ═══════════════════ CHAT & SEMANTIC SEARCH ═══════════════════ -->
-<section>
-  <div class="container">
-    <div class="feature-showcase reverse animate-on-scroll">
-      <div class="feature-text">
-        <span class="tag">Chat</span>
-        <h2>Ask anything about your data</h2>
-        <p>Laya's built-in chat uses semantic search across all your ingested events. Ask natural language questions and get instant, context-rich answers — with links back to the original cards and events.</p>
-        <ul>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Semantic search across all platforms and events</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Natural language queries — no filters needed</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Direct links to related cards and action items</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> RAG-powered retrieval from your local data</li>
-        </ul>
+    <!-- ═══════════════════ CHAT & SEMANTIC SEARCH ═══════════════════ -->
+    <section>
+      <div class="container">
+        <div class="feature-showcase reverse animate-on-scroll">
+          <div class="feature-text">
+            <span class="tag">Chat</span>
+            <h2>Ask anything about your data</h2>
+            <p>Laya's built-in chat uses semantic search across all your ingested events. Ask natural language questions
+              and get instant, context-rich answers — with links back to the original cards and events.</p>
+            <ul>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Semantic search across all platforms and events</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Natural language queries — no filters needed</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Direct links to related cards and action items</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> RAG-powered retrieval from your local data</li>
+            </ul>
+          </div>
+          <div class="feature-image">
+            <img src="images/chat-search.png"
+              alt="Laya chat with semantic search — ask natural language questions about your data">
+          </div>
+        </div>
       </div>
-      <div class="feature-image">
-        <img src="images/chat-search.png" alt="Laya chat with semantic search — ask natural language questions about your data">
-      </div>
-    </div>
-  </div>
-</section>
+    </section>
 
-<!-- ═══════════════════ OMNI ═══════════════════ -->
-<section>
-  <div class="container">
-    <div class="feature-showcase animate-on-scroll">
-      <div class="feature-text">
-        <span class="tag">Omni</span>
-        <h2>Your big picture, always current</h2>
-        <p>Omni is a rolling cross-platform summary that synthesizes all your professional activity into a single unified view. It answers "where am I right now?" — especially powerful after time away or for sprint retrospectives.</p>
-        <ul>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Four temporal layers: Attention, Recent, Period, and Milestone</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Progressive summarization — older layers compress automatically</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Pin important items so they survive compression</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Time-travel slider to view previous snapshots</li>
-        </ul>
+    <!-- ═══════════════════ OMNI ═══════════════════ -->
+    <section>
+      <div class="container">
+        <div class="feature-showcase animate-on-scroll">
+          <div class="feature-text">
+            <span class="tag">Omni</span>
+            <h2>Your big picture, always current</h2>
+            <p>Omni is a rolling cross-platform summary that synthesizes all your professional activity into a single
+              unified view. It answers "where am I right now?" — especially powerful after time away or for sprint
+              retrospectives.</p>
+            <ul>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Four temporal layers: Attention, Recent, Period, and Milestone</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Progressive summarization — older layers compress automatically</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Pin important items so they survive compression</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Time-travel slider to view previous snapshots</li>
+            </ul>
+          </div>
+          <div class="feature-image">
+            <img src="images/omni-view.png"
+              alt="Laya Omni — rolling cross-platform summary with progressive summarization">
+          </div>
+        </div>
       </div>
-      <div class="feature-image">
-        <img src="images/omni-view.png" alt="Laya Omni — rolling cross-platform summary with progressive summarization">
-      </div>
-    </div>
-  </div>
-</section>
+    </section>
 
-<!-- ═══════════════════ COHERENCE ═══════════════════ -->
-<section>
-  <div class="container">
-    <div class="feature-showcase reverse animate-on-scroll">
-      <div class="feature-text">
-        <span class="tag">Coherence</span>
-        <h2>Trace any entity across every platform</h2>
-        <p>Coherence is Laya's cross-platform entity search. Search for a person, ticket, PR, or project and see its complete lifecycle — every event, every platform, one chronological story.</p>
-        <ul>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Semantic + fuzzy + entity search merged via Reciprocal Rank Fusion</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Auto-clustered by entity relationships</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> AI-generated narrative with chapter detection</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Export traces as markdown, save and rerun later</li>
-        </ul>
+    <!-- ═══════════════════ COHERENCE ═══════════════════ -->
+    <section>
+      <div class="container">
+        <div class="feature-showcase reverse animate-on-scroll">
+          <div class="feature-text">
+            <span class="tag">Coherence</span>
+            <h2>Trace any entity across every platform</h2>
+            <p>Coherence is Laya's cross-platform entity search. Search for a person, ticket, PR, or project and see its
+              complete lifecycle — every event, every platform, one chronological story.</p>
+            <ul>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Semantic + fuzzy + entity search merged via Reciprocal Rank Fusion</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Auto-clustered by entity relationships</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> AI-generated narrative with chapter detection</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Export traces as markdown, save and rerun later</li>
+            </ul>
+          </div>
+          <div class="feature-image">
+            <img src="images/coherence-view.png"
+              alt="Laya Coherence — trace entities across platforms with AI-generated narratives">
+          </div>
+        </div>
       </div>
-      <div class="feature-image">
-        <img src="images/coherence-view.png" alt="Laya Coherence — trace entities across platforms with AI-generated narratives">
-      </div>
-    </div>
-  </div>
-</section>
+    </section>
 
-<!-- ═══════════════════ CONTEXT ASSOCIATION ═══════════════════ -->
-<section>
-  <div class="container">
-    <div class="feature-showcase animate-on-scroll">
-      <div class="feature-text">
-        <span class="tag">Context Association</span>
-        <h2>Related cards, automatically linked</h2>
-        <p>Laya's context association engine uses semantic similarity and LLM confirmation to automatically group cards that belong to the same real-world context — even across different platforms and entity types. Link or unlink groups manually, and Laya learns from every correction.</p>
-        <ul>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Semantic matching with confidence thresholds (auto-confirm + LLM-confirm)</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Manual merge and unlink via Link Dialog</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Learning pipeline extracts grouping rules from corrections every 6 hours</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Respects user-split decisions — never re-merges what you separated</li>
-        </ul>
+    <!-- ═══════════════════ CONTEXT ASSOCIATION ═══════════════════ -->
+    <section>
+      <div class="container">
+        <div class="feature-showcase animate-on-scroll">
+          <div class="feature-text">
+            <span class="tag">Context Association</span>
+            <h2>Related cards, automatically linked</h2>
+            <p>Laya's context association engine uses semantic similarity and LLM confirmation to automatically group
+              cards that belong to the same real-world context — even across different platforms and entity types. Link
+              or unlink groups manually, and Laya learns from every correction.</p>
+            <ul>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Semantic matching with confidence thresholds (auto-confirm + LLM-confirm)</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Manual merge and unlink via Link Dialog</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Learning pipeline extracts grouping rules from corrections every 6 hours</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Respects user-split decisions — never re-merges what you separated</li>
+            </ul>
+          </div>
+          <div class="feature-image">
+            <img src="images/related-cards.png"
+              alt="Laya Context Association — related cards automatically grouped across platforms">
+          </div>
+        </div>
       </div>
-      <div class="feature-image">
-        <img src="images/related-cards.png" alt="Laya Context Association — related cards automatically grouped across platforms">
-      </div>
-    </div>
-  </div>
-</section>
+    </section>
 
-<!-- ═══════════════════ RUN AGENT ═══════════════════ -->
-<section>
-  <div class="container">
-    <div class="feature-showcase reverse animate-on-scroll">
-      <div class="feature-text">
-        <span class="tag">Inline Agents</span>
-        <h2>Launch an agent from any card</h2>
-        <p>Every card in your feed has a Run Agent action. Provide an optional focus prompt and start the agent instantly — no context switching, no setup. The card's intelligence report and related entities are automatically injected as context.</p>
-        <ul>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> One-click agent trigger from any card detail view</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Optional focus prompt to guide the agent's investigation</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Card context and related entities injected automatically</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Live progress streaming via workspace timeline</li>
-        </ul>
+    <!-- ═══════════════════ RUN AGENT ═══════════════════ -->
+    <section>
+      <div class="container">
+        <div class="feature-showcase reverse animate-on-scroll">
+          <div class="feature-text">
+            <span class="tag">Inline Agents</span>
+            <h2>Launch an agent from any card</h2>
+            <p>Every card in your feed has a Run Agent action. Provide an optional focus prompt and start the agent
+              instantly — no context switching, no setup. The card's intelligence report and related entities are
+              automatically injected as context.</p>
+            <ul>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> One-click agent trigger from any card detail view</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Optional focus prompt to guide the agent's investigation</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Card context and related entities injected automatically</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Live progress streaming via workspace timeline</li>
+            </ul>
+          </div>
+          <div class="feature-image">
+            <img src="images/run-agent.png" alt="Laya Run Agent — launch a coding agent directly from card detail view">
+          </div>
+        </div>
       </div>
-      <div class="feature-image">
-        <img src="images/run-agent.png" alt="Laya Run Agent — launch a coding agent directly from card detail view">
-      </div>
-    </div>
-  </div>
-</section>
+    </section>
 
-<!-- ═══════════════════ AGENT STUDIO ═══════════════════ -->
-<section>
-  <div class="container">
-    <div class="feature-showcase animate-on-scroll">
-      <div class="feature-text">
-        <span class="tag">Agent Studio</span>
-        <h2>Full control over your agent sessions</h2>
-        <p>For complex tasks, the Agent Studio gives you full control. Choose your agent runtime, select an execution mode, configure working directories, attach reference files, and write detailed prompts — all before the agent starts.</p>
-        <ul>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Choose from Claude Code, Gemini CLI, or Codex</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Plan mode for review-first workflows, or Accept Edits for autonomous execution</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Configure working directories and attach reference files</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Auto-provisioned research workspaces for investigation tasks</li>
-        </ul>
+    <!-- ═══════════════════ AGENT STUDIO ═══════════════════ -->
+    <section>
+      <div class="container">
+        <div class="feature-showcase animate-on-scroll">
+          <div class="feature-text">
+            <span class="tag">Agent Studio</span>
+            <h2>Full control over your agent sessions</h2>
+            <p>For complex tasks, the Agent Studio gives you full control. Choose your agent runtime, select an
+              execution mode, configure working directories, attach reference files, and write detailed prompts — all
+              before the agent starts.</p>
+            <ul>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Choose from Claude Code, Gemini CLI, or Codex</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Plan mode for review-first workflows, or Accept Edits for autonomous execution</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Configure working directories and attach reference files</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Auto-provisioned research workspaces for investigation tasks</li>
+            </ul>
+          </div>
+          <div class="feature-image">
+            <img src="images/custom-agent.png"
+              alt="Laya Agent Studio — configure agent runtime, mode, and prompt before launching">
+          </div>
+        </div>
       </div>
-      <div class="feature-image">
-        <img src="images/custom-agent.png" alt="Laya Agent Studio — configure agent runtime, mode, and prompt before launching">
-      </div>
-    </div>
-  </div>
-</section>
+    </section>
 
-<!-- ═══════════════════ COMPOSER ═══════════════════ -->
-<section>
-  <div class="container">
-    <div class="feature-showcase reverse animate-on-scroll">
-      <div class="feature-text">
-        <span class="tag">Composer</span>
-        <h2>One interface for every outbound action</h2>
-        <p>The Composer lets you execute actions across all connected platforms from a single modal. Send emails, post Slack messages, comment on Jira tickets, create GitHub issues, and more — with AI-assisted drafting and full preview before sending.</p>
-        <ul>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> 9 platform backends: Gmail, Outlook, Jira, Notion, GitHub, Bitbucket, Linear, Calendar, and more</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> AI Assist generates context-aware drafts from your card data</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Per-platform action types — compose email, post comment, create ticket</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Multi-account support with connection health monitoring</li>
-        </ul>
+    <!-- ═══════════════════ COMPOSER ═══════════════════ -->
+    <section>
+      <div class="container">
+        <div class="feature-showcase reverse animate-on-scroll">
+          <div class="feature-text">
+            <span class="tag">Composer</span>
+            <h2>One interface for every outbound action</h2>
+            <p>The Composer lets you execute actions across all connected platforms from a single modal. Send emails,
+              post Slack messages, comment on Jira tickets, create GitHub issues, and more — with AI-assisted drafting
+              and full preview before sending.</p>
+            <ul>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> 9 platform backends: Gmail, Outlook, Jira, Notion, GitHub, Bitbucket, Linear, Calendar,
+                and more</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> AI Assist generates context-aware drafts from your card data</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Per-platform action types — compose email, post comment, create ticket</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Multi-account support with connection health monitoring</li>
+            </ul>
+          </div>
+          <div class="feature-image">
+            <img src="images/composer.png"
+              alt="Laya Composer — unified outbound action interface across all connected platforms">
+          </div>
+        </div>
       </div>
-      <div class="feature-image">
-        <img src="images/composer.png" alt="Laya Composer — unified outbound action interface across all connected platforms">
-      </div>
-    </div>
-  </div>
-</section>
+    </section>
 
-<!-- ═══════════════════ CUSTOM PROMPTS ═══════════════════ -->
-<section id="custom-prompts">
-  <div class="container">
-    <div class="feature-showcase animate-on-scroll">
-      <div class="feature-text">
-        <span class="tag">Custom Prompts</span>
-        <h2>Every stage is yours to shape</h2>
-        <p>Laya's pipeline runs through distinct LLM stages — router, stager, the six persona workers, briefings, summaries, semantic chat, and more. Drop a markdown file into <code style="font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85em; padding: 2px 7px; border-radius: 4px; background: rgba(246, 172, 105, 0.12); color: var(--laya-peach);">~/.laya/prompts/</code> for any stage and Laya uses your prompt instead of the default. No fork, no rebuild.</p>
-        <ul>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Override 20+ pipeline stages individually — change one, keep the rest as default</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Tune persona voices, classification rules, or briefing style to your team</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Delete the file to revert — defaults always come back</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Reload picked up on engine restart — version-control your prompts alongside your dotfiles</li>
-        </ul>
-      </div>
-      <div class="feature-image">
-        <div style="background: #15120f; border: 1px solid #2a2520; border-radius: 14px; padding: 22px 24px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.82rem; line-height: 1.7; color: #e8ddd0; overflow-x: auto; box-shadow: 0 12px 40px rgba(0,0,0,0.35);">
-          <div style="color: #6f655a; font-size: 0.72rem; letter-spacing: 0.08em; margin-bottom: 12px;">~/.laya/prompts/</div>
-<pre style="margin: 0; white-space: pre; color: #e8ddd0;"><span style="color: #6f655a;">├─</span> <span style="color: #f6bc66;">router.md</span>          <span style="color: #6f655a;"># classification</span>
+    <!-- ═══════════════════ CUSTOM PROMPTS ═══════════════════ -->
+    <section id="custom-prompts">
+      <div class="container">
+        <div class="feature-showcase animate-on-scroll">
+          <div class="feature-text">
+            <span class="tag">Custom Prompts</span>
+            <h2>Every stage is yours to shape</h2>
+            <p>Laya's pipeline runs through distinct LLM stages — router, stager, the six persona workers, briefings,
+              summaries, semantic chat, and more. Drop a markdown file into <code
+                style="font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85em; padding: 2px 7px; border-radius: 4px; background: rgba(246, 172, 105, 0.12); color: var(--laya-peach);">~/.laya/prompts/</code>
+              for any stage and Laya uses your prompt instead of the default. No fork, no rebuild.</p>
+            <ul>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Override 20+ pipeline stages individually — change one, keep the rest as default</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Tune persona voices, classification rules, or briefing style to your team</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Delete the file to revert — defaults always come back</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Reload picked up on engine restart — version-control your prompts alongside your
+                dotfiles</li>
+            </ul>
+          </div>
+          <div class="feature-image">
+            <div
+              style="background: #15120f; border: 1px solid #2a2520; border-radius: 14px; padding: 22px 24px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.82rem; line-height: 1.7; color: #e8ddd0; overflow-x: auto; box-shadow: 0 12px 40px rgba(0,0,0,0.35);">
+              <div style="color: #6f655a; font-size: 0.72rem; letter-spacing: 0.08em; margin-bottom: 12px;">
+                ~/.laya/prompts/</div>
+              <pre style="margin: 0; white-space: pre; color: #e8ddd0;"><span style="color: #6f655a;">├─</span> <span style="color: #f6bc66;">router.md</span>          <span style="color: #6f655a;"># classification</span>
 <span style="color: #6f655a;">├─</span> <span style="color: #f6bc66;">stager.md</span>          <span style="color: #6f655a;"># action drafting</span>
 <span style="color: #6f655a;">├─</span> <span style="color: #f6bc66;">engineer.md</span>        <span style="color: #6f655a;"># persona voice</span>
 <span style="color: #6f655a;">├─</span> <span style="color: #f6bc66;">comms.md</span>
 <span style="color: #6f655a;">├─</span> <span style="color: #f6bc66;">briefing.md</span>        <span style="color: #6f655a;"># daily digest</span>
 <span style="color: #6f655a;">├─</span> <span style="color: #f6bc66;">omni.md</span>            <span style="color: #6f655a;"># rolling summary</span>
 <span style="color: #6f655a;">└─</span> <span style="color: #6f655a;">… 16 more</span></pre>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-  </div>
-</section>
+    </section>
 
-<!-- ═══════════════════ MCP SERVER ═══════════════════ -->
-<section id="mcp">
-  <div class="container">
-    <div class="feature-showcase reverse animate-on-scroll">
-      <div class="feature-text">
-        <span class="tag">MCP Server</span>
-        <h2>Bring Laya into any AI harness</h2>
-        <p>Whenever Laya is running, a <strong>Model Context Protocol</strong> server is reachable at <code style="font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85em; padding: 2px 7px; border-radius: 4px; background: rgba(246, 172, 105, 0.12); color: var(--laya-peach);">http://127.0.0.1:8420/mcp/</code>. Grab a token from Settings → MCP and wire any MCP-compatible client — Claude Desktop, Cursor, VS Code, custom agents — straight into your live data.</p>
-        <ul>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Three scope toggles — Read, Write, Egress — gate what clients can call</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Bearer-token auth or loopback-only mode, your call</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Full surface: search cards, semantic search, mutate, and trigger outbound actions across all 9 connected platforms</li>
-          <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Same transport powers Laya's in-app coding agents — one path, one policy</li>
-        </ul>
-      </div>
-      <div class="feature-image">
-        <div style="background: #15120f; border: 1px solid #2a2520; border-radius: 14px; padding: 22px 24px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.82rem; line-height: 1.7; color: #e8ddd0; overflow-x: auto; box-shadow: 0 12px 40px rgba(0,0,0,0.35);">
-          <div style="display: flex; gap: 6px; margin-bottom: 14px; align-items: center;">
-            <button class="mcp-tab active" data-target="mcp-stdio" style="padding: 5px 14px; border-radius: 100px; background: rgba(246,172,105,0.1); border: 1px solid rgba(246,172,105,0.3); color: #f6ac69; font-size: 0.72rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.25s;">Claude Desktop</button>
-            <button class="mcp-tab" data-target="mcp-http" style="padding: 5px 14px; border-radius: 100px; background: #1a1612; border: 1px solid #2a2520; color: #8a7e70; font-size: 0.72rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.25s;">Claude Code / Cursor / Other</button>
-            <button id="mcp-copy-btn" onclick="copyMcpConfig()" style="margin-left: auto; padding: 5px 14px; border-radius: 100px; background: #1a1612; border: 1px solid #2a2520; color: #8a7e70; font-size: 0.72rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.25s;">Copy</button>
+    <!-- ═══════════════════ MCP SERVER ═══════════════════ -->
+    <section id="mcp">
+      <div class="container">
+        <div class="feature-showcase reverse animate-on-scroll">
+          <div class="feature-text">
+            <span class="tag">MCP Server</span>
+            <h2>Bring Laya into any AI harness</h2>
+            <p>Whenever Laya is running, a <strong>Model Context Protocol</strong> server is reachable at <code
+                style="font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85em; padding: 2px 7px; border-radius: 4px; background: rgba(246, 172, 105, 0.12); color: var(--laya-peach);">http://127.0.0.1:8420/mcp/</code>.
+              Grab a token from Settings → MCP and wire any MCP-compatible client — Claude Desktop, Cursor, VS Code,
+              custom agents — straight into your live data.</p>
+            <ul>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Three scope toggles — Read, Write, Egress — gate what clients can call</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Bearer-token auth or loopback-only mode, your call</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Full surface: search cards, semantic search, mutate, and trigger outbound actions across
+                all 9 connected platforms</li>
+              <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                    stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg></span> Same transport powers Laya's in-app coding agents — one path, one policy</li>
+            </ul>
           </div>
-          <div style="position: relative; min-height: 290px;">
-<pre id="mcp-stdio" style="margin: 0; white-space: pre; color: #e8ddd0; position: absolute; top: 0; left: 0; right: 0;"><span style="color: #6f655a;">{</span>
+          <div class="feature-image">
+            <div
+              style="background: #15120f; border: 1px solid #2a2520; border-radius: 14px; padding: 22px 24px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.82rem; line-height: 1.7; color: #e8ddd0; overflow-x: auto; box-shadow: 0 12px 40px rgba(0,0,0,0.35);">
+              <div style="display: flex; gap: 6px; margin-bottom: 14px; align-items: center;">
+                <button class="mcp-tab active" data-target="mcp-stdio"
+                  style="padding: 5px 14px; border-radius: 100px; background: rgba(246,172,105,0.1); border: 1px solid rgba(246,172,105,0.3); color: #f6ac69; font-size: 0.72rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.25s;">Claude
+                  Desktop</button>
+                <button class="mcp-tab" data-target="mcp-http"
+                  style="padding: 5px 14px; border-radius: 100px; background: #1a1612; border: 1px solid #2a2520; color: #8a7e70; font-size: 0.72rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.25s;">Claude
+                  Code / Cursor / Other</button>
+                <button id="mcp-copy-btn" onclick="copyMcpConfig()"
+                  style="margin-left: auto; padding: 5px 14px; border-radius: 100px; background: #1a1612; border: 1px solid #2a2520; color: #8a7e70; font-size: 0.72rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.25s;">Copy</button>
+              </div>
+              <div style="position: relative; min-height: 290px;">
+                <pre id="mcp-stdio"
+                  style="margin: 0; white-space: pre; color: #e8ddd0; position: absolute; top: 0; left: 0; right: 0;"><span style="color: #6f655a;">{</span>
   <span style="color: #f6bc66;">"mcpServers"</span>: <span style="color: #6f655a;">{</span>
     <span style="color: #f6bc66;">"laya"</span>: <span style="color: #6f655a;">{</span>
       <span style="color: #f6bc66;">"command"</span>: <span style="color: #ffdab9;">"npx"</span>,
@@ -631,7 +1022,8 @@
     <span style="color: #6f655a;">}</span>
   <span style="color: #6f655a;">}</span>
 <span style="color: #6f655a;">}</span></pre>
-<pre id="mcp-http" style="margin: 0; white-space: pre; color: #e8ddd0; position: absolute; top: 0; left: 0; right: 0; display: none;"><span style="color: #6f655a;">{</span>
+                <pre id="mcp-http"
+                  style="margin: 0; white-space: pre; color: #e8ddd0; position: absolute; top: 0; left: 0; right: 0; display: none;"><span style="color: #6f655a;">{</span>
   <span style="color: #f6bc66;">"mcpServers"</span>: <span style="color: #6f655a;">{</span>
     <span style="color: #f6bc66;">"laya"</span>: <span style="color: #6f655a;">{</span>
       <span style="color: #f6bc66;">"type"</span>: <span style="color: #ffdab9;">"streamable-http"</span>,
@@ -642,366 +1034,474 @@
     <span style="color: #6f655a;">}</span>
   <span style="color: #6f655a;">}</span>
 <span style="color: #6f655a;">}</span></pre>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  </div>
-</section>
+    </section>
 
-<!-- ═══════════════════ PERSONAS ═══════════════════ -->
-<section>
-  <div class="container">
-    <div class="section-header">
-      <h2>Six AI personas.<br><span class="text-orange">Zero context switching.</span></h2>
-      <p>Laya automatically routes each notification to the right specialist persona, so you get expert-level output every time.</p>
-    </div>
-    <div class="personas-grid">
-      <div class="persona-card persona-engineer animate-on-scroll">
-        <div class="persona-avatar"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
-        <h3>Engineer</h3>
-        <p>Spawns coding agents, analyzes PRs, reviews build failures, drafts code fixes, and surfaces implementation plans with full repo context.</p>
+    <!-- ═══════════════════ PERSONAS ═══════════════════ -->
+    <section>
+      <div class="container">
+        <div class="section-header">
+          <h2>Six AI personas.<br><span class="text-orange">Zero context switching.</span></h2>
+          <p>Laya automatically routes each notification to the right specialist persona, so you get expert-level output
+            every time.</p>
+        </div>
+        <div class="personas-grid">
+          <div class="persona-card persona-engineer animate-on-scroll">
+            <div class="persona-avatar"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#a78bfa"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="16 18 22 12 16 6" />
+                <polyline points="8 6 2 12 8 18" />
+              </svg></div>
+            <h3>Engineer</h3>
+            <p>Spawns coding agents, analyzes PRs, reviews build failures, drafts code fixes, and surfaces
+              implementation plans with full repo context.</p>
+          </div>
+          <div class="persona-card persona-comms animate-on-scroll">
+            <div class="persona-avatar"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#34d399"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg></div>
+            <h3>Comms</h3>
+            <p>Drafts email replies, Slack responses, and PR comments. Analyzes sender intent, checks communication
+              history, and prepares context-aware responses.</p>
+          </div>
+          <div class="persona-card persona-ops animate-on-scroll">
+            <div class="persona-avatar"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <path
+                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg></div>
+            <h3>Ops</h3>
+            <p>Aggregates calendar events, manages scheduling conflicts, synthesizes meeting prep, and monitors
+              operational updates across all platforms.</p>
+          </div>
+          <div class="persona-card animate-on-scroll" style="border-color: rgba(52, 211, 153, 0.15);">
+            <div class="persona-avatar"
+              style="background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.2);"><svg width="28"
+                height="28" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+              </svg></div>
+            <h3>Finance</h3>
+            <p>Processes invoices, expense reports, and budget updates. Flags financial anomalies and prepares cost
+              summaries across your accounts.</p>
+          </div>
+          <div class="persona-card animate-on-scroll" style="border-color: rgba(52, 211, 153, 0.15);">
+            <div class="persona-avatar"
+              style="background: rgba(236, 72, 153, 0.12); border: 1px solid rgba(236, 72, 153, 0.2);"><svg width="28"
+                height="28" viewBox="0 0 24 24" fill="none" stroke="#ec4899" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg></div>
+            <h3>HR</h3>
+            <p>Handles people-related events &mdash; onboarding, leave requests, team announcements, and HR policy
+              updates. Recognizes internal people operations.</p>
+          </div>
+          <div class="persona-card animate-on-scroll" style="border-color: rgba(52, 211, 153, 0.15);">
+            <div class="persona-avatar"
+              style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.2);"><svg width="28"
+                height="28" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+              </svg></div>
+            <h3>Sales</h3>
+            <p>Tracks prospects, deals, and pipeline activity. Summarizes customer interactions and flags deal-stage
+              changes that need attention.</p>
+          </div>
+        </div>
       </div>
-      <div class="persona-card persona-comms animate-on-scroll">
-        <div class="persona-avatar"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
-        <h3>Comms</h3>
-        <p>Drafts email replies, Slack responses, and PR comments. Analyzes sender intent, checks communication history, and prepares context-aware responses.</p>
-      </div>
-      <div class="persona-card persona-ops animate-on-scroll">
-        <div class="persona-avatar"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
-        <h3>Ops</h3>
-        <p>Aggregates calendar events, manages scheduling conflicts, synthesizes meeting prep, and monitors operational updates across all platforms.</p>
-      </div>
-      <div class="persona-card animate-on-scroll" style="border-color: rgba(52, 211, 153, 0.15);">
-        <div class="persona-avatar" style="background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.2);"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
-        <h3>Finance</h3>
-        <p>Processes invoices, expense reports, and budget updates. Flags financial anomalies and prepares cost summaries across your accounts.</p>
-      </div>
-      <div class="persona-card animate-on-scroll" style="border-color: rgba(52, 211, 153, 0.15);">
-        <div class="persona-avatar" style="background: rgba(236, 72, 153, 0.12); border: 1px solid rgba(236, 72, 153, 0.2);"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ec4899" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
-        <h3>HR</h3>
-        <p>Handles people-related events &mdash; onboarding, leave requests, team announcements, and HR policy updates. Recognizes internal people operations.</p>
-      </div>
-      <div class="persona-card animate-on-scroll" style="border-color: rgba(52, 211, 153, 0.15);">
-        <div class="persona-avatar" style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.2);"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
-        <h3>Sales</h3>
-        <p>Tracks prospects, deals, and pipeline activity. Summarizes customer interactions and flags deal-stage changes that need attention.</p>
-      </div>
-    </div>
-  </div>
-</section>
+    </section>
 
-<!-- ═══════════════════ INTEGRATIONS ═══════════════════ -->
-<section>
-  <div class="container">
-    <div class="section-header">
-      <h2>Connects to everything <span class="text-orange">you already use</span></h2>
-      <p>Connect one tool or all of them. Laya normalizes everything into a unified, AI-enriched event stream.</p>
-    </div>
-    <div class="integrations-grid animate-on-scroll">
-      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="#f6ac69"><path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 010 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z"/></svg></span> Gmail</div>
-      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="#ff9770"><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/></svg></span> Slack</div>
-      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="#f6bc66"><path d="M11.571 11.513H0a5.218 5.218 0 0 0 5.232 5.215h2.13v2.057A5.215 5.215 0 0 0 12.575 24V12.518a1.005 1.005 0 0 0-1.005-1.005zm5.723-5.756H5.736a5.215 5.215 0 0 0 5.215 5.214h2.129v2.058a5.218 5.218 0 0 0 5.215 5.214V6.758a1.001 1.001 0 0 0-1.001-1.001zM23.013 0H11.455a5.215 5.215 0 0 0 5.215 5.215h2.129v2.057A5.215 5.215 0 0 0 24 12.483V1.005A1.001 1.001 0 0 0 23.013 0Z"/></svg></span> Jira</div>
-      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="#f6ac69"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg></span> GitHub</div>
-      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="#ff9770"><path d="M.778 1.213a.768.768 0 00-.768.892l3.263 19.81c.084.5.515.868 1.022.873H19.95a.772.772 0 00.77-.646l3.27-20.03a.768.768 0 00-.768-.89zM14.52 15.53H9.522L8.17 8.466h7.561z"/></svg></span> Bitbucket</div>
-      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="#f6bc66"><path d="M18.316 5.684H24v12.632h-5.684V5.684zM5.684 24h12.632v-5.684H5.684V24zM18.316 5.684V0H1.895A1.894 1.894 0 0 0 0 1.895v16.421h5.684V5.684h12.632zm-7.207 6.25v-.065c.272-.144.5-.349.687-.617s.279-.595.279-.982c0-.379-.099-.72-.3-1.025a2.05 2.05 0 0 0-.832-.714 2.703 2.703 0 0 0-1.197-.257c-.6 0-1.094.156-1.481.467-.386.311-.65.671-.793 1.078l1.085.452c.086-.249.224-.461.413-.633.189-.172.445-.257.767-.257.33 0 .602.088.816.264a.86.86 0 0 1 .322.703c0 .33-.12.589-.36.778-.24.19-.535.284-.886.284h-.567v1.085h.633c.407 0 .748.109 1.02.327.272.218.407.499.407.843 0 .336-.129.614-.387.832s-.565.327-.924.327c-.351 0-.651-.103-.897-.311-.248-.208-.422-.502-.521-.881l-1.096.452c.178.616.505 1.082.977 1.401.472.319.984.478 1.538.477a2.84 2.84 0 0 0 1.293-.291c.382-.193.684-.458.902-.794.218-.336.327-.72.327-1.149 0-.429-.115-.797-.344-1.105a2.067 2.067 0 0 0-.881-.689zm2.093-1.931l.602.913L15 10.045v5.744h1.187V8.446h-.827l-2.158 1.557zM22.105 0h-3.289v5.184H24V1.895A1.894 1.894 0 0 0 22.105 0zm-3.289 23.5l4.684-4.684h-4.684V23.5zM0 22.105C0 23.152.848 24 1.895 24h3.289v-5.184H0v3.289z"/></svg></span> Calendar</div>
-      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="#f6ac69"><path d="M7.88 12.04q0 .45-.11.87q-.1.41-.33.74q-.22.33-.58.52q-.37.2-.87.2t-.85-.2q-.35-.21-.57-.55q-.22-.33-.33-.75q-.1-.42-.1-.86t.1-.87t.34-.76q.22-.34.59-.54q.36-.2.87-.2t.86.2q.35.21.57.55t.31.77q.1.43.1.88M24 12v9.38q0 .46-.33.8q-.33.32-.8.32H7.13q-.46 0-.8-.33q-.32-.33-.32-.8V18H1q-.41 0-.7-.3q-.3-.29-.3-.7V7q0-.41.3-.7Q.58 6 1 6h6.5V2.55q0-.44.3-.75q.3-.3.75-.3h12.9q.44 0 .75.3q.3.3.3.75v8.3l1.24.72h.01q.1.07.18.18q.07.12.07.25m-6-8.25v3h3v-3zm0 4.5v3h3v-3zm0 4.5v1.83l3.05-1.83zm-5.25-9v3h3.75v-3zm0 4.5v3h3.75v-3zm0 4.5v2.03l2.41 1.5l1.34-.8v-2.73zM9 3.75V6h2l.13.01l.12.04v-2.3zM5.98 15.98q.9 0 1.6-.3q.7-.32 1.19-.86q.48-.55.73-1.28q.25-.74.25-1.61q0-.83-.25-1.55q-.24-.71-.71-1.24t-1.15-.83t-1.55-.3q-.92 0-1.64.3q-.71.3-1.2.85q-.5.54-.75 1.3q-.25.74-.25 1.63q0 .85.26 1.56q.26.72.74 1.23q.48.52 1.17.81q.69.3 1.56.3zM7.5 21h12.39L12 16.08V17q0 .41-.3.7q-.29.3-.7.3H7.5zm15-.13v-7.24l-5.9 3.54Z"/></svg></span> Outlook</div>
-      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="#f6bc66"><path d="M2.886 4.18A11.982 11.982 0 0 1 11.99 0C18.624 0 24 5.376 24 12.009c0 3.64-1.62 6.903-4.18 9.105L2.887 4.18ZM1.817 5.626l16.556 16.556c-.524.33-1.075.62-1.65.866L.951 7.277c.247-.575.537-1.126.866-1.65ZM.322 9.163l14.515 14.515c-.71.172-1.443.282-2.195.322L0 11.358a12 12 0 0 1 .322-2.195Zm-.17 4.862 9.823 9.824a12.02 12.02 0 0 1-9.824-9.824Z"/></svg></span> Linear</div>
-      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="#f6ac69"><path d="M4.459 4.208c.746.606 1.026.56 2.428.466l13.215-.793c.28 0 .047-.28-.046-.326L18.38 2.33c-.42-.326-.98-.7-2.055-.607L3.48 2.87c-.466.046-.56.28-.374.466l1.353 1.873zm.793 3.08v13.904c0 .747.373 1.027 1.214.98l14.523-.84c.841-.046.935-.56.935-1.166V6.382c0-.606-.233-.933-.747-.886l-15.178.84c-.56.047-.747.327-.747.933zm14.337.745c.093.42 0 .84-.42.888l-.7.14v10.264c-.608.327-1.168.514-1.635.514-.747 0-.935-.234-1.495-.933l-4.577-7.186v6.952l1.448.327s0 .84-1.168.84l-3.222.187c-.093-.187 0-.653.327-.747l.84-.233V9.854L7.23 9.668c-.094-.42.14-1.026.793-1.073l3.456-.233 4.764 7.279v-6.44l-1.215-.14c-.093-.513.28-.886.747-.933l3.222-.187z"/></svg></span> Notion</div>
-      <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span> More via n8n</div>
-    </div>
-  </div>
-</section>
-
-<!-- ═══════════════════ PRIVACY ═══════════════════ -->
-<section class="privacy-section" id="privacy">
-  <div class="container">
-    <div class="section-header">
-      <h2>Your data stays <span class="text-orange">yours</span></h2>
-      <p>Laya is local-first by design. Your data never leaves your machine unless you choose a cloud model.</p>
-    </div>
-    <div class="privacy-grid">
-      <div class="privacy-item animate-on-scroll">
-        <div class="icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f6ac69" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
-        <h3>Local-First Architecture</h3>
-        <p>SQLite database, ChromaDB vectors, and all configs stored on your machine. No cloud account required.</p>
+    <!-- ═══════════════════ INTEGRATIONS ═══════════════════ -->
+    <section>
+      <div class="container">
+        <div class="section-header">
+          <h2>Connects to everything <span class="text-orange">you already use</span></h2>
+          <p>Connect one tool or all of them. Laya normalizes everything into a unified, AI-enriched event stream.</p>
+        </div>
+        <div class="integrations-grid animate-on-scroll">
+          <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24"
+                fill="#f6ac69">
+                <path
+                  d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 010 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z" />
+              </svg></span> Gmail</div>
+          <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24"
+                fill="#ff9770">
+                <path
+                  d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z" />
+              </svg></span> Slack</div>
+          <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24"
+                fill="#f6bc66">
+                <path
+                  d="M11.571 11.513H0a5.218 5.218 0 0 0 5.232 5.215h2.13v2.057A5.215 5.215 0 0 0 12.575 24V12.518a1.005 1.005 0 0 0-1.005-1.005zm5.723-5.756H5.736a5.215 5.215 0 0 0 5.215 5.214h2.129v2.058a5.218 5.218 0 0 0 5.215 5.214V6.758a1.001 1.001 0 0 0-1.001-1.001zM23.013 0H11.455a5.215 5.215 0 0 0 5.215 5.215h2.129v2.057A5.215 5.215 0 0 0 24 12.483V1.005A1.001 1.001 0 0 0 23.013 0Z" />
+              </svg></span> Jira</div>
+          <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24"
+                fill="#f6ac69">
+                <path
+                  d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+              </svg></span> GitHub</div>
+          <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24"
+                fill="#ff9770">
+                <path
+                  d="M.778 1.213a.768.768 0 00-.768.892l3.263 19.81c.084.5.515.868 1.022.873H19.95a.772.772 0 00.77-.646l3.27-20.03a.768.768 0 00-.768-.89zM14.52 15.53H9.522L8.17 8.466h7.561z" />
+              </svg></span> Bitbucket</div>
+          <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24"
+                fill="#f6bc66">
+                <path
+                  d="M18.316 5.684H24v12.632h-5.684V5.684zM5.684 24h12.632v-5.684H5.684V24zM18.316 5.684V0H1.895A1.894 1.894 0 0 0 0 1.895v16.421h5.684V5.684h12.632zm-7.207 6.25v-.065c.272-.144.5-.349.687-.617s.279-.595.279-.982c0-.379-.099-.72-.3-1.025a2.05 2.05 0 0 0-.832-.714 2.703 2.703 0 0 0-1.197-.257c-.6 0-1.094.156-1.481.467-.386.311-.65.671-.793 1.078l1.085.452c.086-.249.224-.461.413-.633.189-.172.445-.257.767-.257.33 0 .602.088.816.264a.86.86 0 0 1 .322.703c0 .33-.12.589-.36.778-.24.19-.535.284-.886.284h-.567v1.085h.633c.407 0 .748.109 1.02.327.272.218.407.499.407.843 0 .336-.129.614-.387.832s-.565.327-.924.327c-.351 0-.651-.103-.897-.311-.248-.208-.422-.502-.521-.881l-1.096.452c.178.616.505 1.082.977 1.401.472.319.984.478 1.538.477a2.84 2.84 0 0 0 1.293-.291c.382-.193.684-.458.902-.794.218-.336.327-.72.327-1.149 0-.429-.115-.797-.344-1.105a2.067 2.067 0 0 0-.881-.689zm2.093-1.931l.602.913L15 10.045v5.744h1.187V8.446h-.827l-2.158 1.557zM22.105 0h-3.289v5.184H24V1.895A1.894 1.894 0 0 0 22.105 0zm-3.289 23.5l4.684-4.684h-4.684V23.5zM0 22.105C0 23.152.848 24 1.895 24h3.289v-5.184H0v3.289z" />
+              </svg></span> Calendar</div>
+          <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24"
+                fill="#f6ac69">
+                <path
+                  d="M7.88 12.04q0 .45-.11.87q-.1.41-.33.74q-.22.33-.58.52q-.37.2-.87.2t-.85-.2q-.35-.21-.57-.55q-.22-.33-.33-.75q-.1-.42-.1-.86t.1-.87t.34-.76q.22-.34.59-.54q.36-.2.87-.2t.86.2q.35.21.57.55t.31.77q.1.43.1.88M24 12v9.38q0 .46-.33.8q-.33.32-.8.32H7.13q-.46 0-.8-.33q-.32-.33-.32-.8V18H1q-.41 0-.7-.3q-.3-.29-.3-.7V7q0-.41.3-.7Q.58 6 1 6h6.5V2.55q0-.44.3-.75q.3-.3.75-.3h12.9q.44 0 .75.3q.3.3.3.75v8.3l1.24.72h.01q.1.07.18.18q.07.12.07.25m-6-8.25v3h3v-3zm0 4.5v3h3v-3zm0 4.5v1.83l3.05-1.83zm-5.25-9v3h3.75v-3zm0 4.5v3h3.75v-3zm0 4.5v2.03l2.41 1.5l1.34-.8v-2.73zM9 3.75V6h2l.13.01l.12.04v-2.3zM5.98 15.98q.9 0 1.6-.3q.7-.32 1.19-.86q.48-.55.73-1.28q.25-.74.25-1.61q0-.83-.25-1.55q-.24-.71-.71-1.24t-1.15-.83t-1.55-.3q-.92 0-1.64.3q-.71.3-1.2.85q-.5.54-.75 1.3q-.25.74-.25 1.63q0 .85.26 1.56q.26.72.74 1.23q.48.52 1.17.81q.69.3 1.56.3zM7.5 21h12.39L12 16.08V17q0 .41-.3.7q-.29.3-.7.3H7.5zm15-.13v-7.24l-5.9 3.54Z" />
+              </svg></span> Outlook</div>
+          <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24"
+                fill="#f6bc66">
+                <path
+                  d="M2.886 4.18A11.982 11.982 0 0 1 11.99 0C18.624 0 24 5.376 24 12.009c0 3.64-1.62 6.903-4.18 9.105L2.887 4.18ZM1.817 5.626l16.556 16.556c-.524.33-1.075.62-1.65.866L.951 7.277c.247-.575.537-1.126.866-1.65ZM.322 9.163l14.515 14.515c-.71.172-1.443.282-2.195.322L0 11.358a12 12 0 0 1 .322-2.195Zm-.17 4.862 9.823 9.824a12.02 12.02 0 0 1-9.824-9.824Z" />
+              </svg></span> Linear</div>
+          <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24"
+                fill="#f6ac69">
+                <path
+                  d="M4.459 4.208c.746.606 1.026.56 2.428.466l13.215-.793c.28 0 .047-.28-.046-.326L18.38 2.33c-.42-.326-.98-.7-2.055-.607L3.48 2.87c-.466.046-.56.28-.374.466l1.353 1.873zm.793 3.08v13.904c0 .747.373 1.027 1.214.98l14.523-.84c.841-.046.935-.56.935-1.166V6.382c0-.606-.233-.933-.747-.886l-15.178.84c-.56.047-.747.327-.747.933zm14.337.745c.093.42 0 .84-.42.888l-.7.14v10.264c-.608.327-1.168.514-1.635.514-.747 0-.935-.234-1.495-.933l-4.577-7.186v6.952l1.448.327s0 .84-1.168.84l-3.222.187c-.093-.187 0-.653.327-.747l.84-.233V9.854L7.23 9.668c-.094-.42.14-1.026.793-1.073l3.456-.233 4.764 7.279v-6.44l-1.215-.14c-.093-.513.28-.886.747-.933l3.222-.187z" />
+              </svg></span> Notion</div>
+          <div class="integration-pill"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg></span> More via n8n</div>
+        </div>
       </div>
-      <div class="privacy-item animate-on-scroll">
-        <div class="icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f6bc66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg></div>
-        <h3>Your Keys, Your Models</h3>
-        <p>Bring your own API keys. Use Claude, GPT, Gemini, or run Ollama locally for complete air-gapped privacy.</p>
+    </section>
+
+    <!-- ═══════════════════ PRIVACY ═══════════════════ -->
+    <section class="privacy-section" id="privacy">
+      <div class="container">
+        <div class="section-header">
+          <h2>Your data stays <span class="text-orange">yours</span></h2>
+          <p>Laya is local-first by design. Your data never leaves your machine unless you choose a cloud model.</p>
+        </div>
+        <div class="privacy-grid">
+          <div class="privacy-item animate-on-scroll">
+            <div class="icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg></div>
+            <h3>Local-First Architecture</h3>
+            <p>SQLite database, ChromaDB vectors, and all configs stored on your machine. No cloud account required.</p>
+          </div>
+          <div class="privacy-item animate-on-scroll">
+            <div class="icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f6bc66"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path
+                  d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
+              </svg></div>
+            <h3>Your Keys, Your Models</h3>
+            <p>Bring your own API keys. Use Claude, GPT, Gemini, or run Ollama locally for complete air-gapped privacy.
+            </p>
+          </div>
+          <div class="privacy-item animate-on-scroll">
+            <div class="icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ff9770"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                <path d="M9 12l2 2 4-4" stroke="#f6bc66" />
+              </svg></div>
+            <h3>3-Tier Privacy Classification</h3>
+            <p>Sensitive content (DMs, emails) can be routed to local models only. Metadata stays separate from content.
+            </p>
+          </div>
+        </div>
       </div>
-      <div class="privacy-item animate-on-scroll">
-        <div class="icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ff9770" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4" stroke="#f6bc66"/></svg></div>
-        <h3>3-Tier Privacy Classification</h3>
-        <p>Sensitive content (DMs, emails) can be routed to local models only. Metadata stays separate from content.</p>
+    </section>
+
+    <!-- ═══════════════════ CTA ═══════════════════ -->
+    <section class="cta-section" id="cta">
+      <div class="container">
+        <h2>Ready to take<br><span class="text-gradient">command?</span></h2>
+        <p>Laya is free and open source. Connect your first tool, run the engine, and let AI handle the rest.</p>
+        <div class="hero-buttons">
+          <div class="download-group">
+            <a id="cta-download-btn" href="https://github.com/aayushch/laya/releases/latest" target="_blank"
+              rel="noopener noreferrer" class="btn btn-primary download-main"><svg width="18" height="18"
+                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg> <span id="cta-download-label">Download Laya</span></a>
+            <button type="button" class="btn btn-primary download-split" aria-label="Other platforms"
+              title="Other platforms" onclick="openDownloads()"><svg width="14" height="14" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+              </svg></button>
+          </div>
+          <a href="docs.html" class="btn btn-ghost"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+            </svg> Read the Docs</a>
+        </div>
+        <p class="download-meta">
+          <a href="#" onclick="event.preventDefault(); openDownloads();">All platforms</a>
+          <span class="dot">·</span>
+          <span id="cta-download-version">latest release</span>
+          <span class="dot">·</span>
+          <a href="https://github.com/aayushch/laya" target="_blank" rel="noopener noreferrer">View source on GitHub</a>
+        </p>
       </div>
-    </div>
-  </div>
-</section>
+    </section>
 
-<!-- ═══════════════════ CTA ═══════════════════ -->
-<section class="cta-section" id="cta">
-  <div class="container">
-    <h2>Ready to take<br><span class="text-gradient">command?</span></h2>
-    <p>Laya is free and open source. Connect your first tool, run the engine, and let AI handle the rest.</p>
-    <div class="hero-buttons">
-      <div class="download-group">
-        <a id="cta-download-btn" href="https://github.com/aayushch/laya/releases/latest" target="_blank" rel="noopener noreferrer" class="btn btn-primary download-main"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> <span id="cta-download-label">Download Laya</span></a>
-        <button type="button" class="btn btn-primary download-split" aria-label="Other platforms" title="Other platforms" onclick="openDownloads()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+    <!-- ═══════════════════ FOOTER ═══════════════════ -->
+    <footer>
+      <div class="container">
+        <div class="footer-content">
+          <div class="footer-left">
+            <img src="images/logo-icon.png" alt="Laya">
+            <span>Laya</span>
+          </div>
+          <p>&copy; 2026 Laya. Open source. Built for anyone who wants their tools to work smarter.</p>
+          <ul class="footer-links">
+            <li><a href="https://github.com/aayushch/laya" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="docs.html">Docs</a></li>
+            <li><a href="privacy.html">Privacy</a></li>
+            <li><a href="terms.html">Terms</a></li>
+          </ul>
+        </div>
       </div>
-      <a href="docs.html" class="btn btn-ghost"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> Read the Docs</a>
-    </div>
-    <p class="download-meta">
-      <a href="#" onclick="event.preventDefault(); openDownloads();">All platforms</a>
-      <span class="dot">·</span>
-      <span id="cta-download-version">latest release</span>
-      <span class="dot">·</span>
-      <a href="https://github.com/aayushch/laya" target="_blank" rel="noopener noreferrer">View source on GitHub</a>
-    </p>
-  </div>
-</section>
+    </footer>
 
-<!-- ═══════════════════ FOOTER ═══════════════════ -->
-<footer>
-  <div class="container">
-    <div class="footer-content">
-      <div class="footer-left">
-        <img src="images/logo-icon.png" alt="Laya">
-        <span>Laya</span>
-      </div>
-      <p>&copy; 2026 Laya. Open source. Built for anyone who wants their tools to work smarter.</p>
-      <ul class="footer-links">
-        <li><a href="https://github.com/aayushch/laya" target="_blank" rel="noopener noreferrer">GitHub</a></li>
-        <li><a href="docs.html">Docs</a></li>
-        <li><a href="privacy.html">Privacy</a></li>
-        <li><a href="terms.html">Terms</a></li>
-      </ul>
-    </div>
-  </div>
-</footer>
-
-</div><!-- end #landing-page -->
+  </div><!-- end #landing-page -->
 
 
-<!-- ═══════════════════ SCRIPTS ═══════════════════ -->
-<script>
-// ── Backward-compat: old SPA hash links now point to standalone pages ──
-if (location.hash === '#docs') location.replace('docs.html');
-else if (location.hash === '#privacy') location.replace('privacy.html');
-else if (location.hash === '#terms') location.replace('terms.html');
+  <!-- ═══════════════════ SCRIPTS ═══════════════════ -->
+  <script>
+    // ── Backward-compat: old SPA hash links now point to standalone pages ──
+    if (location.hash === '#docs') location.replace('docs.html');
+    else if (location.hash === '#privacy') location.replace('privacy.html');
+    else if (location.hash === '#terms') location.replace('terms.html');
 
-const landingPage = document.getElementById('landing-page');
+    const landingPage = document.getElementById('landing-page');
 
-// ── Nav scroll effect ──
-const nav = document.getElementById('nav');
-window.addEventListener('scroll', () => {
-  nav.classList.toggle('scrolled', window.scrollY > 50);
-});
-
-// ── Screenshot tabs ──
-document.querySelectorAll('.showcase-tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.showcase-tab').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    const target = tab.dataset.target;
-    document.querySelectorAll('.showcase-frame img').forEach(img => {
-      img.style.display = img.id === target ? 'block' : 'none';
+    // ── Nav scroll effect ──
+    const nav = document.getElementById('nav');
+    window.addEventListener('scroll', () => {
+      nav.classList.toggle('scrolled', window.scrollY > 50);
     });
-  });
-});
 
-// ── MCP config tabs ──
-document.querySelectorAll('.mcp-tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.mcp-tab').forEach(t => {
-      t.style.background = '#1a1612';
-      t.style.borderColor = '#2a2520';
-      t.style.color = '#8a7e70';
-      t.classList.remove('active');
+    // ── Screenshot tabs ──
+    document.querySelectorAll('.showcase-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.showcase-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        const target = tab.dataset.target;
+        document.querySelectorAll('.showcase-frame img').forEach(img => {
+          img.style.display = img.id === target ? 'block' : 'none';
+        });
+      });
     });
-    tab.style.background = 'rgba(246,172,105,0.1)';
-    tab.style.borderColor = 'rgba(246,172,105,0.3)';
-    tab.style.color = '#f6ac69';
-    tab.classList.add('active');
-    const target = tab.dataset.target;
-    document.getElementById('mcp-stdio').style.display = target === 'mcp-stdio' ? 'block' : 'none';
-    document.getElementById('mcp-http').style.display = target === 'mcp-http' ? 'block' : 'none';
-  });
-});
 
-function copyMcpConfig() {
-  const active = document.querySelector('.mcp-tab.active');
-  const pre = document.getElementById(active ? active.dataset.target : 'mcp-stdio');
-  navigator.clipboard.writeText(pre.textContent).then(() => {
-    const btn = document.getElementById('mcp-copy-btn');
-    btn.textContent = 'Copied';
-    btn.style.color = '#f6ac69';
-    btn.style.borderColor = 'rgba(246,172,105,0.3)';
-    setTimeout(() => {
-      btn.textContent = 'Copy';
-      btn.style.color = '#8a7e70';
-      btn.style.borderColor = '#2a2520';
-    }, 1500);
-  });
-}
-
-// ── Scroll animations ──
-const observer = new IntersectionObserver((entries) => {
-  entries.forEach(entry => {
-    if (entry.isIntersecting) {
-      entry.target.classList.add('visible');
-    }
-  });
-}, { threshold: 0.1, rootMargin: '0px 0px -60px 0px' });
-
-document.querySelectorAll('.animate-on-scroll').forEach(el => observer.observe(el));
-
-// ── Floating particles ──
-const particlesContainer = document.getElementById('particles');
-for (let i = 0; i < 20; i++) {
-  const p = document.createElement('div');
-  p.classList.add('particle');
-  p.style.left = Math.random() * 100 + '%';
-  p.style.animationDelay = Math.random() * 8 + 's';
-  p.style.animationDuration = (6 + Math.random() * 6) + 's';
-  p.style.width = (2 + Math.random() * 3) + 'px';
-  p.style.height = p.style.width;
-  particlesContainer.appendChild(p);
-}
-
-// ── Smooth scroll for anchor links (landing only) ──
-document.querySelectorAll('#landing-page a[href^="#"]').forEach(anchor => {
-  anchor.addEventListener('click', function(e) {
-    const href = this.getAttribute('href');
-    const target = document.querySelector(href);
-    if (target && landingPage.contains(target)) {
-      e.preventDefault();
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  });
-});
-
-// ── Image lightbox ──
-(function() {
-  const overlay = document.getElementById('lightbox');
-  const lightboxImg = document.getElementById('lightbox-img');
-  const magnifySvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>';
-
-  // Wrap all feature/showcase images with zoom button
-  document.querySelectorAll('.feature-image > img, .showcase-frame > img, .agent-screenshots > img').forEach(img => {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'img-zoom-wrapper';
-    img.parentNode.insertBefore(wrapper, img);
-    wrapper.appendChild(img);
-
-    const btn = document.createElement('button');
-    btn.className = 'img-zoom-btn';
-    btn.innerHTML = magnifySvg;
-    wrapper.appendChild(btn);
-
-    function openLightbox(e) {
-      e.stopPropagation();
-      lightboxImg.src = img.src;
-      lightboxImg.alt = img.alt;
-      overlay.classList.add('active');
-    }
-    btn.addEventListener('click', openLightbox);
-    wrapper.addEventListener('click', openLightbox);
-  });
-
-  overlay.addEventListener('click', () => overlay.classList.remove('active'));
-  document.getElementById('lightbox-close').addEventListener('click', () => overlay.classList.remove('active'));
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') overlay.classList.remove('active');
-  });
-})();
-
-// ── Downloads (GitHub releases) ──
-(function() {
-  const REPO = 'aayushch/laya';
-  const RELEASES_PAGE = `https://github.com/${REPO}/releases/latest`;
-  const modal = document.getElementById('downloads-modal');
-  const body = document.getElementById('downloads-body');
-  const subLine = document.getElementById('downloads-sub');
-  let releaseData = null;
-  let fetched = false;
-
-  function classifyAsset(name) {
-    if (!name || /\.sig$/i.test(name) || /\.sha256$/i.test(name) || name === 'latest.json') return null;
-    const lower = name.toLowerCase();
-    if (lower.endsWith('.dmg')) {
-      const arm = /aarch64|arm64/.test(lower);
-      return { os: 'macos', osLabel: 'macOS', arch: arm ? 'arm64' : 'x64', archLabel: arm ? 'Apple Silicon' : 'Intel', format: 'DMG', rank: arm ? 1 : 2 };
-    }
-    if (lower.endsWith('.exe')) {
-      return { os: 'windows', osLabel: 'Windows', arch: 'x64', archLabel: 'x64', format: 'Installer (.exe)', rank: 1 };
-    }
-    if (lower.endsWith('.appimage')) {
-      return { os: 'linux', osLabel: 'Linux', arch: 'x64', archLabel: 'x64', format: 'AppImage', rank: 1 };
-    }
-    if (lower.endsWith('.deb')) {
-      return { os: 'linux', osLabel: 'Linux', arch: 'x64', archLabel: 'x64', format: '.deb (Debian / Ubuntu)', rank: 2 };
-    }
-    if (lower.endsWith('.rpm')) {
-      return { os: 'linux', osLabel: 'Linux', arch: 'x64', archLabel: 'x64', format: '.rpm (Fedora / RHEL)', rank: 3 };
-    }
-    return null;
-  }
-
-  function detectOS() {
-    const ua = (navigator.userAgent || '').toLowerCase();
-    const platform = (navigator.platform || '').toLowerCase();
-    let os = null;
-    let arch = null;
-    if (/iphone|ipad|ipod/.test(ua)) os = 'macos';
-    else if (/mac/.test(platform) || /mac os|macos|darwin/.test(ua)) os = 'macos';
-    else if (/win/.test(platform) || /windows/.test(ua)) os = 'windows';
-    else if (/linux|x11/.test(platform) || /linux/.test(ua)) os = 'linux';
-    if (/arm64|aarch64/.test(ua)) arch = 'arm64';
-    else if (/x86_64|x64|wow64|win64/.test(ua)) arch = 'x64';
-    // On macOS Apple Silicon is the modern default; we only ship aarch64 dmg
-    if (os === 'macos' && !arch) arch = 'arm64';
-    return { os, arch };
-  }
-
-  function formatSize(bytes) {
-    if (!bytes && bytes !== 0) return '';
-    const mb = bytes / (1024 * 1024);
-    return mb >= 1 ? `${mb.toFixed(1)} MB` : `${(bytes / 1024).toFixed(0)} KB`;
-  }
-
-  function pickRecommended(assets, detected) {
-    if (!detected.os) return null;
-    const forOS = assets.filter(a => a.meta.os === detected.os);
-    if (!forOS.length) return null;
-    // Prefer matching architecture, then lowest rank (canonical install format)
-    const sorted = [...forOS].sort((a, b) => {
-      const aArchMatch = detected.arch && a.meta.arch === detected.arch ? 0 : 1;
-      const bArchMatch = detected.arch && b.meta.arch === detected.arch ? 0 : 1;
-      if (aArchMatch !== bArchMatch) return aArchMatch - bArchMatch;
-      return a.meta.rank - b.meta.rank;
+    // ── MCP config tabs ──
+    document.querySelectorAll('.mcp-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.mcp-tab').forEach(t => {
+          t.style.background = '#1a1612';
+          t.style.borderColor = '#2a2520';
+          t.style.color = '#8a7e70';
+          t.classList.remove('active');
+        });
+        tab.style.background = 'rgba(246,172,105,0.1)';
+        tab.style.borderColor = 'rgba(246,172,105,0.3)';
+        tab.style.color = '#f6ac69';
+        tab.classList.add('active');
+        const target = tab.dataset.target;
+        document.getElementById('mcp-stdio').style.display = target === 'mcp-stdio' ? 'block' : 'none';
+        document.getElementById('mcp-http').style.display = target === 'mcp-http' ? 'block' : 'none';
+      });
     });
-    return sorted[0] || null;
-  }
 
-  function osOrder(os) {
-    return { macos: 0, windows: 1, linux: 2 }[os] ?? 9;
-  }
+    function copyMcpConfig() {
+      const active = document.querySelector('.mcp-tab.active');
+      const pre = document.getElementById(active ? active.dataset.target : 'mcp-stdio');
+      navigator.clipboard.writeText(pre.textContent).then(() => {
+        const btn = document.getElementById('mcp-copy-btn');
+        btn.textContent = 'Copied';
+        btn.style.color = '#f6ac69';
+        btn.style.borderColor = 'rgba(246,172,105,0.3)';
+        setTimeout(() => {
+          btn.textContent = 'Copy';
+          btn.style.color = '#8a7e70';
+          btn.style.borderColor = '#2a2520';
+        }, 1500);
+      });
+    }
 
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  }
+    // ── Scroll animations ──
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+        }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -60px 0px' });
 
-  function renderTable(assets, recommendedName) {
-    const sorted = [...assets].sort((a, b) => {
-      const oa = osOrder(a.meta.os), ob = osOrder(b.meta.os);
-      if (oa !== ob) return oa - ob;
-      return a.meta.rank - b.meta.rank;
+    document.querySelectorAll('.animate-on-scroll').forEach(el => observer.observe(el));
+
+    // ── Floating particles ──
+    const particlesContainer = document.getElementById('particles');
+    for (let i = 0; i < 20; i++) {
+      const p = document.createElement('div');
+      p.classList.add('particle');
+      p.style.left = Math.random() * 100 + '%';
+      p.style.animationDelay = Math.random() * 8 + 's';
+      p.style.animationDuration = (6 + Math.random() * 6) + 's';
+      p.style.width = (2 + Math.random() * 3) + 'px';
+      p.style.height = p.style.width;
+      particlesContainer.appendChild(p);
+    }
+
+    // ── Smooth scroll for anchor links (landing only) ──
+    document.querySelectorAll('#landing-page a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', function (e) {
+        const href = this.getAttribute('href');
+        const target = document.querySelector(href);
+        if (target && landingPage.contains(target)) {
+          e.preventDefault();
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
     });
-    const rows = sorted.map(a => {
-      const isRec = a.name === recommendedName;
-      return `
+
+    // ── Image lightbox ──
+    (function () {
+      const overlay = document.getElementById('lightbox');
+      const lightboxImg = document.getElementById('lightbox-img');
+      const magnifySvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>';
+
+      // Wrap all feature/showcase images with zoom button
+      document.querySelectorAll('.feature-image > img, .showcase-frame > img, .agent-screenshots > img').forEach(img => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'img-zoom-wrapper';
+        img.parentNode.insertBefore(wrapper, img);
+        wrapper.appendChild(img);
+
+        const btn = document.createElement('button');
+        btn.className = 'img-zoom-btn';
+        btn.innerHTML = magnifySvg;
+        wrapper.appendChild(btn);
+
+        function openLightbox(e) {
+          e.stopPropagation();
+          lightboxImg.src = img.src;
+          lightboxImg.alt = img.alt;
+          overlay.classList.add('active');
+        }
+        btn.addEventListener('click', openLightbox);
+        wrapper.addEventListener('click', openLightbox);
+      });
+
+      overlay.addEventListener('click', () => overlay.classList.remove('active'));
+      document.getElementById('lightbox-close').addEventListener('click', () => overlay.classList.remove('active'));
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') overlay.classList.remove('active');
+      });
+    })();
+
+    // ── Downloads (GitHub releases) ──
+    (function () {
+      const REPO = 'aayushch/laya';
+      const RELEASES_PAGE = `https://github.com/${REPO}/releases/latest`;
+      const modal = document.getElementById('downloads-modal');
+      const body = document.getElementById('downloads-body');
+      const subLine = document.getElementById('downloads-sub');
+      let releaseData = null;
+      let fetched = false;
+
+      function classifyAsset(name) {
+        if (!name || /\.sig$/i.test(name) || /\.sha256$/i.test(name) || name === 'latest.json') return null;
+        const lower = name.toLowerCase();
+        if (lower.endsWith('.dmg')) {
+          const arm = /aarch64|arm64/.test(lower);
+          return { os: 'macos', osLabel: 'macOS', arch: arm ? 'arm64' : 'x64', archLabel: arm ? 'Apple Silicon' : 'Intel', format: 'DMG', rank: arm ? 1 : 2 };
+        }
+        if (lower.endsWith('.exe')) {
+          return { os: 'windows', osLabel: 'Windows', arch: 'x64', archLabel: 'x64', format: 'Installer (.exe)', rank: 1 };
+        }
+        if (lower.endsWith('.appimage')) {
+          return { os: 'linux', osLabel: 'Linux', arch: 'x64', archLabel: 'x64', format: 'AppImage', rank: 1 };
+        }
+        if (lower.endsWith('.deb')) {
+          return { os: 'linux', osLabel: 'Linux', arch: 'x64', archLabel: 'x64', format: '.deb (Debian / Ubuntu)', rank: 2 };
+        }
+        if (lower.endsWith('.rpm')) {
+          return { os: 'linux', osLabel: 'Linux', arch: 'x64', archLabel: 'x64', format: '.rpm (Fedora / RHEL)', rank: 3 };
+        }
+        return null;
+      }
+
+      function detectOS() {
+        const ua = (navigator.userAgent || '').toLowerCase();
+        const platform = (navigator.platform || '').toLowerCase();
+        let os = null;
+        let arch = null;
+        if (/iphone|ipad|ipod/.test(ua)) os = 'macos';
+        else if (/mac/.test(platform) || /mac os|macos|darwin/.test(ua)) os = 'macos';
+        else if (/win/.test(platform) || /windows/.test(ua)) os = 'windows';
+        else if (/linux|x11/.test(platform) || /linux/.test(ua)) os = 'linux';
+        if (/arm64|aarch64/.test(ua)) arch = 'arm64';
+        else if (/x86_64|x64|wow64|win64/.test(ua)) arch = 'x64';
+        // On macOS Apple Silicon is the modern default; we only ship aarch64 dmg
+        if (os === 'macos' && !arch) arch = 'arm64';
+        return { os, arch };
+      }
+
+      function formatSize(bytes) {
+        if (!bytes && bytes !== 0) return '';
+        const mb = bytes / (1024 * 1024);
+        return mb >= 1 ? `${mb.toFixed(1)} MB` : `${(bytes / 1024).toFixed(0)} KB`;
+      }
+
+      function pickRecommended(assets, detected) {
+        if (!detected.os) return null;
+        const forOS = assets.filter(a => a.meta.os === detected.os);
+        if (!forOS.length) return null;
+        // Prefer matching architecture, then lowest rank (canonical install format)
+        const sorted = [...forOS].sort((a, b) => {
+          const aArchMatch = detected.arch && a.meta.arch === detected.arch ? 0 : 1;
+          const bArchMatch = detected.arch && b.meta.arch === detected.arch ? 0 : 1;
+          if (aArchMatch !== bArchMatch) return aArchMatch - bArchMatch;
+          return a.meta.rank - b.meta.rank;
+        });
+        return sorted[0] || null;
+      }
+
+      function osOrder(os) {
+        return { macos: 0, windows: 1, linux: 2 }[os] ?? 9;
+      }
+
+      function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      }
+
+      function renderTable(assets, recommendedName) {
+        const sorted = [...assets].sort((a, b) => {
+          const oa = osOrder(a.meta.os), ob = osOrder(b.meta.os);
+          if (oa !== ob) return oa - ob;
+          return a.meta.rank - b.meta.rank;
+        });
+        const rows = sorted.map(a => {
+          const isRec = a.name === recommendedName;
+          return `
         <tr class="${isRec ? 'recommended' : ''}">
           <td><span class="os-name">${escapeHtml(a.meta.osLabel)}</span>${isRec ? '<span class="recommended-tag">For you</span>' : ''}</td>
           <td>${escapeHtml(a.meta.format)}</td>
@@ -1009,105 +1509,106 @@ document.querySelectorAll('#landing-page a[href^="#"]').forEach(anchor => {
           <td class="size-cell">${escapeHtml(formatSize(a.size))}</td>
           <td style="text-align:right;"><a class="dl-btn" href="${escapeHtml(a.browser_download_url)}" download><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download</a></td>
         </tr>`;
-    }).join('');
-    return `
+        }).join('');
+        return `
       <table class="downloads-table">
         <thead>
           <tr><th>Platform</th><th>Format</th><th>Arch</th><th>Size</th><th></th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>`;
-  }
+      }
 
-  function renderError() {
-    body.innerHTML = `
+      function renderError() {
+        body.innerHTML = `
       <div class="downloads-error">
         Could not fetch release info from GitHub right now. <a href="${RELEASES_PAGE}" target="_blank" rel="noopener noreferrer">Open the latest release on GitHub &rarr;</a>
       </div>`;
-  }
-
-  function applyHeroCTA(rec, version) {
-    const setBtn = (btnId, labelId, versionId) => {
-      const btn = document.getElementById(btnId);
-      const label = document.getElementById(labelId);
-      const ver = document.getElementById(versionId);
-      if (rec) {
-        if (btn) {
-          btn.href = rec.browser_download_url;
-          btn.setAttribute('download', '');
-          btn.removeAttribute('target');
-          btn.removeAttribute('rel');
-        }
-        if (label) label.textContent = `Download for ${rec.meta.osLabel}`;
-      } else if (btn) {
-        btn.href = RELEASES_PAGE;
       }
-      if (ver && version) ver.textContent = `v${version}`;
-    };
-    setBtn('hero-download-btn', 'hero-download-label', 'hero-download-version');
-    setBtn('cta-download-btn', 'cta-download-label', 'cta-download-version');
-  }
 
-  async function fetchLatest() {
-    if (fetched) return releaseData;
-    fetched = true;
-    try {
-      const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
-        headers: { 'Accept': 'application/vnd.github+json' }
+      function applyHeroCTA(rec, version) {
+        const setBtn = (btnId, labelId, versionId) => {
+          const btn = document.getElementById(btnId);
+          const label = document.getElementById(labelId);
+          const ver = document.getElementById(versionId);
+          if (rec) {
+            if (btn) {
+              btn.href = rec.browser_download_url;
+              btn.setAttribute('download', '');
+              btn.removeAttribute('target');
+              btn.removeAttribute('rel');
+            }
+            if (label) label.textContent = `Download for ${rec.meta.osLabel}`;
+          } else if (btn) {
+            btn.href = RELEASES_PAGE;
+          }
+          if (ver && version) ver.textContent = `v${version}`;
+        };
+        setBtn('hero-download-btn', 'hero-download-label', 'hero-download-version');
+        setBtn('cta-download-btn', 'cta-download-label', 'cta-download-version');
+      }
+
+      async function fetchLatest() {
+        if (fetched) return releaseData;
+        fetched = true;
+        try {
+          const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
+            headers: { 'Accept': 'application/vnd.github+json' }
+          });
+          if (!res.ok) throw new Error(`status ${res.status}`);
+          const json = await res.json();
+          const version = (json.tag_name || '').replace(/^v/, '') || (json.name || '').replace(/^v/, '');
+          const assets = (json.assets || [])
+            .map(a => ({ ...a, meta: classifyAsset(a.name) }))
+            .filter(a => a.meta);
+          releaseData = { version, assets, html_url: json.html_url };
+          const detected = detectOS();
+          const rec = pickRecommended(assets, detected);
+          applyHeroCTA(rec, version);
+          return releaseData;
+        } catch (err) {
+          console.warn('GitHub releases fetch failed:', err);
+          releaseData = null;
+          return null;
+        }
+      }
+
+      function renderModal() {
+        if (!releaseData) {
+          renderError();
+          return;
+        }
+        const detected = detectOS();
+        const rec = pickRecommended(releaseData.assets, detected);
+        subLine.textContent = releaseData.version
+          ? `Latest release · v${releaseData.version} · pick the build for your platform.`
+          : 'Pick the build for your platform.';
+        body.innerHTML = renderTable(releaseData.assets, rec ? rec.name : null);
+      }
+
+      window.openDownloads = async function () {
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+        if (!releaseData) {
+          body.innerHTML = '<div class="downloads-loading">Fetching the latest release…</div>';
+          await fetchLatest();
+        }
+        renderModal();
+      };
+      window.closeDownloads = function () {
+        modal.classList.remove('active');
+        document.body.style.overflow = '';
+      };
+      modal.addEventListener('click', () => window.closeDownloads());
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) window.closeDownloads();
       });
-      if (!res.ok) throw new Error(`status ${res.status}`);
-      const json = await res.json();
-      const version = (json.tag_name || '').replace(/^v/, '') || (json.name || '').replace(/^v/, '');
-      const assets = (json.assets || [])
-        .map(a => ({ ...a, meta: classifyAsset(a.name) }))
-        .filter(a => a.meta);
-      releaseData = { version, assets, html_url: json.html_url };
-      const detected = detectOS();
-      const rec = pickRecommended(assets, detected);
-      applyHeroCTA(rec, version);
-      return releaseData;
-    } catch (err) {
-      console.warn('GitHub releases fetch failed:', err);
-      releaseData = null;
-      return null;
-    }
-  }
 
-  function renderModal() {
-    if (!releaseData) {
-      renderError();
-      return;
-    }
-    const detected = detectOS();
-    const rec = pickRecommended(releaseData.assets, detected);
-    subLine.textContent = releaseData.version
-      ? `Latest release · v${releaseData.version} · pick the build for your platform.`
-      : 'Pick the build for your platform.';
-    body.innerHTML = renderTable(releaseData.assets, rec ? rec.name : null);
-  }
-
-  window.openDownloads = async function() {
-    modal.classList.add('active');
-    document.body.style.overflow = 'hidden';
-    if (!releaseData) {
-      body.innerHTML = '<div class="downloads-loading">Fetching the latest release…</div>';
-      await fetchLatest();
-    }
-    renderModal();
-  };
-  window.closeDownloads = function() {
-    modal.classList.remove('active');
-    document.body.style.overflow = '';
-  };
-  modal.addEventListener('click', () => window.closeDownloads());
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && modal.classList.contains('active')) window.closeDownloads();
-  });
-
-  // Pre-fetch in the background so the hero button updates as soon as possible.
-  fetchLatest();
-})();
-</script>
+      // Pre-fetch in the background so the hero button updates as soon as possible.
+      fetchLatest();
+    })();
+  </script>
 
 </body>
+
 </html>
