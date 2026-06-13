@@ -44,22 +44,89 @@ def _build_embedding_text(
     subject_type: str,
     category: str,
     entity_refs: str,
+    thread_context: str = "",
 ) -> str:
     """Build a canonical embedding template for ChromaDB.
 
     Produces structured, platform-normalized text that maximizes cross-platform
     entity linking. Each field is explicitly labeled so the embedding model can
     weight it properly.  See notification-linking-semantic-search.md §3.1.
+
+    ``thread_context`` situates a follow-up card within its thread (Contextual
+    Embeddings). Terse update cards ("Approved.", "Resolved as Fixed.") are
+    intentionally summarized without re-describing their parent (see the stager
+    prompt), so on their own they lose the *semantic* referent of the thread.
+    The labeled "Thread so far" clause restores it without an extra LLM call —
+    see ``_fetch_thread_context``.
     """
     type_label = _SUBJECT_LABELS.get(subject_type, subject_type)
     parts = [f"{platform} notification about {header}."]
     parts.append(summary)
+    if thread_context:
+        parts.append(f"Thread so far: {thread_context}.")
     if actor_name:
         parts.append(f"People: {actor_name}.")
     parts.append(f"Action: {category}, {type_label}.")
     if entity_refs:
         parts.append(f"Identifiers: {entity_refs}.")
     return " ".join(parts)
+
+
+async def _fetch_thread_context(db, entity_id: str, card_id: str) -> str:
+    """Return a short blurb situating a follow-up card within its thread.
+
+    Costs no LLM call. Reuses the rolling ``group_summary`` already computed for
+    the entity, falling back to recent sibling card headers for early follow-ups
+    (group summaries only generate at card_count >= 2 and are debounced, so cards
+    #2-#3 of a burst have no summary yet). Returns "" when there is nothing prior
+    to situate against — the first card in a group is already self-contained.
+
+    Only called when the entity already has sibling cards (carry-forward), so the
+    DB reads are skipped entirely for brand-new entities.
+    """
+    # Tier 1: rolling group summary (richest synthesized thread context).
+    try:
+        rows = await db.execute_fetchall(
+            "SELECT headline, current_status FROM group_summaries WHERE entity_id = ?",
+            (entity_id,),
+        )
+        if rows:
+            headline = (rows[0]["headline"] or "").strip()
+            status = (rows[0]["current_status"] or "").strip()
+            blurb = ". ".join(p for p in (headline, status) if p)
+            if blurb:
+                return blurb[:200]
+    except Exception as e:
+        # Don't fail the embed over enrichment; surface it so a persistent
+        # group_summaries read problem (schema drift, corruption) is visible
+        # rather than silently degrading every follow-up card's embedding.
+        log.warning(
+            "thread_context_group_summary_read_failed",
+            entity_id=entity_id,
+            error=str(e),
+        )
+
+    # Tier 2: recent prior card headers (the current card row is already inserted,
+    # so exclude it). Covers the window before the group summary first generates.
+    try:
+        rows = await db.execute_fetchall(
+            """SELECT header FROM action_cards
+               WHERE entity_id = ? AND card_id != ?
+               ORDER BY created_at DESC
+               LIMIT 2""",
+            (entity_id, card_id),
+        )
+        headers = [r["header"] for r in rows if r["header"]]
+        if headers:
+            return "; ".join(headers)[:200]
+    except Exception as e:
+        log.warning(
+            "thread_context_header_fallback_failed",
+            entity_id=entity_id,
+            error=str(e),
+        )
+
+    return ""
 
 
 async def run_emit(
@@ -296,6 +363,34 @@ async def run_emit(
 
     # 4. Embed card in ChromaDB
     entity_refs = ",".join(e.value for e in router_output.entities)
+    # Contextual embeddings: for a follow-up card joining an existing entity group,
+    # prepend a short thread-context blurb so terse updates ("Approved.") keep the
+    # semantic referent of the thread. Skipped for the first card (self-contained)
+    # and gated by a setting so it can be disabled if grouping thresholds drift.
+    # The enriched embed_text below is reused verbatim by resolve_context_group and
+    # resolve_semantic_entities, keeping the stored vector and the grouping queries
+    # consistent.
+    from laya.config import load_settings as _load_settings_ce
+    _ctx_embed_enabled = (
+        _load_settings_ce().get("smart_grouping", {}).get("contextual_embeddings", True)
+    )
+    thread_context = ""
+    if _ctx_embed_enabled and _is_carry_forward:
+        try:
+            thread_context = await _fetch_thread_context(db, entity_id, card_id)
+        except Exception as e:
+            log.warning("thread_context_fetch_failed", card_id=card_id, error=str(e))
+    # Persist the blurb so the FTS5/BM25 lexical index can match on it too
+    # (Contextual BM25). The cards_fts UPDATE trigger re-syncs the indexed row.
+    if thread_context:
+        try:
+            await db.execute(
+                "UPDATE action_cards SET thread_context = ? WHERE card_id = ?",
+                (thread_context, card_id),
+            )
+            await db.commit()
+        except Exception as e:
+            log.warning("thread_context_persist_failed", card_id=card_id, error=str(e))
     # Canonical embedding template: structured, normalized text that maximizes
     # semantic signal for cross-platform entity linking. Each field is explicitly
     # labeled so the model weights it appropriately.
@@ -307,6 +402,7 @@ async def run_emit(
         subject_type=event.subject.type,
         category=router_output.category.value,
         entity_refs=entity_refs,
+        thread_context=thread_context,
     )
     # Build tags CSV for ChromaDB metadata (tags NOT in embedding text — preserves semantic space)
     from laya.pipeline.tags import get_tags_csv

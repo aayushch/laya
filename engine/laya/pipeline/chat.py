@@ -15,6 +15,7 @@ from typing import Any
 import structlog
 
 from laya.db.chromadb_store import memory_search
+from laya.db.fts import build_fts_match, fts_ready
 from laya.db.sqlite import get_db
 from laya.llm.client import llm_call, llm_call_streaming, StreamEvent
 from laya.llm.prompts.chat import build_chat_messages, build_title_generation_messages
@@ -732,7 +733,39 @@ async def _semantic_search(query: str, space_id: str | None, n: int) -> list[dic
 
 
 async def _card_keyword_search(query: str, space_id: str | None, n: int) -> list[dict]:
-    """SQLite keyword search on cards."""
+    """Keyword search on cards — FTS5/BM25 when available, else SQL LIKE."""
+    match = build_fts_match(query, min_len=3, max_terms=8)
+    if fts_ready() and match:
+        try:
+            return await _card_keyword_search_fts(match, space_id, n)
+        except Exception as e:
+            log.warning("cards_fts_failed_fallback_like", error=str(e))
+    return await _card_keyword_search_like(query, space_id, n)
+
+
+async def _card_keyword_search_fts(match: str, space_id: str | None, n: int) -> list[dict]:
+    """BM25-ranked card search over the cards_fts index."""
+    db = await get_db()
+    where = "cards_fts MATCH ?"
+    params: list = [match]
+    if space_id:
+        where += " AND c.space_id = ?"
+        params.append(space_id)
+    params.append(n)
+
+    rows = await db.execute_fetchall(
+        f"""SELECT c.card_id, c.header, c.summary, c.status, c.priority, c.persona, c.space_id
+            FROM cards_fts
+            JOIN action_cards c ON c.card_id = cards_fts.card_id
+            WHERE {where}
+            ORDER BY bm25(cards_fts) LIMIT ?""",
+        params,
+    )
+    return _format_card_keyword_rows(rows)
+
+
+async def _card_keyword_search_like(query: str, space_id: str | None, n: int) -> list[dict]:
+    """SQLite LIKE keyword search on cards (fallback when FTS5 is unavailable)."""
     db = await get_db()
     keywords = [w for w in query.split() if len(w) >= 3 and w.lower() not in _STOPWORDS]
     if not keywords:
@@ -757,7 +790,11 @@ async def _card_keyword_search(query: str, space_id: str | None, n: int) -> list
             ORDER BY created_at DESC LIMIT ?""",
         params,
     )
+    return _format_card_keyword_rows(rows)
 
+
+def _format_card_keyword_rows(rows) -> list[dict]:
+    """Shape card rows (from either FTS or LIKE search) into result dicts."""
     return [
         {
             "id": row["card_id"],
@@ -777,7 +814,39 @@ async def _card_keyword_search(query: str, space_id: str | None, n: int) -> list
 
 
 async def _event_keyword_search(query: str, space_id: str | None, n: int) -> list[dict]:
-    """SQLite keyword search on events."""
+    """Keyword search on events — FTS5/BM25 when available, else SQL LIKE."""
+    match = build_fts_match(query, min_len=3, max_terms=5)
+    if fts_ready() and match:
+        try:
+            return await _event_keyword_search_fts(match, space_id, n)
+        except Exception as e:
+            log.warning("events_fts_failed_fallback_like", error=str(e))
+    return await _event_keyword_search_like(query, space_id, n)
+
+
+async def _event_keyword_search_fts(match: str, space_id: str | None, n: int) -> list[dict]:
+    """BM25-ranked event search over the events_fts index."""
+    db = await get_db()
+    where = "events_fts MATCH ?"
+    params: list = [match]
+    if space_id:
+        where += " AND e.space_id = ?"
+        params.append(space_id)
+    params.append(n)
+
+    rows = await db.execute_fetchall(
+        f"""SELECT e.event_id, e.source_platform, e.subject_title, e.timestamp, e.space_id
+            FROM events_fts
+            JOIN events e ON e.event_id = events_fts.event_id
+            WHERE {where}
+            ORDER BY bm25(events_fts) LIMIT ?""",
+        params,
+    )
+    return _format_event_keyword_rows(rows)
+
+
+async def _event_keyword_search_like(query: str, space_id: str | None, n: int) -> list[dict]:
+    """SQLite LIKE keyword search on events (fallback when FTS5 is unavailable)."""
     db = await get_db()
     keywords = [w for w in query.split() if len(w) >= 3 and w.lower() not in _STOPWORDS]
     if not keywords:
@@ -802,7 +871,11 @@ async def _event_keyword_search(query: str, space_id: str | None, n: int) -> lis
             ORDER BY timestamp DESC LIMIT ?""",
         params,
     )
+    return _format_event_keyword_rows(rows)
 
+
+def _format_event_keyword_rows(rows) -> list[dict]:
+    """Shape event rows (from either FTS or LIKE search) into result dicts."""
     return [
         {
             "id": row["event_id"],

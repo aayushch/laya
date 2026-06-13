@@ -52,6 +52,7 @@ from laya.config import ENGINE_HOST, ENGINE_PORT, ensure_directories, load_repos
 from laya.http_client import close_client as close_http_client
 from laya.integrations.n8n_bootstrap import provision_n8n_background, sync_workflows_background
 from laya.db.chromadb_store import connect_chromadb, disconnect_chromadb
+from laya.db.fts import ensure_fts_tables
 from laya.db.migrate import run_migrations
 from laya.db.sqlite import connect, disconnect
 from laya.logging_setup import setup_logging
@@ -204,6 +205,11 @@ async def lifespan(app: FastAPI):
     # Connect to SQLite and run migrations
     db = await connect()
     await run_migrations(db)
+
+    # Build the FTS5/BM25 keyword-search index (tables + sync triggers + backfill).
+    # Runs after migrations so the thread_context column exists; degrades to LIKE
+    # search if this SQLite build lacks the fts5 module.
+    await ensure_fts_tables(db)
 
     # Ensure config files exist (creates defaults on first launch)
     load_team()

@@ -3,6 +3,7 @@
 <script lang="ts">
 	import type { CardGroup, ActionCard } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
+	import { goto } from '$app/navigation';
 	import { slide } from 'svelte/transition';
 	import { cardColors } from '$lib/stores/cardColors';
 	import { glassTheme } from '$lib/stores/glassTheme';
@@ -62,6 +63,8 @@
 
 	const hasBookmark = $derived(group.cards.some((c) => c.bookmarked_at));
 	const groupHasWorkspace = $derived(group.cards.some((c) => c.has_workspace));
+	// The card whose workspace the group-level indicator opens (first card with one).
+	const workspaceCardId = $derived(group.cards.find((c) => c.has_workspace)?.card_id);
 	const isGroupSelected = $derived(
 		group.cards.some((c) => c.card_id === selectedCardId) ||
 		(!!selectedEntityId && group.entity_id === selectedEntityId)
@@ -410,29 +413,49 @@
 			</button>
 		</div>
 
-		<!-- Three-dot menu — aligned with ListRow action buttons column (w-[68px]) -->
-		<div class="col-actions w-[88px] shrink-0 flex items-center justify-end">
-			{#if hasAnyAction}
-				<div class="group-menu relative" bind:this={menuEl}>
-					<button
-						class="flex h-5 w-5 items-center justify-center rounded text-surface-500 {$glassTheme ? 'hover:bg-white/10' : 'hover:bg-surface-700'} hover:text-surface-300 disabled:opacity-50 opacity-0 group-hover/grow:opacity-100 transition-opacity"
-						onclick={toggleGroupMenu}
-						disabled={bulkActionRunning}
-						title="Group actions"
+		<!-- Actions column — fixed layout mirrors ListRow: [menu 64px] [workspace 24px].
+		     The workspace slot always reserves its width so the menu never shifts, and both
+		     sub-slots line up vertically with the corresponding ListRow icons. -->
+		<div class="col-actions w-[88px] shrink-0 flex items-center">
+			<div class="flex items-center justify-end w-[64px]">
+				{#if hasAnyAction}
+					<div class="group-menu relative" bind:this={menuEl}>
+						<button
+							class="flex h-5 w-5 items-center justify-center rounded text-surface-500 {$glassTheme ? 'hover:bg-white/10' : 'hover:bg-surface-700'} hover:text-surface-300 disabled:opacity-50 opacity-0 group-hover/grow:opacity-100 transition-opacity"
+							onclick={toggleGroupMenu}
+							disabled={bulkActionRunning}
+							title="Group actions"
+						>
+							{#if bulkActionRunning}
+								<svg class="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
+									<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+									<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+								</svg>
+							{:else}
+								<svg class="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+									<path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM18 10a2 2 0 11-4 0 2 2 0 014 0z" />
+								</svg>
+							{/if}
+						</button>
+					</div>
+				{/if}
+			</div>
+			<!-- Workspace slot — always occupies space so the menu stays fixed; mirrors ListRow.
+			     Shown when any card in the group has a workspace; click opens it directly. -->
+			<span class="w-[24px] shrink-0 flex items-center justify-center">
+				{#if groupHasWorkspace && workspaceCardId}
+					<a
+						href="/workspace/{workspaceCardId}"
+						aria-label="Open Workspace"
+						class="h-5 w-5 flex items-center justify-center rounded text-violet-400/60 hover:bg-violet-500/15 hover:text-violet-400"
+						onclick={(e) => { e.preventDefault(); e.stopPropagation(); goto(`/workspace/${workspaceCardId}`); }}
+						onmouseenter={(e) => showTooltip(e.currentTarget, 'Open Workspace')}
+						onmouseleave={hideTooltip}
 					>
-						{#if bulkActionRunning}
-							<svg class="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
-								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-							</svg>
-						{:else}
-							<svg class="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
-								<path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM18 10a2 2 0 11-4 0 2 2 0 014 0z" />
-							</svg>
-						{/if}
-					</button>
-				</div>
-			{/if}
+						<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+					</a>
+				{/if}
+			</span>
 		</div>
 
 		<!-- Persona spacer — matches ListRow w-[62px] -->

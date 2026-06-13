@@ -155,6 +155,47 @@ class TestEmit:
         )
         assert bool(rows[0]["has_workspace"]) is False
 
+    async def test_followup_card_gets_thread_context(
+        self, db, sample_event, sample_router_output_engineer,
+    ):
+        """A follow-up card joining an existing entity group gets a 'Thread so far:'
+        clause in its embedded text (Contextual Embeddings); the first card in the
+        group does not — it is already self-contained."""
+        await insert_test_event(db, sample_event.event_id)
+        # Second event, same subject (jira:ticket:BUG-1234) -> same entity_id.
+        second_event = sample_event.model_copy(update={"event_id": "evt_test-001b"})
+        await insert_test_event(db, second_event.event_id)
+
+        first_output = _make_stager_output()
+        update_output = ActionCardData(
+            header="BUG-1234 resolved as Fixed",
+            summary="Resolved as Fixed.",
+            intelligence_report=["Closed by Alice"],
+            staged_output=StagedOutput(type="status_update", content="Resolved"),
+            suggested_actions=[],
+            privacy_tier=2,
+        )
+
+        with patch("laya.pipeline.emit.embed_document", new_callable=AsyncMock) as mock_embed, \
+             patch("laya.pipeline.emit.resolve_semantic_entities", new_callable=AsyncMock, return_value=[]), \
+             patch("laya.pipeline.emit.manager.broadcast", new_callable=AsyncMock), \
+             patch("laya.pipeline.emit.trigger_summary_update", new_callable=AsyncMock), \
+             patch("laya.pipeline.context_grouping.resolve_context_group", new_callable=AsyncMock, return_value=None), \
+             patch("laya.pipeline.group_summary.trigger_group_summary_update", new_callable=AsyncMock):
+            await run_emit(sample_event, sample_router_output_engineer, first_output)
+            await run_emit(second_event, sample_router_output_engineer, update_output)
+
+        assert mock_embed.call_count == 2
+        first_text = mock_embed.call_args_list[0].kwargs["text"]
+        second_text = mock_embed.call_args_list[1].kwargs["text"]
+
+        # First card: no thread-context clause (self-contained).
+        assert "Thread so far:" not in first_text
+        # Follow-up card: carries the thread referent. With no rolling group summary
+        # yet (tier 1), it falls back to the prior card's header (tier 2).
+        assert "Thread so far:" in second_text
+        assert "Fix NPE in PaymentService" in second_text
+
     async def test_writes_audit_log(
         self, db, sample_event, sample_router_output_engineer,
     ):

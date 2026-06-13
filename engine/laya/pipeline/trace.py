@@ -24,6 +24,7 @@ from laya.api.cards_api import _row_to_card
 from laya.pipeline.queue import _get_semaphore
 from laya.api.websocket import manager
 from laya.db.chromadb_store import memory_search
+from laya.db.fts import build_fts_match, fts_ready
 from laya.db.sqlite import get_db
 from laya.config import get_self_user
 from laya.llm.client import llm_call, llm_call_streaming
@@ -722,7 +723,62 @@ async def _entity_table_search(query: str, n: int) -> list[dict]:
 
 
 async def _event_keyword_search(query: str, space_id: str | None, n: int) -> list[dict]:
-    """SQLite keyword search on events, mapped back to cards."""
+    """Keyword search on events mapped back to cards — FTS5/BM25 or LIKE fallback.
+
+    Only this trace signal moves to FTS: it is the clean analog of chat's event
+    search. The card-side trace searches (_identifier_search, _card_text_search,
+    _card_fuzzy_search) stay on LIKE — they match identifier columns (source_ref,
+    entity_id, source_url) that are not in cards_fts and use bespoke boost/phrase
+    semantics tuned for the RRF ensemble.
+    """
+    match = build_fts_match(query, min_len=2, max_terms=5)
+    if fts_ready() and match:
+        try:
+            return await _event_keyword_search_fts(match, space_id, n)
+        except Exception as e:
+            log.warning("trace_events_fts_failed_fallback_like", error=str(e))
+    return await _event_keyword_search_like(query, space_id, n)
+
+
+async def _event_keyword_search_fts(match: str, space_id: str | None, n: int) -> list[dict]:
+    """BM25-ranked event search over events_fts, mapped back to cards."""
+    db = await get_db()
+    where = "events_fts MATCH ?"
+    params: list = [match]
+    if space_id:
+        where += " AND e.space_id = ?"
+        params.append(space_id)
+    params.append(n)
+
+    rows = await db.execute_fetchall(
+        f"""SELECT c.card_id, c.entity_id
+            FROM events_fts
+            JOIN events e ON e.event_id = events_fts.event_id
+            JOIN action_cards c ON c.event_id = e.event_id
+            WHERE {where}
+            ORDER BY bm25(events_fts) LIMIT ?""",
+        params,
+    )
+    # A card can have several matching events; keep its best-ranked occurrence
+    # (DISTINCT in SQL is incompatible with ORDER BY bm25 here, so dedup in Python).
+    seen: set[str] = set()
+    out: list[dict] = []
+    for row in rows:
+        cid = row["card_id"]
+        if cid in seen:
+            continue
+        seen.add(cid)
+        out.append({
+            "id": cid,
+            "card_id": cid,
+            "entity_id": row["entity_id"] or "",
+            "source": "event_keyword",
+        })
+    return out
+
+
+async def _event_keyword_search_like(query: str, space_id: str | None, n: int) -> list[dict]:
+    """SQLite LIKE keyword search on events (fallback when FTS5 is unavailable)."""
     db = await get_db()
     keywords = [w for w in query.split() if len(w) >= 2 and w.lower() not in _STOPWORDS]
     if not keywords:

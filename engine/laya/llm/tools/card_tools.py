@@ -9,8 +9,13 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
+import structlog
+
 from laya.api.websocket import manager
+from laya.db.fts import build_fts_match, fts_ready
 from laya.db.sqlite import get_db
+
+log = structlog.get_logger()
 from laya.llm.tools.constants import (
     CARDS_BY_ENTITY_DEFAULT,
     CARDS_BY_ENTITY_MAX,
@@ -102,7 +107,110 @@ async def _search_keyword(
     date_from_ts: float | None = None,
     date_to_ts: float | None = None,
 ) -> tuple[list[Any], int, bool]:
-    """SQL LIKE keyword search.  Returns (rows, total, has_more)."""
+    """Keyword card search — FTS5/BM25 ranking when available, else SQL LIKE.
+
+    Returns (rows, total, has_more).
+    """
+    match = build_fts_match(query, min_len=2, max_terms=8) if query else None
+    if query and fts_ready() and match:
+        try:
+            return await _search_keyword_fts(
+                match, status, priority, capped_limit, offset, space_id,
+                date_from_ts, date_to_ts,
+            )
+        except Exception as e:
+            log.warning("card_tools_fts_failed_fallback_like", error=str(e))
+    return await _search_keyword_like(
+        query, status, priority, capped_limit, offset, space_id,
+        date_from_ts, date_to_ts,
+    )
+
+
+_CARD_SELECT_COLS = (
+    "card_id, event_id, entity_id, context_id, header, summary, "
+    "status, priority, persona, category, created_at, space_id"
+)
+_CARD_SELECT_COLS_C = ", ".join(f"c.{c}" for c in _CARD_SELECT_COLS.split(", "))
+
+
+def _filter_conditions(
+    status: str | None,
+    priority: str | None,
+    space_id: str | None,
+    date_from_ts: float | None,
+    date_to_ts: float | None,
+    *,
+    prefix: str = "",
+) -> tuple[list[str], list[Any]]:
+    """Build the shared non-text filter clauses (column ``prefix`` e.g. 'c.')."""
+    conditions: list[str] = []
+    params: list[Any] = []
+    if status:
+        conditions.append(f"{prefix}status = ?")
+        params.append(status)
+    if priority:
+        conditions.append(f"{prefix}priority = ?")
+        params.append(priority)
+    if space_id:
+        conditions.append(f"{prefix}space_id = ?")
+        params.append(space_id)
+    if date_from_ts is not None:
+        conditions.append(f"{prefix}created_at >= ?")
+        params.append(datetime.fromtimestamp(date_from_ts, tz=timezone.utc).isoformat())
+    if date_to_ts is not None:
+        conditions.append(f"{prefix}created_at <= ?")
+        params.append(datetime.fromtimestamp(date_to_ts, tz=timezone.utc).isoformat())
+    return conditions, params
+
+
+async def _search_keyword_fts(
+    match: str,
+    status: str | None,
+    priority: str | None,
+    capped_limit: int,
+    offset: int,
+    space_id: str | None,
+    date_from_ts: float | None,
+    date_to_ts: float | None,
+) -> tuple[list[Any], int, bool]:
+    """BM25-ranked keyword search over cards_fts with the shared filters."""
+    db = await get_db()
+    conditions, params = _filter_conditions(
+        status, priority, space_id, date_from_ts, date_to_ts, prefix="c.",
+    )
+    where = " AND ".join(["cards_fts MATCH ?", *conditions])
+    params = [match, *params]
+
+    count_rows = await db.execute_fetchall(
+        f"""SELECT COUNT(*) AS cnt FROM cards_fts
+            JOIN action_cards c ON c.card_id = cards_fts.card_id
+            WHERE {where}""",
+        params,
+    )
+    total = count_rows[0]["cnt"] if count_rows else 0
+
+    rows = await db.execute_fetchall(
+        f"""SELECT {_CARD_SELECT_COLS_C}
+            FROM cards_fts
+            JOIN action_cards c ON c.card_id = cards_fts.card_id
+            WHERE {where}
+            ORDER BY bm25(cards_fts) LIMIT ? OFFSET ?""",
+        [*params, capped_limit, offset],
+    )
+    return rows, total, offset + len(rows) < total
+
+
+async def _search_keyword_like(
+    query: str | None,
+    status: str | None,
+    priority: str | None,
+    capped_limit: int,
+    offset: int,
+    space_id: str | None,
+    date_from_ts: float | None,
+    date_to_ts: float | None,
+) -> tuple[list[Any], int, bool]:
+    """SQL LIKE keyword search (fallback when FTS5 is unavailable)."""
     db = await get_db()
     conditions: list[str] = []
     params: list[Any] = []
@@ -113,24 +221,11 @@ async def _search_keyword(
             conditions.append("(header LIKE ? OR summary LIKE ? OR intelligence LIKE ?)")
             params.extend([f"%{kw}%"] * 3)
 
-    if status:
-        conditions.append("status = ?")
-        params.append(status)
-
-    if priority:
-        conditions.append("priority = ?")
-        params.append(priority)
-
-    if space_id:
-        conditions.append("space_id = ?")
-        params.append(space_id)
-
-    if date_from_ts is not None:
-        conditions.append("created_at >= ?")
-        params.append(datetime.fromtimestamp(date_from_ts, tz=timezone.utc).isoformat())
-    if date_to_ts is not None:
-        conditions.append("created_at <= ?")
-        params.append(datetime.fromtimestamp(date_to_ts, tz=timezone.utc).isoformat())
+    filter_conditions, filter_params = _filter_conditions(
+        status, priority, space_id, date_from_ts, date_to_ts,
+    )
+    conditions.extend(filter_conditions)
+    params.extend(filter_params)
 
     where = " AND ".join(conditions) if conditions else "1=1"
 
@@ -140,8 +235,7 @@ async def _search_keyword(
     total = count_rows[0]["cnt"] if count_rows else 0
 
     rows = await db.execute_fetchall(
-        f"""SELECT card_id, event_id, entity_id, context_id, header, summary,
-                   status, priority, persona, category, created_at, space_id
+        f"""SELECT {_CARD_SELECT_COLS}
             FROM action_cards WHERE {where}
             ORDER BY created_at DESC LIMIT ? OFFSET ?""",
         [*params, capped_limit, offset],

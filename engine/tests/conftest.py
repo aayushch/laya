@@ -39,6 +39,10 @@ async def db(tmp_path):
     # Apply all migrations using the migration runner
     await run_migrations(conn)
 
+    # Build FTS5 tables so tests exercise the BM25 search path (not just LIKE).
+    from laya.db.fts import ensure_fts_tables
+    await ensure_fts_tables(conn)
+
     # Patch _db so get_db() returns this connection via the real function.
     with patch("laya.db.sqlite._db", conn):
         # Clear omni state to prevent cross-test leakage
