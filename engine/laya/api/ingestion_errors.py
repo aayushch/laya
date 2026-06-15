@@ -122,6 +122,26 @@ class ClearIngestionErrorsResponse(BaseModel):
     cleared: int
 
 
+async def _broadcast_audit_failure(db: Any) -> None:
+    """Push the Audit/Settings red dot live when an ingestion failure lands.
+
+    These tables aren't polled, so without this the indicator would only update
+    on the next app startup. Best-effort — a WS hiccup must never fail the
+    error-report request (n8n's handler would otherwise retry the POST and
+    inflate occurrence counts).
+    """
+    try:
+        from laya.api.websocket import manager
+        from laya.api.audit_api import compute_failure_counts
+
+        counts = await compute_failure_counts(db)
+        await manager.broadcast(
+            {"type": "audit_failure", "payload": {**counts, "kind": "ingestion_error"}}
+        )
+    except Exception as e:
+        log.warning("audit_failure_broadcast_failed", error=str(e))
+
+
 # ── endpoints ────────────────────────────────────────────────────────────────
 
 
@@ -213,6 +233,7 @@ async def report_ingestion_error(report: IngestionErrorReport) -> IngestionError
             http=report.error_http_code,
             msg=report.error_message[:200],
         )
+        await _broadcast_audit_failure(db)
         return IngestionErrorResponse(error_id=error_id, coalesced=True)
 
     # 3. Insert new row. Use the client-supplied idempotency key if present, else
@@ -272,6 +293,7 @@ async def report_ingestion_error(report: IngestionErrorReport) -> IngestionError
         http=report.error_http_code,
         msg=report.error_message[:200],
     )
+    await _broadcast_audit_failure(db)
     return IngestionErrorResponse(error_id=error_id, coalesced=False)
 
 

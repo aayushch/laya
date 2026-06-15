@@ -25,6 +25,7 @@
 	import { budgetPaused, loadBudgetStatus, handleBudgetWsMessage, costAmount, budgetLabel, budgetRatio } from '$lib/stores/budget';
 	import { feedFilters, loadFeedFilters, saveFeedFilters, filtersLoaded, feedDate, feedPrevDate, feedNextDate, localToday } from '$lib/stores/feedFilters';
 	import { spaces, loadSpaces } from '$lib/stores/spaces';
+	import { hasAuditFailures, loadAuditFailureSummary, handleAuditFailureWs } from '$lib/stores/auditFailures';
 	import { compose } from '$lib/stores/compose';
 	import ComposeModal from '$lib/components/egress/ComposeModal.svelte';
 	import { agentDialog } from '$lib/stores/agentDialog';
@@ -217,6 +218,7 @@
 		loadSpaces();
 		loadFeedFilters();
 		loadBudgetStatus();
+		loadAuditFailureSummary();
 	});
 
 	// Check for app updates after startup, then re-check periodically while
@@ -240,6 +242,14 @@
 		const msg = $lastMessage;
 		if (msg && (msg.type === 'card_created' || msg.type === 'card_updated')) {
 			loadBudgetStatus();
+		}
+	});
+
+	// Light up the Audit/Settings red dot live when a failure occurs (no polling)
+	$effect(() => {
+		const msg = $lastMessage;
+		if (msg && msg.type === 'audit_failure') {
+			handleAuditFailureWs(msg);
 		}
 	});
 
@@ -730,6 +740,10 @@
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
 				</svg>
+				<!-- Red dot when there are unresolved failed events / ingestion errors (see auditFailures store) -->
+				{#if $hasAuditFailures}
+					<span class="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-red-500 ring-2 ring-surface-900" aria-label="Unresolved failures"></span>
+				{/if}
 			</a>
 			<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100">Settings</span>
 		</div>

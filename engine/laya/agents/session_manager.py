@@ -147,17 +147,23 @@ def get_session(session_id: str) -> CodingAgent | None:
     return _active_sessions.get(session_id)
 
 
-async def get_session_for_entity(entity_id: str) -> dict | None:
-    """Find the most recent non-terminal session for an entity.
+async def get_session_for_entity(entity_id: str, include_terminal: bool = False) -> dict | None:
+    """Find the most recent session for an entity.
+
+    By default only non-terminal sessions are considered. Pass
+    include_terminal=True to also return the latest completed/failed/cancelled
+    session — used by the processing-rule agent runner so it can resume an
+    existing (even finished) workspace instead of spawning a duplicate.
 
     Returns a dict with session_id, status, cc_session_id, etc. or None.
     """
     db = await get_db()
+    terminal_clause = "" if include_terminal else " AND status NOT IN ('completed', 'failed', 'cancelled')"
     rows = await db.execute_fetchall(
-        """SELECT session_id, card_id, status, cc_session_id, repo_path,
+        f"""SELECT session_id, card_id, status, cc_session_id, repo_path,
                   add_dirs, session_type, permission_mode, agent_type
            FROM workspace_sessions
-           WHERE entity_id = ? AND status NOT IN ('completed', 'failed', 'cancelled')
+           WHERE entity_id = ?{terminal_clause}
            ORDER BY started_at DESC LIMIT 1""",
         (entity_id,),
     )

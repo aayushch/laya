@@ -6,6 +6,7 @@
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
+	import { setAuditFailureCounts } from '$lib/stores/auditFailures';
 	import { portal } from '$lib/actions/portal';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import type { AuditLogEntry, DeadEvent, IngestionError } from '$lib/api/types';
@@ -267,6 +268,15 @@
 			clearInterval(eventCountsPollId);
 			eventCountsPollId = null;
 		}
+	});
+
+	// Re-seed the global red-dot indicator from this panel's authoritative state.
+	// This is what makes both dots (Audit tab + Settings nav) disappear the moment
+	// the user retries every dead event and clears every ingestion error. Guarded on
+	// load completion so the dot doesn't flicker off at mount before the data lands.
+	$effect(() => {
+		if (deadLoading || ingestionLoading) return;
+		setAuditFailureCounts(deadTotal, ingestionErrors.length);
 	});
 
 	function applyFilter() {

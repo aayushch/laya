@@ -59,6 +59,7 @@ import type {
 	DeadEventsResponse,
 	RetryDeadEventsResponse,
 	EventCountsResponse,
+	AuditFailureSummary,
 	IngestionErrorsResponse,
 	ClearIngestionErrorsResponse,
 	Tag,
@@ -771,6 +772,9 @@ export const engineApi = {
 
 	// Event counts by processing_status (Audit page summary)
 	getEventCounts: () => request<EventCountsResponse>('/events/counts'),
+
+	// Outstanding failure counts — one-shot startup seed for the red-dot indicator
+	getAuditFailureSummary: () => request<AuditFailureSummary>('/audit/failure-summary'),
 
 	// Ingestion Errors
 	getIngestionErrors: (params?: {

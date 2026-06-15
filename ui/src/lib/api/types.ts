@@ -31,6 +31,7 @@ export interface WsMessage {
 		| 'open_compose'
 		| 'processing_rule_auto_disabled'
 		| 'push_notification'
+		| 'audit_failure'
 		| (string & {});
 	event_id?: string;
 	card_id?: string;
@@ -752,6 +753,13 @@ export interface RetryDeadEventsResponse {
 export interface EventCountsResponse {
 	counts: Record<string, number>;
 	total: number;
+}
+
+/** Outstanding failure counts driving the Audit/Settings red dot */
+export interface AuditFailureSummary {
+	dead_events: number;
+	ingestion_errors: number;
+	has_failures: boolean;
 }
 
 /** Ingestion error captured from n8n workflow failures */

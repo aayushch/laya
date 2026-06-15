@@ -21,6 +21,7 @@
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { portal } from '$lib/actions/portal';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
+	import { hasAuditFailures } from '$lib/stores/auditFailures';
 	import { fade } from 'svelte/transition';
 
 	type TabId = 'team' | 'rules' | 'models' | 'repos' | 'agent' | 'integrations' | 'spaces' | 'scheduling' | 'mcp' | 'audit' | 'appearance' | 'keybindings' | 'data' | 'about';
@@ -179,7 +180,12 @@
 							: 'text-surface-400 hover:text-surface-200'}"
 					onclick={() => switchTab(tab.id as TabId)}
 				>
-					{tab.label}
+					<span class="relative">
+						{tab.label}
+						{#if tab.id === 'audit' && $hasAuditFailures}
+							<span class="absolute -right-2 -top-0.5 h-1.5 w-1.5 rounded-full bg-red-500" aria-label="Unresolved failures"></span>
+						{/if}
+					</span>
 				</button>
 			{/each}
 
@@ -218,7 +224,12 @@
 								{activeTab === tab.id ? 'text-laya-orange' : 'text-surface-300'}"
 							onclick={() => { switchTab(tab.id as TabId); overflowMenuOpen = false; }}
 						>
-							{tab.label}
+							<span class="relative">
+								{tab.label}
+								{#if tab.id === 'audit' && $hasAuditFailures}
+									<span class="absolute -right-2 -top-0.5 h-1.5 w-1.5 rounded-full bg-red-500" aria-label="Unresolved failures"></span>
+								{/if}
+							</span>
 						</button>
 					{/each}
 				</div>

@@ -131,6 +131,7 @@ async def _mark_failed(event_id: str, error: str) -> None:
     )
     attempts = row[0]["processing_attempts"] if row else 0
 
+    became_dead = False
     if attempts < max_attempts:
         # Exponential backoff: 2^attempt seconds, capped at 5 minutes
         delay = min(2 ** attempts, 300)
@@ -164,7 +165,24 @@ async def _mark_failed(event_id: str, error: str) -> None:
             attempts=attempts,
             error=error,
         )
+        became_dead = True
     await db.commit()
+
+    # Push the Audit/Settings red dot live when an event becomes permanently
+    # failed. Without this the indicator would only update on the next app
+    # startup (or when the user opens the Audit tab) since these tables are not
+    # polled. Best-effort: a WS hiccup must never break the pipeline.
+    if became_dead:
+        try:
+            from laya.api.websocket import manager
+            from laya.api.audit_api import compute_failure_counts
+
+            counts = await compute_failure_counts(db)
+            await manager.broadcast(
+                {"type": "audit_failure", "payload": {**counts, "kind": "dead_event"}}
+            )
+        except Exception as e:
+            log.warning("audit_failure_broadcast_failed", event_id=event_id, error=str(e))
 
 
 # ── event processing ─────────────────────────────────────────────────────

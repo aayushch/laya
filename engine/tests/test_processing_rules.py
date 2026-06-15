@@ -4,8 +4,10 @@
 """Tests for the processing rules engine (laya.pipeline.processing_rules)."""
 
 import json
+from contextlib import ExitStack
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
@@ -18,12 +20,14 @@ from laya.models.processing_rules import (
     ProcessingAnyCondition,
     ProcessingNotCondition,
     ProcessingSimpleCondition,
+    RunEntityAgentAction,
     SendNotificationAction,
     SetPriorityAction,
     SetStatusAction,
 )
 from laya.pipeline.processing_rules import (
     _check_rate_limits,
+    _exec_run_agent,
     _execute_action,
     _parse_actions,
     _parse_condition,
@@ -895,3 +899,105 @@ class TestRegexSafety:
         """Malformed regex returns False, not an exception."""
         cond = ProcessingSimpleCondition(field="event.subject.id", operator="matches", value="[")
         assert evaluate_condition(cond, sample_context) is False
+
+
+# ---------------------------------------------------------------------------
+# Run-agent action: reuse the entity's existing workspace
+# ---------------------------------------------------------------------------
+
+ENTITY = "jira:ticket:PROJ-42"
+
+
+@pytest_asyncio.fixture
+async def agent_env(db):
+    """Patch all heavy deps of _exec_run_agent and yield the key mocks.
+
+    The session lookup / start / resume functions are mocked so each test can
+    assert which path _exec_run_agent took without spawning a real agent.
+    """
+    sm = "laya.agents.session_manager"
+    ec = "laya.agents.entity_context"
+    mocks = SimpleNamespace()
+    with ExitStack() as stack:
+        p = stack.enter_context
+        mocks.get_session = p(patch(f"{sm}.get_session_for_entity", new=AsyncMock(return_value=None)))
+        mocks.has_unanswered = p(patch(f"{sm}.has_unanswered_questions", new=AsyncMock(return_value=False)))
+        mocks.resume = p(patch(f"{sm}.resume_conversation", new=AsyncMock(return_value=MagicMock())))
+        mocks.start = p(patch(f"{sm}.start_session", new=AsyncMock(return_value=("sess_new", MagicMock()))))
+        p(patch(f"{sm}.get_configured_agent_type", new=MagicMock(return_value=MagicMock())))
+        p(patch(f"{ec}.write_entity_context_file", new=AsyncMock()))
+        p(patch(f"{ec}.get_entity_research_dir", new=MagicMock(return_value="/tmp/research/ent")))
+        p(patch(f"{ec}.build_entity_agent_prompt", new=MagicMock(return_value="PROMPT")))
+        p(patch("laya.workers.engineer.resolve_repo_path", new=AsyncMock(return_value=(None, []))))
+        p(patch("laya.config.load_repos", new=MagicMock(return_value={"repos": []})))
+        p(patch("laya.api.cards_api._stream_entity_agent", new=MagicMock()))
+        p(patch("laya.tasks.create_task", new=MagicMock()))
+        p(patch("laya.pipeline.processing_rules.manager.broadcast", new=AsyncMock()))
+        yield mocks
+
+
+@pytest.mark.asyncio
+class TestRunAgentReuse:
+    async def test_no_session_starts_new(self, db, agent_env):
+        """With no prior session, a brand-new workspace is started."""
+        await insert_test_card(db, "card_a", "evt_a", entity_id=ENTITY)
+        agent_env.get_session.return_value = None
+
+        result = await _exec_run_agent(RunEntityAgentAction(), ENTITY, {})
+
+        assert result["success"] is True
+        assert result["resumed"] is False
+        # Lookup must include terminal sessions so completed runs can be resumed.
+        agent_env.get_session.assert_awaited_once_with(ENTITY, include_terminal=True)
+        agent_env.start.assert_awaited_once()
+        agent_env.resume.assert_not_awaited()
+
+    async def test_completed_session_is_resumed(self, db, agent_env):
+        """A finished (completed) workspace is resumed, not replaced — same session_id."""
+        await insert_test_card(db, "card_a", "evt_a", entity_id=ENTITY)
+        agent_env.get_session.return_value = {"session_id": "sess_old", "status": "completed"}
+
+        result = await _exec_run_agent(RunEntityAgentAction(), ENTITY, {})
+
+        assert result["success"] is True
+        assert result["resumed"] is True
+        assert result["session_id"] == "sess_old"
+        agent_env.resume.assert_awaited_once()
+        assert agent_env.resume.await_args.args[0] == "sess_old"
+        agent_env.start.assert_not_awaited()
+
+    async def test_running_session_is_skipped(self, db, agent_env):
+        """An actively running agent is left alone."""
+        await insert_test_card(db, "card_a", "evt_a", entity_id=ENTITY)
+        agent_env.get_session.return_value = {"session_id": "sess_old", "status": "running"}
+
+        result = await _exec_run_agent(RunEntityAgentAction(), ENTITY, {})
+
+        assert result == {"success": True, "skipped": True, "reason": "agent already running"}
+        agent_env.start.assert_not_awaited()
+        agent_env.resume.assert_not_awaited()
+
+    async def test_awaiting_input_status_is_skipped(self, db, agent_env):
+        """A workspace whose session status is awaiting_input is not disturbed."""
+        await insert_test_card(db, "card_a", "evt_a", entity_id=ENTITY)
+        agent_env.get_session.return_value = {"session_id": "sess_old", "status": "awaiting_input"}
+
+        result = await _exec_run_agent(RunEntityAgentAction(), ENTITY, {})
+
+        assert result["skipped"] is True
+        assert result["reason"] == "workspace awaiting user input"
+        agent_env.start.assert_not_awaited()
+        agent_env.resume.assert_not_awaited()
+
+    async def test_completed_with_pending_question_is_skipped(self, db, agent_env):
+        """A completed session that still has an unanswered question is not resumed."""
+        await insert_test_card(db, "card_a", "evt_a", entity_id=ENTITY)
+        agent_env.get_session.return_value = {"session_id": "sess_old", "status": "completed"}
+        agent_env.has_unanswered.return_value = True
+
+        result = await _exec_run_agent(RunEntityAgentAction(), ENTITY, {})
+
+        assert result["skipped"] is True
+        assert result["reason"] == "workspace awaiting user input"
+        agent_env.start.assert_not_awaited()
+        agent_env.resume.assert_not_awaited()

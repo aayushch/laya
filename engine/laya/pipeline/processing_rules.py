@@ -387,20 +387,37 @@ async def _exec_run_agent(
     lock = _agent_locks.setdefault(entity_id, asyncio.Lock())
     async with lock:
         try:
-            from laya.agents.entity_context import get_entity_research_dir, write_entity_context_file
+            from laya.agents.entity_context import (
+                build_entity_agent_prompt,
+                get_entity_research_dir,
+                write_entity_context_file,
+            )
             from laya.agents import session_manager
             from laya.config import load_repos
             from laya.workers.engineer import resolve_repo_path
             from laya.models.classification import Category, Persona, Priority, RouterOutput as RO
-            from laya.agents.entity_context import build_entity_agent_prompt
+            from laya.api.cards_api import _stream_entity_agent
+            from laya.tasks import create_task as create_tracked_task
 
-            existing = await session_manager.get_session_for_entity(entity_id)
-            if existing and existing["status"] in ("starting", "running"):
-                return {"success": True, "skipped": True, "reason": "agent already running"}
+            # Reuse the entity's existing workspace instead of spawning a duplicate.
+            # include_terminal=True so a completed run (the common case — a manual
+            # or prior rule run finishes its turn and the session is marked
+            # 'completed') is resumed rather than replaced by a new session, which
+            # would orphan the workspace the user sees via the Workspace button
+            # (get_workspace returns the most-recent session for the entity).
+            # Skip only while the agent is actively working or waiting on the user;
+            # otherwise resume. Mirrors the manual flow in cards_api.run_entity_agent.
+            existing = await session_manager.get_session_for_entity(entity_id, include_terminal=True)
+            if existing:
+                status = existing["status"]
+                if status in ("starting", "running"):
+                    return {"success": True, "skipped": True, "reason": "agent already running"}
+                if status == "awaiting_input" or await session_manager.has_unanswered_questions(existing["session_id"]):
+                    return {"success": True, "skipped": True, "reason": "workspace awaiting user input"}
 
             db = await get_db()
             card_rows = await db.execute_fetchall(
-                "SELECT card_id, space_id FROM action_cards WHERE entity_id = ? ORDER BY created_at DESC LIMIT 1",
+                "SELECT card_id, space_id FROM action_cards WHERE entity_id = ? ORDER BY created_at DESC",
                 (entity_id,),
             )
             if not card_rows:
@@ -409,9 +426,9 @@ async def _exec_run_agent(
             space_id = card_rows[0]["space_id"] or "default"
             anchor_card_id = card_rows[0]["card_id"]
 
+            # Refresh CONTEXT.md so the agent (new or resumed) sees the latest cards.
             await write_entity_context_file(entity_id, space_id)
-            research_dir = get_entity_research_dir(entity_id)
-            research_dir_str = str(research_dir)
+            research_dir_str = str(get_entity_research_dir(entity_id))
 
             dummy_router = RO(persona=Persona.ENGINEER, priority=Priority.MEDIUM, category=Category.CODE, confidence=0.8, entities=[])
             repo_path, other_repos = await resolve_repo_path(dummy_router, space_id=space_id)
@@ -424,30 +441,48 @@ async def _exec_run_agent(
                 repos_data = load_repos()
                 add_dirs = [r["path"] for r in repos_data.get("repos", []) if r.get("path")]
 
-            agent_prompt = build_entity_agent_prompt(entity_id, research_dir_str, repo_path, prompt)
-            agent_type = session_manager.get_configured_agent_type()
-
             now = datetime.now(timezone.utc).isoformat()
             await db.execute(
                 "UPDATE action_cards SET has_workspace = 1, updated_at = ? WHERE entity_id = ?",
                 (now, entity_id),
             )
+            await db.execute(
+                "UPDATE action_cards SET status = 'agent_running' WHERE card_id = ?",
+                (anchor_card_id,),
+            )
             await db.commit()
 
-            session_id, agent = await session_manager.start_session(
-                card_id=anchor_card_id, prompt=agent_prompt, repo_path=cwd,
-                agent_type=agent_type, space_id=space_id, add_dirs=add_dirs,
-                mode="plan", research=True, entity_id=entity_id,
-            )
+            for card_row in card_rows:
+                payload: dict[str, Any] = {"has_workspace": True}
+                if card_row["card_id"] == anchor_card_id:
+                    payload["status"] = "agent_running"
+                await manager.broadcast(
+                    {"type": "card_updated", "card_id": card_row["card_id"], "payload": payload}
+                )
 
-            from laya.api.cards_api import _stream_entity_agent
-            from laya.tasks import create_task as create_tracked_task
+            if existing:
+                # Resume the same session (reuses session_id, so the Workspace
+                # button keeps opening the workspace the user already had).
+                resume_text = prompt or "Continue working. Check CONTEXT.md for updated entity context."
+                agent = await session_manager.resume_conversation(
+                    existing["session_id"], resume_text, add_dirs=add_dirs,
+                )
+                session_id = existing["session_id"]
+            else:
+                agent_prompt = build_entity_agent_prompt(entity_id, research_dir_str, repo_path, prompt)
+                agent_type = session_manager.get_configured_agent_type()
+                session_id, agent = await session_manager.start_session(
+                    card_id=anchor_card_id, prompt=agent_prompt, repo_path=cwd,
+                    agent_type=agent_type, space_id=space_id, add_dirs=add_dirs,
+                    mode="plan", research=True, entity_id=entity_id,
+                )
+
             create_tracked_task(
                 _stream_entity_agent(session_id=session_id, agent=agent, entity_id=entity_id, anchor_card_id=anchor_card_id),
                 name=f"proc_rule_agent_{entity_id}",
             )
 
-            return {"success": True, "session_id": session_id}
+            return {"success": True, "session_id": session_id, "resumed": bool(existing)}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
