@@ -91,7 +91,7 @@ export function niceStep(maxVal: number, targetTicks: number): number {
  */
 export function formatBucketLabel(iso: string, windowMinutes: number): string {
 	const d = new Date(iso);
-	if (windowMinutes <= 120) {
+	if (windowMinutes <= 360) {
 		return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 	}
 	if (windowMinutes <= 1440) {

@@ -4,13 +4,14 @@
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
 
-	type Section = 'card' | 'chat' | 'audit' | 'omni' | 'ingestion';
+	type Section = 'card' | 'chat' | 'audit' | 'omni' | 'ingestion' | 'firings';
 
 	let retentionDays = $state(90);
 	let chatRetentionDays = $state(90);
 	let auditRetentionDays = $state(90);
 	let omniRetentionDays = $state(30);
 	let ingestionErrorsRetentionDays = $state(30);
+	let firingLogRetentionDays = $state(90);
 	let loading = $state(true);
 	let savingSection = $state<Section | null>(null);
 	let savedSection = $state<Section | null>(null);
@@ -27,6 +28,7 @@
 			auditRetentionDays = s.retention?.audit_retention_days ?? 90;
 			omniRetentionDays = s.retention?.omni_retention_days ?? 30;
 			ingestionErrorsRetentionDays = s.retention?.ingestion_errors_retention_days ?? 30;
+			firingLogRetentionDays = s.retention?.firing_log_retention_days ?? 90;
 			loading = false;
 		});
 	});
@@ -49,7 +51,8 @@
 					chat_retention_days: chatRetentionDays,
 					audit_retention_days: auditRetentionDays,
 					omni_retention_days: omniRetentionDays,
-					ingestion_errors_retention_days: ingestionErrorsRetentionDays
+					ingestion_errors_retention_days: ingestionErrorsRetentionDays,
+					firing_log_retention_days: firingLogRetentionDays
 				}
 			} as never);
 			savedSection = section;
@@ -275,6 +278,46 @@
 
 			<p class="mt-3 text-laya-secondary text-surface-500">
 				Default: 30 days.
+			</p>
+		{/if}
+	</div>
+
+	<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
+		<div class="mb-1 flex items-center justify-between">
+			<h3 class="text-laya-heading font-medium">Rule Firing Log Retention</h3>
+			{#if savingSection === 'firings'}
+				<span class="text-laya-micro text-laya-orange">Saving…</span>
+			{:else if savedSection === 'firings'}
+				<span class="text-laya-micro text-green-400">Saved</span>
+			{/if}
+		</div>
+		<p class="mb-4 text-laya-base text-surface-400">
+			Processing-rule firing history (shown under Rules → Activity) older than the retention period
+			is automatically deleted each day.
+		</p>
+
+		{#if !loading}
+			<div class="flex flex-col gap-1">
+				<label class="text-laya-secondary font-medium text-surface-300" for="firing-retention-days">
+					Retention period (days)
+				</label>
+				<input
+					id="firing-retention-days"
+					type="number"
+					min="1"
+					max="3650"
+					bind:value={firingLogRetentionDays}
+					oninput={() => debouncedSave('firings')}
+					class="h-9 w-32 rounded-md border border-surface-600 bg-surface-700 px-3 text-laya-base text-surface-50 focus:border-laya-orange/50 focus:outline-none"
+				/>
+			</div>
+
+			{#if errorSection === 'firings' && error}
+				<p class="mt-2 text-laya-secondary text-red-400">{error}</p>
+			{/if}
+
+			<p class="mt-3 text-laya-secondary text-surface-500">
+				Default: 90 days.
 			</p>
 		{/if}
 	</div>

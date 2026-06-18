@@ -15,6 +15,10 @@ from laya.llm.prompts.context_learner import (
     build_context_learner_messages,
     get_context_learner_json_schema,
 )
+from laya.llm.prompts.context_rule_consolidator import (
+    build_context_rule_consolidator_messages,
+    get_context_rule_consolidator_json_schema,
+)
 
 log = structlog.get_logger()
 
@@ -150,7 +154,129 @@ async def run_context_learn_extraction(space_id: str | None) -> int:
         corrections_processed=len(correction_ids),
         rules_created=new_rules,
     )
+
+    # Consolidate if this space's learned rules have grown large. Done here
+    # (right after the growth) so it rides the existing 6-hourly learn pass and
+    # needs no separate scheduling. Failures must not break the learn run.
+    try:
+        await maybe_consolidate_context_rules(space_id)
+    except Exception as e:
+        log.error("context_rules_consolidate_failed", space_id=space_id, error=str(e))
+
     return new_rules
+
+
+def _consolidation_threshold() -> int:
+    from laya.config import get_tuning
+    return get_tuning("context_rules_consolidation_threshold", 40)
+
+
+async def _load_scoped_rules(db, source: str, space_id: str | None) -> list[dict]:
+    """Load active rules of a given source for an exact space scope.
+
+    Matches how extraction inserts rules: a NULL space_id selects the global
+    rules, a concrete space_id selects only that space's rules (never both),
+    so consolidation only ever rewrites the scope it was triggered for.
+    """
+    if space_id is not None:
+        rows = await db.execute_fetchall(
+            """SELECT id, rule_text FROM context_rules
+               WHERE source = ? AND active = 1 AND space_id = ?
+               ORDER BY created_at ASC""",
+            (source, space_id),
+        )
+    else:
+        rows = await db.execute_fetchall(
+            """SELECT id, rule_text FROM context_rules
+               WHERE source = ? AND active = 1 AND space_id IS NULL
+               ORDER BY created_at ASC""",
+            (source,),
+        )
+    return [dict(r) for r in rows]
+
+
+async def maybe_consolidate_context_rules(space_id: str | None) -> int:
+    """Merge redundant learned context rules for a space when they grow large.
+
+    Loads the active learned rules for the exact space scope; if their count
+    exceeds the consolidation threshold, asks the LLM to merge redundant rules
+    into a smaller canonical set and replaces them transactionally. Manual
+    (user-authored) rules are never modified — they are passed to the LLM only
+    as fixed context. Returns the consolidated rule count, or 0 if it was a
+    no-op (below threshold, LLM failure, or guardrail trip).
+    """
+    db = await get_db()
+
+    learned = await _load_scoped_rules(db, "learned", space_id)
+    if len(learned) <= _consolidation_threshold():
+        return 0
+
+    manual = await _load_scoped_rules(db, "manual", space_id)
+
+    messages = build_context_rule_consolidator_messages(learned, manual)
+    schema = get_context_rule_consolidator_json_schema()
+
+    try:
+        response = await llm_call(
+            role="router",  # cheap model
+            messages=messages,
+            response_schema=schema,
+            step="context_consolidate",
+            temperature=0.2,
+            max_tokens=2000,
+        )
+    except Exception as e:
+        log.error("context_consolidate_llm_failed", error=str(e), space_id=space_id)
+        return 0
+
+    if not response.parsed:
+        log.warning("context_consolidate_no_parsed_response", space_id=space_id)
+        return 0
+
+    consolidated = [
+        r.get("rule_text", "").strip()
+        for r in response.parsed.get("rules", [])
+        if r.get("rule_text", "").strip()
+    ]
+
+    # Guardrails: never apply a result that drops all rules or fails to shrink
+    # the set — that's either useless or a sign the model misbehaved. Leaving
+    # the originals in place is always safe.
+    if not consolidated or len(consolidated) >= len(learned):
+        log.info(
+            "context_consolidate_skipped",
+            space_id=space_id,
+            before=len(learned),
+            proposed=len(consolidated),
+        )
+        return 0
+
+    # Replace transactionally: delete exactly the learned ids we loaded (so any
+    # rule inserted concurrently is untouched), then insert the consolidated
+    # set. Manual rules are never deleted.
+    now = datetime.now(timezone.utc).isoformat()
+    learned_ids = [r["id"] for r in learned]
+    placeholders = ",".join("?" * len(learned_ids))
+    await db.execute(
+        f"DELETE FROM context_rules WHERE id IN ({placeholders})",
+        learned_ids,
+    )
+    for rule_text in consolidated:
+        await db.execute(
+            """INSERT INTO context_rules
+               (space_id, rule_text, source, active, created_at, updated_at)
+               VALUES (?, ?, 'learned', 1, ?, ?)""",
+            (space_id, rule_text, now, now),
+        )
+    await db.commit()
+
+    log.info(
+        "context_rules_consolidated",
+        space_id=space_id,
+        before=len(learned),
+        after=len(consolidated),
+    )
+    return len(consolidated)
 
 
 async def run_context_learn_all() -> None:

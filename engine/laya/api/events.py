@@ -6,10 +6,13 @@
 import json
 from typing import Optional
 
+from datetime import datetime, timezone
+
 import structlog
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from laya.api.audit_api import utc_cutoff
 from laya.db.sqlite import get_db
 from laya.models.event import EventResponse, LayaEvent
 from laya.pipeline.queue import enqueue_event
@@ -114,6 +117,80 @@ async def get_event_counts() -> dict:
     counts = {r["processing_status"]: r["count"] for r in rows}
     total = sum(counts.values())
     return {"counts": counts, "total": total}
+
+
+# ── filtered events (audit page, informational) ─────────────────────────
+
+@router.get("/events/filtered")
+async def list_filtered_events(limit: int = 25, offset: int = 0) -> dict:
+    """List events dropped by a filter rule (terminal, no card produced).
+
+    Purely informational for the Audit page. Unlike dead events these are
+    not failures — they have no retry action and no bearing on the
+    audit failure / red-dot indicator.
+    """
+    db = await get_db()
+
+    count_rows = await db.execute_fetchall(
+        "SELECT COUNT(*) as total FROM events WHERE processing_status = 'filtered'"
+    )
+    total = count_rows[0]["total"] if count_rows else 0
+
+    rows = await db.execute_fetchall(
+        """SELECT event_id, timestamp, source_platform, subject_type,
+                  subject_title, subject_url, actor_name, filter_rule, created_at
+           FROM events
+           WHERE processing_status = 'filtered'
+           ORDER BY created_at DESC
+           LIMIT ? OFFSET ?""",
+        (limit, offset),
+    )
+
+    return {
+        "events": [dict(r) for r in rows],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@router.get("/events/filtered/export")
+async def export_filtered_events(days: int = 0) -> dict:
+    """Export filtered events as JSON, optionally limited to the last `days`.
+
+    days=0 (default) exports all time. Mirrors the filtered events list but
+    unpaginated and with richer columns for offline inspection.
+    """
+    db = await get_db()
+
+    conditions = ["processing_status = 'filtered'"]
+    params: list = []
+    since = utc_cutoff(days)
+    if since is not None:
+        conditions.append("created_at >= ?")
+        params.append(since)
+    where_clause = "WHERE " + " AND ".join(conditions)
+
+    rows = await db.execute_fetchall(
+        f"""SELECT event_id, timestamp, source_platform, source_raw_event_type,
+                   subject_type, subject_id, subject_title, subject_url,
+                   actor_name, actor_email, filter_rule, space_id, created_at
+            FROM events
+            {where_clause}
+            ORDER BY created_at DESC""",
+        params,
+    )
+
+    events = [dict(r) for r in rows]
+    log.info("filtered_events_exported", count=len(events), days=days)
+    return {
+        "kind": "filtered_events",
+        "exported_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        "days": days,
+        "since": since,
+        "count": len(events),
+        "events": events,
+    }
 
 
 # ── dead event recovery ─────────────────────────────────────────────────

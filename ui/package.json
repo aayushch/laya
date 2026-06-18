@@ -37,5 +37,8 @@
 		"@tauri-apps/plugin-updater": "^2.10.1",
 		"dompurify": "^3.4.2",
 		"marked": "^17.0.4"
+	},
+	"overrides": {
+		"esbuild": "^0.28.1"
 	}
 }

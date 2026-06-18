@@ -6,6 +6,7 @@
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { lastMessage } from '$lib/stores/websocket';
 	import ProcessingRulesEditor from './ProcessingRulesEditor.svelte';
+	import ContextRulesEditor from './ContextRulesEditor.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import type { Rule, RuleCondition, SimpleCondition, ClassificationRule } from '$lib/api/types';
 
@@ -599,6 +600,10 @@
 			{/if}
 		{/if}
 	</div>
+
+	<!-- Context Rules -->
+	<hr class="my-6 border-surface-700" />
+	<ContextRulesEditor />
 
 	<!-- Processing Rules -->
 	<hr class="my-6 border-surface-700" />

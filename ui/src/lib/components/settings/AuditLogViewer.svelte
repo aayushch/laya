@@ -9,7 +9,8 @@
 	import { setAuditFailureCounts } from '$lib/stores/auditFailures';
 	import { portal } from '$lib/actions/portal';
 	import Dropdown from '$lib/components/Dropdown.svelte';
-	import type { AuditLogEntry, DeadEvent, IngestionError } from '$lib/api/types';
+	import ExportMenu from '$lib/components/settings/ExportMenu.svelte';
+	import type { AuditLogEntry, DeadEvent, IngestionError, FilteredEvent } from '$lib/api/types';
 
 	// Ordered list of processing_status values for stable display order.
 	// Mirrors values set in engine/laya/pipeline/queue.py and api/events.py.
@@ -233,6 +234,79 @@
 		}
 	}
 
+	// ── Filtered events state ──
+	// Purely informational: events dropped by filter rules. Deliberately NOT
+	// fed into setAuditFailureCounts — filtered events are not failures and
+	// must never light up the audit/settings red-dot indicator.
+	const FILTERED_LIMIT = 25;
+	let filteredEvents: FilteredEvent[] = $state([]);
+	let filteredTotal = $state(0);
+	let filteredLoading = $state(true);
+	let filteredExpanded = $state(false);
+	let filteredOffset = $state(0);
+
+	async function loadFilteredEvents() {
+		filteredLoading = true;
+		try {
+			const resp = await engineApi.getFilteredEvents({ limit: FILTERED_LIMIT, offset: filteredOffset });
+			filteredEvents = resp.events;
+			filteredTotal = resp.total;
+		} catch {
+			// Silent — supplementary section
+		} finally {
+			filteredLoading = false;
+		}
+	}
+
+	function filteredPrevPage() {
+		if (filteredOffset >= FILTERED_LIMIT) {
+			filteredOffset -= FILTERED_LIMIT;
+			loadFilteredEvents();
+		}
+	}
+
+	function filteredNextPage() {
+		if (filteredOffset + FILTERED_LIMIT < filteredTotal) {
+			filteredOffset += FILTERED_LIMIT;
+			loadFilteredEvents();
+		}
+	}
+
+	const filteredPage = $derived(Math.floor(filteredOffset / FILTERED_LIMIT) + 1);
+	const filteredTotalPages = $derived(Math.ceil(filteredTotal / FILTERED_LIMIT) || 1);
+
+	// ── Export ──
+	// Triggers a JSON file download from an already-fetched object. Pretty-printed
+	// so the export is human-inspectable. Filename carries the timeframe + date.
+	function downloadJson(data: unknown, base: string) {
+		const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = `${base}-${new Date().toISOString().slice(0, 10)}.json`;
+		a.click();
+		URL.revokeObjectURL(url);
+	}
+
+	function timeframeSlug(days: number): string {
+		return days > 0 ? `${days}d` : 'all';
+	}
+
+	async function exportFiltered(days: number) {
+		const data = await engineApi.exportFilteredEvents(days);
+		downloadJson(data, `laya-filtered-events-${timeframeSlug(days)}`);
+	}
+
+	async function exportAudit(days: number) {
+		// Mirror the current view's filters so the export matches what's on screen.
+		const params: { days: number; step?: string; success?: boolean; search?: string } = { days };
+		if (filterSteps.size > 0) params.step = [...filterSteps].join(',');
+		if (filterSuccess !== '') params.success = filterSuccess === 'true';
+		if (searchQuery.trim()) params.search = searchQuery.trim();
+		const data = await engineApi.exportAuditLog(params);
+		downloadJson(data, `laya-audit-log-${timeframeSlug(days)}`);
+	}
+
 	// ── Audit log functions ──
 	async function load() {
 		loading = true;
@@ -256,6 +330,7 @@
 		load();
 		loadDeadEvents();
 		loadIngestionErrors();
+		loadFilteredEvents();
 		// Event counts: poll every 10s while the Audit page is mounted.
 		// onDestroy clears the interval when the user leaves the tab so
 		// the DB isn't queried in the background.
@@ -580,6 +655,119 @@
 		</div>
 	{/if}
 
+	<!-- Filtered Events (informational — events dropped by filter rules; NOT failures) -->
+	{#if !filteredLoading && filteredTotal > 0}
+		<div class="rounded-lg border border-blue-600/50 bg-blue-900/20 p-3">
+			<div class="flex items-center justify-between">
+				<div class="flex items-center gap-2">
+					<svg class="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L15 12.414V19a1 1 0 01-.553.894l-4 2A1 1 0 019 21v-8.586L3.293 6.707A1 1 0 013 6V4z" />
+					</svg>
+					<span class="text-laya-base font-medium text-blue-300">
+						{filteredTotal.toLocaleString()} event{filteredTotal !== 1 ? 's' : ''} filtered
+					</span>
+				</div>
+				<div class="flex items-center gap-1">
+					<button
+						onclick={() => { filteredExpanded = !filteredExpanded; }}
+						class="rounded px-3 py-1 text-laya-secondary font-medium text-surface-300 transition-colors {$glassTheme ? 'hover:bg-white/[0.08]' : 'hover:bg-surface-700'}"
+					>
+						{filteredExpanded ? 'Hide' : 'View'}
+					</button>
+					<ExportMenu onexport={exportFiltered} />
+				</div>
+			</div>
+
+			{#if filteredExpanded}
+				<div transition:slide={{ duration: $reducedMotion ? 0 : 200 }} class="mt-3">
+					<div class="overflow-visible {$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700'}">
+						<table class="w-full table-fixed text-left text-laya-secondary">
+							<thead class="border-b {$glassTheme ? 'border-white/[0.06] bg-white/[0.03]' : 'border-surface-700 bg-surface-800'} text-surface-400">
+								<tr>
+									<th class="w-[20%] px-3 py-2">Time</th>
+									<th class="w-[12%] px-3 py-2">Platform</th>
+									<th class="w-[33%] px-3 py-2">Subject</th>
+									<th class="w-[15%] px-3 py-2">Actor</th>
+									<th class="w-[20%] px-3 py-2">Rule</th>
+								</tr>
+							</thead>
+							<tbody class="divide-y {$glassTheme ? 'divide-white/[0.04]' : 'divide-surface-700/50'}">
+								{#each filteredEvents as evt (evt.event_id)}
+									<tr class="transition-colors hover:bg-surface-800/50">
+										<td class="px-3 py-2 text-surface-300">
+											<span class="block truncate">{formatTime(evt.created_at)}</span>
+										</td>
+										<td class="px-3 py-2">
+											<span
+												class="inline-block max-w-full truncate rounded bg-surface-700 px-1.5 py-0.5 text-surface-300"
+												role="note"
+												onmouseenter={(e) => { const el = e.currentTarget; if (el.scrollWidth > el.clientWidth) showTooltip(el, evt.source_platform); }}
+												onmouseleave={hideTooltip}
+											>
+												{evt.source_platform}
+											</span>
+										</td>
+										<td
+											class="px-3 py-2 font-medium text-surface-200"
+											onmouseenter={(e) => { if (evt.subject_title && evt.subject_title.length > 40) showTooltip(e.currentTarget, evt.subject_title); }}
+											onmouseleave={hideTooltip}
+										>
+											<span class="block truncate">
+												{#if evt.subject_url}
+													<a href={evt.subject_url} target="_blank" rel="noopener" class="hover:text-laya-orange hover:underline">
+														{evt.subject_title ?? '(untitled)'}
+													</a>
+												{:else}
+													{evt.subject_title ?? '(untitled)'}
+												{/if}
+											</span>
+										</td>
+										<td
+											class="px-3 py-2 text-surface-400"
+											onmouseenter={(e) => { if (evt.actor_name && evt.actor_name.length > 18) showTooltip(e.currentTarget, evt.actor_name); }}
+											onmouseleave={hideTooltip}
+										>
+											<span class="block truncate">{evt.actor_name ?? '-'}</span>
+										</td>
+										<td
+											class="px-3 py-2 text-surface-400"
+											onmouseenter={(e) => { if (evt.filter_rule && evt.filter_rule.length > 24) showTooltip(e.currentTarget, evt.filter_rule); }}
+											onmouseleave={hideTooltip}
+										>
+											<span class="block truncate">{evt.filter_rule ?? '-'}</span>
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+
+					<!-- Filtered events pagination -->
+					<div class="mt-2 flex items-center justify-between text-laya-secondary text-surface-400">
+						<span>{filteredTotal.toLocaleString()} filtered</span>
+						<div class="flex items-center gap-2">
+							<button
+								onclick={filteredPrevPage}
+								disabled={filteredOffset === 0}
+								class="rounded px-2 py-1 transition-colors hover:bg-surface-700 disabled:opacity-30"
+							>
+								Prev
+							</button>
+							<span>{filteredPage} / {filteredTotalPages}</span>
+							<button
+								onclick={filteredNextPage}
+								disabled={filteredOffset + FILTERED_LIMIT >= filteredTotal}
+								class="rounded px-2 py-1 transition-colors hover:bg-surface-700 disabled:opacity-30"
+							>
+								Next
+							</button>
+						</div>
+					</div>
+				</div>
+			{/if}
+		</div>
+	{/if}
+
 	<!-- Filters -->
 	<div class="flex flex-wrap items-end gap-3">
 		<!-- Steps multiselect dropdown -->
@@ -712,6 +900,31 @@
 	{:else if entries.length === 0}
 		<p class="py-8 text-center text-laya-base text-surface-500">No audit log entries found.</p>
 	{:else}
+		<!-- Pagination + export -->
+		<div class="flex items-center justify-between text-laya-secondary text-surface-400">
+			<span>{total} entries</span>
+			<div class="flex items-center gap-3">
+				<ExportMenu onexport={exportAudit} />
+				<div class="flex items-center gap-2">
+					<button
+						onclick={prevPage}
+						disabled={offset === 0}
+						class="rounded px-2 py-1 transition-colors hover:bg-surface-700 disabled:opacity-30"
+					>
+						Prev
+					</button>
+					<span>{page} / {totalPages}</span>
+					<button
+						onclick={nextPage}
+						disabled={offset + limit >= total}
+						class="rounded px-2 py-1 transition-colors hover:bg-surface-700 disabled:opacity-30"
+					>
+						Next
+					</button>
+				</div>
+			</div>
+		</div>
+
 		<div class="overflow-x-auto {$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700'}">
 			<table class="w-full text-left text-laya-secondary">
 				<thead class="border-b {$glassTheme ? 'border-white/[0.06] bg-white/[0.03]' : 'border-surface-700 bg-surface-800'} text-surface-400">
@@ -745,28 +958,6 @@
 					{/each}
 				</tbody>
 			</table>
-		</div>
-
-		<!-- Pagination -->
-		<div class="flex items-center justify-between text-laya-secondary text-surface-400">
-			<span>{total} entries</span>
-			<div class="flex items-center gap-2">
-				<button
-					onclick={prevPage}
-					disabled={offset === 0}
-					class="rounded px-2 py-1 transition-colors hover:bg-surface-700 disabled:opacity-30"
-				>
-					Prev
-				</button>
-				<span>{page} / {totalPages}</span>
-				<button
-					onclick={nextPage}
-					disabled={offset + limit >= total}
-					class="rounded px-2 py-1 transition-colors hover:bg-surface-700 disabled:opacity-30"
-				>
-					Next
-				</button>
-			</div>
 		</div>
 	{/if}
 </div>

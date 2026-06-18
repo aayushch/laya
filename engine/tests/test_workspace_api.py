@@ -4,6 +4,7 @@
 """Tests for the workspace REST API."""
 
 import json
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -109,3 +110,111 @@ class TestWorkspaceAPI:
         assert "related_entities" in data["context"]
         assert data["context"]["related_entities"][0]["value"] == "BUG-1234"
         assert "research_plan" in data["context"]
+
+
+async def _setup_research_session(db, research_root: Path, card_id="card_research"):
+    """Insert a research session whose repo_path is a dir under research_root.
+
+    Returns the session directory (which holds a sample report.md).
+    """
+    session_dir = research_root / "sess_research"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    (session_dir / "report.md").write_text("# Findings\nhello world\n", encoding="utf-8")
+
+    await insert_test_card(db, card_id=card_id, category="RESEARCH")
+    await db.execute(
+        """INSERT INTO workspace_sessions
+           (session_id, card_id, agent_type, status, repo_path, add_dirs, session_type)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        ("sess_research", card_id, "claude_code", "completed", str(session_dir), None, "research"),
+    )
+    await db.commit()
+    return session_dir
+
+
+@pytest.mark.asyncio
+class TestResearchFilePathSafety:
+    """Path-traversal protection on the research-file browse/read endpoints."""
+
+    async def _client(self):
+        from laya.main import app
+        return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+    async def test_read_legitimate_file(self, db, tmp_path):
+        root = tmp_path / "research"
+        await _setup_research_session(db, root)
+        with patch("laya.api.workspace_api._RESEARCH_ROOT", str(root.resolve())):
+            async with await self._client() as client:
+                resp = await client.get(
+                    "/workspace/research-files/card_research/read",
+                    params={"path": "report.md"},
+                )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["name"] == "report.md"
+        assert "hello world" in body["content"]
+
+    async def test_list_files(self, db, tmp_path):
+        root = tmp_path / "research"
+        await _setup_research_session(db, root)
+        with patch("laya.api.workspace_api._RESEARCH_ROOT", str(root.resolve())):
+            async with await self._client() as client:
+                resp = await client.get("/workspace/research-files/card_research")
+        assert resp.status_code == 200
+        names = [f["name"] for f in resp.json()["files"]]
+        assert "report.md" in names
+
+    @pytest.mark.parametrize(
+        "evil_path",
+        [
+            "../../../../../../etc/passwd",       # relative traversal
+            "/etc/passwd",                         # absolute-path override
+            "sess_research/../../../etc/passwd",   # traversal after a valid prefix
+        ],
+    )
+    async def test_read_traversal_blocked(self, db, tmp_path, evil_path):
+        root = tmp_path / "research"
+        await _setup_research_session(db, root)
+        # A real file outside the root that an escape could otherwise reach.
+        outside = tmp_path / "secret.txt"
+        outside.write_text("TOP SECRET", encoding="utf-8")
+        with patch("laya.api.workspace_api._RESEARCH_ROOT", str(root.resolve())):
+            async with await self._client() as client:
+                resp = await client.get(
+                    "/workspace/research-files/card_research/read",
+                    params={"path": evil_path},
+                )
+        assert resp.status_code == 403
+        assert "TOP SECRET" not in resp.text
+
+    async def test_sibling_root_prefix_not_matched(self, db, tmp_path):
+        """A session dir in a sibling like '<root>-evil' must not be treated
+        as inside the research root (regression for the missing-separator bug
+        in the old startswith check)."""
+        root = tmp_path / "research"
+        root.mkdir(parents=True, exist_ok=True)
+        sibling = tmp_path / "research-evil"
+        sibling.mkdir(parents=True, exist_ok=True)
+        (sibling / "leak.md").write_text("leak", encoding="utf-8")
+
+        await insert_test_card(db, card_id="card_sibling", category="RESEARCH")
+        await db.execute(
+            """INSERT INTO workspace_sessions
+               (session_id, card_id, agent_type, status, repo_path, add_dirs, session_type)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            ("sess_sibling", "card_sibling", "claude_code", "completed", str(sibling), None, "research"),
+        )
+        await db.commit()
+
+        with patch("laya.api.workspace_api._RESEARCH_ROOT", str(root.resolve())):
+            async with await self._client() as client:
+                # List returns empty (sibling not selected as a research dir).
+                list_resp = await client.get("/workspace/research-files/card_sibling")
+                read_resp = await client.get(
+                    "/workspace/research-files/card_sibling/read",
+                    params={"path": "leak.md"},
+                )
+        assert list_resp.status_code == 200
+        assert list_resp.json()["files"] == []
+        # No research dir selected -> 404 (not a 200 read of the sibling file).
+        assert read_resp.status_code == 404

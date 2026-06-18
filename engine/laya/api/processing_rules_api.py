@@ -9,6 +9,7 @@ import asyncio
 import json
 import re
 from datetime import datetime, timezone
+from typing import Any
 
 import structlog
 from fastapi import APIRouter, HTTPException
@@ -220,6 +221,131 @@ async def get_metadata_fields(platform: str) -> dict:
                 keys[k].add(sv)
 
     return {"keys": {k: sorted(v) for k, v in sorted(keys.items())}}
+
+
+@router.get("/processing-rules/firings")
+async def list_firings(
+    rule_id: int | None = None,
+    outcome: str | None = None,
+    search: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict:
+    """Return paginated, filterable processing-rule firing log entries.
+
+    Cross-rule activity log powering Settings → Rules → Activity; mirrors the
+    audit-log endpoint. Each row is enriched (rule name, card header, platform)
+    via LEFT JOINs so orphaned/pruned references degrade to NULL rather than
+    dropping the row.
+
+    IMPORTANT: this route MUST stay declared *before* GET
+    /processing-rules/{rule_id} below. Both are GET; if {rule_id} (typed int)
+    were matched first, the literal "firings" path would be coerced to int and
+    return 422 instead of reaching here.
+    """
+    db = await get_db()
+
+    conditions: list[str] = []
+    params: list[Any] = []
+
+    if rule_id is not None:
+        conditions.append("f.rule_id = ?")
+        params.append(rule_id)
+    if search:
+        conditions.append(
+            "(r.name LIKE ? OR f.card_id LIKE ? OR c.header LIKE ? "
+            "OR f.entity_id LIKE ? OR f.event_id LIKE ? OR f.error LIKE ?)"
+        )
+        like = f"%{search}%"
+        params.extend([like] * 6)
+
+    # Outcome is derived from results_json/error (it isn't a stored column), so
+    # filter with SQL predicates that exactly mirror the Python derivation
+    # below — applied to BOTH the COUNT and the page query so `total` matches
+    # the page. Note: json.dumps emits `"success": false` WITH a space, and the
+    # `error` column only carries the *last* action's error, so we must also
+    # scan results_json for `"success": false` to catch a non-last failure.
+    # COALESCE so a NULL results_json behaves like "[]" → success (matches the
+    # Python derivation), rather than making every NOT LIKE evaluate to NULL.
+    if outcome == "error":
+        conditions.append(
+            "(f.error IS NOT NULL OR COALESCE(f.results_json, '') LIKE '%\"success\": false%')"
+        )
+    elif outcome == "skipped":
+        conditions.append(
+            "f.error IS NULL AND COALESCE(f.results_json, '') LIKE '%\"skipped\": true%' "
+            "AND COALESCE(f.results_json, '') NOT LIKE '%\"success\": false%'"
+        )
+    elif outcome == "success":
+        conditions.append(
+            "f.error IS NULL AND COALESCE(f.results_json, '') NOT LIKE '%\"success\": false%' "
+            "AND COALESCE(f.results_json, '') NOT LIKE '%\"skipped\": true%'"
+        )
+
+    where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    join_clause = (
+        "FROM processing_rule_firings f "
+        "LEFT JOIN processing_rules r ON r.id = f.rule_id "
+        "LEFT JOIN action_cards c ON c.card_id = f.card_id "
+        "LEFT JOIN events e ON e.event_id = f.event_id"
+    )
+
+    count_rows = await db.execute_fetchall(
+        f"SELECT COUNT(*) {join_clause} {where_clause}", params
+    )
+    total = count_rows[0][0]
+
+    rows = await db.execute_fetchall(
+        f"""SELECT f.id, f.rule_id, r.name AS rule_name, f.fired_at,
+                   f.card_id, c.header AS card_header, c.status AS card_status,
+                   c.priority AS card_priority, f.entity_id, f.event_id,
+                   e.source_platform AS platform,
+                   f.actions_json, f.results_json, f.error
+            {join_clause}
+            {where_clause}
+            ORDER BY f.fired_at DESC
+            LIMIT ? OFFSET ?""",
+        params + [limit, offset],
+    )
+
+    entries = []
+    for row in rows:
+        actions = json.loads(row["actions_json"]) if row["actions_json"] else []
+        results = json.loads(row["results_json"]) if row["results_json"] else []
+        action_types = [a.get("type") for a in actions if isinstance(a, dict)]
+
+        has_failure = bool(row["error"]) or any(
+            r.get("success") is False for r in results if isinstance(r, dict)
+        )
+        skipped = [r for r in results if isinstance(r, dict) and r.get("skipped")]
+        if has_failure:
+            derived = "error"
+        elif skipped:
+            derived = "skipped"
+        else:
+            derived = "success"
+
+        entries.append({
+            "id": row["id"],
+            "rule_id": row["rule_id"],
+            "rule_name": row["rule_name"],
+            "fired_at": row["fired_at"],
+            "card_id": row["card_id"],
+            "card_header": row["card_header"],
+            "status": row["card_status"],
+            "priority": row["card_priority"],
+            "entity_id": row["entity_id"],
+            "event_id": row["event_id"],
+            "platform": row["platform"],
+            "outcome": derived,
+            "action_types": action_types,
+            "results": results,
+            "error": row["error"],
+            "skip_reason": skipped[0].get("reason") if skipped else None,
+        })
+
+    return {"entries": entries, "total": total, "limit": limit, "offset": offset}
 
 
 @router.get("/processing-rules/{rule_id}")

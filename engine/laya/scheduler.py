@@ -188,6 +188,28 @@ async def _run_ingestion_errors_housekeeping(retention_days: int) -> None:
         log.info("ingestion_errors_housekeeping_nothing_to_delete", retention_days=retention_days)
 
 
+async def _run_firing_log_housekeeping(retention_days: int) -> None:
+    """Delete processing_rule_firings rows older than `retention_days` days.
+
+    The firings table has no other pruning (cascade-delete only fires when a
+    rule or card is removed), so without this it grows unbounded.
+    """
+    from laya.db.sqlite import get_db
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+
+    db = await get_db()
+    cursor = await db.execute(
+        "DELETE FROM processing_rule_firings WHERE fired_at < ?", (cutoff,)
+    )
+    await db.commit()
+    deleted = cursor.rowcount
+    if deleted:
+        log.info("firing_log_housekeeping_complete", deleted=deleted, retention_days=retention_days)
+    else:
+        log.info("firing_log_housekeeping_nothing_to_delete", retention_days=retention_days)
+
+
 async def _run_omni_housekeeping(retention_days: int) -> None:
     """Delete omni snapshots older than `retention_days` days.
 
@@ -463,6 +485,13 @@ async def _scheduler_loop() -> None:
                     await _run_ingestion_errors_housekeeping(ingestion_errors_retention)
                 except Exception as e:
                     log.error("ingestion_errors_housekeeping_failed", error=str(e))
+
+                # Processing-rule firing log cleanup
+                firing_log_retention = int(retention_cfg.get("firing_log_retention_days", 90))
+                try:
+                    await _run_firing_log_housekeeping(firing_log_retention)
+                except Exception as e:
+                    log.error("firing_log_housekeeping_failed", error=str(e))
 
             # --- Budget month rollover (local timezone) ---
             try:

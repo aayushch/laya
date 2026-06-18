@@ -10,6 +10,7 @@ through a concurrency-limited semaphore.
 """
 
 import asyncio
+import time
 from datetime import datetime, timedelta, timezone
 
 import structlog
@@ -27,6 +28,14 @@ _shutdown_event: asyncio.Event = asyncio.Event()
 # Pre-computed router outputs from batch routing (event_id → RouterOutput).
 # Populated by _batch_route_events, consumed by process_event.
 _batch_router_cache: dict[str, object] = {}
+# Batch-routing circuit-breaker. Batch routing balloons the router prompt to ~10×;
+# on a local reasoning model that overflows the loaded context window and the call
+# truncates/errors, producing no usable classifications. When that happens we disable
+# batch routing for a cooldown so a large backlog drain stops re-paying the doomed cost
+# every poll cycle — events fall back to individual routing, which has a far smaller
+# prompt. Monotonic deadline; 0 means enabled.
+_batch_routing_disabled_until: float = 0.0
+_BATCH_BREAKER_COOLDOWN = 300  # seconds
 # Track in-flight processing tasks so we can cancel them on shutdown,
 # aborting pending LLM HTTP requests instead of blocking until they complete.
 _inflight_tasks: set[asyncio.Task] = set()
@@ -607,6 +616,32 @@ async def _reap_stale_events() -> int:
 # ── batch routing ────────────────────────────────────────────────────────
 
 
+def _trip_batch_breaker(reason: str, **fields) -> None:
+    """Disable batch routing for a cooldown after a failed/partial batch route."""
+    global _batch_routing_disabled_until
+    _batch_routing_disabled_until = time.monotonic() + _BATCH_BREAKER_COOLDOWN
+    log.warning(
+        "batch_routing_disabled", reason=reason, cooldown_s=_BATCH_BREAKER_COOLDOWN, **fields
+    )
+
+
+def _batch_routing_allowed() -> bool:
+    """True if the batch-route circuit-breaker is not currently tripped."""
+    return time.monotonic() >= _batch_routing_disabled_until
+
+
+def _router_is_local_provider() -> bool:
+    """True if the configured router model is a self-hosted/custom provider (LMStudio,
+    Ollama, etc.). Batch routing balloons the prompt to ~10× and reliably overflows a
+    local model's loaded context window, so we route individually for these providers."""
+    try:
+        from laya.llm.client import _get_model_for_role, _resolve_custom_provider
+
+        return _resolve_custom_provider(_get_model_for_role("router")) is not None
+    except Exception:
+        return False
+
+
 async def _batch_route_events(event_ids: list[str]) -> None:
     """Pre-classify multiple events in one LLM call (populates _batch_router_cache).
 
@@ -647,8 +682,16 @@ async def _batch_route_events(event_ids: list[str]) -> None:
         results = await run_batch_router(events_data)
         _batch_router_cache.update(results)
         log.info("batch_route_cached", count=len(results))
+        # A partial/empty result means the batch LLM call truncated or returned
+        # unparseable JSON for some events — trip the breaker so we stop re-attempting
+        # doomed batch routes during a large drain.
+        if len(results) < len(events_data):
+            _trip_batch_breaker(
+                "partial_batch_result", got=len(results), expected=len(events_data)
+            )
     except Exception as e:
         log.warning("batch_route_failed", error=str(e))
+        _trip_batch_breaker("batch_route_error", error=str(e))
 
 
 # ── background consumer ──────────────────────────────────────────────────
@@ -727,8 +770,16 @@ async def _consumer_loop() -> None:
                         if len(event_ids) >= batch_max:
                             break
 
-            # Attempt batch routing if multiple events are ready
-            if len(event_ids) > 1 and batch_window > 0:
+            # Attempt batch routing only when it's worthwhile and safe: multiple
+            # events ready, batching enabled, the circuit-breaker isn't tripped, and
+            # the router isn't a local provider (batching overflows local context
+            # windows — route those individually).
+            if (
+                len(event_ids) > 1
+                and batch_window > 0
+                and _batch_routing_allowed()
+                and not _router_is_local_provider()
+            ):
                 await _batch_route_events(event_ids)
 
             sem = _get_semaphore()

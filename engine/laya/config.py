@@ -60,6 +60,7 @@ DEFAULT_SETTINGS = {
         "audit_retention_days": 90,
         "omni_retention_days": 30,
         "ingestion_errors_retention_days": 30,
+        "firing_log_retention_days": 90,
     },
     "feed_preferences": {
         "statusFilters": [],
@@ -141,6 +142,7 @@ DEFAULT_SETTINGS = {
         "context_learn_interval_hours": 6,
         "context_rules_max_injection": 20,
         "context_corrections_max_injection": 10,
+        "context_rules_consolidation_threshold": 40,
         # Trace / RAG search
         "trace_search_results": 30,
         "trace_max_seeds": 20,

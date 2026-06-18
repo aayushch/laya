@@ -245,28 +245,46 @@ async def get_throughput(minutes: int = 60) -> ThroughputResponse:
 
     Bucket granularity adapts to the window size:
       <=120 min  → 1-minute buckets  (label HH:MM)
+      <=360 min  → 5-minute buckets  (label HH:MM)
       <=1440 min → 1-hour buckets    (label Mon HH:00)
       >1440 min  → 1-day buckets     (label Mon DD)
     """
     minutes = max(10, min(minutes, 43200))
     db = await get_db()
 
+    # bucket_expr is the SQL expression that maps a row to its bucket key; it must
+    # produce the same key that the Python fill-in loop below derives via
+    # truncate(...).strftime(sql_fmt), or empty buckets won't line up with data.
     if minutes <= 120:
         sql_fmt = "%Y-%m-%dT%H:%M"
+        bucket_expr = "strftime('%Y-%m-%dT%H:%M', created_at)"
         step = timedelta(minutes=1)
         truncate = lambda dt: dt.replace(second=0, microsecond=0)
+    elif minutes <= 360:
+        # 5-minute buckets (e.g. the 5-hour window → ~60 points). strftime can't
+        # floor minutes to a 5-min grid, so floor the unix epoch instead; this
+        # aligns to UTC :00/:05/:10/... exactly like the wall-clock floor below.
+        sql_fmt = "%Y-%m-%dT%H:%M"
+        bucket_expr = (
+            "strftime('%Y-%m-%dT%H:%M', "
+            "datetime((cast(strftime('%s', created_at) as integer) / 300) * 300, 'unixepoch'))"
+        )
+        step = timedelta(minutes=5)
+        truncate = lambda dt: dt.replace(minute=(dt.minute // 5) * 5, second=0, microsecond=0)
     elif minutes <= 1440:
         sql_fmt = "%Y-%m-%dT%H:00"
+        bucket_expr = "strftime('%Y-%m-%dT%H:00', created_at)"
         step = timedelta(hours=1)
         truncate = lambda dt: dt.replace(minute=0, second=0, microsecond=0)
     else:
         sql_fmt = "%Y-%m-%d"
+        bucket_expr = "strftime('%Y-%m-%d', created_at)"
         step = timedelta(days=1)
         truncate = lambda dt: dt.replace(hour=0, minute=0, second=0, microsecond=0)
 
     rows = await db.execute_fetchall(
         f"""SELECT
-                strftime('{sql_fmt}', created_at) AS bucket,
+                {bucket_expr} AS bucket,
                 processing_status,
                 CASE WHEN processing_started_at IS NOT NULL
                      THEN (julianday(processing_started_at) - julianday(created_at)) * 86400

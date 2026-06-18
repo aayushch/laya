@@ -152,3 +152,75 @@ async def test_llm_call_malformed_json(db):
 
     assert result.content == "not valid json {"
     assert result.parsed is None
+
+
+# --- Reasoning suppression for structured-output calls ---
+
+
+async def _capture_acompletion_kwargs(*, response_schema, custom_meta):
+    """Run llm_call against a fake local provider and return the kwargs passed to
+    litellm.acompletion. custom_meta=None simulates a cloud provider."""
+    mock_response = _mock_acompletion_response()
+    mock_ac = AsyncMock(return_value=mock_response)
+
+    with patch("litellm.acompletion", mock_ac):
+        with patch("laya.llm.client.load_settings", return_value={"models": {"router": "lmstudio-local/qwen3.5-9b"}}):
+            with patch("laya.llm.client._get_custom_provider_meta", return_value=custom_meta):
+                with patch(
+                    "laya.llm.client._resolve_custom_provider",
+                    return_value=("openai/qwen3.5-9b", {"api_base": "http://localhost:1234/v1", "api_key": "x"}),
+                ):
+                    with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                        with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                            await llm_call(
+                                role="router",
+                                messages=[{"role": "user", "content": "test"}],
+                                response_schema=response_schema,
+                                step="route",
+                            )
+    return mock_ac.call_args.kwargs
+
+
+_REASONING_META = {
+    "provider_type": "lmstudio",
+    "supports_structured_output": True,
+    "supports_tool_calling": True,
+    "supports_reasoning": True,
+}
+
+
+@pytest.mark.asyncio
+async def test_disables_thinking_for_reasoning_schema_call(db):
+    """A schema call to a reasoning-capable local provider disables thinking so the
+    <think> block can't eat the max_tokens budget before the JSON."""
+    kwargs = await _capture_acompletion_kwargs(
+        response_schema={"name": "test", "schema": {"type": "object"}},
+        custom_meta=_REASONING_META,
+    )
+    assert kwargs["extra_body"]["chat_template_kwargs"]["enable_thinking"] is False
+
+
+@pytest.mark.asyncio
+async def test_no_thinking_flag_without_schema(db):
+    """Without a schema (e.g. chat) we keep reasoning on — don't send the flag."""
+    kwargs = await _capture_acompletion_kwargs(response_schema=None, custom_meta=_REASONING_META)
+    assert "extra_body" not in kwargs
+
+
+@pytest.mark.asyncio
+async def test_no_thinking_flag_for_non_reasoning_provider(db):
+    """A provider that isn't reasoning-capable shouldn't get the kwarg."""
+    meta = {**_REASONING_META, "supports_reasoning": False}
+    kwargs = await _capture_acompletion_kwargs(
+        response_schema={"name": "test", "schema": {"type": "object"}}, custom_meta=meta
+    )
+    assert "extra_body" not in kwargs
+
+
+@pytest.mark.asyncio
+async def test_no_thinking_flag_for_cloud_provider(db):
+    """Cloud providers (custom_meta is None) never get the kwarg."""
+    kwargs = await _capture_acompletion_kwargs(
+        response_schema={"name": "test", "schema": {"type": "object"}}, custom_meta=None
+    )
+    assert "extra_body" not in kwargs

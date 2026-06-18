@@ -450,6 +450,7 @@ async def list_provider_models(provider_id: str) -> dict:
                 "supports_tool_calling": m.supports_tool_calling,
                 "supports_structured_output": m.supports_structured_output,
                 "supports_vision": m.supports_vision,
+                "supports_reasoning": m.supports_reasoning,
                 "params": m.params_string,
                 "quantization": m.quantization,
                 "loaded": m.loaded,

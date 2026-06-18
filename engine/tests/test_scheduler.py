@@ -78,3 +78,36 @@ class TestScheduler:
                 # We can't easily test the full loop, but we can verify the settings check
                 assert mock_settings["briefing"]["enabled"] is False
                 mock_gen.assert_not_called()
+
+
+@pytest.mark.asyncio
+class TestFiringLogHousekeeping:
+    async def _seed(self, db):
+        from tests.conftest import insert_test_card
+        await db.execute(
+            "INSERT INTO processing_rules (id, name, condition_json, actions_json) "
+            "VALUES (1, 'R', '{\"field\": \"x\", \"operator\": \"exists\"}', '[]')"
+        )
+        await insert_test_card(db, card_id="card_test")
+        await db.commit()
+
+    async def test_prunes_old_firings_only(self, db):
+        """_run_firing_log_housekeeping deletes firings older than the window, keeps recent."""
+        from laya.scheduler import _run_firing_log_housekeeping
+
+        await self._seed(db)
+        # Old firing (well beyond 90 days) and a recent/future one.
+        await db.execute(
+            "INSERT INTO processing_rule_firings (id, rule_id, card_id, results_json, fired_at) "
+            "VALUES (1, 1, 'card_test', '[]', '2025-01-01T00:00:00Z')"
+        )
+        await db.execute(
+            "INSERT INTO processing_rule_firings (id, rule_id, card_id, results_json, fired_at) "
+            "VALUES (2, 1, 'card_test', '[]', '2026-12-31T00:00:00Z')"
+        )
+        await db.commit()
+
+        await _run_firing_log_housekeeping(90)
+
+        rows = await db.execute_fetchall("SELECT id FROM processing_rule_firings ORDER BY id")
+        assert [r["id"] for r in rows] == [2]

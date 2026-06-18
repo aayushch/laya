@@ -9,6 +9,7 @@
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { portal } from '$lib/actions/portal';
 	import Dropdown from '$lib/components/Dropdown.svelte';
+	import FiringLogViewer from '$lib/components/settings/FiringLogViewer.svelte';
 	import type { ProcessingRule, ProcessingRuleAction, ProcessingCondition, ProcessingRuleOperator, ProcessingSimpleCondition, ComposePlatform, Tag, EgressConnection } from '$lib/api/types';
 
 	let tooltip = $state<{ text: string; top: number; left: number } | null>(null);
@@ -19,6 +20,8 @@
 	function hideTip() { tooltip = null; }
 
 	// --- State ---
+	// Segmented sub-view: the rule list/editor vs. the cross-rule firing log.
+	let view = $state<'rules' | 'activity'>('rules');
 	let rules = $state<ProcessingRule[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
@@ -464,11 +467,25 @@
 	{/if}
 
 	<div class="space-y-4">
-		<div>
-			<h3 class="text-laya-heading font-semibold text-surface-50">Processing Rules</h3>
-			<p class="mt-1 text-laya-base text-surface-400">Automate actions when events match specific conditions</p>
+		<div class="flex items-start justify-between gap-3">
+			<div>
+				<h3 class="text-laya-heading font-semibold text-surface-50">Processing Rules</h3>
+				<p class="mt-1 text-laya-base text-surface-400">Automate actions when events match specific conditions</p>
+			</div>
+			<!-- Sub-view toggle: rule list vs. cross-rule firing log -->
+			<div class="inline-flex shrink-0 rounded-lg border p-0.5 {$glassTheme ? 'border-white/[0.08] bg-white/[0.03]' : 'border-surface-700 bg-surface-900'}">
+				<button
+					onclick={() => (view = 'rules')}
+					class="rounded-md px-3 py-1 text-laya-secondary font-medium transition-colors {view === 'rules' ? 'bg-laya-orange/10 text-laya-orange' : 'text-surface-400 hover:text-surface-200'}"
+				>Rules</button>
+				<button
+					onclick={() => (view = 'activity')}
+					class="rounded-md px-3 py-1 text-laya-secondary font-medium transition-colors {view === 'activity' ? 'bg-laya-orange/10 text-laya-orange' : 'text-surface-400 hover:text-surface-200'}"
+				>Activity</button>
+			</div>
 		</div>
 
+		{#if view === 'rules'}
 		<!-- Auto-disable threshold setting -->
 		<div class="flex items-center gap-3">
 			<label for="auto-disable-threshold" class="text-laya-secondary text-surface-400">Auto-disable rules after</label>
@@ -558,6 +575,9 @@
 			>
 				+ Add Processing Rule
 			</button>
+		{/if}
+		{:else}
+			<FiringLogViewer {rules} />
 		{/if}
 	</div>
 {/if}

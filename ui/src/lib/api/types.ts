@@ -101,6 +101,24 @@ export interface ClassificationRule {
 	updated_at: string;
 }
 
+/** A context-grouping rule (learned from link/unlink actions, or manual). */
+export interface ContextRule {
+	id: number;
+	space_id: string | null;
+	rule_text: string;
+	source: 'manual' | 'learned';
+	active: boolean;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface ContextRuleListResponse {
+	rules: ContextRule[];
+	total: number;
+	limit: number;
+	offset: number;
+}
+
 /** Processing rule condition types (extended operators) */
 export type ProcessingRuleOperator =
 	| 'equals' | 'not_equals' | 'contains' | 'not_contains'
@@ -173,6 +191,42 @@ export interface ProcessingRuleFiring {
 	actions: ProcessingRuleAction[];
 	results: Array<{ success: boolean; error?: string }>;
 	error: string | null;
+}
+
+/** A single result object inside a firing (one per executed action). */
+export interface ProcessingRuleFiringResult {
+	success: boolean;
+	skipped?: boolean;
+	reason?: string;
+	error?: string;
+	[key: string]: unknown;
+}
+
+/** Enriched cross-rule firing-log entry (Settings → Rules → Activity). */
+export interface ProcessingRuleFiringEntry {
+	id: number;
+	rule_id: number;
+	rule_name: string | null;
+	fired_at: string;
+	card_id: string;
+	card_header: string | null;
+	status: string | null;
+	priority: string | null;
+	entity_id: string | null;
+	event_id: string | null;
+	platform: string | null;
+	outcome: 'success' | 'error' | 'skipped';
+	action_types: string[];
+	results: ProcessingRuleFiringResult[];
+	error: string | null;
+	skip_reason: string | null;
+}
+
+export interface ProcessingRuleFiringResponse {
+	entries: ProcessingRuleFiringEntry[];
+	total: number;
+	limit: number;
+	offset: number;
 }
 
 /** Request to update a card's classification */
@@ -329,6 +383,7 @@ export interface Settings {
 		audit_retention_days: number;
 		omni_retention_days: number;
 		ingestion_errors_retention_days: number;
+		firing_log_retention_days: number;
 	};
 	omni?: {
 		enabled: boolean;
@@ -747,6 +802,38 @@ export interface DeadEventsResponse {
 /** Response from retrying dead events */
 export interface RetryDeadEventsResponse {
 	retried: number;
+}
+
+/** Event dropped by a filter rule — informational, not a failure */
+export interface FilteredEvent {
+	event_id: string;
+	timestamp: string;
+	source_platform: string;
+	subject_type: string;
+	subject_title?: string;
+	subject_url?: string;
+	actor_name?: string;
+	filter_rule?: string;
+	created_at: string;
+}
+
+/** Paginated filtered events response */
+export interface FilteredEventsResponse {
+	events: FilteredEvent[];
+	total: number;
+	limit: number;
+	offset: number;
+}
+
+/** JSON export envelope (audit log / filtered events) */
+export interface ExportEnvelope<T> {
+	kind: string;
+	exported_at: string;
+	days: number;
+	since: string | null;
+	count: number;
+	entries?: T[];
+	events?: T[];
 }
 
 /** Event counts grouped by processing_status */

@@ -58,6 +58,8 @@ import type {
 	OmniPin,
 	DeadEventsResponse,
 	RetryDeadEventsResponse,
+	FilteredEventsResponse,
+	ExportEnvelope,
 	EventCountsResponse,
 	AuditFailureSummary,
 	IngestionErrorsResponse,
@@ -145,6 +147,24 @@ export const engineApi = {
 		request<{ rule_id: number; firings: import('./types').ProcessingRuleFiring[] }>(
 			`/processing-rules/${id}/history${limit ? `?limit=${limit}` : ''}`
 		),
+	getProcessingRuleFirings: (params?: {
+		rule_id?: number;
+		outcome?: 'success' | 'error' | 'skipped';
+		search?: string;
+		limit?: number;
+		offset?: number;
+	}) => {
+		const searchParams = new URLSearchParams();
+		if (params?.rule_id !== undefined) searchParams.set('rule_id', String(params.rule_id));
+		if (params?.outcome) searchParams.set('outcome', params.outcome);
+		if (params?.search) searchParams.set('search', params.search);
+		if (params?.limit) searchParams.set('limit', String(params.limit));
+		if (params?.offset) searchParams.set('offset', String(params.offset));
+		const qs = searchParams.toString();
+		return request<import('./types').ProcessingRuleFiringResponse>(
+			`/processing-rules/firings${qs ? '?' + qs : ''}`
+		);
+	},
 	getProcessingRuleFieldOptions: () =>
 		request<Record<string, string[]>>('/processing-rules/field-options'),
 	getMetadataFields: (platform: string) =>
@@ -364,6 +384,38 @@ export const engineApi = {
 		}),
 	deleteClassificationRule: (ruleId: number) =>
 		request<{ id: number; status: string }>(`/classification/rules/${ruleId}`, {
+			method: 'DELETE'
+		}),
+
+	// Context rules (learned context-grouping rules + manual)
+	getContextRules: (params?: {
+		space_id?: string;
+		source?: 'manual' | 'learned';
+		active?: boolean;
+		limit?: number;
+		offset?: number;
+	}) => {
+		const searchParams = new URLSearchParams();
+		if (params?.space_id) searchParams.set('space_id', params.space_id);
+		if (params?.source) searchParams.set('source', params.source);
+		if (params?.active !== undefined) searchParams.set('active', String(params.active));
+		if (params?.limit) searchParams.set('limit', String(params.limit));
+		if (params?.offset) searchParams.set('offset', String(params.offset));
+		const qs = searchParams.toString();
+		return request<import('./types').ContextRuleListResponse>(`/context-rules${qs ? '?' + qs : ''}`);
+	},
+	createContextRule: (body: { rule_text: string; space_id?: string | null }) =>
+		request<{ id: number; status: string }>('/context-rules', {
+			method: 'POST',
+			body: JSON.stringify(body)
+		}),
+	updateContextRule: (ruleId: number, body: { rule_text?: string; active?: boolean }) =>
+		request<{ id: number; status: string }>(`/context-rules/${ruleId}`, {
+			method: 'PUT',
+			body: JSON.stringify(body)
+		}),
+	deleteContextRule: (ruleId: number) =>
+		request<{ id: number; status: string }>(`/context-rules/${ruleId}`, {
 			method: 'DELETE'
 		}),
 
@@ -769,6 +821,32 @@ export const engineApi = {
 			method: 'POST',
 			body: JSON.stringify(eventIds ? { event_ids: eventIds } : { all: true })
 		}),
+
+	// Filtered Events (informational — events dropped by filter rules)
+	getFilteredEvents: (params?: { limit?: number; offset?: number }) => {
+		const searchParams = new URLSearchParams();
+		if (params?.limit) searchParams.set('limit', String(params.limit));
+		if (params?.offset) searchParams.set('offset', String(params.offset));
+		const qs = searchParams.toString();
+		return request<FilteredEventsResponse>(`/events/filtered${qs ? '?' + qs : ''}`);
+	},
+
+	// Filtered Events export — full JSON, optionally limited to last `days` (0 = all time)
+	exportFilteredEvents: (days = 0) =>
+		request<ExportEnvelope<Record<string, unknown>>>(
+			`/events/filtered/export${days > 0 ? `?days=${days}` : ''}`
+		),
+
+	// Audit log export — full JSON honoring current filters + last `days` (0 = all time)
+	exportAuditLog: (params: { days?: number; step?: string; success?: boolean; search?: string }) => {
+		const searchParams = new URLSearchParams();
+		if (params.days && params.days > 0) searchParams.set('days', String(params.days));
+		if (params.step) searchParams.set('step', params.step);
+		if (params.success !== undefined) searchParams.set('success', String(params.success));
+		if (params.search) searchParams.set('search', params.search);
+		const qs = searchParams.toString();
+		return request<ExportEnvelope<Record<string, unknown>>>(`/audit-log/export${qs ? '?' + qs : ''}`);
+	},
 
 	// Event counts by processing_status (Audit page summary)
 	getEventCounts: () => request<EventCountsResponse>('/events/counts'),

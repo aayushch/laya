@@ -98,3 +98,66 @@ class TestAuditLogAPI:
         ids1 = {e["log_id"] for e in data1["entries"]}
         ids2 = {e["log_id"] for e in data2["entries"]}
         assert ids1.isdisjoint(ids2)
+
+
+@pytest.mark.asyncio
+class TestAuditLogExport:
+    async def test_export_all(self, db):
+        """GET /audit-log/export returns every entry with envelope metadata."""
+        await _insert_audit_entry(db, "audit_1")
+        await _insert_audit_entry(db, "audit_2", step="stage")
+
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/audit-log/export")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["kind"] == "audit_log"
+        assert data["days"] == 0
+        assert data["since"] is None
+        assert data["count"] == 2
+        assert len(data["entries"]) == 2
+
+    async def test_export_respects_filters(self, db):
+        """Export honors the same filters as the list endpoint."""
+        await _insert_audit_entry(db, "audit_r", step="route")
+        await _insert_audit_entry(db, "audit_s", step="stage", success=False)
+
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/audit-log/export?step=route")
+            by_step = resp.json()
+            resp = await client.get("/audit-log/export?success=false")
+            by_success = resp.json()
+
+        assert by_step["count"] == 1
+        assert by_step["entries"][0]["step"] == "route"
+        assert by_success["count"] == 1
+        assert by_success["entries"][0]["log_id"] == "audit_s"
+
+    async def test_export_timeframe_cutoff(self, db):
+        """days=N drops rows older than the cutoff; days=0 keeps everything."""
+        # Recent row uses the CURRENT_TIMESTAMP default.
+        await _insert_audit_entry(db, "audit_recent")
+        # Old row with an explicit far-past timestamp.
+        await db.execute(
+            "INSERT INTO audit_log (log_id, timestamp, step, success) VALUES (?, ?, ?, ?)",
+            ("audit_old", "2020-01-01 00:00:00", "route", True),
+        )
+        await db.commit()
+
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/audit-log/export?days=7")
+            windowed = resp.json()
+            resp = await client.get("/audit-log/export")
+            all_time = resp.json()
+
+        assert windowed["count"] == 1
+        assert windowed["since"] is not None
+        assert windowed["entries"][0]["log_id"] == "audit_recent"
+        assert all_time["count"] == 2

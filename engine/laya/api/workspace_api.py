@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import uuid
 from typing import Any
 
@@ -462,18 +463,25 @@ def _get_research_root() -> str:
     return _RESEARCH_ROOT
 
 
-def _validate_research_path(path: str) -> str:
-    """Resolve a path and verify it's inside the research directory.
+def _is_within_research_root(p: str | None) -> bool:
+    """True if ``p`` resolves to a location inside the research root.
 
-    Prevents directory traversal attacks (e.g. ../../etc/passwd).
-    Returns the resolved absolute path.
+    Used to pick the research directory out of DB-stored session paths
+    (repo_path / add_dirs). ``os.path.realpath`` resolves symlinks and ``..``
+    segments before the check, and the trailing ``os.sep`` prevents a sibling
+    such as ``.../research-other`` from matching ``.../research``.
+
+    NOTE: this is only a *selector*. The authoritative path-traversal guard is
+    re-applied inline at each endpoint, immediately before the filesystem
+    access, so that the containment check provably dominates the sink — static
+    path-traversal analysis (CodeQL py/path-injection) only treats a barrier
+    guard as sanitizing when it lives in the same function as the sink.
     """
-    from pathlib import Path
-    resolved = str(Path(path).resolve())
+    if not p:
+        return False
     root = _get_research_root()
-    if not resolved.startswith(root + "/") and resolved != root:
-        raise HTTPException(status_code=403, detail="Access denied: path is outside the research directory")
-    return resolved
+    resolved = os.path.realpath(p)
+    return resolved == root or resolved.startswith(root + os.sep)
 
 
 @router.get("/workspace/research-files/{card_id}")
@@ -517,23 +525,28 @@ async def list_research_files(card_id: str) -> dict:
         raise HTTPException(status_code=403, detail="File browsing is only available for research sessions")
 
     # Resolve the research directory: could be repo_path itself or an add_dir
-    research_root = _get_research_root()
     research_dir_path = None
-
-    if repo_path and repo_path.startswith(research_root):
+    if _is_within_research_root(repo_path):
         research_dir_path = repo_path
     elif add_dirs_json:
         add_dirs = json.loads(add_dirs_json) if isinstance(add_dirs_json, str) else []
         for d in add_dirs:
-            if d.startswith(research_root):
+            if _is_within_research_root(d):
                 research_dir_path = d
                 break
 
     if not research_dir_path:
         return {"card_id": card_id, "files": []}
 
-    resolved = _validate_research_path(research_dir_path)
-    research_dir = Path(resolved)
+    # Inline containment guard: normalize, then confirm the directory stays
+    # inside the research root before walking it. Kept inline (rather than in a
+    # helper) so the guard provably dominates the rglob/stat sinks below — see
+    # _is_within_research_root for why.
+    research_root = _get_research_root()
+    research_dir_str = os.path.realpath(research_dir_path)
+    if research_dir_str != research_root and not research_dir_str.startswith(research_root + os.sep):
+        raise HTTPException(status_code=403, detail="Access denied: path is outside the research directory")
+    research_dir = Path(research_dir_str)
     if not research_dir.exists():
         return {"card_id": card_id, "files": []}
 
@@ -591,22 +604,29 @@ async def read_research_file(card_id: str, path: str) -> dict:
         raise HTTPException(status_code=403, detail="File reading is only available for research sessions")
 
     # Resolve the research directory
-    research_root = _get_research_root()
     research_dir_path = None
-    if repo_path and repo_path.startswith(research_root):
+    if _is_within_research_root(repo_path):
         research_dir_path = repo_path
     elif add_dirs_json:
         add_dirs = json.loads(add_dirs_json) if isinstance(add_dirs_json, str) else []
         for d in add_dirs:
-            if d.startswith(research_root):
+            if _is_within_research_root(d):
                 research_dir_path = d
                 break
 
     if not research_dir_path:
         raise HTTPException(status_code=404, detail="No research directory for this session")
 
-    # Resolve and validate the full file path
-    full_path = _validate_research_path(str(Path(research_dir_path) / path))
+    # Inline containment guard for the user-supplied `path`: join it onto the
+    # research dir, normalize with realpath (resolves '..' segments and
+    # symlinks), then reject anything that escapes the research root — covers
+    # path traversal (../../etc/passwd) and absolute-path override (/etc/passwd,
+    # which os.path.join would otherwise take verbatim). Inlined so the guard
+    # provably dominates the filesystem sinks below — see _is_within_research_root.
+    research_root = _get_research_root()
+    full_path = os.path.realpath(os.path.join(research_dir_path, path))
+    if full_path != research_root and not full_path.startswith(research_root + os.sep):
+        raise HTTPException(status_code=403, detail="Access denied: path is outside the research directory")
     file_path = Path(full_path)
 
     if not file_path.exists() or not file_path.is_file():

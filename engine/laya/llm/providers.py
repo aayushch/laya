@@ -34,6 +34,7 @@ class DiscoveredModel:
     supports_tool_calling: bool = False
     supports_structured_output: bool = False
     supports_vision: bool = False
+    supports_reasoning: bool = False  # "thinking" model (Qwen3, DeepSeek-R1, etc.)
     params_string: str | None = None
     quantization: str | None = None
     loaded: bool = False
@@ -201,6 +202,9 @@ async def _discover_lmstudio(provider: dict) -> list[DiscoveredModel]:
                 supports_tool_calling=caps.get("trained_for_tool_use", False),
                 supports_structured_output=True,  # LMStudio enforces via grammar
                 supports_vision=caps.get("vision", False),
+                # capabilities.reasoning is an object ({allowed_options, default}) for
+                # thinking models, absent otherwise — coerce to a bool.
+                supports_reasoning=bool(caps.get("reasoning")),
                 params_string=m.get("params_string"),
                 quantization=quant.get("name") if quant else None,
                 loaded=len(m.get("loaded_instances", [])) > 0,

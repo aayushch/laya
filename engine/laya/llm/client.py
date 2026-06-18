@@ -205,6 +205,9 @@ def _get_custom_provider_meta(model: str) -> dict | None:
         "provider_type": ptype,
         "supports_structured_output": caps.get("supports_structured_output", ptype == "lmstudio"),
         "supports_tool_calling": caps.get("supports_tool_calling", ptype == "lmstudio"),
+        # Whether this provider may serve reasoning/"thinking" models (Qwen3, DeepSeek-R1,
+        # etc.). When true we disable thinking for structured-output calls — see llm_call.
+        "supports_reasoning": caps.get("supports_reasoning", ptype == "lmstudio"),
     }
 
 
@@ -449,6 +452,23 @@ async def llm_call(
         else:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
+
+    # Disable reasoning for structured-output calls on local reasoning models.
+    # Reasoning models (Qwen3, DeepSeek-R1, etc.) emit a <think> block that consumes
+    # the entire max_tokens budget BEFORE the JSON, truncating structured output into
+    # invalid JSON — this caused ~⅔ of routing calls on a local Qwen3.5 to fail and
+    # retry, spiralling the queue backlog. When we've asked for a schema we want the
+    # JSON, not a reasoning essay, so we turn thinking off. chat_template_kwargs just
+    # injects a template variable, so it's harmless for templates that ignore it; we
+    # still gate on supports_reasoning to keep the request clean. _strip_think_blocks
+    # remains as a fallback for models we can't toggle (e.g. cloud).
+    if response_schema and custom_meta and custom_meta.get("supports_reasoning"):
+        existing_extra = kwargs.get("extra_body") or {}
+        existing_ctk = existing_extra.get("chat_template_kwargs") or {}
+        kwargs["extra_body"] = {
+            **existing_extra,
+            "chat_template_kwargs": {**existing_ctk, "enable_thinking": False},
+        }
 
     # Inject current date/time into user message (cache-safe, not in system prompt)
     kwargs["messages"] = _inject_current_datetime(kwargs["messages"])

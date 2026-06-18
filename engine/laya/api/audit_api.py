@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import structlog
@@ -16,20 +17,33 @@ from laya.db.sqlite import get_db
 log = structlog.get_logger()
 router = APIRouter()
 
+# Columns selected for both the list and export endpoints, in a stable order.
+_AUDIT_COLUMNS = (
+    "log_id, timestamp, event_id, card_id, step, model_used, "
+    "input_tokens, output_tokens, latency_ms, success, error, metadata"
+)
 
-@router.get("/audit-log")
-async def get_audit_log(
-    step: str | None = None,
-    event_id: str | None = None,
-    card_id: str | None = None,
-    success: bool | None = None,
-    search: str | None = None,
-    limit: int = 50,
-    offset: int = 0,
-) -> dict[str, Any]:
-    """Return paginated, filterable audit log entries."""
-    db = await get_db()
 
+def utc_cutoff(days: int) -> str | None:
+    """Return a UTC cutoff string `days` ago, or None for all-time (days<=0).
+
+    Formatted as `YYYY-MM-DD HH:MM:SS` to match SQLite's CURRENT_TIMESTAMP
+    storage so the comparison stays a correct lexicographic string compare.
+    """
+    if days <= 0:
+        return None
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    return cutoff.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _audit_filter_conditions(
+    step: str | None,
+    event_id: str | None,
+    card_id: str | None,
+    success: bool | None,
+    search: str | None,
+) -> tuple[list[str], list[Any]]:
+    """Build WHERE conditions + params shared by the list and export endpoints."""
     conditions: list[str] = []
     params: list[Any] = []
 
@@ -58,9 +72,49 @@ async def get_audit_log(
         like = f"%{search}%"
         params.extend([like, like, like, like, like])
 
-    where_clause = ""
-    if conditions:
-        where_clause = "WHERE " + " AND ".join(conditions)
+    return conditions, params
+
+
+def _shape_audit_row(row: Any) -> dict[str, Any]:
+    """Map a raw audit_log row (in _AUDIT_COLUMNS order) to a response dict."""
+    metadata = None
+    if row[11]:
+        try:
+            metadata = json.loads(row[11])
+        except json.JSONDecodeError:
+            metadata = None
+
+    return {
+        "log_id": row[0],
+        "timestamp": row[1],
+        "event_id": row[2],
+        "card_id": row[3],
+        "step": row[4],
+        "model_used": row[5],
+        "input_tokens": row[6] or 0,
+        "output_tokens": row[7] or 0,
+        "latency_ms": row[8] or 0,
+        "success": bool(row[9]),
+        "error": row[10],
+        "metadata": metadata,
+    }
+
+
+@router.get("/audit-log")
+async def get_audit_log(
+    step: str | None = None,
+    event_id: str | None = None,
+    card_id: str | None = None,
+    success: bool | None = None,
+    search: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Return paginated, filterable audit log entries."""
+    db = await get_db()
+
+    conditions, params = _audit_filter_conditions(step, event_id, card_id, success, search)
+    where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
     # Count total
     count_rows = await db.execute_fetchall(
@@ -70,8 +124,7 @@ async def get_audit_log(
 
     # Fetch page
     rows = await db.execute_fetchall(
-        f"""SELECT log_id, timestamp, event_id, card_id, step, model_used,
-                   input_tokens, output_tokens, latency_ms, success, error, metadata
+        f"""SELECT {_AUDIT_COLUMNS}
             FROM audit_log
             {where_clause}
             ORDER BY timestamp DESC
@@ -79,35 +132,53 @@ async def get_audit_log(
         params + [limit, offset],
     )
 
-    entries = []
-    for row in rows:
-        metadata = None
-        if row[11]:
-            try:
-                metadata = json.loads(row[11])
-            except json.JSONDecodeError:
-                metadata = None
-
-        entries.append({
-            "log_id": row[0],
-            "timestamp": row[1],
-            "event_id": row[2],
-            "card_id": row[3],
-            "step": row[4],
-            "model_used": row[5],
-            "input_tokens": row[6] or 0,
-            "output_tokens": row[7] or 0,
-            "latency_ms": row[8] or 0,
-            "success": bool(row[9]),
-            "error": row[10],
-            "metadata": metadata,
-        })
-
     return {
-        "entries": entries,
+        "entries": [_shape_audit_row(row) for row in rows],
         "total": total,
         "limit": limit,
         "offset": offset,
+    }
+
+
+@router.get("/audit-log/export")
+async def export_audit_log(
+    days: int = 0,
+    step: str | None = None,
+    success: bool | None = None,
+    search: str | None = None,
+) -> dict[str, Any]:
+    """Export audit log entries as JSON, optionally limited to the last `days`.
+
+    days=0 (default) exports all time. Honors the same step/success/search
+    filters as the list endpoint so the export matches the current view.
+    Unpaginated — returns every matching row.
+    """
+    db = await get_db()
+
+    conditions, params = _audit_filter_conditions(step, None, None, success, search)
+    since = utc_cutoff(days)
+    if since is not None:
+        conditions.append("timestamp >= ?")
+        params.append(since)
+    where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    rows = await db.execute_fetchall(
+        f"""SELECT {_AUDIT_COLUMNS}
+            FROM audit_log
+            {where_clause}
+            ORDER BY timestamp DESC""",
+        params,
+    )
+
+    entries = [_shape_audit_row(row) for row in rows]
+    log.info("audit_log_exported", count=len(entries), days=days)
+    return {
+        "kind": "audit_log",
+        "exported_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        "days": days,
+        "since": since,
+        "count": len(entries),
+        "entries": entries,
     }
 
 

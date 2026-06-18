@@ -326,6 +326,7 @@
 				class="rounded-lg border px-3 py-1.5 text-sm text-surface-200 focus:border-laya-orange/50 focus:outline-none {$glassTheme ? 'glass-input' : 'border-surface-600 bg-surface-800'}"
 			>
 				<option value={60}>Last 60 min</option>
+				<option value={300}>Last 5 hours</option>
 				<option value={1440}>Last 24 hours</option>
 				<option value={10080}>Last 7 days</option>
 				<option value={43200}>Last 30 days</option>
