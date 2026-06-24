@@ -2,19 +2,50 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { goto } from '$app/navigation';
-	import { onMount, untrack } from 'svelte';
+	import { goto, beforeNavigate, afterNavigate } from '$app/navigation';
+	import { onMount, untrack, tick } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
 	import type { ActionCard } from '$lib/api/types';
 	import MarkdownRender from '$lib/components/MarkdownRender.svelte';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { lastMessage } from '$lib/stores/websocket';
-	import { chatOpen, chatCardContext, chatCardIds, chatListOpen } from '$lib/stores/chat';
+	import { chatOpen, chatCardContext, chatCardIds, chatListOpen, pendingCardId } from '$lib/stores/chat';
 	import { buildCardContext } from '$lib/utils/cardContext';
 
 	let cards = $state<ActionCard[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
+
+	// Scroll-position preservation. The insight page scrolls inside its own
+	// overflow-y-auto container (not the window), so SvelteKit's window-based scroll
+	// restoration can't help. The titlebar Back button (history.back) re-mounts this
+	// page via the layout's {#key page.url.pathname}, resetting scroll to top. We save
+	// scrollTop on leave and restore it only on Back/Forward (popstate) — fresh
+	// drill-downs (goto/link) should still start at the top. Keyed by the cards query
+	// so distinct insight views don't clobber each other's positions.
+	let scrollEl = $state<HTMLElement | null>(null);
+	let pendingRestore = $state<number | null>(null);
+	const scrollKey = () => `laya_insight_scroll:${$page.url.search}`;
+
+	beforeNavigate(() => {
+		if (scrollEl) sessionStorage.setItem(scrollKey(), String(scrollEl.scrollTop));
+	});
+
+	afterNavigate(({ type }) => {
+		if (type !== 'popstate') return;
+		const saved = sessionStorage.getItem(scrollKey());
+		if (saved !== null) pendingRestore = parseInt(saved, 10);
+	});
+
+	// Apply the saved scroll once cards have rendered (loadCards is async, so the DOM
+	// has no height when afterNavigate fires). Decoupled from onMount/afterNavigate
+	// firing order — it just waits for loading to settle with cards present.
+	$effect(() => {
+		if (loading || pendingRestore === null || !scrollEl || cards.length === 0) return;
+		const target = pendingRestore;
+		pendingRestore = null;
+		tick().then(() => { if (scrollEl) scrollEl.scrollTop = target; });
+	});
 
 	// Action execution & draft editing state
 	let executingActionId = $state<string | null>(null);
@@ -243,6 +274,14 @@
 	function goBack() {
 		goto('/omni');
 	}
+
+	// Deep-link a single card into the Pulse/Feed page. Setting pendingCardId is
+	// consumed by the feed's $effect, which navigates to the card's date, expands
+	// its group, scrolls to it, selects it, and opens the detail panel.
+	function showCard(cardId: string) {
+		pendingCardId.set(cardId);
+		goto('/feed');
+	}
 </script>
 
 <svelte:head>
@@ -262,7 +301,7 @@
 		>Retry</button>
 	</div>
 {:else if cards.length > 0}
-	<div class="h-[calc(100%+3rem)] -m-6 overflow-y-auto p-6 {$chatOpen ? 'mr-0' : ''}">
+	<div bind:this={scrollEl} class="h-[calc(100%+3rem)] -m-6 overflow-y-auto p-6 {$chatOpen ? 'mr-0' : ''}">
 		<div class="mb-5 flex items-center gap-3">
 			<button
 				onclick={goBack}
@@ -304,9 +343,15 @@
 							<span class="text-[10px] text-surface-500 uppercase tracking-wider">{extractPlatform(card)}</span>
 						{/if}
 						<span class="rounded px-1.5 py-0.5 text-[10px] text-surface-400 {$glassTheme ? 'border border-white/[0.06] bg-white/[0.04]' : 'bg-surface-800'}">{card.status}</span>
-						{#if card.created_at}
-							<span class="ml-auto shrink-0 text-[10px] text-surface-500">{formatCardDate(card.created_at)}</span>
-						{/if}
+						<div class="ml-auto flex shrink-0 items-center gap-2">
+							<button
+								onclick={() => showCard(card.card_id)}
+								class="text-[10px] text-surface-400 transition-colors hover:text-laya-orange"
+							>Show card</button>
+							{#if card.created_at}
+								<span class="text-[10px] text-surface-500">{formatCardDate(card.created_at)}</span>
+							{/if}
+						</div>
 					</div>
 
 					<!-- Actor -->

@@ -242,6 +242,8 @@ export interface Repo {
 	path: string;
 	platform: string;
 	remote_id: string;
+	/** Git remote host; "" or bitbucket.org/github.com ⇒ cloud, else self-hosted/on-prem */
+	host?: string;
 }
 
 /** repos.json structure */

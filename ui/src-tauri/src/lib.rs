@@ -23,37 +23,97 @@ pub struct RepoDetection {
     pub name: String,
     pub platform: String,
     pub remote_id: String,
+    // Git remote host. "" or bitbucket.org/github.com ⇒ a known cloud host; any other value
+    // is a self-hosted/on-prem server (e.g. Bitbucket Data Center). Downstream logic (the
+    // cloud-only n8n ingestion workflow) uses this to skip self-hosted repos.
+    pub host: String,
 }
 
-fn parse_remote_url(url: &str) -> Option<(String, String)> {
-    // SSH: git@github.com:org/repo.git
-    if let Some(rest) = url.strip_prefix("git@") {
+/// Parse a git remote URL into `(platform, remote_id, host)`.
+///
+/// Handles three shapes:
+///   - `ssh://[user@]host[:port]/path/to/repo.git`  — Bitbucket Server / Data Center uses this
+///   - `git@host:org/repo.git`                       — scp-like SSH shorthand
+///   - `https://host/org/repo.git` / `http://…`
+///
+/// `platform` is classified from known cloud hosts only (`github.com` → "github",
+/// `bitbucket.org` → "bitbucket"). For any other host we return an empty platform rather than
+/// `None`: we can't reliably tell whether an arbitrary company host runs Bitbucket Server,
+/// GitLab, GitHub Enterprise, etc., so the user picks the platform in the Add Repository form.
+/// The returned host lets callers distinguish cloud from self-hosted repos. Returns `None`
+/// only when the string matches none of the recognized forms.
+fn parse_remote_url(url: &str) -> Option<(String, String, String)> {
+    let (host, remote_id) = if let Some(rest) = url.strip_prefix("ssh://") {
+        // ssh://[user@]host[:port]/path/to/repo.git
+        let rest = rest.split_once('@').map(|(_, r)| r).unwrap_or(rest);
+        let (host_port, path) = rest.split_once('/')?;
+        let host = host_port.split_once(':').map(|(h, _)| h).unwrap_or(host_port);
+        let remote_id = path.trim_start_matches('/').trim_end_matches(".git");
+        (host.to_string(), remote_id.to_string())
+    } else if let Some(rest) = url.strip_prefix("git@") {
+        // git@host:org/repo.git
         let (host, path) = rest.split_once(':')?;
-        let remote_id = path.trim_end_matches(".git").to_string();
-        let platform = if host.contains("github.com") {
-            "github"
-        } else if host.contains("bitbucket.org") {
-            "bitbucket"
-        } else {
-            return None;
-        };
-        return Some((platform.to_string(), remote_id));
-    }
-    // HTTPS: https://github.com/org/repo.git
-    if url.starts_with("https://") || url.starts_with("http://") {
+        let remote_id = path.trim_end_matches(".git");
+        (host.to_string(), remote_id.to_string())
+    } else if url.starts_with("https://") || url.starts_with("http://") {
+        // https://host[:port]/org/repo.git
         let without_scheme = url.splitn(3, '/').nth(2)?;
-        let (host, path) = without_scheme.split_once('/')?;
-        let remote_id = path.trim_end_matches(".git").to_string();
-        let platform = if host.contains("github.com") {
-            "github"
-        } else if host.contains("bitbucket.org") {
-            "bitbucket"
-        } else {
-            return None;
-        };
-        return Some((platform.to_string(), remote_id));
+        let (host_port, path) = without_scheme.split_once('/')?;
+        let host = host_port.split_once(':').map(|(h, _)| h).unwrap_or(host_port);
+        let remote_id = path.trim_end_matches(".git");
+        (host.to_string(), remote_id.to_string())
+    } else {
+        return None;
+    };
+
+    let platform = if host.contains("github.com") {
+        "github"
+    } else if host.contains("bitbucket.org") {
+        "bitbucket"
+    } else {
+        "" // self-hosted / unknown host — user picks the platform
+    };
+
+    Some((platform.to_string(), remote_id, host))
+}
+
+#[cfg(test)]
+mod parse_remote_url_tests {
+    use super::parse_remote_url;
+
+    #[test]
+    fn parses_ssh_scheme_onprem_bitbucket() {
+        // The failing on-prem Bitbucket Server URL: ssh:// scheme, non-cloud host, port.
+        let (platform, remote_id, host) =
+            parse_remote_url("ssh://git@repo-man.internal.groundlabs.com:7999/src/xrecon.git")
+                .unwrap();
+        assert_eq!(platform, ""); // self-hosted host → user picks the platform
+        assert_eq!(remote_id, "src/xrecon");
+        assert_eq!(host, "repo-man.internal.groundlabs.com");
     }
-    None
+
+    #[test]
+    fn parses_scp_github() {
+        let (platform, remote_id, host) =
+            parse_remote_url("git@github.com:acme/payments.git").unwrap();
+        assert_eq!(platform, "github");
+        assert_eq!(remote_id, "acme/payments");
+        assert_eq!(host, "github.com");
+    }
+
+    #[test]
+    fn parses_https_bitbucket_cloud() {
+        let (platform, remote_id, host) =
+            parse_remote_url("https://bitbucket.org/team/repo.git").unwrap();
+        assert_eq!(platform, "bitbucket");
+        assert_eq!(remote_id, "team/repo");
+        assert_eq!(host, "bitbucket.org");
+    }
+
+    #[test]
+    fn rejects_unrecognized_form() {
+        assert!(parse_remote_url("file:///tmp/repo").is_none());
+    }
 }
 
 #[tauri::command]
@@ -87,7 +147,7 @@ async fn pick_repo_folder(app: tauri::AppHandle) -> Result<RepoDetection, String
     }
 
     let remote_url = String::from_utf8_lossy(&git_out.stdout).trim().to_string();
-    let (platform, remote_id) = parse_remote_url(&remote_url)
+    let (platform, remote_id, host) = parse_remote_url(&remote_url)
         .ok_or_else(|| format!("Unrecognized remote URL: {remote_url}"))?;
 
     let name = std::path::Path::new(&path)
@@ -96,7 +156,7 @@ async fn pick_repo_folder(app: tauri::AppHandle) -> Result<RepoDetection, String
         .unwrap_or("repo")
         .to_string();
 
-    Ok(RepoDetection { path, name, platform, remote_id })
+    Ok(RepoDetection { path, name, platform, remote_id, host })
 }
 
 /// Generic folder picker — returns the selected path as a string.

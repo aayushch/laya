@@ -13,6 +13,7 @@
 		name: string;
 		platform: string;
 		remote_id: string;
+		host: string;
 	}
 
 	let repos = $state<Repo[]>([]);
@@ -27,6 +28,7 @@
 	let formPath = $state('');
 	let formPlatform = $state('');
 	let formRemoteId = $state('');
+	let formHost = $state('');
 	let detectionStatus = $state<{ ok: boolean; msg: string } | null>(null);
 	let browsing = $state(false);
 
@@ -69,6 +71,7 @@
 		formPath = '';
 		formPlatform = '';
 		formRemoteId = '';
+		formHost = '';
 		showAddForm = false;
 		editingIndex = null;
 		detectionStatus = null;
@@ -83,10 +86,21 @@
 			formName = result.name;
 			formPlatform = result.platform;
 			formRemoteId = result.remote_id;
-			detectionStatus = { ok: true, msg: `${result.platform} · ${result.remote_id}` };
-			// Auto-add when in add mode (not editing)
-			if (editingIndex === null) {
-				await addRepo();
+			formHost = result.host;
+			if (result.platform) {
+				detectionStatus = { ok: true, msg: `${result.platform} · ${result.remote_id}` };
+				// Known cloud host — auto-add when in add mode (not editing).
+				if (editingIndex === null) {
+					await addRepo();
+				}
+			} else {
+				// Self-hosted/unknown host: we can't infer the platform (Bitbucket Server
+				// vs GitLab vs GitHub Enterprise all look alike). Keep the form open with a
+				// hint so the user picks the platform before adding.
+				detectionStatus = {
+					ok: true,
+					msg: `Self-hosted host detected (${result.host}) — choose a platform, then Add`
+				};
 			}
 		} catch (err: unknown) {
 			const msg = String(err);
@@ -99,7 +113,7 @@
 	}
 
 	async function addRepo() {
-		repos.push({ name: formName, path: formPath, platform: formPlatform, remote_id: formRemoteId });
+		repos.push({ name: formName, path: formPath, platform: formPlatform, remote_id: formRemoteId, host: formHost });
 		resetForm();
 		await save();
 	}
@@ -110,13 +124,14 @@
 		formPath = r.path;
 		formPlatform = r.platform;
 		formRemoteId = r.remote_id;
+		formHost = r.host ?? '';
 		editingIndex = index;
 		showAddForm = false;
 	}
 
 	async function saveEdit() {
 		if (editingIndex !== null) {
-			repos[editingIndex] = { name: formName, path: formPath, platform: formPlatform, remote_id: formRemoteId };
+			repos[editingIndex] = { name: formName, path: formPath, platform: formPlatform, remote_id: formRemoteId, host: formHost };
 			resetForm();
 			await save();
 		}
@@ -196,6 +211,7 @@
 				<input bind:value={formPath} placeholder="Local path (e.g. /home/user/repos/payments)" class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500" />
 				<input bind:value={formPlatform} placeholder="Platform (e.g. github, bitbucket)" class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500" />
 				<input bind:value={formRemoteId} placeholder="Remote ID (e.g. org/repo)" class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500" />
+				<input bind:value={formHost} placeholder="Host (e.g. bitbucket.org; leave blank for cloud)" class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500" />
 			</div>
 			<div class="mt-3 flex gap-2">
 				<button

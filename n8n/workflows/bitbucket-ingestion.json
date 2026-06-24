@@ -36,7 +36,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const repos = $input.first().json.repos ?? [];\nconst since = new Date(Date.now() - 150000).toISOString();\nreturn repos\n  .filter(r => r.platform === 'bitbucket' && r.remote_id && r.remote_id.includes('/'))\n  .map(r => {\n    const [workspace, repo] = r.remote_id.split('/');\n    return { json: { workspace, repo, name: r.name, since } };\n  });"
+        "jsCode": "const repos = $input.first().json.repos ?? [];\nconst since = new Date(Date.now() - 150000).toISOString();\n// Cloud-only: skip on-prem Bitbucket Server / Data Center repos. They live on a company host (r.host) and use a different REST API (/rest/api/1.0/...), so the api.bitbucket.org calls below would fail. Missing host = legacy repo, treated as Cloud.\nreturn repos\n  .filter(r => r.platform === 'bitbucket' && (!r.host || r.host === 'bitbucket.org') && r.remote_id && r.remote_id.includes('/'))\n  .map(r => {\n    const [workspace, repo] = r.remote_id.split('/');\n    return { json: { workspace, repo, name: r.name, since } };\n  });"
       },
       "name": "Build Repo Items",
       "type": "n8n-nodes-base.code",
@@ -348,6 +348,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.05.1"
+    "laya_version": "2026.06.1"
   }
 }

@@ -64,7 +64,26 @@
     },
     {
       "parameters": {
-        "jsCode": "const configResp = $('Fetch Channel Config').first().json;\nconst usersResp = $input.first().json;\nconst staticData = $getWorkflowStaticData('global');\n\nstaticData.allowedChannels = configResp.value || null;\n\nconst now = Date.now();\nconst cacheAge = now - (staticData.userMapUpdatedAt || 0);\nif (usersResp.ok !== false && usersResp.members && cacheAge > 600000) {\n  const map = {};\n  for (const m of usersResp.members) {\n    if (m.id && !m.deleted) {\n      const p = m.profile || {};\n      map[m.id] = {\n        name: p.display_name || p.real_name || m.name || m.id,\n        email: p.email || ''\n      };\n    }\n  }\n  staticData.userMap = map;\n  staticData.userMapUpdatedAt = now;\n}\n\nreturn [{ json: { cursor: '' } }];"
+        "method": "GET",
+        "url": "https://slack.com/api/auth.test",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "slackOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "Fetch Workspace Info",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [790, 480]
+    },
+    {
+      "parameters": {
+        "jsCode": "const configResp = $('Fetch Channel Config').first().json;\nconst usersResp = $input.first().json;\nconst staticData = $getWorkflowStaticData('global');\n\nstaticData.allowedChannels = configResp.value || null;\n\n// Cache workspace url + team id (from auth.test) so Normalize can build Slack\n// permalinks. If auth.test failed these stay unset and links fall back to null.\nconst wsResp = $('Fetch Workspace Info').first().json;\nif (wsResp && wsResp.ok !== false) {\n  if (wsResp.url) staticData.workspaceUrl = wsResp.url.replace(/\\/+$/, '');\n  if (wsResp.team_id) staticData.teamId = wsResp.team_id;\n}\n\nconst now = Date.now();\nconst cacheAge = now - (staticData.userMapUpdatedAt || 0);\nif (usersResp.ok !== false && usersResp.members && cacheAge > 600000) {\n  const map = {};\n  for (const m of usersResp.members) {\n    if (m.id && !m.deleted) {\n      const p = m.profile || {};\n      map[m.id] = {\n        name: p.display_name || p.real_name || m.name || m.id,\n        email: p.email || ''\n      };\n    }\n  }\n  staticData.userMap = map;\n  staticData.userMapUpdatedAt = now;\n}\n\nreturn [{ json: { cursor: '' } }];"
       },
       "name": "Build Allowed Set",
       "type": "n8n-nodes-base.code",
@@ -192,7 +211,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const userMap = $getWorkflowStaticData('global').userMap || {};\nfunction resolveUser(uid) {\n  return userMap[uid] || { name: uid, email: '' };\n}\nfunction resolveText(text) {\n  return (text || '').replace(/<@(U[A-Z0-9]+)>/g, (_, uid) => {\n    const u = resolveUser(uid);\n    return '@' + u.name;\n  });\n}\n\nconst channelItems = $('Build Channel Items').all();\nconst channelResponses = $('Fetch Messages').all();\nconst threadItems = $('Extract Active Threads').all();\nconst threadResponses = $input.all();\nconst allEvents = [];\nconst seenIds = new Set();\n\nfunction addEvent(msg, channelId, channelName) {\n  if (!msg.ts || msg.type !== 'message') return;\n  const skipSubtypes = ['channel_join', 'channel_leave', 'channel_topic', 'channel_purpose', 'bot_add', 'bot_remove'];\n  if (msg.subtype && skipSubtypes.includes(msg.subtype)) return;\n\n  const eventId = 'evt_slack_' + msg.ts.replace('.', '_') + '_' + channelId;\n  if (seenIds.has(eventId)) return;\n  seenIds.add(eventId);\n\n  const sender = resolveUser(msg.user);\n  const resolvedText = resolveText(msg.text || '');\n  const msgTime = new Date(parseFloat(msg.ts) * 1000);\n\n  let rawEventType = 'message_received';\n  if (msg.thread_ts && msg.thread_ts !== msg.ts) {\n    rawEventType = 'thread_reply';\n  } else if ((msg.text || '').includes('<@')) {\n    rawEventType = 'mention';\n  }\n\n  let channelType = 'channel';\n  if (channelId.startsWith('D')) channelType = 'dm';\n  else if (channelId.startsWith('G')) channelType = 'mpim';\n\n  allEvents.push({\n    json: {\n      event_id: eventId,\n      timestamp: msgTime.toISOString(),\n      source: {\n        platform: 'slack',\n        connection_id: $workflow.id,\n        raw_event_type: rawEventType\n      },\n      actor: {\n        name: sender.name,\n        email: sender.email,\n        platform_handle: msg.user || ''\n      },\n      subject: {\n        type: 'thread',\n        id: 'thread-' + channelId + '-' + (msg.thread_ts || msg.ts),\n        title: resolvedText.substring(0, 80),\n        url: null\n      },\n      content: {\n        body: resolvedText,\n        attachments: [],\n        metadata: {\n          slack_channel: channelId,\n          slack_channel_name: channelName,\n          slack_channel_type: channelType,\n          slack_thread_ts: msg.thread_ts || msg.ts,\n          slack_message_ts: msg.ts,\n          slack_is_mention: (msg.text || '').includes('<@'),\n          participants: [\n            { role: 'sender', name: sender.name, email: sender.email, handle: msg.user || '' }\n          ]\n        }\n      }\n    }\n  });\n}\n\nfor (let i = 0; i < channelResponses.length; i++) {\n  const channel = channelItems[i]?.json ?? {};\n  const resp = channelResponses[i].json;\n  if (resp.ok === false) continue;\n  const lastPollNum = parseFloat(channel.last_poll_ts || '0');\n  for (const msg of (resp.messages || [])) {\n    if (parseFloat(msg.ts) > lastPollNum) {\n      addEvent(msg, channel.channel_id || '', channel.channel_name || '');\n    }\n  }\n}\n\nfor (let i = 0; i < threadItems.length; i++) {\n  const item = threadItems[i].json;\n  if (item._no_threads) continue;\n  const resp = threadResponses[i].json;\n  if (resp.ok === false) continue;\n  for (const msg of (resp.messages || [])) {\n    addEvent(msg, item.channel_id || '', item.channel_name || '');\n  }\n}\n\nif (allEvents.length === 0) {\n  return [{ json: { _skip: true } }];\n}\nreturn allEvents;"
+        "jsCode": "const userMap = $getWorkflowStaticData('global').userMap || {};\nconst workspaceUrl = $getWorkflowStaticData('global').workspaceUrl || '';\nconst teamId = $getWorkflowStaticData('global').teamId || '';\nfunction resolveUser(uid) {\n  return userMap[uid] || { name: uid, email: '' };\n}\nfunction resolveText(text) {\n  return (text || '').replace(/<@(U[A-Z0-9]+)>/g, (_, uid) => {\n    const u = resolveUser(uid);\n    return '@' + u.name;\n  });\n}\n\nconst channelItems = $('Build Channel Items').all();\nconst channelResponses = $('Fetch Messages').all();\nconst threadItems = $('Extract Active Threads').all();\nconst threadResponses = $input.all();\nconst allEvents = [];\nconst seenIds = new Set();\n\nfunction addEvent(msg, channelId, channelName) {\n  if (!msg.ts || msg.type !== 'message') return;\n  const skipSubtypes = ['channel_join', 'channel_leave', 'channel_topic', 'channel_purpose', 'bot_add', 'bot_remove'];\n  if (msg.subtype && skipSubtypes.includes(msg.subtype)) return;\n\n  const eventId = 'evt_slack_' + msg.ts.replace('.', '_') + '_' + channelId;\n  if (seenIds.has(eventId)) return;\n  seenIds.add(eventId);\n\n  const sender = resolveUser(msg.user);\n  const resolvedText = resolveText(msg.text || '');\n  const msgTime = new Date(parseFloat(msg.ts) * 1000);\n\n  let rawEventType = 'message_received';\n  if (msg.thread_ts && msg.thread_ts !== msg.ts) {\n    rawEventType = 'thread_reply';\n  } else if ((msg.text || '').includes('<@')) {\n    rawEventType = 'mention';\n  }\n\n  let channelType = 'channel';\n  if (channelId.startsWith('D')) channelType = 'dm';\n  else if (channelId.startsWith('G')) channelType = 'mpim';\n\n  // Canonical Slack permalink (message ts with the dot stripped, prefixed 'p');\n  // thread params keep replies in thread context. Empty workspaceUrl (auth.test\n  // failed / not yet cached) leaves url null, falling back to plain-text display.\n  let subjectUrl = null;\n  if (workspaceUrl && msg.ts) {\n    subjectUrl = workspaceUrl + '/archives/' + channelId + '/p' + msg.ts.replace('.', '');\n    const threadTs = msg.thread_ts || msg.ts;\n    if (threadTs && threadTs !== msg.ts) {\n      subjectUrl += '?thread_ts=' + threadTs + '&cid=' + channelId;\n    }\n  }\n\n  allEvents.push({\n    json: {\n      event_id: eventId,\n      timestamp: msgTime.toISOString(),\n      source: {\n        platform: 'slack',\n        connection_id: $workflow.id,\n        raw_event_type: rawEventType\n      },\n      actor: {\n        name: sender.name,\n        email: sender.email,\n        platform_handle: msg.user || ''\n      },\n      subject: {\n        type: 'thread',\n        id: 'thread-' + channelId + '-' + (msg.thread_ts || msg.ts),\n        title: resolvedText.substring(0, 80),\n        url: subjectUrl\n      },\n      content: {\n        body: resolvedText,\n        attachments: [],\n        metadata: {\n          slack_channel: channelId,\n          slack_team_id: teamId,\n          slack_channel_name: channelName,\n          slack_channel_type: channelType,\n          slack_thread_ts: msg.thread_ts || msg.ts,\n          slack_message_ts: msg.ts,\n          slack_is_mention: (msg.text || '').includes('<@'),\n          participants: [\n            { role: 'sender', name: sender.name, email: sender.email, handle: msg.user || '' }\n          ]\n        }\n      }\n    }\n  });\n}\n\nfor (let i = 0; i < channelResponses.length; i++) {\n  const channel = channelItems[i]?.json ?? {};\n  const resp = channelResponses[i].json;\n  if (resp.ok === false) continue;\n  const lastPollNum = parseFloat(channel.last_poll_ts || '0');\n  for (const msg of (resp.messages || [])) {\n    if (parseFloat(msg.ts) > lastPollNum) {\n      addEvent(msg, channel.channel_id || '', channel.channel_name || '');\n    }\n  }\n}\n\nfor (let i = 0; i < threadItems.length; i++) {\n  const item = threadItems[i].json;\n  if (item._no_threads) continue;\n  const resp = threadResponses[i].json;\n  if (resp.ok === false) continue;\n  for (const msg of (resp.messages || [])) {\n    addEvent(msg, item.channel_id || '', item.channel_name || '');\n  }\n}\n\nif (allEvents.length === 0) {\n  return [{ json: { _skip: true } }];\n}\nreturn allEvents;"
       },
       "name": "Normalize & Classify",
       "type": "n8n-nodes-base.code",
@@ -247,6 +266,9 @@
       "main": [[{ "node": "Fetch Users", "type": "main", "index": 0 }]]
     },
     "Fetch Users": {
+      "main": [[{ "node": "Fetch Workspace Info", "type": "main", "index": 0 }]]
+    },
+    "Fetch Workspace Info": {
       "main": [[{ "node": "Build Allowed Set", "type": "main", "index": 0 }]]
     },
     "Build Allowed Set": {
@@ -291,6 +313,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.06.10"
+    "laya_version": "2026.06.24"
   }
 }

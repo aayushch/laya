@@ -7,7 +7,45 @@ from __future__ import annotations
 
 import re
 
+from laya.config import load_repos
+
 _EVENT_ID_PR_RE = re.compile(r"^evt_bb_pr_.+_(?P<id>\d+)_\d+$")
+
+
+def _is_cloud_host(host: str) -> bool:
+    """True for Bitbucket Cloud repos.
+
+    A repo is Cloud when its configured host is empty (legacy repos predate the
+    ``host`` field and were Cloud-only) or contains ``bitbucket.org``. Any other
+    host is a self-hosted Bitbucket Server / Data Center instance.
+    """
+    return host == "" or "bitbucket.org" in host
+
+
+def ensure_cloud_repo(payload: dict) -> None:
+    """Raise ``ValueError`` if the action targets a self-hosted Bitbucket repo.
+
+    Outbound actions are dispatched through the n8n executor against the Bitbucket
+    *Cloud* REST API (``api.bitbucket.org``), which an on-prem Server / Data Center
+    host won't answer. We match the enriched payload's ``workspace``/``repo`` against
+    ``repos.json`` and reject when the configured repo carries a non-Cloud host, so
+    the caller fails fast with a clear message instead of firing a doomed Cloud call.
+    """
+    workspace = payload.get("workspace") or ""
+    repo = payload.get("repo") or ""
+    if not workspace or not repo:
+        return  # no identifiers to match; normal validation handles missing fields
+    remote_id = f"{workspace}/{repo}"
+    for r in load_repos().get("repos", []):
+        if r.get("platform") != "bitbucket" or r.get("remote_id") != remote_id:
+            continue
+        if not _is_cloud_host(r.get("host", "")):
+            raise ValueError(
+                f"On-prem Bitbucket Server is not supported for outbound actions "
+                f"(repo '{remote_id}' is hosted on '{r.get('host')}'). "
+                f"Only Bitbucket Cloud (bitbucket.org) actions can be executed."
+            )
+        return
 
 
 def identifiers_from_event(

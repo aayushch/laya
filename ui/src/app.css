@@ -1882,15 +1882,31 @@ html, body {
    are never collapsed to the 34px fallback — that breaks scroll-to-card
    accuracy and causes WebKit to skip painting after column repacks.
    content-visibility:auto implies contain:paint which clips
-   descendant box-shadow (the status glow) at this element's
-   padding box. Padding + compensating negative margin extends
-   the clipping boundary so the glow is visible on all sides
-   without changing visual layout. */
+   descendant box-shadow at this element's padding box. Padding +
+   compensating negative margin extends the clipping boundary so
+   small descendant glows (e.g. the awaiting-input status-glow on
+   the status badge) stay visible without changing visual layout. */
 .feed-list-container [data-list-row] {
 	content-visibility: auto;
 	contain-intrinsic-block-size: auto 34px;
 	padding: 4px 8px;
 	margin: -4px -8px;
+}
+
+/* Active-glow rows (pending / agent_running) opt OUT of content-visibility's
+   paint containment. The pulse glow is a box-shadow on an INNER rounded-lg
+   element that sits flush to the wrapper on the right but is inset ~34px
+   behind the checkbox + chevron on the left. With containment on, the
+   wrapper's paint-clip only shaped the side the glow actually reached (the
+   right, which looked nicely rounded) and left the inset side (left) showing
+   the inner element's own tighter, mismatched corner — the asymmetric
+   "right round / left sharp" artifact. Opting out lets the inner element's
+   natural, symmetric box-shadow render on all four corners (same as card
+   view). Only the few glowing rows skip the optimization, so the off-screen
+   scroll-perf win is preserved for the rest of the list. */
+.feed-list-container [data-list-row]:has(.card-pulse-amber),
+.feed-list-container [data-list-row]:has(.card-pulse-violet) {
+	content-visibility: visible;
 }
 
 /* During panel transitions, suppress expensive per-element work

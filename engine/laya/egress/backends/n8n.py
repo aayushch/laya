@@ -278,6 +278,13 @@ class N8nBackend(EgressBackend):
         """
         payload, event_ctx = await enrich_payload_from_event(request)
 
+        # Guard: on-prem Bitbucket Server / Data Center can't be driven through the
+        # Cloud executor (it targets api.bitbucket.org). Reject before dispatch so we
+        # never fire a doomed Cloud API call. Raises ValueError → caught in execute().
+        if request.platform == "bitbucket":
+            from laya.egress.platforms.bitbucket import ensure_cloud_repo
+            ensure_cloud_repo(payload)
+
         # Jira: retrieve connection credentials once for base URL injection
         # and assignee resolution (email/name → accountId).
         if request.platform == "jira" and request.connection_id:
