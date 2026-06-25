@@ -4,7 +4,34 @@
 	import { onMount } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { flip } from 'svelte/animate';
+	import { cubicInOut } from 'svelte/easing';
 	import type { ContextRule } from '$lib/api/types';
+
+	// Out-transition for a deleted rule: fades the card while collapsing its
+	// height (incl. padding/margin) so neighbouring rules visibly slide up to
+	// fill the gap. Paired with animate:flip on the same element. Without this
+	// the deleted rule vanishes instantly and users can't tell which one went.
+	function collapseFade(node: HTMLElement, { duration = 260 } = {}) {
+		const style = getComputedStyle(node);
+		const height = parseFloat(style.height);
+		const paddingTop = parseFloat(style.paddingTop);
+		const paddingBottom = parseFloat(style.paddingBottom);
+		const marginTop = parseFloat(style.marginTop);
+		const marginBottom = parseFloat(style.marginBottom);
+		return {
+			duration,
+			easing: cubicInOut,
+			css: (t: number) =>
+				`opacity: ${t};` +
+				`height: ${t * height}px;` +
+				`padding-top: ${t * paddingTop}px;` +
+				`padding-bottom: ${t * paddingBottom}px;` +
+				`margin-top: ${t * marginTop}px;` +
+				`margin-bottom: ${t * marginBottom}px;` +
+				`overflow: hidden;`
+		};
+	}
 
 	// Context rules are learned from link/unlink actions (source 'learned') and
 	// can grow large, so this list is server-paginated. Users can also add
@@ -26,8 +53,10 @@
 	const totalPages = $derived(Math.ceil(total / limit) || 1);
 	const formValid = $derived(formText.trim() !== '');
 
-	async function load() {
-		loading = true;
+	// `silent` refetches without flipping `loading` — used after a delete so the
+	// list isn't unmounted mid out-transition (which would kill the animation).
+	async function load(silent = false) {
+		if (!silent) loading = true;
 		try {
 			const resp = await engineApi.getContextRules({ limit, offset });
 			rules = resp.rules;
@@ -35,7 +64,7 @@
 		} catch {
 			error = 'Failed to load context rules';
 		} finally {
-			loading = false;
+			if (!silent) loading = false;
 		}
 	}
 
@@ -110,9 +139,15 @@
 	async function removeRule(rule: ContextRule) {
 		try {
 			await engineApi.deleteContextRule(rule.id);
-			// If we just removed the last row on a non-first page, step back.
-			if (rules.length === 1 && offset >= limit) offset -= limit;
-			await load();
+			// Optimistically drop the row so the out-transition plays; reassigning
+			// the whole array via load() would flip `loading` and unmount the list.
+			rules = rules.filter((r) => r.id !== rule.id);
+			total = Math.max(0, total - 1);
+			// If that emptied a non-first page, step back one.
+			if (rules.length === 0 && offset >= limit) offset -= limit;
+			// Silently refetch to pull the next page's first row up into this page
+			// (keeps it full) without a loading flash that would cut the animation.
+			await load(true);
 		} catch {
 			error = 'Failed to delete rule';
 		}
@@ -136,8 +171,22 @@
 	{#if loading}
 		<div class="text-surface-400 text-laya-base">Loading context rules...</div>
 	{:else}
+		<!-- Top pagination bar: surfaces the rule count + page controls above the
+		     table so they're visible without scrolling to the bottom of a long list. -->
+		<div class="flex items-center justify-between text-laya-secondary text-surface-400">
+			<span>{total} rule{total !== 1 ? 's' : ''}</span>
+			{#if total > limit}
+				<div class="flex items-center gap-2">
+					<button onclick={prevPage} disabled={offset === 0} class="rounded px-2 py-1 transition-colors hover:bg-surface-700 disabled:opacity-30">Prev</button>
+					<span>{page} / {totalPages}</span>
+					<button onclick={nextPage} disabled={offset + limit >= total} class="rounded px-2 py-1 transition-colors hover:bg-surface-700 disabled:opacity-30">Next</button>
+				</div>
+			{/if}
+		</div>
+
 		<div class="space-y-2">
 			{#each rules as rule (rule.id)}
+				<div animate:flip={{ duration: 260 }} out:collapseFade>
 				{#if editingId === rule.id}
 					<!-- Inline edit form -->
 					<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} border-laya-orange/30 p-3 space-y-2">
@@ -188,6 +237,7 @@
 						</div>
 					</div>
 				{/if}
+				</div>
 			{/each}
 			{#if rules.length === 0}
 				<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-6 text-center text-surface-500">
@@ -195,18 +245,6 @@
 				</div>
 			{/if}
 		</div>
-
-		<!-- Pagination -->
-		{#if total > limit}
-			<div class="flex items-center justify-between text-laya-secondary text-surface-400">
-				<span>{total} rule{total !== 1 ? 's' : ''}</span>
-				<div class="flex items-center gap-2">
-					<button onclick={prevPage} disabled={offset === 0} class="rounded px-2 py-1 transition-colors hover:bg-surface-700 disabled:opacity-30">Prev</button>
-					<span>{page} / {totalPages}</span>
-					<button onclick={nextPage} disabled={offset + limit >= total} class="rounded px-2 py-1 transition-colors hover:bg-surface-700 disabled:opacity-30">Next</button>
-				</div>
-			</div>
-		{/if}
 
 		<!-- Add form -->
 		{#if showAddForm}

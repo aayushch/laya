@@ -9,6 +9,8 @@
 	import ContextRulesEditor from './ContextRulesEditor.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import type { Rule, RuleCondition, SimpleCondition, ClassificationRule } from '$lib/api/types';
+	import { flip } from 'svelte/animate';
+	import { cubicInOut } from 'svelte/easing';
 
 	const operators: SimpleCondition['operator'][] = ['equals', 'not_equals', 'contains', 'starts_with', 'ends_with', 'in'];
 	const commonFields = [
@@ -307,6 +309,31 @@
 		}
 	}
 
+	// Out-transition for a deleted rule: fades the card while collapsing its
+	// height (incl. padding/margin) so neighbouring rules visibly slide up to
+	// fill the gap. Paired with animate:flip on the same element. Without this
+	// the deleted rule vanishes instantly and users can't tell which one went.
+	function collapseFade(node: HTMLElement, { duration = 260 } = {}) {
+		const style = getComputedStyle(node);
+		const height = parseFloat(style.height);
+		const paddingTop = parseFloat(style.paddingTop);
+		const paddingBottom = parseFloat(style.paddingBottom);
+		const marginTop = parseFloat(style.marginTop);
+		const marginBottom = parseFloat(style.marginBottom);
+		return {
+			duration,
+			easing: cubicInOut,
+			css: (t: number) =>
+				`opacity: ${t};` +
+				`height: ${t * height}px;` +
+				`padding-top: ${t * paddingTop}px;` +
+				`padding-bottom: ${t * paddingBottom}px;` +
+				`margin-top: ${t * marginTop}px;` +
+				`margin-bottom: ${t * marginBottom}px;` +
+				`overflow: hidden;`
+		};
+	}
+
 	let clsFormValid = $derived(clsFormText.trim() !== '');
 </script>
 
@@ -489,6 +516,7 @@
 		{:else}
 			<div class="space-y-3">
 				{#each clsRules as rule (rule.id)}
+					<div animate:flip={{ duration: 260 }} out:collapseFade>
 					{#if clsEditingId === rule.id}
 						<!-- Inline edit form -->
 						<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} border-laya-orange/30 p-4 space-y-3">
@@ -553,6 +581,7 @@
 							</div>
 						</div>
 					{/if}
+					</div>
 				{/each}
 				{#if clsRules.length === 0}
 					<div class="{$glassTheme ? 'glass-section' : 'rounded-xl border border-surface-700 bg-surface-800'} p-6 text-center text-surface-500">

@@ -881,27 +881,49 @@ pub fn run() {
                     } else {
                         "tauri://localhost/feed"
                     };
+                    // On macOS the window uses titleBarStyle "Overlay", so the
+                    // traffic-light controls float over the top-left of the
+                    // content. The injected nav bar spans the full width from
+                    // left:0, so without extra left padding the "Back to Laya"
+                    // button renders directly underneath the close/minimize/zoom
+                    // buttons. Reserve ~78px on macOS to clear the controls;
+                    // other platforms put their controls on the right (or none),
+                    // so the normal 12px padding is fine.
+                    let nav_padding_left = if cfg!(target_os = "macos") { 78 } else { 12 };
+                    // Elements are created in the XHTML namespace, not via
+                    // document.createElement. Some external pages are XML
+                    // documents (e.g. an S3 "AccessDenied" error returns
+                    // application/xml). In an XML document createElement makes
+                    // null-namespace nodes that WebKit never renders as HTML, so
+                    // the nav bar silently fails to appear and the user is
+                    // stranded with no way back. createElementNS(XHTML) renders
+                    // identically in HTML documents, so it is safe everywhere.
+                    // For the same reason the dedup guard uses an attribute
+                    // selector instead of getElementById (which, in XML, only
+                    // finds DTD-declared ID attributes).
                     let js = format!(
                         r#"(function(){{
-if(document.getElementById('__laya_nav'))return;
-var bar=document.createElement('div');
+var NS='http://www.w3.org/1999/xhtml';
+if(document.documentElement.querySelector('[id="__laya_nav"]'))return;
+var bar=document.createElementNS(NS,'div');
 bar.id='__laya_nav';
-bar.style.cssText='position:fixed;top:0;left:0;right:0;z-index:2147483647;display:flex;align-items:center;gap:8px;padding:6px 12px;background:#1a1a1a;border-bottom:1px solid #333;font-family:-apple-system,BlinkMacSystemFont,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,0.3);';
-var btn=document.createElement('button');
+bar.style.cssText='position:fixed;top:0;left:0;right:0;z-index:2147483647;display:flex;align-items:center;gap:8px;padding:6px 12px 6px {pad}px;background:#1a1a1a;border-bottom:1px solid #333;font-family:-apple-system,BlinkMacSystemFont,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,0.3);';
+var btn=document.createElementNS(NS,'button');
 btn.textContent='\u{{2190}} Back to Laya';
 btn.style.cssText='background:none;border:1px solid rgba(232,116,48,0.53);color:#e87430;padding:4px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;';
 btn.onmouseover=function(){{btn.style.background='rgba(232,116,48,0.09)'}};
 btn.onmouseout=function(){{btn.style.background='none'}};
 btn.onclick=function(){{window.location.href='{back}'}};
 bar.appendChild(btn);
-var u=document.createElement('span');
+var u=document.createElementNS(NS,'span');
 u.textContent=window.location.hostname;
 u.style.cssText='flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:#888;';
 bar.appendChild(u);
 document.documentElement.appendChild(bar);
 if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
 }})();"#,
-                        back = back_url
+                        back = back_url,
+                        pad = nav_padding_left
                     );
                     let _ = webview.eval(&js);
                 }
