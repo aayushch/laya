@@ -383,7 +383,8 @@
 			day: 'numeric',
 			hour: '2-digit',
 			minute: '2-digit',
-			second: '2-digit'
+			second: '2-digit',
+			hour12: false // force 24-hour clock regardless of locale (en-US would otherwise show AM/PM)
 		});
 	}
 

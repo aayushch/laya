@@ -10,7 +10,7 @@ import structlog
 
 from laya.db.chromadb_store import memory_search
 from laya.db.sqlite import get_db
-from laya.llm.client import llm_call
+from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
 from laya.llm.prompts.router import (
     build_batch_router_messages,
     build_router_messages,
@@ -123,7 +123,7 @@ async def run_router(
         event_id=event.event_id,
         step="route",
         temperature=0.0,
-        max_tokens=4000,
+        max_tokens=DEFAULT_MAX_TOKENS,
         space_id=space_id,
     )
 
@@ -202,7 +202,7 @@ async def run_batch_router(
         response_schema=schema,
         step="route_batch",
         temperature=0.0,
-        max_tokens=4000 * len(events_data),
+        max_tokens=max(DEFAULT_MAX_TOKENS, 4000 * len(events_data)),
         space_id=space_id,
     )
 

@@ -17,7 +17,7 @@ import structlog
 from laya.config import load_repos, load_settings
 from laya.db.chromadb_store import memory_search
 from laya.db.sqlite import get_db
-from laya.llm.client import llm_call
+from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
 from laya.llm.prompts.engineer import build_engineer_messages, get_engineer_json_schema
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
@@ -158,7 +158,7 @@ async def _build_agent_prompt(
         event_id=event.event_id,
         step="worker",
         temperature=0.2,
-        max_tokens=8192,
+        max_tokens=DEFAULT_MAX_TOKENS,
     )
 
     if response.parsed:

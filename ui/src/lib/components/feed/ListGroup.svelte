@@ -160,15 +160,27 @@
 	});
 
 	const allArchived = $derived(group.cards.every(c => c.status === 'archived'));
+	// A running child must glow the collapsed group row even when a higher-priority
+	// sibling status (pending/awaiting_input) wins dominantStatus. This is common in
+	// context (linked) groups, whose cards span multiple entities, so dominantStatus is
+	// rarely agent_running — without this the running glow never propagates to the row.
+	const hasRunningChild = $derived(group.cards.some(c => c.status === 'agent_running'));
 
 	const groupBgStyle = $derived.by(() => {
 		if (allArchived) return $glassTheme ? 'glass-card-flat bg-surface-900/30 opacity-50 hover:opacity-80' : 'bg-surface-900/60 opacity-50 hover:opacity-80';
 		if (!$cardColors) return '';
+		let style: string;
 		if (groupHasWorkspace && !terminalStatuses.has(dominantStatus)) {
-			if (dominantStatus === 'agent_running') return groupRowStyle['agent_running'];
-			return workspaceGroupRowStyle;
+			style = dominantStatus === 'agent_running' ? groupRowStyle['agent_running'] : workspaceGroupRowStyle;
+		} else {
+			style = groupRowStyle[dominantStatus] ?? '';
 		}
-		return groupRowStyle[dominantStatus] ?? '';
+		// dominantStatus drives the base tint; add the violet pulse on top so the running
+		// signal isn't suppressed by a sibling's higher-priority status.
+		if (hasRunningChild && !style.includes('card-pulse-violet')) {
+			style += ' card-pulse-violet';
+		}
+		return style;
 	});
 
 	const visualDominantStatus = $derived(

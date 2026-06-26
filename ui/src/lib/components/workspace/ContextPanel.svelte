@@ -342,7 +342,7 @@
 					{card.staged_output.type === 'code_fix' ? 'Code Fix' : card.staged_output.type === 'draft_reply' ? 'Draft Reply' : card.staged_output.type === 'briefing' ? 'Briefing' : card.staged_output.type === 'agent_result' ? 'Agent Result' : card.staged_output.type === 'agent_plan' ? 'Implementation Plan' : 'Output'}
 				</h3>
 				{#if card.staged_output.type === 'code_fix'}
-					<pre class="overflow-x-auto rounded p-2 text-[11px] text-surface-200 max-h-48 {$glassTheme ? 'bg-white/[0.04]' : 'bg-surface-900'}">{card.staged_output.content}</pre>
+					<pre class="whitespace-pre-wrap break-words overflow-y-auto rounded p-2 text-[11px] text-surface-200 max-h-48 {$glassTheme ? 'bg-white/[0.04]' : 'bg-surface-900'}">{card.staged_output.content}</pre>
 				{:else}
 					<p class="text-xs text-surface-200 whitespace-pre-wrap max-h-48 overflow-y-auto">{card.staged_output.content}</p>
 				{/if}

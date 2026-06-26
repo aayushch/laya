@@ -177,14 +177,26 @@
 	const terminalStatuses = new Set(['done', 'failed', 'dismissed', 'archived']);
 
 	const allArchived = $derived(group.cards.every(c => c.status === 'archived'));
+	// A running child must glow the collapsed group card even when a higher-priority
+	// sibling status (pending/awaiting_input) wins dominantStatus — common in context
+	// (linked) groups whose cards span multiple entities. Without this the running glow
+	// never propagates from the child to the group.
+	const hasRunningChild = $derived(group.cards.some(c => c.status === 'agent_running'));
 	const groupStyle = $derived.by(() => {
 		if (allArchived) return $glassTheme ? 'glass-card bg-surface-900/30 border-transparent opacity-50 hover:opacity-80' : 'bg-surface-900/60 border-transparent opacity-50 hover:opacity-80';
 		if (!$cardColors) return neutralGroupStyle;
+		let style: string;
 		if (groupHasWorkspace && !terminalStatuses.has(dominantStatus)) {
-			if (dominantStatus === 'agent_running') return groupStatusStyle['agent_running'];
-			return workspaceGroupStyle;
+			style = dominantStatus === 'agent_running' ? groupStatusStyle['agent_running'] : workspaceGroupStyle;
+		} else {
+			style = groupStatusStyle[dominantStatus] ?? ($glassTheme ? 'glass-card bg-surface-800/40 border-transparent hover:border-laya-orange/20' : 'bg-surface-900 border-transparent hover:border-laya-orange/30');
 		}
-		return groupStatusStyle[dominantStatus] ?? ($glassTheme ? 'glass-card bg-surface-800/40 border-transparent hover:border-laya-orange/20' : 'bg-surface-900 border-transparent hover:border-laya-orange/30');
+		// dominantStatus drives the base tint; add the violet pulse on top so the running
+		// signal isn't suppressed by a sibling's higher-priority status.
+		if (hasRunningChild && !style.includes('card-pulse-violet')) {
+			style += ' card-pulse-violet';
+		}
+		return style;
 	});
 
 	const priorityColors: Record<string, string> = {

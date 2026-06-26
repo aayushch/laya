@@ -1,6 +1,6 @@
 [package]
 name = "laya-app"
-version = "0.2.0"
+version = "0.67.0"
 description = "Laya: Your AI Command Center"
 authors = ["Aayush"]
 license = ""

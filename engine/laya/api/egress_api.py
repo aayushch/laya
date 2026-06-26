@@ -358,7 +358,7 @@ _POLISH_SCHEMA = {
 @router.post("/egress/polish")
 async def polish_text(body: PolishRequest) -> dict:
     """Polish/rewrite user-drafted text for the compose editor."""
-    from laya.llm.client import llm_call
+    from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
     from laya.llm.prompts.chat import build_polish_messages
 
     text = body.text.strip()
@@ -371,7 +371,7 @@ async def polish_text(body: PolishRequest) -> dict:
             messages=build_polish_messages(text, body.platform),
             step="compose_polish",
             temperature=0.4,
-            max_tokens=2000,
+            max_tokens=DEFAULT_MAX_TOKENS,
             response_schema=_POLISH_SCHEMA,
         )
         if response.parsed and isinstance(response.parsed, dict):

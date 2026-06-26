@@ -1407,7 +1407,7 @@ async def _run_polish(
     space_id: str | None,
 ) -> None:
     """Background task: call the LLM, write polished text back to the action."""
-    from laya.llm.client import llm_call
+    from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
     from laya.llm.prompts.chat import build_polish_messages
 
     polish_schema = {
@@ -1434,7 +1434,7 @@ async def _run_polish(
             messages=build_polish_messages(draft_text, platform),
             step="polish_draft",
             temperature=0.4,
-            max_tokens=2000,
+            max_tokens=DEFAULT_MAX_TOKENS,
             card_id=card_id,
             space_id=space_id,
             response_schema=polish_schema,

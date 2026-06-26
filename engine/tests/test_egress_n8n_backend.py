@@ -327,6 +327,66 @@ class TestWebhookResolution:
                 url = await backend._resolve_webhook_url("jira", "space_a")
                 assert "jira-exec-space-a" in url
 
+    @pytest.mark.asyncio
+    async def test_connection_id_routes_to_matching_executor(self, backend):
+        """A requested connection_id routes to that connection's executor,
+        not the first/arbitrary one."""
+        with patch("laya.egress.backends.n8n.get_db") as mock_get_db:
+            mock_db = AsyncMock()
+            mock_db.execute_fetchall = AsyncMock(return_value=[
+                {"webhook_path": "cal-exec-personal", "space_id": "default", "workflow_id": "wf1", "connection_id": "conn_personal"},
+                {"webhook_path": "cal-exec-laya", "space_id": "default", "workflow_id": "wf2", "connection_id": "conn_laya"},
+            ])
+            mock_get_db.return_value = mock_db
+
+            with patch("laya.egress.backends.n8n.get_n8n_config", return_value={
+                "base_url": "http://localhost:45678",
+                "webhooks": {"calendar": "calendar-executor"},
+            }):
+                url = await backend._resolve_webhook_url("calendar", None, "conn_laya")
+                assert "cal-exec-laya" in url
+                assert "cal-exec-personal" not in url
+
+    @pytest.mark.asyncio
+    async def test_stale_connection_id_raises_not_misroutes(self, backend):
+        """A requested connection_id with no matching executor (e.g. the account
+        was disconnected/recreated and the UI sent a stale id) must raise rather
+        than silently fall back to a DIFFERENT account's executor. Regression
+        test for the wrong-account calendar bug."""
+        with patch("laya.egress.backends.n8n.get_db") as mock_get_db:
+            mock_db = AsyncMock()
+            mock_db.execute_fetchall = AsyncMock(return_value=[
+                {"webhook_path": "cal-exec-personal", "space_id": "default", "workflow_id": "wf1", "connection_id": "conn_personal"},
+                {"webhook_path": "cal-exec-laya", "space_id": "default", "workflow_id": "wf2", "connection_id": "conn_laya"},
+            ])
+            mock_get_db.return_value = mock_db
+
+            with patch("laya.egress.backends.n8n.get_n8n_config", return_value={
+                "base_url": "http://localhost:45678",
+                "webhooks": {"calendar": "calendar-executor"},
+            }):
+                with pytest.raises(ValueError, match="no longer available"):
+                    await backend._resolve_webhook_url("calendar", None, "conn_removed")
+
+    @pytest.mark.asyncio
+    async def test_unmatched_connection_with_no_executors_falls_back(self, backend):
+        """When a connection_id is supplied but the platform has NO executor
+        sources at all (e.g. the card path's "google_calendar" platform string,
+        whose clones are stored under "calendar"), preserve the global-config
+        fallback rather than raising — the guard targets only the
+        wrong-account case where other executors exist."""
+        with patch("laya.egress.backends.n8n.get_db") as mock_get_db:
+            mock_db = AsyncMock()
+            mock_db.execute_fetchall = AsyncMock(return_value=[])
+            mock_get_db.return_value = mock_db
+
+            with patch("laya.egress.backends.n8n.get_n8n_config", return_value={
+                "base_url": "http://localhost:45678",
+                "webhooks": {"google_calendar": "google-calendar-executor"},
+            }):
+                url = await backend._resolve_webhook_url("google_calendar", None, "conn_laya")
+                assert url == "http://localhost:45678/webhook/google-calendar-executor"
+
 
 class TestExecute:
     @pytest.mark.asyncio
@@ -357,6 +417,23 @@ class TestExecute:
 
             assert result.success is False
             assert "No n8n executor webhook" in result.error
+
+    @pytest.mark.asyncio
+    async def test_stale_connection_error_surfaced(self, backend):
+        """execute() converts the resolver's ValueError (stale/removed account)
+        into a failed EgressResult instead of dispatching to another account."""
+        with patch.object(
+            backend, "_resolve_webhook_url", new_callable=AsyncMock,
+            side_effect=ValueError("The selected account is no longer available."),
+        ):
+            request = EgressRequest(
+                platform="calendar", action_type="create_event",
+                payload={}, connection_id="conn_removed",
+            )
+            result = await backend.execute(request, {})
+
+            assert result.success is False
+            assert "no longer available" in result.error
 
     @pytest.mark.asyncio
     async def test_n8n_failure_response(self, backend):

@@ -10,7 +10,7 @@ import structlog
 from laya.config import load_settings
 from laya.db.chromadb_store import memory_search
 from laya.db.sqlite import get_db
-from laya.llm.client import llm_call
+from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
 from laya.llm.prompts.stager import build_stager_messages, get_stager_json_schema
 from laya.models.card import ActionCardData, StagedOutput, SuggestedAction
 from laya.models.classification import RouterOutput
@@ -94,7 +94,7 @@ async def run_stager(
             event_id=event.event_id,
             step="stage",
             temperature=0.2,
-            max_tokens=2000,
+            max_tokens=DEFAULT_MAX_TOKENS,
             space_id=space_id,
         )
     except Exception as e:

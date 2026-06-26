@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import structlog
 
 from laya.db.sqlite import get_db
-from laya.llm.client import llm_call
+from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
 from laya.llm.prompts.context_learner import (
     build_context_learner_messages,
     get_context_learner_json_schema,
@@ -107,7 +107,7 @@ async def run_context_learn_extraction(space_id: str | None) -> int:
             response_schema=schema,
             step="context_learn",
             temperature=0.2,
-            max_tokens=2000,
+            max_tokens=DEFAULT_MAX_TOKENS,
         )
     except Exception as e:
         log.error("context_learn_llm_failed", error=str(e), space_id=space_id)
@@ -223,7 +223,7 @@ async def maybe_consolidate_context_rules(space_id: str | None) -> int:
             response_schema=schema,
             step="context_consolidate",
             temperature=0.2,
-            max_tokens=2000,
+            max_tokens=DEFAULT_MAX_TOKENS,
         )
     except Exception as e:
         log.error("context_consolidate_llm_failed", error=str(e), space_id=space_id)

@@ -12,6 +12,7 @@
 
 	let connections = $state<EgressConnection[]>([]);
 	let connectionsLoaded = $state(false);
+	let connectionsLoading = $state(false);
 	let selectedConnectionId = $state<string>('');
 
 	// Registry-driven platform/action data
@@ -333,7 +334,14 @@
 	}
 
 	async function loadConnections() {
-		if (connectionsLoaded) return;
+		// Always refresh when the modal opens. This component is mounted once
+		// for the whole session, so caching the list (the old `if
+		// (connectionsLoaded) return`) let a connection that was removed and
+		// recreated leave a stale connection_id in the account dropdown — which
+		// the backend then routed to the wrong account. Guard only against
+		// concurrent in-flight loads.
+		if (connectionsLoading) return;
+		connectionsLoading = true;
 		try {
 			const resp = await engineApi.listEgressConnections();
 			connections = resp.connections;
@@ -341,6 +349,7 @@
 			// Silently fail; show all tabs
 		} finally {
 			connectionsLoaded = true;
+			connectionsLoading = false;
 		}
 	}
 
@@ -421,8 +430,20 @@
 	}
 
 	async function submit() {
-		sending = true;
 		error = null;
+		// Backstop against a stale account selection: if this platform has
+		// connected accounts but the selected one is no longer among them (e.g.
+		// it was disconnected since the list last loaded, or the refresh is
+		// still in flight), refuse rather than let the backend fall back to a
+		// different account.
+		if (
+			platformConnections.length > 0 &&
+			!platformConnections.some((c) => c.connection_id === selectedConnectionId)
+		) {
+			error = 'The selected account is no longer available. Pick an account and try again.';
+			return;
+		}
+		sending = true;
 		try {
 			const result = await engineApi.egressExecute({
 				platform: activePlatform,

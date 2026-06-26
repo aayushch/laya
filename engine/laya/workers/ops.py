@@ -8,7 +8,7 @@ from __future__ import annotations
 import structlog
 
 from laya.db.chromadb_store import memory_search
-from laya.llm.client import llm_call
+from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
 from laya.llm.prompts.ops import build_ops_messages, get_ops_json_schema
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
@@ -47,7 +47,7 @@ async def run_ops(
         card_id=card_id,
         step="worker",
         temperature=0.3,
-        max_tokens=1500,
+        max_tokens=DEFAULT_MAX_TOKENS,
     )
 
     if response.parsed:

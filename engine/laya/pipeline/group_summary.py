@@ -13,7 +13,7 @@ import structlog
 from laya.api.websocket import manager
 from laya.config import get_debounce_config, load_settings
 from laya.db.sqlite import get_db
-from laya.llm.client import llm_call
+from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
 from laya.llm.prompts.group_summary import (
     GROUP_SUMMARY_JSON_SCHEMA,
     build_context_summary_messages,
@@ -202,7 +202,7 @@ async def _initial_generation(
         response_schema=GROUP_SUMMARY_JSON_SCHEMA,
         step="group_summary_initial",
         temperature=0.1,
-        max_tokens=1000,
+        max_tokens=DEFAULT_MAX_TOKENS,
         space_id=resolved_space_id,
     )
 
@@ -312,7 +312,7 @@ async def _rolling_update(
         card_id=new_card_ids[-1],
         step="group_summary_rolling",
         temperature=0.1,
-        max_tokens=1000,
+        max_tokens=DEFAULT_MAX_TOKENS,
         space_id=resolved_space_id,
     )
 
@@ -463,7 +463,7 @@ async def _generate_context_summary(
         response_schema=GROUP_SUMMARY_JSON_SCHEMA,
         step="context_summary",
         temperature=0.1,
-        max_tokens=1000,
+        max_tokens=DEFAULT_MAX_TOKENS,
         space_id=resolved_space_id,
     )
 

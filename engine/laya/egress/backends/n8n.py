@@ -80,9 +80,16 @@ class N8nBackend(EgressBackend):
         self, request: EgressRequest, credentials: dict
     ) -> EgressResult:
         """Execute an action by POSTing to the platform's n8n executor webhook."""
-        webhook_url = await self._resolve_webhook_url(
-            request.platform, request.space_id, request.connection_id
-        )
+        try:
+            webhook_url = await self._resolve_webhook_url(
+                request.platform, request.space_id, request.connection_id
+            )
+        except ValueError as exc:
+            # Raised when a specific connection_id was requested but no longer
+            # resolves to an executor (e.g. a stale/removed account still
+            # selected in the UI). Surface it rather than silently routing the
+            # action to a different account.
+            return EgressResult(success=False, error=str(exc))
         if not webhook_url:
             return EgressResult(
                 success=False,
@@ -134,23 +141,37 @@ class N8nBackend(EgressBackend):
         """Resolve the best executor webhook URL for a platform.
 
         Priority:
-        1. Executor source matching the specific connection_id
-        2. Executor source registered in the same space as the request
-        3. Any executor source registered for this platform
+        1. Executor source matching the specific connection_id. When a
+           connection_id is supplied it is honored EXACTLY — if executors exist
+           for the platform but none match, we raise instead of falling
+           through, so an explicitly chosen account is never silently swapped
+           for another one.
+        2. (no connection_id) Executor source registered in the same space
+        3. (no connection_id) Any executor source registered for this platform
         4. Global config from settings.json
 
         n8n 2.x registers webhooks under ``{workflowId}/webhook/{path}``
         rather than just ``{path}``, so we look up the workflow ID via the
         n8n API and construct the full URL.
+
+        Raises:
+            ValueError: a specific ``connection_id`` was requested and the
+                platform has executor sources, but none match it — e.g. the
+                account was disconnected/recreated and the caller (typically
+                the UI composer) still holds a stale id. Routing to any other
+                executor here would create the action under the wrong account.
         """
         n8n_config = get_n8n_config()
         base_url = n8n_config["base_url"].rstrip("/")
 
-        # Try connection/space-specific executor from sources table
+        # Try connection/space-specific executor from sources table.
+        # ORDER BY makes the connection-agnostic fallback deterministic
+        # (oldest connection first) rather than dependent on insertion order.
         db = await get_db()
         executor_rows = await db.execute_fetchall(
             """SELECT webhook_path, space_id, workflow_id, connection_id FROM sources
-               WHERE source_type = 'executor' AND platform = ? AND webhook_path IS NOT NULL""",
+               WHERE source_type = 'executor' AND platform = ? AND webhook_path IS NOT NULL
+               ORDER BY created_at, source_id""",
             (platform,),
         )
 
@@ -158,16 +179,28 @@ class N8nBackend(EgressBackend):
         workflow_id: str | None = None
 
         if executor_rows:
-            # Prefer exact connection match
+            # Prefer exact connection match. A caller that names a connection
+            # has explicitly chosen an account (e.g. the composer's "From"
+            # account), so honor it exactly. If nothing matches — most commonly
+            # because the connection was removed/recreated and the UI sent a
+            # stale id — fail loudly. Falling through to the same-space /
+            # first-executor fallbacks below would dispatch under a DIFFERENT
+            # account, which is the wrong-account bug this guard prevents.
             if connection_id:
                 conn_match = [
                     r for r in executor_rows if r["connection_id"] == connection_id
                 ]
-                if conn_match:
-                    webhook_path = conn_match[0]["webhook_path"]
-                    workflow_id = conn_match[0]["workflow_id"]
+                if not conn_match:
+                    raise ValueError(
+                        "The selected account is no longer available — it may "
+                        "have been disconnected. Reconnect it or pick a "
+                        "different account, then try again."
+                    )
+                webhook_path = conn_match[0]["webhook_path"]
+                workflow_id = conn_match[0]["workflow_id"]
 
-            # Then try same-space executor
+            # Then try same-space executor (only reached when no connection was
+            # named — a named-but-unmatched connection raised above).
             if not webhook_path and space_id:
                 same_space = [
                     r for r in executor_rows if r["space_id"] == space_id
@@ -176,7 +209,7 @@ class N8nBackend(EgressBackend):
                     webhook_path = same_space[0]["webhook_path"]
                     workflow_id = same_space[0]["workflow_id"]
 
-            # Fall back to any executor for this platform
+            # Fall back to any executor for this platform (no connection named).
             if not webhook_path:
                 webhook_path = executor_rows[0]["webhook_path"]
                 workflow_id = executor_rows[0]["workflow_id"]

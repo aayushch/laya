@@ -10,7 +10,7 @@ import structlog
 
 from laya.db.chromadb_store import memory_search
 from laya.db.sqlite import get_db
-from laya.llm.client import llm_call
+from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
 
 log = structlog.get_logger()
 
@@ -194,7 +194,7 @@ async def confirm_entity_link(
             response_schema=schema,
             step="entity_confirm",
             temperature=0.0,
-            max_tokens=200,
+            max_tokens=DEFAULT_MAX_TOKENS,
         )
 
         if response.parsed and response.parsed.get("match"):
@@ -373,7 +373,7 @@ async def confirm_context_link(
             response_schema=schema,
             step="context_confirm",
             temperature=0.0,
-            max_tokens=200,
+            max_tokens=DEFAULT_MAX_TOKENS,
         )
 
         if response.parsed and response.parsed.get("match"):

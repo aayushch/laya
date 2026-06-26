@@ -24,7 +24,7 @@ import structlog
 from laya.api.websocket import manager
 from laya.config import load_settings
 from laya.db.sqlite import get_db
-from laya.llm.client import llm_call
+from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
 from laya.llm.prompts.omni import (
     build_omni_resynthesis_messages,
     get_omni_json_schema,
@@ -848,7 +848,7 @@ async def _resynthesize_space(
             response_schema=schema,
             step="omni_resynthesis",
             temperature=0.3,
-            max_tokens=32000,
+            max_tokens=DEFAULT_MAX_TOKENS,
             space_id=space_id,
         )
 

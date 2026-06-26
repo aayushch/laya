@@ -24,6 +24,14 @@ log = structlog.get_logger()
 
 _THINK_BLOCK_RE = re.compile(r"<think>.*?</think>\s*", flags=re.DOTALL)
 
+# Lenient default output cap for all LLM calls. max_tokens is a CEILING, not a
+# target: a well-behaved model stops at finish_reason=stop when its output is
+# complete, so a high default costs nothing for normal completions. A low cap, by
+# contrast, truncates structured (JSON-schema) output mid-document on verbose local
+# models (e.g. Gemma 3 / LMStudio), yielding invalid JSON and stager retry loops.
+# Pipeline stages rely on this default rather than per-stage caps.
+DEFAULT_MAX_TOKENS = 65536
+
 
 def _strip_think_blocks(text: str) -> str:
     """Remove <think>...</think> blocks that thinking models embed in content."""
@@ -341,7 +349,7 @@ async def llm_call(
     card_id: str | None = None,
     step: str = "unknown",
     temperature: float = 0.0,
-    max_tokens: int = 2000,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
     num_retries: int = 3,
     space_id: str | None = None,
     tools: list[dict] | None = None,
@@ -695,7 +703,7 @@ async def llm_call_streaming(
     messages: list[dict[str, str]],
     step: str = "chat",
     temperature: float = 0.3,
-    max_tokens: int = 2000,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
     space_id: str | None = None,
     tools: list[dict] | None = None,
 ) -> AsyncGenerator[StreamEvent, None]:

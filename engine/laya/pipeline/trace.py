@@ -27,7 +27,7 @@ from laya.db.chromadb_store import memory_search
 from laya.db.fts import build_fts_match, fts_ready
 from laya.db.sqlite import get_db
 from laya.config import get_self_user
-from laya.llm.client import llm_call, llm_call_streaming
+from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call, llm_call_streaming
 from laya.llm.tools.constants import (
     TRACE_ENTITY_SEARCH_MAX,
     TRACE_EVENT_SEARCH_MAX,
@@ -217,7 +217,7 @@ async def _llm_relevance_filter(
             response_schema=RELEVANCE_FILTER_SCHEMA,
             step="trace_filter",
             temperature=0.0,
-            max_tokens=2000,
+            max_tokens=DEFAULT_MAX_TOKENS,
             space_id=space_id,
         )
         # Race the LLM call against the cancel event so abort is near-instant
@@ -1313,7 +1313,7 @@ async def _stream_cluster_narrative_inner(
             messages=messages,
             step="trace",
             temperature=0.3,
-            max_tokens=32000,
+            max_tokens=DEFAULT_MAX_TOKENS,
             space_id=space_id,
         ):
             if event.type == "chunk" and event.content:
@@ -1388,7 +1388,7 @@ async def stream_trace_summary(
                 messages=messages,
                 step="trace_summary",
                 temperature=0.3,
-                max_tokens=32000,
+                max_tokens=DEFAULT_MAX_TOKENS,
                 space_id=space_id,
             ):
                 if event.type == "chunk" and event.content:

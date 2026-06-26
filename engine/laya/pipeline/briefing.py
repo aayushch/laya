@@ -12,7 +12,7 @@ import structlog
 from laya.api.websocket import manager
 from laya.config import load_settings
 from laya.db.sqlite import get_db
-from laya.llm.client import llm_call
+from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
 from laya.llm.prompts.briefing import build_briefing_messages
 from laya.models.card import ActionCardData, StagedOutput, SuggestedAction
 from laya.models.classification import RouterOutput
@@ -135,7 +135,7 @@ async def generate_briefing(space_id: str | None = None) -> str:
             messages=messages,
             step="briefing",
             temperature=0.3,
-            max_tokens=2000,
+            max_tokens=DEFAULT_MAX_TOKENS,
             space_id=space_id,
         )
         briefing_text = response.content

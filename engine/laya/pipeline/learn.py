@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 import structlog
 
 from laya.db.sqlite import get_db
-from laya.llm.client import llm_call
+from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
 from laya.llm.prompts.learner import build_learner_messages, get_learner_json_schema
 
 log = structlog.get_logger()
@@ -125,7 +125,7 @@ async def run_learn_extraction(space_id: str | None) -> int:
         response_schema=schema,
         step="learn",
         temperature=0.2,
-        max_tokens=2000,
+        max_tokens=DEFAULT_MAX_TOKENS,
         space_id=space_id,
     )
 
