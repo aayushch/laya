@@ -224,3 +224,122 @@ async def test_no_thinking_flag_for_cloud_provider(db):
         response_schema={"name": "test", "schema": {"type": "object"}}, custom_meta=None
     )
     assert "extra_body" not in kwargs
+
+
+# --- max_tokens context-window clamping ---
+
+_SCHEMA = {"name": "test", "schema": {"type": "object"}}
+
+
+@pytest.mark.asyncio
+async def test_max_tokens_clamped_to_cloud_output_cap(db):
+    """A known cloud model clamps the lenient default down to its max output cap."""
+    mock_ac = AsyncMock(return_value=_mock_acompletion_response())
+    with patch("litellm.acompletion", mock_ac):
+        with patch("laya.llm.client.load_settings", return_value={"models": {"stager": "claude-opus-4-1-20250805"}}):
+            with patch("litellm.get_model_info", return_value={"max_output_tokens": 8192}):
+                with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                    with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                        await llm_call(
+                            role="stager",
+                            messages=[{"role": "user", "content": "test"}],
+                            response_schema=_SCHEMA,
+                            step="stage",
+                        )
+    # default max_tokens (DEFAULT_MAX_TOKENS=65536) clamped to the model's 8192 cap
+    assert mock_ac.call_args.kwargs["max_tokens"] == 8192
+
+
+@pytest.mark.asyncio
+async def test_max_tokens_clamped_to_local_context_window(db):
+    """A local model clamps to (discovered context window − prompt estimate − margin)."""
+    from laya.llm.providers import DiscoveredModel
+
+    disc = DiscoveredModel(key="lmstudio-local/qwen3.5-9b", display_name="q", max_context_length=32768)
+    mock_ac = AsyncMock(return_value=_mock_acompletion_response())
+    with patch("litellm.acompletion", mock_ac):
+        with patch("laya.llm.client.load_settings", return_value={"models": {"stager": "lmstudio-local/qwen3.5-9b"}}):
+            with patch(
+                "laya.llm.client._resolve_custom_provider",
+                return_value=("openai/qwen3.5-9b", {"api_base": "http://x/v1", "api_key": "x"}),
+            ):
+                with patch("laya.llm.providers.get_custom_provider", return_value={"id": "lmstudio-local"}):
+                    with patch("laya.llm.providers.discover_models_cached", new_callable=AsyncMock, return_value=[disc]):
+                        with patch("laya.llm.client._estimate_prompt_tokens", return_value=2000):
+                            with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                                with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                                    await llm_call(
+                                        role="stager",
+                                        messages=[{"role": "user", "content": "test"}],
+                                        response_schema=_SCHEMA,
+                                        step="stage",
+                                    )
+    # 32768 (window) − 2000 (prompt) − 512 (_OUTPUT_MARGIN)
+    assert mock_ac.call_args.kwargs["max_tokens"] == 32768 - 2000 - 512
+
+
+@pytest.mark.asyncio
+async def test_no_clamp_for_unknown_model(db):
+    """An unknown model (LiteLLM has no info) is left unclamped — behavior unchanged."""
+    mock_ac = AsyncMock(return_value=_mock_acompletion_response())
+    with patch("litellm.acompletion", mock_ac):
+        with patch("laya.llm.client.load_settings", return_value={"models": {"stager": "openai/some-unknown-model"}}):
+            with patch("litellm.get_model_info", side_effect=Exception("unknown model")):
+                with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                    with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                        await llm_call(
+                            role="stager",
+                            messages=[{"role": "user", "content": "test"}],
+                            response_schema=_SCHEMA,
+                            step="stage",
+                            max_tokens=65536,
+                        )
+    assert mock_ac.call_args.kwargs["max_tokens"] == 65536
+
+
+@pytest.mark.asyncio
+async def test_truncation_retry_skipped_at_ceiling(db):
+    """When max_tokens is already at the model's ceiling, a truncated response must NOT
+    trigger a doubled retry (131072 would 400 on a cloud model)."""
+    truncated = _mock_acompletion_response(content='{"partial":')
+    truncated.choices[0].finish_reason = "length"
+    mock_ac = AsyncMock(return_value=truncated)
+    with patch("litellm.acompletion", mock_ac):
+        with patch("laya.llm.client.load_settings", return_value={"models": {"stager": "claude-opus-4-1-20250805"}}):
+            with patch("litellm.get_model_info", return_value={"max_output_tokens": 8192}):
+                with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                    with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                        result = await llm_call(
+                            role="stager",
+                            messages=[{"role": "user", "content": "test"}],
+                            response_schema=_SCHEMA,
+                            step="stage",
+                        )
+    # clamped to 8192; doubling → min(16384, 8192) = 8192, not > 8192 → no second call
+    assert mock_ac.call_count == 1
+    assert result.truncated is True
+    assert mock_ac.call_args.kwargs["max_tokens"] == 8192
+
+
+@pytest.mark.asyncio
+async def test_truncation_retry_bounded_by_ceiling(db):
+    """A retry that IS allowed never requests more than the model's ceiling."""
+    truncated = _mock_acompletion_response(content='{"partial":')
+    truncated.choices[0].finish_reason = "length"
+    mock_ac = AsyncMock(side_effect=[truncated, _mock_acompletion_response()])
+    with patch("litellm.acompletion", mock_ac):
+        with patch("laya.llm.client.load_settings", return_value={"models": {"stager": "claude-opus-4-1-20250805"}}):
+            with patch("litellm.get_model_info", return_value={"max_output_tokens": 6000}):
+                with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                    with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                        result = await llm_call(
+                            role="stager",
+                            messages=[{"role": "user", "content": "test"}],
+                            response_schema=_SCHEMA,
+                            step="stage",
+                            max_tokens=4000,
+                        )
+    # 4000 < 6000 → not clamped; truncated → doubled = min(8000, 6000) = 6000 (not 8000)
+    assert mock_ac.call_count == 2
+    assert mock_ac.call_args_list[1].kwargs["max_tokens"] == 6000
+    assert result.parsed == {"result": "test"}

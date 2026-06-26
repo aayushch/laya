@@ -219,6 +219,69 @@ def _get_custom_provider_meta(model: str) -> dict | None:
     }
 
 
+# ── max_tokens context-window safety ─────────────────────────────────────
+# The lenient DEFAULT_MAX_TOKENS (65536) is deliberately high so structured output
+# never truncates. But strict servers 400 when it exceeds what they can serve: vLLM
+# rejects `prompt + max_tokens > max_model_len`; OpenAI/Anthropic reject `max_tokens`
+# above the model's max output (e.g. 65536*2=131072 from the truncation-retry exceeds
+# even Opus's 128K cap). Local servers (LMStudio/Ollama) clamp silently and don't need
+# this. We clamp ourselves so the same value is safe everywhere.
+_OUTPUT_MARGIN = 512   # headroom left below the context window for the prompt estimate
+_MIN_OUTPUT = 512      # never clamp output below this, even on a near-full context
+
+
+def _estimate_prompt_tokens(messages: list[dict], model: str) -> int:
+    """Best-effort prompt token count for context-window math. Prefers LiteLLM's
+    tokenizer; falls back to the chars/4 heuristic also used in llm_call_streaming."""
+    try:
+        import litellm
+
+        return int(litellm.token_counter(model=model, messages=messages))
+    except Exception:
+        return sum(len(str(m.get("content", ""))) for m in messages) // 4
+
+
+async def _resolve_max_output_ceiling(
+    litellm_model: str,
+    original_model: str,
+    is_custom: bool,
+    messages: list[dict],
+) -> int | None:
+    """Max output tokens this model/server will accept, or None when it can't be
+    determined (then we don't clamp and rely on the server's own behavior)."""
+    # Cloud models LiteLLM knows about: cap at the model's max OUTPUT tokens.
+    if not is_custom:
+        try:
+            import litellm
+
+            info = litellm.get_model_info(litellm_model) or {}
+            out = info.get("max_output_tokens") or info.get("max_tokens")
+            return out if isinstance(out, int) and out > 0 else None
+        except Exception:
+            return None
+
+    # Custom/local providers: cap at (discovered context window − prompt estimate).
+    # Populated for LMStudio (native API) and vLLM (max_model_len); None elsewhere.
+    try:
+        from laya.llm.providers import discover_models_cached, get_custom_provider
+
+        provider = get_custom_provider(original_model.split("/")[0])
+        if not provider:
+            return None
+        models = await discover_models_cached(provider)
+        window = next(
+            (m.max_context_length for m in models
+             if m.key == original_model and m.max_context_length),
+            None,
+        )
+        if not window:
+            return None
+        prompt_est = _estimate_prompt_tokens(messages, litellm_model)
+        return max(window - prompt_est - _OUTPUT_MARGIN, _MIN_OUTPUT)
+    except Exception:
+        return None
+
+
 # ── Current date/time injection ──────────────────────────────────────────
 
 _DATETIME_PREFIX = "[Current date/time:"
@@ -390,6 +453,7 @@ async def llm_call(
     # Resolve custom provider overrides (api_base, timeout, api_key)
     custom_provider_extra: dict[str, Any] = {}
     custom_meta = _get_custom_provider_meta(model)
+    original_model = model  # role/space-resolved string; custom providers: "{id}/{name}"
     custom = _resolve_custom_provider(model)
     if custom:
         model, custom_provider_extra = custom
@@ -399,6 +463,25 @@ async def llm_call(
     model_name = model.split("/")[-1]  # strip provider prefix
     if model_name.startswith("gemini-3"):
         effective_temperature = 1.0
+
+    # Clamp the requested max_tokens to what this model/server will actually accept, so the
+    # lenient DEFAULT_MAX_TOKENS never trips a 400 on strict providers (vLLM/OpenAI/Anthropic)
+    # and the truncation-retry below can't overflow the model's output cap. None ⇒ unknown,
+    # so leave max_tokens as-is (LMStudio/Ollama clamp on their own).
+    max_output_ceiling = await _resolve_max_output_ceiling(
+        litellm_model=model,
+        original_model=original_model,
+        is_custom=custom is not None,
+        messages=messages,
+    )
+    if max_output_ceiling is not None and max_tokens > max_output_ceiling:
+        log.debug(
+            "llm_max_tokens_clamped",
+            model=model,
+            requested=max_tokens,
+            ceiling=max_output_ceiling,
+        )
+        max_tokens = max_output_ceiling
 
     from laya.pipeline.queue import get_model_timeout, get_llm_retries
 
@@ -518,37 +601,49 @@ async def llm_call(
         output_tokens = response.usage.completion_tokens if response.usage else 0
         truncated = finish_reason == "length"
 
-        # If the response was truncated and we requested structured output,
-        # retry once with doubled max_tokens to try to get complete JSON.
+        # If the response was truncated and we requested structured output, retry once
+        # with a larger budget to try to get complete JSON — but bound the retry to the
+        # model's output ceiling so doubling can't overflow into a 400 (65536*2=131072
+        # exceeds even Opus's 128K cap). Skip the retry entirely if already at the ceiling.
         if truncated and response_schema:
-            doubled = max_tokens * 2
-            log.warning(
-                "llm_response_truncated",
-                model=model,
-                output_tokens=output_tokens,
-                max_tokens=max_tokens,
-                retrying_with=doubled,
-            )
-            kwargs["max_tokens"] = doubled
-
-            retry_start = time.monotonic()
-            response = await _call_with_retry()
-            elapsed_ms += int((time.monotonic() - retry_start) * 1000)
-
-            content = _strip_think_blocks(response.choices[0].message.content or "")
-            if not content:
-                content = getattr(response.choices[0].message, "reasoning_content", None) or ""
-            finish_reason = response.choices[0].finish_reason or "stop"
-            input_tokens += response.usage.prompt_tokens if response.usage else 0
-            output_tokens = response.usage.completion_tokens if response.usage else 0
-            truncated = finish_reason == "length"
-
-            if truncated:
+            ceiling = max_output_ceiling if max_output_ceiling is not None else max_tokens * 2
+            doubled = min(max_tokens * 2, ceiling)
+            if doubled > max_tokens:
                 log.warning(
-                    "llm_response_still_truncated",
+                    "llm_response_truncated",
                     model=model,
                     output_tokens=output_tokens,
-                    max_tokens=doubled,
+                    max_tokens=max_tokens,
+                    retrying_with=doubled,
+                )
+                kwargs["max_tokens"] = doubled
+
+                retry_start = time.monotonic()
+                response = await _call_with_retry()
+                elapsed_ms += int((time.monotonic() - retry_start) * 1000)
+
+                content = _strip_think_blocks(response.choices[0].message.content or "")
+                if not content:
+                    content = getattr(response.choices[0].message, "reasoning_content", None) or ""
+                finish_reason = response.choices[0].finish_reason or "stop"
+                input_tokens += response.usage.prompt_tokens if response.usage else 0
+                output_tokens = response.usage.completion_tokens if response.usage else 0
+                truncated = finish_reason == "length"
+
+                if truncated:
+                    log.warning(
+                        "llm_response_still_truncated",
+                        model=model,
+                        output_tokens=output_tokens,
+                        max_tokens=doubled,
+                    )
+            else:
+                # Already at the model's ceiling — doubling would 400. Accept the truncation.
+                log.warning(
+                    "llm_response_truncated_at_ceiling",
+                    model=model,
+                    output_tokens=output_tokens,
+                    max_tokens=max_tokens,
                 )
 
         # Parse JSON if structured output was requested

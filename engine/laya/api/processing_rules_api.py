@@ -30,6 +30,12 @@ from laya.pipeline.processing_rules import (
 
 _MAX_REGEX_LEN = 500
 
+# Test Condition preview scans the most-recent N in-window cards. Must comfortably
+# exceed the real 7-day card volume — a small cap (it was 500) silently scans well
+# under a day on busy installs and reports false "0 matches". When the window holds
+# more than this, the preview reports `truncated` so 0 is never mistaken for "none".
+_PREVIEW_SCAN_CAP = 5000
+
 log = structlog.get_logger()
 router = APIRouter()
 
@@ -468,7 +474,14 @@ async def reorder_processing_rules(body: dict) -> dict:
 
 @router.post("/processing-rules/preview-matches")
 async def preview_matches(body: dict) -> dict:
-    """Count recent cards matching a condition. Body: {"condition": {...}}"""
+    """Count recent cards matching a condition. Body: {"condition": {...}}
+
+    Evaluates the condition against the SAME trigger context the live pipeline
+    builds (rebuilt from events.raw_json), so the preview mirrors real rule
+    behavior exactly. Scans the most-recent `_PREVIEW_SCAN_CAP` cards in the last
+    7 days; when the window holds more than that, `truncated` is returned True so
+    a 0 result is never silently mistaken for "nothing matches".
+    """
     condition_data = body.get("condition")
     if not condition_data:
         raise HTTPException(status_code=422, detail="Missing 'condition'")
@@ -479,6 +492,13 @@ async def preview_matches(body: dict) -> dict:
         raise HTTPException(status_code=422, detail=f"Invalid condition: {e}")
 
     db = await get_db()
+
+    # True size of the window, so we can tell the caller when the scan was capped.
+    count_rows = await db.execute_fetchall(
+        "SELECT COUNT(*) AS n FROM action_cards WHERE created_at > datetime('now', '-7 days')"
+    )
+    total_in_window = count_rows[0]["n"] if count_rows else 0
+
     rows = await db.execute_fetchall(
         """SELECT ac.card_id, ac.header, ac.priority, ac.persona, ac.category,
                   ac.entity_id, ac.space_id, ac.confidence, ac.status,
@@ -487,7 +507,8 @@ async def preview_matches(body: dict) -> dict:
            LEFT JOIN events e ON e.event_id = ac.event_id
            WHERE ac.created_at > datetime('now', '-7 days')
            ORDER BY ac.created_at DESC
-           LIMIT 500""",
+           LIMIT ?""",
+        (_PREVIEW_SCAN_CAP,),
     )
 
     from laya.models.classification import RouterOutput, Persona, Priority, Category
@@ -532,6 +553,8 @@ async def preview_matches(body: dict) -> dict:
         "sample_cards": matches[:5],
         "period": "last 7 days",
         "scanned": len(rows),
+        "total_in_window": total_in_window,
+        "truncated": total_in_window > len(rows),
         "skipped": skipped,
     }
 

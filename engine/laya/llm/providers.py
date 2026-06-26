@@ -274,7 +274,10 @@ async def _discover_openai_compatible(provider: dict) -> list[DiscoveredModel]:
                 display_name=model_id,
                 model_type="llm",
                 provider_id=provider["id"],
-                max_context_length=None,
+                # vLLM advertises its context window here; most other OpenAI-compat
+                # servers omit it (→ None, no clamp). Used to bound max_tokens so a
+                # large request doesn't 400 against `prompt + max_tokens > max_model_len`.
+                max_context_length=m.get("max_model_len"),
                 supports_tool_calling=caps_override.get("supports_tool_calling", True),
                 supports_structured_output=caps_override.get("supports_structured_output", True),
                 supports_vision=False,
