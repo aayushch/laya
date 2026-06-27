@@ -187,8 +187,50 @@
     },
     {
       "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://api.bitbucket.org/2.0/repositories/' + $json.repoSlug + '/pullrequests/' + $json.pr.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "bitbucketAccessTokenApi",
+        "options": {}
+      },
+      "name": "Get PR Detail",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1560,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Wrap PR detail so it doesn't overwrite list-PR data on merge.\n// The list endpoint (Get Pull Requests) omits reviewers/participants; only the\n// detail endpoint (this node's source) returns them, so we merge it back in.\nreturn $input.all().map(item => ({\n  json: { _detail: item.json }\n}));"
+      },
+      "name": "Wrap Detail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "name": "Merge + Detail",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        2080,
+        450
+      ]
+    },
+    {
+      "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "// Classify PR changes using the activity feed.\n// Produces granular raw_event_type and contextual body.\n\nconst POLL_WINDOW_MS = 150000; // 2.5 minutes\nconst now = Date.now();\n\nconst pr = $json.pr;\nconst repoSlug = $json.repoSlug;\nconst activity = $json._activity || []; // activity feed entries from Wrap Activity node\nconst state = (pr.state || '').toUpperCase();\nconst isNew = pr.created_on === pr.updated_on;\n\n// --- Find recent activity within our poll window ---\nconst recentActivity = activity.filter(a => {\n  // Activity entries have different shapes; find the timestamp\n  const ts = a.update?.date || a.comment?.created_on || a.approval?.date || a.pull_request?.updated_on || '';\n  if (!ts) return false;\n  return (now - new Date(ts).getTime()) < POLL_WINDOW_MS;\n});\n\n// --- Classify the change ---\nlet rawEventType = 'pr_updated';\nlet body = '';\nlet changeType = 'generic_update';\nlet previousState = null;\nlet newState = null;\nlet actorName = pr.author?.display_name || 'Unknown';\nlet actorHandle = pr.author?.nickname || pr.author?.uuid || '';\nlet commentId = null;\n\nif (isNew) {\n  // Brand-new PR\n  rawEventType = 'pr_created';\n  changeType = 'created';\n  body = pr.description || pr.title || '';\n\n} else {\n  // Check activity feed for specific change types (newest first)\n  let classified = false;\n\n  for (const entry of recentActivity) {\n    if (entry.update && !classified) {\n      // State/field update\n      const update = entry.update;\n      const fromState = (update.state?.previous || '').toUpperCase();\n      const toState = (update.state?.new || state).toUpperCase();\n\n      if (update.author) {\n        actorName = update.author.display_name || actorName;\n        actorHandle = update.author.nickname || update.author.uuid || actorHandle;\n      }\n\n      if (toState === 'MERGED' && fromState !== 'MERGED') {\n        rawEventType = 'pr_merged';\n        changeType = 'merged';\n        body = `Pull request merged into ${pr.destination?.branch?.name || 'target branch'}.`;\n        if (pr.merge_commit?.hash) body += ` Merge commit: ${pr.merge_commit.hash.substring(0, 8)}.`;\n        previousState = fromState;\n        newState = 'MERGED';\n        classified = true;\n      } else if (toState === 'DECLINED' && fromState !== 'DECLINED') {\n        rawEventType = 'pr_declined';\n        changeType = 'declined';\n        body = `Pull request declined.`;\n        if (update.reason) body += ` Reason: ${update.reason}`;\n        previousState = fromState;\n        newState = 'DECLINED';\n        classified = true;\n      } else if (fromState === 'MERGED' || fromState === 'DECLINED') {\n        rawEventType = 'pr_reopened';\n        changeType = 'reopened';\n        body = `Pull request reopened: ${fromState} \u2192 ${toState}.`;\n        previousState = fromState;\n        newState = toState;\n        classified = true;\n      } else if (update.title || update.description || update.destination) {\n        rawEventType = 'pr_updated';\n        changeType = 'fields_updated';\n        const changes = [];\n        if (update.title) changes.push('title');\n        if (update.description) changes.push('description');\n        if (update.destination) changes.push('target branch');\n        if (update.reviewers) changes.push('reviewers');\n        body = `PR fields updated: ${changes.join(', ')}.`;\n        classified = true;\n      }\n    }\n\n    if (entry.approval && !classified) {\n      const approval = entry.approval;\n      rawEventType = 'pr_approved';\n      changeType = 'approved';\n      actorName = approval.user?.display_name || actorName;\n      actorHandle = approval.user?.nickname || approval.user?.uuid || actorHandle;\n      body = `Pull request approved by ${actorName}.`;\n      classified = true;\n    }\n\n    if (entry.comment && !classified) {\n      const comment = entry.comment;\n      rawEventType = 'pr_commented';\n      changeType = 'commented';\n      actorName = comment.user?.display_name || actorName;\n      actorHandle = comment.user?.nickname || comment.user?.uuid || actorHandle;\n      const commentBody = comment.content?.raw || comment.content?.markup || '';\n      body = `New comment from ${actorName}:\\n${commentBody}`;\n      // Capture comment ID so replies can target this thread\n      if (comment.id) commentId = String(comment.id);\n      // Check if it's an inline code comment\n      if (comment.inline) {\n        const file = comment.inline.path || 'unknown file';\n        const line = comment.inline.to || comment.inline.from || '';\n        body = `Inline comment on ${file}${line ? ':' + line : ''} from ${actorName}:\\n${commentBody}`;\n        changeType = 'inline_comment';\n      }\n      classified = true;\n    }\n\n    if (classified) break;\n  }\n\n  // Fallback: no recent activity matched \u2014 use PR state\n  if (!classified) {\n    if (state === 'MERGED') {\n      rawEventType = 'pr_merged';\n      changeType = 'merged';\n      body = `Pull request merged into ${pr.destination?.branch?.name || 'target branch'}.`;\n    } else if (state === 'DECLINED') {\n      rawEventType = 'pr_declined';\n      changeType = 'declined';\n      body = `Pull request declined.`;\n    } else {\n      rawEventType = 'pr_updated';\n      changeType = 'no_change_detected';\n      body = `PR polled with no detectable changes. Current state: ${state}.`;\n    }\n  }\n}\n\nconst epoch = new Date(pr.updated_on || Date.now()).getTime();\n\nreturn {\n  json: {\n    event_id: 'evt_bb_pr_' + repoSlug.replace('/', '_') + '_' + pr.id + '_' + epoch,\n    timestamp: pr.updated_on || new Date().toISOString(),\n    source: {\n      platform: 'bitbucket',\n      connection_id: $workflow.id,\n      raw_event_type: rawEventType\n    },\n    actor: {\n      name: actorName,\n      email: '',\n      platform_handle: actorHandle\n    },\n    subject: {\n      type: 'pull_request',\n      id: repoSlug + '/PR-' + pr.id,\n      title: pr.title || '',\n      url: (pr.links && pr.links.html && pr.links.html.href) || ''\n    },\n    content: {\n      body: body,\n      attachments: [],\n      metadata: {\n        bb_repository: repoSlug,\n        bb_branch: pr.source?.branch?.name || '',\n        bb_target_branch: pr.destination?.branch?.name || '',\n        bb_state: state,\n        bb_reviewers: (pr.reviewers || []).map(r => r.display_name || r.nickname || ''),\n        bb_change_type: changeType,\n        bb_previous_state: previousState,\n        bb_new_state: newState,\n        bb_description: pr.description || '',\n        bb_comment_id: commentId,\n        participants: [\n          { role: 'author', name: pr.author?.display_name || '', handle: pr.author?.nickname || pr.author?.uuid || '' },\n          ...(pr.reviewers || []).map(r => ({ role: 'reviewer', name: r.display_name || '', handle: r.nickname || r.uuid || '' }))\n        ]\n      }\n    }\n  }\n};"
+        "jsCode": "// Classify PR changes using the activity feed.\n// Produces granular raw_event_type and contextual body.\n\nconst POLL_WINDOW_MS = 150000; // 2.5 minutes\nconst now = Date.now();\n\nconst pr = $json.pr;\nconst repoSlug = $json.repoSlug;\nconst activity = $json._activity || []; // activity feed entries from Wrap Activity node\nconst detail = $json._detail || pr; // detail endpoint carries reviewers/participants; the list endpoint does not\nconst reviewers = detail.reviewers || []; // explicitly-requested reviewers (account objects: display_name, nickname, uuid)\nconst state = (pr.state || '').toUpperCase();\nconst isNew = pr.created_on === pr.updated_on;\n\n// --- Find recent activity within our poll window ---\nconst recentActivity = activity.filter(a => {\n  // Activity entries have different shapes; find the timestamp\n  const ts = a.update?.date || a.comment?.created_on || a.approval?.date || a.pull_request?.updated_on || '';\n  if (!ts) return false;\n  return (now - new Date(ts).getTime()) < POLL_WINDOW_MS;\n});\n\n// --- Classify the change ---\nlet rawEventType = 'pr_updated';\nlet body = '';\nlet changeType = 'generic_update';\nlet previousState = null;\nlet newState = null;\nlet actorName = pr.author?.display_name || 'Unknown';\nlet actorHandle = pr.author?.nickname || pr.author?.uuid || '';\nlet commentId = null;\n\nif (isNew) {\n  // Brand-new PR\n  rawEventType = 'pr_created';\n  changeType = 'created';\n  body = pr.description || pr.title || '';\n\n} else {\n  // Check activity feed for specific change types (newest first)\n  let classified = false;\n\n  for (const entry of recentActivity) {\n    if (entry.update && !classified) {\n      // State/field update\n      const update = entry.update;\n      const fromState = (update.state?.previous || '').toUpperCase();\n      const toState = (update.state?.new || state).toUpperCase();\n\n      if (update.author) {\n        actorName = update.author.display_name || actorName;\n        actorHandle = update.author.nickname || update.author.uuid || actorHandle;\n      }\n\n      if (toState === 'MERGED' && fromState !== 'MERGED') {\n        rawEventType = 'pr_merged';\n        changeType = 'merged';\n        body = `Pull request merged into ${pr.destination?.branch?.name || 'target branch'}.`;\n        if (pr.merge_commit?.hash) body += ` Merge commit: ${pr.merge_commit.hash.substring(0, 8)}.`;\n        previousState = fromState;\n        newState = 'MERGED';\n        classified = true;\n      } else if (toState === 'DECLINED' && fromState !== 'DECLINED') {\n        rawEventType = 'pr_declined';\n        changeType = 'declined';\n        body = `Pull request declined.`;\n        if (update.reason) body += ` Reason: ${update.reason}`;\n        previousState = fromState;\n        newState = 'DECLINED';\n        classified = true;\n      } else if (fromState === 'MERGED' || fromState === 'DECLINED') {\n        rawEventType = 'pr_reopened';\n        changeType = 'reopened';\n        body = `Pull request reopened: ${fromState} \u2192 ${toState}.`;\n        previousState = fromState;\n        newState = toState;\n        classified = true;\n      } else if (update.title || update.description || update.destination) {\n        rawEventType = 'pr_updated';\n        changeType = 'fields_updated';\n        const changes = [];\n        if (update.title) changes.push('title');\n        if (update.description) changes.push('description');\n        if (update.destination) changes.push('target branch');\n        if (update.reviewers) changes.push('reviewers');\n        body = `PR fields updated: ${changes.join(', ')}.`;\n        classified = true;\n      }\n    }\n\n    if (entry.approval && !classified) {\n      const approval = entry.approval;\n      rawEventType = 'pr_approved';\n      changeType = 'approved';\n      actorName = approval.user?.display_name || actorName;\n      actorHandle = approval.user?.nickname || approval.user?.uuid || actorHandle;\n      body = `Pull request approved by ${actorName}.`;\n      classified = true;\n    }\n\n    if (entry.comment && !classified) {\n      const comment = entry.comment;\n      rawEventType = 'pr_commented';\n      changeType = 'commented';\n      actorName = comment.user?.display_name || actorName;\n      actorHandle = comment.user?.nickname || comment.user?.uuid || actorHandle;\n      const commentBody = comment.content?.raw || comment.content?.markup || '';\n      body = `New comment from ${actorName}:\\n${commentBody}`;\n      // Capture comment ID so replies can target this thread\n      if (comment.id) commentId = String(comment.id);\n      // Check if it's an inline code comment\n      if (comment.inline) {\n        const file = comment.inline.path || 'unknown file';\n        const line = comment.inline.to || comment.inline.from || '';\n        body = `Inline comment on ${file}${line ? ':' + line : ''} from ${actorName}:\\n${commentBody}`;\n        changeType = 'inline_comment';\n      }\n      classified = true;\n    }\n\n    if (classified) break;\n  }\n\n  // Fallback: no recent activity matched \u2014 use PR state\n  if (!classified) {\n    if (state === 'MERGED') {\n      rawEventType = 'pr_merged';\n      changeType = 'merged';\n      body = `Pull request merged into ${pr.destination?.branch?.name || 'target branch'}.`;\n    } else if (state === 'DECLINED') {\n      rawEventType = 'pr_declined';\n      changeType = 'declined';\n      body = `Pull request declined.`;\n    } else {\n      rawEventType = 'pr_updated';\n      changeType = 'no_change_detected';\n      body = `PR polled with no detectable changes. Current state: ${state}.`;\n    }\n  }\n}\n\nconst epoch = new Date(pr.updated_on || Date.now()).getTime();\n\nreturn {\n  json: {\n    event_id: 'evt_bb_pr_' + repoSlug.replace('/', '_') + '_' + pr.id + '_' + epoch,\n    timestamp: pr.updated_on || new Date().toISOString(),\n    source: {\n      platform: 'bitbucket',\n      connection_id: $workflow.id,\n      raw_event_type: rawEventType\n    },\n    actor: {\n      name: actorName,\n      email: '',\n      platform_handle: actorHandle\n    },\n    subject: {\n      type: 'pull_request',\n      id: repoSlug + '/PR-' + pr.id,\n      title: pr.title || '',\n      url: (pr.links && pr.links.html && pr.links.html.href) || ''\n    },\n    content: {\n      body: body,\n      attachments: [],\n      metadata: {\n        bb_repository: repoSlug,\n        bb_branch: pr.source?.branch?.name || '',\n        bb_target_branch: pr.destination?.branch?.name || '',\n        bb_state: state,\n        bb_reviewers: reviewers.map(r => r.display_name || r.nickname || ''),\n        bb_change_type: changeType,\n        bb_previous_state: previousState,\n        bb_new_state: newState,\n        bb_description: pr.description || '',\n        bb_comment_id: commentId,\n        participants: [\n          { role: 'author', name: pr.author?.display_name || '', handle: pr.author?.nickname || pr.author?.uuid || '' },\n          ...reviewers.map(r => ({ role: 'reviewer', name: r.display_name || '', handle: r.nickname || r.uuid || '' }))\n        ]\n      }\n    }\n  }\n};"
       },
       "name": "Classify Change",
       "type": "n8n-nodes-base.code",
@@ -293,6 +335,11 @@
             "node": "Get PR Activity",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Get PR Detail",
+            "type": "main",
+            "index": 0
           }
         ],
         []
@@ -324,6 +371,39 @@
       "main": [
         [
           {
+            "node": "Merge + Detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get PR Detail": {
+      "main": [
+        [
+          {
+            "node": "Wrap Detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wrap Detail": {
+      "main": [
+        [
+          {
+            "node": "Merge + Detail",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge + Detail": {
+      "main": [
+        [
+          {
             "node": "Classify Change",
             "type": "main",
             "index": 0
@@ -348,6 +428,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.06.1"
+    "laya_version": "2026.06.2"
   }
 }
