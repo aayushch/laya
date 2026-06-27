@@ -26,6 +26,7 @@ export interface WsMessage {
 		| 'group_carried_forward' | 'group_summary_updated'
 		| 'summary_updated'
 		| 'budget_status'
+		| 'agent_budget_status'
 		| 'omni_updated'
 		| 'settings_changed'
 		| 'open_compose'
@@ -320,6 +321,57 @@ export interface ProviderModels {
 /** Response from GET /settings/available-models */
 export interface AvailableModelsResponse {
 	providers: ProviderModels[];
+}
+
+/** An installed CLI agent usable as the inference backend (GET /settings/agent-backends) */
+export interface AgentBackend {
+	agent_id: string;
+	available: boolean;
+	path: string;
+	/** 'native' = the CLI enforces the JSON schema; 'best_effort' = inject schema + validate/retry */
+	tier: 'native' | 'best_effort';
+	hint: string;
+}
+
+/** Response from GET /settings/agent-backends */
+export interface AgentBackendsResponse {
+	backends: AgentBackend[];
+}
+
+/** Native usage-limit signal scraped from an agent (Claude Code's rate_limit_event) */
+export interface AgentRateLimit {
+	status: string | null;
+	resets_at: number | null;
+	rate_limit_type: string | null;
+}
+
+/** Per-agent window usage + limit (from GET /agent-budget) */
+export interface AgentBudgetAgentStatus {
+	agent_id: string;
+	window_hours: number;
+	window_token_limit: number;
+	pause_at_percent: number;
+	tokens_used: number;
+	calls: number;
+	percent: number | null;
+	rate_limit: AgentRateLimit | null;
+}
+
+/** Agent inference backend usage-limit budget status (GET /agent-budget) */
+export interface AgentBudgetStatus {
+	enabled: boolean;
+	agents: AgentBudgetAgentStatus[];
+	is_paused: boolean;
+	paused_until: string | null;
+	paused_reason: string | null;
+	paused_workflow_count: number;
+}
+
+/** Per-agent budget config sent on PUT /agent-budget */
+export interface AgentBudgetConfigInput {
+	window_token_limit: number;
+	window_hours: number;
+	pause_at_percent: number;
 }
 
 /** n8n integration settings */

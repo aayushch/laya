@@ -514,6 +514,32 @@ async def detect_agents() -> dict:
     return {"agent_paths": paths}
 
 
+# Human-facing hints shown in the Settings agent picker when an agent is unavailable
+# or needs setup beyond just being installed (validated against the real CLIs).
+_AGENT_BACKEND_HINTS: dict[str, str] = {
+    "claude_code": "Native structured output. Uses your Claude Code login (e.g. Teams plan).",
+    "codex_cli": "Best-effort structured output. Uses your Codex/ChatGPT login.",
+    "gemini_cli": "Best-effort structured output. Requires Gemini CLI auth (gemini → /auth).",
+    "pi_cli": "Best-effort structured output. Uses whatever model Pi is configured with.",
+}
+
+
+@router.get("/settings/agent-backends")
+async def agent_backends() -> dict:
+    """Per-agent availability + capability tier for the 'use an installed agent as the
+    inference backend' picker. Tier `native` = the CLI enforces the JSON schema for us;
+    `best_effort` = we inject the schema as text and validate/retry."""
+    from laya.llm.agent_backend import capabilities
+
+    backends = []
+    for cap in capabilities():
+        backends.append({
+            **cap,
+            "hint": _AGENT_BACKEND_HINTS.get(cap["agent_id"], ""),
+        })
+    return {"backends": backends}
+
+
 # ---------------------------------------------------------------------------
 # Custom prompt overrides
 # ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@
 """Tests for the EMIT pipeline step."""
 
 import json
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -195,6 +196,90 @@ class TestEmit:
         # yet (tier 1), it falls back to the prior card's header (tier 2).
         assert "Thread so far:" in second_text
         assert "Fix NPE in PaymentService" in second_text
+
+    async def test_created_at_is_event_time_not_now(
+        self, db, sample_event, sample_router_output_engineer,
+    ):
+        """Cards are stamped with the originating event's time, not emit/wall-clock
+        time — so a late-ingested event (e.g. after a paused space resumes) shows its
+        real time instead of 'just now'. sample_event.timestamp is 2026-02-22 14:30."""
+        await insert_test_event(db, sample_event.event_id)
+
+        stager_output = _make_stager_output()
+        with patch("laya.pipeline.emit.embed_document", new_callable=AsyncMock):
+            with patch("laya.pipeline.emit.resolve_semantic_entities", new_callable=AsyncMock, return_value=[]):
+                with patch("laya.pipeline.emit.manager.broadcast", new_callable=AsyncMock):
+                    with patch("laya.pipeline.emit.trigger_summary_update", new_callable=AsyncMock):
+                        card_id = await run_emit(
+                            sample_event, sample_router_output_engineer, stager_output,
+                        )
+
+        rows = await db.execute_fetchall(
+            "SELECT created_at, group_active_at FROM action_cards WHERE card_id = ?",
+            (card_id,),
+        )
+        assert rows[0]["created_at"] == "2026-02-22 14:30:00"
+        assert rows[0]["group_active_at"] == "2026-02-22 14:30:00"
+
+    async def test_carry_forward_uses_max_event_time_forward_only(
+        self, db, sample_event, sample_router_output_engineer,
+    ):
+        """Carry-forward bumps the whole entity group to its latest *event* time, and
+        an out-of-order older event never drags the group backward."""
+        # Same subject -> same entity_id; vary only event_id + timestamp.
+        older = sample_event.model_copy(update={
+            "event_id": "evt_morning",
+            "timestamp": datetime(2026, 2, 22, 10, 0, 0, tzinfo=timezone.utc),
+        })
+        newer = sample_event.model_copy(update={
+            "event_id": "evt_evening",
+            "timestamp": datetime(2026, 2, 22, 18, 0, 0, tzinfo=timezone.utc),
+        })
+        await insert_test_event(db, older.event_id)
+        await insert_test_event(db, newer.event_id)
+
+        stager_output = _make_stager_output()
+        with patch("laya.pipeline.emit.embed_document", new_callable=AsyncMock), \
+             patch("laya.pipeline.emit.resolve_semantic_entities", new_callable=AsyncMock, return_value=[]), \
+             patch("laya.pipeline.emit.manager.broadcast", new_callable=AsyncMock), \
+             patch("laya.pipeline.emit.trigger_summary_update", new_callable=AsyncMock), \
+             patch("laya.pipeline.context_grouping.resolve_context_group", new_callable=AsyncMock, return_value=None), \
+             patch("laya.pipeline.group_summary.trigger_group_summary_update", new_callable=AsyncMock):
+            # Emit older first, then newer -> group should bump forward to 18:00.
+            await run_emit(older, sample_router_output_engineer, stager_output)
+            await run_emit(newer, sample_router_output_engineer, stager_output)
+
+        rows = await db.execute_fetchall(
+            "SELECT event_id, created_at, group_active_at FROM action_cards"
+        )
+        by_event = {r["event_id"]: r for r in rows}
+        # Each card keeps its own event time as created_at...
+        assert by_event["evt_morning"]["created_at"] == "2026-02-22 10:00:00"
+        assert by_event["evt_evening"]["created_at"] == "2026-02-22 18:00:00"
+        # ...but the whole group carries forward to the latest activity (18:00).
+        assert by_event["evt_morning"]["group_active_at"] == "2026-02-22 18:00:00"
+        assert by_event["evt_evening"]["group_active_at"] == "2026-02-22 18:00:00"
+
+        # Now ingest a *third* event that is OLDER than the group's latest. The group
+        # must not move backward.
+        late_old = sample_event.model_copy(update={
+            "event_id": "evt_backfill",
+            "timestamp": datetime(2026, 2, 22, 9, 0, 0, tzinfo=timezone.utc),
+        })
+        await insert_test_event(db, late_old.event_id)
+        with patch("laya.pipeline.emit.embed_document", new_callable=AsyncMock), \
+             patch("laya.pipeline.emit.resolve_semantic_entities", new_callable=AsyncMock, return_value=[]), \
+             patch("laya.pipeline.emit.manager.broadcast", new_callable=AsyncMock), \
+             patch("laya.pipeline.emit.trigger_summary_update", new_callable=AsyncMock), \
+             patch("laya.pipeline.context_grouping.resolve_context_group", new_callable=AsyncMock, return_value=None), \
+             patch("laya.pipeline.group_summary.trigger_group_summary_update", new_callable=AsyncMock):
+            await run_emit(late_old, sample_router_output_engineer, stager_output)
+
+        rows = await db.execute_fetchall(
+            "SELECT group_active_at FROM action_cards"
+        )
+        # Still 18:00 across the board — the older backfilled event did not drag it back.
+        assert all(r["group_active_at"] == "2026-02-22 18:00:00" for r in rows)
 
     async def test_writes_audit_log(
         self, db, sample_event, sample_router_output_engineer,

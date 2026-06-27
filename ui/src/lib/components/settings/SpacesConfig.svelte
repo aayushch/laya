@@ -6,7 +6,8 @@
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
-	import type { Space, Source, AvailableWorkflow, Repo, ProviderModels } from '$lib/api/types';
+	import type { Space, Source, AvailableWorkflow, Repo, ProviderModels, AgentBackend } from '$lib/api/types';
+	import { CODING_AGENTS } from '$lib/config';
 	import ModelSelect from './ModelSelect.svelte';
 
 	const providers = [
@@ -64,6 +65,82 @@
 	let formCodingAgent = $state('');
 	let saving = $state(false);
 
+	// --- Per-space agent inference backend ---
+	// Same model as the global Models tab: structured roles (router/stager/omni) can run on
+	// an installed CLI agent (stored as `agent/<id>/<model>`); chat/coherence stay on a model
+	// provider. The coding-agent field above is a separate axis (engineer tasks), untouched.
+	const AGENT_ROLES = ['router', 'stager', 'omni'] as const;
+	const AGENT_LABELS: Record<string, string> = Object.fromEntries(
+		CODING_AGENTS.filter((a) => a.value !== 'none').map((a) => [a.value, a.label])
+	);
+	const AGENT_MODEL_PH: Record<string, string> = {
+		claude_code: 'claude-sonnet-4-6', codex_cli: 'gpt-5-codex',
+		gemini_cli: 'gemini-2.5-pro', pi_cli: 'lmstudio/qwen3.6-35b-a3b'
+	};
+	let agentBackends = $state<AgentBackend[]>([]);
+	let formAgentMode = $state(false);
+	let formSelectedAgent = $state('claude_code');
+	let formProviderBackup = $state<Record<string, string>>({});
+
+	const formModelAccessors: Record<string, { get: () => string; set: (v: string) => void }> = {
+		router: { get: () => formRouterModel, set: (v) => (formRouterModel = v) },
+		stager: { get: () => formStagerModel, set: (v) => (formStagerModel = v) },
+		omni: { get: () => formOmniModel, set: (v) => (formOmniModel = v) }
+	};
+
+	function parseAgentModel(v: string): { agentId: string; modelString: string } | null {
+		if (!v || !v.startsWith('agent/')) return null;
+		const parts = v.split('/');
+		return { agentId: parts[1] || '', modelString: parts.slice(2).join('/') };
+	}
+
+	function formAgentModelString(role: string): string {
+		const p = parseAgentModel(formModelAccessors[role].get());
+		return p ? p.modelString : '';
+	}
+
+	function inferFormAgentMode() {
+		const inferred = AGENT_ROLES.map((r) => parseAgentModel(formModelAccessors[r].get())).find(
+			(p) => p
+		);
+		formAgentMode = !!inferred;
+		formSelectedAgent = inferred?.agentId || 'claude_code';
+		formProviderBackup = {};
+	}
+
+	function setFormAgentMode(on: boolean) {
+		if (on === formAgentMode) return;
+		formAgentMode = on;
+		for (const r of AGENT_ROLES) {
+			const acc = formModelAccessors[r];
+			if (on) {
+				if (!parseAgentModel(acc.get())) {
+					formProviderBackup[r] = acc.get();
+					acc.set(`agent/${formSelectedAgent}`);
+				}
+			} else if (parseAgentModel(acc.get())) {
+				acc.set(formProviderBackup[r] ?? '');
+			}
+		}
+	}
+
+	function selectFormAgent(agentId: string) {
+		formSelectedAgent = agentId;
+		for (const r of AGENT_ROLES) {
+			const ms = formAgentModelString(r);
+			formModelAccessors[r].set(ms ? `agent/${agentId}/${ms}` : `agent/${agentId}`);
+		}
+	}
+
+	function handleFormAgentInput(role: string) {
+		return (e: Event) => {
+			const typed = (e.target as HTMLInputElement).value.trim();
+			formModelAccessors[role].set(
+				typed ? `agent/${formSelectedAgent}/${typed}` : `agent/${formSelectedAgent}`
+			);
+		};
+	}
+
 	// Source assignment state
 	let assigningSpaceId = $state<string | null>(null);
 	let selectedWorkflows = $state<Set<string>>(new Set());
@@ -101,6 +178,13 @@
 			availableModels = modelsRes.providers;
 			loaded = true;
 
+			try {
+				const backendsRes = await engineApi.getAgentBackends();
+				agentBackends = backendsRes.backends;
+			} catch (e) {
+				console.error('Failed to load agent backends:', e);
+			}
+
 			// Load repo assignments for all spaces
 			for (const s of spaces) {
 				loadSpaceRepos(s.space_id);
@@ -132,6 +216,7 @@
 		formTraceModel = '';
 		formOmniModel = '';
 		formCodingAgent = '';
+		inferFormAgentMode();
 	}
 
 	function startEdit(space: Space) {
@@ -147,6 +232,7 @@
 		formTraceModel = space.trace_model || '';
 		formOmniModel = space.omni_model || '';
 		formCodingAgent = space.coding_agent || '';
+		inferFormAgentMode();
 	}
 
 	function cancelForm() {
@@ -919,6 +1005,32 @@
 			<!-- svelte-ignore a11y_label_has_associated_control -->
 			<label class="mb-3 block text-laya-base text-surface-400">Model & Agent Configuration</label>
 			<div class="{$glassTheme ? 'rounded-lg border border-white/[0.06] divide-y divide-white/[0.05]' : 'rounded-lg border border-surface-700 divide-y divide-surface-700'}">
+				<!-- Inference backend: provider dropdowns vs installed agent (typed model strings) -->
+				<div class="px-4 py-3">
+					<div class="flex items-center gap-3">
+						<span class="text-laya-base text-surface-200">Backend</span>
+						<div class="ml-auto inline-flex rounded-md border {$glassTheme ? 'border-white/15' : 'border-surface-600'} p-0.5">
+							<button type="button" onclick={() => setFormAgentMode(false)}
+								class="rounded px-2.5 py-1 text-laya-base transition-colors {!formAgentMode ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-300'}">Provider</button>
+							<button type="button" onclick={() => setFormAgentMode(true)}
+								class="inline-flex items-center gap-1 rounded px-2.5 py-1 text-laya-base transition-colors {formAgentMode ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-300'}">Agent
+								<span class="rounded bg-laya-gold/25 px-1 text-laya-micro font-semibold uppercase tracking-wide text-laya-amber">Beta</span>
+							</button>
+						</div>
+					</div>
+					{#if formAgentMode}
+						<div class="mt-2 flex flex-wrap gap-1.5">
+							{#each agentBackends as b}
+								<button type="button" onclick={() => b.available && selectFormAgent(b.agent_id)} disabled={!b.available} title={b.hint}
+									class="flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-laya-secondary transition-colors {formSelectedAgent === b.agent_id ? 'border-laya-orange/40 bg-laya-orange/10 text-laya-orange' : 'border-surface-600 text-surface-300 hover:border-surface-500'} {!b.available ? 'cursor-not-allowed opacity-50' : ''}">
+									{AGENT_LABELS[b.agent_id] || b.agent_id}
+									<span class="rounded px-1 text-laya-micro {b.tier === 'native' ? 'bg-laya-gold/25 text-laya-amber' : 'bg-surface-700 text-surface-400'}">{b.tier === 'native' ? 'native' : 'best-effort'}</span>
+								</button>
+							{/each}
+						</div>
+						<p class="mt-1.5 text-laya-micro text-surface-500">Chat &amp; Coherence keep using a model provider (agents can’t stream those).</p>
+					{/if}
+				</div>
 				<!-- Pipeline Models -->
 				<div class="px-4 py-3 flex items-center gap-4">
 					<div class="min-w-0 flex-1">
@@ -926,13 +1038,19 @@
 						<p class="text-laya-secondary text-surface-500">Classifies incoming events</p>
 					</div>
 					<div class="w-48 shrink-0">
-						<ModelSelect
-							bind:value={formRouterModel}
-							providers={availableModels}
-							onchange={(v) => (formRouterModel = v)}
-							allowEmpty={true}
-							emptyLabel="Use default"
-						/>
+						{#if formAgentMode}
+							<input type="text" value={formAgentModelString('router')} onchange={handleFormAgentInput('router')}
+								placeholder={AGENT_MODEL_PH[formSelectedAgent] || 'model (blank = default)'} spellcheck="false" autocapitalize="off"
+								class="w-full rounded-md border px-3 py-2 font-mono text-laya-base text-surface-100 placeholder:text-surface-500 focus:outline-none {$glassTheme ? 'glass-input' : 'border-surface-600 bg-surface-700 focus:border-surface-500'}" />
+						{:else}
+							<ModelSelect
+								bind:value={formRouterModel}
+								providers={availableModels}
+								onchange={(v) => (formRouterModel = v)}
+								allowEmpty={true}
+								emptyLabel="Use default"
+							/>
+						{/if}
 					</div>
 				</div>
 				<div class="px-4 py-3 flex items-center gap-4">
@@ -941,13 +1059,19 @@
 						<p class="text-laya-secondary text-surface-500">Stages actions from events</p>
 					</div>
 					<div class="w-48 shrink-0">
-						<ModelSelect
-							bind:value={formStagerModel}
-							providers={availableModels}
-							onchange={(v) => (formStagerModel = v)}
-							allowEmpty={true}
-							emptyLabel="Use default"
-						/>
+						{#if formAgentMode}
+							<input type="text" value={formAgentModelString('stager')} onchange={handleFormAgentInput('stager')}
+								placeholder={AGENT_MODEL_PH[formSelectedAgent] || 'model (blank = default)'} spellcheck="false" autocapitalize="off"
+								class="w-full rounded-md border px-3 py-2 font-mono text-laya-base text-surface-100 placeholder:text-surface-500 focus:outline-none {$glassTheme ? 'glass-input' : 'border-surface-600 bg-surface-700 focus:border-surface-500'}" />
+						{:else}
+							<ModelSelect
+								bind:value={formStagerModel}
+								providers={availableModels}
+								onchange={(v) => (formStagerModel = v)}
+								allowEmpty={true}
+								emptyLabel="Use default"
+							/>
+						{/if}
 					</div>
 				</div>
 				<!-- Interactive Models -->
@@ -987,13 +1111,19 @@
 						<p class="text-laya-secondary text-surface-500">Cross-platform digest</p>
 					</div>
 					<div class="w-48 shrink-0">
-						<ModelSelect
-							bind:value={formOmniModel}
-							providers={availableModels}
-							onchange={(v) => (formOmniModel = v)}
-							allowEmpty={true}
-							emptyLabel="Use default"
-						/>
+						{#if formAgentMode}
+							<input type="text" value={formAgentModelString('omni')} onchange={handleFormAgentInput('omni')}
+								placeholder={AGENT_MODEL_PH[formSelectedAgent] || 'model (blank = default)'} spellcheck="false" autocapitalize="off"
+								class="w-full rounded-md border px-3 py-2 font-mono text-laya-base text-surface-100 placeholder:text-surface-500 focus:outline-none {$glassTheme ? 'glass-input' : 'border-surface-600 bg-surface-700 focus:border-surface-500'}" />
+						{:else}
+							<ModelSelect
+								bind:value={formOmniModel}
+								providers={availableModels}
+								onchange={(v) => (formOmniModel = v)}
+								allowEmpty={true}
+								emptyLabel="Use default"
+							/>
+						{/if}
 					</div>
 				</div>
 				<!-- Coding Agent -->

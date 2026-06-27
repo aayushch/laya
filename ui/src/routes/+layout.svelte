@@ -22,7 +22,7 @@
 	import { cardSize } from '$lib/stores/cardSize';
 	import { feedViewMode } from '$lib/stores/feedView';
 	import { fly } from 'svelte/transition';
-	import { budgetPaused, loadBudgetStatus, handleBudgetWsMessage, costAmount, budgetLabel, budgetRatio } from '$lib/stores/budget';
+	import { budgetPaused, loadBudgetStatus, handleBudgetWsMessage, costAmount, budgetLabel, budgetRatio, agentBudgetPaused, loadAgentBudgetStatus, handleAgentBudgetWsMessage, agentUsageLabel, agentUsageRatio } from '$lib/stores/budget';
 	import { feedFilters, loadFeedFilters, saveFeedFilters, filtersLoaded, feedDate, feedPrevDate, feedNextDate, localToday } from '$lib/stores/feedFilters';
 	import { spaces, loadSpaces } from '$lib/stores/spaces';
 	import { hasAuditFailures, loadAuditFailureSummary, handleAuditFailureWs } from '$lib/stores/auditFailures';
@@ -218,6 +218,7 @@
 		loadSpaces();
 		loadFeedFilters();
 		loadBudgetStatus();
+		loadAgentBudgetStatus();
 		loadAuditFailureSummary();
 	});
 
@@ -235,13 +236,17 @@
 		if (msg && msg.type === 'budget_status') {
 			handleBudgetWsMessage(msg as any);
 		}
+		if (msg && msg.type === 'agent_budget_status') {
+			handleAgentBudgetWsMessage(msg as any);
+		}
 	});
 
-	// Refresh cost data when pipeline produces new cards (implies LLM usage)
+	// Refresh cost + agent-usage data when pipeline produces new cards (implies LLM usage)
 	$effect(() => {
 		const msg = $lastMessage;
 		if (msg && (msg.type === 'card_created' || msg.type === 'card_updated')) {
 			loadBudgetStatus();
+			loadAgentBudgetStatus();
 		}
 	});
 
@@ -775,6 +780,17 @@
 			</div>
 		{/if}
 
+		<!-- Agent usage-limit paused banner -->
+		{#if $agentBudgetPaused}
+			<div class="flex items-center justify-center gap-2 bg-red-500/15 border-b border-red-500/30 px-4 py-1.5">
+				<svg class="h-3.5 w-3.5 text-red-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+				</svg>
+				<span class="text-xs text-red-300">Agent usage limit reached — ingestion paused until the usage window resets</span>
+				<a href="/settings?tab=models&section=agent-usage" class="ml-1 text-xs font-medium text-red-400 underline underline-offset-2 hover:text-red-300">Manage</a>
+			</div>
+		{/if}
+
 		<!-- Update available banner -->
 		<UpdateBanner />
 
@@ -833,6 +849,25 @@
 							</a>
 						{/if}
 					</div>
+				{/if}
+				<!-- Agent usage / limit widget (shown when an agent backend has a usage limit) -->
+				{#if $agentUsageLabel}
+					<a
+						href="/settings?tab=models&section=agent-usage"
+						class="flex items-center gap-1.5 rounded-md px-1.5 py-0.5 font-medium tabular-nums transition-colors hover:bg-surface-800 {$agentBudgetPaused ? 'text-red-400 hover:text-red-300' : $agentUsageRatio != null && $agentUsageRatio >= 0.75 ? 'text-amber-400 hover:text-amber-300' : 'text-surface-400 hover:text-surface-200'}"
+						title="Agent usage this window — click to manage limits"
+					>
+						<span class="text-surface-600">Usage</span>
+						{$agentUsageLabel}
+						{#if $agentUsageRatio != null}
+							<div class="h-1 w-10 rounded-full bg-surface-700 overflow-hidden">
+								<div
+									class="h-full rounded-full transition-all duration-300 {$agentUsageRatio >= 1 ? 'bg-red-400' : $agentUsageRatio >= 0.75 ? 'bg-amber-400' : 'bg-emerald-400'}"
+									style="width: {$agentUsageRatio * 100}%"
+								></div>
+							</div>
+						{/if}
+					</a>
 				{/if}
 			</div>
 		</footer>

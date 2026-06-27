@@ -370,12 +370,17 @@ async def _run_workers_pipeline(
         card_id = f"card_{_uuid.uuid4().hex[:12]}"
         entity_id = f"{event.source.platform}:{event.subject.type}:{event.subject.id}"
         db = await get_db()
-        now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        # Stamp created_at/group_active_at with the EVENT's time, not wall-clock now \u2014
+        # the worker path's emit UPDATE never rewrites created_at, so this is the only
+        # place a worker card's time is set. Without it, late-ingested cards read "just now".
+        from laya.pipeline.emit import _event_ts
+        ev_ts = _event_ts(event)
         await db.execute(
             """INSERT INTO action_cards
                (card_id, event_id, priority, persona, category, header, summary,
-                status, privacy_tier, has_workspace, entity_id, space_id, group_active_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                status, privacy_tier, has_workspace, entity_id, space_id,
+                created_at, group_active_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 card_id,
                 event.event_id,
@@ -389,7 +394,8 @@ async def _run_workers_pipeline(
                 False,
                 entity_id,
                 space_id,
-                now_ts,
+                ev_ts,
+                ev_ts,
             ),
         )
         await db.commit()
@@ -631,13 +637,20 @@ def _batch_routing_allowed() -> bool:
 
 
 def _router_is_local_provider() -> bool:
-    """True if the configured router model is a self-hosted/custom provider (LMStudio,
-    Ollama, etc.). Batch routing balloons the prompt to ~10× and reliably overflows a
-    local model's loaded context window, so we route individually for these providers."""
+    """True if the configured router model should NOT be batch-routed.
+
+    Batch routing balloons the prompt to ~10×. For self-hosted/custom providers
+    (LMStudio, Ollama) that reliably overflows the loaded context window; for the agent
+    inference backend each call spawns a process and spends the user's plan quota, so the
+    big batch prompt is wasteful and slow. Both route individually instead."""
     try:
+        from laya.llm.agent_backend import is_agent_model
         from laya.llm.client import _get_model_for_role, _resolve_custom_provider
 
-        return _resolve_custom_provider(_get_model_for_role("router")) is not None
+        router_model = _get_model_for_role("router")
+        if is_agent_model(router_model):
+            return True
+        return _resolve_custom_provider(router_model) is not None
     except Exception:
         return False
 

@@ -91,3 +91,47 @@ async def manual_resume() -> dict:
         "resumed_count": result["resumed_count"],
         "errors": result["errors"],
     }
+
+
+# ---------------------------------------------------------------------------
+# Agent inference backend — usage-limit budgeting (window-based, auto-resume)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/agent-budget")
+async def get_agent_budget() -> dict:
+    """Per-agent window usage, limits, native rate-limit signal, and pause state."""
+    from laya.pipeline.agent_budget import get_agent_budget_status
+
+    return await get_agent_budget_status()
+
+
+@router.put("/agent-budget")
+async def set_agent_budget(body: dict) -> dict:
+    """Update agent-usage budget config.
+
+    Body: {"enabled": true, "agents": {"claude_code": {"window_token_limit": 5000000,
+           "window_hours": 5, "pause_at_percent": 85}}}
+    """
+    from laya.pipeline.agent_budget import evaluate_agent_budget, update_agent_budget_config
+
+    enabled = bool(body.get("enabled", False))
+    agents = body.get("agents")
+    config = update_agent_budget_config(enabled, agents)
+    log.info("agent_budget_config_updated", enabled=enabled, agents=list(config["agents"].keys()))
+
+    # Run an immediate check so a just-lowered limit takes effect right away.
+    if enabled:
+        await evaluate_agent_budget()
+
+    return {"status": "ok", **config}
+
+
+@router.post("/agent-budget/resume")
+async def manual_resume_agent_budget() -> dict:
+    """Manually resume workflows paused by an agent usage-limit."""
+    from laya.pipeline.agent_budget import resume_from_agent_budget
+
+    result = await resume_from_agent_budget()
+    log.info("agent_budget_manual_resume", **result)
+    return {"status": "resumed", **result}

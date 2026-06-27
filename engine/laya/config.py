@@ -40,6 +40,13 @@ DEFAULT_SETTINGS = {
         "codex_cli": "",
         "pi_cli": "",
     },
+    # Usage-limit budgeting for the agent inference backend. Per-agent token budget over a
+    # rolling window (agents bill against usage limits, not $). agents maps agent_id ->
+    # {window_token_limit, window_hours, pause_at_percent}. Runtime pause state lives in DB.
+    "agent_budgets": {
+        "enabled": False,
+        "agents": {},
+    },
     "privacy": {
         "tier3_sources": ["gmail", "outlook", "slack_dm"],
         "tier3_processing": "cloud_with_warning",

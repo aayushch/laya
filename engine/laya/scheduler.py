@@ -511,6 +511,15 @@ async def _scheduler_loop() -> None:
             except Exception as e:
                 log.error("budget_month_rollover_failed", error=str(e))
 
+            # --- Agent usage-budget auto-resume (window reset) ---
+            # Agents pause on usage limits and auto-resume once the window resets; this
+            # tick is what makes "defer + auto-resume" happen without user intervention.
+            try:
+                from laya.pipeline.agent_budget import maybe_resume_agent_budget
+                await maybe_resume_agent_budget()
+            except Exception as e:
+                log.error("agent_budget_resume_check_failed", error=str(e))
+
             # --- Classification learning (every 6 hours) ---
             tuning = settings.get("tuning", {})
             cls_learn_hours = int(tuning.get("classification_learn_interval_hours", 6))

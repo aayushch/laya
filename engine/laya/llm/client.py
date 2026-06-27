@@ -443,6 +443,103 @@ async def llm_call(
         if space_model:
             model = _add_provider_prefix(space_model)
 
+    # Agent inference backend: a resolved model of `agent/<id>/<model_string>` means the
+    # user picked an installed CLI agent as the LLM (no API key / no local VRAM). Dispatch
+    # to the agent subprocess instead of LiteLLM, but keep the same audit-log + budget side
+    # effects and LLMResponse shape so the contract is identical to the API path.
+    from laya.llm import agent_backend
+
+    if agent_backend.is_agent_model(model):
+        agent_messages = _inject_current_datetime(messages)
+        start = time.monotonic()
+        try:
+            ar = await agent_backend.agent_llm_call(
+                model_id=model,
+                messages=agent_messages,
+                response_schema=response_schema,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                num_retries=num_retries,
+            )
+            elapsed_ms = int((time.monotonic() - start) * 1000)
+            result = LLMResponse(
+                content=ar.content,
+                parsed=ar.parsed,
+                model=ar.effective_model or model,
+                input_tokens=ar.input_tokens,
+                output_tokens=ar.output_tokens,
+                latency_ms=elapsed_ms,
+                finish_reason=ar.finish_reason,
+                truncated=ar.truncated,
+            )
+            # Same audit semantics as the LiteLLM path: a schema request that yields no
+            # parsed JSON is a failed call even though the process exited cleanly.
+            _audit_success = True
+            _audit_error = None
+            if response_schema and not result.parsed:
+                _audit_success = False
+                _audit_error = "Structured output requested but agent response was not valid JSON"
+            _meta: dict[str, Any] = {"backend": "agent", "agent_model": model}
+            if ar.cost_usd is not None:
+                _meta["cost_usd"] = ar.cost_usd
+            await log_to_audit(
+                event_id=event_id,
+                card_id=card_id,
+                step=step,
+                model=model,
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+                latency_ms=result.latency_ms,
+                success=_audit_success,
+                error=_audit_error,
+                metadata=_meta,
+            )
+            try:
+                from laya.pipeline.budget import check_budget
+                from laya.tasks import create_task as create_tracked_task
+
+                create_tracked_task(check_budget())
+            except Exception:
+                pass
+            # Agent usage-budget: persist the native rate-limit signal (Claude), then
+            # evaluate window limits (may pause ingestion until the usage window resets).
+            try:
+                from laya.pipeline.agent_budget import evaluate_agent_budget, record_rate_limit
+                from laya.tasks import create_task as create_tracked_task
+
+                agent_id = agent_backend.parse_agent_model_id(model)[0]
+                if ar.rate_limit_info:
+                    await record_rate_limit(agent_id, ar.rate_limit_info)
+                create_tracked_task(evaluate_agent_budget())
+            except Exception:
+                pass
+            log.info(
+                "llm_call_complete",
+                role=role,
+                model=model,
+                backend="agent",
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+                latency_ms=elapsed_ms,
+                finish_reason=result.finish_reason,
+            )
+            return result
+        except Exception as e:
+            elapsed_ms = int((time.monotonic() - start) * 1000)
+            log.error("llm_call_failed", role=role, model=model, backend="agent", error=str(e))
+            await log_to_audit(
+                event_id=event_id,
+                card_id=card_id,
+                step=step,
+                model=model,
+                input_tokens=0,
+                output_tokens=0,
+                latency_ms=elapsed_ms,
+                success=False,
+                error=str(e),
+            )
+            raise
+
     # Resolve API key: space override → global (already in env)
     space_api_key = None
     if space_id:
@@ -818,6 +915,20 @@ async def llm_call_streaming(
         space_model = await _get_space_model(role, space_id)
         if space_model:
             model = _add_provider_prefix(space_model)
+
+    # The agent inference backend can't drive a streaming tool-loop (chat / Coherence),
+    # so those roles must stay on an API or local model. The Models UI keeps chat/trace as
+    # dropdowns (not agent text inputs) to prevent this; this guard is a defensive backstop.
+    from laya.llm import agent_backend
+
+    if agent_backend.is_agent_model(model):
+        msg = (
+            "The selected agent backend doesn't support streaming chat/Coherence yet. "
+            "Choose an API or local model for the chat and trace roles."
+        )
+        log.error("llm_stream_agent_unsupported", role=role, model=model)
+        yield StreamEvent(type="error", content=msg, model=model)
+        return
 
     space_api_key = None
     if space_id:

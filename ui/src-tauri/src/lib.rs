@@ -707,6 +707,14 @@ pub fn run() {
                 )?;
 
                 app.set_menu(menu)?;
+
+                // macOS injects the standard Window-menu items (Move & Resize tiling,
+                // Fill, Center, Move to <Display>, Bring All to Front, the window list)
+                // only when our "Window" submenu is registered as NSApp.windowsMenu.
+                // Without this, none of those items appear. Requires muda >= 0.17.2 —
+                // 0.17.1's impl points setWindowsMenu at a detached NSMenu (tauri#13605).
+                #[cfg(target_os = "macos")]
+                window_menu.set_as_windows_menu_for_nsapp()?;
             }
 
             // Custom titlebar: create overlay titlebar via decorum plugin.

@@ -33,11 +33,14 @@ import type {
 	SpaceApiKeysResponse,
 	SpaceReposResponse,
 	AvailableModelsResponse,
+	AgentBackendsResponse,
 	CustomProvider,
 	CustomProviderTestResult,
 	DiscoveredModel,
 	BudgetConfig,
 	MonthlyCostEntry,
+	AgentBudgetStatus,
+	AgentBudgetConfigInput,
 	EgressExecuteRequest,
 	EgressExecuteResponse,
 	EgressPreviewResponse,
@@ -195,6 +198,10 @@ export const engineApi = {
 
 	detectAgentPaths: () =>
 		request<{ agent_paths: Record<string, string> }>('/settings/detect-agents'),
+
+	// Installed CLI agents usable as the inference backend (availability + capability tier)
+	getAgentBackends: () =>
+		request<AgentBackendsResponse>('/settings/agent-backends'),
 
 	// API Keys
 	setApiKey: (provider: string, apiKey: string) =>
@@ -724,6 +731,20 @@ export const engineApi = {
 
 	resumeBudget: () =>
 		request<{ status: string; resumed_count: number; errors: Array<{ workflow_id: string; error?: string; issues?: string[] }> }>('/budget/resume', {
+			method: 'POST'
+		}),
+
+	// Agent inference backend — usage-limit budget (window-based, auto-resume)
+	getAgentBudget: () => request<AgentBudgetStatus>('/agent-budget'),
+
+	updateAgentBudget: (config: { enabled: boolean; agents: Record<string, AgentBudgetConfigInput> }) =>
+		request<{ status: string } & AgentBudgetStatus>('/agent-budget', {
+			method: 'PUT',
+			body: JSON.stringify(config)
+		}),
+
+	resumeAgentBudget: () =>
+		request<{ status: string; resumed_count: number; errors: Array<{ workflow_id: string; error?: string; issues?: string[] }> }>('/agent-budget/resume', {
 			method: 'POST'
 		}),
 

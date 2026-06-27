@@ -3,7 +3,7 @@
 
 import { writable, derived } from 'svelte/store';
 import { engineApi } from '$lib/api/engine';
-import type { BudgetConfig } from '$lib/api/types';
+import type { BudgetConfig, AgentBudgetStatus } from '$lib/api/types';
 
 export const budgetPaused = writable(false);
 
@@ -71,5 +71,60 @@ export function handleBudgetWsMessage(msg: { type: string; paused?: boolean }) {
 		budgetPaused.set(msg.paused);
 		// Refresh full cost data when budget status changes (e.g. pause/resume)
 		loadBudgetStatus();
+	}
+}
+
+// ── Agent inference backend usage limits (window-based) ──────────────────
+// Parallel to the $ budget above, for when an installed CLI agent is the inference
+// backend: agents bill against usage limits, so the footer shows usage / limit too.
+
+export const agentBudgetPaused = writable(false);
+export const agentBudgetData = writable<AgentBudgetStatus | null>(null);
+
+function fmtTokens(n: number): string {
+	if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+	if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
+	return `${n}`;
+}
+
+/** The binding agent — highest % among agents that have a token limit set. */
+export const agentUsageTop = derived(agentBudgetData, ($d) => {
+	if (!$d || !$d.enabled) return null;
+	const withLimit = ($d.agents || []).filter((a) => a.window_token_limit > 0);
+	if (!withLimit.length) return null;
+	return withLimit.reduce((a, b) => ((b.percent ?? 0) > (a.percent ?? 0) ? b : a));
+});
+
+/** Formatted "1.2M / 5.0M" — links to settings cost control (null when nothing to show). */
+export const agentUsageLabel = derived(agentUsageTop, ($t) =>
+	$t ? `${fmtTokens($t.tokens_used)} / ${fmtTokens($t.window_token_limit)}` : null
+);
+
+/** Agent usage ratio 0-1 (null when no agent limit configured). */
+export const agentUsageRatio = derived(agentUsageTop, ($t) =>
+	$t && $t.window_token_limit > 0 ? Math.min($t.tokens_used / $t.window_token_limit, 1) : null
+);
+
+let _agentDebounce: ReturnType<typeof setTimeout> | null = null;
+
+/** Debounced agent-usage fetch (mirrors loadBudgetStatus). */
+export function loadAgentBudgetStatus() {
+	if (_agentDebounce) clearTimeout(_agentDebounce);
+	_agentDebounce = setTimeout(async () => {
+		_agentDebounce = null;
+		try {
+			const data = await engineApi.getAgentBudget();
+			agentBudgetData.set(data);
+			agentBudgetPaused.set(data.is_paused);
+		} catch {
+			// Engine not ready yet — ignore
+		}
+	}, 5000);
+}
+
+export function handleAgentBudgetWsMessage(msg: { type: string; paused?: boolean }) {
+	if (msg.type === 'agent_budget_status' && typeof msg.paused === 'boolean') {
+		agentBudgetPaused.set(msg.paused);
+		loadAgentBudgetStatus();
 	}
 }

@@ -23,6 +23,22 @@ from laya.workers.base import WorkerResult
 
 log = structlog.get_logger()
 
+
+def _event_ts(event: LayaEvent) -> str:
+    """The originating event's platform time, formatted to match SQLite's
+    CURRENT_TIMESTAMP (`%Y-%m-%d %H:%M:%S`, naive UTC).
+
+    Cards are stamped with this — NOT wall-clock emit time — so that events
+    ingested late (e.g. after a paused space is resumed) show their real time
+    in the feed instead of "just now", and bucket to their true calendar date.
+    The true ingest time is still recoverable from `events.created_at`.
+    """
+    ts = event.timestamp
+    if ts.tzinfo is None:  # defensive: some workflows may send naive UTC
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ts.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
 # Human-readable subject type labels for embedding text
 _SUBJECT_LABELS = {
     "ticket": "issue",
@@ -255,13 +271,16 @@ async def run_emit(
             ),
         )
     else:
+        # created_at / group_active_at are the EVENT's time, not emit time — see
+        # _event_ts. Without this, late-ingested cards read "just now".
+        ev_ts = _event_ts(event)
         await db.execute(
             """INSERT INTO action_cards
                (card_id, event_id, priority, persona, category, header, summary,
                 intelligence, staged_output, suggested_actions, status,
                 privacy_tier, has_workspace, confidence, router_model, stager_model,
-                entity_id, source_ref, source_url, space_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                entity_id, source_ref, source_url, space_id, created_at, group_active_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 card_id,
                 event.event_id,
@@ -283,6 +302,8 @@ async def run_emit(
                 source_ref,
                 source_url,
                 space_id,
+                ev_ts,
+                ev_ts,
             ),
         )
 
@@ -301,11 +322,18 @@ async def run_emit(
         except Exception as e:
             log.warning("tag_persist_failed", card_id=card_id, error=str(e))
 
-    # Carry forward: update group_active_at for ALL cards in this entity group
-    now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    # Carry forward: bump group_active_at for ALL cards in this entity group to the
+    # group's latest ACTIVITY time. The just-inserted card carries its own event time
+    # (see _event_ts), so MAX(group_active_at) = max(existing, this event) — forward-only.
+    # Using the event time (not wall-clock now) means an out-of-order/late-ingested older
+    # event can never drag a group backward, and backlogged groups bucket to their real date.
     await db.execute(
-        "UPDATE action_cards SET group_active_at = ? WHERE entity_id = ?",
-        (now_ts, entity_id),
+        """UPDATE action_cards
+           SET group_active_at = (
+               SELECT MAX(group_active_at) FROM action_cards WHERE entity_id = ?
+           )
+           WHERE entity_id = ?""",
+        (entity_id, entity_id),
     )
     await db.commit()
 

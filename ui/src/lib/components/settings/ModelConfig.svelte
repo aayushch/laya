@@ -6,9 +6,10 @@
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
-	import type { ProviderModels, CustomProvider, CustomProviderTestResult, DiscoveredModel, PipelineSettings, BudgetConfig, MonthlyCostEntry } from '$lib/api/types';
-	import { budgetPaused, loadBudgetStatus } from '$lib/stores/budget';
+	import type { ProviderModels, CustomProvider, CustomProviderTestResult, DiscoveredModel, PipelineSettings, BudgetConfig, MonthlyCostEntry, AgentBackend, AgentBudgetStatus } from '$lib/api/types';
+	import { budgetPaused, loadBudgetStatus, loadAgentBudgetStatus } from '$lib/stores/budget';
 	import { portal } from '$lib/actions/portal';
+	import { CODING_AGENTS } from '$lib/config';
 	import ModelSelect from './ModelSelect.svelte';
 
 	let guideTooltip = $state<{ text: string; top: number; left: number } | null>(null);
@@ -54,6 +55,114 @@
 		omni: 'claude-sonnet-4-6',
 		local: 'ollama/llama3'
 	});
+
+	// --- Agent inference backend (use an installed CLI agent as the LLM) ---
+	// Only the structured, non-streaming roles can run on an agent. Chat + Coherence need
+	// a streaming tool-loop the agents can't run for us, so they stay on a model/local
+	// provider (keep their dropdowns) even when the agent backend is selected.
+	const AGENT_ROLES = ['router', 'stager', 'omni'];
+	const DEFAULT_MODELS: Record<string, string> = {
+		router: 'claude-haiku-4-5', stager: 'claude-sonnet-4-6', omni: 'claude-sonnet-4-6'
+	};
+	const AGENT_LABELS: Record<string, string> = Object.fromEntries(
+		CODING_AGENTS.filter((a) => a.value !== 'none').map((a) => [a.value, a.label])
+	);
+	const AGENT_MODEL_PLACEHOLDERS: Record<string, string> = {
+		claude_code: 'e.g. claude-sonnet-4-6 — blank uses Claude Code’s default',
+		codex_cli: 'e.g. gpt-5-codex — blank uses Codex’s default',
+		gemini_cli: 'e.g. gemini-2.5-pro — blank uses Gemini’s default',
+		pi_cli: 'e.g. lmstudio/qwen3.6-35b-a3b — blank uses Pi’s default'
+	};
+
+	let agentMode = $state(false);
+	let selectedAgent = $state('claude_code');
+	let agentBackends = $state<AgentBackend[]>([]);
+	let providerBackup = $state<Record<string, string>>({});
+	let selectedBackend = $derived(agentBackends.find((b) => b.agent_id === selectedAgent));
+
+	// --- Agent usage-limit budget (window-based, auto-resume) ---
+	let agentBudgetEnabled = $state(false);
+	let agentBudgetAgents = $state<Record<string, { window_token_limit: number | null; window_hours: number; pause_at_percent: number }>>({});
+	let agentBudgetStatus = $state<AgentBudgetStatus | null>(null);
+	let savingAgentBudget = $state(false);
+	let resumingAgentBudget = $state(false);
+	let agentBudgetTimer: ReturnType<typeof setTimeout> | null = null;
+
+	// Seed a default config row for every available agent so the inputs can bind.
+	$effect(() => {
+		for (const b of agentBackends) {
+			if (b.available && !agentBudgetAgents[b.agent_id]) {
+				agentBudgetAgents[b.agent_id] = { window_token_limit: null, window_hours: 5, pause_at_percent: 85 };
+			}
+		}
+	});
+
+	function agentStatusFor(agentId: string) {
+		return agentBudgetStatus?.agents.find((a) => a.agent_id === agentId) ?? null;
+	}
+	function fmtTokensShort(n: number): string {
+		if (n >= 1_000_000) return (n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1) + 'M';
+		if (n >= 1_000) return Math.round(n / 1_000) + 'K';
+		return '' + n;
+	}
+
+	async function loadAgentBudget() {
+		try {
+			const data = await engineApi.getAgentBudget();
+			agentBudgetStatus = data;
+			agentBudgetEnabled = data.enabled;
+			for (const a of data.agents) {
+				agentBudgetAgents[a.agent_id] = {
+					window_token_limit: a.window_token_limit || null,
+					window_hours: a.window_hours,
+					pause_at_percent: a.pause_at_percent,
+				};
+			}
+		} catch (e) {
+			console.error('Failed to load agent budget:', e);
+		}
+	}
+
+	async function saveAgentBudget() {
+		savingAgentBudget = true;
+		try {
+			const agents: Record<string, { window_token_limit: number; window_hours: number; pause_at_percent: number }> = {};
+			for (const [id, c] of Object.entries(agentBudgetAgents)) {
+				if (c.window_token_limit && c.window_token_limit > 0) {
+					agents[id] = {
+						window_token_limit: Math.round(c.window_token_limit),
+						window_hours: c.window_hours || 5,
+						pause_at_percent: c.pause_at_percent || 85,
+					};
+				}
+			}
+			await engineApi.updateAgentBudget({ enabled: agentBudgetEnabled, agents });
+			await loadAgentBudget();
+			loadAgentBudgetStatus();
+		} catch (e) {
+			console.error('Failed to save agent budget:', e);
+		} finally {
+			savingAgentBudget = false;
+		}
+	}
+
+	function debounceSaveAgentBudget() {
+		if (agentBudgetTimer) clearTimeout(agentBudgetTimer);
+		agentBudgetTimer = setTimeout(saveAgentBudget, 600);
+	}
+
+	async function handleResumeAgent() {
+		resumingAgentBudget = true;
+		try {
+			await engineApi.resumeAgentBudget();
+			await loadAgentBudget();
+			loadAgentBudgetStatus();
+		} catch (e) {
+			console.error('Failed to resume agent budget:', e);
+		} finally {
+			resumingAgentBudget = false;
+		}
+	}
 
 	let apiKeys = $state<Record<string, boolean>>({
 		anthropic: false,
@@ -210,7 +319,21 @@
 			if (settings.pipeline) pipeline = { ...pipeline, ...settings.pipeline };
 			customProviders = providersResp.providers;
 			loaded = true;
-			await Promise.all([fetchModels(), loadBudget()]);
+			// Infer agent-backend mode from the saved structured-role values.
+			const inferred = AGENT_ROLES
+				.map((r) => parseAgentModel(models[r as keyof typeof models]))
+				.find((p) => p);
+			if (inferred) {
+				agentMode = true;
+				if (inferred.agentId) selectedAgent = inferred.agentId;
+			}
+			try {
+				const backendsResp = await engineApi.getAgentBackends();
+				agentBackends = backendsResp.backends;
+			} catch (e) {
+				console.error('Failed to load agent backends:', e);
+			}
+			await Promise.all([fetchModels(), loadBudget(), loadAgentBudget()]);
 		} catch (e) {
 			console.error('Failed to load settings:', e);
 		}
@@ -242,6 +365,61 @@
 	function handleModelChange(role: string) {
 		return (value: string) => {
 			models[role as keyof typeof models] = value;
+			saveModels();
+		};
+	}
+
+	// --- Agent backend helpers ---
+	// A stage's stored value is `agent/<agentId>/<modelString>` (or `agent/<agentId>` for the
+	// agent's default model). Splitting keeps slugs with their own slashes (lmstudio/…) intact.
+	function parseAgentModel(v: string): { agentId: string; modelString: string } | null {
+		if (!v || !v.startsWith('agent/')) return null;
+		const parts = v.split('/');
+		return { agentId: parts[1] || '', modelString: parts.slice(2).join('/') };
+	}
+
+	function agentModelString(role: string): string {
+		const p = parseAgentModel(models[role as keyof typeof models]);
+		return p ? p.modelString : '';
+	}
+
+	function setAgentMode(on: boolean) {
+		if (on === agentMode) return;
+		agentMode = on;
+		if (on) {
+			// Switch structured roles to the agent; stash their provider model so we can restore it.
+			for (const r of AGENT_ROLES) {
+				if (!parseAgentModel(models[r as keyof typeof models])) {
+					providerBackup[r] = models[r as keyof typeof models];
+					models[r as keyof typeof models] = `agent/${selectedAgent}`;
+				}
+			}
+		} else {
+			for (const r of AGENT_ROLES) {
+				if (parseAgentModel(models[r as keyof typeof models])) {
+					models[r as keyof typeof models] = providerBackup[r] || DEFAULT_MODELS[r];
+				}
+			}
+		}
+		saveModels();
+	}
+
+	function selectAgent(agentId: string) {
+		selectedAgent = agentId;
+		// Re-point every structured role at the new agent, preserving each typed model string.
+		for (const r of AGENT_ROLES) {
+			const ms = agentModelString(r);
+			models[r as keyof typeof models] = ms ? `agent/${agentId}/${ms}` : `agent/${agentId}`;
+		}
+		saveModels();
+	}
+
+	function handleAgentModelInput(role: string) {
+		return (e: Event) => {
+			const typed = (e.target as HTMLInputElement).value.trim();
+			models[role as keyof typeof models] = typed
+				? `agent/${selectedAgent}/${typed}`
+				: `agent/${selectedAgent}`;
 			saveModels();
 		};
 	}
@@ -702,7 +880,7 @@
 			<div class="mb-4 flex items-center justify-between">
 				<div>
 					<h3 class="mb-1 text-laya-heading font-medium">Model Selection</h3>
-					<p class="text-laya-secondary text-surface-500">Choose any model for each pipeline stage. Local provider models appear alongside cloud models.</p>
+					<p class="text-laya-secondary text-surface-500">Choose a model for each pipeline stage, or switch the backend to an installed CLI agent.</p>
 				</div>
 				<div class="flex items-center gap-3">
 					{#if saving}
@@ -725,6 +903,56 @@
 				</button>
 				</div>
 			</div>
+			<!-- Inference backend: model provider (dropdowns) vs installed agent (typed model strings) -->
+			<div class="mb-4 rounded-lg border {$glassTheme ? 'border-white/10' : 'border-surface-700'} p-3">
+				<div class="inline-flex rounded-md border {$glassTheme ? 'border-white/15' : 'border-surface-600'} p-0.5">
+					<button
+						type="button"
+						onclick={() => setAgentMode(false)}
+						class="rounded px-3 py-1.5 text-laya-base transition-colors {!agentMode ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-300'}"
+					>Model provider</button>
+					<button
+						type="button"
+						onclick={() => setAgentMode(true)}
+						class="flex items-center gap-1.5 rounded px-3 py-1.5 text-laya-base transition-colors {agentMode ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-300'}"
+					>Installed agent
+						<span class="rounded bg-laya-gold/25 px-1 text-laya-micro font-semibold uppercase tracking-wide text-laya-amber">Beta</span>
+					</button>
+				</div>
+				<p class="mt-2 text-laya-micro text-surface-500">
+					{#if agentMode}
+						Structured stages run through an installed CLI agent on its own subscription — no API key or local VRAM. Chat &amp; Coherence keep using a model provider.
+					{:else}
+						Use cloud or local-provider models for every stage.
+					{/if}
+				</p>
+
+				{#if agentMode}
+					<div class="mt-3 flex flex-wrap gap-2">
+						{#each agentBackends as b}
+							<button
+								type="button"
+								onclick={() => b.available && selectAgent(b.agent_id)}
+								disabled={!b.available}
+								title={b.hint}
+								class="flex items-center gap-2 rounded-md border px-3 py-1.5 text-laya-base transition-colors {selectedAgent === b.agent_id ? 'border-laya-orange/40 bg-laya-orange/10 text-laya-orange' : 'border-surface-600 text-surface-300 hover:border-surface-500'} {!b.available ? 'cursor-not-allowed opacity-50' : ''}"
+							>
+								{AGENT_LABELS[b.agent_id] || b.agent_id}
+								<span class="rounded px-1.5 py-0.5 text-laya-micro {b.tier === 'native' ? 'bg-laya-gold/25 text-laya-amber' : 'bg-surface-700 text-surface-400'}">
+									{b.tier === 'native' ? 'native schema' : 'best-effort'}
+								</span>
+								{#if !b.available}
+									<span class="text-laya-micro text-surface-500">not detected</span>
+								{/if}
+							</button>
+						{/each}
+					</div>
+					{#if selectedBackend?.hint}
+						<p class="mt-2 text-laya-micro text-surface-500">{selectedBackend.hint}</p>
+					{/if}
+				{/if}
+			</div>
+
 			<div class="space-y-4">
 				{#each roles as role}
 					<div class="grid grid-cols-[140px_auto_1fr] items-center gap-2">
@@ -743,16 +971,130 @@
 								<circle cx="12" cy="12" r="10" stroke-width="2" />
 							</svg>
 						</div>
-						<ModelSelect
-							id="{role.id}-model"
-							bind:value={models[role.id as keyof typeof models]}
-							providers={availableModels}
-							onchange={handleModelChange(role.id)}
-						/>
+						{#if agentMode && AGENT_ROLES.includes(role.id)}
+							<input
+								id="{role.id}-model"
+								type="text"
+								value={agentModelString(role.id)}
+								onchange={handleAgentModelInput(role.id)}
+								placeholder={AGENT_MODEL_PLACEHOLDERS[selectedAgent] || 'Model string (blank = agent default)'}
+								spellcheck="false"
+								autocapitalize="off"
+								class="w-full rounded-md border px-3 py-2 font-mono text-laya-base text-surface-100 placeholder:text-surface-500 focus:outline-none {$glassTheme ? 'glass-input' : 'border-surface-600 bg-surface-700 focus:border-surface-500'}"
+							/>
+						{:else}
+							<ModelSelect
+								id="{role.id}-model"
+								bind:value={models[role.id as keyof typeof models]}
+								providers={availableModels}
+								onchange={handleModelChange(role.id)}
+							/>
+						{/if}
 					</div>
 				{/each}
 			</div>
 		</div>
+
+		<!-- Agent Usage Limits (shown when an installed agent is the inference backend) -->
+		{#if agentMode}
+			<div id="agent-usage" class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
+				<div class="mb-4">
+					<div class="mb-1 flex items-center gap-2">
+						<h3 class="text-laya-heading font-medium">Agent Usage Limits</h3>
+						<span class="rounded bg-laya-gold/25 px-1 text-laya-micro font-semibold uppercase tracking-wide text-laya-amber">Beta</span>
+						{#if savingAgentBudget}<span class="ml-auto text-laya-micro text-laya-orange">Saving…</span>{/if}
+					</div>
+					<p class="text-laya-secondary text-surface-500">Agents bill against usage limits, not dollars. Set a token budget per rolling window — Laya pauses ingestion when reached and auto-resumes when the window resets.</p>
+				</div>
+
+				{#if agentBudgetStatus?.is_paused}
+					<div class="mb-4 flex items-center justify-between rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3">
+						<div class="flex items-center gap-2">
+							<svg class="h-4 w-4 text-red-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+							</svg>
+							<span class="text-laya-base text-red-300">
+								Usage limit reached — ingestion paused{#if agentBudgetStatus.paused_until} until {new Date(agentBudgetStatus.paused_until).toLocaleString()}{/if}
+							</span>
+						</div>
+						<button
+							onclick={handleResumeAgent}
+							disabled={resumingAgentBudget}
+							class="rounded-md bg-red-500/20 px-3 py-1.5 text-laya-secondary font-medium text-red-300 transition-colors hover:bg-red-500/30 disabled:opacity-50"
+						>
+							{resumingAgentBudget ? 'Resuming…' : 'Resume Now'}
+						</button>
+					</div>
+				{/if}
+
+				<div class="space-y-4">
+					<div class="flex items-center gap-3">
+						<button
+							aria-label="Toggle agent usage limits"
+							onclick={() => { agentBudgetEnabled = !agentBudgetEnabled; debounceSaveAgentBudget(); }}
+							class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors {agentBudgetEnabled ? 'bg-laya-orange' : 'bg-surface-600'}"
+						>
+							<span class="inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform {agentBudgetEnabled ? 'translate-x-4' : 'translate-x-0.5'}"></span>
+						</button>
+						<span class="text-laya-base text-surface-300">Enable agent usage limits</span>
+					</div>
+
+					{#if agentBudgetEnabled}
+						{#each agentBackends.filter((b) => b.available) as b}
+							{@const c = agentBudgetAgents[b.agent_id]}
+							{@const st = agentStatusFor(b.agent_id)}
+							{#if c}
+								<div class="rounded-lg border border-surface-700 bg-surface-900/50 p-4">
+									<div class="mb-2 flex items-center justify-between">
+										<span class="text-laya-base text-surface-200">{AGENT_LABELS[b.agent_id] || b.agent_id}</span>
+										{#if st?.rate_limit?.status}
+											<span class="text-laya-micro text-surface-500">
+												live limit: {st.rate_limit.status}{#if st.rate_limit.resets_at} · resets {new Date(st.rate_limit.resets_at * 1000).toLocaleTimeString()}{/if}
+											</span>
+										{/if}
+									</div>
+									<div class="grid grid-cols-3 gap-3">
+										<label class="text-laya-micro text-surface-500">
+											Token budget
+											<input type="number" min="0" step="100000" placeholder="e.g. 5000000"
+												bind:value={c.window_token_limit} oninput={debounceSaveAgentBudget}
+												class="mt-1 w-full rounded-md border border-surface-600 bg-surface-700 px-2 py-1.5 text-laya-base text-surface-200 placeholder:text-surface-500" />
+										</label>
+										<label class="text-laya-micro text-surface-500">
+											Window (hours)
+											<input type="number" min="1" step="1"
+												bind:value={c.window_hours} oninput={debounceSaveAgentBudget}
+												class="mt-1 w-full rounded-md border border-surface-600 bg-surface-700 px-2 py-1.5 text-laya-base text-surface-200" />
+										</label>
+										<label class="text-laya-micro text-surface-500">
+											Pause at %
+											<input type="number" min="1" max="100"
+												bind:value={c.pause_at_percent} oninput={debounceSaveAgentBudget}
+												class="mt-1 w-full rounded-md border border-surface-600 bg-surface-700 px-2 py-1.5 text-laya-base text-surface-200" />
+										</label>
+									</div>
+									{#if st && st.window_token_limit > 0}
+										<div class="mt-3">
+											<div class="mb-1 flex justify-between text-laya-micro text-surface-500">
+												<span>{fmtTokensShort(st.tokens_used)} / {fmtTokensShort(st.window_token_limit)} tokens · last {st.window_hours}h</span>
+												<span>{st.percent != null ? st.percent.toFixed(0) : 0}%</span>
+											</div>
+											<div class="h-2 w-full overflow-hidden rounded-full bg-surface-700">
+												<div
+													class="h-full rounded-full transition-all duration-500 {(st.percent ?? 0) >= 100 ? 'bg-red-500' : (st.percent ?? 0) >= 75 ? 'bg-amber-500' : 'bg-green-500'}"
+													style="width: {Math.min(st.percent ?? 0, 100)}%"
+												></div>
+											</div>
+										</div>
+									{/if}
+								</div>
+							{/if}
+						{/each}
+						<p class="text-laya-micro text-surface-500">Tip: set the token budget to match your plan’s window (e.g. Claude Code’s 5-hour window). Claude Code also reports its live limit above and resumes exactly at its reset.</p>
+					{/if}
+				</div>
+			</div>
+		{/if}
 
 		<!-- Cost Control -->
 		<div id="cost-control" class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
