@@ -16,10 +16,18 @@ def _is_cloud_host(host: str) -> bool:
     """True for Bitbucket Cloud repos.
 
     A repo is Cloud when its configured host is empty (legacy repos predate the
-    ``host`` field and were Cloud-only) or contains ``bitbucket.org``. Any other
-    host is a self-hosted Bitbucket Server / Data Center instance.
+    ``host`` field and were Cloud-only) or is exactly ``bitbucket.org`` (or a
+    subdomain of it). Any other host is a self-hosted Bitbucket Server / Data
+    Center instance.
+
+    ``host`` is a bare hostname (scheme and port are stripped when the remote URL
+    is parsed — see ``parse_remote_url`` in the Tauri shell). We anchor the match
+    with equality + a dotted-suffix check rather than a substring ``in`` test so a
+    look-alike host such as ``bitbucket.org.evil.com`` or ``notbitbucket.org`` is
+    correctly treated as self-hosted instead of Cloud.
     """
-    return host == "" or "bitbucket.org" in host
+    h = host.strip().lower()
+    return h == "" or h == "bitbucket.org" or h.endswith(".bitbucket.org")
 
 
 def ensure_cloud_repo(payload: dict) -> None:

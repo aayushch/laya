@@ -541,12 +541,14 @@ async def list_research_files(card_id: str) -> dict:
     # Inline containment guard: normalize, then confirm the directory stays
     # inside the research root before walking it. Kept inline (rather than in a
     # helper) so the guard provably dominates the rglob/stat sinks below — see
-    # _is_within_research_root for why.
+    # _is_within_research_root for why. Uses Path.relative_to (not str.startswith)
+    # because CodeQL's py/path-injection only recognizes relative_to as a barrier.
     research_root = _get_research_root()
-    research_dir_str = os.path.realpath(research_dir_path)
-    if research_dir_str != research_root and not research_dir_str.startswith(research_root + os.sep):
+    research_dir = Path(os.path.realpath(research_dir_path))
+    try:
+        research_dir.relative_to(research_root)
+    except ValueError:
         raise HTTPException(status_code=403, detail="Access denied: path is outside the research directory")
-    research_dir = Path(research_dir_str)
     if not research_dir.exists():
         return {"card_id": card_id, "files": []}
 
@@ -623,11 +625,14 @@ async def read_research_file(card_id: str, path: str) -> dict:
     # path traversal (../../etc/passwd) and absolute-path override (/etc/passwd,
     # which os.path.join would otherwise take verbatim). Inlined so the guard
     # provably dominates the filesystem sinks below — see _is_within_research_root.
+    # Uses Path.relative_to (not str.startswith) because CodeQL's py/path-injection
+    # only recognizes relative_to / is_relative_to as a sanitizing barrier.
     research_root = _get_research_root()
-    full_path = os.path.realpath(os.path.join(research_dir_path, path))
-    if full_path != research_root and not full_path.startswith(research_root + os.sep):
+    file_path = Path(os.path.realpath(os.path.join(research_dir_path, path)))
+    try:
+        file_path.relative_to(research_root)
+    except ValueError:
         raise HTTPException(status_code=403, detail="Access denied: path is outside the research directory")
-    file_path = Path(full_path)
 
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail=f"File not found: {path}")

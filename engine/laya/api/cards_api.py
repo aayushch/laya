@@ -1853,12 +1853,20 @@ async def delete_agent_staging_file(body: DeleteStagingFileRequest) -> dict:
     to prevent path-traversal abuse. Missing files are treated as success
     (idempotent — safe to call twice).
     """
+    import os
     from pathlib import Path as _Path
 
     from laya.config import LAYA_HOME
 
-    staging_dir = (LAYA_HOME / "tmp" / "agent-staging").resolve()
-    target = _Path(body.path).expanduser().resolve()
+    # Normalize both paths lexically with os.path.normpath (collapses '..', no
+    # filesystem access) rather than Path.resolve(). resolve() stat()s the path,
+    # which CodeQL's py/path-injection flags as an unguarded sink *before* the
+    # relative_to containment check below. Lexical normalization keeps the
+    # relative_to call the only operation that touches this user-supplied path,
+    # and matches how the upload endpoints build staging paths (from the same
+    # un-resolved LAYA_HOME base), so legit deletes still resolve correctly.
+    staging_dir = _Path(os.path.normpath(LAYA_HOME / "tmp" / "agent-staging"))
+    target = _Path(os.path.normpath(_Path(body.path).expanduser()))
 
     try:
         target.relative_to(staging_dir)
@@ -2017,10 +2025,23 @@ async def run_agent(body: RunAgentRequest) -> dict:
     # touched — only the copies the upload endpoint wrote.
     final_file_paths: list[str] = []
     if body.files:
+        import os
+        staging_dir = Path(os.path.normpath(LAYA_HOME / "tmp" / "agent-staging"))
         attachments_dir = card_dir / "attachments"
         attachments_dir.mkdir(parents=True, exist_ok=True)
         for staged_path in body.files:
-            src = Path(staged_path)
+            # Confine to the staging dir: body.files must be paths the upload
+            # endpoints returned (uuid-named copies under agent-staging). Normalize
+            # lexically (os.path.normpath, no filesystem access) and reject anything
+            # outside staging so a crafted path can't rename an arbitrary file into
+            # the workspace. relative_to (not startswith) is the containment barrier
+            # CodeQL's py/path-injection recognizes.
+            src = Path(os.path.normpath(Path(staged_path).expanduser()))
+            try:
+                src.relative_to(staging_dir)
+            except ValueError:
+                log.warning("agent_file_move_rejected", path=staged_path, card_id=card_id)
+                continue
             if not src.exists():
                 log.warning("agent_file_move_missing", path=staged_path, card_id=card_id)
                 continue
