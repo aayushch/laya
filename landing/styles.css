@@ -298,6 +298,10 @@ nav .container {
 }
 .showcase-frame img {
   width: 100%;
+  /* height:auto lets the browser derive the box from the img width/height attrs
+     (aspect-ratio) so the frame reserves its space before the image loads —
+     without it, width:100% + fixed height attrs would distort the screenshot */
+  height: auto;
   display: block;
 }
 
@@ -605,6 +609,7 @@ nav .container {
 }
 .feature-image img {
   width: 100%;
+  height: auto; /* see .showcase-frame img — reserve aspect-ratio, avoid distortion */
   display: block;
 }
 
@@ -622,6 +627,7 @@ nav .container {
 }
 .agent-screenshots img {
   width: 100%;
+  height: auto; /* see .showcase-frame img — reserve aspect-ratio, avoid distortion */
   display: block;
 }
 .agent-tabs {

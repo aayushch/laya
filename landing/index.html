@@ -36,6 +36,9 @@
 </script>
   <link rel="icon" type="image/svg+xml" href="images/favicon.svg">
   <link rel="apple-touch-icon" href="images/logo-icon.png">
+  <!-- Preload the LCP image (first showcase screenshot) so it isn't starved by the
+       dozen below-the-fold screenshots competing for bandwidth on initial load -->
+  <link rel="preload" as="image" href="images/card-view.webp" fetchpriority="high">
   <link rel="stylesheet" href="styles.css">
 </head>
 
@@ -148,10 +151,11 @@
           <div class="hero-ph-badge">
             <a href="https://www.producthunt.com/products/laya?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-laya"
               target="_blank" rel="noopener noreferrer"><img alt="Laya - Your AI command centre | Product Hunt"
-                width="250" height="54"
+                width="250" height="54" loading="lazy" decoding="async"
                 src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1155323&amp;theme=dark&amp;t=1779704563407"></a>
             <a href="https://peerpush.net/p/laya" target="_blank" rel="noopener"><img
                 src="https://peerpush.net/p/laya/badge.png" alt="Laya on PeerPush"
+                width="195" height="54" loading="lazy" decoding="async"
                 style="filter: invert(0.88) hue-rotate(180deg) saturate(1.8) brightness(1.05); border-radius: 8px;"></a>
             <a href="https://aitoolscapital.com/blog/founder-spotlight-laya-local-first-ai-workspace/"
               target="_blank" rel="noopener" title="Laya on The Capital">
@@ -188,12 +192,15 @@
           <button class="showcase-tab" data-target="shot-brief">Summary</button>
         </div>
         <div class="showcase-frame">
-          <img id="shot-cards" src="images/card-view.png"
+          <img id="shot-cards" src="images/card-view.webp" width="1534" height="1008"
+            fetchpriority="high" decoding="async"
             alt="Laya Card View — grouped action cards in 3-column grid with intelligence reports"
             style="display: block;">
-          <img id="shot-list" src="images/list-view.png"
+          <img id="shot-list" src="images/list-view.webp" width="1535" height="1009"
+            loading="lazy" decoding="async"
             alt="Laya List View — AI action cards with intelligence reports" style="display: none;">
-          <img id="shot-brief" src="images/summary-view.png"
+          <img id="shot-brief" src="images/summary-view.webp" width="1535" height="1010"
+            loading="lazy" decoding="async"
             alt="Laya Day Summary — action items and key updates synthesized by AI" style="display: none;">
         </div>
       </div>
@@ -536,7 +543,7 @@
             </ul>
           </div>
           <div class="feature-image">
-            <img src="images/card-view.png"
+            <img src="images/card-view.webp" width="1534" height="1008" loading="lazy" decoding="async"
               alt="Laya intelligence report showing sender analysis and cross-platform context">
           </div>
         </div>
@@ -564,7 +571,7 @@
             </ul>
           </div>
           <div class="feature-image">
-            <img src="images/list-view.png" alt="Laya list view showing multiple view options">
+            <img src="images/list-view.webp" width="1535" height="1009" loading="lazy" decoding="async" alt="Laya list view showing multiple view options">
           </div>
         </div>
 
@@ -595,7 +602,7 @@
             </ul>
           </div>
           <div class="feature-image">
-            <img src="images/briefing-view.png" alt="Laya daily briefing showing events, action items, and key updates">
+            <img src="images/briefing-view.webp" width="1519" height="992" loading="lazy" decoding="async" alt="Laya daily briefing showing events, action items, and key updates">
           </div>
         </div>
 
@@ -622,7 +629,7 @@
             </ul>
           </div>
           <div class="feature-image">
-            <img src="images/summary-view.png" alt="Laya Day Summary — structured view of action items and key updates">
+            <img src="images/summary-view.webp" width="1535" height="1010" loading="lazy" decoding="async" alt="Laya Day Summary — structured view of action items and key updates">
           </div>
         </div>
 
@@ -653,7 +660,7 @@
             </ul>
           </div>
           <div class="feature-image">
-            <img src="images/agent-workspace.png"
+            <img src="images/agent-workspace.webp" width="1537" height="1009" loading="lazy" decoding="async"
               alt="Laya agent workspace — full workspace with timeline, context panel, and agent output">
           </div>
         </div>
@@ -690,7 +697,7 @@
             </ul>
           </div>
           <div class="feature-image">
-            <img src="images/chat-search.png"
+            <img src="images/chat-search.webp" width="1519" height="991" loading="lazy" decoding="async"
               alt="Laya chat with semantic search — ask natural language questions about your data">
           </div>
         </div>
@@ -727,7 +734,7 @@
             </ul>
           </div>
           <div class="feature-image">
-            <img src="images/omni-view.png"
+            <img src="images/omni-view.webp" width="1536" height="1008" loading="lazy" decoding="async"
               alt="Laya Omni — rolling cross-platform summary with progressive summarization">
           </div>
         </div>
@@ -763,7 +770,7 @@
             </ul>
           </div>
           <div class="feature-image">
-            <img src="images/coherence-view.png"
+            <img src="images/coherence-view.webp" width="1515" height="989" loading="lazy" decoding="async"
               alt="Laya Coherence — trace entities across platforms with AI-generated narratives">
           </div>
         </div>
@@ -800,7 +807,7 @@
             </ul>
           </div>
           <div class="feature-image">
-            <img src="images/related-cards.png"
+            <img src="images/related-cards.webp" width="1518" height="990" loading="lazy" decoding="async"
               alt="Laya Context Association — related cards automatically grouped across platforms">
           </div>
         </div>
@@ -837,7 +844,7 @@
             </ul>
           </div>
           <div class="feature-image">
-            <img src="images/run-agent.png" alt="Laya Run Agent — launch a coding agent directly from card detail view">
+            <img src="images/run-agent.webp" width="857" height="435" loading="lazy" decoding="async" alt="Laya Run Agent — launch a coding agent directly from card detail view">
           </div>
         </div>
       </div>
@@ -873,7 +880,7 @@
             </ul>
           </div>
           <div class="feature-image">
-            <img src="images/custom-agent.png"
+            <img src="images/custom-agent.webp" width="689" height="690" loading="lazy" decoding="async"
               alt="Laya Agent Studio — configure agent runtime, mode, and prompt before launching">
           </div>
         </div>
@@ -911,7 +918,7 @@
             </ul>
           </div>
           <div class="feature-image">
-            <img src="images/composer.png"
+            <img src="images/composer.webp" width="1517" height="991" loading="lazy" decoding="async"
               alt="Laya Composer — unified outbound action interface across all connected platforms">
           </div>
         </div>
