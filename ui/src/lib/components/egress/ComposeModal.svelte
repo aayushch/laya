@@ -5,7 +5,7 @@
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { portal } from '$lib/actions/portal';
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import type { EgressConnection, ComposePlatform, ComposeAction, ComposeField, ComposeFieldAutocomplete } from '$lib/api/types';
 	import DateTimePicker from './DateTimePicker.svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
@@ -260,11 +260,18 @@
 		return () => window.removeEventListener('mousedown', handleTzWindowClick, true);
 	});
 
-	// Sync state from compose store when modal opens
+	// Sync state from compose store when modal opens. The loaders are wrapped in
+	// untrack() so this effect depends ONLY on $compose.isOpen — without it, the
+	// loaders' synchronous reads of their guard flags (e.g. `connectionsLoading`
+	// in loadConnections) get tracked, and toggling those flags re-runs the
+	// effect, which re-calls the loaders → an infinite /egress/connections fetch
+	// loop on open.
 	$effect(() => {
 		if ($compose.isOpen) {
-			loadPlatforms();
-			loadConnections();
+			untrack(() => {
+				loadPlatforms();
+				loadConnections();
+			});
 		}
 	});
 

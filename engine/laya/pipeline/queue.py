@@ -368,7 +368,7 @@ async def _run_workers_pipeline(
         )
     else:
         card_id = f"card_{_uuid.uuid4().hex[:12]}"
-        entity_id = f"{event.source.platform}:{event.subject.type}:{event.subject.id}"
+        entity_id = event.entity_id  # canonical key; see LayaEvent.entity_id
         db = await get_db()
         # Stamp created_at/group_active_at with the EVENT's time, not wall-clock now \u2014
         # the worker path's emit UPDATE never rewrites created_at, so this is the only

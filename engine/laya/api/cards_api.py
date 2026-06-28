@@ -178,7 +178,6 @@ async def list_cards(
 
 
 _PRIORITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
-_TERMINAL = {"done", "dismissed", "failed"}
 
 
 @router.get("/cards/grouped")
@@ -609,12 +608,17 @@ async def dismiss_group(entity_id: str) -> dict:
     """Dismiss all non-terminal cards in a group."""
     db = await get_db()
 
+    from laya.models.card_lifecycle import INACTIVE_STATUSES, transition_card_status
+    # Exclude every inactive status (incl. archived) from the canonical SSOT —
+    # archived cards can't be dismissed anyway, so selecting them only wastes a
+    # transition attempt.
+    inactive = tuple(INACTIVE_STATUSES)
+    placeholders = ",".join("?" for _ in inactive)
     rows = await db.execute_fetchall(
-        "SELECT card_id, status FROM action_cards WHERE entity_id = ? AND status NOT IN ('done', 'dismissed', 'failed')",
-        (entity_id,),
+        f"SELECT card_id, status FROM action_cards WHERE entity_id = ? AND status NOT IN ({placeholders})",
+        (entity_id, *inactive),
     )
 
-    from laya.models.card_lifecycle import transition_card_status
     dismissed = 0
     for row in rows:
         try:

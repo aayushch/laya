@@ -87,7 +87,7 @@
             },
             {
               "name": "gmail_threadId",
-              "value": "={{ $json.threadId || $('Gmail Trigger').item.json.threadId || $('Gmail Trigger').item.json.id }}",
+              "value": "={{ $('Get Thread ID').item.json.threadId || $('Gmail Trigger').item.json.threadId || $('Gmail Trigger').item.json.id }}",
               "type": "string"
             },
             {
@@ -290,6 +290,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.04.4"
+    "laya_version": "2026.06.1"
   }
 }

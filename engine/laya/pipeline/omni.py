@@ -25,6 +25,7 @@ from laya.api.websocket import manager
 from laya.config import load_settings
 from laya.db.sqlite import get_db
 from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
+from laya.models.card_lifecycle import TERMINAL_STATUSES as _TERMINAL_STATUSES
 from laya.llm.prompts.omni import (
     build_omni_resynthesis_messages,
     get_omni_json_schema,
@@ -546,10 +547,9 @@ async def _append_to_recent(cards: list[dict]) -> None:
 # Full resynthesis (LLM-powered)
 # ---------------------------------------------------------------------------
 
-# Terminal statuses mean a subject is resolved and should leave the attention
-# section. Kept local (rather than importing card_lifecycle) so the pipeline has
-# no dependency on the API/lifecycle layer; mirror card_lifecycle.TERMINAL_STATUSES.
-_TERMINAL_STATUSES = {"done", "dismissed", "archived"}
+# `_TERMINAL_STATUSES` is imported from card_lifecycle at module top (single source
+# of truth): a subject in one of these statuses is resolved and leaves the attention
+# section. No local mirror — that previously risked silent divergence.
 _PRIORITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
 
 

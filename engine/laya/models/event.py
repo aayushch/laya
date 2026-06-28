@@ -60,6 +60,26 @@ class LayaEvent(BaseModel):
     subject: EventSubject
     content: EventContent
 
+    @property
+    def entity_id(self) -> str:
+        """Canonical grouping key for this event's work item — the one true
+        spelling, shared by every pipeline stage (emit, queue, stager) so they
+        never disagree. Relies on n8n delivering a canonical ``subject.id``
+        (e.g. Gmail's thread root); per-platform shape correction lives in the
+        ingestion workflows, not here."""
+        return f"{self.source.platform}:{self.subject.type}:{self.subject.id}"
+
+    @property
+    def is_terminal(self) -> bool:
+        """True when this event means the work item has completed, so pending
+        sibling cards in the same entity group can be auto-resolved. The set of
+        terminal event types per platform lives in the egress platform registry
+        (the single source of truth for everything platform). Imported lazily to
+        avoid a models→egress import-time cycle."""
+        from laya.egress.registry import is_terminal_event
+
+        return is_terminal_event(self.source.platform, self.source.raw_event_type)
+
 
 class EventResponse(BaseModel):
     """Response after accepting an event."""

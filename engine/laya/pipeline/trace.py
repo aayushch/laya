@@ -998,6 +998,9 @@ async def _find_linked_entities(db, entity_ids: set[str]) -> set[str]:
 
 _PRIORITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
 
+# Display labels per raw_event_type (a different value space from terminal-ness;
+# the terminal-event source of truth lives in egress/registry._TERMINAL_EVENT_TYPES —
+# keep these in mind together when adding/renaming platform event types).
 _CHAPTER_LABELS = {
     # event_type hints
     "issue_created": "Created",

@@ -12,7 +12,9 @@ import pytest_asyncio
 
 from laya.egress.backends.n8n import N8nBackend
 from laya.egress.models import EgressRequest
-from laya.egress.platforms import github, gmail, slack
+from laya.egress.platforms.github import PLATFORM as github
+from laya.egress.platforms.gmail import PLATFORM as gmail
+from laya.egress.platforms.slack import PLATFORM as slack
 
 
 @pytest.fixture

@@ -29,6 +29,18 @@ VALID_STATUS_TRANSITIONS: dict[str, set[str]] = {
 
 TERMINAL_STATUSES = {"done", "dismissed", "archived"}
 
+# "No longer an actionable card." Distinct from TERMINAL_STATUSES on purpose:
+# `failed` is excluded from TERMINAL_STATUSES (a failed card sets no resolved_at
+# and can be retried — see the resolved_at handling below) but IS inactive for
+# the purposes of grouping / sibling auto-resolution / feed filters. Use this set
+# (and is_active) instead of re-spelling the status list inline in SQL.
+INACTIVE_STATUSES = {"done", "dismissed", "failed", "archived"}
+
+
+def is_active(status: str) -> bool:
+    """True when a card is still actionable (not done/dismissed/failed/archived)."""
+    return status not in INACTIVE_STATUSES
+
 
 async def transition_card_status(
     card_id: str,

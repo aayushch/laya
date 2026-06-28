@@ -1,24 +1,27 @@
 # Copyright 2026 Aayush Chawla
 # SPDX-License-Identifier: Apache-2.0
 
-"""Per-platform helper modules for egress payload handling.
+"""Per-platform egress adapters.
 
-Each module exposes three functions used by ``laya.egress.backends.n8n``:
+Each ``platforms/<name>.py`` defines one ``Platform`` subclass (see ``base.py``)
+and exposes it as a module-level singleton ``PLATFORM`` (calendar exposes two
+leaves). Each adapter is the single source of truth for everything about its
+platform: behavior + capabilities + terminal events + compose/draft/source-ref
+data. The registry facade (``laya.egress.registry``) imports these adapters and
+delegates to them.
 
-- ``identifiers_from_event(action_type, event_id, content_metadata, event_row,
-  self_emails=None) -> dict`` — derive identifier fields deterministically
-  from the source event. Empty dict when nothing can be derived (e.g. no
-  source event).
-- ``normalize_payload(action_type, payload) -> dict`` — coerce LLM field
-  variants (``body`` → ``comment``, ``issueKey`` → ``issue_key``, URL refs,
-  etc.) and apply platform defaults.
-- ``validate_payload(action_type, payload) -> list[str]`` — return human
-  readable errors for payloads that the executor would reject.
+Two maps:
+- ``registry_platforms()`` — the canonical platform→adapter map (all platforms,
+  incl. smtp), in the historical capability order. The registry facade iterates
+  this for capability lookups and derived groupings.
+- ``for_platform(name)`` — enrichment dispatch. Excludes smtp (its egress goes
+  through SmtpBackend, not n8n enrichment), and resolves the three calendar keys.
 
-These modules contain **no HTTP/network code**. All egress goes through
-``laya.egress.backends.n8n`` which POSTs to the n8n executor workflows.
+To add a platform: implement the ``Platform`` interface in a new file, expose
+``PLATFORM``, and register it in ``_REGISTRY`` (and ``_DISPATCH`` if it enriches).
 """
 
+from laya.egress.platforms.base import Platform
 from laya.egress.platforms import (
     bitbucket,
     calendar,
@@ -29,29 +32,56 @@ from laya.egress.platforms import (
     notion,
     outlook,
     slack,
+    smtp,
 )
 
-_MODULES = {
-    "github": github,
-    "jira": jira,
-    "linear": linear,
-    "notion": notion,
-    "bitbucket": bitbucket,
-    "gmail": gmail,
-    "outlook": outlook,
-    "slack": slack,
-    "google_calendar": calendar,
-    "outlook_calendar": calendar,
-    "calendar": calendar,
+# Canonical platform -> adapter. Order matches the historical _CAPABILITIES
+# insertion order so get_all_platforms() / compose ordering stay stable.
+_REGISTRY: dict[str, Platform] = {
+    "gmail": gmail.PLATFORM,
+    "outlook": outlook.PLATFORM,
+    "smtp": smtp.PLATFORM,
+    "jira": jira.PLATFORM,
+    "notion": notion.PLATFORM,
+    "github": github.PLATFORM,
+    "bitbucket": bitbucket.PLATFORM,
+    "slack": slack.PLATFORM,
+    "linear": linear.PLATFORM,
+    "calendar": calendar.GOOGLE_CALENDAR,
+    "outlook_calendar": calendar.OUTLOOK_CALENDAR,
+}
+
+# Enrichment dispatch: platform string -> adapter. smtp is intentionally absent
+# (SMTP egress goes through SmtpBackend, not n8n enrichment), so
+# ``for_platform("smtp")`` stays None. The three calendar keys
+# (google_calendar / outlook_calendar / calendar) resolve to a working adapter.
+_DISPATCH: dict[str, Platform] = {
+    "github": github.PLATFORM,
+    "jira": jira.PLATFORM,
+    "linear": linear.PLATFORM,
+    "notion": notion.PLATFORM,
+    "bitbucket": bitbucket.PLATFORM,
+    "gmail": gmail.PLATFORM,
+    "outlook": outlook.PLATFORM,
+    "slack": slack.PLATFORM,
+    "google_calendar": calendar.GOOGLE_CALENDAR,
+    "outlook_calendar": calendar.OUTLOOK_CALENDAR,
+    "calendar": calendar.GOOGLE_CALENDAR,
 }
 
 
-def for_platform(name: str):
-    """Return the helper module for a platform, or ``None`` if unsupported."""
-    return _MODULES.get(name)
+def for_platform(name: str) -> Platform | None:
+    """Return the adapter for enrichment dispatch, or ``None`` if unsupported."""
+    return _DISPATCH.get(name)
+
+
+def registry_platforms() -> dict[str, Platform]:
+    """Canonical platform→adapter map (all platforms, ordered) for the registry facade."""
+    return _REGISTRY
 
 
 __all__ = [
+    "Platform",
     "bitbucket",
     "calendar",
     "github",
@@ -61,5 +91,7 @@ __all__ = [
     "notion",
     "outlook",
     "slack",
+    "smtp",
     "for_platform",
+    "registry_platforms",
 ]

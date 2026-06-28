@@ -9,6 +9,10 @@ from typing import Any
 
 from laya.llm.prompts.overrides import get_prompt
 
+# Note: the "INFER COMPLETION FROM CONTENT" section below describes terminal work
+# items in prose for the LLM to judge semantically. The code-level source of truth
+# for terminal *event types* is egress/registry._TERMINAL_EVENT_TYPES — these two
+# express the same concept in different ways and should co-vary when it shifts.
 SUMMARIZER_SYSTEM_PROMPT = """\
 You are the Daily Summarizer for Laya, an AI-powered professional work assistant. Your job is \
 to maintain a running summary of the user's day by incrementally incorporating new events.

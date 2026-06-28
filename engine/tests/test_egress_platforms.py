@@ -5,7 +5,16 @@
 
 import pytest
 
-from laya.egress.platforms import gmail, jira, github, bitbucket, slack, outlook, linear, calendar
+# Bind each platform's singleton adapter to the short name so the existing
+# `gmail.normalize_payload(...)` call sites exercise the Platform methods.
+from laya.egress.platforms.bitbucket import PLATFORM as bitbucket
+from laya.egress.platforms.calendar import PLATFORM as calendar
+from laya.egress.platforms.github import PLATFORM as github
+from laya.egress.platforms.gmail import PLATFORM as gmail
+from laya.egress.platforms.jira import PLATFORM as jira
+from laya.egress.platforms.linear import PLATFORM as linear
+from laya.egress.platforms.outlook import PLATFORM as outlook
+from laya.egress.platforms.slack import PLATFORM as slack
 
 
 class TestGmail:

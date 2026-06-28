@@ -24,7 +24,9 @@ log = structlog.get_logger()
 async def _query_entity_history(event: LayaEvent) -> list[dict]:
     """Fetch existing cards for this entity to give the stager context about
     what the user has already seen, preventing redundant research."""
-    entity_id = f"{event.source.platform}:{event.subject.type}:{event.subject.id}"
+    # Same canonical key emit/queue use — so the stager actually finds the
+    # thread's prior cards instead of querying a divergent id (see LayaEvent.entity_id).
+    entity_id = event.entity_id
     db = await get_db()
     rows = await db.execute_fetchall(
         """SELECT ac.card_id, ac.header, ac.summary, ac.status, ac.created_at,

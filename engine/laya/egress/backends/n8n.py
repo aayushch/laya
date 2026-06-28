@@ -315,8 +315,8 @@ class N8nBackend(EgressBackend):
         # Cloud executor (it targets api.bitbucket.org). Reject before dispatch so we
         # never fire a doomed Cloud API call. Raises ValueError → caught in execute().
         if request.platform == "bitbucket":
-            from laya.egress.platforms.bitbucket import ensure_cloud_repo
-            ensure_cloud_repo(payload)
+            from laya.egress.platforms.bitbucket import PLATFORM as _bitbucket
+            _bitbucket.ensure_cloud_repo(payload)
 
         # Jira: retrieve connection credentials once for base URL injection
         # and assignee resolution (email/name → accountId).
@@ -347,8 +347,8 @@ class N8nBackend(EgressBackend):
         # Gmail send_email: build the raw MIME message + base64url in Python
         # so the n8n workflow doesn't need a fragile JS expression.
         if request.platform == "gmail" and request.action_type == "send_email":
-            from laya.egress.platforms.gmail import build_api_payload
-            payload = build_api_payload(request.action_type, payload)
+            from laya.egress.platforms.gmail import PLATFORM as _gmail
+            payload = _gmail.build_api_payload(request.action_type, payload)
 
         return {
             "action_id": f"egr_{request.source_card_id or 'direct'}",

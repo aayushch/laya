@@ -11,14 +11,17 @@ from datetime import datetime, timezone
 import structlog
 
 from laya.api.websocket import manager
+from laya.config import load_settings
 from laya.db.chromadb_store import embed_document
 from laya.db.sqlite import get_db
 from laya.llm.client import log_to_audit
 from laya.models.card import ActionCardData
+from laya.models.card_lifecycle import INACTIVE_STATUSES, transition_card_status
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 from laya.pipeline.entity_resolution import resolve_semantic_entities
 from laya.pipeline.summarize import trigger_summary_status_update, trigger_summary_update
+from laya.tasks import create_task
 from laya.workers.base import WorkerResult
 
 log = structlog.get_logger()
@@ -145,103 +148,47 @@ async def _fetch_thread_context(db, entity_id: str, card_id: str) -> str:
     return ""
 
 
-async def run_emit(
-    event: LayaEvent,
-    router_output: RouterOutput,
-    stager_output: ActionCardData,
-    worker_results: list[WorkerResult] | None = None,
-    card_id: str | None = None,
-    space_id: str | None = None,
-) -> str:
-    """Run the EMIT step: persist card → embed → resolve entities → audit → broadcast.
-
-    Args:
-        event: The original event.
-        router_output: Router classification.
-        stager_output: Stager-generated card data.
-        worker_results: Optional worker findings (for has_workspace detection).
-        card_id: Pre-generated card_id from the worker background flow. When
-            provided the provisional card row is updated in-place; when None a
-            fresh row is inserted.
-        space_id: The resolved space for this event.
-
-    Returns:
-        card_id of the created/updated card.
-    """
-    pre_created = card_id is not None
-    if not pre_created:
-        card_id = f"card_{uuid.uuid4().hex[:12]}"
-    entity_id = f"{event.source.platform}:{event.subject.type}:{event.subject.id}"
-
-    # For Gmail: normalize entity_id to the canonical thread ID so all messages
-    # in the same thread group together.  The n8n trigger sometimes returns the
-    # message ID as threadId, so we look for an existing event whose subject_id
-    # (the real thread root) matches the gmail_thread_id in *our* metadata, or
-    # vice-versa.
-    if event.source.platform == "gmail":
-        gmail_thread_id = (event.content.metadata or {}).get("gmail_thread_id")
-        if gmail_thread_id and gmail_thread_id != event.subject.id:
-            # Our threadId differs from subject.id — check if the real thread
-            # root already exists as another event's subject_id
-            db_tmp = await get_db()
-            existing = await db_tmp.execute_fetchall(
-                """SELECT entity_id FROM action_cards
-                   WHERE entity_id = ?
-                   LIMIT 1""",
-                (f"gmail:email_thread:{gmail_thread_id}",),
-            )
-            if existing:
-                entity_id = existing[0]["entity_id"]
-                log.debug("gmail_entity_resolved_via_metadata", entity_id=entity_id)
-        if entity_id == f"gmail:email_thread:{event.subject.id}":
-            # Still not resolved — check if any existing event's metadata
-            # references our subject.id as its gmail_thread_id
-            db_tmp = await get_db()
-            existing = await db_tmp.execute_fetchall(
-                """SELECT ac.entity_id FROM action_cards ac
-                   JOIN events e ON e.event_id = ac.event_id
-                   WHERE ac.entity_id LIKE 'gmail:email_thread:%'
-                     AND e.content_metadata LIKE ?
-                   LIMIT 1""",
-                (f'%"gmail_thread_id": "{event.subject.id}"%',),
-            )
-            if existing:
-                entity_id = existing[0]["entity_id"]
-                log.debug("gmail_entity_resolved_via_reverse_lookup", entity_id=entity_id)
-
-    # Build a human-readable source reference for linking back to the origin
-    from laya.egress.registry import format_source_ref
-
-    source_url = event.subject.url or None
-    source_ref, source_url = format_source_ref(
-        event.source.platform,
-        event.subject.id,
-        event.subject.type,
-        event.subject.title,
-        source_url,
-    )
-
-    # 1. Detect has_workspace and resolve card status from worker results
+def _resolve_card_status(worker_results: list[WorkerResult] | None) -> tuple[bool, str]:
+    """Derive (has_workspace, initial_status) from worker results. A worker can
+    attach a session (→ has_workspace) and override the card's initial status;
+    non-worker cards default to ``ready``."""
     has_workspace = False
-    card_status = "ready"  # default for non-worker cards
+    card_status = "ready"
     if worker_results:
         has_workspace = any(r.session_id is not None for r in worker_results)
-        # Worker can override the initial card status
         for wr in worker_results:
             if wr.card_status:
                 card_status = wr.card_status
+    return has_workspace, card_status
 
-    # 2. Serialize JSON fields
+
+async def _persist_card(
+    db,
+    *,
+    card_id: str,
+    pre_created: bool,
+    event: LayaEvent,
+    router_output: RouterOutput,
+    stager_output: ActionCardData,
+    entity_id: str,
+    source_ref: str,
+    source_url: str | None,
+    space_id: str | None,
+    has_workspace: bool,
+    card_status: str,
+) -> None:
+    """Persist the card (UPDATE the provisional row on the worker path, INSERT a
+    fresh row otherwise), enqueue it for Omni, and carry the entity group's
+    activity timestamp forward — all in ONE transaction, so the new row and the
+    group's bumped group_active_at become visible atomically."""
     intelligence_json = json.dumps(stager_output.intelligence_report)
     staged_output_json = json.dumps(stager_output.staged_output.model_dump())
     suggested_actions_json = json.dumps(
         [a.model_dump() for a in stager_output.suggested_actions]
     )
 
-    # 3. Persist card — UPDATE the provisional row when card was pre-created by
-    #    _run_workers_background, INSERT fresh for the simple (no-worker) path.
-    db = await get_db()
     if pre_created:
+        # UPDATE the provisional row created by _run_workers_background.
         await db.execute(
             """UPDATE action_cards SET
                priority=?, persona=?, category=?, header=?, summary=?,
@@ -307,23 +254,14 @@ async def run_emit(
             ),
         )
 
-    # Enqueue for Omni processing (same transaction as card persist — crash-safe)
+    # Enqueue for Omni processing (same transaction as the card persist — crash-safe).
     await db.execute(
         "INSERT OR IGNORE INTO omni_queue (card_id, space_id, created_at) VALUES (?, ?, ?)",
         (card_id, space_id, datetime.now(timezone.utc).isoformat()),
     )
-    await db.commit()
-
-    # Persist stager-suggested tags
-    if stager_output.suggested_tags:
-        from laya.pipeline.tags import persist_suggested_tags
-        try:
-            await persist_suggested_tags(card_id, stager_output.suggested_tags)
-        except Exception as e:
-            log.warning("tag_persist_failed", card_id=card_id, error=str(e))
 
     # Carry forward: bump group_active_at for ALL cards in this entity group to the
-    # group's latest ACTIVITY time. The just-inserted card carries its own event time
+    # group's latest ACTIVITY time. The just-persisted card carries its own event time
     # (see _event_ts), so MAX(group_active_at) = max(existing, this event) — forward-only.
     # Using the event time (not wall-clock now) means an out-of-order/late-ingested older
     # event can never drag a group backward, and backlogged groups bucket to their real date.
@@ -337,73 +275,80 @@ async def run_emit(
     )
     await db.commit()
 
-    # Detect if this card joined an existing entity group (carry-forward scenario)
-    _existing = await db.execute_fetchall(
+
+async def _count_siblings(db, entity_id: str, card_id: str) -> int:
+    """Number of OTHER cards already in this entity group (excludes card_id).
+
+    >0 means this card carried an existing group forward. This single count also
+    gates the group summary: total cards >= 2  ⟺  siblings >= 1, so the
+    carry-forward flag and the summary trigger share one query (no second COUNT)."""
+    rows = await db.execute_fetchall(
         "SELECT COUNT(*) AS cnt FROM action_cards WHERE entity_id = ? AND card_id != ?",
         (entity_id, card_id),
     )
-    _is_carry_forward = _existing[0]["cnt"] > 0
+    return rows[0]["cnt"]
 
-    log.info(
-        "card_created",
-        card_id=card_id,
-        event_id=event.event_id,
-        priority=router_output.priority.value,
-        persona=router_output.persona.value,
-        carry_forward=_is_carry_forward,
+
+async def _auto_resolve_terminal_siblings(
+    db, event: LayaEvent, entity_id: str, card_id: str
+) -> int:
+    """A terminal event means the work item completed, so resolve this entity's
+    still-active sibling cards to ``done`` — they are no longer actionable.
+    Best-effort; returns the number resolved."""
+    inactive = tuple(INACTIVE_STATUSES)
+    placeholders = ", ".join("?" for _ in inactive)
+    sibling_rows = await db.execute_fetchall(
+        f"""SELECT card_id, header, status FROM action_cards
+            WHERE entity_id = ? AND card_id != ?
+            AND status NOT IN ({placeholders})""",
+        (entity_id, card_id, *inactive),
     )
-
-    # 3b. Auto-resolve older cards in the entity group when a terminal event arrives.
-    # Terminal events indicate the underlying work item has completed (PR merged/declined,
-    # issue closed/resolved, etc.), so pending sibling cards are no longer actionable.
-    _TERMINAL_EVENT_TYPES = {
-        "pr_merged", "pr_declined", "pr_closed",
-        "issue_closed", "issue_resolved", "ticket_closed", "ticket_resolved",
-        "build_succeeded", "deploy_completed",
-    }
-    if _is_carry_forward and event.source.raw_event_type in _TERMINAL_EVENT_TYPES:
-        sibling_rows = await db.execute_fetchall(
-            """SELECT card_id, header, status FROM action_cards
-               WHERE entity_id = ? AND card_id != ?
-               AND status NOT IN ('done', 'dismissed', 'failed', 'archived')""",
-            (entity_id, card_id),
+    resolved = 0
+    for sib in sibling_rows:
+        try:
+            await transition_card_status(sib["card_id"], "done", actor="pipeline")
+            resolved += 1
+        except ValueError:
+            continue
+        create_task(
+            trigger_summary_status_update(sib["card_id"], sib["header"], "done"),
+            name=f"summary_status_{sib['card_id']}",
         )
-        if sibling_rows:
-            from laya.models.card_lifecycle import transition_card_status
-            resolved = 0
-            for sib in sibling_rows:
-                try:
-                    await transition_card_status(sib["card_id"], "done", actor="pipeline")
-                    resolved += 1
-                except ValueError:
-                    continue
-                from laya.tasks import create_task as create_tracked_task
-                create_tracked_task(
-                    trigger_summary_status_update(sib["card_id"], sib["header"], "done"),
-                    name=f"summary_status_{sib['card_id']}",
-                )
-            log.info(
-                "auto_resolved_siblings",
-                entity_id=entity_id,
-                trigger_event=event.source.raw_event_type,
-                resolved_count=resolved,
-            )
+    if resolved:
+        log.info(
+            "auto_resolved_siblings",
+            entity_id=entity_id,
+            trigger_event=event.source.raw_event_type,
+            resolved_count=resolved,
+        )
+    return resolved
 
-    # 4. Embed card in ChromaDB
-    entity_refs = ",".join(e.value for e in router_output.entities)
+
+async def _embed_card(
+    db,
+    *,
+    event: LayaEvent,
+    router_output: RouterOutput,
+    stager_output: ActionCardData,
+    entity_id: str,
+    card_id: str,
+    is_carry_forward: bool,
+    space_id: str | None,
+    entity_refs: str,
+) -> str:
+    """Build the canonical embedding text (with an optional thread-context prefix
+    for follow-up cards), persist that blurb for lexical search, and index the
+    card in ChromaDB. Returns embed_text so the grouping queries reuse it verbatim
+    (keeping the stored vector and the searches consistent)."""
     # Contextual embeddings: for a follow-up card joining an existing entity group,
     # prepend a short thread-context blurb so terse updates ("Approved.") keep the
     # semantic referent of the thread. Skipped for the first card (self-contained)
     # and gated by a setting so it can be disabled if grouping thresholds drift.
-    # The enriched embed_text below is reused verbatim by resolve_context_group and
-    # resolve_semantic_entities, keeping the stored vector and the grouping queries
-    # consistent.
-    from laya.config import load_settings as _load_settings_ce
-    _ctx_embed_enabled = (
-        _load_settings_ce().get("smart_grouping", {}).get("contextual_embeddings", True)
+    ctx_embed_enabled = (
+        load_settings().get("smart_grouping", {}).get("contextual_embeddings", True)
     )
     thread_context = ""
-    if _ctx_embed_enabled and _is_carry_forward:
+    if ctx_embed_enabled and is_carry_forward:
         try:
             thread_context = await _fetch_thread_context(db, entity_id, card_id)
         except Exception as e:
@@ -458,22 +403,35 @@ async def run_emit(
         )
     except Exception as e:
         log.warning("card_embed_failed", card_id=card_id, error=str(e))
+    return embed_text
 
-    # 4b. Semantic context grouping — find related cards across entity boundaries.
-    #     First check if the stager already identified a cross-entity context match
-    #     (saves a separate LLM call). Fall back to the post-emit search for race
-    #     conditions where the stager couldn't see a concurrent card.
-    from laya.config import load_settings as _load_settings
-    _sg_config = _load_settings().get("smart_grouping", {})
-    _context_assoc_enabled = _sg_config.get("context_association", True)
+
+async def _resolve_context_grouping(
+    db,
+    *,
+    event: LayaEvent,
+    stager_output: ActionCardData,
+    entity_id: str,
+    card_id: str,
+    embed_text: str,
+    space_id: str | None,
+    entity_refs: str,
+) -> str | None:
+    """Find related cards across entity boundaries and assign a context group.
+    Prefers a cross-entity match the stager already identified (saves an LLM call),
+    falling back to a post-emit ChromaDB search for races. Persists and returns the
+    assigned context_id, or None."""
+    sg_config = load_settings().get("smart_grouping", {})
+    if not sg_config.get("context_association", True):
+        return None
 
     context_id = None
     stager_context_match = getattr(stager_output, "context_match", None)
     if stager_context_match is None and isinstance(stager_output, dict):
         stager_context_match = stager_output.get("context_match")
 
-    if _context_assoc_enabled and stager_context_match and stager_context_match.get("matched_card_id"):
-        # Stager identified a cross-entity context match — validate and use it
+    if stager_context_match and stager_context_match.get("matched_card_id"):
+        # Stager identified a cross-entity context match — validate and use it.
         from laya.pipeline.context_grouping import assign_or_join_context_group
         matched_card_id = stager_context_match["matched_card_id"]
         label = stager_context_match.get("label", "")
@@ -487,7 +445,6 @@ async def run_emit(
                 matched_refs = ""
                 try:
                     from laya.db.chromadb_store import get_collection as _get_col
-                    import asyncio
                     from functools import partial as _partial
                     _col = _get_col()
                     _loop = asyncio.get_event_loop()
@@ -514,8 +471,8 @@ async def run_emit(
         except Exception as e:
             log.warning("stager_context_match_failed", card_id=card_id, error=str(e))
 
-    if _context_assoc_enabled and not context_id:
-        # Fallback: post-emit ChromaDB search (handles race conditions)
+    if not context_id:
+        # Fallback: post-emit ChromaDB search (handles race conditions).
         from laya.pipeline.context_grouping import resolve_context_group
         try:
             context_id = await resolve_context_group(
@@ -536,29 +493,21 @@ async def run_emit(
         )
         await db.commit()
         log.info("context_group_assigned", card_id=card_id, context_id=context_id)
+    return context_id
 
-    # 5. Entity resolution Layer 2 (semantic, non-blocking)
-    entity_values = [e.value for e in router_output.entities]
-    if entity_values:
-        try:
-            await resolve_semantic_entities(card_id, embed_text, entity_values)
-        except Exception as e:
-            log.warning("entity_resolution_failed", card_id=card_id, error=str(e))
 
-    # 6. Audit log
-    await log_to_audit(
-        event_id=event.event_id,
-        card_id=card_id,
-        step="emit",
-        model="n/a",
-        input_tokens=0,
-        output_tokens=0,
-        latency_ms=0,
-        success=True,
-        metadata={"has_workspace": has_workspace, "privacy_tier": stager_output.privacy_tier},
-    )
-
-    # 7. Broadcast via WebSocket.
+async def _broadcast_card(
+    *,
+    pre_created: bool,
+    card_id: str,
+    entity_id: str,
+    stager_output: ActionCardData,
+    router_output: RouterOutput,
+    card_status: str,
+    has_workspace: bool,
+    is_carry_forward: bool,
+) -> None:
+    """Broadcast the new/updated card to the feed, plus a carry-forward notice."""
     # Pre-created cards (agent_running → pending transition) use card_updated so the
     # feed patches the existing card in-place rather than triggering a full reload.
     ws_type = "card_updated" if pre_created else "card_created"
@@ -579,9 +528,8 @@ async def run_emit(
             },
         }
     )
-
-    # 7b. If this card carried forward an existing group, notify the UI
-    if _is_carry_forward:
+    # If this card carried forward an existing group, notify the UI.
+    if is_carry_forward:
         await manager.broadcast(
             {
                 "type": "group_carried_forward",
@@ -590,25 +538,31 @@ async def run_emit(
             }
         )
 
-    # 8. Group summary: generate or update rolling summary for entity group
-    from laya.pipeline.group_summary import trigger_group_summary_update
-    async with db.execute(
-        "SELECT COUNT(*) AS cnt FROM action_cards WHERE entity_id = ?",
-        (entity_id,),
-    ) as _cnt_cursor:
-        _cnt_row = await _cnt_cursor.fetchone()
-    if _cnt_row and _cnt_row[0] >= 2:
-        from laya.tasks import create_task as _create_summary_task
-        _create_summary_task(
+
+def _trigger_followups(
+    *,
+    event: LayaEvent,
+    router_output: RouterOutput,
+    stager_output: ActionCardData,
+    card_id: str,
+    entity_id: str,
+    space_id: str | None,
+    is_carry_forward: bool,
+) -> None:
+    """Kick off the non-blocking post-emit work: rolling group summary (only for
+    multi-card groups — i.e. carry-forward), the daily summary update, and the
+    bounded processing-rules evaluation. Omni needs no trigger here: the card was
+    enqueued atomically in _persist_card and the omni queue processor picks it up."""
+    # A group summary only makes sense at >= 2 cards, which is exactly carry-forward.
+    if is_carry_forward:
+        from laya.pipeline.group_summary import trigger_group_summary_update
+        create_task(
             trigger_group_summary_update(entity_id, card_id, space_id),
             name=f"group_summary_{entity_id}",
         )
 
-    # 9. Trigger daily summary update (async, non-blocking).
-    # Space metadata is hydrated inside summarize.py via a DB join on card_id,
-    # so we no longer pre-resolve space name/color here.
-    from laya.tasks import create_task as create_tracked_task
-    create_tracked_task(
+    # Daily summary (space metadata is hydrated inside summarize.py via a DB join).
+    create_task(
         trigger_summary_update(
             card_id=card_id,
             card_header=stager_output.header,
@@ -625,11 +579,9 @@ async def run_emit(
         name=f"summary_{card_id}",
     )
 
-    # 9. Omni update: card_id is already in omni_queue (enqueued atomically
-    #    with the card persist above). The omni queue processor picks it up.
-
-    # 10. Processing rules — evaluate automated actions (non-blocking, bounded)
+    # Processing rules — evaluate automated actions (non-blocking, bounded).
     from laya.pipeline.processing_rules import run_processing_rules, _processing_semaphore
+
     async def _bounded_processing_rules():
         async with _processing_semaphore:
             await run_processing_rules(
@@ -638,11 +590,175 @@ async def run_emit(
                 card_id=card_id,
                 entity_id=entity_id,
                 space_id=space_id,
-                is_carry_forward=_is_carry_forward,
+                is_carry_forward=is_carry_forward,
             )
-    create_tracked_task(
+
+    create_task(
         _bounded_processing_rules(),
         name=f"processing_rules_{card_id}",
+    )
+
+
+async def run_emit(
+    event: LayaEvent,
+    router_output: RouterOutput,
+    stager_output: ActionCardData,
+    worker_results: list[WorkerResult] | None = None,
+    card_id: str | None = None,
+    space_id: str | None = None,
+) -> str:
+    """Run the EMIT step: persist card → embed → resolve entities → audit → broadcast.
+
+    Args:
+        event: The original event.
+        router_output: Router classification.
+        stager_output: Stager-generated card data.
+        worker_results: Optional worker findings (for has_workspace detection).
+        card_id: Pre-generated card_id from the worker background flow. When
+            provided the provisional card row is updated in-place; when None a
+            fresh row is inserted.
+        space_id: The resolved space for this event.
+
+    Returns:
+        card_id of the created/updated card.
+    """
+    pre_created = card_id is not None
+    if not pre_created:
+        card_id = f"card_{uuid.uuid4().hex[:12]}"
+    # Canonical grouping key — the one true spelling, shared with the worker path
+    # (queue.py) and the stager's history lookup (stager.py) so all three agree.
+    # Any per-platform shape correction (e.g. resolving Gmail's canonical thread
+    # root when the trigger returns a message id as the threadId) is the n8n
+    # ingestion workflow's job, NOT emit's — emit is platform-agnostic.
+    entity_id = event.entity_id
+
+    # Build a human-readable source reference for linking back to the origin
+    from laya.egress.registry import format_source_ref
+
+    source_url = event.subject.url or None
+    source_ref, source_url = format_source_ref(
+        event.source.platform,
+        event.subject.id,
+        event.subject.type,
+        event.subject.title,
+        source_url,
+    )
+
+    has_workspace, card_status = _resolve_card_status(worker_results)
+
+    # 1. Persist the card + enqueue it for omni + carry the group forward (one txn).
+    db = await get_db()
+    await _persist_card(
+        db,
+        card_id=card_id,
+        pre_created=pre_created,
+        event=event,
+        router_output=router_output,
+        stager_output=stager_output,
+        entity_id=entity_id,
+        source_ref=source_ref,
+        source_url=source_url,
+        space_id=space_id,
+        has_workspace=has_workspace,
+        card_status=card_status,
+    )
+
+    # Persist stager-suggested tags (best-effort).
+    if stager_output.suggested_tags:
+        from laya.pipeline.tags import persist_suggested_tags
+        try:
+            await persist_suggested_tags(card_id, stager_output.suggested_tags)
+        except Exception as e:
+            log.warning("tag_persist_failed", card_id=card_id, error=str(e))
+
+    # 2. Carry-forward detection — one query, also gates the group summary below.
+    is_carry_forward = await _count_siblings(db, entity_id, card_id) > 0
+    log.info(
+        "card_created",
+        card_id=card_id,
+        event_id=event.event_id,
+        priority=router_output.priority.value,
+        persona=router_output.persona.value,
+        carry_forward=is_carry_forward,
+    )
+
+    # 3. Auto-resolve sibling cards when a terminal event arrives (best-effort).
+    # Which event types are terminal is a per-platform concern owned by the egress
+    # platform registry — emit just asks the event (see LayaEvent.is_terminal).
+    if is_carry_forward and event.is_terminal:
+        try:
+            await _auto_resolve_terminal_siblings(db, event, entity_id, card_id)
+        except Exception as e:
+            log.warning("auto_resolve_siblings_failed", card_id=card_id, error=str(e))
+
+    # 4. Embed in ChromaDB; embed_text is reused verbatim by the grouping queries.
+    entity_refs = ",".join(e.value for e in router_output.entities)
+    embed_text = await _embed_card(
+        db,
+        event=event,
+        router_output=router_output,
+        stager_output=stager_output,
+        entity_id=entity_id,
+        card_id=card_id,
+        is_carry_forward=is_carry_forward,
+        space_id=space_id,
+        entity_refs=entity_refs,
+    )
+
+    # 5. Semantic context grouping across entity boundaries (best-effort).
+    await _resolve_context_grouping(
+        db,
+        event=event,
+        stager_output=stager_output,
+        entity_id=entity_id,
+        card_id=card_id,
+        embed_text=embed_text,
+        space_id=space_id,
+        entity_refs=entity_refs,
+    )
+
+    # 6. Entity resolution Layer 2 (semantic, non-blocking).
+    entity_values = [e.value for e in router_output.entities]
+    if entity_values:
+        try:
+            await resolve_semantic_entities(card_id, embed_text, entity_values)
+        except Exception as e:
+            log.warning("entity_resolution_failed", card_id=card_id, error=str(e))
+
+    # 7. Audit log.
+    await log_to_audit(
+        event_id=event.event_id,
+        card_id=card_id,
+        step="emit",
+        model="n/a",
+        input_tokens=0,
+        output_tokens=0,
+        latency_ms=0,
+        success=True,
+        metadata={"has_workspace": has_workspace, "privacy_tier": stager_output.privacy_tier},
+    )
+
+    # 8. Broadcast to the feed (runs even if the enrichment steps above degraded).
+    await _broadcast_card(
+        pre_created=pre_created,
+        card_id=card_id,
+        entity_id=entity_id,
+        stager_output=stager_output,
+        router_output=router_output,
+        card_status=card_status,
+        has_workspace=has_workspace,
+        is_carry_forward=is_carry_forward,
+    )
+
+    # 9. Kick off non-blocking follow-ups (group summary, daily summary, rules).
+    _trigger_followups(
+        event=event,
+        router_output=router_output,
+        stager_output=stager_output,
+        card_id=card_id,
+        entity_id=entity_id,
+        space_id=space_id,
+        is_carry_forward=is_carry_forward,
     )
 
     return card_id
