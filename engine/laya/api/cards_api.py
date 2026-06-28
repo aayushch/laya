@@ -2264,7 +2264,6 @@ async def run_entity_agent(entity_id: str, body: RunEntityAgentRequest) -> dict:
         return {"status": "agent_running", "session_id": existing["session_id"], "card_id": anchor_card_id}
 
     # 9. New session — start in plan mode
-    agent_type = session_manager.get_configured_agent_type()
 
     now = datetime.now(timezone.utc).isoformat()
     await db.execute(
@@ -2285,11 +2284,14 @@ async def run_entity_agent(entity_id: str, body: RunEntityAgentRequest) -> dict:
             {"type": "card_updated", "card_id": card_row["card_id"], "payload": payload}
         )
 
+    # Delegate agent resolution to start_session (explicit > space override > global
+    # default). Passing agent_type=None + the space_id lets the per-space coding_agent
+    # set in Settings > Spaces take effect; without this it would always use the global.
     session_id, agent = await session_manager.start_session(
         card_id=anchor_card_id,
         prompt=agent_prompt,
         repo_path=cwd,
-        agent_type=agent_type,
+        agent_type=None,
         space_id=space_id,
         add_dirs=add_dirs,
         mode="plan",

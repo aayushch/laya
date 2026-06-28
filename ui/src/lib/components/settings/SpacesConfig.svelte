@@ -19,11 +19,12 @@
 
 	let availableModels = $state<ProviderModels[]>([]);
 
+	// Derived from the global CODING_AGENTS list so every supported agent (e.g. Pi)
+	// appears automatically — a hardcoded copy here drifted out of sync and dropped Pi.
+	// '' = use the global default; 'none' is excluded since a space override must name a real agent.
 	const agentOptions = [
 		{ value: '', label: 'Use default' },
-		{ value: 'claude_code', label: 'Claude Code' },
-		{ value: 'gemini_cli', label: 'Gemini CLI' },
-		{ value: 'codex_cli', label: 'Codex CLI' }
+		...CODING_AGENTS.filter((a) => a.value !== 'none').map((a) => ({ value: a.value, label: a.label }))
 	];
 
 	function integrationDisplayName(name: string): string {
@@ -249,12 +250,14 @@
 					name: formName.trim(),
 					description: formDescription.trim() || undefined,
 					color: formColor,
-					router_model: formRouterModel || undefined,
-					stager_model: formStagerModel || undefined,
-					chat_model: formChatModel || undefined,
-					trace_model: formTraceModel || undefined,
-					omni_model: formOmniModel || undefined,
-					coding_agent: formCodingAgent || undefined
+					// null (not undefined) so the field is present in the request body and the
+					// backend clears the override back to NULL — picking "Use default" emits ''.
+					router_model: formRouterModel || null,
+					stager_model: formStagerModel || null,
+					chat_model: formChatModel || null,
+					trace_model: formTraceModel || null,
+					omni_model: formOmniModel || null,
+					coding_agent: formCodingAgent || null
 				});
 			} else {
 				await engineApi.createSpace({

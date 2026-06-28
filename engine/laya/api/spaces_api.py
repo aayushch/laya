@@ -131,13 +131,25 @@ async def update_space(space_id: str, body: SpaceUpdate) -> dict:
     if not rows:
         raise HTTPException(status_code=404, detail="Space not found")
 
+    # Only touch fields the client explicitly sent (model_fields_set), leaving omitted
+    # fields unchanged. A plain `is not None` check could never clear a column back to
+    # NULL, which is why switching a per-space model/agent override to "Use default"
+    # (sent as null/empty) silently failed to save. Empty string is normalized to NULL
+    # so "Use default" clears the override.
+    nullable_overrides = {
+        "router_model", "stager_model", "chat_model", "trace_model", "omni_model", "coding_agent",
+    }
+    provided = body.model_fields_set
     updates: list[str] = []
     params: list = []
     for field in ("name", "description", "icon", "color", "router_model", "stager_model", "chat_model", "trace_model", "omni_model", "coding_agent"):
+        if field not in provided:
+            continue
         value = getattr(body, field, None)
-        if value is not None:
-            updates.append(f"{field} = ?")
-            params.append(value)
+        if field in nullable_overrides and value == "":
+            value = None
+        updates.append(f"{field} = ?")
+        params.append(value)
 
     if not updates:
         return {"status": "no_changes"}

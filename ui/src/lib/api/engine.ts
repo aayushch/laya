@@ -595,7 +595,7 @@ export const engineApi = {
 			body: JSON.stringify(space)
 		}),
 
-	updateSpace: (spaceId: string, updates: Partial<{ name: string; description: string; icon: string; color: string; router_model: string; stager_model: string; chat_model: string; trace_model: string; omni_model: string; coding_agent: string }>) =>
+	updateSpace: (spaceId: string, updates: Partial<{ name: string; description: string; icon: string; color: string; router_model: string | null; stager_model: string | null; chat_model: string | null; trace_model: string | null; omni_model: string | null; coding_agent: string | null }>) =>
 		request<{ status: string; space_id: string }>(`/spaces/${spaceId}`, {
 			method: 'PUT',
 			body: JSON.stringify(updates)
