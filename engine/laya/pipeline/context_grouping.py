@@ -317,7 +317,11 @@ async def _passes_centroid_check(
 
         embeddings = result.get("embeddings")
         ids = result.get("ids", [])
-        if not embeddings or new_card_id not in ids:
+        # chromadb 1.x returns `embeddings` as a numpy ndarray, not a list, so a
+        # truthiness check (`not embeddings`) raises "truth value of an array ...
+        # is ambiguous". Use explicit None/length checks (len() works on both
+        # lists and ndarrays; `is None` short-circuits first).
+        if embeddings is None or len(embeddings) == 0 or new_card_id not in ids:
             return True
 
         new_idx = ids.index(new_card_id)
