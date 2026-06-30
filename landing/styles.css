@@ -1152,6 +1152,15 @@ p.download-meta {
     padding: 10px 20px;
   }
   .showcase-tabs { margin-top: 24px; }
+  /* iOS Safari clips the screenshot's rounded corners because .showcase-frame's
+     `float-in` animation animates a transform, promoting the frame to a GPU
+     compositing layer where WebKit fails to apply its (or the child img's)
+     border-radius + overflow:hidden clip. Desktop isn't affected, so float-in
+     stays there; on mobile swap to the transform-free `fade-in` (opacity only)
+     so the frame is never transform-composited and the rounded clip applies.
+     This is the actual fix — the img border-radius alone wasn't enough because
+     the img rasterizes inside the frame's broken composited layer. */
+  .showcase-frame { animation: fade-in 0.7s ease 0.3s both; }
 }
 @media (max-width: 480px) {
   .steps { grid-template-columns: 1fr; }
