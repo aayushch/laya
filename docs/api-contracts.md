@@ -442,6 +442,20 @@ Fetch analytics data for the dashboard.
 }
 ```
 
+### `GET /dashboard/throughput`
+
+Per-bucket throughput and wait-time for the last `minutes` (default 60, clamped to `[10, 43200]`). Bucket granularity adapts to the window (1-min ≤120, 5-min ≤360, 1-hour ≤1440, else 1-day).
+
+**Response (200):**
+```json
+{
+  "buckets": [
+    {"minute": "2026-06-29T14:30:00Z", "ingested": 4, "processed": 4, "failed": 0, "avg_wait_s": 12.4, "p95_wait_s": 31.0}
+  ],
+  "window_minutes": 60
+}
+```
+
 ### `GET /settings`
 
 Fetch current configuration.
@@ -497,6 +511,22 @@ Update configuration. Partial updates supported.
 {
   "status": "updated",
   "restart_required": false
+}
+```
+
+### `GET /settings/agent-backends`
+
+Per-agent availability and capability tier for the "use an installed CLI agent as the inference backend" picker. Tier `native` = the CLI enforces the JSON schema for us (Claude Code); `best_effort` = the schema is injected as text and validated/retried.
+
+**Response (200):**
+```json
+{
+  "backends": [
+    {"agent_id": "claude_code", "available": true, "path": "/usr/local/bin/claude", "tier": "native", "hint": "..."},
+    {"agent_id": "codex_cli", "available": false, "path": "", "tier": "best_effort", "hint": "..."},
+    {"agent_id": "gemini_cli", "available": true, "path": "/usr/local/bin/gemini", "tier": "best_effort", "hint": "..."},
+    {"agent_id": "pi_cli", "available": false, "path": "", "tier": "best_effort", "hint": "..."}
+  ]
 }
 ```
 
@@ -686,6 +716,23 @@ Preview an action before executing.
 }
 ```
 
+### `GET /egress/field-suggestions`
+
+Autocomplete known emails/usernames (from past events and team config) for the Composer's recipient fields.
+
+**Query Parameters:**
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `q` | string | `""` | Search term (min 2 chars; shorter returns empty) |
+| `scope` | string | `all` | `all` (all events) or `platform` (filter by `source_platform`) |
+| `platform` | string | `""` | Platform id, required when `scope=platform` |
+| `sources` | string | `email` | Comma-separated: `email`, `username` |
+
+**Response (200):**
+```json
+{"suggestions": ["sarah@company.com", "schen"]}
+```
+
 ### `GET /classification/rules`
 
 List classification rules (manual and learned).
@@ -745,6 +792,69 @@ List recent classification corrections.
   ]
 }
 ```
+
+### `GET /context-rules`
+
+List context-grouping rules (the natural-language directives that steer context association). Both `learned` (extracted from link/unlink corrections) and `manual` rules are returned. Paginated because learned rules can grow large.
+
+**Query Parameters:**
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `space_id` | string | `null` | Filter by space |
+| `source` | string | `null` | Filter by origin: `learned`, `manual` |
+| `active` | bool | `null` | Filter by active flag |
+| `limit` | int | 20 | Max rules to return |
+| `offset` | int | 0 | Pagination offset |
+
+**Response (200):**
+```json
+{
+  "rules": [
+    {
+      "id": 7,
+      "space_id": null,
+      "rule_text": "Group Jira tickets with the Bitbucket PRs that reference them in the branch name",
+      "source": "learned",
+      "active": true,
+      "created_at": "2026-06-20T10:00:00Z",
+      "updated_at": "2026-06-20T10:00:00Z"
+    }
+  ],
+  "total": 41,
+  "limit": 20,
+  "offset": 0
+}
+```
+
+### `POST /context-rules`
+
+Create a manual context rule (`source` is forced to `manual`, `active` to true).
+
+**Request:**
+```json
+{
+  "rule_text": "Never group cards from different customers even if the subject matches",
+  "space_id": "default"
+}
+```
+
+**Response (200):**
+```json
+{"id": 12, "status": "created"}
+```
+
+### `PUT /context-rules/{rule_id}`
+
+Update a rule's text and/or active flag. Returns `{"status": "no_changes"}` when the body is empty, 404 if the rule does not exist.
+
+**Request:**
+```json
+{"rule_text": "Updated wording", "active": false}
+```
+
+### `DELETE /context-rules/{rule_id}`
+
+Delete a context rule (404 if not found).
 
 ### `GET /omni`
 
@@ -932,6 +1042,55 @@ Returns LLM cost tracking data broken down by feature and pipeline step.
 }
 ```
 
+### `GET /agent-budget`
+
+Returns window-based usage budgeting for agent **inference backends** (distinct from the monthly `$` budget above). Agents bill against time-windowed usage limits that reset, so this tracks per-agent token usage in the rolling window, the native rate-limit signal scraped from the agent (e.g. Claude Code's `rate_limit_event`), and the global pause state.
+
+**Response (200):**
+```json
+{
+  "enabled": true,
+  "agents": [
+    {
+      "agent_id": "claude_code",
+      "window_hours": 5.0,
+      "window_token_limit": 5000000,
+      "pause_at_percent": 85,
+      "tokens_used": 1240000,
+      "calls": 38,
+      "percent": 24.8,
+      "rate_limit": {"status": "allowed", "resets_at": 1751212800, "rate_limit_type": "five_hour"}
+    }
+  ],
+  "is_paused": false,
+  "paused_until": null,
+  "paused_reason": null,
+  "paused_workflow_count": 0
+}
+```
+
+### `PUT /agent-budget`
+
+Update the agent-usage budget config. When `enabled`, an immediate evaluation runs so a just-lowered limit takes effect right away.
+
+**Request:**
+```json
+{
+  "enabled": true,
+  "agents": {
+    "claude_code": {"window_token_limit": 5000000, "window_hours": 5, "pause_at_percent": 85}
+  }
+}
+```
+
+**Response (200):** `{"status": "ok", "enabled": true, "agents": {...}}`
+
+### `POST /agent-budget/resume`
+
+Manually re-enable ingestion workflows that an agent usage-limit pause deactivated (the scheduler also auto-resumes at the window reset).
+
+**Response (200):** `{"status": "resumed", "resumed_count": 6, "errors": []}`
+
 ### `GET /ingestion-errors`
 
 Returns events that failed during ingestion.
@@ -951,6 +1110,99 @@ Returns events that failed during ingestion.
     }
   ]
 }
+```
+
+### `GET /events/counts`
+
+Total event count grouped by `processing_status` (drives the Audit page's live pipeline-state breakdown).
+
+**Response (200):**
+```json
+{"counts": {"completed": 412, "filtered": 87, "dead": 3, "pending": 2}, "total": 504}
+```
+
+### `GET /events/filtered`
+
+Paginated list of events dropped by a filter rule (terminal, no card produced — purely informational, not failures). `limit` (default 25) and `offset` query params.
+
+**Response (200):**
+```json
+{
+  "events": [
+    {
+      "event_id": "evt_...",
+      "timestamp": "...",
+      "source_platform": "slack",
+      "subject_type": "message",
+      "subject_title": "...",
+      "subject_url": "...",
+      "actor_name": "CI Bot",
+      "filter_rule": "Ignore bots",
+      "created_at": "..."
+    }
+  ],
+  "total": 87,
+  "limit": 25,
+  "offset": 0
+}
+```
+
+### `GET /events/filtered/export`
+
+Export filtered events as JSON, optionally limited to the last `days` (default `0` = all time). Unpaginated, with richer columns than the list endpoint.
+
+**Response (200):**
+```json
+{
+  "kind": "filtered_events",
+  "exported_at": "2026-06-29 14:30:00",
+  "days": 7,
+  "since": "2026-06-22T14:30:00+00:00",
+  "count": 42,
+  "events": [{"event_id": "evt_...", "source_raw_event_type": "...", "subject_id": "...", "actor_email": "...", "space_id": "...", "...": "..."}]
+}
+```
+
+### `GET /events/dead`
+
+Paginated list of events that exhausted all retries (`processing_status = 'dead'`). `limit`/`offset` query params; rows include `processing_attempts`, `manual_retries`, and `last_error`.
+
+### `POST /events/dead/retry`
+
+Re-enqueue dead events for a fresh retry cycle (resets `processing_attempts` to 0).
+
+**Request:**
+```json
+{"event_ids": ["evt_a", "evt_b"], "all": false}
+```
+
+Pass `{"all": true}` to retry every dead event.
+
+**Response (200):** `{"retried": 2}`
+
+### `GET /audit-log/export`
+
+Export audit-log entries as JSON, honoring the same `step` / `success` / `search` filters as the list view plus an optional `days` window (default `0` = all time). Unpaginated.
+
+**Response (200):**
+```json
+{
+  "kind": "audit_log",
+  "exported_at": "2026-06-29 14:30:00",
+  "days": 0,
+  "since": null,
+  "count": 1280,
+  "entries": [{"...": "..."}]
+}
+```
+
+### `GET /audit/failure-summary`
+
+One-shot count of outstanding failures, fetched once on app startup to seed the Audit/Settings red-dot indicator. The client then stays in sync via the `audit_failure` WebSocket push (no polling).
+
+**Response (200):**
+```json
+{"dead_events": 3, "ingestion_errors": 1, "has_failures": true}
 ```
 
 ### `GET /diagnostics`
@@ -1146,6 +1398,57 @@ Recent firings for a rule (default 20).
 }
 ```
 
+### `GET /processing-rules/firings`
+
+Cross-rule firing log powering Settings → Rules → Activity (mirrors the audit-log endpoint). Each row is enriched (rule name, card header, platform) via LEFT JOINs so pruned references degrade to NULL. `outcome` is **derived** (not stored) from `results_json`/`error`.
+
+**Query Parameters:**
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `rule_id` | int | `null` | Filter to a single rule |
+| `outcome` | string | `null` | `success`, `error`, `skipped` |
+| `search` | string | `null` | Matches rule name, card id/header, entity/event id, or error |
+| `limit` | int | 50 | Max entries |
+| `offset` | int | 0 | Pagination offset |
+
+**Response (200):**
+```json
+{
+  "entries": [
+    {
+      "id": 42,
+      "rule_id": 1,
+      "rule_name": "Auto-archive bot PR notifications",
+      "fired_at": "2026-06-28T09:00:00Z",
+      "card_id": "card_...",
+      "card_header": "Dependabot bumped lodash",
+      "status": "archived",
+      "priority": "LOW",
+      "entity_id": "...",
+      "event_id": "...",
+      "platform": "github",
+      "outcome": "success",
+      "action_types": ["archive"],
+      "results": [{"type": "archive", "success": true}],
+      "error": null,
+      "skip_reason": null
+    }
+  ],
+  "total": 128,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+### `GET /processing-rules/metadata-fields`
+
+Discover `content_metadata` keys and sample values for a `platform` (required query param) so the rule builder can suggest metadata conditions. Scans the 100 most recent events for that platform.
+
+**Response (200):**
+```json
+{"keys": {"jira_project": ["PAYMENTS", "PLATFORM"], "jira_labels": ["backend", "production"]}}
+```
+
 ### `GET /processing-rules/field-options`
 
 Distinct values observed in the events table for fields that support dropdown selection in the rule builder (platforms, raw event types, subject types, plus the persona/priority/category enums).
@@ -1334,6 +1637,34 @@ The WebSocket connection is established when the Tauri app launches and maintain
   "type": "trace_narrative_done",
   "trace_id": "trace_001",
   "cluster_id": "cluster_001"
+}
+```
+
+**`audit_failure`** -- Outstanding-failure counts changed (keeps the Audit/Settings red-dot in sync without polling). `kind` identifies which source changed.
+```json
+{
+  "type": "audit_failure",
+  "payload": {
+    "dead_events": 3,
+    "ingestion_errors": 1,
+    "kind": "dead_event"
+  }
+}
+```
+
+**`agent_budget_status`** -- Agent usage-limit pause/resume state changed (drives the footer agent-budget widget).
+```json
+{
+  "type": "agent_budget_status",
+  "paused": true
+}
+```
+
+**`rules_changed`** -- A rule was created/updated/deleted from chat (or elsewhere); the UI reloads the affected rule list. `rule_type` ∈ `filter | classification | processing`.
+```json
+{
+  "type": "rules_changed",
+  "payload": {"rule_type": "processing"}
 }
 ```
 

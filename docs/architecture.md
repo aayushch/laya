@@ -342,8 +342,9 @@ PARSE INTENT (fast LLM)
   - Extract: entities, time ranges
        |
        v
-RETRIEVE CONTEXT
+RETRIEVE CONTEXT (hybrid: vector + lexical, merged via RRF)
   - memory_search (ChromaDB) for semantic matches
+  - FTS5/BM25 keyword search over cards_fts / events_fts
   - event_lookup (SQLite) for structured data
   - card_history (SQLite) for related Action Cards
   - entity_lookup (SQLite) for cross-platform refs
@@ -418,6 +419,8 @@ CONNECTION BROKER
     Bitbucket, Calendar, Linear, Outlook, Notion
 ```
 
+Each platform owns its own contract — capabilities, draft/compose schema, terminal event types, and payload `normalize`/`validate` logic — as a `Platform` subclass under `egress/platforms/` extending `platforms/base.py`. `registry.py` is a thin facade that delegates to these adapters, so adding a platform means writing one file rather than editing several parallel tables. SMTP is a data-only adapter (`platforms/smtp.py`) used by the SMTP execution backend for direct email delivery, and is excluded from compose enrichment.
+
 ### Omni Pipeline (Rolling Summary)
 
 ```
@@ -466,7 +469,8 @@ User-authored automation that runs against each emitted card:
 - **Actions** are typed payloads — archive, dismiss, change priority/persona, send to platform, add tag, etc.
 - **Throttling:** `rate_limit`, `cooldown_secs`, `max_daily` per rule. Repeated errors auto-disable the rule (threshold in settings).
 - **Scoping:** `space_id = NULL` means a global rule that applies to all spaces; non-null targets a specific space.
-- **Audit:** Every firing is logged to `processing_rule_firings` with the resolved actions and results.
+- **AI conditions/actions:** A rule may use LLM-evaluated conditions or actions (e.g. classify-then-act, run an agent) gated by a confidence threshold, with a `dry_run` mode (see [ai-processing-rules.md](../engine/docs/ai-processing-rules.md)).
+- **Firing log:** Every firing is recorded in `processing_rule_firings` with the actions tried, per-action results, and any error. The log is queryable and searchable by outcome (`success` / `error` / `skipped`) and backs the Settings → Rules activity view, surfacing rule effectiveness and failures.
 
 ### Tags & Daily Summaries
 
@@ -503,8 +507,12 @@ CONTEXT LEARNING (periodic, every 6 hours)
   - Batch unprocessed link/unlink corrections (up to 40)
   - LLM extracts generalizable grouping rules
   - Rules stored in context_rules table
-  - Injected into future confirmation prompts
+  - Injected into future grouping prompts
 ```
+
+### Context Rules
+
+**Context rules** are natural-language grouping directives, distinct from the priority/persona *classification rules* above. They come in two flavours: `learned` (extracted from the user's link/unlink corrections by a cheap model, as in the pipeline above) and `manual` (authored by the user). Active rules of both kinds are injected into the context-association grouping prompt. When the learned set grows past a threshold, an LLM **consolidator** (`llm/prompts/context_rule_consolidator.py`) merges redundant learned rules while preserving manual rules verbatim, keeping the injected prompt compact. Rules are managed via `api/context_rules_api.py` and the Settings → Context Rules panel (list / create / edit / disable / delete).
 
 ### Run Agent Flow
 
@@ -516,7 +524,7 @@ User presses Ctrl+A or clicks "Run Agent"
        v
 AGENT DIALOG
   - Custom prompt (what to investigate/code/research)
-  - Agent selection (Claude Code / Gemini CLI / Codex)
+  - Agent selection (Claude Code / Gemini CLI / Codex / Pi CLI)
   - Working directory (repo path or ~/.laya/tmp/research/<card_id>/)
   - Additional directories
        |
@@ -544,6 +552,22 @@ SESSION COMPLETE
   - Card transitions to ready status
   - Session can be resumed with POST /workspace/{session_id}/resume
 ```
+
+### Agent Inference Backends
+
+Beyond the interactive *workspace* role above, an installed CLI agent can also be driven as a **non-interactive LLM inference backend** for any pipeline stage (router, stager, omni, chat, …). A model id of the form `agent/<agent_id>/<model>` (agent_id ∈ `claude_code`, `codex_cli`, `gemini_cli`, `pi_cli`) routes the call through `llm/agent_backend.py` so the stage runs on the agent's own subscription quota instead of an API key or local VRAM. Two capability tiers exist: **native** (Claude Code, which enforces JSON schemas via `--json-schema` and returns pre-parsed output) and **best-effort** (the rest, which receive the schema as text and are parsed/validated/retried up to three times). Agent processes run headless in an ephemeral empty working directory with built-in tools denied, so they never touch the filesystem during inference.
+
+### Agent Usage-Limit Budgeting
+
+Agent backends bill against time-windowed usage limits (e.g. Claude Code's ~5-hour rolling window) rather than a dollar amount, so they have a budgeting path separate from the monthly `$` cost cap. `pipeline/agent_budget.py` tracks usage per agent and, when an agent crosses its configured pause threshold, auto-pauses the affected ingestion workflows (recorded in `agent_budget_paused_workflows`) and auto-resumes them at the window reset via the scheduler. Native rate-limit signals — Claude Code's `rate_limit_event` — are scraped into `agent_rate_limit_state` and surfaced in the Settings model panel and the activity-footer budget widget. Singleton pause state lives in `agent_budget_state` so it survives restarts.
+
+### Filtered Events & Audit Export
+
+Events dropped by a filter rule are **terminal and informational** — unlike dead events, they are never retried. They are listed via `GET /events/filtered` (with the rule that dropped each one) and can be exported as JSON over a time window via `GET /events/filtered/export?days=`. The audit log is likewise exportable (`GET /audit-log/export`, respecting the current step/success/search filters). The UI rolls dead events, ingestion errors, and filtered events into a single Audit view with a red-dot indicator (seeded by `GET /audit/failure-summary`, updated live over WebSocket) and retry/clear controls.
+
+### On-Prem Repositories
+
+Each repo in `repos.json` carries an optional `host` field that distinguishes cloud from self-hosted. An empty host, or a cloud domain (`bitbucket.org`, `github.com`), means Cloud; any other value (e.g. `git.acme.com`) marks a self-hosted instance — Bitbucket Server / Data Center or GitHub Enterprise — and the egress platform adapts its API base URL and auth scheme accordingly. A missing host always resolves to Cloud, so existing configs keep working.
 
 ### Dead Event Recovery
 
@@ -598,6 +622,12 @@ Coding agents (Claude Code, Gemini CLI, Codex) run as PTY subprocesses. The ENGI
 | **Purpose** | Structured data, exact lookups | Semantic search, similarity matching |
 | **Stores** | Events, cards, actions, entities, workspaces, audit log | Embeddings of event content, research findings, card summaries, chat history |
 | **Queried by** | INGEST, EMIT, UI, audit | ROUTER, Workers, Chat |
+
+### Hybrid Retrieval (Vector + FTS5/BM25)
+
+Card and event retrieval (chat tools, Coherence) is **hybrid**: it combines dense vector search over ChromaDB with lexical BM25 search over SQLite FTS5 virtual tables, and merges the two ranked lists via Reciprocal Rank Fusion. The FTS layer (`db/fts.py`) maintains `cards_fts` (header, summary, intelligence, thread_context) and `events_fts` (subject_title, content_body); both are rebuilt at startup and kept in sync by SQL triggers on the base tables. If the SQLite build lacks the FTS5 module, retrieval degrades gracefully to `LIKE` rather than hard-failing.
+
+**Contextual BM25:** the EMIT step persists a short `action_cards.thread_context` blurb on each card — the rolling group-summary headline + status when available, otherwise the headers of the last couple of cards in the thread. Because `thread_context` is indexed by FTS5, terse follow-up cards ("Approved.", "Resolved as Fixed.") remain findable by their thread's keywords even though their own text is sparse. The blurb is forward-only (NULL for first cards and pre-existing rows), matching the snapshot-at-emit philosophy of the embedding.
 
 ### Entity Resolution (Three Layers)
 
@@ -677,10 +707,12 @@ DATA
   - ChromaDB (~/.laya/data/chroma/)
   - JSON configs (~/.laya/*.json)
 
-CODING AGENTS (user configures one)
+CODING AGENTS (user configures one or more)
   - Claude Code CLI
   - Gemini CLI
   - OpenAI Codex CLI
+  - Pi CLI
+  (usable both as workspace agents and as LLM inference backends)
 
 TESTING
   - pytest + pytest-asyncio (engine)

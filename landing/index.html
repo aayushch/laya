@@ -351,8 +351,8 @@
                 <line x1="14" y1="4" x2="10" y2="20" stroke="#ff9770" />
               </svg></div>
             <h3>Coding Agents</h3>
-            <p>Run coding agents (Claude Code, Gemini CLI, Codex) directly from any card. Watch them work in real-time
-              and guide their actions from the workspace.</p>
+            <p>Run coding agents (Claude Code, Gemini CLI, Codex, Pi CLI) directly from any card. Watch them work in
+              real-time and guide their actions from the workspace.</p>
           </div>
           <div class="feature-card animate-on-scroll">
             <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6bc66"
@@ -386,7 +386,8 @@
               </svg></div>
             <h3>Coherence Search</h3>
             <p>Search for any entity across all platforms and trace its full lifecycle — from Jira ticket to PR to Slack
-              thread. AI-generated narratives tell the complete story.</p>
+              thread. Hybrid retrieval blends semantic vectors with keyword (BM25) ranking, and AI-generated narratives
+              tell the complete story.</p>
           </div>
           <div class="feature-card animate-on-scroll">
             <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ff9770"
@@ -426,7 +427,7 @@
               </svg></div>
             <h3>Context Association</h3>
             <p>Automatically links related cards across platforms using semantic similarity and LLM confirmation. Learns
-              from your link/unlink corrections to improve grouping accuracy over time.</p>
+              editable grouping rules from your link/unlink corrections to improve accuracy over time.</p>
           </div>
           <div class="feature-card animate-on-scroll">
             <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6bc66"
@@ -448,6 +449,41 @@
             <h3>Budget Tracking</h3>
             <p>Monitor LLM costs broken down by feature (Pulse, Omni, Chat, Coherence) and pipeline step. Set monthly
               spending caps with automatic pause when limits are reached.</p>
+          </div>
+          <div class="feature-card animate-on-scroll">
+            <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ff9770"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+              </svg></div>
+            <h3>Run on Your AI Subscription</h3>
+            <p>Point any pipeline stage at an installed CLI agent — Claude Code, Codex, Gemini, or Pi — and Laya runs on
+              that agent's own quota instead of a separate API key. A window-based usage budget auto-pauses ingestion
+              before you hit a limit and resumes when the window resets.</p>
+          </div>
+          <div class="feature-card animate-on-scroll">
+            <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6bc66"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="6" y1="3" x2="6" y2="15" />
+                <circle cx="18" cy="6" r="3" />
+                <circle cx="6" cy="18" r="3" />
+                <path d="M18 9a9 9 0 0 1-9 9" />
+              </svg></div>
+            <h3>Rules &amp; Automation</h3>
+            <p>Filter noise, auto-classify, and fire automated actions — tag, route, run an agent, send a reply — with
+              optional AI-evaluated conditions. Every firing lands in a searchable log so you can see exactly what ran
+              and why. Edit any rule straight from chat.</p>
+          </div>
+          <div class="feature-card animate-on-scroll">
+            <div class="feature-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                <line x1="8" y1="21" x2="16" y2="21" />
+                <line x1="12" y1="17" x2="12" y2="21" />
+                <path d="M7 8h10M7 12h6" stroke="#ff9770" />
+              </svg></div>
+            <h3>Cloud or Self-Hosted</h3>
+            <p>Works with cloud SaaS and on-prem instances alike — point a repo at Bitbucket Server / Data Center or
+              GitHub Enterprise via a per-repo host, and Laya routes ingestion and outbound actions to the right place.</p>
           </div>
         </div>
       </div>
@@ -675,13 +711,13 @@
           <div class="feature-text">
             <span class="tag">Chat</span>
             <h2>Ask anything about your data</h2>
-            <p>Laya's built-in chat uses semantic search across all your ingested events. Ask natural language questions
-              and get instant, context-rich answers — with links back to the original cards and events.</p>
+            <p>Laya's built-in chat uses hybrid semantic + keyword search across all your ingested events. Ask natural
+              language questions and get instant, context-rich answers — with links back to the original cards and events.</p>
             <ul>
               <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
                     stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="20 6 9 17 4 12" />
-                  </svg></span> Semantic search across all platforms and events</li>
+                  </svg></span> Hybrid semantic + keyword (BM25) search across all platforms and events</li>
               <li><span class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f6ac69"
                     stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="20 6 9 17 4 12" />

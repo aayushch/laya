@@ -594,7 +594,7 @@ npm install --prefix ~/.laya/n8n_module n8n</code></pre>
       <h3>How It Works</h3>
       <p>Coherence uses a three-phase search algorithm:</p>
       <ol>
-        <li><strong>Discovery</strong> &mdash; Runs semantic search (ChromaDB), fuzzy/SQLite search, and entity table lookup in parallel, then merges results via Reciprocal Rank Fusion (RRF)</li>
+        <li><strong>Discovery</strong> &mdash; Retrieval is <strong>hybrid</strong>: dense vector search (ChromaDB) runs alongside lexical BM25 over SQLite FTS5 and an entity table lookup, all in parallel, then results are merged via Reciprocal Rank Fusion (RRF). This way both exact-keyword and semantic matches surface.</li>
         <li><strong>Expansion</strong> &mdash; Fetches all cards for matched entities plus cross-references</li>
         <li><strong>Clustering</strong> &mdash; Groups results by connected entities, orders chronologically, and auto-detects narrative chapters</li>
       </ol>
@@ -642,7 +642,7 @@ npm install --prefix ~/.laya/n8n_module n8n</code></pre>
         <li>Stores extracted rules in the <code>context_rules</code> table</li>
         <li>Injects these rules into future context confirmation prompts</li>
       </ol>
-      <p>Rules are per-space and improve automatically as more corrections are processed. View active rules and correction history in <strong>Settings &rarr; Audit Log</strong>.</p>
+      <p>Rules are per-space and improve automatically as more corrections are processed. The learned natural-language context rules &mdash; along with any you author by hand &mdash; are viewable and editable in <strong>Settings &rarr; Rules</strong>, and correction history is available in <strong>Settings &rarr; Audit Log</strong>. When a space's learned-rule set grows large, Laya automatically LLM-consolidates it into a tighter, deduplicated set.</p>
 
       <!-- ─── EGRESS ─── -->
       <h2 id="doc-egress-overview">Egress &mdash; Outbound Actions</h2>
@@ -780,6 +780,14 @@ npm install --prefix ~/.laya/n8n_module n8n</code></pre>
         <p><strong>Tip:</strong> Use the <strong>Test Connection</strong> button to verify provider connectivity and check model capabilities (tool calling, structured output, vision).</p>
       </div>
 
+      <h3>Agent Inference Backends</h3>
+      <p>Any pipeline role can be pointed at an installed CLI coding agent instead of a cloud or local model. Select a model id of the form <code>agent/&lt;agent_id&gt;/&lt;model&gt;</code> &mdash; where <code>agent_id</code> is one of <code>claude_code</code>, <code>codex_cli</code>, <code>gemini_cli</code>, or <code>pi_cli</code>. That stage then runs on the agent's own subscription quota rather than a metered API key.</p>
+      <ul>
+        <li><strong>Claude Code</strong> is the <em>native</em> tier &mdash; it enforces the JSON schema directly via <code>--json-schema</code>.</li>
+        <li>The other agents are <em>best-effort</em> &mdash; the schema is passed as text, then the response is parsed, validated, and retried if needed.</li>
+      </ul>
+      <p>Because agents bill against time windows rather than dollars, agent backends are governed by a separate window-based usage budget (see <a href="#doc-settings-budget">Budget &amp; Costs</a>) instead of the monthly spend cap.</p>
+
       <h2 id="doc-settings-agents">Coding Agents</h2>
       <p>Laya can spawn real coding agent CLIs to work on tasks in your repositories. Configure under <strong>Settings &rarr; Agent</strong>.</p>
 
@@ -788,7 +796,8 @@ npm install --prefix ~/.laya/n8n_module n8n</code></pre>
         <tr><th>Agent</th><th>Binary</th><th>Provider</th></tr>
         <tr><td>Claude Code</td><td><code>claude</code></td><td>Anthropic</td></tr>
         <tr><td>Gemini CLI</td><td><code>gemini</code></td><td>Google</td></tr>
-        <tr><td>Codex CLI</td><td><code>codex</code></td><td>OpenAI</td></tr>
+        <tr><td>OpenAI Codex CLI</td><td><code>codex</code></td><td>OpenAI</td></tr>
+        <tr><td>Pi CLI</td><td><code>pi</code></td><td>Pi (multi-provider, incl. Ollama)</td></tr>
       </table>
 
       <h3>Execution Modes</h3>
@@ -864,6 +873,9 @@ content.body         content.metadata.*</code></pre>
       </ul>
       <p>Both manual and learned rules are injected into the router prompt to improve future classifications. Over time, Laya requires fewer corrections as it learns your preferences.</p>
 
+      <h3>Processing Rules &amp; the Firing Log</h3>
+      <p>Beyond pre-pipeline filters, <strong>processing rules</strong> act on cards after they're created &mdash; they can add tags, re-route, run a coding agent, or send an egress action, with optional AI-evaluated conditions for fuzzy matches. Every time a rule fires, the firing is recorded in a searchable activity log along with its outcome (success, error, or skipped), so you can audit exactly what automation ran and why. Processing rules can also be created and edited directly from chat.</p>
+
       <h2 id="doc-settings-team">Team Directory</h2>
       <p>The team directory helps Laya recognize actors in events and understand organizational relationships. Configure under <strong>Settings &rarr; Team</strong>.</p>
       <table>
@@ -881,6 +893,7 @@ content.body         content.metadata.*</code></pre>
         <li>Use the <strong>Browse</strong> button to select a local directory</li>
         <li>Laya auto-detects the platform (GitHub, Bitbucket) and remote ID</li>
         <li>Assign repos to Spaces so the right agent gets the right context</li>
+        <li>Optional <strong>Host</strong> field &mdash; leave it empty or set a cloud domain (<code>bitbucket.org</code> / <code>github.com</code>) for a Cloud repo. Any other value (e.g. <code>git.acme.com</code>) marks a self-hosted instance (Bitbucket Server / Data Center, GitHub Enterprise), and Laya adapts ingestion and outbound actions accordingly.</li>
       </ul>
 
       <h2 id="doc-settings-briefing">Features &amp; Scheduling</h2>
@@ -930,6 +943,7 @@ content.body         content.metadata.*</code></pre>
         <tr><td><strong>Monthly history</strong></td><td>Monthly cost aggregation with trend tracking</td></tr>
         <tr><td><strong>Monthly cap</strong></td><td>Set a maximum monthly spend. When exceeded, Laya pauses AI processing and notifies you.</td></tr>
         <tr><td><strong>Pause/Resume</strong></td><td>Manually pause or resume AI processing to control costs</td></tr>
+        <tr><td><strong>Window-based usage budget</strong></td><td>When a role runs on an agent inference backend, Laya tracks the agent's rolling quota (e.g. Claude Code's ~5-hour window) instead of a dollar amount. It auto-pauses ingestion before the limit is reached and auto-resumes when the window resets.</td></tr>
       </table>
       <p>The Dashboard includes an interactive Feature Cost Chart that visualizes costs by feature with expandable step-level details.</p>
 
@@ -995,7 +1009,7 @@ content.body         content.metadata.*</code></pre>
         <li><strong>CONTEXT LEARN</strong> &mdash; Extract context grouping rules from user link/unlink corrections (runs periodically)</li>
         <li><strong>OMNI</strong> &mdash; Append card to rolling cross-platform summary (debounced incremental update)</li>
       </ol>
-      <p>Every step is recorded in the <strong>Audit Log</strong> (Settings &rarr; Audit) with model used, token counts, latency, and success/failure status. Failed events retry with exponential backoff (up to 3 attempts); permanently failed events are visible in <strong>Settings &rarr; Audit Log</strong> and can be manually retried.</p>
+      <p>Every step is recorded in the <strong>Audit Log</strong> (Settings &rarr; Audit) with model used, token counts, latency, and success/failure status. Failed events retry with exponential backoff (up to 3 attempts); permanently failed events are visible in <strong>Settings &rarr; Audit Log</strong> and can be manually retried. The Audit view also surfaces ingestion errors and events dropped by your filter rules, and lets you export the audit log or the filtered-event list as JSON over a chosen time window.</p>
 
       <h2 id="doc-event-schema">Event Schema</h2>
       <p>Events sent from n8n to the Laya Engine follow this schema:</p>

@@ -209,21 +209,23 @@ async def test_no_thinking_flag_without_schema(db):
 
 @pytest.mark.asyncio
 async def test_no_thinking_flag_for_non_reasoning_provider(db):
-    """A provider that isn't reasoning-capable shouldn't get the kwarg."""
+    """A provider that isn't reasoning-capable shouldn't get the thinking kwarg.
+    (extra_body may still carry repeat_penalty for custom+schema calls, but never the
+    chat_template_kwargs thinking flag.)"""
     meta = {**_REASONING_META, "supports_reasoning": False}
     kwargs = await _capture_acompletion_kwargs(
         response_schema={"name": "test", "schema": {"type": "object"}}, custom_meta=meta
     )
-    assert "extra_body" not in kwargs
+    assert "chat_template_kwargs" not in kwargs.get("extra_body", {})
 
 
 @pytest.mark.asyncio
 async def test_no_thinking_flag_for_cloud_provider(db):
-    """Cloud providers (custom_meta is None) never get the kwarg."""
+    """A None custom_meta (no reasoning capability) never gets the thinking kwarg."""
     kwargs = await _capture_acompletion_kwargs(
         response_schema={"name": "test", "schema": {"type": "object"}}, custom_meta=None
     )
-    assert "extra_body" not in kwargs
+    assert "chat_template_kwargs" not in kwargs.get("extra_body", {})
 
 
 # --- max_tokens context-window clamping ---
@@ -343,3 +345,174 @@ async def test_truncation_retry_bounded_by_ceiling(db):
     assert mock_ac.call_count == 2
     assert mock_ac.call_args_list[1].kwargs["max_tokens"] == 6000
     assert result.parsed == {"result": "test"}
+
+
+# --- _extract_json salvage (Gemma/LMStudio newline padding) ---
+
+
+def test_extract_json_plain():
+    from laya.llm.client import _extract_json
+
+    assert _extract_json('{"a": 1}') == {"a": 1}
+
+
+def test_extract_json_trailing_newline_padding():
+    """A complete object followed by a non-stopping model's newline padding still parses."""
+    from laya.llm.client import _extract_json
+
+    assert _extract_json('{"a": 1}' + "\n" * 200) == {"a": 1}
+
+
+def test_extract_json_trailing_junk_after_complete_object():
+    """A complete object followed by non-whitespace junk is salvaged via the brace scan."""
+    from laya.llm.client import _extract_json
+
+    assert _extract_json('{"a": 1}\n\nSome trailing commentary the model added') == {"a": 1}
+
+
+def test_extract_json_markdown_fence():
+    from laya.llm.client import _extract_json
+
+    assert _extract_json('```json\n{"a": 1}\n```') == {"a": 1}
+
+
+def test_extract_json_array():
+    from laya.llm.client import _extract_json
+
+    assert _extract_json("[1, 2, 3]\n\n\n") == [1, 2, 3]
+
+
+def test_extract_json_brace_inside_string_not_confused():
+    from laya.llm.client import _extract_json
+
+    assert _extract_json('{"a": "}{"}\n\n') == {"a": "}{"}
+
+
+def test_extract_json_incomplete_returns_none():
+    """A genuinely unterminated document (never closes) is a real failure → None."""
+    from laya.llm.client import _extract_json
+
+    assert _extract_json('{"a": 1,') is None
+    assert _extract_json('{"a": "unterminated' + "\n" * 50) is None
+
+
+def test_extract_json_empty_returns_none():
+    from laya.llm.client import _extract_json
+
+    assert _extract_json("") is None
+    assert _extract_json("\n\n\n") is None
+
+
+def test_looks_like_padding_newlines():
+    from laya.llm.client import _looks_like_padding
+
+    assert _looks_like_padding('{"a": "te' + "\n" * 300) is True
+
+
+def test_looks_like_padding_real_content():
+    from laya.llm.client import _looks_like_padding
+
+    assert _looks_like_padding('{"summary": "a genuinely long and varied response body"}') is False
+
+
+# --- Stop sequences + repetition penalty for non-stopping local models ---
+
+
+@pytest.mark.asyncio
+async def test_stop_and_penalty_for_local_schema_call(db):
+    """Schema calls to a custom/local provider pass the turn-terminator stop sequences and a
+    windowed repeat_penalty so a non-stopping model (e.g. Gemma) can't pad newlines forever."""
+    from laya.llm.client import _LOCAL_REPEAT_PENALTY, _LOCAL_STOP_SEQUENCES
+
+    kwargs = await _capture_acompletion_kwargs(
+        response_schema={"name": "test", "schema": {"type": "object"}},
+        custom_meta={**_REASONING_META, "supports_reasoning": False},
+    )
+    assert kwargs["stop"] == _LOCAL_STOP_SEQUENCES
+    assert kwargs["extra_body"]["repeat_penalty"] == _LOCAL_REPEAT_PENALTY
+
+
+@pytest.mark.asyncio
+async def test_stop_without_penalty_for_local_non_schema(db):
+    """Without a schema (chat) the local provider still gets stop sequences, but no
+    repeat_penalty — that's scoped to structured-output calls."""
+    from laya.llm.client import _LOCAL_STOP_SEQUENCES
+
+    kwargs = await _capture_acompletion_kwargs(
+        response_schema=None,
+        custom_meta={**_REASONING_META, "supports_reasoning": False},
+    )
+    assert kwargs["stop"] == _LOCAL_STOP_SEQUENCES
+    assert "repeat_penalty" not in kwargs.get("extra_body", {})
+
+
+@pytest.mark.asyncio
+async def test_no_stop_for_cloud_provider(db):
+    """Cloud providers manage their own stop tokens — we don't inject the local stop list."""
+    mock_ac = AsyncMock(return_value=_mock_acompletion_response())
+    with patch("litellm.acompletion", mock_ac):
+        with patch("laya.llm.client.load_settings", return_value={"models": {"router": "claude-haiku-4-5-20251001"}}):
+            with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                    await llm_call(
+                        role="router",
+                        messages=[{"role": "user", "content": "test"}],
+                        response_schema={"name": "test", "schema": {"type": "object"}},
+                        step="route",
+                    )
+    assert "stop" not in mock_ac.call_args.kwargs
+
+
+async def _run_local_truncated(content):
+    """Run a schema llm_call against a fake local provider whose single response is truncated
+    (finish_reason=length) with the given content. Returns (mock_ac, result)."""
+    truncated = _mock_acompletion_response(content=content)
+    truncated.choices[0].finish_reason = "length"
+    mock_ac = AsyncMock(return_value=truncated)
+    meta = {
+        "provider_type": "lmstudio",
+        "supports_structured_output": True,
+        "supports_tool_calling": True,
+        "supports_reasoning": False,
+    }
+    with patch("litellm.acompletion", mock_ac):
+        with patch("laya.llm.client.load_settings", return_value={"models": {"stager": "lmstudio-local/gemma-3-4b"}}):
+            with patch(
+                "laya.llm.client._resolve_custom_provider",
+                return_value=("openai/gemma-3-4b", {"api_base": "http://x/v1", "api_key": "x"}),
+            ):
+                with patch("laya.llm.client._get_custom_provider_meta", return_value=meta):
+                    with patch(
+                        "laya.llm.client._resolve_max_output_ceiling",
+                        new_callable=AsyncMock,
+                        return_value=None,
+                    ):
+                        with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                            with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                                result = await llm_call(
+                                    role="stager",
+                                    messages=[{"role": "user", "content": "test"}],
+                                    response_schema=_SCHEMA,
+                                    step="stage",
+                                )
+    return mock_ac, result
+
+
+@pytest.mark.asyncio
+async def test_truncation_salvaged_skips_double(db):
+    """A truncated response that is a COMPLETE JSON doc followed by newline padding is salvaged
+    in place — no doubled retry, and truncated is cleared."""
+    mock_ac, result = await _run_local_truncated('{"result": "test"}' + "\n" * 50)
+    assert mock_ac.call_count == 1  # no doubled retry
+    assert result.parsed == {"result": "test"}
+    assert result.truncated is False
+
+
+@pytest.mark.asyncio
+async def test_padding_truncation_skips_double(db):
+    """A truncated response that is unterminated JSON drowned in newline padding is recognized
+    as a degenerate padder — no doubled retry (doubling would just generate more padding)."""
+    mock_ac, result = await _run_local_truncated('{"result": "te' + "\n" * 300)
+    assert mock_ac.call_count == 1  # no doubled retry
+    assert result.parsed is None
+    assert result.truncated is True

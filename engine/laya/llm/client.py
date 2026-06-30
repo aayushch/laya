@@ -32,6 +32,20 @@ _THINK_BLOCK_RE = re.compile(r"<think>.*?</think>\s*", flags=re.DOTALL)
 # Pipeline stages rely on this default rather than per-stage caps.
 DEFAULT_MAX_TOKENS = 65536
 
+# Turn terminators that local/self-hosted runtimes (LMStudio/Ollama/llama.cpp) sometimes fail
+# to treat as a stop — e.g. Gemma emits <end_of_turn> but GGUF often flags it NORMAL (not
+# CONTROL) and its eos is <eos>, so generation runs past the end of the content and pads the
+# rest of max_tokens with `\n`. We pass these as `stop` strings for custom providers so the
+# runtime halts the moment one is emitted as text. They never appear inside valid model output,
+# so they're risk-free for well-behaved models. See engine/docs/local-model-newline-padding.md.
+_LOCAL_STOP_SEQUENCES = ["<end_of_turn>", "<eos>", "<|im_end|>", "<|eot_id|>"]
+
+# Mild, windowed repetition penalty for structured-output calls on custom providers — breaks the
+# degenerate newline-loop variant (where the terminator is never emitted as text) so the model
+# picks the structural token that closes the JSON instead of looping on `\n`. Windowed via
+# llama.cpp's repeat_last_n, so it doesn't punish legitimately-recurring JSON tokens (`"`, `,`).
+_LOCAL_REPEAT_PENALTY = 1.15
+
 
 def _strip_think_blocks(text: str) -> str:
     """Remove <think>...</think> blocks that thinking models embed in content."""
@@ -41,6 +55,83 @@ def _strip_think_blocks(text: str) -> str:
     if result.startswith("<think>"):
         result = result[len("<think>"):].strip()
     return result
+
+
+def _extract_json(content: str) -> Any | None:
+    """Best-effort parse of a JSON object/array from model output.
+
+    Beyond a strict json.loads() this handles two things verbose/non-stopping models add:
+    1. ```json … ``` markdown fences some models wrap around the JSON.
+    2. A complete JSON document followed by trailing junk — non-stopping local models
+       (e.g. Gemma on LMStudio, whose <end_of_turn> isn't recognized as a stop) keep
+       generating after the object closes, usually padding `\n`. A simple .strip() handles
+       *pure* trailing whitespace; the balanced-brace scan below also recovers a complete
+       object/array followed by non-whitespace junk.
+
+    Returns the parsed value, or None when no complete object/array could be recovered (the
+    document was genuinely truncated before it closed — a real retry candidate).
+    """
+    if not content:
+        return None
+    s = content.strip()
+    # Strip ```json … ``` fences that some models wrap around the JSON.
+    if s.startswith("```"):
+        nl = s.find("\n")
+        if nl != -1:
+            s = s[nl + 1:]
+        if s.endswith("```"):
+            s = s[:-3]
+        s = s.strip()
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        pass
+    # Salvage: walk from the first opener to its matching closer (respecting strings and
+    # escapes) and parse just that span, ignoring whatever the model padded afterwards. A
+    # genuinely-unterminated document never balances → None.
+    start = next((i for i, c in enumerate(s) if c in "{["), -1)
+    if start == -1:
+        return None
+    opener = s[start]
+    closer = "}" if opener == "{" else "]"
+    depth = 0
+    in_str = False
+    esc = False
+    for i in range(start, len(s)):
+        c = s[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+            continue
+        if c == '"':
+            in_str = True
+        elif c == opener:
+            depth += 1
+        elif c == closer:
+            depth -= 1
+            if depth == 0:
+                try:
+                    return json.loads(s[start:i + 1])
+                except json.JSONDecodeError:
+                    return None
+    return None
+
+
+def _looks_like_padding(content: str) -> bool:
+    """True when the tail of `content` is dominated by repeated whitespace / a single repeated
+    character — the signature of a non-stopping model padding to max_tokens (e.g. Gemma on
+    LMStudio spewing `\n`) rather than a genuinely truncated document. Used to skip the
+    doubling-retry, which on a padder would just generate *more* padding and fail again."""
+    tail = content[-200:]
+    if not tail:
+        return False
+    stripped = tail.strip()
+    # Almost-all-whitespace tail, or the same character over and over.
+    return len(stripped) <= 2 or len(set(stripped)) <= 1
 
 
 @dataclass
@@ -658,6 +749,29 @@ async def llm_call(
             "chat_template_kwargs": {**existing_ctk, "enable_thinking": False},
         }
 
+    # Stop non-stopping local models from padding the rest of max_tokens with newlines (which
+    # truncates JSON-schema output mid-document). Worst offender is Gemma: it ends a turn with
+    # <end_of_turn>, but GGUF often flags that NORMAL (not CONTROL) and its eos is <eos>, so the
+    # runtime never sees a stop. Cloud providers manage their own stop tokens — scope to custom.
+    if custom is not None:
+        # 1. Halt the instant a turn terminator is emitted as visible text (the GGUF-NORMAL
+        #    variant). Merge with any provider-supplied stop rather than clobbering it.
+        existing_stop = kwargs.get("stop")
+        if existing_stop:
+            extra = existing_stop if isinstance(existing_stop, list) else [existing_stop]
+            kwargs["stop"] = [*_LOCAL_STOP_SEQUENCES, *extra]
+        else:
+            kwargs["stop"] = list(_LOCAL_STOP_SEQUENCES)
+        # 2. For the pure-newline-loop variant (terminator never emitted as text), nudge the
+        #    model off the `\n` repetition and toward the structural token that closes the JSON.
+        #    repeat_penalty is a llama.cpp param passed via extra_body; if a server ignores it,
+        #    the stop sequences above and _extract_json salvage below still cover the common
+        #    cases. Schema-only + temp 0 keeps the blast radius tiny. Merge additively so the
+        #    enable_thinking chat_template_kwargs set just above survives.
+        if response_schema:
+            existing_extra = kwargs.get("extra_body") or {}
+            kwargs["extra_body"] = {**existing_extra, "repeat_penalty": _LOCAL_REPEAT_PENALTY}
+
     # Inject current date/time into user message (cache-safe, not in system prompt)
     kwargs["messages"] = _inject_current_datetime(kwargs["messages"])
     # Annotate system messages for prompt caching (Anthropic, Gemini)
@@ -703,61 +817,75 @@ async def llm_call(
         # model's output ceiling so doubling can't overflow into a 400 (65536*2=131072
         # exceeds even Opus's 128K cap). Skip the retry entirely if already at the ceiling.
         if truncated and response_schema:
-            ceiling = max_output_ceiling if max_output_ceiling is not None else max_tokens * 2
-            doubled = min(max_tokens * 2, ceiling)
-            if doubled > max_tokens:
-                log.warning(
-                    "llm_response_truncated",
+            if _extract_json(content) is not None:
+                # A non-stopping local model padded `\n` AFTER a complete JSON document and
+                # only then hit the cap — not a real truncation. Salvage it instead of paying
+                # for a doubled retry that (on a padder) just generates more padding.
+                log.info(
+                    "llm_truncation_salvaged",
                     model=model,
                     output_tokens=output_tokens,
                     max_tokens=max_tokens,
-                    retrying_with=doubled,
                 )
-                kwargs["max_tokens"] = doubled
-
-                retry_start = time.monotonic()
-                response = await _call_with_retry()
-                elapsed_ms += int((time.monotonic() - retry_start) * 1000)
-
-                content = _strip_think_blocks(response.choices[0].message.content or "")
-                if not content:
-                    content = getattr(response.choices[0].message, "reasoning_content", None) or ""
-                finish_reason = response.choices[0].finish_reason or "stop"
-                input_tokens += response.usage.prompt_tokens if response.usage else 0
-                output_tokens = response.usage.completion_tokens if response.usage else 0
-                truncated = finish_reason == "length"
-
-                if truncated:
+                truncated = False
+            elif custom is not None and _looks_like_padding(content):
+                # Degenerate newline loop with no recoverable JSON (the object never closed).
+                # Doubling max_tokens would just pad more, so don't — accept the failure once.
+                # The stop sequences + repeat_penalty above are what fix this going forward.
+                log.warning(
+                    "llm_padding_truncation_no_double",
+                    model=model,
+                    output_tokens=output_tokens,
+                    max_tokens=max_tokens,
+                )
+            else:
+                ceiling = max_output_ceiling if max_output_ceiling is not None else max_tokens * 2
+                doubled = min(max_tokens * 2, ceiling)
+                if doubled > max_tokens:
                     log.warning(
-                        "llm_response_still_truncated",
+                        "llm_response_truncated",
                         model=model,
                         output_tokens=output_tokens,
-                        max_tokens=doubled,
+                        max_tokens=max_tokens,
+                        retrying_with=doubled,
                     )
-            else:
-                # Already at the model's ceiling — doubling would 400. Accept the truncation.
-                log.warning(
-                    "llm_response_truncated_at_ceiling",
-                    model=model,
-                    output_tokens=output_tokens,
-                    max_tokens=max_tokens,
-                )
+                    kwargs["max_tokens"] = doubled
 
-        # Parse JSON if structured output was requested
+                    retry_start = time.monotonic()
+                    response = await _call_with_retry()
+                    elapsed_ms += int((time.monotonic() - retry_start) * 1000)
+
+                    content = _strip_think_blocks(response.choices[0].message.content or "")
+                    if not content:
+                        content = getattr(response.choices[0].message, "reasoning_content", None) or ""
+                    finish_reason = response.choices[0].finish_reason or "stop"
+                    input_tokens += response.usage.prompt_tokens if response.usage else 0
+                    output_tokens = response.usage.completion_tokens if response.usage else 0
+                    truncated = finish_reason == "length"
+
+                    if truncated:
+                        log.warning(
+                            "llm_response_still_truncated",
+                            model=model,
+                            output_tokens=output_tokens,
+                            max_tokens=doubled,
+                        )
+                else:
+                    # Already at the model's ceiling — doubling would 400. Accept the truncation.
+                    log.warning(
+                        "llm_response_truncated_at_ceiling",
+                        model=model,
+                        output_tokens=output_tokens,
+                        max_tokens=max_tokens,
+                    )
+
+        # Parse JSON if structured output was requested. _extract_json handles markdown fences
+        # and a complete document followed by trailing newline/junk padding from non-stopping
+        # local models; it returns None only when the JSON never closed (a real failure).
         parsed = None
         if response_schema and content:
-            # Strip markdown fences that some models wrap around JSON
-            stripped = content.strip()
-            if stripped.startswith("```"):
-                # Remove opening ```json or ``` and closing ```
-                first_nl = stripped.find("\n")
-                if first_nl != -1:
-                    stripped = stripped[first_nl + 1:]
-                if stripped.endswith("```"):
-                    stripped = stripped[:-3].rstrip()
-            try:
-                parsed = json.loads(stripped)
-            except json.JSONDecodeError:
+            parsed = _extract_json(content)
+            if parsed is None:
                 log.warning(
                     "llm_json_parse_failed",
                     model=model,
@@ -960,6 +1088,12 @@ async def llm_call_streaming(
     kwargs.update(custom_provider_extra)
     if space_api_key:
         kwargs["api_key"] = space_api_key
+
+    # Same non-stopping-local-model guard as llm_call: halt on turn terminators so a model
+    # whose <end_of_turn>/<eos> isn't recognized doesn't pad the chat stream with newlines.
+    # No schema in the streaming path, so no repeat_penalty here.
+    if custom is not None:
+        kwargs["stop"] = list(_LOCAL_STOP_SEQUENCES)
 
     if tools:
         if not (custom_meta and not custom_meta.get("supports_tool_calling", True)):

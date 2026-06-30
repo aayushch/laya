@@ -62,10 +62,11 @@ Parameters that control how Laya learns from user link/unlink actions to improve
 | `context_learn_interval_hours` | `6` | How often the scheduler checks for unprocessed context corrections. |
 | `context_rules_max_injection` | `20` | Maximum learned context rules injected into the LLM confirmation prompt. **Higher** = more guidance for the LLM but larger prompt. |
 | `context_corrections_max_injection` | `10` | Maximum recent user link/unlink actions injected into the confirmation prompt as examples. |
+| `context_rules_consolidation_threshold` | `40` | When the number of **learned** context rules for a scope exceeds this, an LLM consolidator merges redundant rules. Manual rules are preserved untouched. |
 
 ## Trace / RAG Search
 
-Parameters that control Laya's semantic search for the Trace feature (deep research on cards).
+Parameters that control Laya's search for the Trace feature (deep research on cards). Trace and chat retrieval are **hybrid**: vector results (ChromaDB, bounded by the `*_semantic_max_distance` cutoffs below) are fused with lexical BM25 matches from SQLite FTS5 (`cards_fts` / `events_fts`) via Reciprocal Rank Fusion — so the distance cutoffs bound only the vector half, and exact-keyword hits surface even when their embedding distance is large.
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -99,6 +100,37 @@ Parameters that control how much context Laya's chat retrieves when answering qu
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `corrections_retention_days` | `30` | Days to keep processed corrections before automatic deletion. Applies to both classification and context corrections. Unprocessed corrections are never deleted. |
+
+## Processing Rules
+
+Parameters governing the automated processing-rules engine (Settings → Rules). These live outside `tuning` in settings.json.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `processing_rules.auto_disable_threshold` | `5` | Number of **consecutive** errors that auto-disables a rule. The counter resets to `0` on any successful firing and whenever the rule is re-enabled. Clamped to 1–100 by the settings API. **Lower** = disables flaky rules sooner. |
+| `retention.firing_log_retention_days` | `90` | Days to keep processing-rule firing-log entries (the cross-rule Activity log) before the scheduler prunes them. Lives in the `retention` section alongside the other `*_retention_days` keys. |
+
+## Agent Inference Backends & Usage Budget
+
+Apply when a pipeline stage runs on an installed CLI agent (model id `agent/<id>/<model>`) instead of an API model. The window-based usage budget lives under `agent_budgets` in settings.json — separate from the monthly `$` budget — and auto-pauses ingestion before an agent's rolling quota is exhausted, auto-resuming at the window reset.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `agent_backend_concurrency` | `3` | Maximum agent subprocesses run concurrently across the pipeline. Floored at 1. **Higher** = more throughput but more local CPU/RAM and faster quota burn. |
+| `coding_agent` | `"claude_code"` | Which installed CLI agent the workspace feature drives. One of `claude_code`, `gemini_cli`, `codex_cli`, `pi_cli`. |
+| `agent_paths.<id>` | `""` | Explicit path to an agent's CLI binary (keys: `claude_code`, `gemini_cli`, `codex_cli`, `pi_cli`). Empty = auto-detect on `PATH` (augmented with common install dirs like `/opt/homebrew/bin`, `~/.local/bin`). |
+| `agent_budgets.enabled` | `false` | Master switch for window-based agent usage budgeting. |
+| `agent_budgets.agents.<id>.window_token_limit` | `0` | Token budget per rolling window for that agent (`0` = no limit). |
+| `agent_budgets.agents.<id>.window_hours` | `5.0` | Rolling window length in hours (Claude Code's quota window is ~5 h). |
+| `agent_budgets.agents.<id>.pause_at_percent` | `85` | Pause ingestion when window usage reaches this percent of the limit. Auto-resumes at the next window reset; a native rate-limit signal from the agent can also trigger the pause. |
+
+## LLM Calls
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `pipeline.model_timeout` | `480` | Per-call timeout in seconds for any LLM / agent call (settings.json `pipeline` section). Agents and verbose local models are slower than hosted APIs, so this is deliberately generous. |
+
+`max_tokens` defaults to a lenient `65536`. It is a *ceiling*, not a target — well-behaved models stop at `finish_reason=stop`, so the high cap costs nothing. Laya auto-clamps the request down to each model's advertised output ceiling so the default never trips a `400` on strict providers (vLLM / OpenAI / Anthropic), while still preventing mid-document truncation of structured JSON on verbose local models (Gemma 3, LM Studio).
 
 ## Pipeline Debounce & Batching
 

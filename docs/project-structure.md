@@ -18,7 +18,7 @@ laya/
 |   |   |-- scheduler.py                  # Background scheduler (briefings, housekeeping)
 |   |   |-- http_client.py                # Shared HTTP client
 |   |   |
-|   |   |-- api/                          # HTTP + WebSocket endpoints (25 routers)
+|   |   |-- api/                          # HTTP + WebSocket endpoints (27 routers)
 |   |   |   |-- __init__.py
 |   |   |   |-- events.py                 # POST /events (receives from n8n)
 |   |   |   |-- cards_api.py              # Card CRUD, grouping, archive/reopen, bookmarks
@@ -31,13 +31,14 @@ laya/
 |   |   |   |-- connections_api.py         # Integration connection status
 |   |   |   |-- rules_api.py              # Event filter rules
 |   |   |   |-- classification_api.py     # Classification rules CRUD, corrections listing
-|   |   |   |-- processing_rules_api.py   # Processing-rules CRUD, preview, history, settings
+|   |   |   |-- context_rules_api.py      # Context (grouping) rules CRUD -- learned + manual
+|   |   |   |-- processing_rules_api.py   # Processing-rules CRUD, preview, firing log, settings
 |   |   |   |-- tags_api.py               # Tag CRUD, assign/unassign, tags-for-target
 |   |   |   |-- metadata_api.py           # Generic key/value metadata store (per-space)
 |   |   |   |-- trace_api.py              # Coherence entity search, traces, narratives
 |   |   |   |-- egress_api.py             # Outbound action execution, preview, connections
 |   |   |   |-- omni_api.py              # Omni rolling summary: snapshots, pins, resynthesis
-|   |   |   |-- budget_api.py             # Budget tracking and cost controls
+|   |   |   |-- budget_api.py             # $ budget + agent usage-limit budget, cost controls
 |   |   |   |-- audit_api.py              # Audit log queries
 |   |   |   |-- diagnostics_api.py        # System diagnostics
 |   |   |   |-- ingestion_errors.py       # Failed-ingestion event listing/clear
@@ -53,7 +54,7 @@ laya/
 |   |   |   |-- rules.py                  # RULES step: evaluate user-defined rules (rules.json)
 |   |   |   |-- router.py                 # ROUTER step: LLM classification (category, persona, priority)
 |   |   |   |-- stager.py                 # STAGER step: LLM card generation
-|   |   |   |-- emit.py                   # EMIT step: store card, embed, context assoc, push via WebSocket
+|   |   |   |-- emit.py                   # EMIT step: store card (+ thread_context), embed, context assoc, push via WebSocket
 |   |   |   |-- executor.py               # Execute approved actions via n8n
 |   |   |   |-- trace.py                  # Coherence: entity search, clustering, narrative generation
 |   |   |   |-- learn.py                  # Classification learning: extract rules from corrections
@@ -65,6 +66,7 @@ laya/
 |   |   |   |-- tags.py                   # Persist stager-suggested tags + ChromaDB tag metadata
 |   |   |   |-- omni.py                   # Omni: rolling summary, incremental updates, resynthesis
 |   |   |   |-- budget.py                 # LLM cost tracking by feature and pipeline step
+|   |   |   |-- agent_budget.py           # Agent inference-backend usage limits (window-based pause/resume)
 |   |   |   |-- chat.py                   # Chat assistant pipeline
 |   |   |   |-- workers.py                # Multi-persona LLM workers (6 personas)
 |   |   |   |-- space_resolution.py       # Space/source identification
@@ -88,13 +90,15 @@ laya/
 |   |   |   |-- claude_code.py            # Claude Code CLI adapter
 |   |   |   |-- gemini_cli.py             # Gemini CLI adapter
 |   |   |   |-- codex_cli.py              # OpenAI Codex CLI adapter
+|   |   |   |-- pi_cli.py                 # Pi CLI adapter
 |   |   |   |-- session_manager.py        # Manages active sessions across cards
 |   |   |
 |   |   |-- llm/                          # LLM interaction layer
 |   |   |   |-- __init__.py
 |   |   |   |-- client.py                 # LiteLLM wrapper with model selection, retries, space overrides
+|   |   |   |-- agent_backend.py          # Drive CLI agents (Claude Code/Codex/Gemini/Pi) as inference backends
 |   |   |   |-- providers.py              # Custom model provider management
-|   |   |   |-- prompts/                  # Prompt templates (router, stager, engineer, comms, ops, finance, hr, sales, omni, research, group_summary, context_learner, etc.)
+|   |   |   |-- prompts/                  # Prompt templates (router, stager, engineer, comms, ops, finance, hr, sales, omni, research, group_summary, context_learner, context_rule_consolidator, etc.)
 |   |   |   |-- tools/                    # MCP tool definitions
 |   |   |       |-- definitions.py        # Tool schemas
 |   |   |       |-- card_tools.py         # Card query tools
@@ -104,6 +108,7 @@ laya/
 |   |   |       |-- event_tools.py        # Event query tools
 |   |   |       |-- search_tools.py       # Memory/semantic search tools
 |   |   |       |-- settings_tools.py     # Settings management tools
+|   |   |       |-- rules_tools.py        # Chat-driven CRUD for filter/classification/processing rules
 |   |   |       |-- executor.py           # Tool execution
 |   |   |
 |   |   |-- mcp/                          # Model Context Protocol server
@@ -115,9 +120,10 @@ laya/
 |   |   |   |-- __init__.py
 |   |   |   |-- sqlite.py                 # Async SQLite connection (WAL mode, foreign keys)
 |   |   |   |-- chromadb_store.py         # ChromaDB vector store (embedded PersistentClient)
+|   |   |   |-- fts.py                    # SQLite FTS5 virtual tables (cards_fts, events_fts) + BM25 query builder
 |   |   |   |-- chunking.py              # Document chunking for embeddings
 |   |   |   |-- migrate.py               # Migration runner (check version, apply pending)
-|   |   |   |-- migrations/              # 66 numbered SQL migration files
+|   |   |   |-- migrations/              # 70 numbered SQL migration files
 |   |   |       |-- 001_initial.sql       # Core tables: events, action_cards, action_log
 |   |   |       |-- 002_entities.sql      # Entity resolution: entities table
 |   |   |       |-- ...
@@ -146,6 +152,10 @@ laya/
 |   |   |       |-- 064_daily_summaries_per_space.sql  # Daily summaries per (date, space_id)
 |   |   |       |-- 065_tags.sql          # tags + tag_assignments (polymorphic labels)
 |   |   |       |-- 066_metadata.sql      # Generic key/value metadata table
+|   |   |       |-- 067_idx_events_created_at.sql   # Index for throughput / time-series charts
+|   |   |       |-- 068_card_thread_context.sql     # action_cards.thread_context (Contextual BM25)
+|   |   |       |-- 069_idx_proc_firings_fired.sql  # Index for firing-log queries
+|   |   |       |-- 070_agent_budget.sql            # Agent usage-limit state, paused workflows, rate-limit
 |   |   |
 |   |   |-- models/                       # Pydantic data models
 |   |   |   |-- __init__.py
@@ -160,7 +170,7 @@ laya/
 |   |   |   |-- __init__.py               # Public API: execute, preview, capabilities, connect
 |   |   |   |-- models.py                 # EgressRequest, EgressResult, Connection models
 |   |   |   |-- router.py                 # Route actions to correct platform backend
-|   |   |   |-- registry.py               # Platform capability registry
+|   |   |   |-- registry.py               # Thin facade delegating to per-platform Platform classes
 |   |   |   |-- connections.py            # Connection management and health checks
 |   |   |   |-- tools.py                  # Egress tool definitions for chat
 |   |   |   |-- tool_handlers.py          # Tool invocation handlers
@@ -170,7 +180,8 @@ laya/
 |   |   |   |   |-- base.py               # Backend protocol
 |   |   |   |   |-- n8n.py                # n8n webhook executor
 |   |   |   |   |-- smtp.py               # Direct SMTP executor
-|   |   |   |-- platforms/                # Platform-specific action handlers
+|   |   |   |-- platforms/                # Per-platform Platform subclasses (capabilities, draft schema, validate)
+|   |   |       |-- base.py               # Platform base class extended by each platform
 |   |   |       |-- gmail.py              # Gmail: send, reply, forward
 |   |   |       |-- slack.py              # Slack: post, reply in thread
 |   |   |       |-- jira.py               # Jira: comment, update ticket
@@ -180,6 +191,7 @@ laya/
 |   |   |       |-- linear.py             # Linear: create issue, comment
 |   |   |       |-- notion.py             # Notion: create pages, update properties
 |   |   |       |-- outlook.py            # Outlook: send, reply
+|   |   |       |-- smtp.py               # SMTP: data-only adapter for the SMTP backend
 |   |   |
 |   |   |-- integrations/                 # External service clients
 |   |   |   |-- __init__.py
@@ -417,17 +429,21 @@ Laya stores all user data in `~/.laya/`:
       "name": "payments-service",
       "path": "/Users/aayush/code/payments-service",
       "platform": "bitbucket",
-      "remote_id": "team/payments-service"
+      "remote_id": "team/payments-service",
+      "host": ""
     },
     {
       "name": "frontend-app",
       "path": "/Users/aayush/code/frontend-app",
       "platform": "bitbucket",
-      "remote_id": "team/frontend-app"
+      "remote_id": "team/frontend-app",
+      "host": "bitbucket.example.com"
     }
   ]
 }
 ```
+
+`host` is optional: empty or a cloud domain (`bitbucket.org` / `github.com`) means Cloud; any other value marks a self-hosted Bitbucket Server / GitHub Enterprise instance.
 
 ### rules.json
 ```json

@@ -10,7 +10,7 @@ Laya connects to platforms like Gmail, Slack, Jira, GitHub, Bitbucket, Google Ca
 - Engine: Python FastAPI backend with async SQLite + ChromaDB
 - Integration gateway: n8n running as a local Node.js process
 - All data stays on the user's machine (local-first)
-- LLM calls go through LiteLLM; supports Anthropic, OpenAI, Google, OpenRouter, Ollama, LM Studio, and any OpenAI-compatible endpoint
+- LLM calls go through LiteLLM; supports Anthropic, OpenAI, Google, OpenRouter, Ollama, LM Studio, any OpenAI-compatible endpoint, and installed CLI coding agents driven as inference backends
 
 ## Pipeline
 
@@ -20,17 +20,19 @@ Events flow through: Ingest → Space Resolution → Rules → Router (fast LLM 
 
 - **Action Cards**: AI-generated cards with intelligence reports, priority classification, and one-click actions
 - **6 AI Personas**: Engineer, Comms, Ops, Sales, HR, Finance — each with specialized processing
-- **Coherence**: Cross-platform entity search using semantic + fuzzy + entity search merged via Reciprocal Rank Fusion, with AI-generated narratives
+- **Coherence**: Cross-platform entity search using hybrid retrieval — dense vectors (ChromaDB) + lexical BM25 (SQLite FTS5) + entity search merged via Reciprocal Rank Fusion, with AI-generated narratives
 - **Omni**: Rolling cross-platform summary with four temporal layers (Attention, Recent, Period, Milestone) and progressive summarization
-- **Context Association**: Automatic semantic grouping of related cards across platforms with learning from user corrections
-- **Coding Agents**: Run Claude Code, Gemini CLI, or Codex directly from any card with a dedicated workspace
+- **Context Association**: Automatic semantic grouping of related cards across platforms; learns editable natural-language context rules from user corrections (auto-consolidated by an LLM)
+- **Coding Agents**: Run Claude Code, Gemini CLI, Codex, or Pi CLI directly from any card with a dedicated workspace
+- **Agent inference backends**: Run any pipeline stage on an installed CLI agent's own quota via `agent/<id>/<model>` model ids (native schema enforcement on Claude Code; best-effort + retry on others)
 - **Agent Studio**: Full agent configuration — runtime, execution mode, working directories, detailed prompts
-- **Composer**: Cross-platform outbound actions from a single interface (9 platform backends)
+- **Composer**: Cross-platform outbound actions from a single interface (9 platform backends, plus a direct SMTP backend)
 - **Daily Briefings**: Synthesized morning briefing with events, action items, and key updates
 - **Spaces**: User-defined contexts with per-space model configs, API keys, and event routing
-- **Chat**: Semantic search across all ingested events with RAG-powered retrieval
-- **Smart Classification**: Multi-model pipeline that learns from user corrections
-- **Budget Tracking**: LLM cost monitoring by feature and pipeline step with monthly caps
+- **Chat**: Hybrid (vector + BM25) search across all ingested events with RAG-powered retrieval; can also create/edit filter, classification, and processing rules
+- **Smart Classification & Rules**: Multi-model pipeline that learns from corrections; user-authored filter and processing rules with optional AI-evaluated conditions and a searchable firing log
+- **Budget Tracking**: LLM cost monitoring by feature and pipeline step with monthly caps; plus window-based usage budgets for agent inference backends
+- **Self-Hosted & On-Prem**: Cloud and self-hosted instances (Bitbucket Server / Data Center, GitHub Enterprise) via a per-repo host field
 - **Privacy Tiers**: Three-tier system with optional local-only mode for sensitive data
 
 ## Integrations

@@ -46,7 +46,7 @@ Event Sources → n8n (port 45678) → Engine (port 8420) → UI (Tauri + Svelte
 ```
 
 **Three layers:**
-- **Engine** (`engine/laya/`): Python FastAPI backend. Pipeline processes events through `ingest → space_resolution → rules → router → workers → stager → emit` with post-emit async steps (see below). LLM calls go through LiteLLM (`llm/client.py`). 24 API routers in `api/`. Pydantic models in `models/`. Async throughout (aiosqlite, httpx).
+- **Engine** (`engine/laya/`): Python FastAPI backend. Pipeline processes events through `ingest → space_resolution → rules → router → workers → stager → emit` with post-emit async steps (see below). LLM calls go through LiteLLM (`llm/client.py`), which can also drive installed CLI coding agents (Claude Code, Codex, Gemini, Pi) as inference backends via `llm/agent_backend.py` (model-id form `agent/<id>/<model>`). 27 API routers in `api/`. Pydantic models in `models/`. Async throughout (aiosqlite, httpx).
 - **UI** (`ui/src/`): SvelteKit frontend using Svelte 5 runes (`$state`, `$derived`, `$effect`, `$props`). Skeleton UI v4 + Tailwind CSS v4. Static adapter (SPA mode). Key routes: feed, coherence, dashboard, settings, workspace, omni, setup, status, legal.
 - **Tauri Shell** (`ui/src-tauri/`): Rust process that manages engine and n8n lifecycle (`sidecar.rs`, `n8n.rs`), tray icon, and native APIs.
 
@@ -73,19 +73,20 @@ Supporting pipelines (triggered separately):
 - `chat.py` — chat processing pipeline (hybrid retrieval, RRF, context packing, tool loop)
 - `executor.py` — action execution service, delegates to egress and manages card lifecycle
 - `context_presets.py` — context association strictness presets
-- `learn.py` / `context_learn.py` — extracts classification rules from user feedback
-- `processing_rules.py` — applies automated processing rules
+- `learn.py` — extracts classification rules (priority/persona) from user corrections; `context_learn.py` — extracts and LLM-consolidates **context rules** (natural-language grouping directives, distinct from classification rules) from link/unlink corrections. Learned and manual context rules are managed via `api/context_rules_api.py` and injected into the context-grouping prompt
+- `processing_rules.py` — applies automated processing rules, logging every firing to `processing_rule_firings`
 - `briefing.py` — generates daily briefings
 - `summarize.py` — daily summary generation
-- `feedback.py` / `budget.py` — feedback processing and token budget tracking
+- `feedback.py` / `budget.py` — feedback processing and monthly $ token-budget tracking
+- `agent_budget.py` — window-based usage-limit budgeting for agent inference backends (auto-pause ingestion when an agent's rolling window is exhausted, auto-resume at window reset)
 
-**Egress** (`engine/laya/egress/`): Outbound action execution across 9 platforms (GitHub, Bitbucket, Jira, Linear, Gmail, Slack, Calendar, Outlook, Notion). Platform backends in `platforms/`, execution backends in `backends/` (n8n, SMTP), connection management via `connections.py` + `oauth.py` + OS keychain, action routing via `router.py` + `registry.py`, and chat-driven egress via `tools.py` + `tool_handlers.py`.
+**Egress** (`engine/laya/egress/`): Outbound action execution across 9 platforms (GitHub, Bitbucket, Jira, Linear, Gmail, Slack, Calendar, Outlook, Notion). Each platform owns its contract (capabilities, draft schema, terminal events, normalize/validate) as a `Platform` subclass in `platforms/` extending `platforms/base.py`; `registry.py` is a thin facade that delegates to these adapters (adding a platform = write one file, not edit many tables). Execution backends in `backends/` (n8n, SMTP — `platforms/smtp.py` is a data-only adapter for the SMTP backend), connection management via `connections.py` + `oauth.py` + OS keychain, action routing via `router.py` + `registry.py`, and chat-driven egress via `tools.py` + `tool_handlers.py`.
 
 **Agents** (`engine/laya/agents/`): CLI coding agent adapters (Claude Code, Gemini CLI, Codex CLI, Pi CLI) for the workspace feature. Abstract protocol in `base.py`, session management in `session_manager.py`.
 
 **MCP** (`engine/laya/mcp/`): HTTP/SSE MCP server exposing Laya tools to external agents. Scope-filtered per user settings, space-aware via context var.
 
-**Chat tools** (`engine/laya/llm/tools/`): Tool definitions for the chat pipeline — card, contact, entity, event, search, settings, and summary tools.
+**Chat tools** (`engine/laya/llm/tools/`): Tool definitions for the chat pipeline — card, contact, entity, event, search, settings, summary, and rule-management tools (`rules_tools.py` lets chat list/create/update/delete filter, classification, and processing rules; changes are audited and broadcast over WebSocket).
 
 **Persona workers** (`engine/laya/workers/`): Per-persona worker implementations (Engineer, Comms, Ops, Sales, HR, Finance) with shared base class.
 
@@ -95,8 +96,10 @@ Supporting pipelines (triggered separately):
 
 - **Svelte 5 runes only**: Use `$state`, `$derived`, `$effect` — never `$:` reactive declarations
 - **Async everywhere in engine**: All DB access, HTTP, and pipeline functions are async
-- **SQLite migrations**: Numbered files in `engine/laya/db/migrations/` (001-066). New migrations get the next number. Migration runner in `db/migrate.py` applies on startup.
-- **LLM prompts**: Organized by role in `engine/laya/llm/prompts/` (router, stager, engineer, comms, ops, sales, hr, finance, chat, omni, briefing, group_summary, research, overrides, trace_filter, etc.)
+- **SQLite migrations**: Numbered files in `engine/laya/db/migrations/` (001-070). New migrations get the next number. Migration runner in `db/migrate.py` applies on startup.
+- **Hybrid search / FTS5**: Chat and trace retrieval combine vector search (ChromaDB) with lexical BM25 search over SQLite FTS5 virtual tables (`cards_fts`, `events_fts`), merged via Reciprocal Rank Fusion. FTS tables are built at startup and kept in sync by SQL triggers (`db/fts.py`); retrieval degrades to `LIKE` if the SQLite build lacks FTS5. The `action_cards.thread_context` column (a short thread blurb persisted at emit time) is indexed so terse follow-up cards ("Approved.") stay findable by their thread's keywords ("Contextual BM25").
+- **LLM prompts**: Organized by role in `engine/laya/llm/prompts/` (router, stager, engineer, comms, ops, sales, hr, finance, chat, omni, briefing, group_summary, research, overrides, trace_filter, context_learner, context_rule_consolidator, etc.)
+- **Agent inference backends**: `llm_call()` accepts model ids of the form `agent/<agent_id>/<model>` (agent_id ∈ claude_code, codex_cli, gemini_cli, pi_cli) to run a stage on an installed CLI agent's own quota. Claude Code is the "native" tier (schema enforced via `--json-schema`); others are "best-effort" (schema injected as text + parse/validate/retry). Agents run headless in an ephemeral cwd with tools denied; usage is metered against window-based limits by `agent_budget.py`.
 - **Config files**: User settings live in `~/.laya/` (settings.json, team.json, rules.json, repos.json). API keys stored in OS keychain via `security/keychain.py`.
 - **Test fixtures**: `engine/tests/conftest.py` provides `db` (in-memory SQLite with all migrations), `sample_event`, `bot_event`, `slack_event`, `sample_team`. All test fixtures are async (`@pytest_asyncio.fixture`).
 - **Theme system**: CSS custom properties in `ui/src/app.css` with `--color-laya-*` brand tokens. Dark/light mode via `data-theme` attribute on `<html>`.

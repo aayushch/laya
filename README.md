@@ -46,22 +46,27 @@ Your Tools (Jira, Slack, Gmail, Bitbucket, Calendar)
 
 ## Key Features
 
-- **Multi-persona brain:** Routes events to specialized AI personas (Engineer, Comms, Ops) with domain-specific tools and prompts, with AI prioritization of every notification
-- **Card Workspaces:** Agent workflows for complex tasks (bug fixes, code reviews) — interactive workspaces where you collaborate with a coding agent (Claude Code, Gemini CLI, or Codex) through multiple approval steps
+- **Multi-persona brain:** Routes events to specialized AI personas (Engineer, Comms, Ops, Sales, HR, Finance) with domain-specific tools and prompts, with AI prioritization of every notification
+- **Card Workspaces:** Agent workflows for complex tasks (bug fixes, code reviews) — interactive workspaces where you collaborate with a coding agent (Claude Code, Gemini CLI, Codex, or Pi CLI) through multiple approval steps
 - **Card Research:** Launch on-demand deep research sessions on any card — a coding agent investigates with web search, semantic context, and sandboxed file access
+- **Agent inference backends:** Run the classification/synthesis pipeline on an installed CLI agent's own quota instead of an API key — select a model of the form `agent/<id>/<model>` (Claude Code, Codex, Gemini, or Pi) for any stage. Claude Code enforces JSON schemas natively; other agents use best-effort schema + retry
 - **Spaces:** User-defined contexts grouping event sources with per-space model and API key configurations
 - **Context Association:** Automatically links related cards across platforms using semantic similarity and LLM confirmation. Learns from your corrections to improve grouping accuracy over time
 - **Cross-platform memory:** Entity resolution links "BUG-1234" in Jira to "PR-891" in Bitbucket to "the payment bug" in Slack
 - **Daily Briefing:** Morning summary of overnight activity, pending cards, and today's calendar with context
-- **Analytics Dashboard:** Track events processed, time saved, LLM costs (broken down by feature and pipeline step), and approval rates
-- **Budget Tracking:** Monitor LLM costs by feature (Pulse, Omni, Chat, Coherence) with monthly caps and automatic pause when limits are reached
-- **Chat sidebar:** Ask Laya questions about your events, projects, and context
-- **Coherence:** Cross-platform entity search traces any person, ticket, or PR across all platforms using local vector search (ChromaDB), with AI-generated narratives
+- **Analytics Dashboard:** Track events processed, time saved, LLM costs (broken down by feature and pipeline step), throughput over time, and approval rates
+- **Budget Tracking:** Monitor LLM costs by feature (Pulse, Omni, Chat, Coherence) with monthly caps and automatic pause when limits are reached. When running on agent inference backends, a separate window-based usage budget pauses ingestion as an agent's rolling quota nears its limit and auto-resumes when the window resets
+- **Chat sidebar:** Ask Laya questions about your events, projects, and context — and create, edit, or delete filter/classification/processing rules directly from the conversation
+- **Hybrid search:** Chat and Coherence retrieval combine local vector search (ChromaDB) with lexical BM25 ranking over SQLite FTS5 (`cards_fts`/`events_fts`), merged via Reciprocal Rank Fusion, so both semantic and exact-keyword matches surface
+- **Coherence:** Cross-platform entity search traces any person, ticket, or PR across all platforms using hybrid local search, with AI-generated narratives
 - **Egress:** Execute outbound actions (emails, Slack messages, PR comments) directly from Laya with preview-before-send
 - **Omni:** Rolling cross-platform summary that answers "where am I right now?" with four temporal layers (Attention, Recent, Period, Milestone) and progressive AI compression
 - **Bookmarks:** Pin important cards for quick access regardless of date or status
 - **Classification learning:** Laya extracts rules from your priority/persona corrections and improves classification automatically over time
-- **Context learning:** Laya extracts grouping rules from your link/unlink corrections and improves context association over time
+- **Context learning:** Laya extracts natural-language **context rules** from your link/unlink corrections and improves context association over time. Learned and manual rules are viewable and editable in Settings, and large rule sets are LLM-consolidated automatically
+- **Processing rules:** Automated, optionally AI-evaluated rules that act on incoming cards (tag, route, run an agent, send egress). Every firing is recorded in a searchable **firing log** with its outcome (success / error / skipped) and reason
+- **Audit & export:** Inspect dead events, ingestion errors, and rule-filtered events in one place; retry or clear failures, and export filtered events or the audit log as JSON over any time window
+- **On-prem repositories:** Self-hosted Bitbucket Server / Data Center and GitHub Enterprise are supported via a per-repo `host` field (empty or the cloud domain ⇒ cloud)
 - **Dead event recovery:** Failed events are tracked with error context and can be manually retried from the audit log
 - **Privacy-aware:** Three-tier data classification with cloud/local processing options
 
@@ -77,7 +82,7 @@ Your Tools (Jira, Slack, Gmail, Bitbucket, Calendar)
 | Structured Storage | SQLite (async via aiosqlite, WAL mode) |
 | Vector Storage | ChromaDB (embedded PersistentClient) |
 | Embeddings | ONNX (built-in to ChromaDB) or sentence-transformers (optional) |
-| Coding Agents | Claude Code / Gemini CLI / OpenAI Codex CLI |
+| Coding Agents | Claude Code / Gemini CLI / OpenAI Codex CLI / Pi CLI (usable as workspace agents and as inference backends) |
 
 ## Project Structure
 
@@ -87,13 +92,13 @@ laya/
 │   ├── laya/
 │   │   ├── main.py          # Entry point (uvicorn server on :8420)
 │   │   ├── config.py        # Settings, paths, agent detection
-│   │   ├── api/             # REST + WebSocket endpoints (23 routers)
-│   │   ├── db/              # SQLite + ChromaDB + 46 migrations
+│   │   ├── api/             # REST + WebSocket endpoints (27 routers)
+│   │   ├── db/              # SQLite (+ FTS5) + ChromaDB + 70 migrations
 │   │   ├── pipeline/        # Event processing (ingest → route → stage → emit → trace → learn → context_learn → omni)
-│   │   ├── llm/             # LiteLLM client, prompts, MCP tools
-│   │   ├── agents/          # Coding agent adapters (Claude, Gemini, Codex)
-│   │   ├── workers/         # Multi-persona LLM workers (engineer, comms, ops)
-│   │   ├── egress/          # Outbound action execution (8 platforms)
+│   │   ├── llm/             # LiteLLM client, agent inference backends, prompts, tools
+│   │   ├── agents/          # Coding agent adapters (Claude, Gemini, Codex, Pi)
+│   │   ├── workers/         # Multi-persona LLM workers (engineer, comms, ops, sales, hr, finance)
+│   │   ├── egress/          # Outbound action execution (9 platforms)
 │   │   ├── integrations/    # n8n bootstrap & client
 │   │   └── security/        # OS keychain integration
 │   ├── requirements.txt     # Core Python dependencies
@@ -116,7 +121,7 @@ laya/
 │   └── svelte.config.js     # Static adapter (SPA mode)
 │
 ├── n8n/
-│   └── workflows/           # Integration workflows (JSON, ~14 files)
+│   └── workflows/           # Integration workflows (JSON, ~21 files: ingestion + executor per platform)
 │
 ├── scripts/
 │   ├── setup-dev.sh         # One-time dev environment setup
@@ -127,6 +132,25 @@ laya/
 ├── landing/                 # Landing page
 └── docs/                    # Architecture & design documents
 ```
+
+## Install
+
+The fastest way to try Laya is a prebuilt release — no toolchains required.
+
+1. Open the [**Releases page**](https://github.com/aayushch/laya/releases) and download the installer for your platform:
+
+   | Platform | Download |
+   |----------|----------|
+   | macOS | `.dmg` (universal — Apple Silicon + Intel) |
+   | Windows | `.msi` or `.exe` |
+   | Linux | `.deb` or `.AppImage` |
+
+2. Install and launch. On first run, Laya provisions its own bundled Python runtime and a local n8n instance under `~/.laya/` — you do **not** need Python, Node, or Rust installed to *run* a release build.
+3. Add an API key (Anthropic, OpenAI, Google, …) or point Laya at a local Ollama / LM Studio endpoint, then connect your tools from Settings.
+
+> **macOS:** release builds are currently unsigned. The first time you open the app, right-click it and choose **Open** to bypass Gatekeeper.
+
+Want to build from source, hack on the engine, or contribute? Follow the **Development** setup below.
 
 ## Development
 
@@ -311,7 +335,10 @@ Architecture and design documents in [`docs/`](./docs/):
 - [**System Architecture**](./docs/architecture.md) -- Component diagrams and service descriptions
 - [**Event Schema**](./docs/event-schema.md) -- The Laya Event schema specification
 - [**API Contracts**](./docs/api-contracts.md) -- REST, WebSocket, and inter-service API definitions
-- [**Database Schema**](./docs/database-schema.md) -- SQLite tables and ChromaDB collection design
+- [**Database Schema**](./docs/database-schema.md) -- SQLite tables (incl. FTS5), ChromaDB collection, and migrations
 - [**Project Structure**](./docs/project-structure.md) -- Repository layout and config file schemas
-- [**Implementation Plan**](./docs/implementation-plan.md) -- Milestone breakdown
+- [**Tuning Parameters**](./docs/tuning-parameters.md) -- Overridable pipeline, retrieval, and agent-budget settings
+- [**n8n Data Persistence**](./docs/n8n-data-persistence.md) -- How n8n workflow data and credentials are stored
 - [**Decision Log**](./docs/decision-log.md) -- Architectural decisions with rationale
+
+Deeper design docs (egress, AI processing rules, OAuth app distribution, pipeline lifecycle) live in [`engine/docs/`](./engine/docs/).
