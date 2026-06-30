@@ -303,13 +303,6 @@ nav .container {
      without it, width:100% + fixed height attrs would distort the screenshot */
   height: auto;
   display: block;
-  /* Round the image itself rather than relying on the parent's overflow:hidden
-     clip. iOS Safari fails to apply an ancestor's border-radius+overflow clip
-     across the GPU compositing layer that the .showcase-frame float-in transform
-     animation creates, leaving the corners unclipped on mobile. An element's own
-     border-radius is honored even when composited, so this fixes the clipping
-     without touching the frame's radius/shadow. Keep in sync with .showcase-frame. */
-  border-radius: 16px;
 }
 
 /* Screenshot tabs */
@@ -1152,15 +1145,18 @@ p.download-meta {
     padding: 10px 20px;
   }
   .showcase-tabs { margin-top: 24px; }
-  /* iOS Safari clips the screenshot's rounded corners because .showcase-frame's
-     `float-in` animation animates a transform, promoting the frame to a GPU
-     compositing layer where WebKit fails to apply its (or the child img's)
-     border-radius + overflow:hidden clip. Desktop isn't affected, so float-in
-     stays there; on mobile swap to the transform-free `fade-in` (opacity only)
-     so the frame is never transform-composited and the rounded clip applies.
-     This is the actual fix — the img border-radius alone wasn't enough because
-     the img rasterizes inside the frame's broken composited layer. */
-  .showcase-frame { animation: fade-in 0.7s ease 0.3s both; }
+  /* App screenshots are flush, full-bleed captures — the window corner and its
+     traffic-light buttons sit only ~16px in. The frames clip with a fixed
+     border-radius that does NOT scale with the image: negligible on the wide
+     desktop layout, but on mobile the screenshots render ~3x smaller, so that
+     same fixed radius bites ~3x deeper and rounds off the window corner / clips
+     the buttons. Shrink the radius on mobile for every screenshot frame so the
+     rounding stays gentle (like desktop's proportions) without eating content.
+     Each img is clipped by its parent's overflow:hidden, so reducing the parent
+     radius is all that's needed. */
+  .showcase-frame,
+  .feature-image,
+  .agent-screenshots { border-radius: 6px; }
 }
 @media (max-width: 480px) {
   .steps { grid-template-columns: 1fr; }
