@@ -303,6 +303,13 @@ nav .container {
      without it, width:100% + fixed height attrs would distort the screenshot */
   height: auto;
   display: block;
+  /* Round the image itself rather than relying on the parent's overflow:hidden
+     clip. iOS Safari fails to apply an ancestor's border-radius+overflow clip
+     across the GPU compositing layer that the .showcase-frame float-in transform
+     animation creates, leaving the corners unclipped on mobile. An element's own
+     border-radius is honored even when composited, so this fixes the clipping
+     without touching the frame's radius/shadow. Keep in sync with .showcase-frame. */
+  border-radius: 16px;
 }
 
 /* Screenshot tabs */
