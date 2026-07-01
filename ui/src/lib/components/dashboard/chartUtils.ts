@@ -1,6 +1,8 @@
 // Copyright 2026 Aayush Chawla
 // SPDX-License-Identifier: Apache-2.0
 
+import { parseBackendDate } from '$lib/utils/datetime';
+
 type Pt = { x: number; y: number };
 
 /**
@@ -90,7 +92,8 @@ export function niceStep(maxVal: number, targetTicks: number): number {
  * Adapts format to the chart's window size.
  */
 export function formatBucketLabel(iso: string, windowMinutes: number): string {
-	const d = new Date(iso);
+	const d = parseBackendDate(iso);
+	if (!d) return '';
 	if (windowMinutes <= 360) {
 		return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 	}

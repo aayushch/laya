@@ -11,6 +11,7 @@
 	import { onMount, onDestroy, tick } from 'svelte'; // tick used for scroll restore
 	import { get } from 'svelte/store';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { parseBackendDate } from '$lib/utils/datetime';
 	import type { Unsubscriber } from 'svelte/store';
 	import { omniSpace } from '$lib/stores/omniSpace';
 	import { resynthesizingSpaces, markResynthesizing, clearResynthesizing } from '$lib/stores/omniResynthesis';
@@ -90,8 +91,8 @@
 
 			// (2) Rolling interval
 			const rollingHours = omniCfg.rolling_interval_hours ?? 0;
-			if (rollingHours > 0 && snapshot?.generated_at) {
-				const lastGen = new Date(snapshot.generated_at);
+			const lastGen = rollingHours > 0 ? parseBackendDate(snapshot?.generated_at) : null;
+			if (lastGen) {
 				const rolling = new Date(lastGen.getTime() + rollingHours * 3600000);
 				if (rolling > now) candidates.push(rolling);
 				else candidates.push(new Date(now.getTime() + 60000)); // imminent

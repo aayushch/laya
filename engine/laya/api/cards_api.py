@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from laya.agents.session_manager import cancel_sessions_for_card
 from laya.api.websocket import manager
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_now
 from laya.llm.client import log_to_audit
 from laya.models.card import CardGroup, CardResponse, CardsListResponse, GroupedCardsResponse, GroupSummaryResponse, StagedOutput, SuggestedAction, TagAssignment
 from laya.pipeline.summarize import trigger_summary_status_update
@@ -638,7 +639,7 @@ async def dismiss_group(entity_id: str) -> dict:
             name=f"summary_status_{hr['card_id']}",
         )
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     await db.execute(
         "UPDATE action_cards SET read_at = COALESCE(read_at, ?) WHERE entity_id = ? AND read_at IS NULL",
         (now, entity_id),
@@ -676,7 +677,7 @@ async def archive_card(card_id: str) -> dict:
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     await db.execute(
         "UPDATE action_cards SET read_at = COALESCE(read_at, ?) WHERE card_id = ?",
         (now, card_id),
@@ -731,7 +732,7 @@ async def reopen_card(card_id: str) -> dict:
             status_code=409, detail=f"Card status '{current}' cannot be reopened"
         )
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     failed_stage = row["failed_stage"] if current == "failed" else None
 
     if failed_stage in ("agent_spawn", "agent_execution") and row["agent_prompt"]:
@@ -942,7 +943,7 @@ async def mark_card_done(card_id: str) -> dict:
         )
 
     current = rows[0]["status"]
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     await db.execute(
         """UPDATE action_cards
            SET status = 'done', previous_status = ?, resolved_at = ?, updated_at = ?,
@@ -1061,7 +1062,7 @@ async def bookmark_card(card_id: str) -> dict:
     if not rows:
         raise HTTPException(status_code=404, detail="Card not found")
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     await db.execute(
         "UPDATE action_cards SET bookmarked_at = ?, read_at = COALESCE(read_at, ?) WHERE card_id = ?",
         (now, now, card_id),
@@ -1112,7 +1113,7 @@ async def mark_card_read(card_id: str) -> dict:
     if rows[0]["read_at"]:
         return {"status": "already_read", "card_id": card_id, "read_at": rows[0]["read_at"]}
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     await db.execute(
         "UPDATE action_cards SET read_at = ? WHERE card_id = ? AND read_at IS NULL",
         (now, card_id),
@@ -1125,7 +1126,7 @@ async def mark_card_read(card_id: str) -> dict:
 async def mark_group_read(entity_id: str) -> dict:
     """Mark all cards in an entity or context group as read."""
     db = await get_db()
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     if entity_id.startswith("ctx_"):
         cursor = await db.execute(
             "UPDATE action_cards SET read_at = ? WHERE context_id = ? AND read_at IS NULL",
@@ -1148,7 +1149,7 @@ async def mark_all_read(
 ) -> dict:
     """Mark all cards as read, optionally scoped by date and space."""
     db = await get_db()
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     conditions = ["read_at IS NULL"]
     params: list[Any] = [now]
 
@@ -1216,7 +1217,7 @@ async def dismiss_card(card_id: str, body: DismissRequest | None = None) -> dict
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     await db.execute(
         "UPDATE action_cards SET read_at = COALESCE(read_at, ?) WHERE card_id = ?",
         (now, card_id),
@@ -1468,7 +1469,7 @@ async def _run_polish(
         payload["_polishing"] = False
         if polished_text and not error_message:
             payload[editable_field] = polished_text
-            payload["_polished_at"] = datetime.now(timezone.utc).isoformat()
+            payload["_polished_at"] = db_now()
             payload.pop("_polish_error", None)
         elif error_message:
             payload["_polish_error"] = error_message
@@ -1515,7 +1516,7 @@ async def update_classification(card_id: str, body: UpdateClassificationRequest)
         raise HTTPException(status_code=404, detail="Card not found")
 
     card = rows[0]
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     valid_priorities = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
     valid_personas = {"ENGINEER", "COMMS", "OPS", "SALES", "HR", "FINANCE"}
 
@@ -2007,7 +2008,7 @@ async def run_agent(body: RunAgentRequest) -> dict:
     import uuid
     event_id = f"evt_{uuid.uuid4().hex[:12]}"
     card_id = f"card_{uuid.uuid4().hex[:12]}"
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     header = body.prompt[:120] + ("..." if len(body.prompt) > 120 else "")
     entity_id = f"laya:agent_run:{card_id}"
 
@@ -2251,7 +2252,7 @@ async def run_entity_agent(entity_id: str, body: RunEntityAgentRequest) -> dict:
     # 8. If a prior completed/paused session exists, resume it
     if existing and existing["status"] == "paused":
         # Refresh context and resume
-        now = datetime.now(timezone.utc).isoformat()
+        now = db_now()
         await db.execute(
             "UPDATE action_cards SET has_workspace = 1, updated_at = ? WHERE entity_id = ?",
             (now, entity_id),
@@ -2290,7 +2291,7 @@ async def run_entity_agent(entity_id: str, body: RunEntityAgentRequest) -> dict:
 
     # 9. New session — start in plan mode
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     await db.execute(
         "UPDATE action_cards SET has_workspace = 1, updated_at = ? WHERE entity_id = ?",
         (now, entity_id),

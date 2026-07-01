@@ -24,6 +24,7 @@ import structlog
 from laya.api.websocket import manager
 from laya.config import load_settings
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_now
 from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
 from laya.models.card_lifecycle import TERMINAL_STATUSES as _TERMINAL_STATUSES
 from laya.llm.prompts.omni import (
@@ -472,7 +473,7 @@ async def _append_to_recent(cards: list[dict]) -> None:
             continue
 
         all_card_ids = existing_card_ids + new_card_ids
-        now = datetime.now(timezone.utc).isoformat()
+        now = db_now()
 
         # Create a new incremental snapshot (version++)
         new_snapshot_id = f"omni_{uuid.uuid4().hex[:12]}"
@@ -693,15 +694,11 @@ async def _resynthesize_space(
         (space_id,),
     )
 
-    # Normalize ISO 'T' separator to space to match SQLite CURRENT_TIMESTAMP format,
-    # otherwise string comparison fails (space 0x20 < 'T' 0x54).
+    # generated_at and resolved_at are both stored in canonical DB format now
+    # (space-separated UTC — see laya/db/timeutil.py), so one space-format `since`
+    # bound compares correctly against both created_at and resolved_at.
     raw = last_synth_row[0]["generated_at"] if last_synth_row else None
-    since = raw.replace("T", " ").split("+")[0] if raw else "2000-01-01 00:00:00"
-    # `resolved_at` is stored as datetime.isoformat() (keeps the 'T' and the +00:00
-    # offset), so it must be compared against the RAW generated_at — not the
-    # space-normalized `since` above. Both are ISO UTC strings, so a lexicographic
-    # comparison is valid. Using the wrong form here silently matches nothing.
-    since_iso = raw if raw else "2000-01-01T00:00:00"
+    since = raw if raw else "2000-01-01 00:00:00"
 
     # Fetch cap scales with event_threshold so users who tolerate larger
     # per-run batches get proportional headroom for failure recovery. Floor
@@ -799,14 +796,13 @@ async def _resynthesize_space(
                 })
 
     # 4c. Subjects that reached a terminal state since the last synthesis.
-    # Compared against `since_iso` (raw ISO), NOT the space-normalized `since`.
     resolved_rows = await db.execute_fetchall(
         """SELECT entity_id, header, status, resolved_at
            FROM action_cards
            WHERE space_id = ? AND resolved_at IS NOT NULL AND resolved_at > ?
              AND status IN ('done', 'dismissed', 'archived')
            ORDER BY resolved_at DESC LIMIT 100""",
-        (space_id, since_iso),
+        (space_id, since),
     )
     resolved_cards: list[dict] = []
     _seen_entities: set[str] = set()
@@ -930,7 +926,7 @@ async def _resynthesize_space(
     # 9. Save new snapshot — re-read the current max version to avoid
     #    collision with any incremental snapshots that were written before
     #    the gate closed (the gate only blocks future queue polls).
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     snapshot_id = f"omni_{uuid.uuid4().hex[:12]}"
     all_card_ids = list(set(existing_card_ids + [c["card_id"] for c in new_cards]))
 

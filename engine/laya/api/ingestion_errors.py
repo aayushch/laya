@@ -32,6 +32,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_now, db_ts
 
 log = structlog.get_logger()
 router = APIRouter()
@@ -157,7 +158,7 @@ async def report_ingestion_error(report: IngestionErrorReport) -> IngestionError
     """
     db = await get_db()
     fingerprint = _fingerprint(report.error_name, report.error_message)
-    occurred_at_iso = report.occurred_at.astimezone(timezone.utc).isoformat()
+    occurred_at_iso = db_ts(report.occurred_at)
 
     # 1. Resolve source + space by workflow_id. Deliberately NOT calling
     # space_resolution.resolve_space() — that has side effects (auto-inserting
@@ -347,7 +348,7 @@ async def clear_ingestion_error(error_id: str) -> ClearIngestionErrorsResponse:
     db = await get_db()
     cursor = await db.execute(
         "UPDATE ingestion_errors SET cleared_at = ? WHERE error_id = ? AND cleared_at IS NULL",
-        (datetime.now(timezone.utc).isoformat(), error_id),
+        (db_now(), error_id),
     )
     await db.commit()
     if cursor.rowcount == 0:
@@ -381,7 +382,7 @@ async def clear_all_ingestion_errors(
         params.append(source_id)
 
     where_sql = " AND ".join(where)
-    params.insert(0, datetime.now(timezone.utc).isoformat())
+    params.insert(0, db_now())
 
     cursor = await db.execute(
         f"UPDATE ingestion_errors SET cleared_at = ? WHERE {where_sql}",

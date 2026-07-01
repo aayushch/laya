@@ -3,6 +3,7 @@
 <script lang="ts">
 	import type { GroupSummary, CardGroup, ActionCard, CardEgressContext, CardEgressAction, KeyEvent } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
+	import { parseBackendDate } from '$lib/utils/datetime';
 	import { goto } from '$app/navigation';
 	import { chatOpen, chatCardContext, chatCardIds, chatListOpen } from '$lib/stores/chat';
 	import PlatformBadge from '$lib/components/PlatformBadge.svelte';
@@ -47,8 +48,8 @@
 
 	function formatLocalTime(iso: string): string {
 		try {
-			const d = new Date(iso);
-			if (isNaN(d.getTime())) return '';
+			const d = parseBackendDate(iso);
+			if (!d || isNaN(d.getTime())) return '';
 			return d.toLocaleString(undefined, {
 				month: 'short',
 				day: 'numeric',
@@ -228,9 +229,9 @@
 	});
 
 	function timeAgo(dateStr?: string): string {
-		if (!dateStr) return '';
-		const utcStr = dateStr.endsWith('Z') || dateStr.includes('+') ? dateStr : dateStr + 'Z';
-		const diff = Date.now() - new Date(utcStr).getTime();
+		const d = parseBackendDate(dateStr);
+		if (!d) return '';
+		const diff = Date.now() - d.getTime();
 		const mins = Math.floor(diff / 60000);
 		if (mins < 1) return 'just now';
 		if (mins < 60) return `${mins}m ago`;

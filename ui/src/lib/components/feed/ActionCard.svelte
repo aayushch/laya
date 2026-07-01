@@ -6,6 +6,7 @@
 	import { goto } from '$app/navigation';
 	import { chatOpen, chatCardContext, chatCardIds, chatListOpen } from '$lib/stores/chat';
 	import { buildSingleCardContext } from '$lib/utils/cardContext';
+	import { parseBackendDate } from '$lib/utils/datetime';
 	import { cardColors } from '$lib/stores/cardColors';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { cardDescriptions } from '$lib/stores/cardDescriptions';
@@ -200,9 +201,9 @@
 	const compact = $derived($cardSize === 'compact');
 
 	function timeAgo(dateStr?: string): string {
-		if (!dateStr) return '';
-		const utcStr = dateStr.endsWith('Z') || dateStr.includes('+') ? dateStr : dateStr + 'Z';
-		const diff = Date.now() - new Date(utcStr).getTime();
+		const d = parseBackendDate(dateStr);
+		if (!d) return '';
+		const diff = Date.now() - d.getTime();
 		const mins = Math.floor(diff / 60000);
 		if (mins < 1) return 'just now';
 		if (mins < 60) return `${mins}m ago`;
@@ -214,9 +215,8 @@
 	}
 
 	function fullDate(dateStr?: string): string {
-		if (!dateStr) return '';
-		const utcStr = dateStr.endsWith('Z') || dateStr.includes('+') ? dateStr : dateStr + 'Z';
-		const d = new Date(utcStr);
+		const d = parseBackendDate(dateStr);
+		if (!d) return '';
 		return d.toLocaleString(undefined, {
 			month: 'short', day: 'numeric', year: 'numeric',
 			hour: 'numeric', minute: '2-digit'

@@ -303,7 +303,7 @@ class TestResolutionDrop:
         await db.execute(
             "UPDATE action_cards SET created_at = ?, resolved_at = ? WHERE card_id = ?",
             ((now - timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S"),
-             (now - timedelta(minutes=10)).isoformat(), "card_resolved"),
+             (now - timedelta(minutes=10)).strftime("%Y-%m-%d %H:%M:%S"), "card_resolved"),
         )
         # A new card so resynthesis isn't skipped.
         await insert_test_card(db, card_id="card_new", event_id="evt_new",
@@ -326,7 +326,8 @@ class TestResolutionDrop:
             {"type": "period", "label": None, "items": []},
             {"type": "milestone", "label": None, "items": []},
         ]}
-        await self._insert_snapshot(db, "default", 1, since_dt.isoformat(),
+        await self._insert_snapshot(db, "default", 1,
+                                    since_dt.strftime("%Y-%m-%d %H:%M:%S"),
                                     seed_content, ["card_resolved"])
 
         captured = {}

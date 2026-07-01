@@ -2,6 +2,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	import type { ChatMessage } from '$lib/api/types';
+	import { parseBackendDate } from '$lib/utils/datetime';
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
 	import { goto } from '$app/navigation';
@@ -37,7 +38,8 @@
 
 	const isUser = $derived(message.role === 'user');
 	const time = $derived.by(() => {
-		const d = new Date(message.timestamp);
+		const d = parseBackendDate(message.timestamp);
+		if (!d) return '';
 		const hm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 		const now = new Date();
 		const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());

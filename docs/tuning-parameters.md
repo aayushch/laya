@@ -140,7 +140,8 @@ Parameters that control how Laya batches and debounces LLM calls for efficiency.
 {
   "pipeline": {
     "debounce": {
-      "daily_summary_seconds": 30,
+      "daily_summary_seconds": 90,
+      "daily_summary_batch_max_cards": 10,
       "group_summary_seconds": 15,
       "event_batch_window_seconds": 3,
       "event_batch_max_size": 10
@@ -151,7 +152,8 @@ Parameters that control how Laya batches and debounces LLM calls for efficiency.
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `pipeline.debounce.daily_summary_seconds` | `30` | Quiet period before processing accumulated cards into the daily summary. Each new card resets the timer. **Higher** = fewer LLM calls during bursts but slightly delayed summary updates. Set to `0` for immediate processing. |
+| `pipeline.debounce.daily_summary_seconds` | `90` | Quiet period before folding accumulated cards into the daily summary. Each new card resets the timer; when it expires, all cards that arrived in the window are folded together (see `daily_summary_batch_max_cards`). **Higher** = more cards coalesced per flush (fewer LLM calls during bursts) but slightly delayed summary updates. Set to `0` for immediate processing. |
+| `pipeline.debounce.daily_summary_batch_max_cards` | `10` | Maximum cards folded into a **single** daily-summary LLM call. A flush with more fresh cards than this is split into `ceil(N / K)` batched calls rather than one giant prompt, so a large burst can't overflow a small local-model context window. **Lower** = safer for small context windows; **higher** = fewer calls per burst. Minimum `1`. |
 | `pipeline.debounce.group_summary_seconds` | `15` | Per-entity quiet period before updating the group summary. Multiple cards arriving for the same entity within this window are processed in one LLM call instead of N calls. **Higher** = more batching, fewer calls. Set to `0` to disable (immediate per-card updates). |
 | `pipeline.debounce.event_batch_window_seconds` | `3` | Collection window for batch-routing. The queue processor waits this long for additional events to arrive before classifying. Multiple events classified in one LLM call instead of individually. Set to `0` to disable batching (events process immediately). |
 | `pipeline.debounce.event_batch_max_size` | `10` | Maximum events to classify in a single batch-router call. Larger batches save more calls but increase per-call latency and output token usage. |

@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_now
 
 log = structlog.get_logger()
 router = APIRouter(prefix="/classification")
@@ -75,7 +76,7 @@ async def list_rules(space_id: str | None = None, field: str | None = None, acti
 async def create_rule(body: CreateRuleRequest) -> dict:
     """Create a new classification rule."""
     db = await get_db()
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     cursor = await db.execute(
         """INSERT INTO classification_rules (space_id, field, rule_text, source, active, created_at, updated_at)
            VALUES (?, ?, ?, 'manual', 1, ?, ?)""",
@@ -114,7 +115,7 @@ async def update_rule(rule_id: int, body: UpdateRuleRequest) -> dict:
         return {"status": "no_changes"}
 
     updates.append("updated_at = ?")
-    params.append(datetime.now(timezone.utc).isoformat())
+    params.append(db_now())
     params.append(rule_id)
 
     await db.execute(

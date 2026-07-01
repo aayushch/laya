@@ -7,6 +7,7 @@
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import type { ProviderModels, CustomProvider, CustomProviderTestResult, DiscoveredModel, PipelineSettings, BudgetConfig, MonthlyCostEntry, AgentBackend, AgentBudgetStatus } from '$lib/api/types';
+	import { parseBackendDate } from '$lib/utils/datetime';
 	import { budgetPaused, loadBudgetStatus, loadAgentBudgetStatus } from '$lib/stores/budget';
 	import { portal } from '$lib/actions/portal';
 	import { CODING_AGENTS } from '$lib/config';
@@ -1014,7 +1015,7 @@
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
 							</svg>
 							<span class="text-laya-base text-red-300">
-								Usage limit reached — ingestion paused{#if agentBudgetStatus.paused_until} until {new Date(agentBudgetStatus.paused_until).toLocaleString()}{/if}
+								Usage limit reached — ingestion paused{#if agentBudgetStatus.paused_until} until {parseBackendDate(agentBudgetStatus.paused_until)?.toLocaleString()}{/if}
 							</span>
 						</div>
 						<button

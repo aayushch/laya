@@ -17,6 +17,7 @@ import structlog
 from laya.db.chromadb_store import memory_search
 from laya.db.fts import build_fts_match, fts_ready
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_now
 from laya.llm.client import llm_call, llm_call_streaming, StreamEvent
 from laya.llm.prompts.chat import build_chat_messages, build_title_generation_messages
 from laya.llm.tools.definitions import get_all_tool_definitions
@@ -82,7 +83,7 @@ async def _ensure_conversation(
         return conversation_id
 
     conv_id = f"conv_{uuid.uuid4().hex[:12]}"
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     canonical = canonical_card_ids(card_ids)
     await db.execute(
         """INSERT INTO chat_conversations
@@ -215,7 +216,7 @@ async def _generate_title_background(
         if not title or title.lower() == "new chat":
             return
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = db_now()
         db = await get_db()
         # Only overwrite if the title is still the placeholder — preserves any
         # manual rename the user may have made while generation was in flight.
@@ -380,7 +381,7 @@ async def process_chat_message(
 
     # Store user message
     user_msg_id = f"msg_{uuid.uuid4().hex[:12]}"
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     await db.execute(
         """INSERT INTO chat_messages
            (message_id, timestamp, role, content, space_id, conversation_id)
@@ -390,7 +391,7 @@ async def process_chat_message(
 
     # Store assistant message
     assistant_msg_id = f"msg_{uuid.uuid4().hex[:12]}"
-    assistant_ts = datetime.now(timezone.utc).isoformat()
+    assistant_ts = db_now()
     await db.execute(
         """INSERT INTO chat_messages
            (message_id, timestamp, role, content, referenced_cards,
@@ -520,7 +521,7 @@ async def process_chat_message_streaming(
 
     # Store user message immediately
     user_msg_id = f"msg_{uuid.uuid4().hex[:12]}"
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     await db.execute(
         """INSERT INTO chat_messages
            (message_id, timestamp, role, content, space_id, conversation_id)
@@ -610,7 +611,7 @@ async def process_chat_message_streaming(
     referenced_events = EVENT_REF_PATTERN.findall(full_content)
 
     # Store assistant message
-    assistant_ts = datetime.now(timezone.utc).isoformat()
+    assistant_ts = db_now()
     await db.execute(
         """INSERT INTO chat_messages
            (message_id, timestamp, role, content, referenced_cards,

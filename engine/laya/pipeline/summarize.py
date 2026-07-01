@@ -12,9 +12,10 @@ import structlog
 from laya.api.websocket import manager
 from laya.config import get_debounce_config
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_now
 from laya.llm.client import llm_call
 from laya.llm.prompts.summarizer import (
-    build_status_change_messages,
+    build_batch_summarizer_messages,
     build_summarizer_messages,
     get_summarizer_json_schema,
 )
@@ -34,7 +35,16 @@ _debounce_tasks: dict[str, asyncio.Task] = {}
 def _get_debounce_seconds() -> float:
     """Read daily summary debounce interval from settings."""
     cfg = get_debounce_config()
-    return cfg.get("daily_summary_seconds", 30)
+    return cfg.get("daily_summary_seconds", 90)
+
+
+def _get_batch_max_cards() -> int:
+    """Max cards folded into a single daily-summary LLM call. A flush with more
+    fresh cards than this is split into ceil(N/K) batched calls so a large burst
+    can't overflow a small local context window."""
+    cfg = get_debounce_config()
+    k = cfg.get("daily_summary_batch_max_cards", 10)
+    return max(1, int(k))
 
 
 async def trigger_summary_update(
@@ -161,6 +171,92 @@ def _compact_summary(summary: dict) -> dict:
     return compacted
 
 
+async def _fold_batch(
+    current_summary: dict | None,
+    chunk: list[dict],
+    schema: dict,
+    space_id: str,
+    today: str,
+) -> dict:
+    """Fold a chunk of new cards into the summary in a SINGLE llm_call.
+
+    Raises on a malformed/empty response so the caller can fall back to the
+    per-card path. The `card_id` passed to llm_call is only used for audit
+    logging, so a representative id (the chunk's first) is fine.
+    """
+    messages = build_batch_summarizer_messages(current_summary=current_summary, new_cards=chunk)
+    response = await llm_call(
+        role="stager",
+        messages=messages,
+        response_schema=schema,
+        card_id=chunk[0]["card_id"],
+        step="summarize",
+        temperature=0.2,
+        max_tokens=_SUMMARY_MAX_TOKENS,
+        space_id=space_id,
+    )
+    if not response.parsed:
+        truncation_hint = " (response was truncated)" if response.truncated else ""
+        raise ValueError(
+            f"LLM returned malformed JSON for batch summary{truncation_hint} "
+            f"(output_tokens={response.output_tokens}, model={response.model})"
+        )
+    return response.parsed
+
+
+async def _fold_cards_sequentially(
+    current_summary: dict | None,
+    cards: list[dict],
+    schema: dict,
+    space_id: str,
+    today: str,
+) -> tuple[dict | None, list[str]]:
+    """Fold cards one at a time (the pre-batching path), used as the fallback when a
+    batched fold fails. Returns the updated summary and the card_ids actually
+    incorporated. A single card's failure is logged and skipped — that card is
+    dropped for the day, matching the original per-card behavior.
+    """
+    incorporated: list[str] = []
+    for card in cards:
+        messages = build_summarizer_messages(
+            current_summary=current_summary,
+            card_header=card["card_header"],
+            card_summary=card["card_summary"],
+            card_priority=card["card_priority"],
+            card_category=card["card_category"],
+            card_id=card["card_id"],
+            card_intelligence=card.get("card_intelligence"),
+            card_persona=card.get("card_persona"),
+            actor_name=card.get("actor_name"),
+            source_platform=card.get("source_platform"),
+            card_tags=card.get("card_tags"),
+        )
+        try:
+            response = await llm_call(
+                role="stager",
+                messages=messages,
+                response_schema=schema,
+                card_id=card["card_id"],
+                step="summarize",
+                temperature=0.2,
+                max_tokens=_SUMMARY_MAX_TOKENS,
+                space_id=space_id,
+            )
+            if not response.parsed:
+                truncation_hint = " (response was truncated)" if response.truncated else ""
+                raise ValueError(
+                    f"LLM returned malformed JSON for summary{truncation_hint} "
+                    f"(output_tokens={response.output_tokens}, model={response.model})"
+                )
+            current_summary = response.parsed
+            incorporated.append(card["card_id"])
+            log.info("summary_card_incorporated", card_id=card["card_id"], space_id=space_id, date=today)
+        except Exception as e:
+            log.error("summary_llm_failed", card_id=card["card_id"], space_id=space_id, error=str(e))
+            continue
+    return current_summary, incorporated
+
+
 async def _run_summary_update(
     space_id: str,
     new_cards: list[dict],
@@ -186,58 +282,48 @@ async def _run_summary_update(
 
     schema = get_summarizer_json_schema()
 
-    if current_summary and _count_items(current_summary) >= _COMPACTION_THRESHOLD:
-        current_summary = _compact_summary(current_summary)
-
+    # Filter to cards not already folded in: dedup against the persisted card_ids
+    # plus intra-flush duplicates (the same card queued twice within one debounce
+    # window). Without this a re-run or a duplicate emit would double-count a card.
+    seen: set[str] = set()
+    fresh: list[dict] = []
     for card in new_cards:
-        if card["card_id"] in existing_card_ids:
+        cid = card["card_id"]
+        if cid in existing_card_ids or cid in seen:
             continue
+        seen.add(cid)
+        fresh.append(card)
 
-        messages = build_summarizer_messages(
-            current_summary=current_summary,
-            card_header=card["card_header"],
-            card_summary=card["card_summary"],
-            card_priority=card["card_priority"],
-            card_category=card["card_category"],
-            card_id=card["card_id"],
-            card_intelligence=card.get("card_intelligence"),
-            card_persona=card.get("card_persona"),
-            actor_name=card.get("actor_name"),
-            source_platform=card.get("source_platform"),
-            card_tags=card.get("card_tags"),
-        )
+    # Fold the fresh cards in bounded batches — ONE llm_call per chunk instead of
+    # one per card. This is the whole optimization: a burst of N cards costs
+    # ceil(N/K) inferences, not N. The per-call cap keeps a big burst from
+    # overflowing a small local context window; compaction runs before each chunk
+    # so the summary (the dominant token term) stays bounded as it grows.
+    batch_max = _get_batch_max_cards()
+    for start in range(0, len(fresh), batch_max):
+        chunk = fresh[start:start + batch_max]
+
+        if current_summary and _count_items(current_summary) >= _COMPACTION_THRESHOLD:
+            current_summary = _compact_summary(current_summary)
 
         try:
-            response = await llm_call(
-                role="stager",
-                messages=messages,
-                response_schema=schema,
-                card_id=card["card_id"],
-                step="summarize",
-                temperature=0.2,
-                max_tokens=_SUMMARY_MAX_TOKENS,
-                space_id=space_id,
-            )
-
-            if not response.parsed:
-                truncation_hint = " (response was truncated)" if response.truncated else ""
-                raise ValueError(
-                    f"LLM returned malformed JSON for summary{truncation_hint} "
-                    f"(output_tokens={response.output_tokens}, model={response.model})"
-                )
-            current_summary = response.parsed
-
-            existing_card_ids.append(card["card_id"])
-            log.info("summary_card_incorporated", card_id=card["card_id"], space_id=space_id, date=today)
-
+            current_summary = await _fold_batch(current_summary, chunk, schema, space_id, today)
+            existing_card_ids.extend(c["card_id"] for c in chunk)
+            log.info("summary_batch_incorporated", count=len(chunk), space_id=space_id, date=today)
         except Exception as e:
-            log.error(
-                "summary_llm_failed",
-                card_id=card["card_id"],
+            # Batch fold failed (e.g. malformed/truncated JSON) — fall back to the
+            # proven per-card path for THIS chunk only. Worst case degrades to the
+            # pre-batching behavior, never worse; no unbounded retry.
+            log.warning(
+                "summary_batch_failed_fallback_sequential",
+                count=len(chunk),
                 space_id=space_id,
                 error=str(e),
             )
-            continue
+            current_summary, incorporated = await _fold_cards_sequentially(
+                current_summary, chunk, schema, space_id, today
+            )
+            existing_card_ids.extend(incorporated)
 
     for change in status_changes:
         if not current_summary:
@@ -274,7 +360,7 @@ async def _run_summary_update(
     if current_summary:
         summary_json = json.dumps(current_summary)
         card_ids_json = json.dumps(existing_card_ids)
-        now = datetime.now(timezone.utc).isoformat()
+        now = db_now()
 
         await db.execute(
             """INSERT INTO daily_summaries (date, space_id, summary_json, card_ids, updated_at)

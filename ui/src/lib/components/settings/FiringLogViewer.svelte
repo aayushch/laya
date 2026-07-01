@@ -7,6 +7,7 @@
 	import { portal } from '$lib/actions/portal';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import type { ProcessingRule, ProcessingRuleFiringEntry } from '$lib/api/types';
+	import { parseBackendDate } from '$lib/utils/datetime';
 
 	// Rules are already loaded by the parent (ProcessingRulesEditor); passed in
 	// so the rule filter dropdown needs no extra fetch.
@@ -80,14 +81,13 @@
 	const hasFilters = $derived(filterRuleId !== '' || filterOutcome !== '' || searchQuery.trim() !== '');
 
 	function formatTime(ts: string): string {
-		const utc = ts.endsWith('Z') || ts.includes('+') ? ts : ts + 'Z';
-		return new Date(utc).toLocaleString([], {
+		return parseBackendDate(ts)?.toLocaleString([], {
 			month: 'short',
 			day: 'numeric',
 			hour: '2-digit',
 			minute: '2-digit',
 			second: '2-digit'
-		});
+		}) ?? '';
 	}
 
 	function humanizeAction(type: string): string {

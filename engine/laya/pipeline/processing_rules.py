@@ -15,6 +15,7 @@ import structlog
 
 from laya.api.websocket import manager
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_now
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 from laya.models.processing_rules import (
@@ -366,7 +367,7 @@ async def _exec_set_priority(action: SetPriorityAction, card_id: str) -> dict[st
 
 async def _exec_bookmark(card_id: str) -> dict[str, Any]:
     db = await get_db()
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     await db.execute(
         "UPDATE action_cards SET bookmarked_at = ?, updated_at = CURRENT_TIMESTAMP WHERE card_id = ? AND bookmarked_at IS NULL",
         (now, card_id),
@@ -441,7 +442,7 @@ async def _exec_run_agent(
                 repos_data = load_repos()
                 add_dirs = [r["path"] for r in repos_data.get("repos", []) if r.get("path")]
 
-            now = datetime.now(timezone.utc).isoformat()
+            now = db_now()
             await db.execute(
                 "UPDATE action_cards SET has_workspace = 1, updated_at = ? WHERE entity_id = ?",
                 (now, entity_id),

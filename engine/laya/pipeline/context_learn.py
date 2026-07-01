@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import structlog
 
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_now
 from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
 from laya.llm.prompts.context_learner import (
     build_context_learner_messages,
@@ -118,7 +119,7 @@ async def run_context_learn_extraction(space_id: str | None) -> int:
         return 0
 
     # 4. Store new rules
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     new_rules = 0
     for rule in response.parsed.get("rules", []):
         rule_text = rule.get("rule_text", "").strip()
@@ -254,7 +255,7 @@ async def maybe_consolidate_context_rules(space_id: str | None) -> int:
     # Replace transactionally: delete exactly the learned ids we loaded (so any
     # rule inserted concurrently is untouched), then insert the consolidated
     # set. Manual rules are never deleted.
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     learned_ids = [r["id"] for r in learned]
     placeholders = ",".join("?" * len(learned_ids))
     await db.execute(

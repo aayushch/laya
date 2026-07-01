@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_now, db_ts
 
 log = structlog.get_logger()
 router = APIRouter()
@@ -125,9 +126,9 @@ async def get_omni_timeline(space_id: str = "default"):
     """
     db = await get_db()
     now = datetime.now(timezone.utc)
-    today_start = (now - timedelta(hours=24)).isoformat()
-    week_start = (now - timedelta(days=7)).isoformat()
-    now_iso = now.isoformat()
+    today_start = db_ts(now - timedelta(hours=24))
+    week_start = db_ts(now - timedelta(days=7))
+    now_iso = db_ts(now)
 
     def _row_to_entry(row):
         return {
@@ -292,7 +293,7 @@ async def pin_item(req: PinRequest):
     db = await get_db()
 
     pin_id = f"pin_{uuid.uuid4().hex[:12]}"
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
 
     await db.execute(
         """INSERT INTO omni_pins

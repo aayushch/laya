@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from laya.api.audit_api import utc_cutoff
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_ts
 from laya.models.event import EventResponse, LayaEvent
 from laya.pipeline.queue import enqueue_event
 
@@ -54,7 +55,7 @@ async def receive_event(event: LayaEvent) -> EventResponse:
         """,
         (
             event.event_id,
-            event.timestamp.isoformat(),
+            db_ts(event.timestamp),
             event.source.platform,
             event.source.connection_id,
             event.source.raw_event_type,

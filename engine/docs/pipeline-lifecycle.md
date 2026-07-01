@@ -60,7 +60,7 @@ flowchart TD
         CTX["Context Grouping<br/><i>ChromaDB similarity +<br/>optional LLM confirm</i>"]
         ENT["Entity Resolution<br/><i>Semantic Layer 2<br/>(no LLM usually)</i>"]
         GS["🧠 Group Summary<br/><b>prompts/group_summary.py</b><br/>role=group_summary | temp=0.1<br/>debounced 15s per entity"]
-        DS["🧠 Daily Summary<br/><b>prompts/summarizer.py</b><br/>role=stager | temp=0.2<br/>debounced 30s per space"]
+        DS["🧠 Daily Summary<br/><b>prompts/summarizer.py</b><br/>role=stager | temp=0.2<br/>debounced 90s per space<br/>batched fold ≤10 cards/call"]
         OMNI_Q["Omni Queue<br/><i>Incremental update<br/>(no LLM)</i>"]
         TAGS["Tag Persistence"]
         PRULES["Processing Rules"]

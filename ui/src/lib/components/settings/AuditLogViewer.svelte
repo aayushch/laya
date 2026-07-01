@@ -11,6 +11,7 @@
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import ExportMenu from '$lib/components/settings/ExportMenu.svelte';
 	import type { AuditLogEntry, DeadEvent, IngestionError, FilteredEvent } from '$lib/api/types';
+	import { parseBackendDate } from '$lib/utils/datetime';
 
 	// Ordered list of processing_status values for stable display order.
 	// Mirrors values set in engine/laya/pipeline/queue.py and api/events.py.
@@ -377,15 +378,14 @@
 	const totalPages = $derived(Math.ceil(total / limit) || 1);
 
 	function formatTime(ts: string): string {
-		const utc = ts.endsWith('Z') || ts.includes('+') ? ts : ts + 'Z';
-		return new Date(utc).toLocaleString([], {
+		return parseBackendDate(ts)?.toLocaleString([], {
 			month: 'short',
 			day: 'numeric',
 			hour: '2-digit',
 			minute: '2-digit',
 			second: '2-digit',
 			hour12: false // force 24-hour clock regardless of locale (en-US would otherwise show AM/PM)
-		});
+		}) ?? '';
 	}
 
 	function formatTokens(n: number): string {

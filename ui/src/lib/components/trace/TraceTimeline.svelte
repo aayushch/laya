@@ -3,6 +3,7 @@
 <script lang="ts">
 	import type { TraceCluster } from '$lib/api/types';
 	import TraceCard from './TraceCard.svelte';
+	import { parseBackendDate } from '$lib/utils/datetime';
 
 	let {
 		cluster,
@@ -44,7 +45,7 @@
 					<span class="text-laya-secondary font-medium text-surface-300">{chapter.label}</span>
 					{#if chapter.timestamp}
 						<span class="text-laya-micro text-surface-600 tabular-nums ml-1.5">
-							{new Date(chapter.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+							{parseBackendDate(chapter.timestamp)?.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
 						</span>
 					{/if}
 				</div>
@@ -85,7 +86,7 @@
 						<span class="text-laya-base font-semibold text-surface-200">{chapter.label}</span>
 						{#if chapter.timestamp}
 							<span class="text-laya-secondary text-surface-500">
-								{new Date(chapter.timestamp).toLocaleDateString(undefined, {
+								{parseBackendDate(chapter.timestamp)?.toLocaleDateString(undefined, {
 									month: 'short',
 									day: 'numeric',
 									year: 'numeric'

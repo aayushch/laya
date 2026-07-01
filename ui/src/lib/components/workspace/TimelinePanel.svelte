@@ -3,6 +3,7 @@
 <script lang="ts">
 	import type { WorkspaceEvent } from '$lib/api/types';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { parseBackendDate } from '$lib/utils/datetime';
 
 	let { events, onselect }: { events: WorkspaceEvent[]; onselect?: (event: WorkspaceEvent) => void } = $props();
 
@@ -66,7 +67,7 @@
 	}
 
 	function formatTime(ts: string): string {
-		return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+		return parseBackendDate(ts)?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) ?? '';
 	}
 </script>
 

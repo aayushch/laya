@@ -3,6 +3,7 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
+	import { parseBackendDate } from '$lib/utils/datetime';
 	import { lastMessage } from '$lib/stores/websocket';
 	import { feedFilters, feedDate, feedPrevDate, feedNextDate, localToday, allDaysSavedDate } from '$lib/stores/feedFilters';
 	import type { ActionCard, CardGroup, GroupSummary, DaySummary, SpaceSummary, Tag } from '$lib/api/types';
@@ -382,6 +383,10 @@
 	// Persist selected card/group ID across webview navigations (e.g. external link → back)
 	const SELECTED_CARD_KEY = 'laya_feed_selected_card';
 	const SELECTED_GROUP_KEY = 'laya_feed_selected_group';
+
+	// Priority severity rank — mirrors backend `_PRIORITY_ORDER` (cards_api.py). Lower = more
+	// severe. Used to recompute a group's top_priority client-side when a card is reclassified.
+	const PRIORITY_RANK: Record<string, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
 
 	function formatDateLabel(dateStr: string): string {
 		const today = localToday();
@@ -825,7 +830,18 @@
 							scheduleReload();
 						}
 					}
-					if (payload.priority) card.priority = payload.priority as ActionCard['priority'];
+					if (payload.priority) {
+						card.priority = payload.priority as ActionCard['priority'];
+						// The group's top_priority is a server-computed field (most severe
+						// priority across its cards). It's shown in the group header badge but
+						// isn't refreshed by the in-place card mutation above — recompute it here
+						// so the header stays correct in every sort/view (incl. Newest, where we
+						// don't refetch below).
+						group.top_priority = group.cards.reduce(
+							(top, c) => (PRIORITY_RANK[c.priority] < PRIORITY_RANK[top] ? c.priority : top),
+							group.cards[0]?.priority ?? 'MEDIUM'
+						) as CardGroup['top_priority'];
+					}
 					if (payload.persona) card.persona = payload.persona as ActionCard['persona'];
 					if (payload.has_workspace !== undefined) card.has_workspace = payload.has_workspace;
 					if ('bookmarked_at' in payload) card.bookmarked_at = payload.bookmarked_at ?? undefined;
@@ -833,6 +849,17 @@
 						selectedCard = { ...selectedCard, ...card } as ActionCard;
 					}
 					groups = groups;
+					// Group ordering + section bucketing (group.sort_key) are computed
+					// server-side and go stale on an in-place card mutation. When the active
+					// sort depends on a field that just changed, refetch so the group re-sorts /
+					// re-sections (loadGroups runs a FLIP animation for a smooth move). Without
+					// this, e.g. a card reclassified CRIT→LOW keeps its top slot under Priority.
+					const sort = $feedFilters.sortBy;
+					const affectsSort =
+						(sort === 'priority' && payload.priority) ||
+						(sort === 'persona' && payload.persona) ||
+						(sort === 'status' && payload.status);
+					if (affectsSort) scheduleReload();
 					break;
 				}
 			}
@@ -859,10 +886,8 @@
 		// Use group_active_at (carry-forward date) if available, otherwise fall back to created_at.
 		// group_active_at reflects when the card's entity group was last active, which is the
 		// date the card will actually appear on in the feed due to group carry-forward.
-		const dateSource = card.group_active_at || card.created_at;
-		if (dateSource) {
-			const raw = dateSource.endsWith('Z') || dateSource.includes('+') ? dateSource : dateSource.replace(' ', 'T') + 'Z';
-			const d = new Date(raw);
+		const d = parseBackendDate(card.group_active_at || card.created_at);
+		if (d) {
 			cardDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 		}
 		_scrollToCardId = card.card_id;

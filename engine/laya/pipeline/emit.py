@@ -14,6 +14,7 @@ from laya.api.websocket import manager
 from laya.config import load_settings
 from laya.db.chromadb_store import embed_document
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_now, db_ts
 from laya.llm.client import log_to_audit
 from laya.models.card import ActionCardData
 from laya.models.card_lifecycle import INACTIVE_STATUSES, transition_card_status
@@ -28,18 +29,14 @@ log = structlog.get_logger()
 
 
 def _event_ts(event: LayaEvent) -> str:
-    """The originating event's platform time, formatted to match SQLite's
-    CURRENT_TIMESTAMP (`%Y-%m-%d %H:%M:%S`, naive UTC).
+    """The originating event's platform time in canonical DB format.
 
     Cards are stamped with this — NOT wall-clock emit time — so that events
     ingested late (e.g. after a paused space is resumed) show their real time
     in the feed instead of "just now", and bucket to their true calendar date.
     The true ingest time is still recoverable from `events.created_at`.
     """
-    ts = event.timestamp
-    if ts.tzinfo is None:  # defensive: some workflows may send naive UTC
-        ts = ts.replace(tzinfo=timezone.utc)
-    return ts.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    return db_ts(event.timestamp)
 
 
 # Human-readable subject type labels for embedding text
@@ -257,7 +254,7 @@ async def _persist_card(
     # Enqueue for Omni processing (same transaction as the card persist — crash-safe).
     await db.execute(
         "INSERT OR IGNORE INTO omni_queue (card_id, space_id, created_at) VALUES (?, ?, ?)",
-        (card_id, space_id, datetime.now(timezone.utc).isoformat()),
+        (card_id, space_id, db_now()),
     )
 
     # Carry forward: bump group_active_at for ALL cards in this entity group to the

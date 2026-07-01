@@ -4,6 +4,7 @@
 	import type { ActionCard } from '$lib/api/types';
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
+	import { parseBackendDate } from '$lib/utils/datetime';
 
 	let {
 		card,
@@ -67,23 +68,19 @@
 	);
 
 	let timeStr = $derived(
-		card.created_at
-			? new Date(card.created_at).toLocaleString(undefined, {
-					month: 'short',
-					day: 'numeric',
-					hour: '2-digit',
-					minute: '2-digit'
-				})
-			: ''
+		parseBackendDate(card.created_at)?.toLocaleString(undefined, {
+			month: 'short',
+			day: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit'
+		}) ?? ''
 	);
 
 	let shortTime = $derived(
-		card.created_at
-			? new Date(card.created_at).toLocaleString(undefined, {
-					month: 'short',
-					day: 'numeric'
-				})
-			: ''
+		parseBackendDate(card.created_at)?.toLocaleString(undefined, {
+			month: 'short',
+			day: 'numeric'
+		}) ?? ''
 	);
 </script>
 

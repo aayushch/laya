@@ -5,6 +5,7 @@
 	import { engineApi } from '$lib/api/engine';
 	import { sendMessage } from '$lib/stores/websocket';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { parseBackendDate } from '$lib/utils/datetime';
 	import { tick } from 'svelte';
 	import MarkdownRender from '$lib/components/MarkdownRender.svelte';
 
@@ -554,7 +555,7 @@
 						{/if}
 
 						<p class="mt-1 text-[10px] text-surface-500">
-							{new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+							{parseBackendDate(event.timestamp)?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
 						</p>
 					</div>
 				</div>

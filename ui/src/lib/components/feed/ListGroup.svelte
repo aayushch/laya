@@ -11,6 +11,7 @@
 	import { portal } from '$lib/actions/portal';
 	import ListRow from './ListRow.svelte';
 	import { platformDotColor } from '$lib/utils/cardVisuals';
+	import { parseBackendDate } from '$lib/utils/datetime';
 
 	let {
 		group,
@@ -206,9 +207,9 @@
 	});
 
 	function timeAgo(dateStr?: string): string {
-		if (!dateStr) return '';
-		const utcStr = dateStr.endsWith('Z') || dateStr.includes('+') ? dateStr : dateStr + 'Z';
-		const diff = Date.now() - new Date(utcStr).getTime();
+		const d = parseBackendDate(dateStr);
+		if (!d) return '';
+		const diff = Date.now() - d.getTime();
 		const mins = Math.floor(diff / 60000);
 		if (mins < 1) return 'just now';
 		if (mins < 60) return `${mins}m ago`;

@@ -757,7 +757,7 @@ npm install --prefix ~/.laya/n8n_module n8n</code></pre>
         <tr><td>LLM Retries</td><td>3</td><td>Retry attempts for failed LLM calls (exponential backoff)</td></tr>
         <tr><td>Event Queue Retries</td><td>3</td><td>Max retries for failed event processing</td></tr>
         <tr><td>Concurrency</td><td>4</td><td>Number of events to process simultaneously</td></tr>
-        <tr><td>Summary Debounce</td><td>30s</td><td>Quiet period before incorporating new cards into the daily summary</td></tr>
+        <tr><td>Summary Debounce</td><td>90s</td><td>Quiet period before folding accumulated cards into the daily summary (batched, up to 10 cards per LLM call)</td></tr>
         <tr><td>Group Summary Debounce</td><td>15s</td><td>Quiet period per entity before updating the group summary</td></tr>
         <tr><td>Event Batch Window</td><td>3s</td><td>Collection window before batch-routing multiple events. Set to 0 to disable.</td></tr>
         <tr><td>Event Batch Max Size</td><td>10</td><td>Maximum events classified in one router call</td></tr>
@@ -1272,7 +1272,8 @@ curl -X POST http://127.0.0.1:8420/prompts/reload</code></pre>
       <p>Control how Laya batches LLM calls to reduce costs during burst activity. Located under <code>pipeline.debounce</code> in settings.json.</p>
       <table>
         <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
-        <tr><td><code>pipeline.debounce.daily_summary_seconds</code></td><td>30</td><td>Quiet period before processing accumulated cards into the daily summary. Higher = fewer LLM calls during bursts.</td></tr>
+        <tr><td><code>pipeline.debounce.daily_summary_seconds</code></td><td>90</td><td>Quiet period before folding accumulated cards into the daily summary. Cards arriving in the window are folded together. Higher = more coalescing, fewer LLM calls during bursts.</td></tr>
+        <tr><td><code>pipeline.debounce.daily_summary_batch_max_cards</code></td><td>10</td><td>Max cards folded into a single daily-summary LLM call. Bursts larger than this split into <code>ceil(N / K)</code> calls so one prompt can't overflow a small local context window. Minimum <code>1</code>.</td></tr>
         <tr><td><code>pipeline.debounce.group_summary_seconds</code></td><td>15</td><td>Per-entity quiet period before updating the group summary. Cards arriving within this window are batched into one LLM call.</td></tr>
         <tr><td><code>pipeline.debounce.event_batch_window_seconds</code></td><td>3</td><td>Collection window for batch-routing. Set to <code>0</code> to disable (events process immediately).</td></tr>
         <tr><td><code>pipeline.debounce.event_batch_max_size</code></td><td>10</td><td>Max events per batch-router call. Larger = more savings but higher per-call latency.</td></tr>

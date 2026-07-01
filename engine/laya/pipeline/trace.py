@@ -26,6 +26,7 @@ from laya.api.websocket import manager
 from laya.db.chromadb_store import memory_search
 from laya.db.fts import build_fts_match, fts_ready
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_now
 from laya.config import get_self_user
 from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call, llm_call_streaming
 from laya.llm.tools.constants import (
@@ -480,7 +481,7 @@ async def _run_trace_inner(
                 cluster.status_summary.total_cards = len(cluster.timeline)
 
     meta.elapsed_ms = int((time.monotonic() - t0) * 1000)
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
 
     response = TraceResponse(
         trace_id=trace_id,
@@ -1273,7 +1274,7 @@ async def _update_cluster_narrative(
 
     await db.execute(
         "UPDATE traces SET cluster_data = ?, updated_at = ? WHERE trace_id = ?",
-        (json.dumps(cluster_data), datetime.now(timezone.utc).isoformat(), trace_id),
+        (json.dumps(cluster_data), db_now(), trace_id),
     )
     await db.commit()
 

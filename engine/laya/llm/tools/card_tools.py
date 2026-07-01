@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 from typing import Any
 
 import structlog
@@ -14,6 +13,7 @@ import structlog
 from laya.api.websocket import manager
 from laya.db.fts import build_fts_match, fts_ready
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_now, db_ts_from_epoch
 
 log = structlog.get_logger()
 from laya.llm.tools.constants import (
@@ -156,10 +156,13 @@ def _filter_conditions(
         params.append(space_id)
     if date_from_ts is not None:
         conditions.append(f"{prefix}created_at >= ?")
-        params.append(datetime.fromtimestamp(date_from_ts, tz=timezone.utc).isoformat())
+        # Bounds MUST be built in the canonical DB format (space-separated, no
+        # offset) — created_at is TEXT, and an .isoformat() 'T'-bound sorts after
+        # every same-day value (' ' < 'T'), silently matching zero rows.
+        params.append(db_ts_from_epoch(date_from_ts))
     if date_to_ts is not None:
         conditions.append(f"{prefix}created_at <= ?")
-        params.append(datetime.fromtimestamp(date_to_ts, tz=timezone.utc).isoformat())
+        params.append(db_ts_from_epoch(date_to_ts))
     return conditions, params
 
 
@@ -285,7 +288,7 @@ async def search_cards(
     """
     capped_limit = min(limit, CHAT_SEARCH_MAX)
     date_from_ts = parse_iso_to_timestamp(date_from)
-    date_to_ts = parse_iso_to_timestamp(date_to)
+    date_to_ts = parse_iso_to_timestamp(date_to, end_of_day=True)
 
     # Semantic search when enabled and a text query is provided;
     # fall back to SQL keyword search otherwise.
@@ -558,7 +561,7 @@ async def get_cards_by_entity(
 async def _update_card_status(card_id: str, new_status: str) -> dict[str, Any]:
     """Update a card's status, broadcast to frontend, and return result."""
     db = await get_db()
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
 
     rows = await db.execute_fetchall(
         "SELECT card_id, status FROM action_cards WHERE card_id = ?",

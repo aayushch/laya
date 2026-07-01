@@ -11,6 +11,7 @@
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import FiringLogViewer from '$lib/components/settings/FiringLogViewer.svelte';
 	import type { ProcessingRule, ProcessingRuleAction, ProcessingCondition, ProcessingRuleOperator, ProcessingSimpleCondition, ComposePlatform, Tag, EgressConnection } from '$lib/api/types';
+	import { parseBackendDate } from '$lib/utils/datetime';
 
 	let tooltip = $state<{ text: string; top: number; left: number } | null>(null);
 	function showTip(el: HTMLElement, text: string) {
@@ -438,9 +439,9 @@
 	}
 
 	function timeAgo(dateStr?: string | null): string {
-		if (!dateStr) return 'never';
-		const utcStr = dateStr.endsWith('Z') || dateStr.includes('+') ? dateStr : dateStr + 'Z';
-		const diff = Date.now() - new Date(utcStr).getTime();
+		const d = parseBackendDate(dateStr);
+		if (!d) return 'never';
+		const diff = Date.now() - d.getTime();
 		const mins = Math.floor(diff / 60000);
 		if (mins < 1) return 'just now';
 		if (mins < 60) return `${mins}m ago`;

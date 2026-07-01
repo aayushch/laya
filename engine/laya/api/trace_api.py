@@ -15,6 +15,7 @@ from fastapi.responses import PlainTextResponse
 
 from laya.api.cards_api import _row_to_card
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_now
 from laya.models.card import CardResponse
 from laya.models.trace import (
     SearchMetadata,
@@ -240,7 +241,7 @@ async def remove_cluster(trace_id: str, cluster_id: str) -> dict:
 
     await db.execute(
         "UPDATE traces SET cluster_data = ?, updated_at = ? WHERE trace_id = ?",
-        (json.dumps(cluster_data), datetime.now(timezone.utc).isoformat(), trace_id),
+        (json.dumps(cluster_data), db_now(), trace_id),
     )
 
     # Persist removal feedback for learning
@@ -301,7 +302,7 @@ async def restore_clusters(trace_id: str) -> dict:
 
     await db.execute(
         "UPDATE traces SET cluster_data = ?, updated_at = ? WHERE trace_id = ?",
-        (json.dumps(cluster_data), datetime.now(timezone.utc).isoformat(), trace_id),
+        (json.dumps(cluster_data), db_now(), trace_id),
     )
     await db.commit()
     return {"restored": trace_id}

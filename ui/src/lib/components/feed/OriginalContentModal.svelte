@@ -3,6 +3,7 @@
 <script lang="ts">
 	import type { SourceEvent } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
+	import { parseBackendDate } from '$lib/utils/datetime';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import MarkdownRender from '$lib/components/MarkdownRender.svelte';
 	import PlatformBadge from '$lib/components/PlatformBadge.svelte';
@@ -39,7 +40,7 @@
 					['Handle', event.actor_handle],
 					['Subject', event.subject_title],
 					['Reference', event.subject_id],
-					['Received', event.timestamp ? new Date(event.timestamp).toLocaleString() : undefined]
+					['Received', parseBackendDate(event.timestamp)?.toLocaleString()]
 				].filter(([, v]) => v) as [string, string][])
 			: []
 	);

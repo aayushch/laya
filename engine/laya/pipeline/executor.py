@@ -10,6 +10,7 @@ import structlog
 
 from laya.api.websocket import manager
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_now
 from laya.egress import execute as egress_execute
 from laya.egress.models import EgressRequest, EgressResult
 from laya.llm.client import log_to_audit
@@ -149,7 +150,7 @@ async def execute_action(
 
     # 8. Store in action_log
     result_status = "done" if result.success else "failed"
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
 
     try:
         await db.execute(

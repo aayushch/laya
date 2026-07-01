@@ -112,7 +112,11 @@ DEFAULT_SETTINGS = {
         "max_concurrent_events": 4,
         "queue_poll_interval": 2,
         "debounce": {
-            "daily_summary_seconds": 30,
+            "daily_summary_seconds": 90,
+            # Max cards folded into a single daily-summary LLM call. A debounce
+            # flush with more fresh cards than this is split into ceil(N/K) batched
+            # calls, so a large burst can't overflow a small local context window.
+            "daily_summary_batch_max_cards": 10,
             "group_summary_seconds": 15,
             "event_batch_window_seconds": 3,
             "event_batch_max_size": 10,

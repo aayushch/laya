@@ -11,6 +11,7 @@
 	import { lastMessage } from '$lib/stores/websocket';
 	import { chatOpen, chatCardContext, chatCardIds, chatListOpen, pendingCardId } from '$lib/stores/chat';
 	import { buildCardContext } from '$lib/utils/cardContext';
+	import { parseBackendDate } from '$lib/utils/datetime';
 
 	let cards = $state<ActionCard[]>([]);
 	let loading = $state(true);
@@ -64,9 +65,8 @@
 	const terminalStatuses = new Set(['done', 'failed', 'dismissed', 'archived']);
 
 	function formatCardDate(dateStr?: string): string {
-		if (!dateStr) return '';
-		const utcStr = dateStr.endsWith('Z') || dateStr.includes('+') ? dateStr : dateStr + 'Z';
-		const d = new Date(utcStr);
+		const d = parseBackendDate(dateStr);
+		if (!d) return '';
 		return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 	}
 
@@ -245,8 +245,8 @@
 				.filter((r): r is PromiseFulfilledResult<ActionCard> => r.status === 'fulfilled')
 				.map((r) => r.value)
 				.sort((a, b) => {
-					const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
-					const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+					const ta = parseBackendDate(a.created_at)?.getTime() ?? 0;
+					const tb = parseBackendDate(b.created_at)?.getTime() ?? 0;
 					return tb - ta;
 				});
 			if (cards.length === 0) {

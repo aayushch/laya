@@ -389,11 +389,68 @@ def test_extract_json_brace_inside_string_not_confused():
 
 
 def test_extract_json_incomplete_returns_none():
-    """A genuinely unterminated document (never closes) is a real failure → None."""
+    """A genuinely unterminated document (never closes) is a real failure → None by default —
+    completion is opt-in so the truncation detector keeps triggering its retry."""
     from laya.llm.client import _extract_json
 
     assert _extract_json('{"a": 1,') is None
     assert _extract_json('{"a": "unterminated' + "\n" * 50) is None
+
+
+# --- completion salvage: object left unterminated by whitespace padding (allow_completion) ---
+
+# The exact Gemma-on-LMStudio shape: a fully-formed object whose only missing part is the final
+# `}`, because the model padded `\n  ` (newline + indent) after the last field and then stopped.
+_PADDED_UNTERMINATED = (
+    '{\n  "header": "Yi Ting Luah moved FERR-1496 to SPECS",\n'
+    '  "suggested_tags": [\n    "data-source",\n    "scope-management"\n  ]'
+    + "\n  " * 300
+)
+
+
+def test_extract_json_padded_unterminated_needs_completion():
+    """Without allow_completion the padded-but-unterminated object is None (unchanged contract);
+    with it, the missing closing brace is appended and the object is recovered."""
+    from laya.llm.client import _extract_json
+
+    assert _extract_json(_PADDED_UNTERMINATED) is None
+    assert _extract_json(_PADDED_UNTERMINATED, allow_completion=True) == {
+        "header": "Yi Ting Luah moved FERR-1496 to SPECS",
+        "suggested_tags": ["data-source", "scope-management"],
+    }
+
+
+def test_complete_json_closes_nested_containers():
+    """Completion balances every still-open container, not just the outermost."""
+    from laya.llm.client import _extract_json
+
+    assert _extract_json('{"a": {"b": [1, 2]' + "\n  " * 50, allow_completion=True) == {
+        "a": {"b": [1, 2]}
+    }
+
+
+def test_complete_json_drops_dangling_comma():
+    """A model that stops right after a separator (before the next value) still recovers."""
+    from laya.llm.client import _extract_json
+
+    assert _extract_json('{"a": 1,' + "\n" * 20, allow_completion=True) == {"a": 1}
+    assert _extract_json('["a", "b",' + "\n" * 20, allow_completion=True) == ["a", "b"]
+
+
+def test_complete_json_bails_inside_string():
+    """A cut mid-string is a genuine truncation (padding would be real value content), so even
+    with completion enabled it stays None rather than corrupting the value."""
+    from laya.llm.client import _extract_json
+
+    assert _extract_json('{"a": "unterminated' + "\n" * 50, allow_completion=True) is None
+
+
+def test_complete_json_rejects_unrecoverable():
+    """Completion never returns invalid JSON — json.loads is the final guard."""
+    from laya.llm.client import _extract_json
+
+    # Key with no value: appending `}` yields `{"a": "b", "c"}` which is invalid → None.
+    assert _extract_json('{"a": "b", "c"' + "\n" * 20, allow_completion=True) is None
 
 
 def test_extract_json_empty_returns_none():
@@ -516,3 +573,51 @@ async def test_padding_truncation_skips_double(db):
     assert mock_ac.call_count == 1  # no doubled retry
     assert result.parsed is None
     assert result.truncated is True
+
+
+async def _run_local_stopped(content):
+    """Run a schema llm_call against a fake local provider whose single response finishes
+    NORMALLY (finish_reason=stop) with the given content — the actual Gemma-on-LMStudio shape,
+    where padding stops on <eos> before the object closes so nothing marks it truncated."""
+    stopped = _mock_acompletion_response(content=content)
+    stopped.choices[0].finish_reason = "stop"
+    mock_ac = AsyncMock(return_value=stopped)
+    meta = {
+        "provider_type": "lmstudio",
+        "supports_structured_output": True,
+        "supports_tool_calling": True,
+        "supports_reasoning": False,
+    }
+    with patch("litellm.acompletion", mock_ac):
+        with patch("laya.llm.client.load_settings", return_value={"models": {"stager": "lmstudio-local/gemma-4-e4b"}}):
+            with patch(
+                "laya.llm.client._resolve_custom_provider",
+                return_value=("openai/gemma-4-e4b", {"api_base": "http://x/v1", "api_key": "x"}),
+            ):
+                with patch("laya.llm.client._get_custom_provider_meta", return_value=meta):
+                    with patch(
+                        "laya.llm.client._resolve_max_output_ceiling",
+                        new_callable=AsyncMock,
+                        return_value=None,
+                    ):
+                        with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                            with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                                result = await llm_call(
+                                    role="stager",
+                                    messages=[{"role": "user", "content": "test"}],
+                                    response_schema=_SCHEMA,
+                                    step="stage",
+                                )
+    return mock_ac, result
+
+
+@pytest.mark.asyncio
+async def test_stopped_padding_object_recovered(db):
+    """The reported regression: Gemma emits a full object then pads `\n  ` and halts on <eos>
+    (finish_reason=stop, so `truncated` is False and no doubling fires). The object never closed,
+    yet the parse site's allow_completion recovers it instead of returning parsed=None."""
+    content = '{"result": "test"}'[:-1] + "\n  " * 400  # drop the closing brace, then pad
+    mock_ac, result = await _run_local_stopped(content)
+    assert mock_ac.call_count == 1  # finish_reason=stop → no retry at all
+    assert result.truncated is False
+    assert result.parsed == {"result": "test"}

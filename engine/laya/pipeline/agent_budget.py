@@ -26,6 +26,7 @@ import structlog
 
 from laya.config import load_settings, save_settings
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_ts, db_ts_from_epoch
 
 log = structlog.get_logger()
 
@@ -69,15 +70,15 @@ def _audit_window_start(window_hours: float) -> str:
     return (_now_utc() - timedelta(hours=window_hours)).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _iso_in_hours(hours: float) -> str:
-    return (_now_utc() + timedelta(hours=hours)).isoformat()
+def _ts_in_hours(hours: float) -> str:
+    return db_ts(_now_utc() + timedelta(hours=hours))
 
 
-def _iso_from_unix(ts: int | None) -> str | None:
+def _ts_from_unix(ts: int | None) -> str | None:
     if not ts:
         return None
     try:
-        return datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat()
+        return db_ts_from_epoch(int(ts))
     except (ValueError, OverflowError, OSError):
         return None
 
@@ -234,7 +235,7 @@ async def evaluate_agent_budget() -> None:
 
         # Native signal first — when the CLI itself reports we're no longer allowed.
         if rl and rl.get("status") not in _OK_STATUSES:
-            recovery_times.append(_iso_from_unix(rl.get("resets_at")) or _iso_in_hours(window_hours))
+            recovery_times.append(_ts_from_unix(rl.get("resets_at")) or _ts_in_hours(window_hours))
             reasons.append(f"{agent_id}: rate limit {rl['status']}")
             continue
 
@@ -245,8 +246,8 @@ async def evaluate_agent_budget() -> None:
                 # Prefer the native reset time when known; else a full window from now
                 # (by which point the rolling window has fully turned over).
                 recovery_times.append(
-                    _iso_from_unix(rl.get("resets_at")) if rl and rl.get("resets_at")
-                    else _iso_in_hours(window_hours)
+                    _ts_from_unix(rl.get("resets_at")) if rl and rl.get("resets_at")
+                    else _ts_in_hours(window_hours)
                 )
                 reasons.append(f"{agent_id}: {usage['tokens']}/{limit} tokens in {window_hours}h")
 

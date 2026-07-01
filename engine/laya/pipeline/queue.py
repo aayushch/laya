@@ -17,6 +17,7 @@ import structlog
 
 from laya.config import get_debounce_config, load_settings
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_now, db_ts
 from laya.models.event import LayaEvent
 
 log = structlog.get_logger()
@@ -90,7 +91,7 @@ async def enqueue_event(event_id: str) -> None:
 async def _claim_event(event_id: str) -> bool:
     """Atomically claim an event for processing. Returns True if claimed."""
     db = await get_db()
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     cursor = await db.execute(
         """UPDATE events
            SET processing_status = 'processing',
@@ -151,7 +152,7 @@ async def _mark_failed(event_id: str, error: str) -> None:
                    last_error = ?,
                    next_retry_at = ?
                WHERE event_id = ?""",
-            (error, next_retry.isoformat(), event_id),
+            (error, db_ts(next_retry), event_id),
         )
         log.info(
             "event_scheduled_retry",
@@ -465,7 +466,7 @@ async def recover_stalled_events() -> int:
                last_error = 'recovered: engine restarted while processing',
                next_retry_at = ?
            WHERE processing_status = 'processing'""",
-        (datetime.now(timezone.utc).isoformat(),),
+        (db_now(),),
     )
     await db.commit()
     count = cursor.rowcount
@@ -589,9 +590,9 @@ async def _reap_stale_events() -> int:
     """
     cfg = _get_pipeline_settings()
     stale_threshold = cfg["model_timeout"] * 2
-    cutoff = (
+    cutoff = db_ts(
         datetime.now(timezone.utc) - timedelta(seconds=stale_threshold)
-    ).isoformat()
+    )
 
     db = await get_db()
     cursor = await db.execute(
@@ -602,7 +603,7 @@ async def _reap_stale_events() -> int:
            WHERE processing_status = 'processing'
              AND processing_started_at IS NOT NULL
              AND processing_started_at < ?""",
-        (datetime.now(timezone.utc).isoformat(), cutoff),
+        (db_now(), cutoff),
     )
     await db.commit()
     count = cursor.rowcount
@@ -714,7 +715,7 @@ _STALE_CHECK_INTERVAL = 30  # seconds between stale event checks
 async def _fetch_ready_events(limit: int) -> list[str]:
     """Fetch event_ids that are ready for processing."""
     db = await get_db()
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     rows = await db.execute_fetchall(
         """SELECT event_id FROM events
            WHERE processing_status = 'queued'

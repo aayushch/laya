@@ -4,6 +4,7 @@
 	import type { ActionCard, WorkspaceEvent, WorkspaceSession, Repo } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { parseBackendDate } from '$lib/utils/datetime';
 	import { goto } from '$app/navigation';
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
@@ -82,8 +83,10 @@
 	const sessionDuration = $derived.by(() => {
 		if (!session?.started_at) return null;
 		const end = session.completed_at ?? session.updated_at;
-		if (!end) return null;
-		const ms = new Date(end).getTime() - new Date(session.started_at).getTime();
+		const endDate = parseBackendDate(end);
+		const startDate = parseBackendDate(session.started_at);
+		if (!endDate || !startDate) return null;
+		const ms = endDate.getTime() - startDate.getTime();
 		if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
 		if (ms < 3600_000) return `${Math.round(ms / 60_000)}m`;
 		return `${Math.round(ms / 3600_000 * 10) / 10}h`;

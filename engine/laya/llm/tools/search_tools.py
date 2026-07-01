@@ -28,7 +28,7 @@ async def semantic_search(
         filters.append({"space_id": space_id})
 
     date_from_ts = parse_iso_to_timestamp(date_from)
-    date_to_ts = parse_iso_to_timestamp(date_to)
+    date_to_ts = parse_iso_to_timestamp(date_to, end_of_day=True)
     if date_from_ts is not None:
         filters.append({"timestamp": {"$gte": date_from_ts}})
     if date_to_ts is not None:

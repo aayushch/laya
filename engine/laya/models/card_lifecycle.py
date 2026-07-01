@@ -11,6 +11,7 @@ import structlog
 
 from laya.api.websocket import manager
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_now
 
 log = structlog.get_logger()
 
@@ -86,7 +87,7 @@ async def transition_card_status(
     if new_status not in allowed:
         raise ValueError(f"Invalid transition {current} -> {new_status} for card {card_id}")
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
 
     sets = ["status = ?", "updated_at = ?"]
     params: list = [new_status, now]

@@ -12,6 +12,7 @@ import structlog
 
 from laya.config import load_settings
 from laya.tz import safe_zoneinfo
+from laya.db.timeutil import db_ts
 
 log = structlog.get_logger()
 
@@ -35,7 +36,7 @@ async def _run_housekeeping(retention_days: int) -> None:
     from laya.db.sqlite import get_db
     from laya.api.cards_api import _delete_card_cascade
 
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+    cutoff = db_ts(datetime.now(timezone.utc) - timedelta(days=retention_days))
 
     db = await get_db()
     placeholders = ",".join("?" * len(_HOUSEKEEPING_STATUSES))
@@ -65,7 +66,7 @@ async def _run_chat_housekeeping(retention_days: int) -> None:
     """Delete chat conversations that have been idle longer than `retention_days` days."""
     from laya.db.sqlite import get_db
 
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+    cutoff = db_ts(datetime.now(timezone.utc) - timedelta(days=retention_days))
 
     db = await get_db()
     rows = await db.execute_fetchall(
@@ -95,7 +96,7 @@ async def _run_trace_housekeeping(retention_days: int) -> None:
     """Delete traces older than `retention_days` days."""
     from laya.db.sqlite import get_db
 
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+    cutoff = db_ts(datetime.now(timezone.utc) - timedelta(days=retention_days))
 
     db = await get_db()
     rows = await db.execute_fetchall(
@@ -128,7 +129,7 @@ async def _run_corrections_housekeeping(retention_days: int) -> None:
     """
     from laya.db.sqlite import get_db
 
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+    cutoff = db_ts(datetime.now(timezone.utc) - timedelta(days=retention_days))
     db = await get_db()
     total_deleted = 0
 
@@ -156,7 +157,7 @@ async def _run_audit_housekeeping(retention_days: int) -> None:
     """
     from laya.db.sqlite import get_db
 
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+    cutoff = db_ts(datetime.now(timezone.utc) - timedelta(days=retention_days))
 
     db = await get_db()
     cursor = await db.execute(
@@ -174,7 +175,7 @@ async def _run_ingestion_errors_housekeeping(retention_days: int) -> None:
     """Delete ingestion error rows older than `retention_days` days."""
     from laya.db.sqlite import get_db
 
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+    cutoff = db_ts(datetime.now(timezone.utc) - timedelta(days=retention_days))
 
     db = await get_db()
     cursor = await db.execute(
@@ -196,7 +197,7 @@ async def _run_firing_log_housekeeping(retention_days: int) -> None:
     """
     from laya.db.sqlite import get_db
 
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+    cutoff = db_ts(datetime.now(timezone.utc) - timedelta(days=retention_days))
 
     db = await get_db()
     cursor = await db.execute(
@@ -220,7 +221,7 @@ async def _run_omni_housekeeping(retention_days: int) -> None:
     from laya.db.sqlite import get_db
     from laya.pipeline.omni import _latest_cache
 
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+    cutoff = db_ts(datetime.now(timezone.utc) - timedelta(days=retention_days))
 
     db = await get_db()
 
@@ -392,10 +393,10 @@ async def _scheduler_loop() -> None:
                                        ORDER BY version DESC LIMIT 1""",
                                     (_sid,),
                                 )
-                                # Normalize ISO 'T' separator to space to match SQLite CURRENT_TIMESTAMP format,
-                                # otherwise string comparison fails (space 0x20 < 'T' 0x54).
+                                                                # generated_at is stored in canonical DB format (see laya/db/timeutil.py),
+                                # so it compares directly against created_at.
                                 _raw = _last_synth[0]["generated_at"] if _last_synth else None
-                                _since = _raw.replace("T", " ").split("+")[0] if _raw else "2000-01-01 00:00:00"
+                                _since = _raw if _raw else "2000-01-01 00:00:00"
                                 _count_rows = await _db.execute_fetchall(
                                     "SELECT COUNT(*) AS cnt FROM action_cards WHERE space_id = ? AND created_at > ?",
                                     (_sid, _since),

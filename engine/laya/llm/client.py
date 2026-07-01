@@ -57,7 +57,7 @@ def _strip_think_blocks(text: str) -> str:
     return result
 
 
-def _extract_json(content: str) -> Any | None:
+def _extract_json(content: str, allow_completion: bool = False) -> Any | None:
     """Best-effort parse of a JSON object/array from model output.
 
     Beyond a strict json.loads() this handles two things verbose/non-stopping models add:
@@ -68,8 +68,15 @@ def _extract_json(content: str) -> Any | None:
        *pure* trailing whitespace; the balanced-brace scan below also recovers a complete
        object/array followed by non-whitespace junk.
 
-    Returns the parsed value, or None when no complete object/array could be recovered (the
-    document was genuinely truncated before it closed — a real retry candidate).
+    When `allow_completion` is set and the balanced-brace scan fails, a last-resort pass
+    (`_complete_json`) rebuilds an object the model left *unterminated* because it padded
+    whitespace before emitting the closing brackets — the Gemma-on-LMStudio failure where the
+    turn stops (finish_reason=stop, NOT length) mid-padding, so the object never closed and no
+    truncation retry ever fires. That completion is opt-in because it changes the "unterminated
+    → None" contract other call sites (e.g. the truncation detector) rely on to trigger a retry.
+
+    Returns the parsed value, or None when no object/array could be recovered (the document was
+    genuinely truncated before a complete value — a real retry candidate).
     """
     if not content:
         return None
@@ -118,7 +125,63 @@ def _extract_json(content: str) -> Any | None:
                     return json.loads(s[start:i + 1])
                 except json.JSONDecodeError:
                     return None
+    # The first opener never balanced. If the caller allows it, try to close a document the
+    # model left unterminated because it padded whitespace instead of emitting the closers.
+    if allow_completion:
+        return _complete_json(s, start)
     return None
+
+
+def _complete_json(s: str, start: int) -> Any | None:
+    """Recover JSON left unterminated by a non-stopping model that padded trailing whitespace
+    instead of emitting the closing brackets.
+
+    The Gemma-on-LMStudio failure: the model emits the whole object, then pads `\n  ` (newline +
+    indent) until it finally hits a recognized stop — so it halts with finish_reason=stop having
+    never written the final `}`. The object is complete in every way except the closers, so we
+    strip the whitespace padding (and a dangling comma), then append the brackets needed to
+    balance. `json.loads` is the final guard: a genuinely-broken document (unbalanced, or cut
+    mid-value) still returns None.
+
+    Bails when the padding-stripped body ends *inside a string* — there the trailing whitespace
+    is real value content, not structural padding, so completing it would corrupt/truncate the
+    value. That's the signature of a genuine mid-content truncation, which the caller handles
+    via the doubling retry instead.
+    """
+    body = s[start:].rstrip()
+    if body.endswith(","):  # model stopped right after a separator, before the next value
+        body = body[:-1].rstrip()
+    if not body:
+        return None
+    stack: list[str] = []
+    in_str = False
+    esc = False
+    for c in body:
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+            continue
+        if c == '"':
+            in_str = True
+        elif c == "{":
+            stack.append("}")
+        elif c == "[":
+            stack.append("]")
+        elif c == "}" or c == "]":
+            if stack:
+                stack.pop()
+    # Ended mid-string, or already balanced (a balanced-but-invalid doc, e.g. trailing junk the
+    # strict/scan passes already rejected) — nothing safe to append.
+    if in_str or not stack:
+        return None
+    try:
+        return json.loads(body + "".join(reversed(stack)))
+    except json.JSONDecodeError:
+        return None
 
 
 def _looks_like_padding(content: str) -> bool:
@@ -881,16 +944,36 @@ async def llm_call(
 
         # Parse JSON if structured output was requested. _extract_json handles markdown fences
         # and a complete document followed by trailing newline/junk padding from non-stopping
-        # local models; it returns None only when the JSON never closed (a real failure).
+        # local models. allow_completion also rebuilds an object the model left *unterminated*
+        # because it padded whitespace before the closing `}` and then stopped (Gemma on
+        # LMStudio halts with finish_reason=stop mid-padding, so `truncated` is False and no
+        # doubling retry fires — this is the only place that recovers it). It returns None only
+        # when nothing recoverable is there (empty, or cut mid-value) — a real failure.
         parsed = None
         if response_schema and content:
-            parsed = _extract_json(content)
+            # Only allow the last-resort completion when this is a local/custom provider AND the
+            # output carries the padding signature — otherwise a cloud model that returns prose
+            # with a stray `{` would get "completed" into a bogus empty object. In the real
+            # scenario the model padded whitespace and stopped before the closing brace, so the
+            # normal strict+scan parse fails and completion is what recovers the object.
+            padding_recovery = custom is not None and _looks_like_padding(content)
+            parsed = _extract_json(content, allow_completion=padding_recovery)
             if parsed is None:
                 log.warning(
                     "llm_json_parse_failed",
                     model=model,
                     content_preview=content[:200],
                     truncated=truncated,
+                )
+            elif padding_recovery:
+                # Recovered structured data from a response the model padded to (or past) the
+                # closing brace. Surface it — the model burned output tokens on `\n` padding and
+                # finish_reason may be `stop`, so it never counted as a truncation.
+                log.info(
+                    "llm_json_recovered_from_padding",
+                    model=model,
+                    output_tokens=output_tokens,
+                    finish_reason=finish_reason,
                 )
 
         # Extract tool calls if present

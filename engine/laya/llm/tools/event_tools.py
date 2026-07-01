@@ -6,10 +6,10 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 from typing import Any
 
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_ts_from_epoch
 from laya.llm.tools.constants import (
     CHAT_SEARCH_DEFAULT,
     CHAT_SEARCH_MAX,
@@ -53,13 +53,15 @@ async def search_events(
         params.append(space_id)
 
     date_from_ts = parse_iso_to_timestamp(date_from)
-    date_to_ts = parse_iso_to_timestamp(date_to)
+    date_to_ts = parse_iso_to_timestamp(date_to, end_of_day=True)
     if date_from_ts is not None:
         conditions.append("timestamp >= ?")
-        params.append(datetime.fromtimestamp(date_from_ts, tz=timezone.utc).isoformat())
+        # Canonical DB format so the bound lexicographically matches the stored
+        # (space-separated) events.timestamp — see laya/db/timeutil.py.
+        params.append(db_ts_from_epoch(date_from_ts))
     if date_to_ts is not None:
         conditions.append("timestamp <= ?")
-        params.append(datetime.fromtimestamp(date_to_ts, tz=timezone.utc).isoformat())
+        params.append(db_ts_from_epoch(date_to_ts))
 
     where = " AND ".join(conditions) if conditions else "1=1"
 

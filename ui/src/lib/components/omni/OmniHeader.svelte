@@ -3,6 +3,7 @@
 <script lang="ts">
 	import type { TimelineSegment, TimelineEntry, OmniStats, Space } from '$lib/api/types';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { parseBackendDate } from '$lib/utils/datetime';
 
 	let {
 		version,
@@ -43,8 +44,8 @@
 	const totalEntryCount = $derived(allEntries.length);
 
 	function formatTimestamp(iso: string | null): string {
-		if (!iso) return 'Never';
-		const d = new Date(iso);
+		const d = parseBackendDate(iso);
+		if (!d) return 'Never';
 		const now = new Date();
 		const diffMs = now.getTime() - d.getTime();
 		const diffMins = Math.floor(diffMs / 60000);
@@ -56,8 +57,8 @@
 	}
 
 	function formatDate(iso: string | null): string {
-		if (!iso) return '';
-		const d = new Date(iso);
+		const d = parseBackendDate(iso);
+		if (!d) return '';
 		return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 	}
 
@@ -87,9 +88,9 @@
 	/** Position a dot within its segment's time range based on actual timestamp. */
 	function entryPct(entry: TimelineEntry, seg: TimelineSegment, idx: number, count: number): number {
 		if (count <= 1) return 50;
-		const segStart = seg.range_start ? new Date(seg.range_start).getTime() : new Date(entry.generated_at).getTime();
-		const segEnd = seg.range_end ? new Date(seg.range_end).getTime() : Date.now();
-		const entryTime = new Date(entry.generated_at).getTime();
+		const segStart = seg.range_start ? parseBackendDate(seg.range_start)!.getTime() : parseBackendDate(entry.generated_at)!.getTime();
+		const segEnd = seg.range_end ? parseBackendDate(seg.range_end)!.getTime() : Date.now();
+		const entryTime = parseBackendDate(entry.generated_at)!.getTime();
 		const range = segEnd - segStart;
 		if (range <= 0) return (idx / (count - 1)) * 100;
 		// Clamp to 2%-98% so dots don't sit on the edge/divider
@@ -249,8 +250,8 @@
 		const todayIdx = segments.findIndex(s => s.tier === 'today');
 		if (!todaySeg || todaySeg.entries.length === 0 || todayIdx < 0) return [];
 
-		const segStart = todaySeg.range_start ? new Date(todaySeg.range_start).getTime() : Date.now() - 86400000;
-		const segEnd = todaySeg.range_end ? new Date(todaySeg.range_end).getTime() : Date.now();
+		const segStart = todaySeg.range_start ? parseBackendDate(todaySeg.range_start)!.getTime() : Date.now() - 86400000;
+		const segEnd = todaySeg.range_end ? parseBackendDate(todaySeg.range_end)!.getTime() : Date.now();
 		const range = segEnd - segStart;
 		if (range <= 0) return [];
 

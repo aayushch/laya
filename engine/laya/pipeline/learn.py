@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 import structlog
 
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_now
 from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
 from laya.llm.prompts.learner import build_learner_messages, get_learner_json_schema
 
@@ -139,7 +140,7 @@ async def run_learn_extraction(space_id: str | None) -> int:
             log.warning("learn_parse_failed", error=str(e), space_id=space_id)
             parsed = {"rules": []}
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     for rule in parsed.get("rules", []):
         rule_text = rule.get("rule_text", "").strip()
         field = rule.get("field")

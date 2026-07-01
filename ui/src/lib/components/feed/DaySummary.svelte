@@ -2,6 +2,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	import type { DaySummary, SummaryItem } from '$lib/api/types';
+	import { parseBackendDate } from '$lib/utils/datetime';
 
 	let {
 		summary,
@@ -44,10 +45,10 @@
 	}
 
 	function formatTime(iso: string): string {
-		return new Date(iso).toLocaleTimeString(undefined, {
+		return parseBackendDate(iso)?.toLocaleTimeString(undefined, {
 			hour: '2-digit',
 			minute: '2-digit'
-		});
+		}) ?? '';
 	}
 
 	function matchesSpace(item: SummaryItem): boolean {

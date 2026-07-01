@@ -11,6 +11,7 @@
 		chatExpanded
 	} from '$lib/stores/chat';
 	import type { Conversation } from '$lib/api/types';
+	import { parseBackendDate } from '$lib/utils/datetime';
 	import { glassTheme } from '$lib/stores/glassTheme';
 
 	let loading = $state(true);
@@ -141,8 +142,9 @@
 	}
 
 	function relativeTime(ts: string): string {
-		if (!ts) return '';
-		const diff = Date.now() - new Date(ts).getTime();
+		const d = parseBackendDate(ts);
+		if (!d) return '';
+		const diff = Date.now() - d.getTime();
 		const mins = Math.floor(diff / 60000);
 		if (mins < 1) return 'just now';
 		if (mins < 60) return `${mins}m ago`;
@@ -151,7 +153,7 @@
 		const days = Math.floor(hours / 24);
 		if (days === 1) return 'yesterday';
 		if (days < 30) return `${days}d ago`;
-		return new Date(ts).toLocaleDateString();
+		return d.toLocaleDateString();
 	}
 </script>
 

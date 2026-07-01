@@ -15,6 +15,7 @@
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { portal } from '$lib/actions/portal';
 	import { platformDotColor } from '$lib/utils/cardVisuals';
+	import { parseBackendDate } from '$lib/utils/datetime';
 	import PlatformIcon from '$lib/components/settings/PlatformIcon.svelte';
 
 	let {
@@ -248,10 +249,9 @@
 	};
 
 	function timeAgo(dateStr?: string): string {
-		if (!dateStr) return '';
-		// Backend stores UTC timestamps; ensure JS parses them as UTC
-		const utcStr = dateStr.endsWith('Z') || dateStr.includes('+') ? dateStr : dateStr + 'Z';
-		const diff = Date.now() - new Date(utcStr).getTime();
+		const d = parseBackendDate(dateStr);
+		if (!d) return '';
+		const diff = Date.now() - d.getTime();
 		const mins = Math.floor(diff / 60000);
 		if (mins < 1) return 'just now';
 		if (mins < 60) return `${mins}m ago`;

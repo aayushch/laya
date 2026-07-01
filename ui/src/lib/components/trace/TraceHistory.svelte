@@ -7,6 +7,7 @@
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { portal } from '$lib/actions/portal';
 	import PlatformBadge from '$lib/components/PlatformBadge.svelte';
+	import { parseBackendDate } from '$lib/utils/datetime';
 
 	let {
 		traces,
@@ -121,7 +122,7 @@
 						{trace.total_cards} cards
 					</span>
 					<span class="text-laya-secondary text-surface-600">
-						{new Date(trace.created_at).toLocaleDateString(undefined, {
+						{parseBackendDate(trace.created_at)?.toLocaleDateString(undefined, {
 							month: 'short',
 							day: 'numeric',
 							hour: '2-digit',

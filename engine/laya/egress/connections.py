@@ -20,6 +20,7 @@ import httpx
 import structlog
 
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_now
 from laya.egress.models import Connection, ConnectionResult
 from laya.egress.registry import get_capabilities
 from laya.integrations.platforms import PLATFORMS
@@ -97,7 +98,7 @@ async def create_connection(
 
     # Step 5: Record in SQLite
     capabilities = [c.action_type for c in get_capabilities(platform)]
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
 
     db = await get_db()
     await db.execute(
@@ -276,7 +277,7 @@ async def test_connection(connection_id: str) -> tuple[bool, str | None]:
     valid, error = await _validate_credentials(platform, credentials)
 
     # Update status
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     new_status = "connected" if valid else "error"
     await db.execute(
         """UPDATE egress_connections

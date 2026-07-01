@@ -26,6 +26,7 @@ from laya.egress.connections import (
     _store_in_keychain,
 )
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_now
 from laya.egress.registry import get_capabilities
 
 log = structlog.get_logger()
@@ -347,7 +348,7 @@ async def handle_callback(
 
     # Record in DB
     capabilities = [c.action_type for c in get_capabilities(platform)]
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
 
     db = await get_db()
     await db.execute(

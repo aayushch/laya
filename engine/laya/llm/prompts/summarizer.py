@@ -19,7 +19,7 @@ to maintain a running summary of the user's day by incrementally incorporating n
 
 You receive:
 1. The current running summary for the day (may be empty if this is the first event)
-2. A new card that was just processed (header, summary, priority, category, intelligence)
+2. One or more new cards that were just processed (header, summary, priority, category, intelligence)
 3. Optionally, a status change on an existing card
 
 You must produce an updated summary with these sections:
@@ -84,6 +84,44 @@ Rules:
 - Return the full updated summary."""
 
 
+def _render_current_summary(current_summary: dict[str, Any] | None) -> str:
+    """Render the [CURRENT SUMMARY] block (shared by single-card and batch builders)."""
+    if current_summary:
+        import json
+        return f"\n\n[CURRENT SUMMARY]\n{json.dumps(current_summary, indent=2)}\n[END CURRENT SUMMARY]"
+    return "\n\n[CURRENT SUMMARY]\nEmpty — this is the first event of the day.\n[END CURRENT SUMMARY]"
+
+
+def _format_card_block(
+    card_id: str,
+    card_header: str,
+    card_summary: str,
+    card_priority: str,
+    card_category: str,
+    card_intelligence: list[str] | None = None,
+    card_persona: str | None = None,
+    actor_name: str | None = None,
+    source_platform: str | None = None,
+    card_tags: list[str] | None = None,
+) -> str:
+    """Render one card's detail block. Shared by the single-card and batch builders
+    so the two prompts can never drift out of sync."""
+    intel_text = ""
+    if card_intelligence:
+        intel_text = "\nKey findings:\n" + "\n".join(f"  - {i}" for i in card_intelligence[:5])
+    tags_text = f"\nTags: {', '.join(card_tags)}" if card_tags else ""
+    return (
+        f"Card ID: {card_id}\n"
+        f"Header: {card_header}\n"
+        f"Summary: {card_summary}\n"
+        f"Priority: {card_priority}\n"
+        f"Category: {card_category}\n"
+        f"Persona: {card_persona or 'N/A'}\n"
+        f"Platform: {source_platform or 'N/A'}\n"
+        f"Actor: {actor_name or 'N/A'}{intel_text}{tags_text}"
+    )
+
+
 def build_summarizer_messages(
     current_summary: dict[str, Any] | None,
     card_header: str,
@@ -97,36 +135,83 @@ def build_summarizer_messages(
     source_platform: str | None = None,
     card_tags: list[str] | None = None,
 ) -> list[dict[str, str]]:
-    """Build messages for incorporating a new card into the daily summary."""
-    current_text = ""
-    if current_summary:
-        import json
-        current_text = f"\n\n[CURRENT SUMMARY]\n{json.dumps(current_summary, indent=2)}\n[END CURRENT SUMMARY]"
-    else:
-        current_text = "\n\n[CURRENT SUMMARY]\nEmpty — this is the first event of the day.\n[END CURRENT SUMMARY]"
+    """Build messages for incorporating a single new card into the daily summary.
 
-    intel_text = ""
-    if card_intelligence:
-        intel_text = "\nKey findings:\n" + "\n".join(f"  - {i}" for i in card_intelligence[:5])
-
-    tags_text = f"\nTags: {', '.join(card_tags)}" if card_tags else ""
+    Retained as the per-card fallback path when a batched fold fails (see
+    pipeline/summarize.py). The normal path is build_batch_summarizer_messages.
+    """
+    card_block = _format_card_block(
+        card_id=card_id,
+        card_header=card_header,
+        card_summary=card_summary,
+        card_priority=card_priority,
+        card_category=card_category,
+        card_intelligence=card_intelligence,
+        card_persona=card_persona,
+        actor_name=actor_name,
+        source_platform=source_platform,
+        card_tags=card_tags,
+    )
 
     user_message = f"""\
 Update the daily summary to incorporate this new card.
-{current_text}
+{_render_current_summary(current_summary)}
 
 [NEW CARD]
-Card ID: {card_id}
-Header: {card_header}
-Summary: {card_summary}
-Priority: {card_priority}
-Category: {card_category}
-Persona: {card_persona or 'N/A'}
-Platform: {source_platform or 'N/A'}
-Actor: {actor_name or 'N/A'}{intel_text}{tags_text}
+{card_block}
 [END NEW CARD]
 
 Produce the updated summary JSON matching the required schema."""
+
+    return [
+        {"role": "system", "content": get_prompt("summarizer", SUMMARIZER_SYSTEM_PROMPT)},
+        {"role": "user", "content": user_message},
+    ]
+
+
+def build_batch_summarizer_messages(
+    current_summary: dict[str, Any] | None,
+    new_cards: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    """Build messages for folding a BATCH of new cards into the daily summary in a
+    single LLM call (instead of one call per card).
+
+    The batch instruction lives in the user message, NOT the system prompt: the
+    system prompt is user-overridable via get_prompt("summarizer", ...), so a user
+    with a saved override would not pick up batch-correctness edits there. The user
+    message is not overridable, so single-pass + intra-batch dedup must live here.
+    """
+    n = len(new_cards)
+    blocks = []
+    for i, card in enumerate(new_cards, start=1):
+        block = _format_card_block(
+            card_id=card["card_id"],
+            card_header=card["card_header"],
+            card_summary=card["card_summary"],
+            card_priority=card["card_priority"],
+            card_category=card["card_category"],
+            card_intelligence=card.get("card_intelligence"),
+            card_persona=card.get("card_persona"),
+            actor_name=card.get("actor_name"),
+            source_platform=card.get("source_platform"),
+            card_tags=card.get("card_tags"),
+        )
+        blocks.append(f"--- Card {i} of {n} ---\n{block}")
+    cards_text = "\n".join(blocks)
+
+    user_message = f"""\
+Update the daily summary to incorporate the following NEW CARDS. They were \
+processed together as one batch — merge ALL of them into the summary in a single pass.
+{_render_current_summary(current_summary)}
+
+[NEW CARDS] ({n} cards)
+{cards_text}
+[END NEW CARDS]
+
+Apply the DEDUPLICATION rules across BOTH the current summary AND the other cards in \
+this batch: if two or more cards refer to the same underlying entity (same PR, ticket, \
+thread, meeting, etc.), emit ONE item using the newest card_id. Process the cards in the \
+order given. Produce the single updated summary JSON matching the required schema."""
 
     return [
         {"role": "system", "content": get_prompt("summarizer", SUMMARIZER_SYSTEM_PROMPT)},

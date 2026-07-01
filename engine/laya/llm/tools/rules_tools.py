@@ -16,6 +16,7 @@ from pydantic import TypeAdapter
 from laya.api.websocket import manager
 from laya.config import load_rules, save_rules
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_now
 from laya.models.processing_rules import (
     ProcessingCondition,
     ProcessingRuleAction,
@@ -235,7 +236,7 @@ async def create_classification_rule(
         return {"error": "field must be 'priority', 'persona', or omitted for general rules"}
 
     db = await get_db()
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     cursor = await db.execute(
         """INSERT INTO classification_rules (space_id, field, rule_text, source, active, created_at, updated_at)
            VALUES (?, ?, ?, 'manual', 1, ?, ?)""",
@@ -371,7 +372,7 @@ async def update_rule(
             return {"error": "No fields to update"}
 
         updates.append("updated_at = ?")
-        params.append(datetime.now(timezone.utc).isoformat())
+        params.append(db_now())
         params.append(int(rule_id))
 
         await db.execute(

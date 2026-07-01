@@ -12,6 +12,7 @@ import structlog
 from laya.api.websocket import manager
 from laya.config import load_settings
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_ts
 from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
 from laya.llm.prompts.briefing import build_briefing_messages
 from laya.models.card import ActionCardData, StagedOutput, SuggestedAction
@@ -171,7 +172,7 @@ async def generate_briefing(space_id: str | None = None) -> str:
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             briefing_event_id,
-            now.isoformat(),
+            db_ts(now),
             "laya",
             "daily_briefing",
             "Laya",

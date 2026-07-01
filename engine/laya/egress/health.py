@@ -19,6 +19,7 @@ import time
 import structlog
 
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_now
 from laya.egress.connections import _get_from_keychain, _validate_credentials
 
 log = structlog.get_logger()
@@ -82,7 +83,7 @@ async def _run_health_checks() -> None:
 
     from datetime import datetime, timezone
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     status_changes = []
 
     for row in rows:

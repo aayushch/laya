@@ -13,6 +13,7 @@ import structlog
 from fastapi import APIRouter, HTTPException, Query
 
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_now
 from laya.models.chat import (
     ChatMessage,
     ChatRequest,
@@ -142,7 +143,7 @@ async def create_conversation(body: CreateConversationRequest) -> Conversation:
     """Create a new chat conversation."""
     db = await get_db()
     conv_id = f"conv_{uuid.uuid4().hex[:12]}"
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
 
     await db.execute(
         """INSERT INTO chat_conversations (conversation_id, title, space_id, created_at, updated_at)
@@ -282,7 +283,7 @@ async def update_conversation(conversation_id: str, body: dict) -> dict:
     if not title:
         raise HTTPException(status_code=400, detail="title is required")
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = db_now()
     result = await db.execute(
         "UPDATE chat_conversations SET title = ?, updated_at = ? WHERE conversation_id = ?",
         (title, now, conversation_id),

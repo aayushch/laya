@@ -7,6 +7,7 @@
 	import { untrack } from 'svelte';
 	import { chatOpen, chatCardContext, chatCardIds, chatListOpen } from '$lib/stores/chat';
 	import { buildSingleCardContext } from '$lib/utils/cardContext';
+	import { parseBackendDate } from '$lib/utils/datetime';
 	import { lastMessage } from '$lib/stores/websocket';
 	import MarkdownRender from '$lib/components/MarkdownRender.svelte';
 	import ClassificationDialog from './ClassificationDialog.svelte';
@@ -939,7 +940,7 @@
 					<span class={statusColors[card.status] ?? 'text-surface-400'}>Status: {statusLabels[card.status] ?? card.status}</span>
 				{/if}
 				{#if card.created_at}
-					<span>Created: {new Date(card.created_at).toLocaleString()}</span>
+					<span>Created: {parseBackendDate(card.created_at)?.toLocaleString()}</span>
 				{/if}
 			</div>
 		</div>
