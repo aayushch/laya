@@ -290,11 +290,14 @@ async def process_chat_message(
     else:
         context = await _retrieve_context(user_message, space_id=space_id)
 
-    # Load recent chat history (scoped to conversation)
+    # Load recent chat history (scoped to conversation). timestamp has only
+    # 1-second resolution, so a user+assistant pair written in the same second
+    # could otherwise reorder — rowid DESC is the insertion-order tiebreaker
+    # (review §4 — P5-8).
     history_rows = await db.execute_fetchall(
         """SELECT role, content FROM chat_messages
            WHERE conversation_id = ?
-           ORDER BY timestamp DESC LIMIT 10""",
+           ORDER BY timestamp DESC, rowid DESC LIMIT 10""",
         (conversation_id,),
     )
     chat_history = [

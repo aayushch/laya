@@ -108,7 +108,10 @@ async def get_current_month_cost(tz_name: str | None = None) -> dict:
                   SUM(input_tokens) as total_in,
                   SUM(output_tokens) as total_out
            FROM audit_log
-           WHERE timestamp > ? AND success = 1
+           -- Count failed calls too: a JSON-parse-failure loop (the Gemma spiral)
+           -- still spends prompt+completion tokens, and filtering success=1 hid
+           -- that cost from the budget cap so it never tripped (review §3 — P6-16).
+           WHERE timestamp > ?
            GROUP BY model_used, step""",
         (month_start_utc,),
     )
@@ -285,7 +288,9 @@ async def snapshot_month(year_month: str) -> None:
                   SUM(input_tokens) as total_in,
                   SUM(output_tokens) as total_out
            FROM audit_log
-           WHERE timestamp >= ? AND timestamp < ? AND success = 1
+           -- Failed calls still consumed tokens; count them so the persisted
+           -- monthly snapshot matches the live cost calc (review §3 — P6-16).
+           WHERE timestamp >= ? AND timestamp < ?
            GROUP BY model_used""",
         (start_utc, end_utc),
     )

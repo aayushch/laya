@@ -841,11 +841,30 @@ async def llm_call(
     # Annotate system messages for prompt caching (Anthropic, Gemini)
     kwargs["messages"] = _apply_prompt_caching(model, kwargs["messages"])
 
+    # Retry only transient failures. Deterministic 4xx (bad request, auth,
+    # not-found, unprocessable, content-policy) fail identically on every attempt,
+    # so retrying them just burns up to 9–18 doomed HTTP calls per event across
+    # the nested retry layers before giving up (review §3.6).
+    def _retryable(exc: BaseException) -> bool:
+        import litellm
+        non_retryable = tuple(
+            e for e in (
+                getattr(litellm, "BadRequestError", None),
+                getattr(litellm, "AuthenticationError", None),
+                getattr(litellm, "NotFoundError", None),
+                getattr(litellm, "UnprocessableEntityError", None),
+                getattr(litellm, "ContentPolicyViolationError", None),
+                getattr(litellm, "PermissionDeniedError", None),
+            )
+            if isinstance(e, type)
+        )
+        return not (non_retryable and isinstance(exc, non_retryable))
+
     # Tenacity retry with exponential backoff
     @tenacity.retry(
         wait=tenacity.wait_exponential(multiplier=1, min=1, max=30),
         stop=tenacity.stop_after_attempt(num_retries),
-        retry=tenacity.retry_if_exception_type(Exception),
+        retry=tenacity.retry_if_exception(_retryable),
         reraise=True,
         before_sleep=lambda retry_state: log.warning(
             "llm_call_retrying",
@@ -924,7 +943,10 @@ async def llm_call(
                         content = getattr(response.choices[0].message, "reasoning_content", None) or ""
                     finish_reason = response.choices[0].finish_reason or "stop"
                     input_tokens += response.usage.prompt_tokens if response.usage else 0
-                    output_tokens = response.usage.completion_tokens if response.usage else 0
+                    # ADD, don't overwrite — the first (truncated) call's output
+                    # tokens were really spent and must count toward cost/budget
+                    # (review §3 accounting — P6-15).
+                    output_tokens += response.usage.completion_tokens if response.usage else 0
                     truncated = finish_reason == "length"
 
                     if truncated:
