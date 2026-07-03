@@ -221,6 +221,22 @@ async def _load_event(event_id: str) -> LayaEvent | None:
         return None
 
 
+async def _load_persisted_router_output(event_id: str):
+    """Return the RouterOutput persisted on the event row by a prior attempt's
+    run_router, or None. Lets retries skip re-running the router (review §3.2)."""
+    from laya.models.classification import RouterOutput
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT router_output FROM events WHERE event_id = ?", (event_id,)
+    )
+    if rows and rows[0]["router_output"]:
+        try:
+            return RouterOutput.model_validate_json(rows[0]["router_output"])
+        except Exception:
+            return None
+    return None
+
+
 async def process_event(event_id: str) -> None:
     """Run the full pipeline for a single event (with claim/complete/fail)."""
     from laya.api.websocket import manager
@@ -275,11 +291,19 @@ async def process_event(event_id: str) -> None:
         if router_output:
             log.debug("router_from_batch_cache", event_id=event.event_id)
         else:
-            try:
-                router_output = await run_router(event, actor_relationship, space_id=space_id)
-            except Exception as e:
-                log.error("router_failed", event_id=event.event_id, error=str(e))
-                raise  # let the queue retry
+            # On a retry the router already ran on a prior attempt and persisted
+            # its output on the event row. Re-running it re-pays the router LLM
+            # call on every one of up to 3 retries — reuse the persisted result
+            # instead (review §2 / §3.2). On the first attempt this is None.
+            router_output = await _load_persisted_router_output(event_id)
+            if router_output is not None:
+                log.debug("router_from_persisted", event_id=event.event_id)
+            else:
+                try:
+                    router_output = await run_router(event, actor_relationship, space_id=space_id)
+                except Exception as e:
+                    log.error("router_failed", event_id=event.event_id, error=str(e))
+                    raise  # let the queue retry
 
         # Broadcast classification
         broadcast_payload: dict = {

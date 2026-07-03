@@ -105,7 +105,10 @@ async def execute_action(
             payload.get("action") == "create_calendar_event"
             or action_type == "calendar"
         ):
-            target_platform = "google_calendar"
+            # "calendar" (not "google_calendar") — resolves via sources; the
+            # hyphenated google_calendar default path 404s on cloned installs
+            # (review §2 egress — P4-21).
+            target_platform = "calendar"
 
         # Remap LLM mistakes: send_message is Slack-only, Gmail uses send_email
         if target_platform in ("gmail", "outlook") and action_type == "send_message":

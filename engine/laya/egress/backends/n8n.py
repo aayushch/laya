@@ -311,6 +311,22 @@ class N8nBackend(EgressBackend):
         """
         payload, event_ctx = await enrich_payload_from_event(request)
 
+        # Validate the enriched payload against the platform adapter's contract
+        # before dispatch. validate_payload was previously dead (~250 lines across
+        # 10 adapters) — invalid payloads travelled to n8n and failed with an
+        # opaque generic error. This single point covers the card, composer and
+        # chat paths, which all execute through here (review §2 egress — P4-19).
+        # Raises ValueError → caught in execute() and surfaced as a failed result.
+        from laya.egress import platforms as _platforms
+        _mod = _platforms.for_platform(request.platform)
+        if _mod is not None:
+            _errors = _mod.validate_payload(request.action_type, payload)
+            if _errors:
+                raise ValueError(
+                    f"Invalid {request.platform} {request.action_type} payload: "
+                    + "; ".join(_errors)
+                )
+
         # Guard: on-prem Bitbucket Server / Data Center can't be driven through the
         # Cloud executor (it targets api.bitbucket.org). Reject before dispatch so we
         # never fire a doomed Cloud API call. Raises ValueError → caught in execute().

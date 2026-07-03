@@ -982,6 +982,39 @@ async def mark_card_done(card_id: str) -> dict:
 
 
 
+async def clear_stale_polishing_flags() -> int:
+    """Clear any `_polishing=True` flags left on action payloads by an engine
+    restart mid-polish. Without this sweep the affected action 409s forever and
+    the UI shows an eternal spinner (review §2 API — P4-14). Called at startup."""
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT card_id, suggested_actions FROM action_cards "
+        "WHERE suggested_actions LIKE '%_polishing%'"
+    )
+    cleared = 0
+    for row in rows:
+        try:
+            actions = json.loads(row["suggested_actions"] or "[]")
+        except (json.JSONDecodeError, TypeError):
+            continue
+        changed = False
+        for a in actions:
+            p = a.get("payload")
+            if isinstance(p, dict) and p.get("_polishing"):
+                p["_polishing"] = False
+                changed = True
+        if changed:
+            await db.execute(
+                "UPDATE action_cards SET suggested_actions = ? WHERE card_id = ?",
+                (json.dumps(actions), row["card_id"]),
+            )
+            cleared += 1
+    if cleared:
+        await db.commit()
+        log.info("polishing_flags_cleared", count=cleared)
+    return cleared
+
+
 async def _delete_card_cascade(db, card_id: str, event_id: str | None) -> None:
     """Hard-delete a card and all its related rows in correct FK order."""
     # workspace_events → workspace_sessions → action_log → audit_log → action_cards → events

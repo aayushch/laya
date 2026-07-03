@@ -345,6 +345,9 @@ async def lifespan(app: FastAPI):
     # engine, tracking dict is in-memory) — mark leftover rows as failed
     from laya.agents.session_manager import recover_orphaned_sessions
     await recover_orphaned_sessions()
+    # Clear _polishing flags stranded by a restart mid action-polish (review §2 API).
+    from laya.api.cards_api import clear_stale_polishing_flags
+    await clear_stale_polishing_flags()
     start_consumer()
 
     # Start Omni queue processor — picks up any cards left in omni_queue
