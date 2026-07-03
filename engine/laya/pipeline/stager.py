@@ -204,6 +204,9 @@ def _parse_stager_response(data: dict, event: LayaEvent) -> ActionCardData:
         suggested_actions=actions,
         privacy_tier=max(1, min(3, int(data.get("privacy_tier", 2)))),
         suggested_tags=suggested_tags,
+        # Thread the stager's context match through so emit.py can skip the
+        # fallback ChromaDB search + confirm_context_link call (review §1.1).
+        context_match=data.get("context_match") if isinstance(data.get("context_match"), dict) else None,
     )
 
 

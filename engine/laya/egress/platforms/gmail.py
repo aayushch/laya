@@ -252,13 +252,21 @@ class GmailPlatform(Platform):
 
         import base64
 
-        to = payload.get("to", "")
-        cc = payload.get("cc", "")
-        bcc = payload.get("bcc", "")
-        subject = payload.get("subject", "")
+        # Strip CR/LF from header values before interpolation into the raw RFC
+        # 2822 message. Subjects/recipients can originate from inbound event
+        # content, so an unstripped newline would let an attacker inject extra
+        # headers into mail sent from the user's account (review §2 egress / §6).
+        # The body (below the blank line) legitimately keeps its newlines.
+        def _hdr(v: object) -> str:
+            return str(v).replace("\r", " ").replace("\n", " ").strip()
+
+        to = _hdr(payload.get("to", ""))
+        cc = _hdr(payload.get("cc", ""))
+        bcc = _hdr(payload.get("bcc", ""))
+        subject = _hdr(payload.get("subject", ""))
         body_text = payload.get("body", "")
-        in_reply_to = payload.get("in_reply_to", "")
-        references = payload.get("references", "")
+        in_reply_to = _hdr(payload.get("in_reply_to", ""))
+        references = _hdr(payload.get("references", ""))
         thread_id = payload.get("thread_id", "")
 
         headers = [

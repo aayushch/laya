@@ -296,11 +296,13 @@ async def _scheduler_loop() -> None:
                 target_h, target_m = map(int, target_time.split(":"))
                 today_local = now.strftime("%Y-%m-%d")
 
-                if (
-                    now.hour == target_h
-                    and now.minute == target_m
-                    and _last_briefing_date != today_local
-                ):
+                # Fire on the first tick AT OR PAST the target minute (still
+                # guarded by the per-day date guard) rather than on an exact
+                # minute match — under slow inline work the 60s loop drifts past
+                # HH:MM and an exact match skipped the whole day (review §1.8).
+                now_minutes = now.hour * 60 + now.minute
+                target_minutes = target_h * 60 + target_m
+                if now_minutes >= target_minutes and _last_briefing_date != today_local:
                     _last_briefing_date = today_local
                     log.info("scheduler_briefing_triggered", date=today_local)
                     from laya.pipeline.briefing import generate_briefing
@@ -338,12 +340,11 @@ async def _scheduler_loop() -> None:
                 omni_h, omni_m = map(int, omni_target.split(":"))
                 omni_today = omni_now.strftime("%Y-%m-%d")
 
-                # (1) EOD resynthesis — fixed time of day
-                if (
-                    omni_now.hour == omni_h
-                    and omni_now.minute == omni_m
-                    and _last_omni_date != omni_today
-                ):
+                # (1) EOD resynthesis — first tick at/after the target minute
+                # (same >= rationale as the briefing trigger above; review §1.8).
+                omni_now_minutes = omni_now.hour * 60 + omni_now.minute
+                omni_target_minutes = omni_h * 60 + omni_m
+                if omni_now_minutes >= omni_target_minutes and _last_omni_date != omni_today:
                     _last_omni_date = omni_today
                     _last_omni_rolling = now_utc
                     log.info("scheduler_omni_resynthesis_triggered", trigger="eod", date=omni_today)

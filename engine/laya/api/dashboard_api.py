@@ -85,7 +85,7 @@ async def get_dashboard(days: int = 30) -> DashboardResponse:
     cards_generated = sum(card_counts.values())
     cards_edited_rows = await db.execute_fetchall(
         f"""SELECT COUNT(*) FROM action_cards
-            WHERE status = 'approved' AND user_feedback IS NOT NULL
+            WHERE status = 'done' AND user_feedback IS NOT NULL
               AND created_at > {date_filter}"""
     )
     cards_edited = cards_edited_rows[0][0] or 0
@@ -159,7 +159,10 @@ async def get_dashboard(days: int = 30) -> DashboardResponse:
         total_input_tokens += in_tokens
         total_output_tokens += out_tokens
 
-        pricing = MODEL_PRICING.get(model, {"input": 1.0, "output": 3.0})
+        # Unknown models (local/custom/agent backends) cost $0, consistent with
+        # budget._DEFAULT_PRICING — otherwise the dashboard shows phantom cost
+        # for free local models (review §1.6).
+        pricing = MODEL_PRICING.get(model, {"input": 0.0, "output": 0.0})
         cost = (in_tokens * pricing["input"] + out_tokens * pricing["output"]) / 1_000_000
         by_model[model] = round(by_model.get(model, 0.0) + cost, 4)
         by_step[step] = round(by_step.get(step, 0.0) + cost, 4)
@@ -190,10 +193,10 @@ async def get_dashboard(days: int = 30) -> DashboardResponse:
     persona_rows = await db.execute_fetchall(
         f"""SELECT persona,
                    COUNT(*) as total,
-                   SUM(CASE WHEN status = 'approved' OR status = 'completed' THEN 1 ELSE 0 END) as approved,
+                   SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) as approved,
                    SUM(CASE WHEN status = 'dismissed' THEN 1 ELSE 0 END) as dismissed
             FROM action_cards
-            WHERE status IN ('approved', 'completed', 'dismissed')
+            WHERE status IN ('done', 'dismissed')
               AND created_at > {date_filter}
             GROUP BY persona"""
     )

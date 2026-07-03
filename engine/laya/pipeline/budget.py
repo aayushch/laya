@@ -18,7 +18,13 @@ log = structlog.get_logger()
 # Re-use the pricing table from dashboard so costs are consistent.
 from laya.api.dashboard_api import MODEL_PRICING  # noqa: E402
 
-_DEFAULT_PRICING = {"input": 1.0, "output": 3.0}
+# Only models present in MODEL_PRICING (known cloud models) are billed. An
+# unknown model is almost always a local backend (Ollama/LMStudio/custom) or an
+# `agent/<id>/<model>` backend metered separately by agent_budget.py. Pricing
+# those at the old $1/$3 cloud default accrued phantom dollars that eventually
+# tripped pause_for_budget() and deactivated ALL ingestion for free-local-model
+# users — so unrecognized models cost $0 (review §1.6).
+_DEFAULT_PRICING = {"input": 0.0, "output": 0.0}
 
 # Maps audit_log step values to high-level features for cost breakdown.
 STEP_TO_FEATURE: dict[str, str] = {

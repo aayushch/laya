@@ -214,7 +214,9 @@ class TestDashboardAPI:
         assert resp.json()["period_days"] == 7
 
     async def test_unknown_model_pricing(self, db):
-        """Dashboard uses fallback pricing for unknown models."""
+        """Unknown models (local/custom/agent backends) are priced at $0 so free
+        local-model users don't accrue phantom cost that would trip the budget
+        pause and deactivate ingestion (review §1.6)."""
         await _insert_audit_entry(
             db, "audit_unk", model="unknown/model",
             input_tokens=1000, output_tokens=500,
@@ -223,5 +225,7 @@ class TestDashboardAPI:
         resp = await _dashboard_get(db)
 
         data = resp.json()
-        assert data["llm_costs"]["total_cost_usd"] > 0
+        # Still surfaced in the per-model breakdown, but at $0.
         assert "unknown/model" in data["llm_costs"]["by_model"]
+        assert data["llm_costs"]["by_model"]["unknown/model"] == 0
+        assert data["llm_costs"]["total_cost_usd"] == 0

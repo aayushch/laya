@@ -264,18 +264,34 @@ async def lifespan(app: FastAPI):
 
     # Startup budget month-rollover check (fallback for missed rollovers)
     try:
-        from laya.pipeline.budget import on_month_rollover, _current_year_month_local, _user_timezone
+        from laya.pipeline.budget import (
+            on_month_rollover,
+            snapshot_month,
+            _current_year_month_local,
+            _user_timezone,
+        )
         tz = _user_timezone()
         current_month = _current_year_month_local(tz)
-        # Check if previous month's costs have been snapshotted
+        # Snapshot any PAST month that has audit_log activity but no
+        # monthly_costs row yet. The live scheduler rollover only fires while
+        # the app is running across the midnight-of-the-1st boundary; a desktop
+        # app closed at that moment would otherwise lose that month's history
+        # permanently — this was previously a dead `pass` (review §1.8).
+        # snapshot_month is idempotent (ON CONFLICT DO UPDATE).
         async with db.execute(
-            "SELECT year_month FROM monthly_costs ORDER BY year_month DESC LIMIT 1"
+            """SELECT DISTINCT substr(timestamp, 1, 7) AS ym
+               FROM audit_log
+               WHERE substr(timestamp, 1, 7) < ?
+               ORDER BY ym""",
+            (current_month,),
         ) as cursor:
-            last_snapshot = await cursor.fetchone()
-        if last_snapshot and last_snapshot["year_month"] < current_month:
-            pass  # snapshot_month is idempotent, safe to call
-        elif not last_snapshot:
-            pass  # No history yet, nothing to roll over
+            _audit_months = [r["ym"] for r in await cursor.fetchall()]
+        async with db.execute("SELECT year_month FROM monthly_costs") as cursor:
+            _snapped = {r["year_month"] for r in await cursor.fetchall()}
+        for _ym in _audit_months:
+            if _ym not in _snapped:
+                log.info("startup_month_snapshot_catchup", year_month=_ym)
+                await snapshot_month(_ym)
 
         # Check if budget pause should be cleared (new month)
         async with db.execute("SELECT paused_at FROM budget_config WHERE id = 1") as cursor:

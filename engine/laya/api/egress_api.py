@@ -457,6 +457,10 @@ async def field_suggestions(
                 _add(r[col])
 
     try:
+        # load_team was never imported here, so this whole block raised NameError
+        # on every call and the bare except swallowed it — team members never
+        # appeared in field suggestions (review §2 egress — P1-11).
+        from laya.config import load_team
         team = load_team()
         for m in team.get("members", []):
             if include_email:
@@ -470,8 +474,8 @@ async def field_suggestions(
                 name = m.get("name", "")
                 if name and query in name.lower():
                     _add(name)
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("team_field_suggestions_failed", error=str(e))
 
     return {"suggestions": results[:15]}
 

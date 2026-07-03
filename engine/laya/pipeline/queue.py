@@ -52,6 +52,10 @@ def _get_pipeline_settings() -> dict:
         "max_retry_attempts": int(pipeline.get("max_retry_attempts", 3)),
         "queue_poll_interval": float(pipeline.get("queue_poll_interval", 2.0)),
         "model_timeout": float(pipeline.get("model_timeout", 480)),
+        # Previously omitted here, so get_llm_retries() below always fell back to
+        # its own default and the user's pipeline.llm_retries setting was silently
+        # ignored end-to-end (review §5.7). Wire it through so it takes effect.
+        "llm_retries": int(pipeline.get("llm_retries", 3)),
     }
 
 
@@ -62,8 +66,7 @@ def get_model_timeout() -> float:
 
 def get_llm_retries() -> int:
     """Return configured per-call LLM retry attempts. Used by llm/client.py."""
-    cfg = _get_pipeline_settings()
-    return int(cfg.get("llm_retries", 3))
+    return _get_pipeline_settings()["llm_retries"]
 
 
 def _get_semaphore() -> asyncio.Semaphore:

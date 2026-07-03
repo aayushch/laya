@@ -738,7 +738,8 @@ async def llm_call(
 
     # Use configured values (settings.json pipeline section)
     configured_timeout = get_model_timeout()
-    # If caller didn't override num_retries from the default, use configured value
+    # If the caller didn't override num_retries from the default, use the
+    # configured pipeline.llm_retries value (now actually honored — review §5.7).
     if num_retries == 3:
         num_retries = get_llm_retries()
 

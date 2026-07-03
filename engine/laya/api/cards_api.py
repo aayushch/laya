@@ -994,6 +994,39 @@ async def _delete_card_cascade(db, card_id: str, event_id: str | None) -> None:
     await db.execute("DELETE FROM action_log WHERE card_id = ?", (card_id,))
     await db.execute("DELETE FROM audit_log WHERE card_id = ?", (card_id,))
     await db.execute("DELETE FROM action_cards WHERE card_id = ?", (card_id,))
+
+    # Polymorphic tag assignments have no FK to action_cards, so they orphan on
+    # hard-delete unless cleaned explicitly (review §2 API — P4-17).
+    await db.execute(
+        "DELETE FROM tag_assignments WHERE target_type = 'card' AND target_id = ?",
+        (card_id,),
+    )
+
+    # Rolling group summaries embed card_ids as a JSON array (no FK); drop the
+    # deleted id so card_count stays truthful, and delete the summary outright
+    # if it held only this card (review §2 API — P4-17).
+    summary_rows = await db.execute_fetchall(
+        "SELECT entity_id, card_ids FROM group_summaries WHERE card_ids LIKE ?",
+        (f'%"{card_id}"%',),
+    )
+    for srow in summary_rows:
+        try:
+            ids = json.loads(srow["card_ids"] or "[]")
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if card_id not in ids:
+            continue
+        ids = [c for c in ids if c != card_id]
+        if ids:
+            await db.execute(
+                "UPDATE group_summaries SET card_ids = ?, card_count = ? WHERE entity_id = ?",
+                (json.dumps(ids), len(ids), srow["entity_id"]),
+            )
+        else:
+            await db.execute(
+                "DELETE FROM group_summaries WHERE entity_id = ?", (srow["entity_id"],)
+            )
+
     # Remove the source event only if no other cards still reference it
     if event_id:
         await db.execute(
@@ -1001,6 +1034,15 @@ async def _delete_card_cascade(db, card_id: str, event_id: str | None) -> None:
             "AND NOT EXISTS (SELECT 1 FROM action_cards WHERE event_id = ?)",
             (event_id, event_id),
         )
+
+    # Remove the card's vector embedding (best-effort). Housekeeping calls this
+    # cascade directly, so the ChromaDB delete must live here — not only in the
+    # HTTP delete path — or retention never reclaims vectors (review §1.2).
+    try:
+        from laya.db.chromadb_store import delete_document
+        await asyncio.wait_for(delete_document(card_id), timeout=2.0)
+    except Exception as e:
+        log.warning("card_embed_delete_failed", card_id=card_id, error=str(e))
 
 
 @router.delete("/cards/{card_id}")
@@ -1029,12 +1071,8 @@ async def delete_card(card_id: str) -> dict:
     await _delete_card_cascade(db, card_id, event_id)
     await db.commit()
 
-    # Remove card embedding from ChromaDB (best-effort, with timeout)
-    try:
-        from laya.db.chromadb_store import delete_document
-        await asyncio.wait_for(delete_document(f"card_{card_id}"), timeout=3.0)
-    except Exception as e:
-        log.warning("card_embed_delete_failed", card_id=card_id, error=str(e))
+    # ChromaDB embedding, tag assignments and group-summary refs are cleaned
+    # inside _delete_card_cascade (shared with the housekeeping path).
 
     # Clean up research directory if it exists (best-effort)
     from laya.config import LAYA_HOME
