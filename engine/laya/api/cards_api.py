@@ -606,17 +606,22 @@ async def get_grouped_cards(
 
 @router.post("/cards/group/{entity_id:path}/dismiss-all")
 async def dismiss_group(entity_id: str) -> dict:
-    """Dismiss all non-terminal cards in a group."""
+    """Dismiss all non-terminal cards in a group (entity or context group)."""
     db = await get_db()
 
     from laya.models.card_lifecycle import INACTIVE_STATUSES, transition_card_status
+    # Context groups (ctx_ ids) are keyed by context_id, not entity_id. Handle
+    # both so dismissing a context group actually dismisses its cards — this was
+    # asymmetric with mark_group_read, a latent trap (review §2 API — P4-15).
+    # group_col is a controlled identifier, not user input.
+    group_col = "context_id" if entity_id.startswith("ctx_") else "entity_id"
     # Exclude every inactive status (incl. archived) from the canonical SSOT —
     # archived cards can't be dismissed anyway, so selecting them only wastes a
     # transition attempt.
     inactive = tuple(INACTIVE_STATUSES)
     placeholders = ",".join("?" for _ in inactive)
     rows = await db.execute_fetchall(
-        f"SELECT card_id, status FROM action_cards WHERE entity_id = ? AND status NOT IN ({placeholders})",
+        f"SELECT card_id, status FROM action_cards WHERE {group_col} = ? AND status NOT IN ({placeholders})",
         (entity_id, *inactive),
     )
 
@@ -630,7 +635,7 @@ async def dismiss_group(entity_id: str) -> dict:
 
     # Update summary for each dismissed card so items get strikethrough
     header_rows = await db.execute_fetchall(
-        "SELECT card_id, header FROM action_cards WHERE entity_id = ? AND status = 'dismissed'",
+        f"SELECT card_id, header FROM action_cards WHERE {group_col} = ? AND status = 'dismissed'",
         (entity_id,),
     )
     for hr in header_rows:
@@ -641,7 +646,7 @@ async def dismiss_group(entity_id: str) -> dict:
 
     now = db_now()
     await db.execute(
-        "UPDATE action_cards SET read_at = COALESCE(read_at, ?) WHERE entity_id = ? AND read_at IS NULL",
+        f"UPDATE action_cards SET read_at = COALESCE(read_at, ?) WHERE {group_col} = ? AND read_at IS NULL",
         (now, entity_id),
     )
     await db.commit()

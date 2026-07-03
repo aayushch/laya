@@ -48,15 +48,29 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
         # which rejects multibyte UTF-8 bytes (e.g. smart quotes) found in comments.
         sql = migration_file.read_text(encoding="utf-8")
 
-        # Execute all statements in the migration file
-        await db.executescript(sql)
-
-        # Record the migration
-        await db.execute(
-            "INSERT INTO schema_version (version, migration_file) VALUES (?, ?)",
-            (version, migration_file.name),
+        # Run the whole file AND the schema_version bump inside ONE transaction so
+        # a mid-file failure rolls back cleanly. executescript otherwise runs in
+        # autocommit, so a failure left the file half-applied and unrecorded — the
+        # next startup re-ran it and died on the first non-idempotent statement, a
+        # boot loop needing manual surgery (review §2 API — P4-13). Our migrations
+        # contain no BEGIN/COMMIT or triggers, so this wrapping is safe.
+        escaped_name = migration_file.name.replace("'", "''")
+        script = (
+            "BEGIN;\n"
+            + sql
+            + f"\nINSERT INTO schema_version (version, migration_file) "
+            + f"VALUES ({version}, '{escaped_name}');\n"
+            + "COMMIT;"
         )
-        await db.commit()
+        try:
+            await db.executescript(script)
+        except Exception:
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            log.error("migration_failed_rolled_back", version=version, file=migration_file.name)
+            raise
         applied += 1
 
     if applied:

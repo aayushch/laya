@@ -577,7 +577,11 @@ async def _semantic_search(query: str, space_id: str | None, n: int) -> list[dic
         {
             "id": r["metadata"].get("card_id", r["id"]),
             "card_id": r["metadata"].get("card_id"),
-            "entity_id": r["metadata"].get("entity_refs", ""),
+            # Real grouping key, not the entity_refs CSV that used to sit here and
+            # broke dedup + feedback exclusion for semantic seeds (review §2 — P4-4).
+            # Pre-fix embeds lack this key and fall back to "" (still better than a
+            # wrong value); new embeds carry it (see emit._embed_card metadata).
+            "entity_id": r["metadata"].get("entity_id", ""),
             "source": "semantic",
             "distance": r.get("distance", 1.0),
         }

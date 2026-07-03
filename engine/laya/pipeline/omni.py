@@ -159,7 +159,17 @@ async def _load_full_snapshot(
     # Cache hit for latest
     if version is None and space_id in _latest_cache:
         c = _latest_cache[space_id]
-        return c["content"], c["version"], c["card_ids"], c.get("meta", {})
+        # Deep-copy so a caller that mutates the returned content (e.g.
+        # _append_to_recent appending recent items) can't corrupt the cached
+        # snapshot before the DB commit. A failed commit would otherwise leave
+        # the cache serving phantom state and re-processing would double-append
+        # (review §2 pipeline / §4). Installs into the cache stay post-commit.
+        return (
+            copy.deepcopy(c["content"]),
+            c["version"],
+            list(c["card_ids"]),
+            dict(c.get("meta", {})),
+        )
 
     # Load the target row
     if version is not None:

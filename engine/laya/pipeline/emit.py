@@ -390,6 +390,10 @@ async def _embed_card(
                 "card_id": card_id,
                 "source_event_id": event.event_id,
                 "source_platform": event.source.platform,
+                # The canonical grouping key — trace seeds need this for dedup and
+                # feedback exclusion; previously only entity_refs (a CSV) was
+                # stored and trace mis-used it as entity_id (review §2 — P4-4).
+                "entity_id": entity_id,
                 "entity_refs": entity_refs,
                 "persona": router_output.persona.value,
                 "priority": router_output.priority.value,
