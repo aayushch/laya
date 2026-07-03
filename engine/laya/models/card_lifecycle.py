@@ -127,11 +127,22 @@ async def transition_card_status(
             params.append(val)
 
     params.append(card_id)
-    await db.execute(
-        f"UPDATE action_cards SET {', '.join(sets)} WHERE card_id = ?",
+    # Guard the write on the status we validated against. Without this the
+    # transition was validate-then-write with a gap: a concurrent change (e.g. a
+    # user dismissing the card while an agent finishes) could be clobbered and a
+    # dismissed card resurrected. The conditional UPDATE + rowcount check makes
+    # the check-and-set atomic on the shared connection (review §2 API — P3-8).
+    params.append(current)
+    cursor = await db.execute(
+        f"UPDATE action_cards SET {', '.join(sets)} WHERE card_id = ? AND status = ?",
         params,
     )
     await db.commit()
+    if cursor.rowcount == 0:
+        raise ValueError(
+            f"Concurrent status change on {card_id}: it was no longer "
+            f"'{current}' when the {current} -> {new_status} write ran"
+        )
 
     broadcast_payload: dict = {"status": new_status}
     if extra_fields:

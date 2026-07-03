@@ -14,6 +14,7 @@ import os
 import re
 import signal
 import sys
+from collections import deque
 from typing import AsyncIterator
 
 import structlog
@@ -37,7 +38,9 @@ class AgentProcess:
         self._running: bool = False
         self._paused: bool = False
         self._stderr_task: asyncio.Task | None = None
-        self._stderr_lines: list[str] = []
+        # Bounded so a long-lived / chatty agent can't grow stderr without limit
+        # for the process lifetime (review §4 — P4-28). Only the last 50 are read.
+        self._stderr_lines: deque[str] = deque(maxlen=200)
 
     async def spawn(
         self,
@@ -58,6 +61,11 @@ class AgentProcess:
         if env:
             spawn_env.update(env)
 
+        # Raise the StreamReader buffer to 10 MB. The default 64 KiB makes
+        # readline() raise on any single stream-json line larger than that —
+        # routine for a Claude Code Write tool_use carrying a full file — which
+        # silently ended the reader and left the child blocked writing into an
+        # undrained pipe, wedging the session in agent_running (review §1.10).
         self._process = await asyncio.create_subprocess_exec(
             *args,
             stdin=asyncio.subprocess.DEVNULL,
@@ -65,6 +73,7 @@ class AgentProcess:
             stderr=asyncio.subprocess.PIPE,
             cwd=cwd,
             env=spawn_env,
+            limit=10 * 1024 * 1024,
         )
         self._running = True
 
@@ -119,10 +128,17 @@ class AgentProcess:
                 except asyncio.TimeoutError:
                     now = asyncio.get_event_loop().time()
                     alive = self._process.returncode is None
-                    idle_secs = round(now - last_output)
                     if not alive:
                         self._running = False
                         break
+                    # A paused session (SIGSTOP) emits no output by design, and a
+                    # long silent tool run is legitimate — don't let the idle
+                    # clock accumulate and SIGKILL it. Keep the baseline fresh so
+                    # it isn't killed the instant it resumes either (review §1.10).
+                    if self._paused:
+                        last_output = now
+                        continue
+                    idle_secs = round(now - last_output)
                     if idle_secs >= idle_timeout:
                         log.warning(
                             "agent_idle_timeout",
@@ -143,7 +159,10 @@ class AgentProcess:
                 line_count += 1
                 last_output = asyncio.get_event_loop().time()
                 yield decoded
-            except Exception:
+            except Exception as e:
+                # Don't end the reader silently — a swallowed error here leaves
+                # the child blocked on an undrained stdout pipe (review §1.10).
+                log.warning("agent_read_lines_error", pid=self._process.pid, error=str(e))
                 self._running = False
                 break
 
@@ -233,4 +252,5 @@ class AgentProcess:
     @property
     def stderr_output(self) -> str:
         """Return collected stderr lines as a single string (last 50 lines max)."""
-        return "\n".join(self._stderr_lines[-50:])
+        # deque doesn't support slicing — materialize before taking the tail.
+        return "\n".join(list(self._stderr_lines)[-50:])

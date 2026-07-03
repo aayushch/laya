@@ -90,63 +90,72 @@ async def execute_action(
         extra_fields={"selected_action_id": action_id},
     )
 
-    # 5. Resolve target platform (handle calendar detection)
-    target_platform = action["target_platform"]
-    action_type = action["action_type"]
-    if target_platform == "gmail" and (
-        payload.get("action") == "create_calendar_event"
-        or action_type == "calendar"
-    ):
-        target_platform = "google_calendar"
+    # Everything from platform resolution through egress runs inside a guard.
+    # The card is already in 'executing'; an unexpected exception here (bad
+    # payload, egress transport error, DB hiccup) previously escaped and left
+    # the card stranded in 'executing' until the next startup sweep. Convert any
+    # such error into a failed EgressResult so the terminal-transition path below
+    # moves the card to 'failed' (review §2 pipeline — P3-9).
+    target_platform = action.get("target_platform", "")
+    action_type = action.get("action_type", "")
+    connection_id = None
+    try:
+        # 5. Resolve target platform (handle calendar detection)
+        if target_platform == "gmail" and (
+            payload.get("action") == "create_calendar_event"
+            or action_type == "calendar"
+        ):
+            target_platform = "google_calendar"
 
-    # Remap LLM mistakes: send_message is Slack-only, Gmail uses send_email
-    if target_platform in ("gmail", "outlook") and action_type == "send_message":
-        log.warning("action_type_remapped", original="send_message", corrected="send_email", platform=target_platform)
-        action_type = "send_email"
+        # Remap LLM mistakes: send_message is Slack-only, Gmail uses send_email
+        if target_platform in ("gmail", "outlook") and action_type == "send_message":
+            log.warning("action_type_remapped", original="send_message", corrected="send_email", platform=target_platform)
+            action_type = "send_email"
 
-    # 6. Client-side-only actions: skip egress, return URL for the UI to open.
-    if action_type == "open_url":
-        url = payload.get("url")
-        if not url or not isinstance(url, str):
-            result = EgressResult(success=False, error="No URL provided in open_url payload")
-        elif not url.startswith(("https://", "http://")):
-            result = EgressResult(success=False, error=f"Invalid URL scheme: {url}")
+        # 6. Client-side-only actions: skip egress, return URL for the UI to open.
+        if action_type == "open_url":
+            url = payload.get("url")
+            if not url or not isinstance(url, str):
+                result = EgressResult(success=False, error="No URL provided in open_url payload")
+            elif not url.startswith(("https://", "http://")):
+                result = EgressResult(success=False, error=f"Invalid URL scheme: {url}")
+            else:
+                result = EgressResult(success=True, result_url=url, result_data={"url": url, "client_action": "open_url"})
         else:
-            result = EgressResult(success=True, result_url=url, result_data={"url": url, "client_action": "open_url"})
-        connection_id = None
-    else:
-        # 7. Resolve connection_id from the originating event so the egress
-        # module picks the correct executor workflow when multiple connections
-        # exist for the same platform (e.g. two Jira instances).
-        # The event stores the n8n workflow_id as source_connection_id, so we
-        # look up the corresponding egress connection_id from the sources table.
-        connection_id = None
-        if card_row["event_id"]:
-            evt_rows = await db.execute_fetchall(
-                "SELECT source_connection_id FROM events WHERE event_id = ?",
-                (card_row["event_id"],),
-            )
-            if evt_rows and evt_rows[0]["source_connection_id"]:
-                workflow_id = evt_rows[0]["source_connection_id"]
-                conn_rows = await db.execute_fetchall(
-                    "SELECT connection_id FROM sources WHERE workflow_id = ? AND connection_id IS NOT NULL LIMIT 1",
-                    (workflow_id,),
+            # 7. Resolve connection_id from the originating event so the egress
+            # module picks the correct executor workflow when multiple connections
+            # exist for the same platform (e.g. two Jira instances).
+            # The event stores the n8n workflow_id as source_connection_id, so we
+            # look up the corresponding egress connection_id from the sources table.
+            if card_row["event_id"]:
+                evt_rows = await db.execute_fetchall(
+                    "SELECT source_connection_id FROM events WHERE event_id = ?",
+                    (card_row["event_id"],),
                 )
-                if conn_rows:
-                    connection_id = conn_rows[0]["connection_id"]
+                if evt_rows and evt_rows[0]["source_connection_id"]:
+                    workflow_id = evt_rows[0]["source_connection_id"]
+                    conn_rows = await db.execute_fetchall(
+                        "SELECT connection_id FROM sources WHERE workflow_id = ? AND connection_id IS NOT NULL LIMIT 1",
+                        (workflow_id,),
+                    )
+                    if conn_rows:
+                        connection_id = conn_rows[0]["connection_id"]
 
-        # 8. Delegate to egress module
-        request = EgressRequest(
-            platform=target_platform,
-            action_type=action_type,
-            payload=payload,
-            connection_id=connection_id,
-            source_card_id=card_id,
-            source_event_id=card_row["event_id"],
-            space_id=card_row["space_id"],
-        )
+            # 8. Delegate to egress module
+            request = EgressRequest(
+                platform=target_platform,
+                action_type=action_type,
+                payload=payload,
+                connection_id=connection_id,
+                source_card_id=card_id,
+                source_event_id=card_row["event_id"],
+                space_id=card_row["space_id"],
+            )
 
-        result = await egress_execute(request)
+            result = await egress_execute(request)
+    except Exception as exec_err:
+        log.error("action_execution_error", card_id=card_id, action_id=action_id, error=str(exec_err))
+        result = EgressResult(success=False, error=f"execution error: {exec_err}", retryable=False)
 
     # 8. Store in action_log
     result_status = "done" if result.success else "failed"

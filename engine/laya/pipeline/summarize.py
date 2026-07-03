@@ -31,6 +31,20 @@ _pending_cards: dict[str, list[dict]] = {}
 _pending_status_changes: dict[str, list[dict]] = {}
 _debounce_tasks: dict[str, asyncio.Task] = {}
 
+# Per-space run locks. A 90s flush can pop its batch and start _run_summary_update
+# while a subsequent flush is scheduled; without serialization the two overlap and
+# lost-update the daily summary read-modify-write (review §2 pipeline / §3.4).
+_space_run_locks: dict[str, asyncio.Lock] = {}
+
+
+def _get_run_lock(space_id: str) -> asyncio.Lock:
+    # Safe without a guard: creation is synchronous (no await between get/set).
+    lock = _space_run_locks.get(space_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _space_run_locks[space_id] = lock
+    return lock
+
 
 def _get_debounce_seconds() -> float:
     """Read daily summary debounce interval from settings."""
@@ -130,7 +144,10 @@ async def _debounced_run(space_id: str) -> None:
         return
 
     try:
-        await _run_summary_update(space_id, cards, status_changes)
+        # Serialize per space so an overlapping flush can't lost-update the
+        # daily summary (review §2 pipeline / §3.4).
+        async with _get_run_lock(space_id):
+            await _run_summary_update(space_id, cards, status_changes)
     except Exception as e:
         log.error("summary_update_failed", space_id=space_id, error=str(e))
 

@@ -2245,12 +2245,24 @@ async def run_entity_agent(entity_id: str, body: RunEntityAgentRequest) -> dict:
             detail="No coding agent configured. Set one in Settings > Agent.",
         )
 
-    # 3. Check for existing running session
-    existing = await session_manager.get_session_for_entity(entity_id)
+    # 3. Check for an existing session. include_terminal=True so a COMPLETED
+    # prior run is resumed rather than replaced — without it get_session_for_entity
+    # returned None for a finished session and this handler spawned a duplicate
+    # workspace, orphaning the one the user opens via the Workspace button. This
+    # now mirrors the processing-rule path (review §1.9 — P3-3).
+    existing = await session_manager.get_session_for_entity(entity_id, include_terminal=True)
     if existing and existing["status"] in ("starting", "running"):
         raise HTTPException(
             status_code=409,
             detail="An agent is already running for this entity",
+        )
+    if existing and (
+        existing["status"] == "awaiting_input"
+        or await session_manager.has_unanswered_questions(existing["session_id"])
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="The workspace is awaiting your input",
         )
 
     space_id = card_rows[0]["space_id"] or "default"
@@ -2287,8 +2299,10 @@ async def run_entity_agent(entity_id: str, body: RunEntityAgentRequest) -> dict:
         user_prompt=body.prompt,
     )
 
-    # 8. If a prior completed/paused session exists, resume it
-    if existing and existing["status"] == "paused":
+    # 8. If a prior session exists (completed/paused/failed/cancelled — the
+    # running/awaiting cases were already rejected above), resume it instead of
+    # spawning a duplicate (review §1.9 — P3-3).
+    if existing:
         # Refresh context and resume
         now = db_now()
         await db.execute(

@@ -442,25 +442,12 @@ async def _exec_run_agent(
                 repos_data = load_repos()
                 add_dirs = [r["path"] for r in repos_data.get("repos", []) if r.get("path")]
 
-            now = db_now()
-            await db.execute(
-                "UPDATE action_cards SET has_workspace = 1, updated_at = ? WHERE entity_id = ?",
-                (now, entity_id),
-            )
-            await db.execute(
-                "UPDATE action_cards SET status = 'agent_running' WHERE card_id = ?",
-                (anchor_card_id,),
-            )
-            await db.commit()
-
-            for card_row in card_rows:
-                payload: dict[str, Any] = {"has_workspace": True}
-                if card_row["card_id"] == anchor_card_id:
-                    payload["status"] = "agent_running"
-                await manager.broadcast(
-                    {"type": "card_updated", "card_id": card_row["card_id"], "payload": payload}
-                )
-
+            # Spawn/resume the session FIRST. Only after it actually exists do
+            # we flip the card to agent_running — the previous order set the
+            # status via a raw UPDATE *before* the spawn, so a spawn failure
+            # stranded the card in agent_running until the next restart sweep
+            # (review §2 pipeline — P3-7). A failure here is caught by the outer
+            # try/except and the card is left untouched.
             if existing:
                 # Resume the same session (reuses session_id, so the Workspace
                 # button keeps opening the workspace the user already had).
@@ -476,6 +463,27 @@ async def _exec_run_agent(
                     card_id=anchor_card_id, prompt=agent_prompt, repo_path=cwd,
                     agent_type=agent_type, space_id=space_id, add_dirs=add_dirs,
                     mode="plan", research=True, entity_id=entity_id,
+                )
+
+            now = db_now()
+            await db.execute(
+                "UPDATE action_cards SET has_workspace = 1, updated_at = ? WHERE entity_id = ?",
+                (now, entity_id),
+            )
+            await db.commit()
+            # Route the status flip through the lifecycle SSOT (validation +
+            # atomic guard + broadcast) instead of a raw UPDATE.
+            try:
+                from laya.models.card_lifecycle import transition_card_status
+                await transition_card_status(anchor_card_id, "agent_running", actor="processing_rule")
+            except ValueError:
+                # Anchor in a status that can't move to agent_running (e.g.
+                # dismissed) — the workspace still exists; leave the card as-is.
+                pass
+
+            for card_row in card_rows:
+                await manager.broadcast(
+                    {"type": "card_updated", "card_id": card_row["card_id"], "payload": {"has_workspace": True}}
                 )
 
             create_tracked_task(

@@ -88,26 +88,27 @@ async def run_stager(
     )
     schema = get_stager_json_schema()
 
-    try:
-        response = await llm_call(
-            role="stager",
-            messages=messages,
-            response_schema=schema,
-            event_id=event.event_id,
-            step="stage",
-            temperature=0.2,
-            max_tokens=DEFAULT_MAX_TOKENS,
-            space_id=space_id,
-        )
-    except Exception as e:
-        log.error("stager_llm_failed", event_id=event.event_id, error=str(e))
-        return _build_fallback_card(event, router_output)
+    # Transport/LLM-call failures propagate so the durable queue retries the
+    # event, exactly like run_router. Previously any exception here (e.g. a
+    # 30-second LMStudio restart mid-request) was swallowed into a degraded
+    # fallback card and the event was marked completed — the fallback is now
+    # reserved for genuine PARSE failures below (review §2 pipeline).
+    response = await llm_call(
+        role="stager",
+        messages=messages,
+        response_schema=schema,
+        event_id=event.event_id,
+        step="stage",
+        temperature=0.2,
+        max_tokens=DEFAULT_MAX_TOKENS,
+        space_id=space_id,
+    )
 
     # 3. Parse response into ActionCardData
     if response.parsed:
         return _parse_stager_response(response.parsed, event)
 
-    # Fallback: try raw content
+    # Fallback: try raw content (parse failure only, not a transport failure)
     try:
         parsed = json.loads(response.content)
         return _parse_stager_response(parsed, event)
@@ -172,15 +173,27 @@ def _parse_stager_response(data: dict, event: LayaEvent) -> ActionCardData:
             })
             continue
 
-        actions.append(
-            SuggestedAction(
-                action_id=act["action_id"],
-                label=act["label"],
-                action_type=act["action_type"],
-                target_platform=target_platform,
-                payload=payload,
+        try:
+            actions.append(
+                SuggestedAction(
+                    action_id=act["action_id"],
+                    label=act["label"],
+                    action_type=act["action_type"],
+                    target_platform=target_platform,
+                    payload=payload,
+                )
             )
-        )
+        except Exception as e:
+            # A single malformed action (missing key / bad type — common on
+            # best-effort agent backends emitting partial JSON) must not raise
+            # KeyError and burn all 3 queue retries before dead-lettering. Drop
+            # the bad action and keep the good ones (review §2 pipeline — P4-5).
+            dropped.append({
+                "action_id": act.get("action_id"),
+                "target_platform": target_platform,
+                "reason": f"malformed: {e}",
+            })
+            continue
 
     if dropped:
         log.info(
