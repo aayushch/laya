@@ -103,7 +103,14 @@ CREATE TRIGGER IF NOT EXISTS cards_fts_ad AFTER DELETE ON action_cards BEGIN
     DELETE FROM cards_fts WHERE card_id = old.card_id;
 END;
 
-CREATE TRIGGER IF NOT EXISTS cards_fts_au AFTER UPDATE ON action_cards BEGIN
+-- Scope the update trigger to the FTS-indexed columns only. As an unconditional
+-- AFTER UPDATE it re-indexed the row on ANY column change — including the
+-- carry-forward group_active_at bump that touches every sibling on each new card
+-- in a thread, making FTS maintenance O(N^2) per thread (review §4 — P5-4). The
+-- DROP makes the narrowing take effect over a pre-existing wide trigger.
+DROP TRIGGER IF EXISTS cards_fts_au;
+CREATE TRIGGER IF NOT EXISTS cards_fts_au
+AFTER UPDATE OF header, summary, intelligence, thread_context ON action_cards BEGIN
     DELETE FROM cards_fts WHERE card_id = old.card_id;
     INSERT INTO cards_fts(card_id, header, summary, intelligence, thread_context)
     VALUES (new.card_id, COALESCE(new.header, ''), COALESCE(new.summary, ''),

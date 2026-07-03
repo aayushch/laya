@@ -267,8 +267,15 @@ async def _persist_card(
            SET group_active_at = (
                SELECT MAX(group_active_at) FROM action_cards WHERE entity_id = ?
            )
-           WHERE entity_id = ?""",
-        (entity_id, entity_id),
+           WHERE entity_id = ?
+             -- Only touch rows actually below the new max: skips the no-op
+             -- self-update of the just-inserted card, and skips the whole update
+             -- for a late/out-of-order older event whose siblings already sit at
+             -- the max — avoiding needless writes (review §4 — P5-4).
+             AND group_active_at < (
+                 SELECT MAX(group_active_at) FROM action_cards WHERE entity_id = ?
+             )""",
+        (entity_id, entity_id, entity_id),
     )
     await db.commit()
 

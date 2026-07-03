@@ -13,6 +13,7 @@ Users interact with Laya Settings only. The broker handles:
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -494,6 +495,14 @@ async def _validate_smtp(creds: dict) -> tuple[bool, str | None]:
 # ---------------------------------------------------------------------------
 
 
+# Short TTL cache for connection credentials. _get_from_keychain is a blocking
+# keyring syscall on the egress hot path (every Jira execution reads it) — this
+# keeps it off the event loop for repeated reads (review §4 — P5-2). Writes and
+# deletes update/invalidate the entry, so within-process reads stay correct.
+_CRED_CACHE: dict[str, tuple[float, "dict | None"]] = {}
+_CRED_CACHE_TTL = 60.0
+
+
 def _store_in_keychain(connection_id: str, platform: str, credentials: dict) -> bool:
     """Store credentials in OS keychain."""
     try:
@@ -501,6 +510,7 @@ def _store_in_keychain(connection_id: str, platform: str, credentials: dict) -> 
 
         key = f"{platform}:{connection_id}"
         keyring.set_password(EGRESS_KEYCHAIN_SERVICE, key, json.dumps(credentials))
+        _CRED_CACHE[key] = (time.monotonic(), dict(credentials))
         return True
     except Exception as e:
         log.error("keychain_store_failed", connection_id=connection_id, error=str(e))
@@ -508,13 +518,19 @@ def _store_in_keychain(connection_id: str, platform: str, credentials: dict) -> 
 
 
 def _get_from_keychain(connection_id: str, platform: str) -> dict | None:
-    """Retrieve credentials from OS keychain."""
+    """Retrieve credentials from OS keychain (TTL-cached)."""
+    key = f"{platform}:{connection_id}"
+    entry = _CRED_CACHE.get(key)
+    if entry is not None and (time.monotonic() - entry[0]) < _CRED_CACHE_TTL:
+        # Copy so a caller mutating the result can't corrupt the cache.
+        return dict(entry[1]) if entry[1] is not None else None
     try:
         import keyring
 
-        key = f"{platform}:{connection_id}"
         raw = keyring.get_password(EGRESS_KEYCHAIN_SERVICE, key)
-        return json.loads(raw) if raw else None
+        val = json.loads(raw) if raw else None
+        _CRED_CACHE[key] = (time.monotonic(), val)
+        return dict(val) if val is not None else None
     except Exception:
         return None
 
@@ -526,6 +542,7 @@ def _remove_from_keychain(connection_id: str, platform: str) -> None:
 
         key = f"{platform}:{connection_id}"
         keyring.delete_password(EGRESS_KEYCHAIN_SERVICE, key)
+        _CRED_CACHE.pop(key, None)
     except Exception as e:
         log.warning("keychain_delete_failed", connection_id=connection_id, error=str(e))
 

@@ -4,12 +4,37 @@
 """OS keychain integration for storing LLM API keys."""
 
 import os
+import time
 
 import structlog
 
 log = structlog.get_logger()
 
 SERVICE_NAME = "laya-engine"
+
+# Short TTL read cache. keyring.get_password() is a blocking ~10-100ms syscall,
+# and it sits on the egress hot path (every Jira execution, n8n API call,
+# webhook-cache refresh, OAuth health sweep) — uncached, it was the only blocking
+# IO on the event loop there (review §4 — P5-2). Writes/deletes invalidate the
+# key, so within-process reads stay correct; cross-process changes are bounded by
+# the TTL. Values (including secrets) are already resident in this process.
+_KEY_CACHE: dict[str, tuple[float, "str | None"]] = {}
+_KEY_CACHE_TTL = 60.0  # seconds
+
+
+def _cache_lookup(key: str) -> tuple[bool, "str | None"]:
+    entry = _KEY_CACHE.get(key)
+    if entry is not None and (time.monotonic() - entry[0]) < _KEY_CACHE_TTL:
+        return True, entry[1]
+    return False, None
+
+
+def _cache_store(key: str, value: "str | None") -> None:
+    _KEY_CACHE[key] = (time.monotonic(), value)
+
+
+def _cache_drop(key: str) -> None:
+    _KEY_CACHE.pop(key, None)
 
 # Map of provider names to environment variable names
 KEY_ENV_MAP = {
@@ -26,6 +51,7 @@ def store_api_key(provider: str, api_key: str) -> bool:
         import keyring
 
         keyring.set_password(SERVICE_NAME, provider, api_key)
+        _cache_store(provider, api_key)
         # Also set in environment for current session
         if provider in KEY_ENV_MAP:
             os.environ[KEY_ENV_MAP[provider]] = api_key
@@ -37,11 +63,16 @@ def store_api_key(provider: str, api_key: str) -> bool:
 
 
 def get_api_key(provider: str) -> str | None:
-    """Retrieve an API key from the OS keychain."""
+    """Retrieve an API key from the OS keychain (TTL-cached)."""
+    hit, val = _cache_lookup(provider)
+    if hit:
+        return val
     try:
         import keyring
 
-        return keyring.get_password(SERVICE_NAME, provider)
+        val = keyring.get_password(SERVICE_NAME, provider)
+        _cache_store(provider, val)
+        return val
     except Exception as e:
         log.warning("api_key_read_failed", provider=provider, error=str(e))
         return None
@@ -53,6 +84,7 @@ def delete_api_key(provider: str) -> bool:
         import keyring
 
         keyring.delete_password(SERVICE_NAME, provider)
+        _cache_drop(provider)
         if provider in KEY_ENV_MAP and KEY_ENV_MAP[provider] in os.environ:
             del os.environ[KEY_ENV_MAP[provider]]
         log.info("api_key_deleted", provider=provider)
@@ -98,6 +130,7 @@ def store_space_api_key(key_ref: str, api_key: str) -> bool:
         import keyring
 
         keyring.set_password(SERVICE_NAME, key_ref, api_key)
+        _cache_store(key_ref, api_key)
         log.info("space_api_key_stored", key_ref=key_ref)
         return True
     except Exception as e:
@@ -106,11 +139,16 @@ def store_space_api_key(key_ref: str, api_key: str) -> bool:
 
 
 def get_space_api_key(key_ref: str) -> str | None:
-    """Retrieve a space-specific API key from the OS keychain."""
+    """Retrieve a space-specific API key from the OS keychain (TTL-cached)."""
+    hit, val = _cache_lookup(key_ref)
+    if hit:
+        return val
     try:
         import keyring
 
-        return keyring.get_password(SERVICE_NAME, key_ref)
+        val = keyring.get_password(SERVICE_NAME, key_ref)
+        _cache_store(key_ref, val)
+        return val
     except Exception as e:
         log.warning("space_api_key_read_failed", key_ref=key_ref, error=str(e))
         return None
@@ -122,6 +160,7 @@ def delete_space_api_key(key_ref: str) -> bool:
         import keyring
 
         keyring.delete_password(SERVICE_NAME, key_ref)
+        _cache_drop(key_ref)
         log.info("space_api_key_deleted", key_ref=key_ref)
         return True
     except Exception:
