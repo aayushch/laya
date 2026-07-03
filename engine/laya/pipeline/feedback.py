@@ -71,25 +71,37 @@ async def query_feedback_patterns(
 
 
 async def query_classification_rules(space_id: str | None = None) -> list[dict]:
-    """Query active user-defined classification rules."""
+    """Query active user-defined classification rules, capped for injection.
+
+    Capped at the ``classification_rules_max_injection`` (default 20) most-recent
+    rules so the router prompt can't grow without bound as learned rules
+    accumulate — the exact small-local-model failure mode the context-rules side
+    already guards against (review §2 pipeline / §3 — P4-8). A consolidation pass
+    (like context rules') is the remaining half, tracked under P7-8.
+    """
+    from laya.config import get_tuning
+    max_rules = int(get_tuning("classification_rules_max_injection", 20))
     db = await get_db()
     try:
         if space_id:
             rows = await db.execute_fetchall(
                 """SELECT field, rule_text FROM classification_rules
                    WHERE active = 1 AND (space_id IS NULL OR space_id = ?)
-                   ORDER BY created_at""",
-                (space_id,),
+                   ORDER BY created_at DESC LIMIT ?""",
+                (space_id, max_rules),
             )
         else:
             rows = await db.execute_fetchall(
-                "SELECT field, rule_text FROM classification_rules WHERE active = 1 ORDER BY created_at"
+                "SELECT field, rule_text FROM classification_rules WHERE active = 1 "
+                "ORDER BY created_at DESC LIMIT ?",
+                (max_rules,),
             )
     except Exception as e:
         log.warning("classification_rules_query_failed", error=str(e))
         return []
 
-    return [{"field": r["field"], "rule_text": r["rule_text"]} for r in rows]
+    # Reverse back to chronological order for a stable, cache-friendly prompt prefix.
+    return [{"field": r["field"], "rule_text": r["rule_text"]} for r in reversed(rows)]
 
 
 async def query_classification_corrections(
