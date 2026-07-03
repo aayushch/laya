@@ -191,10 +191,32 @@ async def run_batch_router(
         )
         return {item["event_id"]: output}
 
-    messages = build_batch_router_messages(events_data)
-    schema = get_batch_router_json_schema(len(events_data))
-
     space_id = events_data[0].get("space_id")
+
+    # Gather a shared feedback section for the whole batch: space-scoped
+    # classification rules (manual + learned) plus recent corrections for the
+    # platforms present. The batch path previously injected neither, so under
+    # burst the user's rules/corrections silently stopped applying — corrections
+    # appeared "not to stick" nondeterministically (review §1.7). Callers group
+    # batches by space (queue._batch_route_events), so space_id is uniform here.
+    from laya.pipeline.feedback import (
+        format_feedback_section,
+        query_classification_corrections,
+        query_classification_rules,
+    )
+    cls_rules = await query_classification_rules(space_id)
+    corrections: list[dict] = []
+    seen_platforms: set[str] = set()
+    for it in events_data:
+        plat = it["event"].source.platform
+        if plat in seen_platforms:
+            continue
+        seen_platforms.add(plat)
+        corrections.extend(await query_classification_corrections(plat))
+    feedback_section = format_feedback_section([], cls_rules, corrections)
+
+    messages = build_batch_router_messages(events_data, feedback_context=feedback_section)
+    schema = get_batch_router_json_schema(len(events_data))
 
     response = await llm_call(
         role="router",
@@ -209,10 +231,17 @@ async def run_batch_router(
     results: dict[str, RouterOutput] = {}
 
     if response.parsed and "classifications" in response.parsed:
-        for i, classification in enumerate(response.parsed["classifications"]):
-            if i >= len(events_data):
-                break
-            event_id = events_data[i]["event_id"]
+        for classification in response.parsed["classifications"]:
+            if not isinstance(classification, dict):
+                continue
+            # Match on the echoed event_index, not array position. A dropped or
+            # reordered classification would otherwise silently misassign every
+            # event after the gap (review §1.7).
+            idx = classification.pop("event_index", None)
+            if not isinstance(idx, int) or not (0 <= idx < len(events_data)):
+                log.warning("batch_router_bad_index", index=idx)
+                continue
+            event_id = events_data[idx]["event_id"]
             try:
                 router_output = RouterOutput(**classification)
                 results[event_id] = router_output
@@ -233,7 +262,7 @@ async def run_batch_router(
                     category=router_output.category.value,
                     persona=router_output.persona.value,
                     priority=router_output.priority.value,
-                    batch_index=i,
+                    batch_index=idx,
                 )
             except Exception as e:
                 log.warning("batch_router_parse_single", event_id=event_id, error=str(e))

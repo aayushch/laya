@@ -284,21 +284,33 @@ Body:
 
 def build_batch_router_messages(
     events_data: list[dict],
+    feedback_context: str | None = None,
 ) -> list[dict[str, str]]:
     """Build messages for batch classification of multiple events.
 
     Each item in events_data must have: event (LayaEvent), actor_relationship (str).
+
+    feedback_context (user classification rules + recent corrections) is injected
+    once for the whole batch. The single-event path always injects it; the batch
+    path previously injected nothing, so under any burst the user's rules and
+    corrections silently stopped applying (review §1.7).
     """
     events_text = ""
-    for i, item in enumerate(events_data, 1):
+    for i, item in enumerate(events_data):
         event = item["event"]
         actor_rel = item["actor_relationship"]
         event_text = _format_event_text(event, actor_rel)
-        events_text += f"\n\n--- EVENT {i} ---\n{event_text}\n--- END EVENT {i} ---"
+        # 0-based index the model must echo back as "event_index" so each result
+        # is matched to its event by identity, not by array position (review §1.7).
+        events_text += f"\n\n--- EVENT index={i} ---\n{event_text}\n--- END EVENT {i} ---"
+
+    feedback_section = f"\n\n{feedback_context}" if feedback_context else ""
 
     user_message = f"""\
 Classify each event below independently. Return a JSON object with a "classifications" \
-array containing one classification per event, in the same order as presented.
+array containing one classification per event. Set each classification's "event_index" \
+to the integer shown in that event's "--- EVENT index=N ---" header so results can be \
+matched back to the correct event.{feedback_section}
 
 {events_text}
 
@@ -308,6 +320,20 @@ Respond with valid JSON matching the required schema."""
         {"role": "system", "content": get_prompt("router", ROUTER_SYSTEM_PROMPT)},
         {"role": "user", "content": user_message},
     ]
+
+
+def _batch_classification_item_schema() -> dict[str, Any]:
+    """Single-event classification schema plus the echoed event_index used to
+    align batch results back to their events (review §1.7)."""
+    base = _single_classification_schema()
+    props = dict(base["properties"])
+    props["event_index"] = {"type": "integer"}
+    return {
+        "type": "object",
+        "properties": props,
+        "required": [*base["required"], "event_index"],
+        "additionalProperties": False,
+    }
 
 
 def get_batch_router_json_schema(count: int) -> dict[str, Any]:
@@ -320,7 +346,7 @@ def get_batch_router_json_schema(count: int) -> dict[str, Any]:
             "properties": {
                 "classifications": {
                     "type": "array",
-                    "items": _single_classification_schema(),
+                    "items": _batch_classification_item_schema(),
                     "minItems": count,
                     "maxItems": count,
                 },

@@ -206,3 +206,66 @@ async def test_entity_merge_on_duplicate(db, sample_event, mock_chromadb):
     refs = json.loads(row[0])
     assert "bitbucket" in refs  # Original
     assert "jira" in refs  # Merged from router output
+
+
+@pytest.mark.asyncio
+async def test_batch_router_matches_by_event_index(db, sample_event):
+    """Batch classifications are matched to their events by the echoed
+    event_index, not by array position — so an out-of-order response still
+    assigns each classification to the right event (review §1.7)."""
+    from laya.pipeline.router import run_batch_router
+
+    await insert_test_event(db, event_id="evt_a")
+    await insert_test_event(db, event_id="evt_b")
+
+    ev_a = sample_event.model_copy(update={"event_id": "evt_a"})
+    ev_b = sample_event.model_copy(update={"event_id": "evt_b"})
+    events_data = [
+        {"event_id": "evt_a", "event": ev_a, "actor_relationship": "teammate", "space_id": "default"},
+        {"event_id": "evt_b", "event": ev_b, "actor_relationship": "teammate", "space_id": "default"},
+    ]
+
+    # Response is deliberately OUT OF ORDER (index 1 before index 0) with
+    # distinct priorities so we can tell which event received which.
+    cls_b = {**MOCK_ROUTER_RESPONSE, "priority": "LOW", "event_index": 1}
+    cls_a = {**MOCK_ROUTER_RESPONSE, "priority": "CRITICAL", "event_index": 0}
+    mock_resp = MagicMock()
+    mock_resp.parsed = {"classifications": [cls_b, cls_a]}
+
+    with patch("laya.pipeline.router.llm_call", new_callable=AsyncMock, return_value=mock_resp), \
+         patch("laya.pipeline.feedback.query_classification_rules", new_callable=AsyncMock, return_value=[]), \
+         patch("laya.pipeline.feedback.query_classification_corrections", new_callable=AsyncMock, return_value=[]):
+        results = await run_batch_router(events_data)
+
+    assert results["evt_a"].priority.value == "CRITICAL"
+    assert results["evt_b"].priority.value == "LOW"
+
+
+@pytest.mark.asyncio
+async def test_batch_router_drops_bad_index(db, sample_event):
+    """A classification with a missing/out-of-range event_index is dropped
+    instead of being misassigned by position (review §1.7)."""
+    from laya.pipeline.router import run_batch_router
+
+    await insert_test_event(db, event_id="evt_a")
+    await insert_test_event(db, event_id="evt_b")
+
+    ev_a = sample_event.model_copy(update={"event_id": "evt_a"})
+    ev_b = sample_event.model_copy(update={"event_id": "evt_b"})
+    events_data = [
+        {"event_id": "evt_a", "event": ev_a, "actor_relationship": "teammate", "space_id": "default"},
+        {"event_id": "evt_b", "event": ev_b, "actor_relationship": "teammate", "space_id": "default"},
+    ]
+
+    good = {**MOCK_ROUTER_RESPONSE, "event_index": 0}
+    bad = {**MOCK_ROUTER_RESPONSE, "event_index": 99}  # out of range
+    mock_resp = MagicMock()
+    mock_resp.parsed = {"classifications": [good, bad]}
+
+    with patch("laya.pipeline.router.llm_call", new_callable=AsyncMock, return_value=mock_resp), \
+         patch("laya.pipeline.feedback.query_classification_rules", new_callable=AsyncMock, return_value=[]), \
+         patch("laya.pipeline.feedback.query_classification_corrections", new_callable=AsyncMock, return_value=[]):
+        results = await run_batch_router(events_data)
+
+    assert "evt_a" in results
+    assert "evt_b" not in results  # the bad-index item was dropped, not misassigned
