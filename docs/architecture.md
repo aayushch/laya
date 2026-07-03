@@ -73,7 +73,8 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |  |  | Timeline,      | | Complex: open   |  | Entity search |   |  |  |
 |  |  |  | Live Agent,    | |  workspace      |  | Trace history |   |  |  |
 |  |  |  | Context,       | |                 |  | AI narratives |   |  |  |
-|  |  |  | Staged Outputs | +-----------------+  +---------------+   |  |  |
+|  |  |  | Staged Outputs | |                 |  |               |   |  |  |
+|  |  |  +----------------+ +-----------------+  +---------------+   |  |  |
 |  |  |                                                              |  |  |
 |  |  |  +- Omni ----------+                                         |  |  |
 |  |  |  | Rolling cross-  |                                         |  |  |
@@ -86,7 +87,6 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |  |  | Models, keys,  |                                          |  |  |
 |  |  |  | repos, team,   |                                          |  |  |
 |  |  |  | rules, privacy |                                          |  |  |
-|  |  |  +----------------+                                          |  |  |
 |  |  |  +----------------+                                          |  |  |
 |  |  +----------------------------+---------------------------------+  |  |
 |  |                               | WebSocket (bidirectional)          |  |

@@ -44,18 +44,23 @@ OAUTH_PROVIDERS: dict[str, dict] = {
     "gmail": {
         "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
         "token_url": "https://oauth2.googleapis.com/token",
+        # Must stay in lockstep with the Google Cloud Console verification
+        # submission — Google rejects verification if the consent screen shows
+        # scopes not declared there. gmail.modify already covers every call we
+        # make (messages get/list, send, label modify); adding gmail.readonly
+        # or gmail.send would be redundant and widen the CASA audit surface.
         "scopes": [
             "https://www.googleapis.com/auth/gmail.modify",
-            "https://www.googleapis.com/auth/gmail.send",
-            "https://www.googleapis.com/auth/gmail.readonly",
         ],
         "n8n_type": "gmailOAuth2",
     },
     "calendar": {
         "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
         "token_url": "https://oauth2.googleapis.com/token",
+        # Same lockstep constraint as gmail above. calendar.events covers event
+        # CRUD + trigger polling — the full "auth/calendar" scope (calendar list
+        # /settings management) is unused and not in the verification submission.
         "scopes": [
-            "https://www.googleapis.com/auth/calendar",
             "https://www.googleapis.com/auth/calendar.events",
         ],
         "n8n_type": "googleCalendarOAuth2Api",

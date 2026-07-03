@@ -94,7 +94,6 @@ User clicks "Connect Gmail" in Settings > Integrations
   |         &redirect_uri=http://127.0.0.1:8420/egress/connections/oauth/callback
   |         &response_type=code
   |         &scope=https://www.googleapis.com/auth/gmail.modify
-  |                https://www.googleapis.com/auth/gmail.send
   |         &state={state_token}
   |         &access_type=offline
   |         &prompt=consent
