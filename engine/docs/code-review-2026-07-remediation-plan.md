@@ -2,7 +2,31 @@
 
 **Source:** [`code-review-2026-07.md`](./code-review-2026-07.md) (review dated 2026-07-02)
 **Plan owner:** engineering
-**Status:** proposed — not yet started
+**Status:** in progress — see Implementation Status below
+
+---
+
+## 0. Implementation status (updated 2026-07-03)
+
+Work landed on branch **`code-review-2026-07-remediation`** (local commits, not pushed), each phase a separate commit, full engine test suite green (856 passing) after every batch.
+
+**✅ Complete & tested:**
+- **Phase 1** — all 12 quick wins (P1-1…P1-12). Note: P1-12 `llm_retries` was *wired* (not deleted) since it had heavy test coupling and the real defect was that it was ignored.
+- **Phase 2** — all security items (P2-1 TrustedHost+CSRF, P2-2 MCP token temp file, P2-3 port-reclaim identity check, P2-4 n8n port-conflict visibility). Rust `cargo check` green.
+- **Phase 3** — all 9 correctness-under-load items (P3-1 queue wedge/reaper … P3-9 executor guard), plus new batch-router alignment tests.
+- **Phase 4 (partial)** — P4-1, P4-2, P4-4, P4-5, P4-6, P4-7, P4-8, P4-11, P4-13, P4-14, P4-15, P4-17, P4-19, P4-21, P4-27, P4-28 (stderr deque part).
+- **Phase 5 (partial)** — P5-1 (=P1-8), P5-2 keychain TTL cache, P5-3 settings mtime cache, P5-4 FTS O(N²) churn, P5-8 chat ordering tiebreaker.
+- **Phase 6 (partial)** — P6-1/2/3/4 (subsumed by P1-1/P4-1/P1-6/P3-6), P6-6 tenacity retry filter, P6-15 token-accounting add, P6-16 failed-call cost counted.
+
+**⏳ Remaining (not yet done):**
+- **Phase 4** — egress P4-18 (SMTP key mismatch), P4-20 (n8n timeout double-send), P4-22 (chat egress connection_id/jira_base_url), P4-23 (oauth health), P4-24 (execution idempotency), P4-25 (handle_callback rollback), P4-26 (WS `send_input` no-op — needs UI-flow verification); API/DB P4-9 (`/cards/grouped` unbounded), P4-10 (feed FTS), P4-12 (txn-isolation guards), P4-16 (prev/next date DST); **all 8 UI Svelte items P4-29…P4-36**; MCP-session-leak half of P4-28.
+- **Phase 5** — P5-5 (feed broadcast before LLM), P5-6 (N+1 queries), P5-7 (subsumed).
+- **Phase 6** — the token-*reduction*/prompt-engineering items P6-5, P6-7, P6-8, P6-9, P6-10, P6-11, P6-12, P6-13, P6-14, P6-17 (need prompt-audit + golden-output harness per working principle #4; not safe to land blind).
+- **Phase 7** — the entire refactor program P7-1…P7-10 (retrieval consolidation, persona spec table, agent adapter base, llm_call/streaming merge, cards_api split, feed-page extraction, etc.) — large, behavior-preserving refactors best done one-per-PR against the existing test suite.
+
+The remaining work is dominated by (a) UI Svelte changes that need the running app to verify, and (b) the P7 refactors and P6 prompt program, each a focused multi-step effort. These are deliberately left for dedicated passes rather than landed unverified.
+
+---
 
 This plan turns every comment in the review into a concrete, sequenced, independently-shippable task. It deduplicates findings that the review lists in more than one section (e.g. `embed_document` blocking, `TrustedHostMiddleware`, MCP-token-in-argv) into a single task with cross-references. A [coverage matrix](#12-coverage-matrix) at the end proves every review subsection maps to at least one task.
 
