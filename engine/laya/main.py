@@ -15,6 +15,7 @@ import uvicorn
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 
 from laya.agents import session_manager
@@ -134,8 +135,32 @@ def _start_parent_watchdog() -> None:
     log.info("parent_watchdog_started", parent_pid=parent_pid)
 
 
+def _is_laya_process(pid: int) -> bool:
+    """Best-effort check that ``pid`` looks like a stale Laya engine before we
+    SIGTERM it to reclaim our port. Without this, reclaiming the port would kill
+    whatever unrelated user process happened to be listening on it (review §6).
+    Uses psutil on Windows (already a dependency there) and `ps` elsewhere so we
+    don't add a hard psutil requirement on Unix."""
+    try:
+        if sys.platform == "win32":
+            import psutil
+            proc = psutil.Process(pid)
+            haystack = " ".join([proc.name() or "", *(proc.cmdline() or [])])
+        else:
+            import subprocess
+            out = subprocess.run(
+                ["ps", "-p", str(pid), "-o", "command="],
+                capture_output=True, text=True, timeout=3,
+            )
+            haystack = out.stdout
+        return "laya" in haystack.lower()
+    except Exception:
+        return False
+
+
 def _kill_stale_engine(host: str, port: int) -> None:
-    """If another process is holding our port, kill it before we proceed."""
+    """If another *Laya* process is holding our port, kill it before we proceed.
+    A foreign process on the port is left alone and logged (review §6)."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         sock.bind((host, port))
@@ -160,6 +185,9 @@ def _kill_stale_engine(host: str, port: int) -> None:
                     and conn.pid
                     and conn.pid != my_pid
                 ):
+                    if not _is_laya_process(conn.pid):
+                        log.warning("port_held_by_foreign_process", pid=conn.pid, port=port)
+                        continue
                     log.warning("killing_stale_engine", pid=conn.pid, port=port)
                     try:
                         psutil.Process(conn.pid).terminate()
@@ -183,11 +211,17 @@ def _kill_stale_engine(host: str, port: int) -> None:
         )
         pids = [int(p) for p in result.stdout.strip().split("\n") if p.strip()]
         my_pid = os.getpid()
+        killed_any = False
         for pid in pids:
-            if pid != my_pid:
-                log.warning("killing_stale_engine", pid=pid, port=port)
-                os.kill(pid, signal.SIGTERM)
-        if pids:
+            if pid == my_pid:
+                continue
+            if not _is_laya_process(pid):
+                log.warning("port_held_by_foreign_process", pid=pid, port=port)
+                continue
+            log.warning("killing_stale_engine", pid=pid, port=port)
+            os.kill(pid, signal.SIGTERM)
+            killed_any = True
+        if killed_any:
             import time
 
             time.sleep(1)
@@ -371,6 +405,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Laya Engine", version="0.1.0", lifespan=lifespan)
+
+# Reject requests whose Host header isn't a loopback name. Without this a
+# DNS-rebinding page (attacker domain → 127.0.0.1) sails past the CORS allowlist
+# and can reach the unauthenticated REST API, including GET /mcp/token/reveal
+# (review §6). "test"/"testserver" are allowed only so the ASGI test client
+# (base_url http://test) keeps working — a rebinding attack presents the
+# attacker's own domain as Host, which is not in this list.
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=["127.0.0.1", "localhost", "test", "testserver"],
+)
 
 # Allow the Tauri/SvelteKit frontend to talk to the engine
 app.add_middleware(

@@ -487,11 +487,46 @@ fn start_health_polling(tray: TrayIcon) {
     });
 }
 
-/// Best-effort kill of any process listening on the given TCP port.
+/// Return the lowercased command line for a pid (best-effort, empty on failure).
+/// Used to confirm a port-holder is actually a Laya process before we kill it.
+#[cfg(unix)]
+fn process_cmdline(pid: i32) -> String {
+    std::process::Command::new("ps")
+        .args(["-p", &pid.to_string(), "-o", "command="])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_lowercase())
+        .unwrap_or_default()
+}
+
+#[cfg(windows)]
+fn process_cmdline(pid: u32) -> String {
+    let mut cmd = std::process::Command::new("wmic");
+    no_window(&mut cmd);
+    cmd.args([
+        "process",
+        "where",
+        &format!("ProcessId={}", pid),
+        "get",
+        "CommandLine",
+    ])
+    .output()
+    .ok()
+    .map(|o| String::from_utf8_lossy(&o.stdout).to_lowercase())
+    .unwrap_or_default()
+}
+
+/// Best-effort kill of a *Laya* process listening on the given TCP port.
 /// Used as a safety net during shutdown to catch orphaned engine processes,
 /// and by n8n startup to reclaim the port from stale instances.
+///
+/// `identity` must appear (case-insensitively) in the port-holder's command
+/// line for it to be killed — otherwise an unrelated user process that happens
+/// to listen on the port would be SIGTERM'd (review §6). Both the engine and the
+/// Laya-managed n8n run from `~/.laya/...`, so "laya" identifies both. If the
+/// command line can't be read the process is left alone (safe default).
 #[cfg(unix)]
-pub(crate) fn kill_process_on_port(port: u16) {
+pub(crate) fn kill_process_on_port(port: u16, identity: &str) {
     if let Ok(output) = std::process::Command::new("lsof")
         .args(["-ti", &format!("tcp:{}", port)])
         .output()
@@ -500,6 +535,14 @@ pub(crate) fn kill_process_on_port(port: u16) {
             let pids = String::from_utf8_lossy(&output.stdout);
             for pid_str in pids.split_whitespace() {
                 if let Ok(pid) = pid_str.parse::<i32>() {
+                    if !process_cmdline(pid).contains(identity) {
+                        log::warn!(
+                            "Port {} held by foreign process (pid {}); not killing",
+                            port,
+                            pid
+                        );
+                        continue;
+                    }
                     log::info!("Killing orphaned process on port {} (pid {})", port, pid);
                     unsafe { libc::kill(pid, libc::SIGTERM); }
                 }
@@ -509,7 +552,7 @@ pub(crate) fn kill_process_on_port(port: u16) {
 }
 
 #[cfg(windows)]
-pub(crate) fn kill_process_on_port(port: u16) {
+pub(crate) fn kill_process_on_port(port: u16, identity: &str) {
     let mut netstat = std::process::Command::new("netstat");
     no_window(&mut netstat);
     if let Ok(output) = netstat.args(["-ano", "-p", "tcp"]).output() {
@@ -525,6 +568,14 @@ pub(crate) fn kill_process_on_port(port: u16) {
                     .last()
                     .and_then(|s| s.parse::<u32>().ok())
                 {
+                    if !process_cmdline(pid).contains(identity) {
+                        log::warn!(
+                            "Port {} held by foreign process (pid {}); not killing",
+                            port,
+                            pid
+                        );
+                        continue;
+                    }
                     log::info!("Killing orphaned process on port {} (pid {})", port, pid);
                     let mut tk = std::process::Command::new("taskkill");
                     no_window(&mut tk);
@@ -822,6 +873,9 @@ pub fn run() {
                 n8n::N8nStartResult::StartFailed(msg) => {
                     log::error!("Failed to start n8n: {}", msg);
                 }
+                n8n::N8nStartResult::PortConflict(msg) => {
+                    log::error!("n8n port conflict: {}", msg);
+                }
             }
 
             // --- Spawn engine ---
@@ -1049,7 +1103,7 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
                     // our cleanup above (race), or if we never got a handle,
                     // kill any process listening on the engine port (8420).
                     if !killed_engine {
-                        kill_process_on_port(sidecar::engine_port());
+                        kill_process_on_port(sidecar::engine_port(), "laya");
                     }
 
                     log::info!("Stopping n8n process");

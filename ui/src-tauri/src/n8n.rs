@@ -653,6 +653,10 @@ pub enum N8nStartResult {
     NodeNotFound(String),
     N8nNotInstalled(String),
     StartFailed(String),
+    /// The n8n port is held by a process that isn't Laya's n8n, so we refused
+    /// to kill it and can't bind. Surfaced explicitly instead of failing
+    /// invisibly (review §6 / P2-4).
+    PortConflict(String),
 }
 
 /// Start the n8n process. Called on app startup.
@@ -667,9 +671,24 @@ pub fn startup_n8n() -> N8nStartResult {
         if we_own_it {
             return N8nStartResult::AlreadyRunning;
         }
+        // Only reclaim the port from a *Laya-managed* n8n (binary lives under
+        // ~/.laya/...). A user's own n8n that happens to sit on this port is
+        // left alone rather than killed (review §6).
         log::warn!("Orphaned n8n on port {} — killing and respawning", N8N_PORT);
-        crate::kill_process_on_port(N8N_PORT);
+        crate::kill_process_on_port(N8N_PORT, "laya");
         std::thread::sleep(Duration::from_secs(1));
+
+        // If something is STILL answering on the port, it was a foreign process
+        // that kill_process_on_port deliberately left alone. Report the conflict
+        // clearly rather than falling through to a spawn that fails to bind with
+        // an opaque error (review §6 / P2-4).
+        if is_n8n_running() {
+            return N8nStartResult::PortConflict(format!(
+                "Port {} is in use by a process that isn't Laya's n8n. \
+                 Stop that process (or free the port) and restart Laya.",
+                N8N_PORT
+            ));
+        }
     }
 
     // 2. Node.js available?
@@ -930,6 +949,7 @@ pub fn start_n8n() -> Result<String, String> {
         N8nStartResult::NodeNotFound(msg) => Err(msg),
         N8nStartResult::N8nNotInstalled(msg) => Err(msg),
         N8nStartResult::StartFailed(msg) => Err(msg),
+        N8nStartResult::PortConflict(msg) => Err(msg),
     }
 }
 

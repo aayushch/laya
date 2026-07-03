@@ -15,8 +15,8 @@ import structlog
 from laya.agents.base import CodingAgent
 from laya.agents.mcp_config import (
     augment_prompt_with_mcp_hint,
-    build_laya_mcp_config_json,
     laya_allowed_tool_flags,
+    write_laya_mcp_config_file,
 )
 from laya.agents.subprocess_helper import AgentProcess, strip_ansi
 from laya.models.workspace import (
@@ -56,6 +56,19 @@ class ClaudeCodeAgent(CodingAgent):
         self._cc_session_id: str | None = None
         self._repo_path: str = ""
         self._status: SessionStatus = SessionStatus.STARTING
+        # 0600 temp files holding the MCP config (with bearer token) passed via
+        # --mcp-config. Tracked so they can be unlinked once the process ends,
+        # keeping the token out of `ps` argv (review §6).
+        self._mcp_config_paths: list[str] = []
+
+    def _cleanup_mcp_configs(self) -> None:
+        import os
+        for p in self._mcp_config_paths:
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+        self._mcp_config_paths.clear()
 
     @property
     def cc_session_id(self) -> str | None:
@@ -81,7 +94,8 @@ class ClaudeCodeAgent(CodingAgent):
         # endpoint. The agent inherits the user's Settings → MCP scope and
         # auth configuration; the in-app agent and external clients share one
         # transport.
-        mcp_config_json = build_laya_mcp_config_json(space_id)
+        mcp_config_path = write_laya_mcp_config_file(space_id)
+        self._mcp_config_paths.append(mcp_config_path)
         effective_prompt = augment_prompt_with_mcp_hint(prompt)
 
         args = [
@@ -94,7 +108,7 @@ class ClaudeCodeAgent(CodingAgent):
             "--permission-mode",
             permission_mode,
             "--mcp-config",
-            mcp_config_json,
+            mcp_config_path,
         ]
 
         # Allowlist Laya MCP tools; any tool not in --allowedTools is denied in -p mode.
@@ -154,7 +168,8 @@ class ClaudeCodeAgent(CodingAgent):
         # Re-pass --mcp-config on every resume; claude -p spawns a fresh
         # child process each invocation and does not inherit MCP config from
         # the original session.
-        mcp_config_json = build_laya_mcp_config_json(space_id)
+        mcp_config_path = write_laya_mcp_config_file(space_id)
+        self._mcp_config_paths.append(mcp_config_path)
 
         args = [
             self._binary,
@@ -168,7 +183,7 @@ class ClaudeCodeAgent(CodingAgent):
             "--permission-mode",
             permission_mode,
             "--mcp-config",
-            mcp_config_json,
+            mcp_config_path,
         ]
 
         args.extend(laya_allowed_tool_flags())
@@ -217,6 +232,8 @@ class ClaudeCodeAgent(CodingAgent):
                     requires_input=True,
                 )
         exit_code = await self._process.wait()
+        # Process has exited — the MCP config temp files are no longer needed.
+        self._cleanup_mcp_configs()
 
         # If cancel() was already called, honour that status — don't overwrite
         # based on the exit code (SIGKILL gives -9/137, not the clean 143).
@@ -425,6 +442,7 @@ class ClaudeCodeAgent(CodingAgent):
 
     async def cancel(self) -> None:
         await self._process.terminate()
+        self._cleanup_mcp_configs()
         self._status = SessionStatus.CANCELLED
 
     def get_status(self) -> SessionStatus:

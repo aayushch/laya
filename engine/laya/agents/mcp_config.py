@@ -17,6 +17,8 @@ non-interactive `-p` mode.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from typing import Any
 
 from laya.config import ENGINE_HOST, ENGINE_PORT, load_settings
@@ -64,6 +66,28 @@ def build_laya_mcp_config(space_id: str | None) -> dict[str, Any]:
 def build_laya_mcp_config_json(space_id: str | None) -> str:
     """JSON-serialized form suitable for passing inline to `--mcp-config`."""
     return json.dumps(build_laya_mcp_config(space_id))
+
+
+def write_laya_mcp_config_file(space_id: str | None) -> str:
+    """Write the MCP config JSON to a 0600 temp file and return its path.
+
+    The config embeds the MCP bearer token. Passing it inline via `--mcp-config
+    '<json>'` argv leaks the token to any local process reading `ps`; a file
+    argument does not (review §6). Caller is responsible for unlinking the file
+    once the agent process has started/finished.
+    """
+    data = build_laya_mcp_config_json(space_id)
+    # mkstemp creates the file with 0600 perms on POSIX (owner-only).
+    fd, path = tempfile.mkstemp(prefix="laya_mcp_", suffix=".json")
+    try:
+        os.write(fd, data.encode("utf-8"))
+    finally:
+        os.close(fd)
+    try:
+        os.chmod(path, 0o600)  # explicit, in case the platform default differs
+    except OSError:
+        pass
+    return path
 
 
 def laya_allowed_tool_flags() -> list[str]:
