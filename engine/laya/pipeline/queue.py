@@ -455,14 +455,14 @@ async def _run_workers_pipeline(
         stager_output = await run_stager(event, router_output, results, space_id=space_id, user_identity=user_identity, actor_relationship=actor_relationship, participant_roles=participant_roles)
         await run_emit(event, router_output, stager_output, results, card_id=card_id, space_id=space_id)
     except Exception as e:
-        # Mark the provisional card as failed
+        # Mark the provisional card as failed via the lifecycle SSOT (review §5.4
+        # — P7-4). Best-effort: a card in a state that can't transition to failed
+        # just leaves the outer error to propagate.
         try:
-            db = await get_db()
-            await db.execute(
-                "UPDATE action_cards SET status='failed', failed_stage='pipeline', updated_at=CURRENT_TIMESTAMP WHERE card_id=?",
-                (card_id,),
+            from laya.models.card_lifecycle import transition_card_status
+            await transition_card_status(
+                card_id, "failed", actor="pipeline", failed_stage="pipeline"
             )
-            await db.commit()
         except Exception:
             pass
         raise

@@ -764,68 +764,43 @@ async def reopen_card(card_id: str) -> dict:
             status_code=409, detail=f"Card status '{current}' cannot be reopened"
         )
 
-    now = db_now()
     failed_stage = row["failed_stage"] if current == "failed" else None
 
+    # Decide the reopen target. Reopen is a deliberate non-forward restore/retry,
+    # so it goes through the lifecycle SSOT with allow_restore=True — a single
+    # write + broadcast + atomic status guard — instead of the four near-identical
+    # raw UPDATE/commit/broadcast blocks that used to live here (review §5.4 — P7-4).
+    restoring = False
+    log_extra: dict = {}
     if failed_stage in ("agent_spawn", "agent_execution") and row["agent_prompt"]:
-        # Agent failed — put card back to ready so user can re-invoke agent
-        new_status = "ready"
-        await db.execute(
-            "UPDATE action_cards SET status = ?, failed_stage = NULL, resolved_at = NULL, updated_at = ? WHERE card_id = ?",
-            (new_status, now, card_id),
-        )
-        await db.commit()
-
-        await manager.broadcast(
-            {"type": "card_updated", "card_id": card_id, "payload": {"status": new_status}}
-        )
-
-        log.info("card_reopened", card_id=card_id, retry_stage=failed_stage, new_status=new_status)
-
+        new_status = "ready"  # agent failed — let the user re-invoke it
+        log_extra = {"retry_stage": failed_stage}
     elif failed_stage == "action_execution":
-        # Action execution failed — put card back to ready so user can re-execute
-        new_status = "ready"
-        await db.execute(
-            "UPDATE action_cards SET status = ?, failed_stage = NULL, resolved_at = NULL, updated_at = ? WHERE card_id = ?",
-            (new_status, now, card_id),
-        )
-        await db.commit()
-
-        await manager.broadcast(
-            {"type": "card_updated", "card_id": card_id, "payload": {"status": new_status}}
-        )
-
-        log.info("card_reopened", card_id=card_id, retry_stage=failed_stage, new_status=new_status)
-
+        new_status = "ready"  # action failed — let the user re-execute
+        log_extra = {"retry_stage": failed_stage}
     elif row["previous_status"]:
-        # Card has a saved previous_status (from done/dismissed/archived) — restore it
-        new_status = row["previous_status"]
-        await db.execute(
-            "UPDATE action_cards SET status = ?, previous_status = NULL, resolved_at = NULL, updated_at = ? WHERE card_id = ?",
-            (new_status, now, card_id),
-        )
-        await db.commit()
-
-        await manager.broadcast(
-            {"type": "card_updated", "card_id": card_id, "payload": {"status": new_status}}
-        )
-
-        log.info("card_reopened", card_id=card_id, previous_status=row["previous_status"], new_status=new_status)
-
+        new_status = row["previous_status"]  # restore the saved pre-terminal status
+        restoring = True
+        log_extra = {"previous_status": row["previous_status"]}
     else:
-        # No previous_status saved — reset to pending for full reprocessing
-        new_status = "pending"
-        await db.execute(
-            "UPDATE action_cards SET status = ?, failed_stage = NULL, resolved_at = NULL, updated_at = ? WHERE card_id = ?",
-            (new_status, now, card_id),
-        )
-        await db.commit()
+        new_status = "pending"  # no context — full reprocess
+        log_extra = {"retry_stage": failed_stage}
 
-        await manager.broadcast(
-            {"type": "card_updated", "card_id": card_id, "payload": {"status": new_status}}
+    from laya.models.card_lifecycle import transition_card_status
+    try:
+        await transition_card_status(
+            card_id, new_status, actor="user",
+            save_previous=False,
+            allow_restore=True,
+            # A non-terminal target already clears resolved_at/failed_stage in the
+            # SSOT; also clear the consumed previous_status on a restore.
+            extra_fields={"previous_status": None} if restoring else None,
         )
+    except ValueError as e:
+        # Status changed under us (atomic guard) — surface as a conflict.
+        raise HTTPException(status_code=409, detail=str(e))
 
-        log.info("card_reopened", card_id=card_id, retry_stage=failed_stage, new_status=new_status)
+    log.info("card_reopened", card_id=card_id, new_status=new_status, **log_extra)
 
     # Update daily summary with status change
     header_rows = await db.execute_fetchall(

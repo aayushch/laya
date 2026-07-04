@@ -562,10 +562,19 @@ async def get_cards_by_entity(
 # ---------------------------------------------------------------------------
 
 
-async def _update_card_status(card_id: str, new_status: str) -> dict[str, Any]:
-    """Update a card's status, broadcast to frontend, and return result."""
+async def _update_card_status(
+    card_id: str, new_status: str, *, allow_restore: bool = False
+) -> dict[str, Any]:
+    """Update a card's status via the lifecycle SSOT, then audit and return.
+
+    Routes through transition_card_status (review §5.4 — P7-4) so a chat-initiated
+    status change gets the same validation, atomic status guard, resolved_at
+    handling and card_updated broadcast as a UI-initiated one, instead of a raw
+    UPDATE. An invalid transition is returned as an error (the tool contract) rather
+    than raised. allow_restore is set by reopen, whose dismissed/archived → pending
+    is a deliberate non-forward move.
+    """
     db = await get_db()
-    now = db_now()
 
     rows = await db.execute_fetchall(
         "SELECT card_id, status FROM action_cards WHERE card_id = ?",
@@ -575,20 +584,14 @@ async def _update_card_status(card_id: str, new_status: str) -> dict[str, Any]:
         return {"error": f"Card '{card_id}' not found"}
 
     old_status = rows[0]["status"]
-    resolved_at = now if new_status in ("dismissed", "done", "archived") else None
 
-    await db.execute(
-        """UPDATE action_cards
-           SET status = ?, resolved_at = COALESCE(?, resolved_at), updated_at = ?
-           WHERE card_id = ?""",
-        (new_status, resolved_at, now, card_id),
-    )
-    await db.commit()
-
-    # Broadcast status change to frontend so UI updates in real-time
-    await manager.broadcast(
-        {"type": "card_updated", "card_id": card_id, "payload": {"status": new_status}}
-    )
+    from laya.models.card_lifecycle import transition_card_status
+    try:
+        await transition_card_status(
+            card_id, new_status, actor="chat", allow_restore=allow_restore
+        )
+    except ValueError as e:
+        return {"error": str(e)}
 
     # Mirror the audit trail the REST card-lifecycle endpoints write (cards_api.py),
     # so a card mutated via chat is recorded the same as one mutated via the UI.
@@ -629,4 +632,5 @@ async def archive_card(card_id: str) -> dict[str, Any]:
 
 async def reopen_card(card_id: str) -> dict[str, Any]:
     """Reopen a dismissed/archived card back to pending."""
-    return await _update_card_status(card_id, "pending")
+    # allow_restore: dismissed/archived → pending is a deliberate non-forward move.
+    return await _update_card_status(card_id, "pending", allow_restore=True)

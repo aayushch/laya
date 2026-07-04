@@ -590,3 +590,40 @@ class TestGroupedPrevNextDates:
         data = resp.json()
         assert data["prev_date"] == "2026-01-10"
         assert data["next_date"] == "2026-01-12"
+
+
+@pytest.mark.asyncio
+class TestReopenCardSSOT:
+    async def test_reopen_dismissed_restores_previous_status(self, db):
+        """Reopening a dismissed card restores its saved previous_status through the
+        lifecycle SSOT (allow_restore), clearing resolved_at/previous_status (P7-4)."""
+        await insert_test_card(db, status="pending")
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            await client.post("/cards/card_test/dismiss", json={})  # saves previous_status=pending
+            resp = await client.post("/cards/card_test/reopen")
+
+        assert resp.status_code == 200
+        rows = await db.execute_fetchall(
+            "SELECT status, previous_status, resolved_at FROM action_cards WHERE card_id = ?",
+            ("card_test",),
+        )
+        assert rows[0]["status"] == "pending"        # restored
+        assert rows[0]["previous_status"] is None     # consumed
+        assert rows[0]["resolved_at"] is None         # cleared
+
+    async def test_reopen_archived_bypasses_forward_only(self, db):
+        """An archived card has NO valid forward transitions, but reopen still works
+        because it goes through the SSOT with allow_restore=True (P7-4)."""
+        await insert_test_card(db, status="archived")
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post("/cards/card_test/reopen")
+
+        assert resp.status_code == 200
+        rows = await db.execute_fetchall(
+            "SELECT status FROM action_cards WHERE card_id = ?", ("card_test",)
+        )
+        assert rows[0]["status"] == "pending"  # no previous_status → full reprocess
