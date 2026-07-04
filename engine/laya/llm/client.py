@@ -558,6 +558,153 @@ async def log_to_audit(
         log.warning("audit_log_failed", error=str(e))
 
 
+async def _prepare_call_kwargs(
+    *,
+    model: str,
+    messages: list[dict],
+    temperature: float,
+    max_tokens: int,
+    space_id: str | None,
+    tools: list[dict] | None,
+    response_schema: dict | None = None,
+    stream: bool = False,
+) -> tuple[str, dict[str, Any], dict[str, Any]]:
+    """Resolve provider details and assemble the ``acompletion`` kwargs shared by
+    ``llm_call`` and ``llm_call_streaming`` so the two can't drift (review §5.6 —
+    P7-5). ``model`` is the role/space-resolved model string; the agent-backend
+    branch is handled by each caller BEFORE this (they dispatch it differently).
+
+    Crucially the max_tokens clamp lives here now — the streaming path previously
+    lacked it and sent DEFAULT_MAX_TOKENS (65536) to strict vLLM servers, tripping
+    the exact 400 the clamp was built to prevent.
+
+    Returns ``(litellm_model, kwargs, meta)`` where ``meta`` carries
+    ``{is_custom, max_output_ceiling}`` that the caller's truncation/salvage logic
+    needs.
+    """
+    # Space API key: space override → global (already in env)
+    space_api_key = None
+    if space_id:
+        provider = model.split("/")[0] if "/" in model else None
+        if provider:
+            space_api_key = await _get_space_api_key(provider, space_id)
+
+    # Custom provider overrides (api_base, timeout, api_key)
+    custom_provider_extra: dict[str, Any] = {}
+    custom_meta = _get_custom_provider_meta(model)
+    original_model = model  # role/space-resolved; custom providers: "{id}/{name}"
+    custom = _resolve_custom_provider(model)
+    if custom:
+        model, custom_provider_extra = custom
+
+    # Gemini 3+ models degrade with temperature < 1.0 — force it to 1.0
+    effective_temperature = temperature
+    if model.split("/")[-1].startswith("gemini-3"):
+        effective_temperature = 1.0
+
+    # Clamp max_tokens to what this model/server accepts so DEFAULT_MAX_TOKENS
+    # never trips a 400 on strict providers and truncation-retry can't overflow
+    # the output cap. None ⇒ unknown, so leave as-is (local servers self-clamp).
+    max_output_ceiling = await _resolve_max_output_ceiling(
+        litellm_model=model,
+        original_model=original_model,
+        is_custom=custom is not None,
+        messages=messages,
+    )
+    if max_output_ceiling is not None and max_tokens > max_output_ceiling:
+        log.debug(
+            "llm_max_tokens_clamped",
+            model=model,
+            requested=max_tokens,
+            ceiling=max_output_ceiling,
+        )
+        max_tokens = max_output_ceiling
+
+    from laya.pipeline.queue import get_model_timeout
+
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "temperature": effective_temperature,
+        "max_tokens": max_tokens,
+        "timeout": get_model_timeout(),
+    }
+    if stream:
+        kwargs["stream"] = True
+
+    # Merge custom provider overrides; use the higher of pipeline vs provider timeout.
+    provider_timeout = custom_provider_extra.pop("timeout", None)
+    kwargs.update(custom_provider_extra)
+    if provider_timeout is not None:
+        kwargs["timeout"] = max(float(kwargs["timeout"]), float(provider_timeout))
+
+    # Space-specific API key takes precedence.
+    if space_api_key:
+        kwargs["api_key"] = space_api_key
+
+    # Structured output handling (no-op when response_schema is None, e.g. streaming).
+    if response_schema:
+        if custom_meta and not custom_meta.get("supports_structured_output", True):
+            schema_text = json.dumps(
+                response_schema.get("schema", response_schema), indent=2
+            )
+            instruction = (
+                f"\n\nYou MUST respond with valid JSON matching this exact schema. "
+                f"Output ONLY the JSON object, no other text.\n\nSchema:\n{schema_text}"
+            )
+            msg_list = list(kwargs["messages"])
+            if msg_list and msg_list[0].get("role") == "system":
+                msg_list[0] = {
+                    **msg_list[0],
+                    "content": msg_list[0]["content"] + instruction,
+                }
+            else:
+                msg_list.insert(0, {"role": "system", "content": instruction})
+            kwargs["messages"] = msg_list
+        else:
+            kwargs["response_format"] = {
+                "type": "json_schema",
+                "json_schema": response_schema,
+            }
+
+    # Tools (skip for models that don't support tool calling).
+    if tools and not (custom_meta and not custom_meta.get("supports_tool_calling", True)):
+        kwargs["tools"] = tools
+        kwargs["tool_choice"] = "auto"
+
+    # Disable reasoning for structured-output calls on local reasoning models so a
+    # <think> block doesn't eat the whole max_tokens budget before the JSON.
+    if response_schema and custom_meta and custom_meta.get("supports_reasoning"):
+        existing_extra = kwargs.get("extra_body") or {}
+        existing_ctk = existing_extra.get("chat_template_kwargs") or {}
+        kwargs["extra_body"] = {
+            **existing_extra,
+            "chat_template_kwargs": {**existing_ctk, "enable_thinking": False},
+        }
+
+    # Stop non-stopping local models padding max_tokens with newlines. Cloud
+    # providers manage their own stop tokens — scope to custom providers.
+    if custom is not None:
+        existing_stop = kwargs.get("stop")
+        if existing_stop:
+            extra = existing_stop if isinstance(existing_stop, list) else [existing_stop]
+            kwargs["stop"] = [*_LOCAL_STOP_SEQUENCES, *extra]
+        else:
+            kwargs["stop"] = list(_LOCAL_STOP_SEQUENCES)
+        # Windowed repeat penalty only for schema calls (nudges off the newline loop).
+        if response_schema:
+            existing_extra = kwargs.get("extra_body") or {}
+            kwargs["extra_body"] = {**existing_extra, "repeat_penalty": _LOCAL_REPEAT_PENALTY}
+
+    # Inject current date/time (cache-safe) + annotate for prompt caching. Message
+    # mutations run LAST so schema text-injection above is included.
+    kwargs["messages"] = _inject_current_datetime(kwargs["messages"])
+    kwargs["messages"] = _apply_prompt_caching(model, kwargs["messages"])
+
+    meta = {"is_custom": custom is not None, "max_output_ceiling": max_output_ceiling}
+    return model, kwargs, meta
+
+
 async def llm_call(
     role: str,
     messages: list[dict[str, str]],
@@ -694,152 +841,30 @@ async def llm_call(
             )
             raise
 
-    # Resolve API key: space override → global (already in env)
-    space_api_key = None
-    if space_id:
-        provider = model.split("/")[0] if "/" in model else None
-        if provider:
-            space_api_key = await _get_space_api_key(provider, space_id)
-
-    # Resolve custom provider overrides (api_base, timeout, api_key)
-    custom_provider_extra: dict[str, Any] = {}
-    custom_meta = _get_custom_provider_meta(model)
-    original_model = model  # role/space-resolved string; custom providers: "{id}/{name}"
-    custom = _resolve_custom_provider(model)
-    if custom:
-        model, custom_provider_extra = custom
-
-    # Gemini 3+ models degrade with temperature < 1.0 — force it to 1.0
-    effective_temperature = temperature
-    model_name = model.split("/")[-1]  # strip provider prefix
-    if model_name.startswith("gemini-3"):
-        effective_temperature = 1.0
-
-    # Clamp the requested max_tokens to what this model/server will actually accept, so the
-    # lenient DEFAULT_MAX_TOKENS never trips a 400 on strict providers (vLLM/OpenAI/Anthropic)
-    # and the truncation-retry below can't overflow the model's output cap. None ⇒ unknown,
-    # so leave max_tokens as-is (LMStudio/Ollama clamp on their own).
-    max_output_ceiling = await _resolve_max_output_ceiling(
-        litellm_model=model,
-        original_model=original_model,
-        is_custom=custom is not None,
+    # Build the shared acompletion kwargs. Model is already resolved above and
+    # the agent backend was handled; everything else (space key, custom provider,
+    # max_tokens clamp, schema, tools, stop-sequences, datetime/caching) lives in
+    # the single seam both llm_call and llm_call_streaming go through so they can't
+    # drift (review §5.6 — P7-5).
+    model, kwargs, _prep = await _prepare_call_kwargs(
+        model=model,
         messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        space_id=space_id,
+        tools=tools,
+        response_schema=response_schema,
+        stream=False,
     )
-    if max_output_ceiling is not None and max_tokens > max_output_ceiling:
-        log.debug(
-            "llm_max_tokens_clamped",
-            model=model,
-            requested=max_tokens,
-            ceiling=max_output_ceiling,
-        )
-        max_tokens = max_output_ceiling
+    is_custom = _prep["is_custom"]
+    max_output_ceiling = _prep["max_output_ceiling"]
+    max_tokens = kwargs["max_tokens"]  # possibly clamped by _prepare_call_kwargs
 
-    from laya.pipeline.queue import get_model_timeout, get_llm_retries
-
-    # Use configured values (settings.json pipeline section)
-    configured_timeout = get_model_timeout()
+    from laya.pipeline.queue import get_llm_retries
     # If the caller didn't override num_retries from the default, use the
-    # configured pipeline.llm_retries value (now actually honored — review §5.7).
+    # configured pipeline.llm_retries value (review §5.7).
     if num_retries == 3:
         num_retries = get_llm_retries()
-
-    kwargs: dict[str, Any] = {
-        "model": model,
-        "messages": messages,
-        "temperature": effective_temperature,
-        "max_tokens": max_tokens,
-        "timeout": configured_timeout,
-    }
-
-    # Merge custom provider overrides (api_base, api_key, etc.)
-    # Use the higher of global pipeline timeout vs provider timeout
-    provider_timeout = custom_provider_extra.pop("timeout", None)
-    kwargs.update(custom_provider_extra)
-    if provider_timeout is not None:
-        kwargs["timeout"] = max(float(kwargs["timeout"]), float(provider_timeout))
-
-    # Use space-specific API key if available (takes precedence)
-    if space_api_key:
-        kwargs["api_key"] = space_api_key
-
-    # Structured output handling
-    if response_schema:
-        if custom_meta and not custom_meta.get("supports_structured_output", True):
-            # Inject schema as text instruction for models without native support
-            schema_text = json.dumps(
-                response_schema.get("schema", response_schema), indent=2
-            )
-            instruction = (
-                f"\n\nYou MUST respond with valid JSON matching this exact schema. "
-                f"Output ONLY the JSON object, no other text.\n\nSchema:\n{schema_text}"
-            )
-            msg_list = list(messages)
-            if msg_list and msg_list[0].get("role") == "system":
-                msg_list[0] = {
-                    **msg_list[0],
-                    "content": msg_list[0]["content"] + instruction,
-                }
-            else:
-                msg_list.insert(0, {"role": "system", "content": instruction})
-            kwargs["messages"] = msg_list
-        else:
-            kwargs["response_format"] = {
-                "type": "json_schema",
-                "json_schema": response_schema,
-            }
-
-    # Tools support
-    if tools:
-        if custom_meta and not custom_meta.get("supports_tool_calling", True):
-            pass  # Skip tools for models that don't support them
-        else:
-            kwargs["tools"] = tools
-            kwargs["tool_choice"] = "auto"
-
-    # Disable reasoning for structured-output calls on local reasoning models.
-    # Reasoning models (Qwen3, DeepSeek-R1, etc.) emit a <think> block that consumes
-    # the entire max_tokens budget BEFORE the JSON, truncating structured output into
-    # invalid JSON — this caused ~⅔ of routing calls on a local Qwen3.5 to fail and
-    # retry, spiralling the queue backlog. When we've asked for a schema we want the
-    # JSON, not a reasoning essay, so we turn thinking off. chat_template_kwargs just
-    # injects a template variable, so it's harmless for templates that ignore it; we
-    # still gate on supports_reasoning to keep the request clean. _strip_think_blocks
-    # remains as a fallback for models we can't toggle (e.g. cloud).
-    if response_schema and custom_meta and custom_meta.get("supports_reasoning"):
-        existing_extra = kwargs.get("extra_body") or {}
-        existing_ctk = existing_extra.get("chat_template_kwargs") or {}
-        kwargs["extra_body"] = {
-            **existing_extra,
-            "chat_template_kwargs": {**existing_ctk, "enable_thinking": False},
-        }
-
-    # Stop non-stopping local models from padding the rest of max_tokens with newlines (which
-    # truncates JSON-schema output mid-document). Worst offender is Gemma: it ends a turn with
-    # <end_of_turn>, but GGUF often flags that NORMAL (not CONTROL) and its eos is <eos>, so the
-    # runtime never sees a stop. Cloud providers manage their own stop tokens — scope to custom.
-    if custom is not None:
-        # 1. Halt the instant a turn terminator is emitted as visible text (the GGUF-NORMAL
-        #    variant). Merge with any provider-supplied stop rather than clobbering it.
-        existing_stop = kwargs.get("stop")
-        if existing_stop:
-            extra = existing_stop if isinstance(existing_stop, list) else [existing_stop]
-            kwargs["stop"] = [*_LOCAL_STOP_SEQUENCES, *extra]
-        else:
-            kwargs["stop"] = list(_LOCAL_STOP_SEQUENCES)
-        # 2. For the pure-newline-loop variant (terminator never emitted as text), nudge the
-        #    model off the `\n` repetition and toward the structural token that closes the JSON.
-        #    repeat_penalty is a llama.cpp param passed via extra_body; if a server ignores it,
-        #    the stop sequences above and _extract_json salvage below still cover the common
-        #    cases. Schema-only + temp 0 keeps the blast radius tiny. Merge additively so the
-        #    enable_thinking chat_template_kwargs set just above survives.
-        if response_schema:
-            existing_extra = kwargs.get("extra_body") or {}
-            kwargs["extra_body"] = {**existing_extra, "repeat_penalty": _LOCAL_REPEAT_PENALTY}
-
-    # Inject current date/time into user message (cache-safe, not in system prompt)
-    kwargs["messages"] = _inject_current_datetime(kwargs["messages"])
-    # Annotate system messages for prompt caching (Anthropic, Gemini)
-    kwargs["messages"] = _apply_prompt_caching(model, kwargs["messages"])
 
     # Retry only transient failures. Deterministic 4xx (bad request, auth,
     # not-found, unprocessable, content-policy) fail identically on every attempt,
@@ -911,7 +936,7 @@ async def llm_call(
                     max_tokens=max_tokens,
                 )
                 truncated = False
-            elif custom is not None and _looks_like_padding(content):
+            elif is_custom and _looks_like_padding(content):
                 # Degenerate newline loop with no recoverable JSON (the object never closed).
                 # Doubling max_tokens would just pad more, so don't — accept the failure once.
                 # The stop sequences + repeat_penalty above are what fix this going forward.
@@ -979,7 +1004,7 @@ async def llm_call(
             # with a stray `{` would get "completed" into a bogus empty object. In the real
             # scenario the model padded whitespace and stopped before the closing brace, so the
             # normal strict+scan parse fails and completion is what recovers the object.
-            padding_recovery = custom is not None and _looks_like_padding(content)
+            padding_recovery = is_custom and _looks_like_padding(content)
             parsed = _extract_json(content, allow_completion=padding_recovery)
             if parsed is None:
                 log.warning(
@@ -1164,52 +1189,20 @@ async def llm_call_streaming(
         yield StreamEvent(type="error", content=msg, model=model)
         return
 
-    space_api_key = None
-    if space_id:
-        provider = model.split("/")[0] if "/" in model else None
-        if provider:
-            space_api_key = await _get_space_api_key(provider, space_id)
-
-    custom_provider_extra: dict[str, Any] = {}
-    custom_meta = _get_custom_provider_meta(model)
-    custom = _resolve_custom_provider(model)
-    if custom:
-        model, custom_provider_extra = custom
-
-    effective_temperature = temperature
-    model_name = model.split("/")[-1]
-    if model_name.startswith("gemini-3"):
-        effective_temperature = 1.0
-
-    from laya.pipeline.queue import get_model_timeout
-
-    kwargs: dict[str, Any] = {
-        "model": model,
-        "messages": messages,
-        "temperature": effective_temperature,
-        "max_tokens": max_tokens,
-        "timeout": get_model_timeout(),
-        "stream": True,
-    }
-    kwargs.update(custom_provider_extra)
-    if space_api_key:
-        kwargs["api_key"] = space_api_key
-
-    # Same non-stopping-local-model guard as llm_call: halt on turn terminators so a model
-    # whose <end_of_turn>/<eos> isn't recognized doesn't pad the chat stream with newlines.
-    # No schema in the streaming path, so no repeat_penalty here.
-    if custom is not None:
-        kwargs["stop"] = list(_LOCAL_STOP_SEQUENCES)
-
-    if tools:
-        if not (custom_meta and not custom_meta.get("supports_tool_calling", True)):
-            kwargs["tools"] = tools
-            kwargs["tool_choice"] = "auto"
-
-    # Inject current date/time into user message (cache-safe, not in system prompt)
-    kwargs["messages"] = _inject_current_datetime(kwargs["messages"])
-    # Annotate system messages for prompt caching (Anthropic, Gemini)
-    kwargs["messages"] = _apply_prompt_caching(model, kwargs["messages"])
+    # Shared prep — model already resolved above; agent backend rejected. This is
+    # the same seam llm_call uses, so streaming now also gets the max_tokens clamp
+    # it was silently missing (it was sending DEFAULT_MAX_TOKENS to strict vLLM
+    # servers → 400) plus consistent provider/timeout handling (review §5.6 — P7-5).
+    model, kwargs, _prep = await _prepare_call_kwargs(
+        model=model,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        space_id=space_id,
+        tools=tools,
+        response_schema=None,
+        stream=True,
+    )
 
     start = time.monotonic()
 

@@ -621,3 +621,40 @@ async def test_stopped_padding_object_recovered(db):
     assert mock_ac.call_count == 1  # finish_reason=stop → no retry at all
     assert result.truncated is False
     assert result.parsed == {"result": "test"}
+
+
+@pytest.mark.asyncio
+async def test_streaming_applies_max_tokens_clamp(db):
+    """The streaming path now runs through the SAME _prepare_call_kwargs as
+    llm_call, so it applies the max_tokens clamp it was silently missing —
+    previously it sent DEFAULT_MAX_TOKENS to strict servers and 400'd (P7-5)."""
+    from laya.llm.client import llm_call_streaming
+
+    async def _fake_stream():
+        class _D:
+            content = "hi"
+            tool_calls = None
+        class _C:
+            delta = _D()
+            finish_reason = "stop"
+        class _Chunk:
+            choices = [_C()]
+        yield _Chunk()
+
+    captured: dict = {}
+
+    async def _mock_ac(**kwargs):
+        captured.update(kwargs)
+        return _fake_stream()
+
+    with patch("litellm.acompletion", _mock_ac):
+        with patch("laya.llm.client.load_settings", return_value={"models": {"chat": "claude-opus-4-1-20250805"}}):
+            with patch("litellm.get_model_info", return_value={"max_output_tokens": 8192}):
+                with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                    async for _ in llm_call_streaming(
+                        role="chat", messages=[{"role": "user", "content": "hi"}], step="chat"
+                    ):
+                        pass
+
+    assert captured["stream"] is True
+    assert captured["max_tokens"] == 8192  # clamped from DEFAULT_MAX_TOKENS (65536)
