@@ -713,8 +713,26 @@ async def run_emit(
         entity_refs=entity_refs,
     )
 
-    # 5. Semantic context grouping across entity boundaries (best-effort).
-    await _resolve_context_grouping(
+    # 5. Broadcast to the feed IMMEDIATELY after embed, BEFORE the enrichment
+    # steps below. Context grouping (step 6) makes a blocking LLM confirm call;
+    # broadcasting after it meant the user saw new cards seconds-to-tens-of-
+    # seconds late while a pipeline semaphore slot was held (review §4 — P5-5).
+    # Grouping/entity-resolution then run and emit a card_updated follow-up.
+    await _broadcast_card(
+        pre_created=pre_created,
+        card_id=card_id,
+        entity_id=entity_id,
+        stager_output=stager_output,
+        router_output=router_output,
+        card_status=card_status,
+        has_workspace=has_workspace,
+        is_carry_forward=is_carry_forward,
+    )
+
+    # 6. Semantic context grouping across entity boundaries (best-effort). If it
+    # assigns a context, tell the feed via a card_updated follow-up so it can
+    # re-group without a full reload.
+    assigned_context_id = await _resolve_context_grouping(
         db,
         event=event,
         stager_output=stager_output,
@@ -724,8 +742,17 @@ async def run_emit(
         space_id=space_id,
         entity_refs=entity_refs,
     )
+    if assigned_context_id:
+        try:
+            await manager.broadcast({
+                "type": "card_updated",
+                "card_id": card_id,
+                "payload": {"context_id": assigned_context_id},
+            })
+        except Exception as e:
+            log.warning("context_update_broadcast_failed", card_id=card_id, error=str(e))
 
-    # 6. Entity resolution Layer 2 (semantic, non-blocking).
+    # 7. Entity resolution Layer 2 (semantic, non-blocking).
     entity_values = [e.value for e in router_output.entities]
     if entity_values:
         try:
@@ -733,7 +760,7 @@ async def run_emit(
         except Exception as e:
             log.warning("entity_resolution_failed", card_id=card_id, error=str(e))
 
-    # 7. Audit log.
+    # 8. Audit log.
     await log_to_audit(
         event_id=event.event_id,
         card_id=card_id,
@@ -744,18 +771,6 @@ async def run_emit(
         latency_ms=0,
         success=True,
         metadata={"has_workspace": has_workspace, "privacy_tier": stager_output.privacy_tier},
-    )
-
-    # 8. Broadcast to the feed (runs even if the enrichment steps above degraded).
-    await _broadcast_card(
-        pre_created=pre_created,
-        card_id=card_id,
-        entity_id=entity_id,
-        stager_output=stager_output,
-        router_output=router_output,
-        card_status=card_status,
-        has_workspace=has_workspace,
-        is_carry_forward=is_carry_forward,
     )
 
     # 9. Kick off non-blocking follow-ups (group summary, daily summary, rules).

@@ -434,10 +434,17 @@ class N8nBackend(EgressBackend):
                 )
 
         except httpx.TimeoutException:
+            # The n8n executor workflow runs to completion server-side; a POST
+            # timeout means the engine stopped waiting, NOT that the action
+            # failed. Marking it retryable re-executed the workflow and sent a
+            # SECOND email/comment. Treat a timeout as OUTCOME-UNKNOWN (not
+            # retryable) so it isn't blindly re-sent — the stable egr_{card_id}
+            # action_id would let the workflows dedupe a genuine retry, but that
+            # is a workflow-side change (review §2 egress — P4-20).
             return EgressResult(
                 success=False,
-                error="n8n request timed out",
-                retryable=True,
+                error="n8n request timed out — the action may have completed; verify before retrying",
+                retryable=False,
             )
         except httpx.ConnectError:
             return EgressResult(
