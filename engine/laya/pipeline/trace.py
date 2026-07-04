@@ -952,47 +952,67 @@ async def _expand_seeds(
     return all_cards, entity_map
 
 
+# Bounds for _find_linked_entities so a hub entity can't explode into an
+# O(entities × refs) storm of full-table LIKE scans (review §4 — P5-6).
+_MAX_LINK_SUBJECTS = 25
+_MAX_LINK_REFS = 50
+
+
 async def _find_linked_entities(db, entity_ids: set[str]) -> set[str]:
-    """Find cross-referenced entities via the entities table."""
+    """Find cross-referenced entities via the entities table.
+
+    The entities lookup is batched into a single query (was one per entity_id)
+    and the ref-id fan-out is deduped and capped, avoiding a nested N+1 of
+    per-ref full-table LIKE scans (review §4 — P5-6).
+    """
     if not entity_ids:
+        return set()
+
+    # Extract subject_ids (e.g. "BUG-1234" from "jira:ticket:BUG-1234").
+    subject_ids = []
+    for eid in entity_ids:
+        parts = eid.split(":", 2)
+        subject_id = parts[-1] if parts else eid
+        if len(subject_id) >= 3:
+            subject_ids.append(subject_id)
+    if not subject_ids:
         return set()
 
     linked: set[str] = set()
 
-    # Search for entity references that mention any of our entity_ids
-    for eid in entity_ids:
-        # Extract the subject_id part (e.g., "BUG-1234" from "jira:ticket:BUG-1234")
-        parts = eid.split(":", 2)
-        subject_id = parts[-1] if parts else eid
+    # One entities query for all subjects instead of one per entity_id.
+    clauses: list[str] = []
+    params: list = []
+    for sid in subject_ids[:_MAX_LINK_SUBJECTS]:
+        clauses.append("platform_refs LIKE ? OR canonical_name LIKE ?")
+        params.extend([f"%{sid}%", f"%{sid}%"])
+    rows = await db.execute_fetchall(
+        f"SELECT entity_id, platform_refs FROM entities WHERE {' OR '.join(clauses)}",
+        params,
+    )
 
-        if len(subject_id) < 3:
-            continue
+    ref_ids: set[str] = set()
+    for row in rows:
+        linked.add(row["entity_id"])
+        try:
+            refs = json.loads(row["platform_refs"]) if row["platform_refs"] else {}
+            for _platform, rid_list in refs.items():
+                if isinstance(rid_list, list):
+                    for rid in rid_list:
+                        if rid and len(str(rid)) >= 3:
+                            ref_ids.add(str(rid))
+        except (json.JSONDecodeError, TypeError):
+            pass
 
-        rows = await db.execute_fetchall(
-            "SELECT entity_id, platform_refs FROM entities "
-            "WHERE platform_refs LIKE ? OR canonical_name LIKE ?",
-            (f"%{subject_id}%", f"%{subject_id}%"),
+    # Deduped, capped ref fan-out (the final result is a set, so dedup is lossless).
+    for rid in list(ref_ids)[:_MAX_LINK_REFS]:
+        card_rows = await db.execute_fetchall(
+            "SELECT DISTINCT entity_id FROM action_cards WHERE entity_id LIKE ? LIMIT 5",
+            (f"%{rid}%",),
         )
-        for row in rows:
-            linked.add(row["entity_id"])
-
-            # Also parse platform_refs JSON to find more entity_ids
-            try:
-                refs = json.loads(row["platform_refs"]) if row["platform_refs"] else {}
-                for _platform, ref_ids in refs.items():
-                    if isinstance(ref_ids, list):
-                        for ref_id in ref_ids:
-                            # Try to find cards with entity_ids containing this ref
-                            card_rows = await db.execute_fetchall(
-                                "SELECT DISTINCT entity_id FROM action_cards "
-                                "WHERE entity_id LIKE ? LIMIT 5",
-                                (f"%{ref_id}%",),
-                            )
-                            for cr in card_rows:
-                                if cr["entity_id"]:
-                                    linked.add(cr["entity_id"])
-            except (json.JSONDecodeError, TypeError):
-                pass
+        for cr in card_rows:
+            if cr["entity_id"]:
+                linked.add(cr["entity_id"])
 
     return linked - entity_ids  # Only return newly discovered ones
 
