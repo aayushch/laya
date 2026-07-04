@@ -338,14 +338,41 @@ async def handle_callback(
 
     if n8n_cred_id:
         from laya.egress.connections import _clone_workflows_for_connection
-        activated, workflow_errors = await _clone_workflows_for_connection(
-            platform, connection_id, display_name, n8n_cred_id,
-            space_id=space_id,
-        )
-        all_errors.extend(workflow_errors)
+        try:
+            activated, workflow_errors = await _clone_workflows_for_connection(
+                platform, connection_id, display_name, n8n_cred_id,
+                space_id=space_id,
+            )
+            all_errors.extend(workflow_errors)
 
-        if platform == "slack" and channel_names and activated > 0:
-            await _store_slack_channel_metadata(connection_id, channel_names)
+            if platform == "slack" and channel_names and activated > 0:
+                await _store_slack_channel_metadata(connection_id, channel_names)
+        except Exception as e:
+            # A mid-clone exception here (before the egress_connections INSERT
+            # below) would strand keychain tokens + partially-cloned ACTIVE
+            # ingestion workflows with no connection row — invisible in Settings
+            # and double-ingesting after a reconnect. Roll both back so a failed
+            # connect leaves nothing behind (review §2 egress — P4-25).
+            log.error(
+                "oauth_clone_failed_rolling_back",
+                platform=platform, connection_id=connection_id, error=str(e),
+            )
+            from laya.egress.connections import (
+                _remove_connection_workflows,
+                _remove_from_keychain,
+            )
+            try:
+                await _remove_connection_workflows(connection_id)
+            except Exception:
+                pass
+            _remove_from_keychain(connection_id, platform)
+            return {
+                "status": "error",
+                "connection_id": None,
+                "platform": platform,
+                "capabilities": [],
+                "error_message": f"Failed to set up {platform} workflows: {e}",
+            }
 
     # Determine final status
     status = "error" if all_errors else "connected"

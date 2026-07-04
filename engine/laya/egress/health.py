@@ -94,7 +94,16 @@ async def _run_health_checks() -> None:
         # Check OAuth token expiry
         if platform in ("gmail", "calendar", "outlook", "outlook_calendar"):
             refreshed = await _check_oauth_token(connection_id, platform)
-            new_status = "connected" if refreshed else old_status
+            if refreshed:
+                new_status = "connected"
+                error_msg = None
+            else:
+                # A failed token refresh means the grant is dead. Flag it as
+                # error instead of silently keeping "connected" (and don't bump
+                # last_validated_at below), so the user actually sees that the
+                # connection needs reconnecting (review §2 egress — P4-23).
+                new_status = "error"
+                error_msg = "OAuth token refresh failed — reconnect required"
         else:
             # API-key platforms: validate credentials
             credentials = _get_from_keychain(connection_id, platform)
@@ -110,12 +119,15 @@ async def _run_health_checks() -> None:
         if new_status != old_status:
             await db.execute(
                 """UPDATE egress_connections
-                   SET status = ?, error_message = ?, last_validated_at = ?, updated_at = ?
+                   SET status = ?, error_message = ?,
+                       last_validated_at = COALESCE(?, last_validated_at), updated_at = ?
                    WHERE connection_id = ?""",
                 (
                     new_status,
                     error_msg if new_status == "error" else None,
-                    now,
+                    # Only stamp a fresh validation time on SUCCESS — an error
+                    # transition must not look like it was just validated OK.
+                    now if new_status == "connected" else None,
                     now,
                     connection_id,
                 ),

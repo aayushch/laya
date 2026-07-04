@@ -558,3 +558,35 @@ class TestContextGrouping:
         # Should be a normal entity group, not a context group
         assert group["context_id"] is None
         assert group["entity_id"] == entity
+
+
+@pytest.mark.asyncio
+class TestGroupedPrevNextDates:
+    async def test_prev_next_dates_use_local_tz(self, db):
+        """prev/next pagination converts each boundary card's UTC group_active_at
+        to the user's LOCAL date via an indexed range lookup (DST-correct) —
+        review P4-16 (no fixed-offset DATE()-per-row full scan)."""
+        await insert_test_card(db, "card_p", "evt_p", entity_id="jira:ticket:A")
+        await insert_test_card(db, "card_t", "evt_t", entity_id="jira:ticket:B")
+        await insert_test_card(db, "card_n", "evt_n", entity_id="jira:ticket:C")
+        # Noon UTC on three consecutive days → local date = same day in EST (UTC-5).
+        for cid, ts in (
+            ("card_p", "2026-01-10 12:00:00"),
+            ("card_t", "2026-01-11 12:00:00"),
+            ("card_n", "2026-01-12 12:00:00"),
+        ):
+            await db.execute(
+                "UPDATE action_cards SET group_active_at = ? WHERE card_id = ?", (ts, cid)
+            )
+        await db.commit()
+
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get(
+                "/cards/grouped?date=2026-01-11&tz=America/New_York"
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["prev_date"] == "2026-01-10"
+        assert data["next_date"] == "2026-01-12"

@@ -571,28 +571,55 @@ async def get_grouped_cards(
     prev_date_val: str | None = None
     next_date_val: str | None = None
     if date:
-        # Build a SQLite date expression that converts UTC group_active_at to local date
-        date_expr = "DATE(group_active_at)"
+        # Resolve the adjacent local dates that have cards. The previous approach
+        # applied TODAY's fixed UTC offset to DATE(group_active_at) for every row —
+        # wrong across a DST boundary (a historical date has a different offset) —
+        # and ran two full-table DATE()-per-row scans. Instead compute the target
+        # local day's UTC window (ZoneInfo has the IANA db, so DST is handled per
+        # date), find the single boundary card with an indexed range lookup, and
+        # convert just that one timestamp to a local date in Python (review §2/§4 — P4-16).
+        local_tz = timezone.utc
         if tz:
             try:
                 local_tz = ZoneInfo(tz)
-                utc_offset_sec = int(datetime.now(local_tz).utcoffset().total_seconds())  # type: ignore[union-attr]
-                date_expr = f"DATE(group_active_at, '+{utc_offset_sec} seconds')" if utc_offset_sec >= 0 else f"DATE(group_active_at, '{utc_offset_sec} seconds')"
-            except (KeyError, ValueError, AttributeError):
-                pass  # Use plain DATE(group_active_at)
+            except (KeyError, ValueError):
+                local_tz = timezone.utc
 
-        prev_rows = await db.execute_fetchall(
-            f"SELECT {date_expr} AS d FROM action_cards WHERE {date_expr} < ? GROUP BY d ORDER BY d DESC LIMIT 1",
-            (date,),
-        )
-        if prev_rows:
-            prev_date_val = prev_rows[0]["d"]
-        next_rows = await db.execute_fetchall(
-            f"SELECT {date_expr} AS d FROM action_cards WHERE {date_expr} > ? GROUP BY d ORDER BY d ASC LIMIT 1",
-            (date,),
-        )
-        if next_rows:
-            next_date_val = next_rows[0]["d"]
+        def _utc_str_to_local_date(ts: str) -> str | None:
+            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+                try:
+                    dt = datetime.strptime(ts[:19], fmt).replace(tzinfo=timezone.utc)
+                    return dt.astimezone(local_tz).strftime("%Y-%m-%d")
+                except (ValueError, TypeError):
+                    continue
+            return None
+
+        try:
+            day_start_local = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=local_tz)
+            next_day = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+            day_end_local = datetime.strptime(next_day, "%Y-%m-%d").replace(tzinfo=local_tz)
+            day_start_utc = day_start_local.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            day_end_utc = day_end_local.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            day_start_utc = day_end_utc = None
+
+        if day_start_utc is not None:
+            prev_rows = await db.execute_fetchall(
+                "SELECT group_active_at FROM action_cards "
+                "WHERE group_active_at < ? AND group_active_at IS NOT NULL "
+                "ORDER BY group_active_at DESC LIMIT 1",
+                (day_start_utc,),
+            )
+            if prev_rows and prev_rows[0]["group_active_at"]:
+                prev_date_val = _utc_str_to_local_date(prev_rows[0]["group_active_at"])
+            next_rows = await db.execute_fetchall(
+                "SELECT group_active_at FROM action_cards "
+                "WHERE group_active_at >= ? "
+                "ORDER BY group_active_at ASC LIMIT 1",
+                (day_end_utc,),
+            )
+            if next_rows and next_rows[0]["group_active_at"]:
+                next_date_val = _utc_str_to_local_date(next_rows[0]["group_active_at"])
 
     return GroupedCardsResponse(
         groups=result,
