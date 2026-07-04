@@ -36,7 +36,7 @@ class SmtpBackend(EgressBackend):
     ) -> EgressResult:
         """Send an email via SMTP."""
         if not credentials:
-            credentials = self._load_credentials(request.space_id)
+            credentials = await self._load_credentials(request)
             if not credentials:
                 return EgressResult(
                     success=False,
@@ -80,15 +80,20 @@ class SmtpBackend(EgressBackend):
             smtp_host = credentials.get("smtp_host", "")
             smtp_port = int(credentials.get("smtp_port", 587))
             use_tls = credentials.get("use_tls", True)
+            # Port 465 is implicit TLS (SMTPS) — connect with TLS and do NOT
+            # STARTTLS. Other ports (587/25) use STARTTLS when use_tls. The old
+            # code hardcoded STARTTLS, so every port-465 provider that validated
+            # fine then failed to send (review §2 egress — P4-18).
+            implicit_ssl = smtp_port == 465
 
             smtp = aiosmtplib.SMTP(
                 hostname=smtp_host,
                 port=smtp_port,
-                use_tls=False,  # We'll STARTTLS manually if needed
+                use_tls=implicit_ssl,
             )
             await smtp.connect()
 
-            if use_tls:
+            if use_tls and not implicit_ssl:
                 await smtp.starttls()
 
             await smtp.login(
@@ -116,28 +121,37 @@ class SmtpBackend(EgressBackend):
 
     async def health_check(self) -> bool:
         """Check if SMTP is configured."""
-        creds = self._load_credentials(None)
+        creds = await self._load_credentials(None)
         return creds is not None
 
     def supports(self, platform: str, action_type: str) -> bool:
         """SMTP supports email actions for the 'smtp' platform."""
         return platform == "smtp" and action_type in ("send_email", "forward")
 
-    def _load_credentials(self, space_id: str | None) -> dict | None:
-        """Load SMTP credentials from keychain."""
-        try:
-            import keyring
+    async def _load_credentials(self, request) -> dict | None:
+        """Load SMTP credentials from the keychain.
 
-            # Look for any SMTP connection
-            # In a full implementation, we'd query the egress_connections table
-            # and resolve by space_id. For now, try the first SMTP connection.
-            from laya.db.sqlite import get_db
-            import asyncio
+        Credentials are stored under ``smtp:{connection_id}`` (by
+        connections._store_in_keychain). The old code read a nonexistent
+        ``smtp:default`` key, so connect() validated fine but every send failed
+        to find credentials (review §2 egress — P4-18). Resolve the connection_id
+        from the request, or fall back to the (first) configured SMTP connection.
+        """
+        from laya.egress.connections import _get_from_keychain
+        from laya.db.sqlite import get_db
 
-            # Synchronous fallback — keychain lookup doesn't need async
-            raw = keyring.get_password(EGRESS_KEYCHAIN_SERVICE, "smtp:default")
-            if raw:
-                return json.loads(raw)
+        connection_id = getattr(request, "connection_id", None) if request else None
+        if not connection_id:
+            try:
+                db = await get_db()
+                rows = await db.execute_fetchall(
+                    "SELECT connection_id FROM egress_connections "
+                    "WHERE platform = 'smtp' LIMIT 1"
+                )
+                if rows:
+                    connection_id = rows[0]["connection_id"]
+            except Exception:
+                return None
+        if not connection_id:
             return None
-        except Exception:
-            return None
+        return _get_from_keychain(connection_id, "smtp")
