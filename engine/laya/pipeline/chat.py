@@ -17,6 +17,7 @@ import structlog
 from laya.db.chromadb_store import memory_search
 from laya.db.fts import build_fts_match, fts_ready
 from laya.db.sqlite import get_db
+from laya.retrieval import extract_keywords, reciprocal_rank_fusion
 from laya.db.timeutil import db_now
 from laya.llm.client import llm_call, llm_call_streaming, StreamEvent
 from laya.llm.prompts.chat import build_chat_messages, build_title_generation_messages
@@ -32,20 +33,6 @@ CARD_REF_PATTERN = re.compile(r"\[card:([^\]]+)\]")
 EVENT_REF_PATTERN = re.compile(r"\[event:([^\]]+)\]")
 
 MAX_TOOL_ITERATIONS = 20
-
-# Common English stopwords to skip in keyword search
-_STOPWORDS = frozenset({
-    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
-    "have", "has", "had", "do", "does", "did", "will", "would", "shall",
-    "should", "may", "might", "must", "can", "could", "am", "i", "me",
-    "my", "we", "our", "you", "your", "he", "she", "it", "they", "them",
-    "this", "that", "these", "those", "what", "which", "who", "whom",
-    "how", "when", "where", "why", "and", "or", "but", "not", "no",
-    "if", "then", "so", "to", "of", "in", "on", "at", "by", "for",
-    "with", "about", "from", "up", "out", "into", "over", "after",
-    "all", "any", "some", "just", "also", "than", "very", "too",
-})
-
 
 def canonical_card_ids(card_ids: list[str] | None) -> str | None:
     """Canonical JSON form for a card-ID set, used as the anchor key.
@@ -696,7 +683,7 @@ async def _retrieve_context(
             log.warning("retrieval_signal_failed", error=str(r))
 
     # Reciprocal Rank Fusion
-    fused = _reciprocal_rank_fusion(ranked_lists, k=60)
+    fused = reciprocal_rank_fusion(ranked_lists, k=60)
 
     # Deduplicate by source ID
     seen: set[str] = set()
@@ -771,7 +758,7 @@ async def _card_keyword_search_fts(match: str, space_id: str | None, n: int) -> 
 async def _card_keyword_search_like(query: str, space_id: str | None, n: int) -> list[dict]:
     """SQLite LIKE keyword search on cards (fallback when FTS5 is unavailable)."""
     db = await get_db()
-    keywords = [w for w in query.split() if len(w) >= 3 and w.lower() not in _STOPWORDS]
+    keywords = extract_keywords(query, min_len=3)
     if not keywords:
         return []
 
@@ -852,7 +839,7 @@ async def _event_keyword_search_fts(match: str, space_id: str | None, n: int) ->
 async def _event_keyword_search_like(query: str, space_id: str | None, n: int) -> list[dict]:
     """SQLite LIKE keyword search on events (fallback when FTS5 is unavailable)."""
     db = await get_db()
-    keywords = [w for w in query.split() if len(w) >= 3 and w.lower() not in _STOPWORDS]
+    keywords = extract_keywords(query, min_len=3)
     if not keywords:
         return []
 
@@ -900,7 +887,7 @@ def _format_event_keyword_rows(rows) -> list[dict]:
 async def _entity_search(query: str, n: int) -> list[dict]:
     """Search entities table for cross-platform correlations."""
     db = await get_db()
-    keywords = [w for w in query.split() if len(w) >= 3 and w.lower() not in _STOPWORDS]
+    keywords = extract_keywords(query, min_len=3)
     if not keywords:
         return []
 
@@ -939,29 +926,6 @@ async def _entity_search(query: str, n: int) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Reciprocal Rank Fusion
 # ---------------------------------------------------------------------------
-
-
-def _reciprocal_rank_fusion(
-    ranked_lists: list[list[dict]],
-    k: int = 60,
-) -> list[dict]:
-    """Fuse multiple ranked lists using RRF.
-
-    score(d) = Σ 1/(k + rank_i(d)) across all lists that contain d.
-    Higher k reduces the impact of high rankings in individual lists.
-    """
-    scores: dict[str, float] = {}
-    items: dict[str, dict] = {}
-
-    for ranked_list in ranked_lists:
-        for rank, item in enumerate(ranked_list):
-            doc_id = item.get("id") or item.get("card_id") or item.get("event_id") or str(rank)
-            scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank + 1)
-            if doc_id not in items:
-                items[doc_id] = item
-
-    sorted_ids = sorted(scores.keys(), key=lambda d: scores[d], reverse=True)
-    return [items[did] for did in sorted_ids]
 
 
 # ---------------------------------------------------------------------------

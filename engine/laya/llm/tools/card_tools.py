@@ -111,7 +111,11 @@ async def _search_keyword(
 
     Returns (rows, total, has_more).
     """
-    match = build_fts_match(query, min_len=2, max_terms=8) if query else None
+    # match_all=True → the FTS path requires ALL terms, matching the LIKE
+    # fallback's AND semantics and the tool's documented "all terms" contract.
+    # Previously FTS was OR and LIKE was AND, so results silently differed by
+    # whether FTS5 was available (review §5.3 — P7-1).
+    match = build_fts_match(query, min_len=2, max_terms=8, match_all=True) if query else None
     if query and fts_ready() and match:
         try:
             return await _search_keyword_fts(
