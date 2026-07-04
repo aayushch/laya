@@ -10,12 +10,8 @@ import structlog
 from laya.models.classification import Persona, RouterOutput
 from laya.models.event import LayaEvent
 from laya.workers.base import WorkerResult
-from laya.workers.comms import run_comms
 from laya.workers.engineer import run_engineer
-from laya.workers.finance import run_finance
-from laya.workers.hr import run_hr
-from laya.workers.ops import run_ops
-from laya.workers.sales import run_sales
+from laya.workers.persona import PERSONA_SPECS, run_persona_worker
 
 log = structlog.get_logger()
 
@@ -86,34 +82,24 @@ async def _dispatch_worker(
 ) -> WorkerResult:
     """Dispatch to the appropriate worker based on persona."""
     try:
-        match persona:
-            case Persona.ENGINEER:
-                return await run_engineer(event, router_output, card_id=card_id, space_id=space_id)
-            case Persona.COMMS:
-                return await run_comms(
-                    event, router_output, prior_findings=prior_findings, card_id=card_id,
-                    user_identity=user_identity, actor_relationship=actor_relationship,
-                    participant_roles=participant_roles,
-                )
-            case Persona.OPS:
-                return await run_ops(event, router_output, card_id=card_id)
-            case Persona.SALES:
-                return await run_sales(
-                    event, router_output, prior_findings=prior_findings, card_id=card_id,
-                    user_identity=user_identity, actor_relationship=actor_relationship,
-                    participant_roles=participant_roles,
-                )
-            case Persona.HR:
-                return await run_hr(
-                    event, router_output, prior_findings=prior_findings, card_id=card_id,
-                    user_identity=user_identity, actor_relationship=actor_relationship,
-                    participant_roles=participant_roles,
-                )
-            case Persona.FINANCE:
-                return await run_finance(event, router_output, card_id=card_id)
-            case _:
-                log.warning("unknown_persona", persona=persona.value)
-                return WorkerResult(persona=persona.value, error=f"Unknown persona: {persona.value}")
+        if persona == Persona.ENGINEER:
+            return await run_engineer(event, router_output, card_id=card_id, space_id=space_id)
+
+        # COMMS/OPS/SALES/HR/FINANCE are all the same spec-driven drafting worker;
+        # each spec declares its prompt/schema and whether it takes role-aware
+        # context (the runner ignores the role kwargs for non-role-aware specs, so
+        # ops/finance behave exactly as before). See workers/persona.py (P7-2).
+        spec = PERSONA_SPECS.get(persona.value)
+        if spec is not None:
+            return await run_persona_worker(
+                spec, event, router_output,
+                prior_findings=prior_findings, card_id=card_id,
+                user_identity=user_identity, actor_relationship=actor_relationship,
+                participant_roles=participant_roles,
+            )
+
+        log.warning("unknown_persona", persona=persona.value)
+        return WorkerResult(persona=persona.value, error=f"Unknown persona: {persona.value}")
     except Exception as e:
         log.error("worker_dispatch_failed", persona=persona.value, error=str(e))
         return WorkerResult(persona=persona.value, error=str(e))
