@@ -178,8 +178,10 @@
 	let retryingAll = $state(false);
 	let retryAllConfirm = $state(false);
 
-	async function loadDeadEvents() {
-		deadLoading = true;
+	// silent: skip the loading flag so a post-retry reconcile doesn't unmount the
+	// section (it's gated on `!deadLoading`) or flash a spinner mid-animation.
+	async function loadDeadEvents({ silent = false }: { silent?: boolean } = {}) {
+		if (!silent) deadLoading = true;
 		try {
 			const resp = await engineApi.getDeadEvents({ limit: 50 });
 			deadEvents = resp.events;
@@ -187,7 +189,7 @@
 		} catch {
 			// Silent — dead events section is supplementary
 		} finally {
-			deadLoading = false;
+			if (!silent) deadLoading = false;
 		}
 	}
 
@@ -200,12 +202,18 @@
 			const next = new Set(retrying);
 			next.delete(eventId);
 			retrying = next;
-			setTimeout(() => {
+			setTimeout(async () => {
 				deadEvents = deadEvents.filter(e => e.event_id !== eventId);
 				deadTotal = Math.max(0, deadTotal - 1);
 				const d = new Set(dismissing);
 				d.delete(eventId);
 				dismissing = d;
+				// Reconcile with the backend: local mutation alone can't pull in dead
+				// events hidden beyond the 50-row fetch window, so retrying visible rows
+				// one by one would shrink the table while the header count still claims
+				// there are more — and they'd only appear on a hard refresh. Re-fetching
+				// surfaces the next hidden row and snaps deadTotal to the true DB count.
+				await loadDeadEvents({ silent: true });
 			}, 350);
 		} catch {
 			const next = new Set(retrying);
@@ -225,10 +233,14 @@
 			await engineApi.retryDeadEvents();
 			// Fade out all rows then clear
 			dismissing = new Set(deadEvents.map(e => e.event_id));
-			setTimeout(() => {
+			setTimeout(async () => {
 				deadEvents = [];
 				deadTotal = 0;
 				dismissing = new Set();
+				// Retry All re-queues every dead event server-side (including those beyond
+				// the fetched window), so reconcile to confirm the true remaining count
+				// rather than assuming zero.
+				await loadDeadEvents({ silent: true });
 			}, 350);
 		} finally {
 			retryingAll = false;
