@@ -53,12 +53,15 @@ async def _run_housekeeping(retention_days: int) -> None:
     deleted = 0
     for row in rows:
         try:
+            # Each cascade self-commits its own guarded transaction (P4-12), so a
+            # failure on one card rolls back only that card and the loop keeps
+            # going — previously the single batch commit() below would have
+            # flushed every earlier card's partial cascade too.
             await _delete_card_cascade(db, row["card_id"], row["event_id"])
             deleted += 1
         except Exception as e:
             log.warning("housekeeping_card_delete_failed", card_id=row["card_id"], error=str(e))
 
-    await db.commit()
     log.info("housekeeping_complete", deleted=deleted, retention_days=retention_days)
 
 

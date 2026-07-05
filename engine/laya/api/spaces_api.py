@@ -10,7 +10,7 @@ import uuid
 import structlog
 from fastapi import APIRouter, HTTPException
 
-from laya.db.sqlite import get_db
+from laya.db.sqlite import get_db, transaction
 from laya.integrations.n8n_client import (
     N8nApiError,
     N8nApiKeyMissing,
@@ -185,24 +185,27 @@ async def delete_space(space_id: str) -> dict:
     if rows[0]["is_default"]:
         raise HTTPException(status_code=400, detail="Cannot delete the Default space")
 
-    # Move sources to default
-    await db.execute(
-        "UPDATE sources SET space_id = 'default' WHERE space_id = ?", (space_id,)
-    )
-    # Move cards to default
-    await db.execute(
-        "UPDATE action_cards SET space_id = 'default' WHERE space_id = ?", (space_id,)
-    )
-    # Move events to default
-    await db.execute(
-        "UPDATE events SET space_id = 'default' WHERE space_id = ?", (space_id,)
-    )
-    # Delete space API keys and repo assignments
-    await db.execute("DELETE FROM space_api_keys WHERE space_id = ?", (space_id,))
-    await db.execute("DELETE FROM space_repos WHERE space_id = ?", (space_id,))
-    # Delete the space
-    await db.execute("DELETE FROM spaces WHERE space_id = ?", (space_id,))
-    await db.commit()
+    # Reassign the space's rows to default then drop it — one invariant: a
+    # half-applied delete would orphan api-keys/repos or strand sources/cards on
+    # a space row that no longer exists (review §2 API — P4-12).
+    async with transaction():
+        # Move sources to default
+        await db.execute(
+            "UPDATE sources SET space_id = 'default' WHERE space_id = ?", (space_id,)
+        )
+        # Move cards to default
+        await db.execute(
+            "UPDATE action_cards SET space_id = 'default' WHERE space_id = ?", (space_id,)
+        )
+        # Move events to default
+        await db.execute(
+            "UPDATE events SET space_id = 'default' WHERE space_id = ?", (space_id,)
+        )
+        # Delete space API keys and repo assignments
+        await db.execute("DELETE FROM space_api_keys WHERE space_id = ?", (space_id,))
+        await db.execute("DELETE FROM space_repos WHERE space_id = ?", (space_id,))
+        # Delete the space
+        await db.execute("DELETE FROM spaces WHERE space_id = ?", (space_id,))
 
     log.info("space_deleted", space_id=space_id)
     return {"status": "deleted", "space_id": space_id}

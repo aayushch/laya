@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 from laya.agents.session_manager import cancel_sessions_for_card
 from laya.api.websocket import manager
-from laya.db.sqlite import get_db
+from laya.db.sqlite import get_db, transaction
 from laya.db.timeutil import db_now
 from laya.llm.client import log_to_audit
 from laya.models.card import CardGroup, CardResponse, CardsListResponse, GroupedCardsResponse, GroupSummaryResponse, StagedOutput, SuggestedAction, TagAssignment
@@ -1023,59 +1023,69 @@ async def clear_stale_polishing_flags() -> int:
 
 
 async def _delete_card_cascade(db, card_id: str, event_id: str | None) -> None:
-    """Hard-delete a card and all its related rows in correct FK order."""
-    # workspace_events → workspace_sessions → action_log → audit_log → action_cards → events
-    await db.execute(
-        "DELETE FROM workspace_events WHERE session_id IN "
-        "(SELECT session_id FROM workspace_sessions WHERE card_id = ?)",
-        (card_id,),
-    )
-    await db.execute("DELETE FROM workspace_sessions WHERE card_id = ?", (card_id,))
-    await db.execute("DELETE FROM action_log WHERE card_id = ?", (card_id,))
-    await db.execute("DELETE FROM audit_log WHERE card_id = ?", (card_id,))
-    await db.execute("DELETE FROM action_cards WHERE card_id = ?", (card_id,))
+    """Hard-delete a card and all its related rows in correct FK order.
 
-    # Polymorphic tag assignments have no FK to action_cards, so they orphan on
-    # hard-delete unless cleaned explicitly (review §2 API — P4-17).
-    await db.execute(
-        "DELETE FROM tag_assignments WHERE target_type = 'card' AND target_id = ?",
-        (card_id,),
-    )
-
-    # Rolling group summaries embed card_ids as a JSON array (no FK); drop the
-    # deleted id so card_count stays truthful, and delete the summary outright
-    # if it held only this card (review §2 API — P4-17).
-    summary_rows = await db.execute_fetchall(
-        "SELECT entity_id, card_ids FROM group_summaries WHERE card_ids LIKE ?",
-        (f'%"{card_id}"%',),
-    )
-    for srow in summary_rows:
-        try:
-            ids = json.loads(srow["card_ids"] or "[]")
-        except (json.JSONDecodeError, TypeError):
-            continue
-        if card_id not in ids:
-            continue
-        ids = [c for c in ids if c != card_id]
-        if ids:
-            await db.execute(
-                "UPDATE group_summaries SET card_ids = ?, card_count = ? WHERE entity_id = ?",
-                (json.dumps(ids), len(ids), srow["entity_id"]),
-            )
-        else:
-            await db.execute(
-                "DELETE FROM group_summaries WHERE entity_id = ?", (srow["entity_id"],)
-            )
-
-    # Remove the source event only if no other cards still reference it
-    if event_id:
+    The SQL cascade runs inside one guarded transaction so it commits all-or-
+    nothing and rolls back on a mid-sequence failure — otherwise a partial
+    cascade (e.g. child rows gone, card row left) would be flushed by the next
+    commit() elsewhere (review §2 API — P4-12). Self-commits, so callers must not
+    also commit. The vector-embedding cleanup runs AFTER the block, outside the
+    write lock, since it's an external 2s-timeout call.
+    """
+    async with transaction():
+        # workspace_events → workspace_sessions → action_log → audit_log → action_cards → events
         await db.execute(
-            "DELETE FROM events WHERE event_id = ? "
-            "AND NOT EXISTS (SELECT 1 FROM action_cards WHERE event_id = ?)",
-            (event_id, event_id),
+            "DELETE FROM workspace_events WHERE session_id IN "
+            "(SELECT session_id FROM workspace_sessions WHERE card_id = ?)",
+            (card_id,),
+        )
+        await db.execute("DELETE FROM workspace_sessions WHERE card_id = ?", (card_id,))
+        await db.execute("DELETE FROM action_log WHERE card_id = ?", (card_id,))
+        await db.execute("DELETE FROM audit_log WHERE card_id = ?", (card_id,))
+        await db.execute("DELETE FROM action_cards WHERE card_id = ?", (card_id,))
+
+        # Polymorphic tag assignments have no FK to action_cards, so they orphan on
+        # hard-delete unless cleaned explicitly (review §2 API — P4-17).
+        await db.execute(
+            "DELETE FROM tag_assignments WHERE target_type = 'card' AND target_id = ?",
+            (card_id,),
         )
 
-    # Remove the card's vector embedding (best-effort). Housekeeping calls this
+        # Rolling group summaries embed card_ids as a JSON array (no FK); drop the
+        # deleted id so card_count stays truthful, and delete the summary outright
+        # if it held only this card (review §2 API — P4-17).
+        summary_rows = await db.execute_fetchall(
+            "SELECT entity_id, card_ids FROM group_summaries WHERE card_ids LIKE ?",
+            (f'%"{card_id}"%',),
+        )
+        for srow in summary_rows:
+            try:
+                ids = json.loads(srow["card_ids"] or "[]")
+            except (json.JSONDecodeError, TypeError):
+                continue
+            if card_id not in ids:
+                continue
+            ids = [c for c in ids if c != card_id]
+            if ids:
+                await db.execute(
+                    "UPDATE group_summaries SET card_ids = ?, card_count = ? WHERE entity_id = ?",
+                    (json.dumps(ids), len(ids), srow["entity_id"]),
+                )
+            else:
+                await db.execute(
+                    "DELETE FROM group_summaries WHERE entity_id = ?", (srow["entity_id"],)
+                )
+
+        # Remove the source event only if no other cards still reference it
+        if event_id:
+            await db.execute(
+                "DELETE FROM events WHERE event_id = ? "
+                "AND NOT EXISTS (SELECT 1 FROM action_cards WHERE event_id = ?)",
+                (event_id, event_id),
+            )
+
+    # Remove the card's vector embedding (best-effort), OUTSIDE the guarded section
+    # so the 2s external call never holds the write lock. Housekeeping calls this
     # cascade directly, so the ChromaDB delete must live here — not only in the
     # HTTP delete path — or retention never reclaims vectors (review §1.2).
     try:
@@ -1108,11 +1118,10 @@ async def delete_card(card_id: str) -> dict:
         log.warning("session_cancel_timeout_on_delete", card_id=card_id)
 
     event_id = rows[0]["event_id"]
+    # _delete_card_cascade self-commits its guarded transaction (P4-12) — no
+    # commit() here. ChromaDB embedding, tag assignments and group-summary refs
+    # are cleaned inside the cascade (shared with the housekeeping path).
     await _delete_card_cascade(db, card_id, event_id)
-    await db.commit()
-
-    # ChromaDB embedding, tag assignments and group-summary refs are cleaned
-    # inside _delete_card_cascade (shared with the housekeeping path).
 
     # Clean up research directory if it exists (best-effort)
     from laya.config import LAYA_HOME
@@ -2682,21 +2691,23 @@ async def unlink_related_card(card_id: str):
     )
     affected_ctx_ids = [r["context_id"] for r in memberships]
 
-    # Remove the card from all context groups
-    await db.execute("DELETE FROM context_group_members WHERE card_id = ?", (card_id,))
-    await db.execute("UPDATE action_cards SET context_id = NULL WHERE card_id = ?", (card_id,))
+    # Remove the card from its groups and dissolve any left with <=1 member as one
+    # invariant — otherwise the card could be detached but its now-singleton group
+    # never marked split (review §2 API — P4-12).
+    async with transaction():
+        await db.execute("DELETE FROM context_group_members WHERE card_id = ?", (card_id,))
+        await db.execute("UPDATE action_cards SET context_id = NULL WHERE card_id = ?", (card_id,))
 
-    # Dissolve context groups that have <=1 member remaining
-    for ctx_id in affected_ctx_ids:
-        remaining = await db.execute_fetchall(
-            "SELECT COUNT(*) AS cnt FROM context_group_members WHERE context_id = ?", (ctx_id,),
-        )
-        if remaining[0]["cnt"] <= 1:
-            await db.execute(
-                "UPDATE context_groups SET user_split = TRUE WHERE context_id = ?", (ctx_id,),
+        # Dissolve context groups that have <=1 member remaining
+        for ctx_id in affected_ctx_ids:
+            remaining = await db.execute_fetchall(
+                "SELECT COUNT(*) AS cnt FROM context_group_members WHERE context_id = ?", (ctx_id,),
             )
+            if remaining[0]["cnt"] <= 1:
+                await db.execute(
+                    "UPDATE context_groups SET user_split = TRUE WHERE context_id = ?", (ctx_id,),
+                )
 
-    await db.commit()
     log.info("card_unlinked_related", card_id=card_id, groups=affected_ctx_ids)
     await manager.broadcast({"type": "context_group_unlinked", "payload": {"card_id": card_id}})
     return {"status": "unlinked", "card_id": card_id}
@@ -2724,18 +2735,22 @@ async def unlink_context_group(context_id: str):
         (context_id,),
     )
 
-    # Mark as user-split so resolve_context_group won't re-merge
-    await db.execute(
-        "UPDATE context_groups SET user_split = TRUE WHERE context_id = ?",
-        (context_id,),
-    )
-    # Remove context_id from all member cards.
-    await db.execute(
-        "UPDATE action_cards SET context_id = NULL WHERE context_id = ?",
-        (context_id,),
-    )
+    # Split the group as one invariant: mark user_split so resolve_context_group
+    # won't re-merge, and detach every member card. A half-applied split (flag set
+    # but cards still linked, or vice-versa) would let the group silently re-form
+    # (review §2 API — P4-12).
+    async with transaction():
+        await db.execute(
+            "UPDATE context_groups SET user_split = TRUE WHERE context_id = ?",
+            (context_id,),
+        )
+        await db.execute(
+            "UPDATE action_cards SET context_id = NULL WHERE context_id = ?",
+            (context_id,),
+        )
 
-    # Record unlink corrections for learning (anchor-based: first card paired with each other)
+    # Record unlink corrections for learning (best-effort, outside the invariant —
+    # anchor-based: first card paired with each other).
     if len(group_cards) >= 2:
         space_id = group_cards[0]["space_id"]
         anchor = group_cards[0]
@@ -2752,8 +2767,7 @@ async def unlink_context_group(context_id: str):
                 )
             except Exception as e:
                 log.debug("context_correction_insert_failed", error=str(e))
-
-    await db.commit()
+        await db.commit()
 
     log.info("context_group_unlinked", context_id=context_id)
     await manager.broadcast({"type": "context_group_unlinked", "payload": {"context_id": context_id}})
@@ -2795,33 +2809,40 @@ async def merge_cards(body: MergeCardsRequest):
 
     if existing_context_id:
         context_id = existing_context_id
-        # Update the group to user-confirmed and clear any user_split
-        await db.execute(
-            "UPDATE context_groups SET user_confirmed = TRUE, user_split = FALSE WHERE context_id = ?",
-            (context_id,),
-        )
     else:
         context_id = f"ctx_{uuid.uuid4().hex[:12]}"
-        # Use the first card's header as the label
-        label = cards[0]["header"]
-        if len(label) > 60:
-            label = label[:57] + "..."
-        await db.execute(
-            "INSERT INTO context_groups (context_id, label, user_confirmed) VALUES (?, ?, TRUE)",
-            (context_id, label),
-        )
 
-    # Assign context_id to all cards and register card-level memberships
-    for c in cards:
-        await db.execute(
-            "UPDATE action_cards SET context_id = ? WHERE card_id = ?",
-            (context_id, c["card_id"]),
-        )
-        await db.execute(
-            "INSERT OR IGNORE INTO context_group_members (context_id, card_id, confidence, link_method) VALUES (?, ?, 1.0, 'user')",
-            (context_id, c["card_id"]),
-        )
-    await db.commit()
+    # Create/confirm the group and assign every card as one invariant — a
+    # half-applied merge would leave cards pointing at a context_groups row that
+    # was never created, or a group with only some of its members (review §2 API
+    # — P4-12).
+    async with transaction():
+        if existing_context_id:
+            # Update the group to user-confirmed and clear any user_split
+            await db.execute(
+                "UPDATE context_groups SET user_confirmed = TRUE, user_split = FALSE WHERE context_id = ?",
+                (context_id,),
+            )
+        else:
+            # Use the first card's header as the label
+            label = cards[0]["header"]
+            if len(label) > 60:
+                label = label[:57] + "..."
+            await db.execute(
+                "INSERT INTO context_groups (context_id, label, user_confirmed) VALUES (?, ?, TRUE)",
+                (context_id, label),
+            )
+
+        # Assign context_id to all cards and register card-level memberships
+        for c in cards:
+            await db.execute(
+                "UPDATE action_cards SET context_id = ? WHERE card_id = ?",
+                (context_id, c["card_id"]),
+            )
+            await db.execute(
+                "INSERT OR IGNORE INTO context_group_members (context_id, card_id, confidence, link_method) VALUES (?, ?, 1.0, 'user')",
+                (context_id, c["card_id"]),
+            )
 
     # Record link corrections for learning (anchor-based: first card paired with each other)
     space_id = cards[0]["space_id"] if cards else None
