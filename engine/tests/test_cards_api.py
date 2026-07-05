@@ -687,3 +687,33 @@ class TestFeedSearch:
         assert "card_s" not in await self._search_ids("checkzzz")
         # Sanity: a term in a retained field (header) still matches.
         assert "card_s" in await self._search_ids("plain")
+
+
+@pytest.mark.asyncio
+class TestGroupedPayloadSlim:
+    """/cards/grouped ships a slim list payload (P4-9): staged_output +
+    suggested_actions dropped, intelligence kept; the detail route stays full."""
+
+    async def test_grouped_omits_heavy_blobs_but_keeps_intelligence(self, db):
+        await insert_test_card(db, "card_slim", "evt_slim")  # default fixture has all 3
+
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            grouped = await client.get("/cards/grouped")
+            detail = await client.get("/cards/card_slim")
+
+        assert grouped.status_code == 200 and detail.status_code == 200
+        card = next(
+            c for g in grouped.json()["groups"] for c in g["cards"] if c["card_id"] == "card_slim"
+        )
+        # Slimmed in the list payload...
+        assert card["staged_output"] is None
+        assert card["suggested_actions"] is None
+        # ...but intelligence is kept (small + client-searchable).
+        assert card["intelligence"] == ["Finding 1", "Finding 2"]
+
+        # The detail endpoint still returns the full heavy fields.
+        full = detail.json()
+        assert full["staged_output"] is not None
+        assert full["suggested_actions"] is not None

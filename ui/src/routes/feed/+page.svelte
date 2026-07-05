@@ -535,7 +535,16 @@
 				if (savedCardId) {
 					for (const g of data.groups) {
 						const found = g.cards.find((c) => c.card_id === savedCardId);
-						if (found) { selectedCard = found; break; }
+						if (found) {
+							selectedCard = found;
+							// The grouped payload is slimmed (no staged_output/suggested_actions
+							// — P4-9); unlike selectCard(), this restore path never hydrated, so
+							// the detail panel would render permanently without them. Re-fetch.
+							engineApi.getCard(found.card_id).then((fresh) => {
+								if (selectedCard?.card_id === found.card_id) selectedCard = fresh as ActionCard;
+							}).catch(() => {});
+							break;
+						}
 					}
 				} else if (savedGroupId) {
 					const g = data.groups.find((g) => g.entity_id === savedGroupId);
@@ -761,22 +770,18 @@
 		_lastProcessedMsg = msg;
 
 		if (msg.type === 'action_payload_updated' && msg.card_id) {
-			// Merge the updated action payload into the cached card so CardDetail
+			// Merge the updated action payload into the open detail card so CardDetail
 			// reflects fresh state (polish result, _polishing spinner, _edited flag).
+			// Only selectedCard is patched now: the grouped list payload is slimmed of
+			// suggested_actions (P4-9) and nothing in the list renders them, so there's
+			// no grouped-card copy to keep in sync.
 			const actionId = (msg as { action_id?: string }).action_id;
 			const newPayload = (msg.payload as { payload?: Record<string, unknown> })?.payload;
-			if (actionId && newPayload) {
-				for (const group of groups) {
-					const card = group.cards.find((c) => c.card_id === msg.card_id);
-					if (!card || !card.suggested_actions) continue;
-					const action = card.suggested_actions.find((a) => a.action_id === actionId);
-					if (!action) continue;
+			if (actionId && newPayload && selectedCard?.card_id === msg.card_id && selectedCard.suggested_actions) {
+				const action = selectedCard.suggested_actions.find((a) => a.action_id === actionId);
+				if (action) {
 					action.payload = { ...action.payload, ...newPayload };
-					if (selectedCard?.card_id === msg.card_id) {
-						selectedCard = { ...card };
-					}
-					groups = groups;
-					break;
+					selectedCard = { ...selectedCard };
 				}
 			}
 			return;
@@ -1256,8 +1261,9 @@
 			card.status,
 			privacyLabel,
 			...(card.intelligence ?? []),
-			card.staged_output?.content,
-			...(card.suggested_actions?.map((a) => a.label) ?? []),
+			// staged_output/suggested_actions are slimmed from the grouped payload
+			// (P4-9) and are not scanned by the backend search either (P4-10), so the
+			// client-side filter matches the same fields the server does.
 			...(card.tags?.map((t) => t.tag_name) ?? [])
 		]
 			.filter(Boolean)

@@ -35,8 +35,15 @@ def _safe_privacy_tier(val) -> int:
         return 2
 
 
-def _row_to_card(row) -> CardResponse:
-    """Convert a SQLite Row to a CardResponse, deserializing JSON columns."""
+def _row_to_card(row, slim: bool = False) -> CardResponse:
+    """Convert a SQLite Row to a CardResponse, deserializing JSON columns.
+
+    ``slim=True`` omits the two large JSON blobs (``staged_output``,
+    ``suggested_actions``) for the grouped-feed *list* payload — they're heavy
+    per card, unused by the list/summary UI, and lazily re-fetched by the detail
+    panel via ``GET /cards/{id}`` (review §2/§4 — P4-9). ``intelligence`` is kept
+    (small, and it's still searched client-side, matching the P4-10 backend scan).
+    """
     intelligence = None
     if row["intelligence"]:
         try:
@@ -46,14 +53,14 @@ def _row_to_card(row) -> CardResponse:
             intelligence = None
 
     staged_output = None
-    if row["staged_output"]:
+    if not slim and row["staged_output"]:
         try:
             staged_output = StagedOutput(**json.loads(row["staged_output"]))
         except (json.JSONDecodeError, Exception):
             staged_output = None
 
     suggested_actions = None
-    if row["suggested_actions"]:
+    if not slim and row["suggested_actions"]:
         try:
             raw_actions = json.loads(row["suggested_actions"])
             suggested_actions = [SuggestedAction(**a) for a in raw_actions]
@@ -459,7 +466,9 @@ async def get_grouped_cards(
     for group_key, entity_rows in groups.items():
         is_context_group = group_key.startswith("ctx_")
 
-        cards = [_row_to_card(r) for r in entity_rows]
+        # slim=True: the list payload drops staged_output/suggested_actions; the
+        # detail panel re-fetches the full card via GET /cards/{id} (P4-9).
+        cards = [_row_to_card(r, slim=True) for r in entity_rows]
         # Inject tags into each card
         for card in cards:
             card_tags = tags_map.get(("card", card.card_id), [])
