@@ -42,16 +42,7 @@ fn no_window(_cmd: &mut Command) {}
 
 // ── Path helpers ────────────────────────────────────────────────────────
 
-fn home_dir() -> Option<PathBuf> {
-    #[cfg(unix)]
-    { std::env::var_os("HOME").map(PathBuf::from) }
-    #[cfg(windows)]
-    { std::env::var_os("USERPROFILE").map(PathBuf::from) }
-}
-
-fn laya_home() -> PathBuf {
-    home_dir().unwrap_or_default().join(".laya")
-}
+use crate::process_util::laya_home;
 
 /// ~/.laya/venv
 fn venv_dir() -> PathBuf {
@@ -175,22 +166,8 @@ pub fn check_environment() -> EnvStatus {
 /// host Python. Without this fix, `python -m venv` fails with:
 ///   "ModuleNotFoundError: No module named 'encodings'"
 fn sanitize_python_cmd(cmd: &mut Command) {
-    cmd.env_remove("PYTHONHOME")
-        .env_remove("PYTHONPATH");
-
-    // LD_LIBRARY_PATH: remove AppImage-injected paths (anything under /tmp/.mount_*)
-    // but keep the rest so system libraries still resolve.
-    if let Ok(ld) = std::env::var("LD_LIBRARY_PATH") {
-        let cleaned: Vec<&str> = ld
-            .split(':')
-            .filter(|p| !p.starts_with("/tmp/.mount_"))
-            .collect();
-        if cleaned.is_empty() {
-            cmd.env_remove("LD_LIBRARY_PATH");
-        } else {
-            cmd.env("LD_LIBRARY_PATH", cleaned.join(":"));
-        }
-    }
+    cmd.env_remove("PYTHONHOME").env_remove("PYTHONPATH");
+    crate::process_util::sanitize_ld_library_path(cmd);
 }
 
 // ── Python detection ────────────────────────────────────────────────────

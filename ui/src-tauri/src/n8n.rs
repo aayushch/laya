@@ -45,20 +45,7 @@ pub const N8N_PORT: u16 = 45678;
 
 // ── Path helpers ────────────────────────────────────────────────────────
 
-fn home_dir() -> Option<PathBuf> {
-    #[cfg(unix)]
-    {
-        std::env::var_os("HOME").map(PathBuf::from)
-    }
-    #[cfg(windows)]
-    {
-        std::env::var_os("USERPROFILE").map(PathBuf::from)
-    }
-}
-
-fn laya_home() -> PathBuf {
-    home_dir().unwrap_or_default().join(".laya")
-}
+use crate::process_util::{home_dir, laya_home};
 
 /// Where the n8n npm package is installed: ~/.laya/n8n_module/
 fn n8n_module_dir() -> PathBuf {
@@ -237,17 +224,7 @@ pub fn find_node_system() -> Result<(String, String), String> {
 /// Strip AppImage-injected environment variables before invoking system
 /// Node.js, same rationale as `sanitize_python_cmd` in sidecar.rs.
 fn sanitize_node_cmd(cmd: &mut Command) {
-    if let Ok(ld) = std::env::var("LD_LIBRARY_PATH") {
-        let cleaned: Vec<&str> = ld
-            .split(':')
-            .filter(|p| !p.starts_with("/tmp/.mount_"))
-            .collect();
-        if cleaned.is_empty() {
-            cmd.env_remove("LD_LIBRARY_PATH");
-        } else {
-            cmd.env("LD_LIBRARY_PATH", cleaned.join(":"));
-        }
-    }
+    crate::process_util::sanitize_ld_library_path(cmd);
 }
 
 /// Get the directory containing the node binary (for augmenting PATH).

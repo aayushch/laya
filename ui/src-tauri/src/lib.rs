@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 mod n8n;
+mod process_util;
 mod runtime;
 mod sidecar;
 
