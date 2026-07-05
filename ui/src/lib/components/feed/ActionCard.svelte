@@ -230,6 +230,11 @@
 			await engineApi.markCardDone(card.card_id);
 			card.status = 'done';
 			if (!card.read_at) card.read_at = new Date().toISOString();
+		} catch (err) {
+			// Don't fail silently — an uncaught rejection made the button appear
+			// to 'do nothing' on error (review §2 UI — P4-31). The optimistic
+			// state update runs only after the await, so nothing to revert here.
+			console.error('card_action_failed', 'markDone', card.card_id, err);
 		} finally {
 			markingDone = false;
 		}
@@ -242,6 +247,11 @@
 			await engineApi.dismissCard(card.card_id);
 			card.status = 'dismissed';
 			if (!card.read_at) card.read_at = new Date().toISOString();
+		} catch (err) {
+			// Don't fail silently — an uncaught rejection made the button appear
+			// to 'do nothing' on error (review §2 UI — P4-31). The optimistic
+			// state update runs only after the await, so nothing to revert here.
+			console.error('card_action_failed', 'dismiss', card.card_id, err);
 		} finally {
 			dismissing = false;
 		}
@@ -254,6 +264,11 @@
 			await engineApi.archiveCard(card.card_id);
 			card.status = 'archived';
 			if (!card.read_at) card.read_at = new Date().toISOString();
+		} catch (err) {
+			// Don't fail silently — an uncaught rejection made the button appear
+			// to 'do nothing' on error (review §2 UI — P4-31). The optimistic
+			// state update runs only after the await, so nothing to revert here.
+			console.error('card_action_failed', 'archive', card.card_id, err);
 		} finally {
 			archiving = false;
 		}
@@ -265,6 +280,11 @@
 		try {
 			const result = await engineApi.reopenCard(card.card_id);
 			card.status = result.status as ActionCard['status'];
+		} catch (err) {
+			// Don't fail silently — an uncaught rejection made the button appear
+			// to 'do nothing' on error (review §2 UI — P4-31). The optimistic
+			// state update runs only after the await, so nothing to revert here.
+			console.error('card_action_failed', 'reopen', card.card_id, err);
 		} finally {
 			reopening = false;
 		}
@@ -288,6 +308,11 @@
 				const result = await engineApi.bookmarkCard(card.card_id);
 				card.bookmarked_at = result.bookmarked_at;
 			}
+		} catch (err) {
+			// Don't fail silently — an uncaught rejection made the button appear
+			// to 'do nothing' on error (review §2 UI — P4-31). The optimistic
+			// state update runs only after the await, so nothing to revert here.
+			console.error('card_action_failed', 'toggleBookmark', card.card_id, err);
 		} finally {
 			bookmarking = false;
 		}

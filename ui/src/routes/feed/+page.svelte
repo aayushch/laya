@@ -1,10 +1,10 @@
 <!-- Copyright 2026 Aayush Chawla -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
 	import { parseBackendDate } from '$lib/utils/datetime';
-	import { lastMessage } from '$lib/stores/websocket';
+	import { lastMessage, wsStatus } from '$lib/stores/websocket';
 	import { feedFilters, feedDate, feedPrevDate, feedNextDate, localToday, allDaysSavedDate } from '$lib/stores/feedFilters';
 	import type { ActionCard, CardGroup, GroupSummary, DaySummary, SpaceSummary, Tag } from '$lib/api/types';
 	import CardGroupComponent from '$lib/components/feed/CardGroup.svelte';
@@ -484,13 +484,22 @@
 			// Extract #tag tokens from search query
 			const _tagTokens: string[] = [];
 			const _textTokens: string[] = [];
-			for (const token of searchQuery.trim().split(/\s+/)) {
-				if (token.startsWith('#') && token.length > 1) {
-					_tagTokens.push(token.slice(1));
-				} else if (token) {
-					_textTokens.push(token);
+			// Read searchQuery WITHOUT tracking it. loadGroups() runs synchronously
+			// inside the $feedDate/$feedFilters reload effect, so a tracked read here
+			// silently made searchQuery a dependency of that effect — every keystroke
+			// re-ran it and fired a full GET /cards/grouped, defeating the 300ms search
+			// debounce (review §2 UI — P4-29). Backend search only applies in all-days
+			// mode (see the search/tags params below), which reloads via its own
+			// debounced effect; normal-mode search is filtered client-side.
+			untrack(() => {
+				for (const token of searchQuery.trim().split(/\s+/)) {
+					if (token.startsWith('#') && token.length > 1) {
+						_tagTokens.push(token.slice(1));
+					} else if (token) {
+						_textTokens.push(token);
+					}
 				}
-			}
+			});
 			const _searchText = _textTokens.join(' ');
 			const isAllDays = f.showAllDaysSearch;
 
@@ -592,6 +601,19 @@
 		$feedDate;
 		$feedFilters;
 		loadGroups();
+	});
+
+	// Resync after a WebSocket reconnect. The store wipes its buffered messages on
+	// disconnect, so after an engine restart the feed would otherwise stay silently
+	// stale until the user changed a filter (review §2 UI — P4-30). Fire only on a
+	// genuine reconnect (2nd+ time we reach 'connected'), not the initial connect —
+	// the mount-time reload effect above already fetched.
+	let _hasConnectedBefore = false;
+	$effect(() => {
+		if ($wsStatus === 'connected') {
+			if (_hasConnectedBefore) scheduleReload();
+			_hasConnectedBefore = true;
+		}
 	});
 
 	// Load available tags for the filter

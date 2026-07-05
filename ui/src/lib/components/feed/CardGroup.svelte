@@ -343,12 +343,18 @@
 						break;
 					case 'reopen':
 						if (['dismissed', 'archived', 'done'].includes(card.status)) {
-							promises.push(engineApi.reopenCard(card.card_id).then(() => { card.status = 'ready'; }));
+							// Use the backend's restored status, not a hardcoded 'ready' —
+						// reopen restores the card's saved previous_status which may be
+						// pending/requires_approval (review §2 UI — P4-31).
+						promises.push(engineApi.reopenCard(card.card_id).then((r) => { card.status = r.status as ActionCard['status']; }));
 						}
 						break;
 					case 'unarchive':
 						if (card.status === 'archived') {
-							promises.push(engineApi.reopenCard(card.card_id).then(() => { card.status = 'ready'; }));
+							// Use the backend's restored status, not a hardcoded 'ready' —
+						// reopen restores the card's saved previous_status which may be
+						// pending/requires_approval (review §2 UI — P4-31).
+						promises.push(engineApi.reopenCard(card.card_id).then((r) => { card.status = r.status as ActionCard['status']; }));
 						}
 						break;
 				}
