@@ -245,7 +245,11 @@
 						tracedEntities.add(linked.entity_id);
 					}
 				}
-				if (tracedEntities.has(cardEntityId)) {
+				// Don't raise the "New events detected" banner while a trace is
+				// (re)generating — a card_created arriving mid-rerun would spuriously
+				// show it right after a fresh trace already incorporated everything,
+				// inviting a needless (LLM-cost) rerun (review §2 UI — P4-35).
+				if (tracedEntities.has(cardEntityId) && !get(traceLoading)) {
 					traceNewEventsDetected.set(true);
 				}
 			}
@@ -359,6 +363,10 @@
 	async function handleRerun(traceId?: string) {
 		const id = traceId || trace?.trace_id;
 		if (!id) return;
+		// Concurrent-trace guard: don't start a rerun while a search/rerun is
+		// already in flight — a second concurrent trace generation wastes LLM
+		// cost and races the shared trace state (review §2 UI — P4-35).
+		if (get(traceLoading)) return;
 
 		const rerunQuery = trace?.query ?? '';
 		traceLoading.set(true);
@@ -450,6 +458,8 @@
 		try {
 			await engineApi.generateClusterNarrative(trace.trace_id, clusterId);
 		} catch (e) {
+			// Surface the failure, not just console.error (review §2 UI — P4-35).
+			error = e instanceof Error ? e.message : 'Narrative generation failed';
 			console.error('Narrative generation failed:', e);
 		}
 	}
@@ -490,6 +500,8 @@
 		try {
 			await engineApi.generateTraceSummary(trace.trace_id);
 		} catch (e) {
+			// Surface the failure, not just console.error (review §2 UI — P4-35).
+			error = e instanceof Error ? e.message : 'Summary generation failed';
 			console.error('Summary generation failed:', e);
 		}
 	}
