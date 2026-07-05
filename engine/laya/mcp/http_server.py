@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import time
 import uuid
 
 import structlog
@@ -69,7 +70,7 @@ _SECURITY = TransportSecuritySettings(enable_dns_rebinding_protection=False)
 class _Session:
     """One Streamable HTTP session: a transport + a background server.run() task."""
 
-    __slots__ = ("transport", "task", "space_id")
+    __slots__ = ("transport", "task", "space_id", "last_activity")
 
     def __init__(
         self,
@@ -80,6 +81,7 @@ class _Session:
         self.transport = transport
         self.task = task
         self.space_id = space_id
+        self.last_activity = time.monotonic()
 
 
 class StreamableSessionManager:
@@ -91,10 +93,31 @@ class StreamableSessionManager:
     matching session.
     """
 
+    # Idle Streamable sessions to reap. An abandoned `initialize` (client sends it
+    # then never continues) leaves its server.run() task blocked forever, so the
+    # session's finally-cleanup never fires — it leaks a task + transport until
+    # engine restart (review §2 agents / §4 — P4-28).
+    _IDLE_TTL = 600.0  # seconds
+
     def __init__(self) -> None:
         self._sessions: dict[str, _Session] = {}
 
+    def _reap_idle(self) -> None:
+        """Terminate sessions idle beyond the TTL. Swept lazily on each new
+        session creation, which bounds the number of leaked sessions."""
+        now = time.monotonic()
+        for sid, session in list(self._sessions.items()):
+            if now - session.last_activity > self._IDLE_TTL:
+                log.info("mcp_streamable_session_reaped", session_id=sid)
+                try:
+                    session.transport.terminate()
+                except Exception:
+                    pass
+                session.task.cancel()
+                self._sessions.pop(sid, None)
+
     async def create_session(self, space_id: str | None = None) -> _Session:
+        self._reap_idle()
         session_id = uuid.uuid4().hex
         transport = StreamableHTTPServerTransport(
             mcp_session_id=session_id,
@@ -127,7 +150,10 @@ class StreamableSessionManager:
         return session
 
     def get(self, session_id: str) -> _Session | None:
-        return self._sessions.get(session_id)
+        session = self._sessions.get(session_id)
+        if session is not None:
+            session.last_activity = time.monotonic()  # keep-alive on each routed request
+        return session
 
     async def shutdown(self) -> None:
         """Terminate all sessions (engine shutdown)."""
