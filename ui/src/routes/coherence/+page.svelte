@@ -31,7 +31,6 @@
 	let error = $state<string | null>(null);
 	let trace = $state<TraceResponse | null>(get(currentTrace));
 	let exporting = $state(false);
-	let selectingTrace = $state(false);
 	let removedClusterIds = $state<Set<string>>(new Set());
 	let _activeTraceId = $state<string | null>(null);
 	let expandAllClusters = $state<boolean | null>(null);
@@ -325,11 +324,10 @@
 	}
 
 	async function handleSelectTrace(traceId: string) {
-		// Use a local flag, NOT traceLoading/traceProgress — those represent an
+		// Do NOT clobber traceLoading/traceProgress here — those represent an
 		// in-flight coherence search and must keep reflecting it while the user
-		// opens another trace from history. Clobbering them here is what caused
-		// the in-flight card to disappear when the user clicked another query.
-		selectingTrace = true;
+		// opens another trace from history. Clobbering them is what caused the
+		// in-flight card to disappear when the user clicked another query.
 		error = null;
 		removedClusterIds = new Set();
 		// Do NOT wipe narrative maps — in-flight streaming state for this trace (e.g. a
@@ -355,8 +353,6 @@
 			});
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load trace';
-		} finally {
-			selectingTrace = false;
 		}
 	}
 

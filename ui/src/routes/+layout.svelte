@@ -312,11 +312,22 @@
 			e.preventDefault();
 		});
 
+		// Shared guard for the single-key shortcuts below: ignore them while an
+		// input/select is focused, AND while a modal dialog is open — otherwise a
+		// shortcut would stack a second modal on top or act on the background view
+		// (review §2 UI — P4-36). Summary/chat/recent are NOT role=dialog, so
+		// their own toggle shortcuts still close them.
+		function shortcutBlocked(e: KeyboardEvent): boolean {
+			const el = e.target as HTMLElement | null;
+			const tag = el?.tagName;
+			if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable) return true;
+			return document.querySelector('[role="dialog"]') !== null;
+		}
+
 		// Keyboard shortcut: press 'c' (not in input/textarea) to open compose modal
 		function handleComposeShortcut(e: KeyboardEvent) {
 			if (e.key === 'c' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-				const tag = (e.target as HTMLElement)?.tagName;
-				if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable) return;
+				if (shortcutBlocked(e)) return;
 				e.preventDefault();
 				compose.openCompose('gmail', 'compose', {});
 			}
@@ -326,8 +337,7 @@
 		// Keyboard shortcut: press 'a' (not in input/textarea) to open run agent dialog
 		function handleAgentShortcut(e: KeyboardEvent) {
 			if (e.key === 'a' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-				const tag = (e.target as HTMLElement)?.tagName;
-				if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable) return;
+				if (shortcutBlocked(e)) return;
 				e.preventDefault();
 				agentDialog.open();
 			}
@@ -337,8 +347,7 @@
 		// Keyboard shortcut: press 's' (not in input/textarea) to toggle summary modal
 		function handleSummaryShortcut(e: KeyboardEvent) {
 			if (e.key === 's' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-				const tag = (e.target as HTMLElement)?.tagName;
-				if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable) return;
+				if (shortcutBlocked(e)) return;
 				e.preventDefault();
 				summaryModalOpen.update(v => !v);
 			}
@@ -348,8 +357,7 @@
 		// Keyboard shortcut: press 'l' (not in input/textarea) to toggle chat panel
 		function handleChatShortcut(e: KeyboardEvent) {
 			if (e.key === 'l' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-				const tag = (e.target as HTMLElement)?.tagName;
-				if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable) return;
+				if (shortcutBlocked(e)) return;
 				e.preventDefault();
 				e.stopImmediatePropagation();
 				let current = false;
@@ -367,8 +375,7 @@
 		// Keyboard shortcut: press 'r' to toggle recent items drawer
 		function handleRecentShortcut(e: KeyboardEvent) {
 			if (e.key === 'r' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-				const tag = (e.target as HTMLElement)?.tagName;
-				if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable) return;
+				if (shortcutBlocked(e)) return;
 				e.preventDefault();
 				recentDrawerOpen.update(v => !v);
 			}
@@ -378,8 +385,7 @@
 		// Keyboard shortcut: press 'b' to toggle bookmarks filter
 		function handleBookmarkShortcut(e: KeyboardEvent) {
 			if (e.key === 'b' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-				const tag = (e.target as HTMLElement)?.tagName;
-				if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable) return;
+				if (shortcutBlocked(e)) return;
 				e.preventDefault();
 				feedFilters.update(f => ({ ...f, showBookmarked: !f.showBookmarked }));
 			}
