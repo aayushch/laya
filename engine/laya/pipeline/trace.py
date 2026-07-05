@@ -24,8 +24,7 @@ from laya.api.cards_api import _row_to_card
 from laya.pipeline.queue import _get_semaphore
 from laya.api.websocket import manager
 from laya.db.chromadb_store import memory_search
-from laya.db.fts import build_fts_match, fts_ready
-from laya.retrieval import extract_keywords, reciprocal_rank_fusion
+from laya.retrieval import extract_keywords, fts_or_like, reciprocal_rank_fusion
 from laya.db.sqlite import get_db
 from laya.db.timeutil import db_now
 from laya.config import get_self_user
@@ -725,13 +724,14 @@ async def _event_keyword_search(query: str, space_id: str | None, n: int) -> lis
     entity_id, source_url) that are not in cards_fts and use bespoke boost/phrase
     semantics tuned for the RRF ensemble.
     """
-    match = build_fts_match(query, min_len=2, max_terms=5)
-    if fts_ready() and match:
-        try:
-            return await _event_keyword_search_fts(match, space_id, n)
-        except Exception as e:
-            log.warning("trace_events_fts_failed_fallback_like", error=str(e))
-    return await _event_keyword_search_like(query, space_id, n)
+    return await fts_or_like(
+        query,
+        min_len=2,
+        max_terms=5,
+        fts=lambda m: _event_keyword_search_fts(m, space_id, n),
+        like=lambda q: _event_keyword_search_like(q, space_id, n),
+        warn_event="trace_events_fts_failed_fallback_like",
+    )
 
 
 async def _event_keyword_search_fts(match: str, space_id: str | None, n: int) -> list[dict]:

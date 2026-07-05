@@ -11,11 +11,8 @@ from typing import Any
 import structlog
 
 from laya.api.websocket import manager
-from laya.db.fts import build_fts_match, fts_ready
 from laya.db.sqlite import get_db
 from laya.db.timeutil import db_now, db_ts_from_epoch
-
-log = structlog.get_logger()
 from laya.llm.tools.constants import (
     CARDS_BY_ENTITY_DEFAULT,
     CARDS_BY_ENTITY_MAX,
@@ -23,6 +20,9 @@ from laya.llm.tools.constants import (
     CHAT_SEARCH_MAX,
     parse_iso_to_timestamp,
 )
+from laya.retrieval import fts_or_like
+
+log = structlog.get_logger()
 
 
 def _parse_entity_platform(entity_id: str) -> str:
@@ -115,18 +115,20 @@ async def _search_keyword(
     # fallback's AND semantics and the tool's documented "all terms" contract.
     # Previously FTS was OR and LIKE was AND, so results silently differed by
     # whether FTS5 was available (review §5.3 — P7-1).
-    match = build_fts_match(query, min_len=2, max_terms=8, match_all=True) if query else None
-    if query and fts_ready() and match:
-        try:
-            return await _search_keyword_fts(
-                match, status, priority, capped_limit, offset, space_id,
-                date_from_ts, date_to_ts,
-            )
-        except Exception as e:
-            log.warning("card_tools_fts_failed_fallback_like", error=str(e))
-    return await _search_keyword_like(
-        query, status, priority, capped_limit, offset, space_id,
-        date_from_ts, date_to_ts,
+    return await fts_or_like(
+        query,
+        min_len=2,
+        max_terms=8,
+        match_all=True,
+        fts=lambda m: _search_keyword_fts(
+            m, status, priority, capped_limit, offset, space_id,
+            date_from_ts, date_to_ts,
+        ),
+        like=lambda q: _search_keyword_like(
+            q, status, priority, capped_limit, offset, space_id,
+            date_from_ts, date_to_ts,
+        ),
+        warn_event="card_tools_fts_failed_fallback_like",
     )
 
 

@@ -16,6 +16,14 @@ no dependency back on the pipeline.
 
 from __future__ import annotations
 
+from typing import Any, Awaitable, Callable
+
+import structlog
+
+from laya.db.fts import build_fts_match, fts_ready
+
+log = structlog.get_logger()
+
 # Shared English stopword set. Was duplicated verbatim in pipeline/chat.py and
 # pipeline/trace.py; db/fts.py keeps its own small copy on purpose to stay
 # import-free, so it is intentionally NOT consolidated here.
@@ -76,3 +84,46 @@ def reciprocal_rank_fusion(
 
     sorted_ids = sorted(scores.keys(), key=lambda d: scores[d], reverse=True)
     return [items[did] for did in sorted_ids]
+
+
+async def fts_or_like(
+    query: str | None,
+    *,
+    min_len: int,
+    max_terms: int,
+    match_all: bool = False,
+    fts: Callable[[str], Awaitable[Any]],
+    like: Callable[[str | None], Awaitable[Any]],
+    warn_event: str,
+) -> Any:
+    """Run the shared "FTS5/BM25 when available, else SQL LIKE" keyword dispatch.
+
+    Builds a safe MATCH expression from ``query``; if FTS is ready and the query
+    yields usable terms, runs ``fts(match)`` inside a try/except that logs
+    ``warn_event`` and degrades to ``like(query)`` on any runtime FTS fault (an
+    exotic SQLite build without fts5, a transient index error). When no terms
+    survive (stopwords-only / too short) or FTS is unavailable, runs
+    ``like(query)`` directly.
+
+    The FTS body, the LIKE body, and their result shapes stay in each caller —
+    only this try-FTS-then-fall-back control flow is shared. It was copy-pasted
+    across chat, trace, and the card-search tool and had begun to drift (e.g. the
+    warn-event labels and the redundant ``query and`` guard differed), so it lives
+    here now so the fallback contract can't diverge (review §5.3 — P7-1).
+
+    ``min_len`` / ``max_terms`` / ``match_all`` are passed through to
+    ``build_fts_match`` unchanged — each stack keeps its own tuned values (chat
+    min_len 3 for precision, trace 2 for recall, the card tool ``match_all`` to
+    mirror its LIKE fallback's AND semantics).
+    """
+    match = (
+        build_fts_match(query, min_len=min_len, max_terms=max_terms, match_all=match_all)
+        if query
+        else None
+    )
+    if fts_ready() and match:
+        try:
+            return await fts(match)
+        except Exception as e:
+            log.warning(warn_event, error=str(e))
+    return await like(query)

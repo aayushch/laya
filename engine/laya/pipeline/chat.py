@@ -15,9 +15,8 @@ from typing import Any
 import structlog
 
 from laya.db.chromadb_store import memory_search
-from laya.db.fts import build_fts_match, fts_ready
 from laya.db.sqlite import get_db
-from laya.retrieval import extract_keywords, reciprocal_rank_fusion
+from laya.retrieval import extract_keywords, fts_or_like, reciprocal_rank_fusion
 from laya.db.timeutil import db_now
 from laya.llm.client import llm_call, llm_call_streaming, StreamEvent
 from laya.llm.prompts.chat import build_chat_messages, build_title_generation_messages
@@ -725,13 +724,14 @@ async def _semantic_search(query: str, space_id: str | None, n: int) -> list[dic
 
 async def _card_keyword_search(query: str, space_id: str | None, n: int) -> list[dict]:
     """Keyword search on cards — FTS5/BM25 when available, else SQL LIKE."""
-    match = build_fts_match(query, min_len=3, max_terms=8)
-    if fts_ready() and match:
-        try:
-            return await _card_keyword_search_fts(match, space_id, n)
-        except Exception as e:
-            log.warning("cards_fts_failed_fallback_like", error=str(e))
-    return await _card_keyword_search_like(query, space_id, n)
+    return await fts_or_like(
+        query,
+        min_len=3,
+        max_terms=8,
+        fts=lambda m: _card_keyword_search_fts(m, space_id, n),
+        like=lambda q: _card_keyword_search_like(q, space_id, n),
+        warn_event="cards_fts_failed_fallback_like",
+    )
 
 
 async def _card_keyword_search_fts(match: str, space_id: str | None, n: int) -> list[dict]:
@@ -806,13 +806,14 @@ def _format_card_keyword_rows(rows) -> list[dict]:
 
 async def _event_keyword_search(query: str, space_id: str | None, n: int) -> list[dict]:
     """Keyword search on events — FTS5/BM25 when available, else SQL LIKE."""
-    match = build_fts_match(query, min_len=3, max_terms=5)
-    if fts_ready() and match:
-        try:
-            return await _event_keyword_search_fts(match, space_id, n)
-        except Exception as e:
-            log.warning("events_fts_failed_fallback_like", error=str(e))
-    return await _event_keyword_search_like(query, space_id, n)
+    return await fts_or_like(
+        query,
+        min_len=3,
+        max_terms=5,
+        fts=lambda m: _event_keyword_search_fts(m, space_id, n),
+        like=lambda q: _event_keyword_search_like(q, space_id, n),
+        warn_event="events_fts_failed_fallback_like",
+    )
 
 
 async def _event_keyword_search_fts(match: str, space_id: str | None, n: int) -> list[dict]:

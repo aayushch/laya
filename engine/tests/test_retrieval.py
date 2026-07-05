@@ -3,7 +3,16 @@
 
 """Tests for the consolidated retrieval primitives (laya/retrieval.py — P7-1)."""
 
-from laya.retrieval import STOPWORDS, extract_keywords, reciprocal_rank_fusion
+from unittest.mock import patch
+
+import pytest
+
+from laya.retrieval import (
+    STOPWORDS,
+    extract_keywords,
+    fts_or_like,
+    reciprocal_rank_fusion,
+)
 
 
 class TestExtractKeywords:
@@ -54,3 +63,64 @@ class TestReciprocalRankFusion:
         assert len(entity_hits) == 1
         # e1 (in both lists) outranks ent1 (in one).
         assert fused[0].get("event_id") == "e1"
+
+
+class TestFtsOrLike:
+    """The shared FTS-else-LIKE dispatch (P7-1 part 2). Chat, trace, and the
+    card-search tool route their keyword search through this so the "try FTS,
+    fall back to LIKE" contract can't drift between them."""
+
+    async def _run(self, query, *, fts_available, fts_side_effect=None):
+        calls = {"fts": 0, "like": 0}
+
+        async def fts(match):
+            calls["fts"] += 1
+            if fts_side_effect:
+                raise fts_side_effect
+            return f"fts:{match}"
+
+        async def like(q):
+            calls["like"] += 1
+            return f"like:{q}"
+
+        with patch("laya.retrieval.fts_ready", return_value=fts_available):
+            result = await fts_or_like(
+                query, min_len=3, max_terms=8,
+                fts=fts, like=like, warn_event="test_fallback",
+            )
+        return result, calls
+
+    @pytest.mark.asyncio
+    async def test_uses_fts_when_ready_with_terms(self):
+        result, calls = await self._run("payment crash", fts_available=True)
+        assert result.startswith("fts:")
+        assert calls == {"fts": 1, "like": 0}
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_like_when_fts_unavailable(self):
+        result, calls = await self._run("payment crash", fts_available=False)
+        assert result == "like:payment crash"
+        assert calls == {"fts": 0, "like": 1}
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_like_when_no_usable_terms(self):
+        # Stopwords-only query yields no MATCH expression → LIKE path, no FTS call.
+        result, calls = await self._run("the and or", fts_available=True)
+        assert result == "like:the and or"
+        assert calls == {"fts": 0, "like": 1}
+
+    @pytest.mark.asyncio
+    async def test_fts_runtime_error_degrades_to_like(self):
+        # The safety net: a runtime FTS fault must not 500 — it logs and runs LIKE.
+        result, calls = await self._run(
+            "payment crash", fts_available=True,
+            fts_side_effect=RuntimeError("fts5 blew up"),
+        )
+        assert result == "like:payment crash"
+        assert calls == {"fts": 1, "like": 1}
+
+    @pytest.mark.asyncio
+    async def test_empty_query_skips_fts(self):
+        result, calls = await self._run("", fts_available=True)
+        assert result == "like:"
+        assert calls == {"fts": 0, "like": 1}
