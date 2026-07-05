@@ -627,3 +627,63 @@ class TestReopenCardSSOT:
             "SELECT status FROM action_cards WHERE card_id = ?", ("card_test",)
         )
         assert rows[0]["status"] == "pending"  # no previous_status → full reprocess
+
+
+@pytest.mark.asyncio
+class TestFeedSearch:
+    """GET /cards/grouped?search= — perf-only refactor keeps substring matching,
+    de-correlates the tag lookup, and drops the giant JSON-blob fields (P4-10)."""
+
+    async def _search_ids(self, term):
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get(f"/cards/grouped?search={term}")
+        assert resp.status_code == 200
+        data = resp.json()
+        return {c["card_id"] for g in data["groups"] for c in g["cards"]}
+
+    async def test_substring_match_preserved(self, db):
+        """A partial-word term still matches via LIKE substring (not FTS tokens)."""
+        await insert_test_card(
+            db, "card_q", "evt_q", header="Quokkapayment overdue", summary="none",
+            entity_id="jira:ticket:Q-1",
+        )
+        # 'quokka' is a substring of the header token 'Quokkapayment' — a token/FTS
+        # search would miss it; substring LIKE must still find it.
+        assert "card_q" in await self._search_ids("quokka")
+
+    async def test_tag_name_match_decorrelated(self, db):
+        """Searching a tag name matches via the hoisted ctag join."""
+        await insert_test_card(
+            db, "card_t", "evt_t", header="Nothing special", summary="none",
+            entity_id="jira:ticket:T-1",
+        )
+        cur = await db.execute(
+            "INSERT INTO tags (name, color) VALUES (?, ?)", ("wafflewatch", "#0f0")
+        )
+        await db.execute(
+            "INSERT INTO tag_assignments (tag_id, target_type, target_id) VALUES (?, 'card', ?)",
+            (cur.lastrowid, "card_t"),
+        )
+        await db.commit()
+        assert "card_t" in await self._search_ids("wafflewatch")
+        # A card without the tag is not returned for that term.
+        assert await self._search_ids("wafflewatch") == {"card_t"}
+
+    async def test_staged_output_no_longer_searched(self, db):
+        """Terms that appear only in staged_output/suggested_actions don't match.
+
+        insert_test_card's default staged_output is {"content": "Add null check"};
+        'checkzzz' is a unique token so we can prove the field is no longer scanned
+        without a false positive from other columns."""
+        await insert_test_card(
+            db, "card_s", "evt_s", header="Plain header", summary="plain",
+            entity_id="jira:ticket:S-1",
+            actions=[{"action_id": "a1", "label": "do", "action_type": "comment",
+                      "target_platform": "jira", "payload": {"body": "checkzzz here"}}],
+        )
+        # 'checkzzz' lives only in suggested_actions JSON → dropped from search.
+        assert "card_s" not in await self._search_ids("checkzzz")
+        # Sanity: a term in a retained field (header) still matches.
+        assert "card_s" in await self._search_ids("plain")

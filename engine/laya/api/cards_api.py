@@ -268,18 +268,33 @@ async def get_grouped_cards(
         conditions.append("c.read_at IS NULL")
     if not show_archived:
         conditions.append("c.status != 'archived'")
+    # Only joined when a search is active (aggregates each card's tag names once).
+    search_join = ""
     if search:
         terms = [t for t in search.lower().split() if t]
+        # De-correlate the tag match: aggregate each card's tag names ONCE via a
+        # join to a grouped subquery (ctag.tag_names), instead of the old
+        # correlated GROUP_CONCAT subquery that re-ran per row per term. Same
+        # substring semantics; the per-row-per-term full scan is gone (review §2/§4
+        # — P4-10). Also dropped the giant staged_output/suggested_actions JSON
+        # blobs from the scanned fields — they dominated the LIKE cost and search
+        # over raw action JSON is low value.
+        search_join = (
+            " LEFT JOIN (SELECT ta.target_id, GROUP_CONCAT(t.name) AS tag_names "
+            "FROM tag_assignments ta JOIN tags t ON ta.tag_id = t.tag_id "
+            "WHERE ta.target_type = 'card' GROUP BY ta.target_id) ctag "
+            "ON ctag.target_id = c.card_id"
+        )
         search_fields = [
             "c.header", "c.summary", "c.category",
             "c.entity_id", "c.source_ref",
             "e.actor_name", "e.actor_email",
             "s.name",
             "c.persona", "c.priority", "c.status",
-            "c.intelligence", "c.staged_output", "c.suggested_actions",
+            "c.intelligence",
             "e.subject_title", "e.source_platform",
             "CASE c.privacy_tier WHEN 3 THEN 'confidential' WHEN 2 THEN 'internal' WHEN 1 THEN 'public' ELSE '' END",
-            "(SELECT GROUP_CONCAT(t.name) FROM tag_assignments ta JOIN tags t ON ta.tag_id = t.tag_id WHERE ta.target_type = 'card' AND ta.target_id = c.card_id)",
+            "ctag.tag_names",
         ]
         for term in terms:
             like_val = f"%{term}%"
@@ -308,6 +323,7 @@ async def get_grouped_cards(
             FROM action_cards c
             LEFT JOIN events e ON c.event_id = e.event_id
             LEFT JOIN spaces s ON c.space_id = s.space_id
+            {search_join}
             {where_clause}
             ORDER BY c.created_at DESC""",
         params,
