@@ -498,11 +498,16 @@ register_mcp_transport(app)
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time UI communication."""
     await manager.connect(websocket)
+    from laya.tasks import create_task as create_tracked_task
     try:
         while True:
             data = await websocket.receive_text()
             log.debug("ws_message_received", data=data[:200])
-            await handle_ws_message(data)
+            # Dispatch as a task so a long-running handler — e.g. a chat streamed
+            # from a slow local model — doesn't block the receive loop. Approve/
+            # deny/cancel messages must be handled WHILE a chat is still streaming,
+            # or the user can't cancel it (review §2 UI — P4-33).
+            create_tracked_task(handle_ws_message(data))
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
