@@ -158,8 +158,16 @@
 		} catch { /* handled silently */ }
 	}
 
+	// Guard the related/egress fetches on the card_id actually changing. The `card`
+	// prop is replaced with a fresh object on every WS status tick of the selected
+	// card (same card_id, new identity), which re-ran these effects and refetched
+	// related + egress context each time (review §2 UI — P4-34). Skip when the
+	// card_id is unchanged.
+	let _relatedFor: string | null = null;
 	$effect(() => {
 		const cardId = card.card_id;
+		if (_relatedFor === cardId) return;
+		_relatedFor = cardId;
 		relatedCount = null;
 		if (!onshowrelated) return;
 		loadingRelated = true;
@@ -170,9 +178,12 @@
 		}).catch(() => {}).finally(() => { loadingRelated = false; });
 	});
 
+	let _egressFor: string | null = null;
 	$effect(() => {
 		const cardId = card.card_id;
 		const entityId = card.entity_id;
+		if (_egressFor === cardId) return;
+		_egressFor = cardId;
 		egressContext = null;
 		egressLoading = false;
 		if (!entityId) return;

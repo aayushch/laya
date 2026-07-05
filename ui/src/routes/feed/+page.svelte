@@ -637,10 +637,14 @@
 		}
 	});
 
-	// Load summary when date changes while modal is open
+	// Reload the summary only when the DATE changes while the modal is open.
+	// summaryModalOpen is read untracked so the modal-OPEN transition doesn't also
+	// trigger here — the effect above ($summaryModalStore → loadSummary) already
+	// owns "load on open". Both firing (plus the button calling loadSummary
+	// directly) caused 2-3 duplicate fetches per open (review §2 UI — P4-34).
 	$effect(() => {
 		$feedDate;
-		if (summaryModalOpen) loadSummary();
+		if (untrack(() => summaryModalOpen)) loadSummary();
 	});
 
 	// One-time integrations setup popup — show once on first feed visit after setup
@@ -1824,7 +1828,7 @@
 						<button
 							class="flex w-full items-center gap-2 whitespace-nowrap px-4 py-1.5 text-laya-secondary transition-colors hover:bg-surface-700
 								{summaryModalOpen ? 'text-laya-orange' : 'text-surface-300'}"
-							onclick={() => { setSummaryModalOpen(true); loadSummary(); feedActionsMenuOpen = false; }}
+							onclick={() => { setSummaryModalOpen(true); feedActionsMenuOpen = false; }}
 						>
 							<svg class="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
@@ -1901,7 +1905,7 @@
 			<div class="h-5 w-px bg-surface-700/60 mx-0.5"></div>
 
 			<button
-				onclick={() => { setSummaryModalOpen(true); loadSummary(); }}
+				onclick={() => { setSummaryModalOpen(true); }}
 				class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-laya-secondary transition-colors
 					{summaryModalOpen
 						? 'border-laya-orange/30 bg-laya-orange/10 text-laya-orange'
