@@ -20,38 +20,27 @@ from laya.llm.prompts.context_rule_consolidator import (
     build_context_rule_consolidator_messages,
     get_context_rule_consolidator_json_schema,
 )
+from laya.pipeline.learn_common import query_spaces_with_unprocessed
 
 log = structlog.get_logger()
 
 # Defaults — configurable via settings.json tuning section
 def _correction_threshold() -> int:
     from laya.config import get_tuning
-    return get_tuning("context_learn_threshold", 10)
+    return get_tuning("context_learn_threshold")
 
 def _batch_limit() -> int:
     from laya.config import get_tuning
-    return get_tuning("context_learn_batch", 40)
+    return get_tuning("context_learn_batch")
 
 
 async def get_spaces_with_unprocessed(threshold: int | None = None) -> list:
     """Return space_ids that have enough unprocessed context corrections."""
     if threshold is None:
         threshold = _correction_threshold()
-    db = await get_db()
-    try:
-        rows = await db.execute_fetchall(
-            """SELECT space_id, COUNT(*) as cnt
-               FROM context_corrections
-               WHERE processed = 0
-               GROUP BY space_id
-               HAVING cnt >= ?""",
-            (threshold,),
-        )
-    except Exception as e:
-        log.warning("context_learn_query_spaces_failed", error=str(e))
-        return []
-
-    return [r["space_id"] for r in rows]
+    return await query_spaces_with_unprocessed(
+        "context_corrections", threshold, "context_learn_query_spaces_failed"
+    )
 
 
 async def run_context_learn_extraction(space_id: str | None) -> int:
@@ -169,7 +158,7 @@ async def run_context_learn_extraction(space_id: str | None) -> int:
 
 def _consolidation_threshold() -> int:
     from laya.config import get_tuning
-    return get_tuning("context_rules_consolidation_threshold", 40)
+    return get_tuning("context_rules_consolidation_threshold")
 
 
 async def _load_scoped_rules(db, source: str, space_id: str | None) -> list[dict]:
@@ -308,7 +297,7 @@ async def query_context_rules(space_id: str | None) -> list[dict]:
     Returns rules applicable to the given space (space-specific + global).
     """
     from laya.config import get_tuning
-    max_rules = get_tuning("context_rules_max_injection", 20)
+    max_rules = get_tuning("context_rules_max_injection")
     db = await get_db()
     try:
         rows = await db.execute_fetchall(

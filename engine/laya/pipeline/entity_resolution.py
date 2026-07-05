@@ -18,7 +18,7 @@ log = structlog.get_logger()
 # Configurable via settings.json tuning.semantic_entity_threshold
 def _get_semantic_threshold() -> float:
     from laya.config import get_tuning
-    return get_tuning("semantic_entity_threshold", 0.35)
+    return get_tuning("semantic_entity_threshold")
 
 
 async def resolve_semantic_entities(

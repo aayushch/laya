@@ -148,6 +148,7 @@ DEFAULT_SETTINGS = {
         "classification_learn_threshold": 15,
         "classification_learn_batch": 50,
         "classification_learn_interval_hours": 6,
+        "classification_rules_max_injection": 20,
         # Context learning
         "context_learn_threshold": 10,
         "context_learn_batch": 40,
@@ -191,7 +192,7 @@ DEFAULT_RULES: dict = {
 def get_tuning(key: str, default=None):
     """Read a tuning parameter from settings.json with fallback to DEFAULT_SETTINGS.
 
-    Usage: ``get_tuning("trace_search_results", 30)``
+    Usage: ``get_tuning("trace_search_results")``
     """
     settings = load_settings()
     tuning = settings.get("tuning", {})

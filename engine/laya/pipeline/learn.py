@@ -14,38 +14,27 @@ from laya.db.sqlite import get_db
 from laya.db.timeutil import db_now
 from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
 from laya.llm.prompts.learner import build_learner_messages, get_learner_json_schema
+from laya.pipeline.learn_common import query_spaces_with_unprocessed
 
 log = structlog.get_logger()
 
 # Defaults — configurable via settings.json tuning section
 def _correction_threshold() -> int:
     from laya.config import get_tuning
-    return get_tuning("classification_learn_threshold", 15)
+    return get_tuning("classification_learn_threshold")
 
 def _batch_limit() -> int:
     from laya.config import get_tuning
-    return get_tuning("classification_learn_batch", 50)
+    return get_tuning("classification_learn_batch")
 
 
 async def get_spaces_with_unprocessed(threshold: int | None = None) -> list:
     """Return space_ids that have enough unprocessed corrections for rule extraction."""
     if threshold is None:
         threshold = _correction_threshold()
-    db = await get_db()
-    try:
-        rows = await db.execute_fetchall(
-            """SELECT space_id, COUNT(*) as cnt
-               FROM classification_corrections
-               WHERE processed = 0
-               GROUP BY space_id
-               HAVING cnt >= ?""",
-            (threshold,),
-        )
-    except Exception as e:
-        log.warning("learn_query_spaces_failed", error=str(e))
-        return []
-
-    return [r["space_id"] for r in rows]
+    return await query_spaces_with_unprocessed(
+        "classification_corrections", threshold, "learn_query_spaces_failed"
+    )
 
 
 async def run_learn_extraction(space_id: str | None) -> int:

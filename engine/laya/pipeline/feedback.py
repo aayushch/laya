@@ -31,7 +31,7 @@ async def query_feedback_patterns(
 
     try:
         from laya.config import get_tuning
-        window_days = get_tuning("feedback_time_window_days", 30)
+        window_days = get_tuning("feedback_time_window_days")
         rows = await db.execute_fetchall(
             f"""SELECT
                    e.source_platform,
@@ -80,7 +80,7 @@ async def query_classification_rules(space_id: str | None = None) -> list[dict]:
     (like context rules') is the remaining half, tracked under P7-8.
     """
     from laya.config import get_tuning
-    max_rules = int(get_tuning("classification_rules_max_injection", 20))
+    max_rules = int(get_tuning("classification_rules_max_injection"))
     db = await get_db()
     try:
         if space_id:
