@@ -7,12 +7,11 @@ from __future__ import annotations
 
 import json
 import re
-import uuid
 from typing import Any, AsyncIterator
 
 import structlog
 
-from laya.agents.base import CodingAgent
+from laya.agents.base import BaseCodingAgent
 from laya.agents.subprocess_helper import AgentProcess, strip_ansi
 from laya.models.workspace import (
     SessionStatus,
@@ -30,7 +29,7 @@ APPROVAL_PATTERNS = [
 ]
 
 
-class PiCliAgent(CodingAgent):
+class PiCliAgent(BaseCodingAgent):
     """Pi CLI adapter.
 
     Spawns ``pi --mode json "prompt"`` as a subprocess and parses
@@ -160,38 +159,7 @@ class PiCliAgent(CodingAgent):
             yield flushed
 
         exit_code = await self._process.wait()
-
-        if self._status == SessionStatus.CANCELLED:
-            yield self._make_event(
-                WorkspaceEventType.STATUS_CHANGE,
-                WorkspaceEventActor.SYSTEM,
-                {"status": "cancelled", "exit_code": exit_code},
-            )
-        elif exit_code == 0:
-            self._status = SessionStatus.COMPLETED
-            yield self._make_event(
-                WorkspaceEventType.STATUS_CHANGE,
-                WorkspaceEventActor.SYSTEM,
-                {"status": "completed", "exit_code": exit_code},
-            )
-        elif exit_code in (143, -15):
-            self._status = SessionStatus.CANCELLED
-            yield self._make_event(
-                WorkspaceEventType.STATUS_CHANGE,
-                WorkspaceEventActor.SYSTEM,
-                {"status": "cancelled", "exit_code": exit_code},
-            )
-        else:
-            self._status = SessionStatus.FAILED
-            stderr = self._process.stderr_output
-            error_msg = f"Agent exited with code {exit_code}"
-            if stderr:
-                error_msg += f": {stderr}"
-            yield self._make_event(
-                WorkspaceEventType.ERROR,
-                WorkspaceEventActor.SYSTEM,
-                {"error": error_msg, "exit_code": exit_code},
-            )
+        yield self._terminal_status_event(exit_code)
 
     # ------------------------------------------------------------------
     # JSON event parsing (Pi v3 event schema)
@@ -506,40 +474,3 @@ class PiCliAgent(CodingAgent):
             return WorkspaceEventType.FILE_WRITE
         return WorkspaceEventType.TOOL_CALL
 
-    def _make_event(
-        self,
-        event_type: WorkspaceEventType,
-        actor: WorkspaceEventActor,
-        content: dict,
-        requires_input: bool = False,
-        agent_message_id: str | None = None,
-    ) -> WorkspaceEvent:
-        return WorkspaceEvent(
-            event_id=f"we_{uuid.uuid4().hex[:12]}",
-            session_id=self._session_id,
-            event_type=event_type,
-            actor=actor,
-            content=content,
-            requires_input=requires_input,
-            agent_message_id=agent_message_id,
-        )
-
-    async def send_input(self, text: str) -> None:
-        if self._status == SessionStatus.AWAITING_INPUT:
-            self._status = SessionStatus.RUNNING
-        await self._process.write(text)
-
-    async def pause(self) -> None:
-        await self._process.pause()
-        self._status = SessionStatus.PAUSED
-
-    async def resume(self) -> None:
-        await self._process.resume()
-        self._status = SessionStatus.RUNNING
-
-    async def cancel(self) -> None:
-        await self._process.terminate()
-        self._status = SessionStatus.CANCELLED
-
-    def get_status(self) -> SessionStatus:
-        return self._status
