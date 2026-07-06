@@ -10,7 +10,7 @@
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { portal } from '$lib/actions/portal';
 	import ListRow from './ListRow.svelte';
-	import { platformDotColor } from '$lib/utils/cardVisuals';
+	import { platformDotColor, PRIORITY_LABELS } from '$lib/utils/cardVisuals';
 	import { timeAgo } from '$lib/utils/datetime';
 
 	let {
@@ -111,12 +111,7 @@
 		MEDIUM: 'bg-amber-500/20 text-amber-300',
 		LOW: 'bg-surface-700/40 text-surface-400'
 	};
-	const priorityLabel: Record<string, string> = {
-		CRITICAL: 'CRIT',
-		HIGH: 'HIGH',
-		MEDIUM: 'MED',
-		LOW: 'LOW'
-	};
+	const priorityLabel = PRIORITY_LABELS;
 
 	const topCard = $derived(group.cards[0]);
 

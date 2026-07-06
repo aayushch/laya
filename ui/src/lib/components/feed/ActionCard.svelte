@@ -14,7 +14,7 @@
 	import { portal } from '$lib/actions/portal';
 	import StatusDot from './StatusDot.svelte';
 	import PlatformIcon from '$lib/components/settings/PlatformIcon.svelte';
-	import { platformDotColor, platformKey, actorInitials, actorAvatarColor } from '$lib/utils/cardVisuals';
+	import { platformDotColor, platformKey, actorInitials, actorAvatarColor, PRIORITY_LABELS } from '$lib/utils/cardVisuals';
 
 	let { card, onselect, ondelete, onlink, selectedCardId = '', hasSelection = false, lastViewedCardId = '' }: { card: ActionCard; onselect: (card: ActionCard) => void; ondelete?: (cardId: string) => void; onlink?: (card: ActionCard) => void; selectedCardId?: string; hasSelection?: boolean; lastViewedCardId?: string } = $props();
 
@@ -84,12 +84,7 @@
 		LOW:      'bg-surface-700/40 text-surface-400'
 	};
 
-	const priorityLabel: Record<string, string> = {
-		CRITICAL: 'CRIT',
-		HIGH: 'HIGH',
-		MEDIUM: 'MED',
-		LOW: 'LOW'
-	};
+	const priorityLabel = PRIORITY_LABELS;
 
 	const personaColors: Record<string, string> = {
 		ENGINEER: 'text-violet-400',

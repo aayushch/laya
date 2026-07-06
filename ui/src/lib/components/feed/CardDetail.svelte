@@ -8,6 +8,7 @@
 	import { chatOpen, chatCardContext, chatCardIds, chatListOpen } from '$lib/stores/chat';
 	import { buildSingleCardContext } from '$lib/utils/cardContext';
 	import { parseBackendDate } from '$lib/utils/datetime';
+	import { PRIORITY_LABELS } from '$lib/utils/cardVisuals';
 	import { lastMessage } from '$lib/stores/websocket';
 	import MarkdownRender from '$lib/components/MarkdownRender.svelte';
 	import ClassificationDialog from './ClassificationDialog.svelte';
@@ -293,12 +294,7 @@
 		LOW: 'bg-laya-gold/25 text-laya-amber'
 	};
 
-	const priorityLabel: Record<string, string> = {
-		CRITICAL: 'CRIT',
-		HIGH: 'HIGH',
-		MEDIUM: 'MED',
-		LOW: 'LOW'
-	};
+	const priorityLabel = PRIORITY_LABELS;
 
 	const personaColors: Record<string, string> = {
 		ENGINEER: 'border-violet-500 text-violet-400',

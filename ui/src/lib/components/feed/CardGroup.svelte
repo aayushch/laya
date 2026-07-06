@@ -14,7 +14,7 @@
 	import { cardSize } from '$lib/stores/cardSize';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { portal } from '$lib/actions/portal';
-	import { platformDotColor } from '$lib/utils/cardVisuals';
+	import { platformDotColor, PRIORITY_LABELS } from '$lib/utils/cardVisuals';
 	import { parseBackendDate, timeAgo as _timeAgo } from '$lib/utils/datetime';
 	import PlatformIcon from '$lib/components/settings/PlatformIcon.svelte';
 
@@ -207,12 +207,7 @@
 		LOW:      'bg-laya-gold/25 text-laya-amber'
 	};
 
-	const priorityLabel: Record<string, string> = {
-		CRITICAL: 'CRIT',
-		HIGH: 'HIGH',
-		MEDIUM: 'MED',
-		LOW: 'LOW'
-	};
+	const priorityLabel = PRIORITY_LABELS;
 
 	const personaColors: Record<string, string> = {
 		ENGINEER: 'text-violet-400',

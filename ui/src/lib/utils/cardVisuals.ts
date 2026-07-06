@@ -1,7 +1,17 @@
 // Copyright 2026 Aayush Chawla
 // SPDX-License-Identifier: Apache-2.0
 
-// Shared visual helpers for feed cards: platform brand dots, actor avatars.
+// Shared visual helpers for feed cards: platform brand dots, actor avatars,
+// and the priority badge label map (byte-identical across six card components
+// before this — review §5.5, P7-7).
+
+// Abbreviated priority labels for badges (CRIT/HIGH/MED/LOW).
+export const PRIORITY_LABELS: Record<string, string> = {
+	CRITICAL: 'CRIT',
+	HIGH: 'HIGH',
+	MEDIUM: 'MED',
+	LOW: 'LOW'
+};
 
 const PLATFORM_DOT_COLORS: Record<string, string> = {
 	gmail: '#EA4335',

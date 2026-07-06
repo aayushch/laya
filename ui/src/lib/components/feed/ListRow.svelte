@@ -8,7 +8,7 @@
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { portal } from '$lib/actions/portal';
 	import StatusDot from './StatusDot.svelte';
-	import { platformDotColor, platformKey } from '$lib/utils/cardVisuals';
+	import { platformDotColor, platformKey, PRIORITY_LABELS } from '$lib/utils/cardVisuals';
 	import { timeAgo } from '$lib/utils/datetime';
 
 	let {
@@ -65,12 +65,7 @@
 		MEDIUM: 'bg-amber-500/20 text-amber-300',
 		LOW: 'bg-surface-700/40 text-surface-400'
 	};
-	const priorityLabel: Record<string, string> = {
-		CRITICAL: 'CRIT',
-		HIGH: 'HIGH',
-		MEDIUM: 'MED',
-		LOW: 'LOW'
-	};
+	const priorityLabel = PRIORITY_LABELS;
 	const personaColors: Record<string, string> = {
 		ENGINEER: 'text-violet-400 bg-violet-500/10 border-violet-500/20',
 		COMMS: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',

@@ -4,6 +4,7 @@
 	import type { GroupSummary, CardGroup, ActionCard, CardEgressContext, CardEgressAction, KeyEvent } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
 	import { parseBackendDate, timeAgo } from '$lib/utils/datetime';
+	import { PRIORITY_LABELS } from '$lib/utils/cardVisuals';
 	import { goto } from '$app/navigation';
 	import { chatOpen, chatCardContext, chatCardIds, chatListOpen } from '$lib/stores/chat';
 	import PlatformBadge from '$lib/components/PlatformBadge.svelte';
@@ -208,12 +209,7 @@
 		LOW: 'bg-laya-gold/25 text-laya-amber'
 	};
 
-	const priorityLabel: Record<string, string> = {
-		CRITICAL: 'CRIT',
-		HIGH: 'HIGH',
-		MEDIUM: 'MED',
-		LOW: 'LOW'
-	};
+	const priorityLabel = PRIORITY_LABELS;
 
 	const platformLabel: Record<string, string> = {
 		jira: 'Jira', gmail: 'Gmail', slack: 'Slack',
