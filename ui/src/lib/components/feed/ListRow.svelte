@@ -9,7 +9,7 @@
 	import { portal } from '$lib/actions/portal';
 	import StatusDot from './StatusDot.svelte';
 	import { platformDotColor, platformKey } from '$lib/utils/cardVisuals';
-	import { parseBackendDate } from '$lib/utils/datetime';
+	import { timeAgo } from '$lib/utils/datetime';
 
 	let {
 		card,
@@ -158,17 +158,6 @@
 	const isArchived = $derived(card.status === 'archived');
 	const isDimmed = $derived(!isSelected && hasSelection && !isArchived);
 
-	function timeAgo(dateStr?: string): string {
-		const d = parseBackendDate(dateStr);
-		if (!d) return '';
-		const diff = Date.now() - d.getTime();
-		const mins = Math.floor(diff / 60000);
-		if (mins < 1) return 'just now';
-		if (mins < 60) return `${mins}m ago`;
-		const hours = Math.floor(mins / 60);
-		if (hours < 24) return `${hours}h ago`;
-		return `${Math.floor(hours / 24)}d ago`;
-	}
 
 	async function markDone(e: Event) {
 		e.stopPropagation();

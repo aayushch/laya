@@ -11,7 +11,7 @@
 	import { portal } from '$lib/actions/portal';
 	import ListRow from './ListRow.svelte';
 	import { platformDotColor } from '$lib/utils/cardVisuals';
-	import { parseBackendDate } from '$lib/utils/datetime';
+	import { timeAgo } from '$lib/utils/datetime';
 
 	let {
 		group,
@@ -206,17 +206,6 @@
 			.join(', ');
 	});
 
-	function timeAgo(dateStr?: string): string {
-		const d = parseBackendDate(dateStr);
-		if (!d) return '';
-		const diff = Date.now() - d.getTime();
-		const mins = Math.floor(diff / 60000);
-		if (mins < 1) return 'just now';
-		if (mins < 60) return `${mins}m ago`;
-		const hours = Math.floor(mins / 60);
-		if (hours < 24) return `${hours}h ago`;
-		return `${Math.floor(hours / 24)}d ago`;
-	}
 
 	// Group bulk selection state
 	const groupCardIds = $derived(group.cards.map(c => c.card_id));
