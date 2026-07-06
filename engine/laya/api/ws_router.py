@@ -55,40 +55,49 @@ async def handle_ws_message(data: str) -> None:
             log.debug("ws_unhandled_type", type=msg_type)
 
 
+# These three used to call session_manager.send_input(), which writes to the
+# agent subprocess's stdin — but agents spawn with stdin=DEVNULL and have already
+# exited to await input, so the write went nowhere while the UI recorded the
+# answer as delivered. They now route through resume_session_with_answer(), the
+# same --resume-spawn path the HTTP /answer endpoint uses (review §2 agents — P4-26).
+
+
 async def _handle_approve(session_id: str | None, msg: dict) -> None:
-    """Handle approve_action: send 'yes' to the agent and persist event."""
+    """Handle approve_action: resume the agent with approval and persist event."""
     if not session_id:
         log.warning("ws_approve_no_session")
         return
 
-    await session_manager.send_input(session_id, "yes")
     await _store_user_event(
         session_id=session_id,
         event_type=WorkspaceEventType.APPROVAL_RESPONSE,
         content={"approved": True, **msg.get("payload", {})},
     )
+    from laya.api.workspace_api import resume_session_with_answer
+    await resume_session_with_answer(session_id, "yes")
     log.info("ws_action_approved", session_id=session_id)
 
 
 async def _handle_deny(session_id: str | None, msg: dict) -> None:
-    """Handle deny_action: send denial reason to the agent and persist event."""
+    """Handle deny_action: resume the agent with the denial reason and persist event."""
     if not session_id:
         log.warning("ws_deny_no_session")
         return
 
     payload = msg.get("payload", {})
     reason = payload.get("reason", "no")
-    await session_manager.send_input(session_id, reason)
     await _store_user_event(
         session_id=session_id,
         event_type=WorkspaceEventType.APPROVAL_RESPONSE,
         content={"approved": False, "reason": reason},
     )
+    from laya.api.workspace_api import resume_session_with_answer
+    await resume_session_with_answer(session_id, reason)
     log.info("ws_action_denied", session_id=session_id)
 
 
 async def _handle_user_input(session_id: str | None, msg: dict) -> None:
-    """Handle user_input: pipe freeform text to the agent."""
+    """Handle user_input: resume the agent with freeform text and persist event."""
     if not session_id:
         log.warning("ws_input_no_session")
         return
@@ -96,12 +105,14 @@ async def _handle_user_input(session_id: str | None, msg: dict) -> None:
     payload = msg.get("payload", {})
     message = payload.get("message", "")
     if message:
-        await session_manager.send_input(session_id, message)
         await _store_user_event(
             session_id=session_id,
             event_type=WorkspaceEventType.USER_RESPONSE,
             content={"message": message},
         )
+        from laya.api.workspace_api import resume_session_with_answer
+        # Freeform text — implicitly dismisses any outstanding questions on completion.
+        await resume_session_with_answer(session_id, message, is_freeform=True)
     log.info("ws_user_input", session_id=session_id)
 
 

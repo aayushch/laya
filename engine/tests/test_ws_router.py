@@ -15,7 +15,6 @@ from laya.api.ws_router import handle_ws_message
 def mock_sm():
     """Mock session_manager for WS router tests."""
     with patch("laya.api.ws_router.session_manager") as mock:
-        mock.send_input = AsyncMock()
         mock.pause_session = AsyncMock()
         mock.resume_session = AsyncMock()
         mock.cancel_session = AsyncMock()
@@ -23,10 +22,23 @@ def mock_sm():
         yield mock
 
 
+@pytest.fixture
+def mock_resume():
+    """Mock the shared resume path the approve/deny/user_input handlers route to.
+
+    The handlers lazy-import resume_session_with_answer from workspace_api, so we
+    patch it there (P4-26: answers now spawn a --resume subprocess instead of
+    writing to the agent's DEVNULL stdin)."""
+    with patch(
+        "laya.api.workspace_api.resume_session_with_answer", new_callable=AsyncMock
+    ) as mock:
+        yield mock
+
+
 @pytest.mark.asyncio
 class TestWsRouter:
-    async def test_approve_action(self, mock_sm):
-        """approve_action sends 'yes' to agent and stores event."""
+    async def test_approve_action(self, mock_sm, mock_resume):
+        """approve_action resumes the agent with 'yes' and stores an event."""
         msg = json.dumps({
             "type": "approve_action",
             "session_id": "sess_001",
@@ -34,11 +46,11 @@ class TestWsRouter:
         })
         await handle_ws_message(msg)
 
-        mock_sm.send_input.assert_called_once_with("sess_001", "yes")
+        mock_resume.assert_called_once_with("sess_001", "yes")
         mock_sm.store_workspace_event.assert_called_once()
 
-    async def test_deny_action(self, mock_sm):
-        """deny_action sends reason to agent."""
+    async def test_deny_action(self, mock_sm, mock_resume):
+        """deny_action resumes the agent with the denial reason."""
         msg = json.dumps({
             "type": "deny_action",
             "session_id": "sess_001",
@@ -46,11 +58,11 @@ class TestWsRouter:
         })
         await handle_ws_message(msg)
 
-        mock_sm.send_input.assert_called_once_with("sess_001", "Skip test file")
+        mock_resume.assert_called_once_with("sess_001", "Skip test file")
         mock_sm.store_workspace_event.assert_called_once()
 
-    async def test_deny_action_default_reason(self, mock_sm):
-        """deny_action with no reason sends 'no'."""
+    async def test_deny_action_default_reason(self, mock_sm, mock_resume):
+        """deny_action with no reason resumes with 'no'."""
         msg = json.dumps({
             "type": "deny_action",
             "session_id": "sess_002",
@@ -58,10 +70,10 @@ class TestWsRouter:
         })
         await handle_ws_message(msg)
 
-        mock_sm.send_input.assert_called_once_with("sess_002", "no")
+        mock_resume.assert_called_once_with("sess_002", "no")
 
-    async def test_user_input(self, mock_sm):
-        """user_input sends message text to agent."""
+    async def test_user_input(self, mock_sm, mock_resume):
+        """user_input resumes the agent with the message as freeform text."""
         msg = json.dumps({
             "type": "user_input",
             "session_id": "sess_001",
@@ -69,10 +81,12 @@ class TestWsRouter:
         })
         await handle_ws_message(msg)
 
-        mock_sm.send_input.assert_called_once_with("sess_001", "Also check CustomerDAO")
+        mock_resume.assert_called_once_with(
+            "sess_001", "Also check CustomerDAO", is_freeform=True
+        )
         mock_sm.store_workspace_event.assert_called_once()
 
-    async def test_session_control_pause(self, mock_sm):
+    async def test_session_control_pause(self, mock_sm, mock_resume):
         """session_control with action=pause calls pause_session."""
         msg = json.dumps({
             "type": "session_control",
@@ -83,7 +97,7 @@ class TestWsRouter:
 
         mock_sm.pause_session.assert_called_once_with("sess_001")
 
-    async def test_session_control_resume(self, mock_sm):
+    async def test_session_control_resume(self, mock_sm, mock_resume):
         """session_control with action=resume calls resume_session."""
         msg = json.dumps({
             "type": "session_control",
@@ -94,7 +108,7 @@ class TestWsRouter:
 
         mock_sm.resume_session.assert_called_once_with("sess_001")
 
-    async def test_session_control_cancel(self, mock_sm):
+    async def test_session_control_cancel(self, mock_sm, mock_resume):
         """session_control with action=cancel calls cancel_session."""
         msg = json.dumps({
             "type": "session_control",
@@ -105,25 +119,26 @@ class TestWsRouter:
 
         mock_sm.cancel_session.assert_called_once_with("sess_001")
 
-    async def test_invalid_json(self, mock_sm):
+    async def test_invalid_json(self, mock_sm, mock_resume):
         """Invalid JSON is handled gracefully."""
         await handle_ws_message("not valid json {{")
-        mock_sm.send_input.assert_not_called()
+        mock_resume.assert_not_called()
 
-    async def test_missing_type(self, mock_sm):
+    async def test_missing_type(self, mock_sm, mock_resume):
         """Message without type is handled gracefully."""
         msg = json.dumps({"session_id": "sess_001"})
         await handle_ws_message(msg)
-        mock_sm.send_input.assert_not_called()
+        mock_resume.assert_not_called()
 
-    async def test_unknown_type(self, mock_sm):
+    async def test_unknown_type(self, mock_sm, mock_resume):
         """Unknown type is silently ignored."""
         msg = json.dumps({"type": "some_unknown_type", "session_id": "sess_001"})
         await handle_ws_message(msg)
-        mock_sm.send_input.assert_not_called()
+        mock_resume.assert_not_called()
 
-    async def test_approve_no_session_id(self, mock_sm):
-        """approve_action without session_id does nothing."""
+    async def test_approve_no_session_id(self, mock_sm, mock_resume):
+        """approve_action without session_id does nothing (no resume, no event)."""
         msg = json.dumps({"type": "approve_action", "payload": {}})
         await handle_ws_message(msg)
-        mock_sm.send_input.assert_not_called()
+        mock_resume.assert_not_called()
+        mock_sm.store_workspace_event.assert_not_called()
