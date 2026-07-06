@@ -717,3 +717,48 @@ class TestGroupedPayloadSlim:
         full = detail.json()
         assert full["staged_output"] is not None
         assert full["suggested_actions"] is not None
+
+
+@pytest.mark.asyncio
+class TestGroupedPagination:
+    """/cards/grouped caps groups with limit/offset + has_more (P4-9 part b)."""
+
+    async def _insert_n_groups(self, db, n):
+        for i in range(n):
+            await insert_test_card(
+                db, card_id=f"card_{i}", event_id=f"evt_{i}",
+                entity_id=f"jira:ticket:PAGE-{i}",
+            )
+
+    async def test_limit_caps_and_reports_has_more(self, db):
+        await self._insert_n_groups(db, 3)
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            page1 = (await client.get("/cards/grouped?limit=2&offset=0")).json()
+            page2 = (await client.get("/cards/grouped?limit=2&offset=2")).json()
+
+        # total_groups is the FULL count regardless of the page window.
+        assert page1["total_groups"] == 3
+        assert len(page1["groups"]) == 2
+        assert page1["has_more"] is True
+
+        assert page2["total_groups"] == 3
+        assert len(page2["groups"]) == 1
+        assert page2["has_more"] is False
+
+        # The two pages cover distinct groups (no overlap, full coverage).
+        ids1 = {g["entity_id"] for g in page1["groups"]}
+        ids2 = {g["entity_id"] for g in page2["groups"]}
+        assert ids1.isdisjoint(ids2)
+        assert len(ids1 | ids2) == 3
+
+    async def test_default_limit_returns_all_when_under_cap(self, db):
+        await self._insert_n_groups(db, 3)
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            data = (await client.get("/cards/grouped")).json()
+        assert data["total_groups"] == 3
+        assert len(data["groups"]) == 3
+        assert data["has_more"] is False  # 3 < default cap of 200

@@ -204,8 +204,18 @@ async def get_grouped_cards(
     related_entity_ids: str | None = None,
     search: str | None = None,
     tags: str | None = None,
+    limit: int = 200,
+    offset: int = 0,
 ) -> GroupedCardsResponse:
-    """Return cards grouped by entity_id, filtered by date and space."""
+    """Return cards grouped by entity_id, filtered by date and space.
+
+    Groups are capped at ``limit`` (default 200) after sorting, with ``offset``
+    for "load more" pagination — without it the unbounded modes (all-days /
+    bookmarked / related, where the date filter is dropped) returned every group
+    at once, a multi-MB response that blocked the shared DB connection (review
+    §2/§4 — P4-9). ``total_groups`` is always the full count and ``has_more``
+    signals another page.
+    """
     db = await get_db()
 
     conditions: list[str] = []
@@ -646,9 +656,18 @@ async def get_grouped_cards(
             if next_rows and next_rows[0]["group_active_at"]:
                 next_date_val = _utc_str_to_local_date(next_rows[0]["group_active_at"])
 
+    # Cap groups server-side after sorting; total_groups stays the full count so
+    # the UI can page with "load more" (P4-9).
+    total = len(result)
+    safe_limit = max(1, min(limit, 1000))
+    safe_offset = max(0, offset)
+    page = result[safe_offset : safe_offset + safe_limit]
+    has_more = safe_offset + len(page) < total
+
     return GroupedCardsResponse(
-        groups=result,
-        total_groups=len(result),
+        groups=page,
+        total_groups=total,
+        has_more=has_more,
         date=date,
         prev_date=prev_date_val,
         next_date=next_date_val,

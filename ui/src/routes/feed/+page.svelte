@@ -5,7 +5,7 @@
 	import { engineApi } from '$lib/api/engine';
 	import { parseBackendDate } from '$lib/utils/datetime';
 	import { lastMessage, wsStatus } from '$lib/stores/websocket';
-	import { feedFilters, feedDate, feedPrevDate, feedNextDate, localToday, allDaysSavedDate } from '$lib/stores/feedFilters';
+	import { feedFilters, feedDate, feedPrevDate, feedNextDate, localToday, allDaysSavedDate, type FeedFilters } from '$lib/stores/feedFilters';
 	import type { ActionCard, CardGroup, GroupSummary, DaySummary, SpaceSummary, Tag } from '$lib/api/types';
 	import CardGroupComponent from '$lib/components/feed/CardGroup.svelte';
 	import ActionCardComponent from '$lib/components/feed/ActionCard.svelte';
@@ -89,6 +89,11 @@
 
 	let groups = $state<CardGroup[]>([]);
 	let totalGroups = $state(0);
+	// Group pagination (P4-9): the feed loads PAGE_SIZE groups at a time and
+	// appends more on demand, so the unbounded modes no longer ship every group.
+	const GROUPS_PAGE_SIZE = 200;
+	let hasMoreGroups = $state(false);
+	let loadingMoreGroups = $state(false);
 	let availableTags = $state<Tag[]>([]);
 	let loading = $state(true);
 	let markingAllRead = $state(false);
@@ -475,48 +480,81 @@
 		});
 	}
 
+	// Build the /cards/grouped query params shared by loadGroups and loadMoreGroups
+	// (minus limit/offset, which the caller sets). Pure of the fetch itself so the
+	// two paths can't drift.
+	function buildGroupedParams(f: FeedFilters, date: string) {
+		// Read searchQuery WITHOUT tracking it. loadGroups() runs synchronously
+		// inside the $feedDate/$feedFilters reload effect, so a tracked read here
+		// silently made searchQuery a dependency of that effect — every keystroke
+		// re-ran it and fired a full GET /cards/grouped, defeating the 300ms search
+		// debounce (review §2 UI — P4-29). Backend search only applies in all-days
+		// mode (see the search/tags params below), which reloads via its own
+		// debounced effect; normal-mode search is filtered client-side.
+		const _tagTokens: string[] = [];
+		const _textTokens: string[] = [];
+		untrack(() => {
+			for (const token of searchQuery.trim().split(/\s+/)) {
+				if (token.startsWith('#') && token.length > 1) {
+					_tagTokens.push(token.slice(1));
+				} else if (token) {
+					_textTokens.push(token);
+				}
+			}
+		});
+		const _searchText = _textTokens.join(' ');
+		const isAllDays = f.showAllDaysSearch;
+		return {
+			status: f.statusFilters.length ? f.statusFilters.join(',') : undefined,
+			priority: f.priorityFilters.length ? f.priorityFilters.join(',') : undefined,
+			sort: f.sortBy,
+			sort_asc: f.sortAsc || undefined,
+			show_archived: f.showArchived || undefined,
+			date: (f.showBookmarked || f.showRelated || isAllDays) ? undefined : date,
+			space_id: f.spaceFilter.length ? f.spaceFilter.join(',') : undefined,
+			bookmarked: f.showBookmarked || undefined,
+			related_entity_ids: f.showRelated ? f.relatedEntityIds.join(',') : undefined,
+			has_workspace: f.hasWorkspace || undefined,
+			unread_only: f.showUnreadOnly || undefined,
+			search: isAllDays && _searchText ? _searchText : undefined,
+			tags: isAllDays && _tagTokens.length ? _tagTokens.join(',') : undefined
+		};
+	}
+
+	// Fetch the next page of groups and APPEND (dedup by entity_id — offset paging
+	// over a live, re-sorting list can re-surface a group). Never resets the list,
+	// so it doesn't disturb the current scroll position or selection (P4-9).
+	async function loadMoreGroups() {
+		if (loadingMoreGroups || !hasMoreGroups) return;
+		loadingMoreGroups = true;
+		try {
+			const data = await engineApi.getGroupedCards({
+				...buildGroupedParams($feedFilters, $feedDate),
+				limit: GROUPS_PAGE_SIZE,
+				offset: groups.length
+			});
+			const seen = new Set(groups.map((g) => g.entity_id));
+			const fresh = data.groups.filter((g) => !seen.has(g.entity_id));
+			groups = [...groups, ...fresh];
+			totalGroups = data.total_groups;
+			hasMoreGroups = data.has_more ?? false;
+		} catch {
+			// Best-effort — leave the current list intact on failure.
+		} finally {
+			loadingMoreGroups = false;
+		}
+	}
+
 	async function loadGroups() {
 		const id = ++_fetchId;
 		loading = true;
 		error = null;
 		try {
 			const f = $feedFilters;
-			// Extract #tag tokens from search query
-			const _tagTokens: string[] = [];
-			const _textTokens: string[] = [];
-			// Read searchQuery WITHOUT tracking it. loadGroups() runs synchronously
-			// inside the $feedDate/$feedFilters reload effect, so a tracked read here
-			// silently made searchQuery a dependency of that effect — every keystroke
-			// re-ran it and fired a full GET /cards/grouped, defeating the 300ms search
-			// debounce (review §2 UI — P4-29). Backend search only applies in all-days
-			// mode (see the search/tags params below), which reloads via its own
-			// debounced effect; normal-mode search is filtered client-side.
-			untrack(() => {
-				for (const token of searchQuery.trim().split(/\s+/)) {
-					if (token.startsWith('#') && token.length > 1) {
-						_tagTokens.push(token.slice(1));
-					} else if (token) {
-						_textTokens.push(token);
-					}
-				}
-			});
-			const _searchText = _textTokens.join(' ');
-			const isAllDays = f.showAllDaysSearch;
-
 			const data = await engineApi.getGroupedCards({
-				status: f.statusFilters.length ? f.statusFilters.join(',') : undefined,
-				priority: f.priorityFilters.length ? f.priorityFilters.join(',') : undefined,
-				sort: f.sortBy,
-				sort_asc: f.sortAsc || undefined,
-				show_archived: f.showArchived || undefined,
-				date: (f.showBookmarked || f.showRelated || isAllDays) ? undefined : $feedDate,
-				space_id: f.spaceFilter.length ? f.spaceFilter.join(',') : undefined,
-				bookmarked: f.showBookmarked || undefined,
-				related_entity_ids: f.showRelated ? f.relatedEntityIds.join(',') : undefined,
-				has_workspace: f.hasWorkspace || undefined,
-				unread_only: f.showUnreadOnly || undefined,
-				search: isAllDays && _searchText ? _searchText : undefined,
-				tags: isAllDays && _tagTokens.length ? _tagTokens.join(',') : undefined
+				...buildGroupedParams(f, $feedDate),
+				limit: GROUPS_PAGE_SIZE,
+				offset: 0
 			});
 			if (id !== _fetchId) return;
 
@@ -525,6 +563,7 @@
 
 			groups = data.groups;
 			totalGroups = data.total_groups;
+			hasMoreGroups = data.has_more ?? false;
 			$feedPrevDate = data.prev_date ?? null;
 			$feedNextDate = data.next_date ?? null;
 
@@ -2450,6 +2489,19 @@
 							{/each}
 						</div>
 					{/each}
+				</div>
+			{/if}
+			{#if hasMoreGroups}
+				<!-- Group pagination: load the next page of groups (P4-9). Sits below
+				     both list and card views; hidden when the server has no more. -->
+				<div class="flex w-full justify-center py-6">
+					<button
+						class="rounded-lg border border-surface-600 bg-surface-800 px-6 py-2.5 text-laya-base font-medium text-surface-200 transition-colors hover:border-laya-orange/40 hover:bg-surface-700 disabled:cursor-not-allowed disabled:opacity-60"
+						onclick={loadMoreGroups}
+						disabled={loadingMoreGroups}
+					>
+						{loadingMoreGroups ? 'Loading…' : `Load more (${totalGroups - groups.length} more)`}
+					</button>
 				</div>
 			{/if}
 		</div>

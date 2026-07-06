@@ -254,6 +254,8 @@ export const engineApi = {
 		related_entity_ids?: string;
 		search?: string;
 		tags?: string;
+		limit?: number;
+		offset?: number;
 	}) => {
 		const searchParams = new URLSearchParams();
 		if (params?.status) searchParams.set('status', params.status);
@@ -269,6 +271,8 @@ export const engineApi = {
 		if (params?.related_entity_ids) searchParams.set('related_entity_ids', params.related_entity_ids);
 		if (params?.search) searchParams.set('search', params.search);
 		if (params?.tags) searchParams.set('tags', params.tags);
+		if (params?.limit !== undefined) searchParams.set('limit', String(params.limit));
+		if (params?.offset !== undefined) searchParams.set('offset', String(params.offset));
 		searchParams.set('tz', Intl.DateTimeFormat().resolvedOptions().timeZone);
 		const qs = searchParams.toString();
 		return request<GroupedCardsResponse>(`/cards/grouped${qs ? '?' + qs : ''}`);

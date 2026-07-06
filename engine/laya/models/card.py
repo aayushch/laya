@@ -163,6 +163,7 @@ class GroupedCardsResponse(BaseModel):
 
     groups: list[CardGroup]
     total_groups: int
+    has_more: bool = False
     date: str | None = None
     prev_date: str | None = None
     next_date: str | None = None

@@ -644,6 +644,7 @@ export interface CardGroup {
 export interface GroupedCardsResponse {
 	groups: CardGroup[];
 	total_groups: number;
+	has_more?: boolean;
 	date?: string;
 	prev_date?: string;
 	next_date?: string;
