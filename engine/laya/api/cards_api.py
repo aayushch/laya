@@ -1807,6 +1807,138 @@ class RunAgentRequest(BaseModel):
 
 
 
+async def _run_agent_session_stream(
+    session_id: str,
+    agent: "Any",
+    broadcast_card_id: str,
+    *,
+    log_prefix: str = "agent",
+) -> None:
+    """Stream an agent session's events to its card and finalize its status.
+
+    The body shared by _stream_agent_to_card (single-card run_agent) and
+    _stream_entity_agent (entity-level run): consume ``agent.stream_events()``,
+    persist each event, surface approval-requests/errors over the websocket, and
+    on completion persist any staged plan/result and transition the card to
+    ready / awaiting_input / failed. The two callers were byte-identical here
+    apart from which card_id the broadcasts key on and their log-event prefix
+    (review §5 — P7-6). Callers own any pre-stream spawn + agent_running
+    transition.
+    """
+    from laya.agents import session_manager
+    from laya.models.workspace import SessionStatus
+
+    findings: dict[str, Any] = {}
+    cc_session_id_stored = False
+
+    try:
+        async for ws_event in agent.stream_events():
+            inserted = await session_manager.store_workspace_event(ws_event)
+            if not inserted:
+                continue
+
+            if not cc_session_id_stored and hasattr(agent, "cc_session_id") and agent.cc_session_id:
+                await session_manager.store_cc_session_id(session_id, agent.cc_session_id)
+                cc_session_id_stored = True
+
+            if ws_event.event_type.value == "approval_request":
+                if ws_event.content.get("ask_user_question"):
+                    db_aw = await get_db()
+                    await db_aw.execute(
+                        "UPDATE action_cards SET status = 'awaiting_input', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+                        (broadcast_card_id,),
+                    )
+                    await db_aw.commit()
+                    await manager.broadcast(
+                        {"type": "card_updated", "card_id": broadcast_card_id, "payload": {"status": "awaiting_input"}}
+                    )
+                await manager.broadcast(
+                    {"type": "approval_request", "card_id": broadcast_card_id, "session_id": session_id, "payload": ws_event.content}
+                )
+            elif ws_event.event_type.value == "error":
+                findings["last_error"] = ws_event.content.get("error", "")
+                await manager.broadcast(
+                    {"type": "agent_error", "card_id": broadcast_card_id, "session_id": session_id, "payload": ws_event.content}
+                )
+
+            if ws_event.event_type.value == "agent_message" and ws_event.content.get("is_plan"):
+                findings["agent_plan"] = ws_event.content.get("text", "")
+            if ws_event.event_type.value == "status_change":
+                if ws_event.content.get("status") == "result_received":
+                    findings["agent_result"] = ws_event.content.get("result", "")
+
+    except Exception as e:
+        log.error(f"{log_prefix}_stream_error", session_id=session_id, error=str(e))
+        await session_manager.complete_session(session_id, error=str(e))
+        db_err = await get_db()
+        await db_err.execute(
+            "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_execution', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            (broadcast_card_id,),
+        )
+        await db_err.commit()
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": broadcast_card_id, "payload": {"status": "failed"}}
+        )
+        return
+
+    # Complete session and update card status
+    final_status = agent.get_status()
+    db_fin = await get_db()
+
+    if final_status == SessionStatus.COMPLETED:
+        await session_manager.complete_session(session_id, findings=findings)
+
+        agent_plan = findings.get("agent_plan", "")
+        agent_result = findings.get("agent_result", "")
+        staged_content = agent_plan or agent_result
+        if staged_content:
+            staged_type = "agent_plan" if agent_plan else "agent_result"
+            await db_fin.execute(
+                "UPDATE action_cards SET staged_output = ?, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+                (json.dumps({"type": staged_type, "content": staged_content}), broadcast_card_id),
+            )
+
+        has_unanswered = await session_manager.has_unanswered_questions(session_id)
+        card_status = "awaiting_input" if has_unanswered else "ready"
+
+        await db_fin.execute(
+            "UPDATE action_cards SET status = ?, failed_stage = NULL, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            (card_status, broadcast_card_id),
+        )
+        await db_fin.commit()
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": broadcast_card_id, "payload": {"status": card_status}}
+        )
+        await manager.broadcast(
+            {"type": "agent_completed", "card_id": broadcast_card_id, "session_id": session_id, "payload": {"findings": findings}}
+        )
+    elif final_status == SessionStatus.CANCELLED:
+        await session_manager.complete_session(session_id, error="Cancelled by user")
+        await db_fin.execute(
+            "UPDATE action_cards SET status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            (broadcast_card_id,),
+        )
+        await db_fin.commit()
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": broadcast_card_id, "payload": {"status": "ready"}}
+        )
+    else:
+        last_error = findings.get("last_error", "")
+        error_msg = f"Agent ended with status: {final_status.value}"
+        if last_error:
+            error_msg += f" — {last_error}"
+        log.error(f"{log_prefix}_failed", session_id=session_id, error=error_msg)
+        await session_manager.complete_session(session_id, error=error_msg)
+        await db_fin.execute(
+            "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_execution', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
+            (broadcast_card_id,),
+        )
+        await db_fin.commit()
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": broadcast_card_id, "payload": {"status": "failed"}}
+        )
+
+
 async def _stream_agent_to_card(
     card_id: str,
     prompt: str,
@@ -1817,14 +1949,10 @@ async def _stream_agent_to_card(
     mode: str | None = None,
     research: bool = False,
 ) -> None:
-    """Shared background task: spawn agent, stream events, update card status.
-
-    Used by the run_agent() endpoint. Handles the
-    full lifecycle: session spawn, event streaming, status transitions,
-    findings extraction, and session completion.
-    """
+    """Background task for run_agent(): spawn the agent, flip the card to
+    agent_running, then delegate the event stream + finalization to
+    _run_agent_session_stream (review §5 — P7-6)."""
     from laya.agents import session_manager
-    from laya.models.workspace import SessionStatus
 
     try:
         session_id, agent = await session_manager.start_session(
@@ -1861,116 +1989,7 @@ async def _stream_agent_to_card(
         {"type": "card_updated", "card_id": card_id, "payload": {"has_workspace": True, "status": "agent_running", "session_id": session_id}}
     )
 
-    # Stream events
-    findings: dict[str, Any] = {}
-    cc_session_id_stored = False
-
-    try:
-        async for ws_event in agent.stream_events():
-            inserted = await session_manager.store_workspace_event(ws_event)
-            if not inserted:
-                continue
-
-            if not cc_session_id_stored and hasattr(agent, "cc_session_id") and agent.cc_session_id:
-                await session_manager.store_cc_session_id(session_id, agent.cc_session_id)
-                cc_session_id_stored = True
-
-            if ws_event.event_type.value == "approval_request":
-                if ws_event.content.get("ask_user_question"):
-                    db3 = await get_db()
-                    await db3.execute(
-                        "UPDATE action_cards SET status = 'awaiting_input', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-                        (card_id,),
-                    )
-                    await db3.commit()
-                    await manager.broadcast(
-                        {"type": "card_updated", "card_id": card_id, "payload": {"status": "awaiting_input"}}
-                    )
-                await manager.broadcast(
-                    {"type": "approval_request", "card_id": card_id, "session_id": session_id, "payload": ws_event.content}
-                )
-            elif ws_event.event_type.value == "error":
-                findings["last_error"] = ws_event.content.get("error", "")
-                await manager.broadcast(
-                    {"type": "agent_error", "card_id": card_id, "session_id": session_id, "payload": ws_event.content}
-                )
-
-            if ws_event.event_type.value == "agent_message" and ws_event.content.get("is_plan"):
-                findings["agent_plan"] = ws_event.content.get("text", "")
-            if ws_event.event_type.value == "status_change":
-                if ws_event.content.get("status") == "result_received":
-                    findings["agent_result"] = ws_event.content.get("result", "")
-
-    except Exception as e:
-        log.error("agent_stream_error", session_id=session_id, error=str(e))
-        await session_manager.complete_session(session_id, error=str(e))
-        db4 = await get_db()
-        await db4.execute(
-            "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_execution', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-            (card_id,),
-        )
-        await db4.commit()
-        await manager.broadcast(
-            {"type": "card_updated", "card_id": card_id, "payload": {"status": "failed"}}
-        )
-        return
-
-    # Complete session and update card status
-    final_status = agent.get_status()
-    db5 = await get_db()
-
-    if final_status == SessionStatus.COMPLETED:
-        await session_manager.complete_session(session_id, findings=findings)
-
-        agent_plan = findings.get("agent_plan", "")
-        agent_result = findings.get("agent_result", "")
-        staged_content = agent_plan or agent_result
-        if staged_content:
-            staged_type = "agent_plan" if agent_plan else "agent_result"
-            await db5.execute(
-                "UPDATE action_cards SET staged_output = ?, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-                (json.dumps({"type": staged_type, "content": staged_content}), card_id),
-            )
-
-        has_unanswered = await session_manager.has_unanswered_questions(session_id)
-        card_status = "awaiting_input" if has_unanswered else "ready"
-
-        await db5.execute(
-            "UPDATE action_cards SET status = ?, failed_stage = NULL, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-            (card_status, card_id),
-        )
-        await db5.commit()
-        await manager.broadcast(
-            {"type": "card_updated", "card_id": card_id, "payload": {"status": card_status}}
-        )
-        await manager.broadcast(
-            {"type": "agent_completed", "card_id": card_id, "session_id": session_id, "payload": {"findings": findings}}
-        )
-    elif final_status == SessionStatus.CANCELLED:
-        await session_manager.complete_session(session_id, error="Cancelled by user")
-        await db5.execute(
-            "UPDATE action_cards SET status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-            (card_id,),
-        )
-        await db5.commit()
-        await manager.broadcast(
-            {"type": "card_updated", "card_id": card_id, "payload": {"status": "ready"}}
-        )
-    else:
-        last_error = findings.get("last_error", "")
-        error_msg = f"Agent ended with status: {final_status.value}"
-        if last_error:
-            error_msg += f" — {last_error}"
-        log.error("agent_failed", session_id=session_id, error=error_msg)
-        await session_manager.complete_session(session_id, error=error_msg)
-        await db5.execute(
-            "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_execution', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-            (card_id,),
-        )
-        await db5.commit()
-        await manager.broadcast(
-            {"type": "card_updated", "card_id": card_id, "payload": {"status": "failed"}}
-        )
+    await _run_agent_session_stream(session_id, agent, card_id, log_prefix="agent")
 
 
 class UploadAgentFilePathRequest(BaseModel):
@@ -2490,122 +2509,13 @@ async def _stream_entity_agent(
     entity_id: str,
     anchor_card_id: str,
 ) -> None:
-    """Background task: stream agent events for an entity-level session.
-
-    Similar to _stream_agent_to_card but broadcasts updates keyed by the
-    anchor card and updates has_workspace on all entity cards.
-    """
-    from laya.agents import session_manager
-    from laya.models.workspace import SessionStatus
-
-    findings: dict[str, Any] = {}
-    cc_session_id_stored = False
-
-    try:
-        async for ws_event in agent.stream_events():
-            inserted = await session_manager.store_workspace_event(ws_event)
-            if not inserted:
-                continue
-
-            if not cc_session_id_stored and hasattr(agent, "cc_session_id") and agent.cc_session_id:
-                await session_manager.store_cc_session_id(session_id, agent.cc_session_id)
-                cc_session_id_stored = True
-
-            if ws_event.event_type.value == "approval_request":
-                if ws_event.content.get("ask_user_question"):
-                    db2 = await get_db()
-                    await db2.execute(
-                        "UPDATE action_cards SET status = 'awaiting_input', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-                        (anchor_card_id,),
-                    )
-                    await db2.commit()
-                    await manager.broadcast(
-                        {"type": "card_updated", "card_id": anchor_card_id, "payload": {"status": "awaiting_input"}}
-                    )
-                await manager.broadcast(
-                    {"type": "approval_request", "card_id": anchor_card_id, "session_id": session_id, "payload": ws_event.content}
-                )
-            elif ws_event.event_type.value == "error":
-                findings["last_error"] = ws_event.content.get("error", "")
-                await manager.broadcast(
-                    {"type": "agent_error", "card_id": anchor_card_id, "session_id": session_id, "payload": ws_event.content}
-                )
-
-            if ws_event.event_type.value == "agent_message" and ws_event.content.get("is_plan"):
-                findings["agent_plan"] = ws_event.content.get("text", "")
-            if ws_event.event_type.value == "status_change":
-                if ws_event.content.get("status") == "result_received":
-                    findings["agent_result"] = ws_event.content.get("result", "")
-
-    except Exception as e:
-        log.error("entity_agent_stream_error", session_id=session_id, error=str(e))
-        await session_manager.complete_session(session_id, error=str(e))
-        db3 = await get_db()
-        await db3.execute(
-            "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_execution', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-            (anchor_card_id,),
-        )
-        await db3.commit()
-        await manager.broadcast(
-            {"type": "card_updated", "card_id": anchor_card_id, "payload": {"status": "failed"}}
-        )
-        return
-
-    final_status = agent.get_status()
-    db4 = await get_db()
-
-    if final_status == SessionStatus.COMPLETED:
-        await session_manager.complete_session(session_id, findings=findings)
-
-        agent_plan = findings.get("agent_plan", "")
-        agent_result = findings.get("agent_result", "")
-        staged_content = agent_plan or agent_result
-        if staged_content:
-            staged_type = "agent_plan" if agent_plan else "agent_result"
-            await db4.execute(
-                "UPDATE action_cards SET staged_output = ?, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-                (json.dumps({"type": staged_type, "content": staged_content}), anchor_card_id),
-            )
-
-        has_unanswered = await session_manager.has_unanswered_questions(session_id)
-        card_status = "awaiting_input" if has_unanswered else "ready"
-
-        await db4.execute(
-            "UPDATE action_cards SET status = ?, failed_stage = NULL, updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-            (card_status, anchor_card_id),
-        )
-        await db4.commit()
-        await manager.broadcast(
-            {"type": "card_updated", "card_id": anchor_card_id, "payload": {"status": card_status}}
-        )
-        await manager.broadcast(
-            {"type": "agent_completed", "card_id": anchor_card_id, "session_id": session_id, "payload": {"findings": findings}}
-        )
-    elif final_status == SessionStatus.CANCELLED:
-        await session_manager.complete_session(session_id, error="Cancelled by user")
-        await db4.execute(
-            "UPDATE action_cards SET status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-            (anchor_card_id,),
-        )
-        await db4.commit()
-        await manager.broadcast(
-            {"type": "card_updated", "card_id": anchor_card_id, "payload": {"status": "ready"}}
-        )
-    else:
-        last_error = findings.get("last_error", "")
-        error_msg = f"Agent ended with status: {final_status.value}"
-        if last_error:
-            error_msg += f" -- {last_error}"
-        log.error("entity_agent_failed", session_id=session_id, error=error_msg)
-        await session_manager.complete_session(session_id, error=error_msg)
-        await db4.execute(
-            "UPDATE action_cards SET status = 'failed', failed_stage = 'agent_execution', updated_at = CURRENT_TIMESTAMP WHERE card_id = ?",
-            (anchor_card_id,),
-        )
-        await db4.commit()
-        await manager.broadcast(
-            {"type": "card_updated", "card_id": anchor_card_id, "payload": {"status": "failed"}}
-        )
+    """Background task for an entity-level session (run_entity_agent, and the
+    processing-rule agent path). The caller has already started the session and
+    flipped the entity's cards to agent_running, so this just streams events +
+    finalizes, keyed to the anchor card (review §5 — P7-6)."""
+    await _run_agent_session_stream(
+        session_id, agent, anchor_card_id, log_prefix="entity_agent"
+    )
 
 
 # ---------- Context Group Management ----------
