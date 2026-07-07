@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import uuid
 
+import httpx
 import structlog
 from fastapi import APIRouter, HTTPException
 
@@ -265,6 +266,21 @@ async def set_space_paused(space_id: str, body: dict) -> dict:
                 "workflow_id": wf_id,
                 "name": sr["name"],
                 "error": str(e),
+            })
+        except httpx.HTTPError as e:
+            # n8n slow or unreachable (ReadTimeout / ConnectError / ...). The n8n
+            # client raises N8nApiError only for non-2xx *responses*; a transport
+            # error escapes it, so without this a single sluggish n8n activate/
+            # deactivate would 500 the entire pause/resume. Record it per-workflow
+            # and carry on — the space's paused flag still gets persisted below.
+            log.warning(
+                "space_pause_n8n_transport_error",
+                workflow_id=wf_id, error=str(e) or type(e).__name__,
+            )
+            errors.append({
+                "workflow_id": wf_id,
+                "name": sr["name"],
+                "error": f"n8n did not respond ({type(e).__name__}); try again",
             })
 
     # Persist paused state
