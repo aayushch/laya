@@ -27,7 +27,7 @@ router = APIRouter()
 # _row_to_card / _safe_privacy_tier moved to cards_common (shared with the split
 # modules + the external trace/trace_api importers). Re-exported here so
 # `from laya.api.cards_api import _row_to_card` keeps working (review §5.4 — P7-6).
-from laya.api.cards_common import _row_to_card, _safe_privacy_tier  # noqa: E402,F401
+from laya.api.cards_common import CARD_SELECT_COLUMNS, _row_to_card, _safe_privacy_tier  # noqa: E402,F401
 
 # Split-out route modules (P7-6). Each router is include_router'd IN PLACE below —
 # at the same spot the endpoints used to live — so route-registration order is

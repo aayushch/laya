@@ -16,6 +16,25 @@ import json
 
 from laya.models.card import CardResponse, StagedOutput, SuggestedAction
 
+# Canonical column projection for a card row destined for _row_to_card. It was
+# hand-copied into five SELECTs (grouped + list + get_card + trace + trace_api)
+# that then DRIFTED — trace_api dropped read_at/context_id, get_card dropped
+# context_id/content_metadata, trace dropped read_at/group_active_at/context_id —
+# so _row_to_card silently returned None for those on the drifted paths (its
+# `col in row.keys()` guards mask the omission). One string now, so every SELECT
+# feeds the mapper the same shape (review §5.4 — P7-6). Callers must alias the
+# cards table `c`, events `e`, spaces `s` and LEFT JOIN events + spaces.
+CARD_SELECT_COLUMNS = (
+    "c.card_id, c.event_id, c.created_at, c.priority, c.persona, c.category, "
+    "c.header, c.summary, c.intelligence, c.staged_output, c.suggested_actions, "
+    "c.status, c.privacy_tier, c.has_workspace, c.resolved_at, c.user_feedback, "
+    "c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at, "
+    "c.entity_id, c.source_ref, c.source_url, c.selected_action_id, "
+    "c.space_id, c.bookmarked_at, c.read_at, c.group_active_at, c.context_id, "
+    "e.actor_name, e.actor_email, e.content_metadata, "
+    "s.name AS space_name, s.color AS space_color"
+)
+
 
 def _safe_privacy_tier(val) -> int:
     try:

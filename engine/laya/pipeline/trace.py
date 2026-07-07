@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 
 import structlog
 
-from laya.api.cards_api import _row_to_card
+from laya.api.cards_api import CARD_SELECT_COLUMNS, _row_to_card
 from laya.pipeline.queue import _get_semaphore
 from laya.api.websocket import manager
 from laya.db.chromadb_store import memory_search
@@ -819,15 +819,8 @@ async def _event_keyword_search_like(query: str, space_id: str | None, n: int) -
 # Phase 2 — Expansion
 # ---------------------------------------------------------------------------
 
-_CARD_SELECT = """
-    SELECT c.card_id, c.event_id, c.created_at, c.priority, c.persona, c.category,
-           c.header, c.summary, c.intelligence, c.staged_output, c.suggested_actions,
-           c.status, c.privacy_tier, c.has_workspace, c.resolved_at, c.user_feedback,
-           c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at,
-           c.entity_id, c.source_ref, c.source_url, c.selected_action_id,
-           c.space_id, c.bookmarked_at,
-           e.actor_name, e.actor_email,
-           s.name AS space_name, s.color AS space_color
+_CARD_SELECT = f"""
+    SELECT {CARD_SELECT_COLUMNS}
     FROM action_cards c
     LEFT JOIN events e ON c.event_id = e.event_id
     LEFT JOIN spaces s ON c.space_id = s.space_id
