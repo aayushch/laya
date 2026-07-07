@@ -14,7 +14,7 @@
 	import { portal } from '$lib/actions/portal';
 	import StatusDot from './StatusDot.svelte';
 	import PlatformIcon from '$lib/components/settings/PlatformIcon.svelte';
-	import { platformDotColor, platformKey, actorInitials, actorAvatarColor, PRIORITY_LABELS } from '$lib/utils/cardVisuals';
+	import { platformDotColor, platformKey, actorInitials, actorAvatarColor, PRIORITY_LABELS, PRIORITY_COLORS } from '$lib/utils/cardVisuals';
 
 	let { card, onselect, ondelete, onlink, selectedCardId = '', hasSelection = false, lastViewedCardId = '' }: { card: ActionCard; onselect: (card: ActionCard) => void; ondelete?: (cardId: string) => void; onlink?: (card: ActionCard) => void; selectedCardId?: string; hasSelection?: boolean; lastViewedCardId?: string } = $props();
 
@@ -77,12 +77,7 @@
 
 	const isArchived = $derived(card.status === 'archived');
 
-	const priorityColors: Record<string, string> = {
-		CRITICAL: 'bg-red-600 text-red-50',
-		HIGH:     'bg-rose-500/25 text-rose-300',
-		MEDIUM:   'bg-amber-500/20 text-amber-300',
-		LOW:      'bg-surface-700/40 text-surface-400'
-	};
+	const priorityColors = PRIORITY_COLORS;
 
 	const priorityLabel = PRIORITY_LABELS;
 

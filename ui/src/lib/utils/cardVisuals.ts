@@ -13,6 +13,18 @@ export const PRIORITY_LABELS: Record<string, string> = {
 	LOW: 'LOW'
 };
 
+// Priority badge colors (bg + text). This was copy-pasted ~8× and had split into
+// two divergent families; the amber/rose set (the compact list cards') is the
+// chosen canonical, so the group/detail surfaces now match it (review §5.5, P7-7).
+// NB: the text-only priority maps in ContextPanel/OmniItem are a separate concern
+// (inline text, no background) and intentionally not folded in here.
+export const PRIORITY_COLORS: Record<string, string> = {
+	CRITICAL: 'bg-red-600 text-red-50',
+	HIGH: 'bg-rose-500/25 text-rose-300',
+	MEDIUM: 'bg-amber-500/20 text-amber-300',
+	LOW: 'bg-surface-700/40 text-surface-400'
+};
+
 const PLATFORM_DOT_COLORS: Record<string, string> = {
 	gmail: '#EA4335',
 	github: '#9CA3AF',

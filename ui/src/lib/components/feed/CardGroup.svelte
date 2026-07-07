@@ -14,7 +14,7 @@
 	import { cardSize } from '$lib/stores/cardSize';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { portal } from '$lib/actions/portal';
-	import { platformDotColor, PRIORITY_LABELS } from '$lib/utils/cardVisuals';
+	import { platformDotColor, PRIORITY_LABELS, PRIORITY_COLORS } from '$lib/utils/cardVisuals';
 	import { parseBackendDate, timeAgo as _timeAgo } from '$lib/utils/datetime';
 	import PlatformIcon from '$lib/components/settings/PlatformIcon.svelte';
 
@@ -200,12 +200,7 @@
 		return style;
 	});
 
-	const priorityColors: Record<string, string> = {
-		CRITICAL: 'bg-red-600 text-red-50',
-		HIGH:     'bg-orange-500 text-orange-50',
-		MEDIUM:   'bg-laya-coral/20 text-laya-coral',
-		LOW:      'bg-laya-gold/25 text-laya-amber'
-	};
+	const priorityColors = PRIORITY_COLORS;
 
 	const priorityLabel = PRIORITY_LABELS;
 

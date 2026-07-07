@@ -4,7 +4,7 @@
 	import type { GroupSummary, CardGroup, ActionCard, CardEgressContext, CardEgressAction, KeyEvent } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
 	import { parseBackendDate, timeAgo } from '$lib/utils/datetime';
-	import { PRIORITY_LABELS } from '$lib/utils/cardVisuals';
+	import { PRIORITY_LABELS, PRIORITY_COLORS } from '$lib/utils/cardVisuals';
 	import { goto } from '$app/navigation';
 	import { chatOpen, chatCardContext, chatCardIds, chatListOpen } from '$lib/stores/chat';
 	import PlatformBadge from '$lib/components/PlatformBadge.svelte';
@@ -202,12 +202,7 @@
 		chatOpen.set(true);
 	}
 
-	const priorityColors: Record<string, string> = {
-		CRITICAL: 'bg-red-600 text-red-50',
-		HIGH: 'bg-orange-500 text-orange-50',
-		MEDIUM: 'bg-laya-coral/20 text-laya-coral',
-		LOW: 'bg-laya-gold/25 text-laya-amber'
-	};
+	const priorityColors = PRIORITY_COLORS;
 
 	const priorityLabel = PRIORITY_LABELS;
 
