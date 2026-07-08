@@ -51,6 +51,37 @@ _RESYNTH_CHUNK_SIZE = 40
 # ---------------------------------------------------------------------------
 _latest_cache: dict[str, dict] = {}
 
+_VALID_OMNI_PRIORITIES = {"CRITICAL", "HIGH", "MEDIUM", "LOW"}
+
+
+def _is_degenerate_sections(sections: list[dict]) -> bool:
+    """Detect a placeholder/skeleton resynthesis result rather than real content.
+
+    A local model under load (e.g. flooded because the concurrency cap wasn't
+    honored) can return every field as a literal '...' — observed: all items with
+    text='...' and priority='...', plus a hallucinated extra section. Because
+    resynthesis carries the snapshot FORWARD, storing such a result poisons the
+    base and EVERY later incremental inherits it, so the whole Omni page renders
+    as '...' until a good full snapshot replaces it.
+
+    We use this to (a) reject a degenerate result before storing it — treating it
+    like a failed synthesis so the last good snapshot stays — and (b) refuse to
+    feed an already-poisoned snapshot back to the model on the next run, so it
+    regenerates fresh instead of echoing the '...'.
+    """
+    items = [it for s in sections for it in s.get("items", [])]
+    if not items:
+        return False
+    bad = 0
+    for it in items:
+        text = (it.get("text") or "").strip()
+        prio = it.get("priority")
+        if text in ("", "...", "…") or (prio is not None and prio not in _VALID_OMNI_PRIORITIES):
+            bad += 1
+    # Half or more of the items being placeholders is unmistakable — a healthy
+    # synthesis has ~zero. A ratio (not "all") tolerates one odd item.
+    return bad >= len(items) * 0.5
+
 
 # ---------------------------------------------------------------------------
 # Delta helpers
@@ -692,6 +723,17 @@ async def _resynthesize_space(
     # 1. Load latest snapshot (reconstructed if delta chain)
     current_snapshot, current_version, existing_card_ids, _meta = await _load_full_snapshot(db, space_id)
 
+    # Recovery: if the last snapshot is itself degenerate (a prior bad synthesis
+    # poisoned the chain), don't feed it back to the model — that just makes it
+    # echo the '...'. Drop it so this run regenerates real content from scratch;
+    # item_states/resolved-pruning below are skipped when there's no snapshot.
+    if current_snapshot and _is_degenerate_sections(current_snapshot.get("sections", [])):
+        log.warning(
+            "omni_resynthesis_discarding_degenerate_snapshot",
+            space_id=space_id, version=current_version,
+        )
+        current_snapshot = None
+
     # 2. Load pinned items
     pin_rows = await db.execute_fetchall(
         "SELECT item_text, source_card_ids, platforms FROM omni_pins WHERE space_id = ?",
@@ -921,6 +963,18 @@ async def _resynthesize_space(
         # Re-open the gate so queued cards resume processing
         gate.set()
         log.info("omni_resynthesis_gate_opened", space_id=space_id, reason="llm_failed")
+        return None
+
+    # Reject a degenerate ('...'-everywhere) result before it can be stored and
+    # poison the forward-carried snapshot — see _is_degenerate_sections. Treat it
+    # like a failed synthesis: keep the last good snapshot, retry next run.
+    if _is_degenerate_sections(result_sections):
+        log.warning(
+            "omni_resynthesis_degenerate_result",
+            space_id=space_id, items=sum(len(s.get("items", [])) for s in result_sections),
+        )
+        gate.set()
+        log.info("omni_resynthesis_gate_opened", space_id=space_id, reason="degenerate_result")
         return None
 
     # 7. Inject space_id into all items
