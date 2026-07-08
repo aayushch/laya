@@ -384,7 +384,17 @@ async def _rolling_update(
         model=resp.model,
     )
 
-    await _cascade_to_context_group(db, entity_id, card_ids, resolved_space_id)
+    # Skip the context-group cascade when this entity's summary headline+status
+    # came back identical — the context summary is derived from its member
+    # entities' headline+status, so an unchanged entity can't move it. Avoids a
+    # redundant nested LLM regen on every no-op rolling update (review §3.5 — P6-5).
+    if (
+        parsed["headline"] == existing_summary["headline"]
+        and parsed.get("current_status") == existing_summary["current_status"]
+    ):
+        log.debug("context_cascade_skipped_unchanged", entity_id=entity_id)
+    else:
+        await _cascade_to_context_group(db, entity_id, card_ids, resolved_space_id)
     return summary_data
 
 
