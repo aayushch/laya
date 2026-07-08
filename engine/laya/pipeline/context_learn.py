@@ -20,7 +20,11 @@ from laya.llm.prompts.context_rule_consolidator import (
     build_context_rule_consolidator_messages,
     get_context_rule_consolidator_json_schema,
 )
-from laya.pipeline.learn_common import query_spaces_with_unprocessed
+from laya.pipeline.learn_common import (
+    fetch_unprocessed_corrections,
+    mark_corrections_processed,
+    query_spaces_with_unprocessed,
+)
 
 log = structlog.get_logger()
 
@@ -51,31 +55,16 @@ async def run_context_learn_extraction(space_id: str | None) -> int:
     db = await get_db()
 
     # 1. Fetch unprocessed corrections (oldest first)
-    if space_id is not None:
-        corrections_rows = await db.execute_fetchall(
-            """SELECT id, action, header_a, summary_a, platform_a,
-                      header_b, summary_b, platform_b
-               FROM context_corrections
-               WHERE processed = 0 AND space_id = ?
-               ORDER BY created_at ASC
-               LIMIT ?""",
-            (space_id, _batch_limit()),
-        )
-    else:
-        corrections_rows = await db.execute_fetchall(
-            """SELECT id, action, header_a, summary_a, platform_a,
-                      header_b, summary_b, platform_b
-               FROM context_corrections
-               WHERE processed = 0 AND space_id IS NULL
-               ORDER BY created_at ASC
-               LIMIT ?""",
-            (_batch_limit(),),
-        )
+    corrections = await fetch_unprocessed_corrections(
+        "context_corrections",
+        "id, action, header_a, summary_a, platform_a, header_b, summary_b, platform_b",
+        space_id,
+        _batch_limit(),
+    )
 
-    if not corrections_rows:
+    if not corrections:
         return 0
 
-    corrections = [dict(r) for r in corrections_rows]
     correction_ids = [c["id"] for c in corrections]
 
     # 2. Fetch existing active rules (to avoid duplication)
@@ -130,12 +119,7 @@ async def run_context_learn_extraction(space_id: str | None) -> int:
         )
 
     # 5. Mark corrections as processed
-    if correction_ids:
-        placeholders = ",".join("?" * len(correction_ids))
-        await db.execute(
-            f"UPDATE context_corrections SET processed = 1 WHERE id IN ({placeholders})",
-            correction_ids,
-        )
+    await mark_corrections_processed("context_corrections", correction_ids)
 
     await db.commit()
     log.info(

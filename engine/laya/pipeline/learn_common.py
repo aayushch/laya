@@ -47,3 +47,50 @@ async def query_spaces_with_unprocessed(
         return []
 
     return [r["space_id"] for r in rows]
+
+
+async def fetch_unprocessed_corrections(
+    table: str,
+    columns: str,
+    space_id: str | None,
+    limit: int,
+) -> list[dict]:
+    """Fetch the oldest unprocessed corrections for an exact space scope.
+
+    A concrete ``space_id`` selects only that space's rows; ``space_id=None``
+    selects the global (NULL) rows — never both — matching how each learner
+    scopes both extraction and consolidation. ``table``/``columns`` are
+    caller-supplied literals, never user input.
+    """
+    db = await get_db()
+    if space_id is not None:
+        rows = await db.execute_fetchall(
+            f"""SELECT {columns} FROM {table}
+               WHERE processed = 0 AND space_id = ?
+               ORDER BY created_at ASC LIMIT ?""",
+            (space_id, limit),
+        )
+    else:
+        rows = await db.execute_fetchall(
+            f"""SELECT {columns} FROM {table}
+               WHERE processed = 0 AND space_id IS NULL
+               ORDER BY created_at ASC LIMIT ?""",
+            (limit,),
+        )
+    return [dict(r) for r in rows]
+
+
+async def mark_corrections_processed(table: str, correction_ids: list) -> None:
+    """Flag the given correction ids as processed. No-op on an empty list.
+
+    Does not commit — the caller commits alongside its rule inserts so the
+    "rules stored" and "corrections consumed" writes land atomically.
+    """
+    if not correction_ids:
+        return
+    db = await get_db()
+    placeholders = ",".join("?" * len(correction_ids))
+    await db.execute(
+        f"UPDATE {table} SET processed = 1 WHERE id IN ({placeholders})",
+        tuple(correction_ids),
+    )

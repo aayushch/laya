@@ -149,6 +149,7 @@ DEFAULT_SETTINGS = {
         "classification_learn_batch": 50,
         "classification_learn_interval_hours": 6,
         "classification_rules_max_injection": 20,
+        "classification_rules_consolidation_threshold": 40,
         # Context learning
         "context_learn_threshold": 10,
         "context_learn_batch": 40,
