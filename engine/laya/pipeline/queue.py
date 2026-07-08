@@ -28,6 +28,11 @@ _consumer_task: asyncio.Task | None = None
 # asyncio.wait (one hung LLM call) can't also block stale-event recovery (§1.3).
 _reaper_task: asyncio.Task | None = None
 _semaphore: asyncio.Semaphore | None = None
+# The limit the current _semaphore was built with. Tracked separately because a
+# live Semaphore's internal counter reflects AVAILABLE permits (which drop as
+# tasks acquire), not its configured maximum — so we can't recover the limit
+# from the semaphore itself to decide whether the config changed.
+_semaphore_limit: int | None = None
 _shutdown_event: asyncio.Event = asyncio.Event()
 # Pre-computed router outputs from batch routing (event_id → RouterOutput).
 # Populated by _batch_route_events, consumed by process_event.
@@ -76,12 +81,24 @@ def get_llm_retries() -> int:
 
 
 def _get_semaphore() -> asyncio.Semaphore:
-    """Return (and lazily create) the global concurrency semaphore."""
-    global _semaphore
+    """Return (and lazily create) the global concurrency semaphore.
+
+    Recreate ONLY when the configured limit actually changes. The previous check
+    compared `_semaphore._value` (the live *available*-permit count) against the
+    limit, so whenever any events held permits — the normal case under load,
+    especially since timed-out-but-still-running tasks keep their permits across
+    poll cycles (see _consumer_loop) — `_value != limit` was true and the
+    semaphore was rebuilt with a fresh full set of permits every poll. That let
+    far more than `limit` events (and their LLM calls) run at once: the user sets
+    concurrency to 2 but sees a flood of concurrent requests hammering the local
+    model. Compare against the tracked configured limit instead.
+    """
+    global _semaphore, _semaphore_limit
     cfg = _get_pipeline_settings()
     limit = cfg["max_concurrent_events"]
-    if _semaphore is None or _semaphore._value != limit:  # noqa: SLF001
+    if _semaphore is None or _semaphore_limit != limit:
         _semaphore = asyncio.Semaphore(limit)
+        _semaphore_limit = limit
     return _semaphore
 
 
