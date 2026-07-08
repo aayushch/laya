@@ -22,6 +22,12 @@ from laya.llm.prompts.summarizer import (
 
 _COMPACTION_THRESHOLD = 40
 _SUMMARY_MAX_TOKENS = 65536
+# Hard cap on items PER SECTION. The LLM fold is told to merge duplicates and stay
+# concise, but a local model drifts as the summary grows and a burst of unresolved
+# cards has nothing for the resolved-item pruning to remove — so without a cap the
+# "summary" balloons into a pile (observed: 202 items for one day). This bounds it
+# deterministically regardless of model quality.
+_MAX_ITEMS_PER_SECTION = 12
 
 log = structlog.get_logger()
 
@@ -160,18 +166,50 @@ def _count_items(summary: dict) -> int:
     )
 
 
-def _compact_summary(summary: dict) -> dict:
-    """Compact a summary by removing resolved items that are least important.
+def _dedupe_items(items: list) -> list:
+    """Drop exact / whitespace-normalized duplicate items, keeping the first.
 
-    Keeps all pending items intact. For done/dismissed/archived items, removes
-    LOW and MEDIUM priority ones first, keeping CRITICAL and HIGH. This reduces
-    the token footprint so the LLM has room for new items.
+    The fold prompt asks the model to merge duplicates, but a local model re-adds
+    the same subject as the summary grows (observed: the same 'Review PR #795'
+    line twice). Deterministic text dedup is the safety net for that.
+    """
+    seen: set[str] = set()
+    out = []
+    for item in items:
+        text = item.get("text", "") if isinstance(item, dict) else str(item)
+        key = " ".join(text.strip().lower().split())
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+    return out
+
+
+def _compact_summary(summary: dict) -> dict:
+    """Keep the daily summary bounded and duplicate-free — deterministically.
+
+    Three passes per section, because the LLM fold drifts on a local model:
+      1. Dedupe exact/near-identical items (model re-adds the same subject).
+      2. Drop resolved LOW/MEDIUM items (done/dismissed/archived) — least useful,
+         frees token room; pending/ready and CRITICAL/HIGH always survive.
+      3. Hard-cap the section: even a flood of UNRESOLVED cards (which pass step 2
+         untouched) can't turn the summary into a pile. When trimming, keep the
+         most important items (pending + CRITICAL/HIGH) first, preserving their
+         original order within a rank.
     """
     compacted = {}
     removed = 0
 
+    def _important(item: dict) -> bool:
+        return (
+            item.get("status", "pending") in ("pending", "ready")
+            and item.get("priority", "MEDIUM") in ("CRITICAL", "HIGH")
+        )
+
     for section in ("events_and_meetings", "action_items", "key_updates"):
-        items = summary.get(section, [])
+        items = _dedupe_items(summary.get(section, []))
+
+        # Pass 2: drop resolved low-value items.
         kept = []
         for item in items:
             status = item.get("status", "pending")
@@ -180,6 +218,14 @@ def _compact_summary(summary: dict) -> dict:
                 kept.append(item)
             else:
                 removed += 1
+
+        # Pass 3: hard cap. Stable-sort important-first so the cap keeps the items
+        # that matter, then truncate.
+        if len(kept) > _MAX_ITEMS_PER_SECTION:
+            kept = sorted(kept, key=lambda it: 0 if _important(it) else 1)
+            removed += len(kept) - _MAX_ITEMS_PER_SECTION
+            kept = kept[:_MAX_ITEMS_PER_SECTION]
+
         compacted[section] = kept
 
     if removed > 0:
@@ -375,6 +421,11 @@ async def _run_summary_update(
             )
 
     if current_summary:
+        # Always dedupe + cap what we persist: the threshold-gated compaction runs
+        # only BEFORE folds, so the last fold's output (and any small summary that
+        # never crossed the threshold, e.g. one with a single exact-dupe pair) is
+        # unbounded/undeduped without this. Keeps what's shown a summary, not a pile.
+        current_summary = _compact_summary(current_summary)
         summary_json = json.dumps(current_summary)
         card_ids_json = json.dumps(existing_card_ids)
         now = db_now()

@@ -51,6 +51,75 @@ async def _persisted_card_ids(db, space_id="default") -> list[str]:
     return json.loads(rows[0]["card_ids"]) if rows else []
 
 
+class TestSummaryCompaction:
+    """Deterministic dedup + hard cap keep the daily summary a summary, not a pile
+    — the safety net over an LLM fold that drifts on a local model."""
+
+    def test_dedupe_removes_exact_and_normalized_duplicates(self):
+        items = [
+            {"text": "Review PR #795 (IT-267)"},
+            {"text": "Review PR #795 (IT-267)"},        # exact dupe
+            {"text": "  review   pr #795 (IT-267)  "},   # whitespace/case dupe
+            {"text": "Review PR #794"},
+            {"text": ""},                                 # empty dropped
+        ]
+        out = summarize._dedupe_items(items)
+        assert [i["text"] for i in out] == ["Review PR #795 (IT-267)", "Review PR #794"]
+
+    def test_compact_dedupes_below_threshold(self):
+        # A small summary (the 7-item case) still gets its exact dupe removed.
+        summary = {
+            "events_and_meetings": [],
+            "action_items": [
+                {"text": "Review PR #795", "status": "pending", "priority": "HIGH"},
+                {"text": "Review PR #795", "status": "pending", "priority": "HIGH"},
+            ],
+            "key_updates": [],
+        }
+        out = summarize._compact_summary(summary)
+        assert len(out["action_items"]) == 1
+
+    def test_compact_drops_resolved_low_value_items(self):
+        summary = {
+            "events_and_meetings": [],
+            "action_items": [
+                {"text": "a", "status": "pending", "priority": "LOW"},     # kept (pending)
+                {"text": "b", "status": "done", "priority": "LOW"},        # dropped
+                {"text": "c", "status": "dismissed", "priority": "MEDIUM"},# dropped
+                {"text": "d", "status": "done", "priority": "CRITICAL"},   # kept (high)
+            ],
+            "key_updates": [],
+        }
+        out = summarize._compact_summary(summary)
+        assert {i["text"] for i in out["action_items"]} == {"a", "d"}
+
+    def test_hard_cap_bounds_a_flood_of_unresolved_items(self):
+        # 100 pending cards — nothing for the resolved-pruning to remove, so only
+        # the hard cap keeps this from becoming a pile.
+        cap = summarize._MAX_ITEMS_PER_SECTION
+        summary = {
+            "events_and_meetings": [],
+            "action_items": [
+                {"text": f"item {i}", "status": "pending", "priority": "MEDIUM"}
+                for i in range(100)
+            ],
+            "key_updates": [],
+        }
+        out = summarize._compact_summary(summary)
+        assert len(out["action_items"]) == cap
+
+    def test_cap_keeps_important_items_first(self):
+        cap = summarize._MAX_ITEMS_PER_SECTION
+        # cap MEDIUM fillers + a couple of CRITICAL/pending items buried at the end.
+        items = [{"text": f"m{i}", "status": "pending", "priority": "MEDIUM"} for i in range(cap + 5)]
+        items.append({"text": "crit", "status": "pending", "priority": "CRITICAL"})
+        summary = {"events_and_meetings": [], "action_items": items, "key_updates": []}
+        out = summarize._compact_summary(summary)
+        texts = {i["text"] for i in out["action_items"]}
+        assert "crit" in texts                      # the important one survived the cap
+        assert len(out["action_items"]) == cap
+
+
 @pytest.mark.asyncio
 async def test_batch_fold_uses_ceil_calls_not_one_per_card(db):
     """15 cards with batch_max=10 → 2 LLM calls, all 15 cards persisted."""
