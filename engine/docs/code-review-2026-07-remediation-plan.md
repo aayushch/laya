@@ -226,7 +226,7 @@ Everything else in §2, grouped by domain. Independent — parallelizable across
 | **P6-11** | Prompt caching half-wired: only tools+system get an Anthropic cache breakpoint; `_inject_current_datetime` stamps seconds-granular timestamp per loop iteration, churning the prefix (§3) | Freeze the timestamp per request; add a second cache breakpoint on the final message. Converts ~90% of a 20-iteration tool loop's input to 0.1× cache reads. | S–M |
 | **P6-12** ✓ | Tool results appended uncapped (`limit` up to 200 with full `intelligence`/`content_body`) can blow a local context (§3) | ✓ `_cap_tool_result()` caps each tool result at 12K chars (~3K tok) with a "truncated — narrow the query / use a smaller limit or offset" hint, applied at both chat tool-loop append sites. Pinned in `test_chat_api`. | S |
 | **P6-13** | Omni resynthesis most truncation-prone (full snapshot + up to 150 cards ≈ 8–15K tok; failure grows the next attempt) (§3, §4) | Fold in chunks of ~30–50 across sequential smaller calls. More calls, each strictly smaller — right trade for local models. | M |
-| **P6-14** | Ambient chat retrieval overlaps the tool loop — every turn (incl. "thanks") pays embedding + ChromaDB + 3 SQL + up to 3K injected tokens the model re-fetches (§3) | Shrink the ambient budget; skip it when the previous assistant turn used tools. | S–M |
+| **P6-14** ✓ | Ambient chat retrieval overlaps the tool loop — every turn (incl. "thanks") pays embedding + ChromaDB + 3 SQL + up to 3K injected tokens the model re-fetches (§3) | Shrink the ambient budget; skip it when the previous assistant turn used tools. | S–M |
 
 ### 8.3 Accounting bugs that hide the waste
 

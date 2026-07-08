@@ -389,3 +389,34 @@ def test_cap_tool_result_passthrough_and_truncation():
     assert out.startswith("y" * _MAX_TOOL_RESULT_CHARS)
     assert len(out) < len(big)
     assert "truncated" in out and "offset" in out
+
+
+@pytest.mark.asyncio
+async def test_prev_turn_used_tools_signal(db):
+    """P6-14: ambient retrieval is skipped when the last assistant turn used tools."""
+    from laya.pipeline.chat import _prev_turn_used_tools
+
+    await db.execute("INSERT INTO chat_conversations (conversation_id) VALUES ('conv_x')")
+    await db.commit()
+
+    async def _msg(mid, role, tools_json, conv="conv_x"):
+        await db.execute(
+            """INSERT INTO chat_messages (message_id, timestamp, role, content,
+                   conversation_id, tool_calls_json)
+               VALUES (?, datetime('now'), ?, 'hi', ?, ?)""",
+            (mid, role, conv, tools_json),
+        )
+        await db.commit()
+
+    # No conversation → False
+    assert await _prev_turn_used_tools(None) is False
+    # No messages yet → False
+    assert await _prev_turn_used_tools("conv_x") is False
+    # Last assistant turn had NO tools → False
+    await _msg("m1", "user", None)
+    await _msg("m2", "assistant", None)
+    assert await _prev_turn_used_tools("conv_x") is False
+    # Newer assistant turn USED tools → True
+    await _msg("m3", "user", None)
+    await _msg("m4", "assistant", '[{"name": "search_cards"}]')
+    assert await _prev_turn_used_tools("conv_x") is True

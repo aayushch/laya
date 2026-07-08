@@ -287,10 +287,11 @@ async def process_chat_message(
             name=f"chat_title_{conversation_id}",
         )
 
-    # Skip broad retrieval when card_context is provided — the injected card
-    # context already contains everything the LLM needs, and retrieval would
-    # pull in unrelated cards/events that dilute the focused context.
-    if card_context:
+    # Skip broad retrieval when card_context is provided (the injected card context
+    # already has what the LLM needs) OR when the previous assistant turn used tools
+    # (the conversation is already fetching on demand — ambient retrieval is
+    # redundant and the model re-fetches via tools anyway) — review §3 — P6-14.
+    if card_context or await _prev_turn_used_tools(conversation_id):
         context = {"context_text": "", "result_count": 0, "signals_used": []}
     else:
         context = await _retrieve_context(user_message, space_id=space_id)
@@ -487,9 +488,9 @@ async def process_chat_message_streaming(
             name=f"chat_title_{conversation_id}",
         )
 
-    # Skip broad retrieval when card_context is provided — the injected card
-    # context already contains everything the LLM needs.
-    if card_context:
+    # Skip broad retrieval for card_context OR when the previous assistant turn
+    # used tools (fetch-on-demand mode) — review §3 — P6-14.
+    if card_context or await _prev_turn_used_tools(conversation_id):
         context = {"context_text": "", "result_count": 0, "signals_used": []}
     else:
         context = await _retrieve_context(user_message, space_id=space_id)
@@ -677,10 +678,29 @@ async def process_chat_message_streaming(
 # ---------------------------------------------------------------------------
 
 
+async def _prev_turn_used_tools(conversation_id: str | None) -> bool:
+    """True if the most recent assistant turn in this conversation used tools.
+
+    When it did, the chat is already in a fetch-on-demand mode: re-paying ambient
+    retrieval (embedding + ChromaDB + keyword searches + up to ~2K injected
+    tokens) this turn is largely redundant since the model re-fetches via tools
+    anyway (review §3 — P6-14)."""
+    if not conversation_id:
+        return False
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT tool_calls_json FROM chat_messages "
+        "WHERE conversation_id = ? AND role = 'assistant' "
+        "ORDER BY timestamp DESC, rowid DESC LIMIT 1",
+        (conversation_id,),
+    )
+    return bool(rows and rows[0]["tool_calls_json"])
+
+
 async def _retrieve_context(
     user_message: str,
     space_id: str | None = None,
-    token_budget: int = 3000,
+    token_budget: int = 2000,
 ) -> dict[str, Any]:
     """Multi-signal retrieval with Reciprocal Rank Fusion.
 
