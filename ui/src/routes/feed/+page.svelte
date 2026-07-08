@@ -12,7 +12,7 @@
 	import ActionCardComponent from '$lib/components/feed/ActionCard.svelte';
 	import CardDetail from '$lib/components/feed/CardDetail.svelte';
 	import GroupSummaryDetail from '$lib/components/feed/GroupSummaryDetail.svelte';
-	import DaySummaryComponent from '$lib/components/feed/DaySummary.svelte';
+	import SummaryModal from '$lib/components/feed/SummaryModal.svelte';
 	import { feedViewMode } from '$lib/stores/feedView';
 	import { feedSelection } from '$lib/stores/feedSelection';
 	import ListRow from '$lib/components/feed/ListRow.svelte';
@@ -2569,45 +2569,16 @@
 {/if}
 
 <!-- Summary modal -->
-{#if summaryModalOpen}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div
-		class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-		onclick={(e) => { if (e.target === e.currentTarget) setSummaryModalOpen(false); }}
-		onkeydown={(e) => { if (e.key === 'Escape') setSummaryModalOpen(false); }}
-	>
-		<div class="relative mx-4 flex max-h-[90vh] w-full max-w-6xl flex-col rounded-xl border {$glassTheme ? 'glass-card border-surface-700/40 bg-surface-900/40' : 'border-surface-700 bg-surface-800 shadow-2xl'}">
-			<!-- Header -->
-			<div class="flex items-center justify-between border-b px-6 py-4 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
-				<div class="flex items-center gap-2">
-					<svg class="h-4 w-4 text-laya-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-					</svg>
-					<h2 class="text-laya-base font-semibold text-surface-100">Day Summary — {formatDateLabel($feedDate)}</h2>
-				</div>
-				<button
-					onclick={() => setSummaryModalOpen(false)}
-					class="text-surface-500 hover:text-surface-300 transition-colors"
-					aria-label="Close"
-				>
-					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-					</svg>
-				</button>
-			</div>
-			<!-- Body -->
-			<div class="flex-1 overflow-y-auto p-6">
-				{#if summaryLoading}
-					<div class="flex h-48 items-center justify-center text-surface-400">
-						<span class="text-laya-base">Loading summary...</span>
-					</div>
-				{:else}
-					<DaySummaryComponent summary={filteredDaySummary} updatedAt={summaryUpdatedAt} ongotocard={handleSummaryGotoCard} spaceFilter={$feedFilters.spaceFilter} />
-				{/if}
-			</div>
-		</div>
-	</div>
-{/if}
+<SummaryModal
+	open={summaryModalOpen}
+	summary={filteredDaySummary}
+	loading={summaryLoading}
+	updatedAt={summaryUpdatedAt}
+	dateLabel={formatDateLabel($feedDate)}
+	spaceFilter={$feedFilters.spaceFilter}
+	onClose={() => setSummaryModalOpen(false)}
+	onGotoCard={handleSummaryGotoCard}
+/>
 
 {#if showTagAutocomplete && tagSuggestions.length > 0}
 	<div
