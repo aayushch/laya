@@ -378,3 +378,14 @@ class TestTitleGenerationBackground:
                 await _generate_title_background(conv_id, "triage my jira", None)
 
         assert await self._get_title(db, conv_id) == "Triage Jira Tickets"
+
+
+def test_cap_tool_result_passthrough_and_truncation():
+    """P6-12: small results pass through; oversized ones truncate with a hint."""
+    from laya.pipeline.chat import _cap_tool_result, _MAX_TOOL_RESULT_CHARS
+    assert _cap_tool_result("tiny") == "tiny"
+    big = "y" * (_MAX_TOOL_RESULT_CHARS * 3)
+    out = _cap_tool_result(big)
+    assert out.startswith("y" * _MAX_TOOL_RESULT_CHARS)
+    assert len(out) < len(big)
+    assert "truncated" in out and "offset" in out

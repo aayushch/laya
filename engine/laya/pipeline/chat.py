@@ -33,6 +33,25 @@ EVENT_REF_PATTERN = re.compile(r"\[event:([^\]]+)\]")
 
 MAX_TOOL_ITERATIONS = 20
 
+# Cap a single tool result before it re-enters the prompt. A search tool can
+# return up to 200 cards with full intelligence/content_body — tens of thousands
+# of tokens that blow a local context window and get re-sent every subsequent
+# tool-loop iteration. ~12K chars ≈ 3K tokens keeps a rich-but-bounded result and
+# tells the model how to get more (review §3 — P6-12).
+_MAX_TOOL_RESULT_CHARS = 12000
+
+
+def _cap_tool_result(result_str: str) -> str:
+    """Truncate an oversized tool result, appending a use-offset hint."""
+    if len(result_str) <= _MAX_TOOL_RESULT_CHARS:
+        return result_str
+    return (
+        result_str[:_MAX_TOOL_RESULT_CHARS]
+        + f"\n\n… [tool result truncated at {_MAX_TOOL_RESULT_CHARS} chars — "
+        "narrow the query or use a smaller limit / an offset to page for the rest]"
+    )
+
+
 def canonical_card_ids(card_ids: list[str] | None) -> str | None:
     """Canonical JSON form for a card-ID set, used as the anchor key.
 
@@ -348,7 +367,7 @@ async def process_chat_message(
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
-                    "content": result_str,
+                    "content": _cap_tool_result(result_str),
                 })
                 tool_calls_log.append({
                     "name": tc.name,
@@ -563,7 +582,7 @@ async def process_chat_message_streaming(
                         messages.append({
                             "role": "tool",
                             "tool_call_id": tc.id,
-                            "content": result_str,
+                            "content": _cap_tool_result(result_str),
                         })
                         tool_calls_log.append({
                             "name": tc.name,
