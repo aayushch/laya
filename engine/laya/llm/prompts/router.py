@@ -33,8 +33,12 @@ HIGH (needs attention soon), CRITICAL (needs immediate attention)
    - Branch names
    - PR/MR numbers
 
-3. GENERATE a research_plan: ordered list of 3-5 concrete investigation steps that \
-a worker should follow to gather context and prepare a response. Be specific.
+3. GENERATE a research_plan ONLY for events that need investigation (bug reports, \
+code-review requests, complex questions — the same events you set requires_research=true \
+for below): an ordered list of 3-5 concrete steps a worker should follow. Be specific. \
+For simple notifications (status changes, approvals, informational updates — the common \
+case), return an EMPTY research_plan [] and set requires_research=false. Never invent \
+steps for a notification.
 
 4. DETERMINE:
    - requires_research: true if the event needs investigation (bug reports, code review \
@@ -232,6 +236,7 @@ def _single_classification_schema() -> dict[str, Any]:
             "research_plan": {
                 "type": "array",
                 "items": {"type": "string"},
+                "description": "3-5 investigation steps — ONLY when requires_research is true. Empty [] for simple notifications.",
             },
             "requires_research": {"type": "boolean"},
             "secondary_persona": {

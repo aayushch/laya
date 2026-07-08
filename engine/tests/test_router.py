@@ -102,6 +102,47 @@ async def test_router_can_classify_as_sales(db, slack_event, mock_chromadb):
 
     assert result.persona.value == "SALES"
     assert result.category.value == "COMMS"
+    # P6-10: requires_research=False → research_plan is cleared even though the
+    # model emitted one, so no worker follows a spurious plan for a notification.
+    assert result.research_plan == []
+
+
+@pytest.mark.asyncio
+async def test_router_clears_research_plan_when_not_required(db, slack_event, mock_chromadb):
+    """A model that emits a research_plan for a requires_research=False event has
+    it dropped after parse (review §3 — P6-10)."""
+    from unittest.mock import MagicMock
+    await insert_test_event(
+        db, event_id=slack_event.event_id, platform="slack",
+        raw_event_type="message_received", subject_type="thread",
+        subject_id="t-1", subject_title="build passed", actor_name="CI",
+        content_body="Build #42 succeeded.",
+    )
+    resp = {
+        "category": "CODE", "persona": "ENGINEER", "priority": "LOW",
+        "confidence": 0.9, "entities": [],
+        "research_plan": ["step one", "step two", "step three"],
+        "requires_research": False, "secondary_persona": None,
+        "reasoning": "Informational build notification.",
+    }
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = json.dumps(resp)
+    mock_response.choices[0].message.tool_calls = None
+    mock_response.choices[0].finish_reason = "stop"
+    mock_response.usage = MagicMock()
+    mock_response.usage.prompt_tokens = 300
+    mock_response.usage.completion_tokens = 120
+
+    with patch("laya.pipeline.feedback.query_feedback_patterns", new_callable=AsyncMock, return_value=[]):
+        with patch("litellm.acompletion", new_callable=AsyncMock, return_value=mock_response):
+            with patch("laya.llm.client.load_settings", return_value={"models": {"router": "claude-haiku-4-5-20251001"}}):
+                with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                    with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                        result = await run_router(slack_event, "teammate")
+
+    assert result.requires_research is False
+    assert result.research_plan == []
 
 
 @pytest.mark.asyncio

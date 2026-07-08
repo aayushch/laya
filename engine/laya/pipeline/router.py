@@ -146,6 +146,13 @@ async def run_router(
                 reasoning=f"Parse error, defaulting: {e}",
             )
 
+    # research_plan only applies to events that need investigation. Enforce it so a
+    # model that ignores the prompt (common on small local models) can't leave a
+    # spurious plan for a worker to follow, and the stored output stays clean
+    # (review §3 — P6-10). The output-token saving itself comes from the prompt cut.
+    if not router_output.requires_research and router_output.research_plan:
+        router_output.research_plan = []
+
     # 4. Store router output in events table
     db = await get_db()
     await db.execute(
