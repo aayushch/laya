@@ -20,7 +20,7 @@ from laya.retrieval import extract_keywords, fts_or_like, reciprocal_rank_fusion
 from laya.db.timeutil import db_now
 from laya.llm.client import llm_call, llm_call_streaming, StreamEvent
 from laya.llm.prompts.chat import build_chat_messages, build_title_generation_messages
-from laya.llm.tools.definitions import get_all_tool_definitions
+from laya.llm.tools.definitions import select_chat_tools
 from laya.llm.tools.executor import execute_tool
 from laya.models.chat import ChatMessage, ChatResponse
 from laya.tasks import create_task
@@ -302,7 +302,9 @@ async def process_chat_message(
         card_context=card_context,
     )
 
-    tools = get_all_tool_definitions()
+    # Intent-gated toolset: read + card-write always; settings/rules/egress only
+    # when the turn signals it — ~8.4K → ~2.8K tokens on an ordinary turn (P6-8).
+    tools = select_chat_tools(user_message, chat_history)
     tool_calls_log: list[dict] = []
     total_input_tokens = 0
     total_output_tokens = 0
@@ -495,7 +497,9 @@ async def process_chat_message_streaming(
         card_context=card_context,
     )
 
-    tools = get_all_tool_definitions()
+    # Intent-gated toolset: read + card-write always; settings/rules/egress only
+    # when the turn signals it — ~8.4K → ~2.8K tokens on an ordinary turn (P6-8).
+    tools = select_chat_tools(user_message, chat_history)
     tool_calls_log: list[dict] = []
     total_input_tokens = 0
     total_output_tokens = 0

@@ -9,7 +9,11 @@ from laya.egress.tools import get_egress_tool_definitions
 
 
 def get_all_tool_definitions() -> list[dict]:
-    """Return all tool definitions in OpenAI function calling format."""
+    """Return all tool definitions in OpenAI function calling format.
+
+    The full ~8.4K-token set. Used by MCP (scope-filtered separately) and as the
+    fallback; chat uses select_chat_tools() to gate the heavy groups (P6-8).
+    """
     return [
         *_read_tools(),
         *_write_tools(),
@@ -19,6 +23,69 @@ def get_all_tool_definitions() -> list[dict]:
         *_rules_write_tools(),
         *get_egress_tool_definitions(),
     ]
+
+
+# ---------------------------------------------------------------------------
+# Intent-gated chat toolset (review §3 — P6-8)
+#
+# The full toolset is ~8.4K tokens (measured), resent on every chat turn AND
+# every tool-loop iteration (up to 20) — on an 8K local context it blows the
+# window before the user's question. Read + card-write tools (~2.8K) always
+# ship; the settings, rules, and egress groups (~5.6K combined) ship only when
+# the turn's text signals that intent. Inclusion-biased on purpose: a group ships
+# on ANY keyword hit — a false positive merely costs tokens, whereas a false
+# negative would deny the model a tool it needs. Keyword sets are lowercase
+# substrings; keep them broad.
+# ---------------------------------------------------------------------------
+
+_RULES_HINTS = (
+    "rule", "filter", "classif", "routing", "route to", "processing rule",
+    "auto-tag", "auto tag", "auto-archive", "always mark", "never mark",
+    "always route", "get_rule_options",
+)
+_SETTINGS_HINTS = (
+    "setting", "configure", "config", "budget", "api key", "api-key",
+    "model", "preference", "persona", "enable ", "disable ", "turn on", "turn off",
+)
+_EGRESS_HINTS = (
+    "send", "reply", "respond", "post ", "email", "e-mail", "message",
+    "comment", "notify", "notification", "ping", "slack", "draft", "compose",
+    "create issue", "create a ticket", "create ticket", "follow up", "follow-up",
+    "let them know", "let her know", "let him know",
+)
+
+
+def _hits(text: str, hints: tuple[str, ...]) -> bool:
+    return any(h in text for h in hints)
+
+
+def select_tool_definitions(text: str) -> list[dict]:
+    """Chat toolset gated by a cheap keyword intent check over ``text`` (P6-8)."""
+    t = (text or "").lower()
+    defs = [*_read_tools(), *_write_tools()]
+    if _hits(t, _SETTINGS_HINTS):
+        defs += [*_settings_read_tools(), *_settings_write_tools()]
+    if _hits(t, _RULES_HINTS):
+        defs += [*_rules_read_tools(), *_rules_write_tools()]
+    if _hits(t, _EGRESS_HINTS):
+        defs += get_egress_tool_definitions()
+    return defs
+
+
+def select_chat_tools(user_message: str, chat_history: list[dict] | None = None) -> list[dict]:
+    """Gate the chat toolset on the current message + recent USER turns.
+
+    Recent user turns are included so a multi-turn flow ("create a rule" → the
+    model asks for detail → "yes") keeps its group available through the follow-
+    ups even when the later messages don't repeat the keyword. Assistant turns
+    are excluded to avoid keeping a group alive off the model's own phrasing.
+    """
+    recent_user = " ".join(
+        (m.get("content") or "")
+        for m in (chat_history or [])
+        if m.get("role") == "user"
+    )
+    return select_tool_definitions(f"{user_message or ''} {recent_user}")
 
 
 # Public helpers that derive tool-name sets dynamically from the group functions
