@@ -4,6 +4,7 @@
 	import { onMount, tick, untrack } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
 	import { parseBackendDate } from '$lib/utils/datetime';
+	import { capturePositions, playFlip } from '$lib/utils/flip';
 	import { lastMessage, wsStatus } from '$lib/stores/websocket';
 	import { feedFilters, feedDate, feedPrevDate, feedNextDate, localToday, allDaysSavedDate, type FeedFilters } from '$lib/stores/feedFilters';
 	import type { ActionCard, CardGroup, GroupSummary, DaySummary, SpaceSummary, Tag } from '$lib/api/types';
@@ -117,33 +118,14 @@
 	let recentListEl = $state<HTMLElement | null>(null);
 
 	function flipRecentCards() {
-		if (!recentListEl) return;
-		// Reduced motion: skip translate animation; entries just appear in new positions.
-		if ($reducedMotion) return;
-		const oldPositions = new Map<string, DOMRect>();
-		recentListEl.querySelectorAll('[data-recent-id]').forEach((el) => {
-			oldPositions.set((el as HTMLElement).dataset.recentId!, el.getBoundingClientRect());
-		});
-		tick().then(() => {
-			if (!recentListEl) return;
-			recentListEl.querySelectorAll('[data-recent-id]').forEach((el) => {
-				const htmlEl = el as HTMLElement;
-				const id = htmlEl.dataset.recentId!;
-				const oldRect = oldPositions.get(id);
-				if (!oldRect) return;
-				const newRect = el.getBoundingClientRect();
-				const dy = oldRect.top - newRect.top;
-				if (Math.abs(dy) < 1) return;
-				htmlEl.style.transform = `translateY(${dy}px)`;
-				htmlEl.style.transition = 'none';
-				requestAnimationFrame(() => {
-					htmlEl.style.transition = 'transform 250ms ease';
-					htmlEl.style.transform = '';
-					htmlEl.addEventListener('transitionend', () => {
-						htmlEl.style.transition = '';
-					}, { once: true });
-				});
-			});
+		// Reduced motion: skip the translate; entries just appear in new positions.
+		if (!recentListEl || $reducedMotion) return;
+		// Capture BEFORE the caller mutates the recent-cards store; playFlip awaits
+		// a tick so it measures the reordered DOM. Vertical-only, 250ms.
+		const old = capturePositions(recentListEl, '[data-recent-id]', (el) => el.dataset.recentId);
+		void playFlip(recentListEl, '[data-recent-id]', (el) => el.dataset.recentId, old, {
+			axis: 'y',
+			durationMs: 250,
 		});
 	}
 
@@ -418,12 +400,7 @@
 
 	// Capture card positions for FLIP animation before data changes
 	function captureCardPositions(): Map<string, DOMRect> {
-		const positions = new Map<string, DOMRect>();
-		if (!containerEl) return positions;
-		containerEl.querySelectorAll('[data-entity-id]').forEach((el) => {
-			positions.set((el as HTMLElement).dataset.entityId!, el.getBoundingClientRect());
-		});
-		return positions;
+		return capturePositions(containerEl, '[data-entity-id]', (el) => el.dataset.entityId);
 	}
 
 	// Apply FLIP animation from old positions to current positions
@@ -435,43 +412,15 @@
 			_flipSettled = Promise.resolve();
 			return;
 		}
-		// Signal that a FLIP animation is in progress; resolves after animations finish
+		// Signal that a FLIP animation is in progress; resolves after animations finish.
+		// (Owned here, not in playFlip, so instant / reduced-motion runs resolve it
+		// immediately above without a wasted 350ms wait.)
 		_flipSettled = new Promise((resolve) => setTimeout(resolve, 350));
-		await tick();
-		containerEl.querySelectorAll('[data-entity-id]').forEach((el) => {
-			const htmlEl = el as HTMLElement;
-			const id = htmlEl.dataset.entityId!;
-			const oldRect = oldPositions.get(id);
-			if (!oldRect) {
-				// New card — animate entrance
-				htmlEl.style.opacity = '0';
-				htmlEl.style.transform = 'scale(0.95)';
-				htmlEl.style.transition = 'none';
-				requestAnimationFrame(() => {
-					htmlEl.style.transition = 'opacity 250ms ease, transform 250ms ease';
-					htmlEl.style.opacity = '';
-					htmlEl.style.transform = '';
-					htmlEl.addEventListener('transitionend', () => {
-						htmlEl.style.transition = '';
-					}, { once: true });
-				});
-				return;
-			}
-
-			const newRect = el.getBoundingClientRect();
-			const dx = oldRect.left - newRect.left;
-			const dy = oldRect.top - newRect.top;
-			if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
-
-			htmlEl.style.transform = `translate(${dx}px, ${dy}px)`;
-			htmlEl.style.transition = 'none';
-			requestAnimationFrame(() => {
-				htmlEl.style.transition = 'transform 300ms ease';
-				htmlEl.style.transform = '';
-				htmlEl.addEventListener('transitionend', () => {
-					htmlEl.style.transition = '';
-				}, { once: true });
-			});
+		await playFlip(containerEl, '[data-entity-id]', (el) => el.dataset.entityId, oldPositions, {
+			axis: 'xy',
+			durationMs: 300,
+			animateEntrance: true,
+			entranceDurationMs: 250,
 		});
 	}
 
