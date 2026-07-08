@@ -46,9 +46,35 @@ def _base_url() -> str:
     return get_n8n_config()["base_url"].rstrip("/")
 
 
+async def _request(method: str, url: str, **kwargs) -> httpx.Response:
+    """Issue an n8n API request, converting transport failures into N8nApiError.
+
+    The per-endpoint helpers below inspect ``resp.status_code`` and raise
+    N8nApiError for non-2xx *responses*. But a transport failure — n8n slow to
+    activate a workflow, still booting, a connection reset — raises a raw
+    httpx.HTTPError from the await itself, which slips past every caller's
+    ``except N8nApiError`` and surfaces as an unhandled 500. (This is exactly
+    what broke Resume-on-a-paused-space: a ReadTimeout in activate_workflow
+    500'd the whole request.) Funnel those into N8nApiError so a single
+    ``except N8nApiError`` covers both failure modes for every caller — not just
+    the one that happened to also catch httpx.HTTPError. Status 503 is used
+    because it is a valid HTTP code, so callers that map
+    ``N8nApiError.status_code`` straight onto an HTTPException stay correct;
+    the exception type name is surfaced in the detail without a traceback.
+
+    (test_api_access() deliberately does NOT route through here — it reports
+    transport state as structured data rather than as an exception.)
+    """
+    try:
+        return await get_client().request(method, url, **kwargs)
+    except httpx.HTTPError as e:
+        raise N8nApiError(503, f"n8n did not respond ({type(e).__name__})") from e
+
+
 async def list_credentials() -> list[dict]:
     """GET /api/v1/credentials — list all credentials from n8n."""
-    resp = await get_client().get(
+    resp = await _request(
+        "GET",
         f"{_base_url()}/api/v1/credentials",
         headers=_get_headers(),
         timeout=10.0,
@@ -73,7 +99,8 @@ async def create_credential(
         "data": data,
         "nodesAccess": [{"nodeType": node_type}],
     }
-    resp = await get_client().post(
+    resp = await _request(
+        "POST",
         f"{_base_url()}/api/v1/credentials",
         headers=_get_headers(),
         json=body,
@@ -86,7 +113,8 @@ async def create_credential(
 
 async def delete_credential(credential_id: str) -> bool:
     """DELETE /api/v1/credentials/{id} — delete a credential from n8n."""
-    resp = await get_client().delete(
+    resp = await _request(
+        "DELETE",
         f"{_base_url()}/api/v1/credentials/{credential_id}",
         headers=_get_headers(),
         timeout=10.0,
@@ -100,7 +128,8 @@ async def delete_credential(credential_id: str) -> bool:
 
 async def list_workflows() -> list[dict]:
     """GET /api/v1/workflows — list all workflows from n8n."""
-    resp = await get_client().get(
+    resp = await _request(
+        "GET",
         f"{_base_url()}/api/v1/workflows",
         headers=_get_headers(),
         params={"limit": 250},
@@ -115,7 +144,8 @@ async def list_workflows() -> list[dict]:
 
 async def get_workflow(workflow_id: str) -> dict:
     """GET /api/v1/workflows/{id} — fetch full workflow details including nodes."""
-    resp = await get_client().get(
+    resp = await _request(
+        "GET",
         f"{_base_url()}/api/v1/workflows/{workflow_id}",
         headers=_get_headers(),
         timeout=10.0,
@@ -166,7 +196,8 @@ async def update_workflow(workflow_id: str, payload: dict) -> dict:
             k: v for k, v in payload["settings"].items()
             if k in _ALLOWED_SETTINGS_KEYS
         }
-    resp = await get_client().put(
+    resp = await _request(
+        "PUT",
         f"{_base_url()}/api/v1/workflows/{workflow_id}",
         headers=_get_headers(),
         json=payload,
@@ -179,7 +210,8 @@ async def update_workflow(workflow_id: str, payload: dict) -> dict:
 
 async def unarchive_workflow(workflow_id: str) -> dict:
     """POST /api/v1/workflows/{id}/unarchive — unarchive a workflow."""
-    resp = await get_client().post(
+    resp = await _request(
+        "POST",
         f"{_base_url()}/api/v1/workflows/{workflow_id}/unarchive",
         headers=_get_headers(),
         timeout=10.0,
@@ -195,7 +227,8 @@ async def activate_workflow(workflow_id: str, active: bool) -> dict:
     Uses POST /api/v1/workflows/{id}/activate or /deactivate.
     """
     action = "activate" if active else "deactivate"
-    resp = await get_client().post(
+    resp = await _request(
+        "POST",
         f"{_base_url()}/api/v1/workflows/{workflow_id}/{action}",
         headers=_get_headers(),
         timeout=10.0,
