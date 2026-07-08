@@ -22,7 +22,7 @@ from typing import Any, Callable
 
 import structlog
 
-from laya.db.chromadb_store import memory_search
+from laya.pipeline.related_context import query_related_context
 from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
 from laya.llm.prompts.comms import build_comms_messages, get_comms_json_schema
 from laya.llm.prompts.finance import build_finance_messages, get_finance_json_schema
@@ -99,12 +99,8 @@ async def run_persona_worker(
     """Run one LLM-drafting persona worker (no coding agent — pure LLM drafting)."""
     log.info("persona_worker_start", persona=spec.persona, event_id=event.event_id)
 
-    query = f"{event.subject.title} {event.content.body[:300]}"
-    related_context: list[dict] = []
-    try:
-        related_context = await memory_search(query, n_results=spec.n_results)
-    except Exception as e:
-        log.warning("persona_context_search_failed", persona=spec.persona, error=str(e))
+    # Shared per-event memoized search — reuses the router/stager embedding (P6-7).
+    related_context = await query_related_context(event, n_results=spec.n_results)
 
     if spec.role_aware:
         messages = spec.build_messages(

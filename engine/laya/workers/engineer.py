@@ -15,7 +15,7 @@ from typing import Any
 import structlog
 
 from laya.config import load_repos, load_settings
-from laya.db.chromadb_store import memory_search
+from laya.pipeline.related_context import query_related_context
 from laya.db.sqlite import get_db
 from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
 from laya.llm.prompts.engineer import build_engineer_messages, get_engineer_json_schema
@@ -133,13 +133,8 @@ async def resolve_repo_path(
 
 
 async def _gather_context(event: LayaEvent, router_output: RouterOutput) -> list[dict]:
-    """Gather related context from ChromaDB memory."""
-    query = f"{event.subject.title} {event.content.body[:300]}"
-    try:
-        return await memory_search(query, n_results=5)
-    except Exception as e:
-        log.warning("engineer_context_search_failed", error=str(e))
-        return []
+    """Gather related context from ChromaDB memory (shared per-event — P6-7)."""
+    return await query_related_context(event, n_results=5)
 
 
 async def _build_agent_prompt(

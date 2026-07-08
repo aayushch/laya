@@ -8,7 +8,7 @@ import json
 import structlog
 
 from laya.config import load_settings
-from laya.db.chromadb_store import memory_search
+from laya.pipeline.related_context import query_related_context
 from laya.db.sqlite import get_db
 from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
 from laya.llm.prompts.stager import build_stager_messages, get_stager_json_schema
@@ -62,7 +62,7 @@ async def run_stager(
         ActionCardData ready for the EMIT step.
     """
     # 1. Query ChromaDB for related context
-    related_context = await _query_related_context(event)
+    related_context = await query_related_context(event, n_results=3)
 
     # 1b. Query existing cards for this entity (prevents redundant research)
     entity_history = await _query_entity_history(event)
@@ -115,20 +115,6 @@ async def run_stager(
     except (json.JSONDecodeError, Exception) as e:
         log.error("stager_parse_failed", event_id=event.event_id, error=str(e))
         return _build_fallback_card(event, router_output)
-
-
-async def _query_related_context(event: LayaEvent) -> list[dict]:
-    """Search ChromaDB for related content to enrich stager context."""
-    query_parts = [event.subject.title, event.content.body[:300]]
-    query = " ".join(query_parts)
-
-    try:
-        results = await memory_search(query, n_results=3)
-        log.debug("stager_context_found", count=len(results), event_id=event.event_id)
-        return results
-    except Exception as e:
-        log.warning("stager_memory_search_skipped", error=str(e), event_id=event.event_id)
-        return []
 
 
 _CROSS_PLATFORM_ALLOWED: dict[tuple[str, str], bool] = {

@@ -214,7 +214,7 @@ Everything else in §2, grouped by domain. Independent — parallelizable across
 | **P6-4** | Fix debounce-cancel wasted generations (§3.4) | **Done in P3-6.** | — |
 | **P6-5** ✓ | Skip the context-summary cascade when the entity summary headline/status is unchanged (string compare) (§3.5) | Short-circuit the nested context-group regen when the parent summary's headline+status came back identical. | S |
 | **P6-6** | Filter tenacity retries to genuinely-retryable errors — deterministic 400s can burn 9–18 doomed HTTP calls/event across nested retry layers (§3.6) | `llm/client.py:844-857` | Retry only on transient (timeout/5xx/connection) errors; fail fast on 4xx. | S |
-| **P6-7** | Share one ChromaDB search per event — router/stager/each worker independently embed-and-search the same `title+body[:300]` (2–4 identical searches) (§3.7, §4) | Compute the embedding+search once per event, pass the result down the pipeline. Embedding cost on the hot path. | M |
+| **P6-7** ✓ | Share one ChromaDB search per event — router/stager/each worker independently embed-and-search the same `title+body[:300]` (2–4 identical searches) (§3.7, §4) | Compute the embedding+search once per event, pass the result down the pipeline. Embedding cost on the hot path. | M |
 
 ### 8.2 Token reductions (local-model-safe — all shrink or hold prompt size)
 

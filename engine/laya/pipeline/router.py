@@ -8,8 +8,8 @@ import uuid
 
 import structlog
 
-from laya.db.chromadb_store import memory_search
 from laya.db.sqlite import get_db
+from laya.pipeline.related_context import query_related_context
 from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
 from laya.llm.prompts.router import (
     build_batch_router_messages,
@@ -21,20 +21,6 @@ from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 
 log = structlog.get_logger()
-
-
-async def _query_related_context(event: LayaEvent) -> list[dict]:
-    """Search ChromaDB for past events related to this one."""
-    query_parts = [event.subject.title, event.content.body[:300]]
-    query = " ".join(query_parts)
-
-    try:
-        results = await memory_search(query, n_results=3)
-        log.debug("related_context_found", count=len(results), event_id=event.event_id)
-        return results
-    except Exception as e:
-        log.warning("memory_search_skipped", error=str(e), event_id=event.event_id)
-        return []
 
 
 async def _store_entities(event_id: str, router_output: RouterOutput) -> None:
@@ -94,8 +80,8 @@ async def run_router(
     Returns:
         RouterOutput with classification, entities, research plan.
     """
-    # 1. Query ChromaDB for related past events
-    related_context = await _query_related_context(event)
+    # 1. Query ChromaDB for related past events (shared per-event, memoized — P6-7)
+    related_context = await query_related_context(event, n_results=3)
 
     # 1b. Query user feedback patterns + classification rules/corrections for learning loop
     from laya.pipeline.feedback import (

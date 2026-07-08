@@ -45,13 +45,17 @@ async def db(tmp_path):
 
     # Patch _db so get_db() returns this connection via the real function.
     with patch("laya.db.sqlite._db", conn):
-        # Clear omni state to prevent cross-test leakage
+        # Clear omni state + the per-event related-context memo (P6-7) to prevent
+        # cross-test leakage of module-level caches.
         from laya.pipeline.omni import _latest_cache, _resynthesis_gates
+        from laya.pipeline.related_context import clear_related_context_cache
         _latest_cache.clear()
         _resynthesis_gates.clear()
+        clear_related_context_cache()
         yield conn
         _latest_cache.clear()
         _resynthesis_gates.clear()
+        clear_related_context_cache()
 
     await conn.close()
 
@@ -196,7 +200,7 @@ MOCK_COMMS_RESPONSE = {
 def mock_chromadb():
     """Patch ChromaDB embed and search functions."""
     with patch("laya.pipeline.emit.embed_document", new_callable=AsyncMock) as mock_embed:
-        with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]) as mock_search:
+        with patch("laya.pipeline.related_context.memory_search", new_callable=AsyncMock, return_value=[]) as mock_search:
             yield {"embed_document": mock_embed, "memory_search": mock_search}
 
 

@@ -19,7 +19,7 @@ class TestStager:
         mock_llm_stager, sample_worker_result,
     ):
         """run_stager returns ActionCardData from LLM response."""
-        with patch("laya.pipeline.stager.memory_search", new_callable=AsyncMock, return_value=[]):
+        with patch("laya.pipeline.related_context.memory_search", new_callable=AsyncMock, return_value=[]):
             result = await run_stager(
                 sample_event, sample_router_output_engineer, [sample_worker_result]
             )
@@ -34,7 +34,7 @@ class TestStager:
         self, db, sample_event, sample_router_output_comms, mock_llm_stager,
     ):
         """run_stager works with worker_results=None (simple path)."""
-        with patch("laya.pipeline.stager.memory_search", new_callable=AsyncMock, return_value=[]):
+        with patch("laya.pipeline.related_context.memory_search", new_callable=AsyncMock, return_value=[]):
             result = await run_stager(
                 sample_event, sample_router_output_comms, worker_results=None
             )
@@ -49,7 +49,7 @@ class TestStager:
         """A transport/LLM failure propagates so the durable queue retries the
         event instead of swallowing it into a degraded fallback card with the
         event marked completed (review §2 pipeline — P3-5)."""
-        with patch("laya.pipeline.stager.memory_search", new_callable=AsyncMock, return_value=[]):
+        with patch("laya.pipeline.related_context.memory_search", new_callable=AsyncMock, return_value=[]):
             with patch("laya.pipeline.stager.llm_call", new_callable=AsyncMock, side_effect=Exception("LLM timeout")):
                 with pytest.raises(Exception, match="LLM timeout"):
                     await run_stager(sample_event, sample_router_output_engineer)
@@ -62,7 +62,7 @@ class TestStager:
         bad = MagicMock()
         bad.parsed = None
         bad.content = "this is not json"
-        with patch("laya.pipeline.stager.memory_search", new_callable=AsyncMock, return_value=[]):
+        with patch("laya.pipeline.related_context.memory_search", new_callable=AsyncMock, return_value=[]):
             with patch("laya.pipeline.stager.llm_call", new_callable=AsyncMock, return_value=bad):
                 result = await run_stager(sample_event, sample_router_output_engineer)
 
@@ -75,7 +75,7 @@ class TestStager:
         mock_llm_stager, sample_worker_result,
     ):
         """run_stager correctly parses suggested_actions with JSON string payload."""
-        with patch("laya.pipeline.stager.memory_search", new_callable=AsyncMock, return_value=[]):
+        with patch("laya.pipeline.related_context.memory_search", new_callable=AsyncMock, return_value=[]):
             result = await run_stager(
                 sample_event, sample_router_output_engineer, [sample_worker_result]
             )
@@ -94,7 +94,7 @@ class TestStager:
         mock_context = [
             {"id": "ctx_1", "document": "Past NPE fix in OrderService", "metadata": {"source_platform": "jira"}, "distance": 0.2}
         ]
-        with patch("laya.pipeline.stager.memory_search", new_callable=AsyncMock, return_value=mock_context):
+        with patch("laya.pipeline.related_context.memory_search", new_callable=AsyncMock, return_value=mock_context):
             result = await run_stager(sample_event, sample_router_output_engineer)
 
         assert isinstance(result, ActionCardData)
