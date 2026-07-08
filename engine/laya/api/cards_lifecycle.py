@@ -221,6 +221,77 @@ async def reopen_card(card_id: str) -> dict:
     return {"status": new_status, "card_id": card_id}
 
 
+@router.post("/cards/{card_id}/reprocess")
+async def reprocess_card(card_id: str) -> dict:
+    """Re-run the full pipeline on a card's originating event, regenerating the
+    card content IN PLACE. The escape hatch for a card whose LLM output came back
+    garbled (e.g. an overloaded local model returned placeholder '...' text).
+
+    Reuses the retry pipeline — same card_id, so emit UPDATEs the row and the
+    card keeps its tags / bookmarks / read-state / group. Differs from a plain
+    retry in two ways: it forces a FRESH classification (clears the persisted
+    router_output so the router re-runs) and it skips the group / daily / Omni
+    summary refresh (a manual redo of one card shouldn't churn every rollup).
+    """
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT event_id, status FROM action_cards WHERE card_id = ?", (card_id,)
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Card not found")
+    event_id = rows[0]["event_id"]
+    status = rows[0]["status"]
+
+    # Don't stack a reprocess on a card that's already mid-flight.
+    if status in ("pending", "agent_running"):
+        raise HTTPException(
+            status_code=409, detail=f"Card is already processing ('{status}')"
+        )
+
+    # The pipeline reconstructs the event from raw_json; without it there's
+    # nothing to reprocess.
+    ev_rows = await db.execute_fetchall(
+        "SELECT raw_json FROM events WHERE event_id = ?", (event_id,)
+    )
+    if not ev_rows or not ev_rows[0]["raw_json"]:
+        raise HTTPException(
+            status_code=409, detail="Original event is no longer available to reprocess"
+        )
+
+    # Fresh classification: drop the cached router_output so the router re-runs
+    # (otherwise process_event reuses the prior, possibly-garbled, result).
+    await db.execute(
+        "UPDATE events SET router_output = NULL WHERE event_id = ?", (event_id,)
+    )
+    await db.commit()
+
+    # Suppress the summary rollups for this one redo, then re-enqueue the event.
+    from laya.pipeline.emit import mark_reprocess
+    from laya.pipeline.queue import enqueue_event
+    from laya.models.card_lifecycle import transition_card_status
+
+    mark_reprocess(event_id)
+
+    # Flip to a processing state now so the feed reflects the reprocess
+    # immediately (allow_restore skips the forward-only transition check).
+    try:
+        await transition_card_status(
+            card_id, "pending", actor="user", save_previous=False, allow_restore=True
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    await enqueue_event(event_id)
+
+    await log_to_audit(
+        event_id=event_id, card_id=card_id, step="lifecycle",
+        model="n/a", input_tokens=0, output_tokens=0, latency_ms=0,
+        success=True, metadata={"action": "reprocess", "previous_status": status},
+    )
+    log.info("card_reprocess_requested", card_id=card_id, event_id=event_id)
+    return {"status": "reprocessing", "card_id": card_id}
+
+
 @router.get("/cards/{card_id}")
 async def get_card(card_id: str) -> CardResponse:
     """Get full action card detail."""

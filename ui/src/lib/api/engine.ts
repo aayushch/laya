@@ -317,6 +317,10 @@ export const engineApi = {
 		request<{ status: string; card_id: string }>(`/cards/${cardId}/reopen`, {
 			method: 'POST'
 		}),
+	reprocessCard: (cardId: string) =>
+		request<{ status: string; card_id: string }>(`/cards/${cardId}/reprocess`, {
+			method: 'POST'
+		}),
 	// Related cards
 	getRelatedCards: (cardId: string) =>
 		request<{ card_id: string; related_cards: Array<{ card_id: string; header: string; entity_id: string; status: string; context_id: string; context_label: string; confidence: number; link_method: string }>; total_related_cards: number }>(`/cards/${cardId}/related`),

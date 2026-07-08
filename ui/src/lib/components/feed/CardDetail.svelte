@@ -33,6 +33,7 @@
 	let dismissing = $state(false);
 	let archiving = $state(false);
 	let reopening = $state(false);
+	let reprocessing = $state(false);
 	let copied = $state(false);
 	let dismissReason = $state('');
 	let showDismissInput = $state(false);
@@ -537,6 +538,22 @@
 			card.status = result.status as ActionCard['status'];
 		} finally {
 			reopening = false;
+		}
+	}
+
+	async function reprocess() {
+		headerMenuOpen = false;
+		if (reprocessing) return;
+		reprocessing = true;
+		try {
+			await engineApi.reprocessCard(card.card_id);
+			// Reflect the reprocess immediately; the WS card_updated stream drives
+			// the card back through provisional → ready as the pipeline re-runs.
+			card.status = 'pending';
+		} catch (e) {
+			console.error('Reprocess failed:', e);
+		} finally {
+			reprocessing = false;
 		}
 	}
 
@@ -1302,6 +1319,19 @@
 		>
 			<svg class="h-3.5 w-3.5" fill={card.bookmarked_at ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg>
 			{card.bookmarked_at ? 'Remove bookmark' : 'Bookmark'}
+		</button>
+		<!-- Reprocess: re-run the pipeline on this card's event (recovery for a
+		     card whose LLM output came back garbled). Disabled while the card is
+		     already in flight. -->
+		<div class="my-1 border-t border-surface-700/60"></div>
+		<button
+			class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary transition-colors hover:bg-surface-700 disabled:opacity-40 disabled:hover:bg-transparent {reprocessing ? 'text-laya-orange' : 'text-surface-300 hover:text-surface-200'}"
+			role="menuitem"
+			disabled={reprocessing || card.status === 'pending' || card.status === 'agent_running'}
+			onclick={reprocess}
+		>
+			<svg class="h-3.5 w-3.5 {reprocessing ? 'animate-spin' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+			{reprocessing ? 'Reprocessing…' : 'Reprocess'}
 		</button>
 	</div>
 {/if}
