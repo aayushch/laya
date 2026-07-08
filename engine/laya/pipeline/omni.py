@@ -35,6 +35,16 @@ from laya.models.omni import OmniItem, OmniSection, OmniSnapshot, OmniStats
 
 log = structlog.get_logger()
 
+# Max new cards folded into a single resynthesis LLM call. A full run can fetch
+# up to fetch_cap (~100-150) cards; combined with the current snapshot that
+# exceeds a local model's usable window, and the omni JSON schema is unforgiving
+# — a truncated response yields NO parsed output, losing the whole batch AND
+# handing the next run an even bigger backlog (the failure spiral flagged in the
+# Jul-2026 review, P6-13). We fold new cards in chunks of this size across
+# sequential smaller calls instead. ~30-50 is the sweet spot: strictly smaller
+# calls that local models can complete, at the cost of more of them.
+_RESYNTH_CHUNK_SIZE = 40
+
 # ---------------------------------------------------------------------------
 # In-memory cache for the latest reconstructed snapshot per space.
 # Populated on every write, avoids delta chain reconstruction on hot reads.
@@ -828,44 +838,83 @@ async def _resynthesize_space(
             "status": r["status"],
         })
 
-    # 5. Build LLM prompt
-    messages = build_omni_resynthesis_messages(
-        current_snapshot=current_snapshot,
-        new_cards=new_cards,
-        acted_cards=acted_cards,
-        pinned_items=pinned_items,
-        density=density,
-        space_id=space_id,
-        item_states=item_states,
-        resolved_cards=resolved_cards,
-    )
-
+    # 5. Fold the new cards into the snapshot across one or more LLM calls.
+    #
+    # Small batches run as a SINGLE call, byte-identical to the pre-P6-13 path.
+    # Large bursts are folded in chunks of _RESYNTH_CHUNK_SIZE across sequential
+    # calls, each folding one chunk into the evolving snapshot, so no single call
+    # carries the whole burst (see the constant's comment for why that matters).
+    #
+    # Ordering: new_cards is newest-first (created_at DESC), so we fold the
+    # OLDEST chunk first and the newest last — that way the freshest cards land
+    # in the final call and dominate the "recent" section. Snapshot-relative
+    # inputs (item_states / resolved_cards, which prune subjects that resolved
+    # since the last synthesis) apply only to the FIRST fold; afterwards the
+    # evolving snapshot already reflects them. Pins carry through every fold, and
+    # each chunk brings its own acted cards.
+    #
+    # Failure handling is deliberately all-or-nothing: if any chunk fails to
+    # parse we discard the whole run and return None WITHOUT storing, leaving
+    # `since` unadvanced so every card returns next run. That avoids the plumbing
+    # needed to store a partial fold without silently dropping the un-folded
+    # cards (the fetch is purely `since`-driven — line ~724), and because each
+    # chunk is small the retry almost always succeeds. The previous snapshot
+    # stays on screen until it does.
     schema = get_omni_json_schema(density)
 
-    # --- GATE: pause queue processing for this space during LLM call ---
+    chunks = [
+        new_cards[i:i + _RESYNTH_CHUNK_SIZE]
+        for i in range(0, len(new_cards), _RESYNTH_CHUNK_SIZE)
+    ]
+    chunks.reverse()  # oldest chunk first, newest last
+
+    # --- GATE: pause queue processing for this space during the LLM call(s) ---
     gate.clear()
-    log.info("omni_resynthesis_gate_closed", space_id=space_id)
+    log.info("omni_resynthesis_gate_closed", space_id=space_id, chunks=len(chunks))
 
-    # 6. Call LLM
+    # 6. Call LLM (once per chunk)
     try:
-        response = await llm_call(
-            role="omni",
-            messages=messages,
-            response_schema=schema,
-            step="omni_resynthesis",
-            temperature=0.3,
-            max_tokens=DEFAULT_MAX_TOKENS,
-            space_id=space_id,
-        )
-
-        if not response.parsed:
-            truncation_hint = " (response was truncated)" if response.truncated else ""
-            raise ValueError(
-                f"LLM returned malformed JSON for Omni resynthesis{truncation_hint} "
-                f"(output_tokens={response.output_tokens}, model={response.model})"
+        folded_snapshot = current_snapshot
+        result_sections: list[dict] = []
+        for idx, chunk in enumerate(chunks):
+            first = idx == 0
+            chunk_acted = [
+                c for c in chunk
+                if c.get("user_feedback")
+                or c.get("status") in ("done", "dismissed", "archived")
+            ]
+            messages = build_omni_resynthesis_messages(
+                current_snapshot=folded_snapshot,
+                new_cards=chunk,
+                acted_cards=chunk_acted,
+                pinned_items=pinned_items,
+                density=density,
+                space_id=space_id,
+                # Prune-resolved hints only make sense against the ORIGINAL
+                # snapshot — apply them once, on the first fold.
+                item_states=item_states if first else [],
+                resolved_cards=resolved_cards if first else [],
+            )
+            response = await llm_call(
+                role="omni",
+                messages=messages,
+                response_schema=schema,
+                step="omni_resynthesis",
+                temperature=0.3,
+                max_tokens=DEFAULT_MAX_TOKENS,
+                space_id=space_id,
             )
 
-        result_sections = response.parsed.get("sections", [])
+            if not response.parsed:
+                truncation_hint = " (response was truncated)" if response.truncated else ""
+                raise ValueError(
+                    f"LLM returned malformed JSON for Omni resynthesis "
+                    f"chunk {idx + 1}/{len(chunks)}{truncation_hint} "
+                    f"(output_tokens={response.output_tokens}, model={response.model})"
+                )
+
+            result_sections = response.parsed.get("sections", [])
+            folded_snapshot = response.parsed  # feed the fold forward
 
     except Exception as e:
         log.error("omni_resynthesis_llm_failed", space_id=space_id, error=str(e))
