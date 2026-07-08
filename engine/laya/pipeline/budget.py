@@ -118,6 +118,7 @@ async def get_current_month_cost(tz_name: str | None = None) -> dict:
 
     total_cost = 0.0
     by_model: dict[str, float] = {}
+    tokens_by_model: dict[str, int] = {}
     by_step: dict[str, float] = {}
     by_feature: dict[str, float] = {}
     total_in = 0
@@ -134,6 +135,9 @@ async def get_current_month_cost(tz_name: str | None = None) -> dict:
         cost = (in_tokens * pricing["input"] + out_tokens * pricing["output"]) / 1_000_000
 
         by_model[model] = round(by_model.get(model, 0.0) + cost, 4)
+        # Per-model token volume so the Cost Control breakdown stays informative
+        # on a local-model setup, where every per-model cost is $0.
+        tokens_by_model[model] = tokens_by_model.get(model, 0) + in_tokens + out_tokens
         by_step[step] = round(by_step.get(step, 0.0) + cost, 4)
         feature = STEP_TO_FEATURE.get(step, "Other")
         by_feature[feature] = round(by_feature.get(feature, 0.0) + cost, 4)
@@ -143,6 +147,7 @@ async def get_current_month_cost(tz_name: str | None = None) -> dict:
         "year_month": year_month,
         "total_cost_usd": round(total_cost, 4),
         "by_model": by_model,
+        "tokens_by_model": tokens_by_model,
         "by_feature": by_feature,
         "by_step": by_step,
         "total_input_tokens": total_in,

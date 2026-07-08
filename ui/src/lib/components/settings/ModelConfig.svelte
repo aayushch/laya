@@ -8,7 +8,7 @@
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import type { ProviderModels, CustomProvider, CustomProviderTestResult, DiscoveredModel, PipelineSettings, BudgetConfig, MonthlyCostEntry, AgentBackend, AgentBudgetStatus } from '$lib/api/types';
 	import { parseBackendDate } from '$lib/utils/datetime';
-	import { budgetPaused, loadBudgetStatus, loadAgentBudgetStatus } from '$lib/stores/budget';
+	import { budgetPaused, loadBudgetStatus, loadAgentBudgetStatus, fmtTokens } from '$lib/stores/budget';
 	import { portal } from '$lib/actions/portal';
 	import { CODING_AGENTS } from '$lib/config';
 	import ModelSelect from './ModelSelect.svelte';
@@ -223,6 +223,7 @@
 	let currentMonthCost = $state(0);
 	let currentMonth = $state('');
 	let budgetByModel = $state<Record<string, number>>({});
+	let budgetTokensByModel = $state<Record<string, number>>({});
 	let budgetIsPaused = $state(false);
 	let pausedWorkflowCount = $state(0);
 	let savingBudget = $state(false);
@@ -247,6 +248,7 @@
 			currentMonthCost = data.current_month_cost;
 			currentMonth = data.current_month;
 			budgetByModel = data.by_model;
+			budgetTokensByModel = data.tokens_by_model;
 			budgetIsPaused = data.is_paused;
 			pausedWorkflowCount = data.paused_workflow_count;
 			budgetPaused.set(data.is_paused);
@@ -1193,13 +1195,17 @@
 							</div>
 						{/if}
 
-						<!-- Per-model breakdown -->
+						<!-- Per-model breakdown: name | tokens | cost. The token column
+						     keeps this meaningful on a local-model setup, where every
+						     per-model cost is $0. Sort by tokens so the heaviest model
+						     leads even when all costs are $0. -->
 						{#if Object.keys(budgetByModel).length > 0}
 							<div class="mt-3 space-y-1">
-								{#each Object.entries(budgetByModel).sort((a, b) => b[1] - a[1]) as [model, cost]}
-									<div class="flex items-center justify-between text-laya-secondary">
-										<span class="truncate text-surface-400">{model}</span>
-										<span class="shrink-0 text-surface-300">${cost.toFixed(4)}</span>
+								{#each Object.entries(budgetByModel).sort((a, b) => (budgetTokensByModel[b[0]] ?? 0) - (budgetTokensByModel[a[0]] ?? 0)) as [model, cost]}
+									<div class="flex items-center gap-3 text-laya-secondary">
+										<span class="flex-1 truncate text-surface-400">{model}</span>
+										<span class="w-16 shrink-0 text-right tabular-nums text-surface-500">{fmtTokens(budgetTokensByModel[model] ?? 0)}</span>
+										<span class="w-20 shrink-0 text-right tabular-nums text-surface-300">${cost.toFixed(4)}</span>
 									</div>
 								{/each}
 							</div>

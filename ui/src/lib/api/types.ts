@@ -1160,6 +1160,7 @@ export interface BudgetConfig {
 	current_month_cost: number;
 	current_month: string;
 	by_model: Record<string, number>;
+	tokens_by_model: Record<string, number>;
 	by_feature: Record<string, number>;
 	by_step: Record<string, number>;
 	total_input_tokens: number;

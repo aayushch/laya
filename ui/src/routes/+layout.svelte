@@ -827,11 +827,11 @@
 			<!-- Right: Cost widget -->
 			<div class="flex items-center gap-4">
 				{#if $costAmount}
-					<div class="flex items-center gap-0.5">
+					<div class="flex items-center">
 						<!-- Cost amount → status page breakdown -->
 						<a
 							href="/status#cost"
-							class="rounded-md px-1.5 py-0.5 font-medium tabular-nums transition-colors hover:bg-surface-800 {$budgetPaused ? 'text-red-400 hover:text-red-300' : $budgetRatio != null && $budgetRatio >= 0.75 ? 'text-amber-400 hover:text-amber-300' : 'text-surface-400 hover:text-surface-200'}"
+							class="rounded-md pl-1.5 pr-1 py-0.5 font-medium tabular-nums transition-colors hover:bg-surface-800 {$budgetPaused ? 'text-red-400 hover:text-red-300' : $budgetRatio != null && $budgetRatio >= 0.75 ? 'text-amber-400 hover:text-amber-300' : 'text-surface-400 hover:text-surface-200'}"
 							title="LLM cost this month — click for breakdown"
 						>
 							{$costAmount}
@@ -840,7 +840,7 @@
 						{#if $budgetLabel}
 							<a
 								href="/settings?tab=models&section=cost-control"
-								class="flex items-center gap-1.5 rounded-md px-1.5 py-0.5 font-medium tabular-nums text-surface-500 transition-colors hover:bg-surface-800 hover:text-surface-300"
+								class="flex items-center gap-1.5 rounded-md pl-1 pr-1.5 py-0.5 font-medium tabular-nums text-surface-500 transition-colors hover:bg-surface-800 hover:text-surface-300"
 								title="Monthly budget — click to manage"
 							>
 								{$budgetLabel}
