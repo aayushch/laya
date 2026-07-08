@@ -10,6 +10,8 @@ when the turn signals that intent; and an ordinary turn drops ~5.6K tokens.
 
 import json
 
+import pytest
+
 from laya.egress.tools import get_egress_tool_definitions
 from laya.llm.tools.definitions import (
     _read_tools,
@@ -22,10 +24,19 @@ from laya.llm.tools.definitions import (
     select_chat_tools,
     select_tool_definitions,
 )
+from laya.llm.tools.rules_tools import (
+    _FILTER_OPERATORS,
+    _PROCESSING_FIELDS,
+    get_rule_options,
+)
 
 
 def _names(defs):
     return {d["function"]["name"] for d in defs}
+
+
+def _tool(defs, name):
+    return next(d for d in defs if d["function"]["name"] == name)
 
 
 ALWAYS = _names(_read_tools()) | _names(_write_tools())
@@ -94,3 +105,39 @@ class TestMultiTurnPersistence:
         ]
         got = _names(select_chat_tools("show me today's summary", history))
         assert not (got & RULES)
+
+
+class TestRuleVocabularyMovedToOptions:
+    """P6-8 part 2: field/operator vocabulary lives in get_rule_options, not
+    restated in every rule tool's description — but the enforcing enum stays."""
+
+    def test_descriptions_no_longer_restate_vocabulary(self):
+        write = _rules_write_tools()
+        for name in ("create_filter_rule", "create_processing_rule"):
+            desc = _tool(write, name)["function"]["description"]
+            assert "get_rule_options" in desc  # points at the discovery tool
+            # The long inline field/operator lists are gone.
+            assert "Available fields" not in desc
+            assert "Available condition fields" not in desc
+            assert "not_equals, contains" not in desc
+
+    def test_operator_enum_still_enforced_in_schema(self):
+        # Moving the prose out must NOT drop the schema-level enum that validates
+        # the operator argument.
+        cfr = _tool(_rules_write_tools(), "create_filter_rule")
+        enum = cfr["function"]["parameters"]["properties"]["operator"]["enum"]
+        assert enum == _FILTER_OPERATORS
+
+    @pytest.mark.asyncio
+    async def test_get_rule_options_serves_fields_and_operators(self, db):
+        # Whole-catalog call exposes both rule types' vocabulary.
+        allopts = await get_rule_options()
+        assert set(allopts["fields"]) == {"filter", "processing"}
+        assert set(allopts["operators"]) == {"filter", "processing"}
+        assert "classification.priority" in allopts["fields"]["processing"]
+        assert "matches" in allopts["operators"]["processing"]
+
+        # Category-scoped calls return just that slice.
+        just_fields = await get_rule_options(category="fields")
+        assert just_fields["fields"]["processing"] == _PROCESSING_FIELDS
+        assert "platforms" not in just_fields  # scoped, not the whole catalog

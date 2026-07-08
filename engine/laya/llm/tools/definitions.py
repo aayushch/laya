@@ -885,6 +885,8 @@ def _rules_read_tools() -> list[dict]:
                     "'tags' for existing tag names, "
                     "'field_values' for all processing rule dropdown values "
                     "(personas, priorities, categories, subject types, etc.), "
+                    "'fields' for filter-condition field paths, "
+                    "'operators' for comparison operators, "
                     "or omit category to get a compact overview of everything."
                 ),
                 "parameters": {
@@ -892,7 +894,7 @@ def _rules_read_tools() -> list[dict]:
                     "properties": {
                         "category": {
                             "type": "string",
-                            "enum": ["platforms", "event_types", "metadata_fields", "tags", "field_values"],
+                            "enum": ["platforms", "event_types", "metadata_fields", "tags", "field_values", "fields", "operators"],
                             "description": "Which category of options to retrieve. Omit for all.",
                         },
                         "platform": {
@@ -924,10 +926,8 @@ def _rules_write_tools() -> list[dict]:
                     "#engineering'). "
                     "For simple single-field conditions, pass field/operator/value "
                     "directly. For compound logic (AND/OR), pass a condition object. "
-                    "Available fields: actor.email, actor.name, source.platform, "
-                    "source.raw_event_type, subject.type, subject.id, subject.title, "
-                    "content.body, content.metadata.* (e.g., content.metadata.slack_channel_name). "
-                    "Operators: equals, not_equals, contains, starts_with, ends_with, in."
+                    "Call get_rule_options (category 'fields'/'operators') to discover "
+                    "valid field paths and comparison operators."
                 ),
                 "parameters": {
                     "type": "object",
@@ -1033,15 +1033,9 @@ def _rules_write_tools() -> list[dict]:
                     "'notify me when a CRITICAL card arrives', 'bookmark all PRs from "
                     "Alice'. "
                     "The condition is a JSON object — simple or nested with all/any/not. "
-                    "Call get_rule_options first to discover valid field values. "
-                    "Available condition fields: event.source.platform, "
-                    "event.source.raw_event_type, event.actor.name, event.actor.email, "
-                    "event.subject.type, event.subject.title, event.content.body, "
-                    "event.content.metadata.*, classification.persona, "
-                    "classification.priority, classification.category, card.space_id, "
-                    "context.actor_relationship, context.hour_of_day, context.day_of_week. "
-                    "Operators: equals, not_equals, contains, not_contains, starts_with, "
-                    "ends_with, in, not_in, matches (regex), gt, gte, lt, lte, exists, not_exists."
+                    "Call get_rule_options first (category 'fields'/'operators', "
+                    "'processing' key) to discover valid condition fields and operators, "
+                    "and 'field_values' for persona/priority/category/subject-type values."
                 ),
                 "parameters": {
                     "type": "object",
