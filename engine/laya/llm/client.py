@@ -1203,6 +1203,9 @@ async def llm_call_streaming(
         response_schema=None,
         stream=True,
     )
+    # Ask the provider for real streaming usage in a final chunk instead of the
+    # chars/4 estimate that excludes the entire tool block (review §3 — P6-17).
+    kwargs["stream_options"] = {"include_usage": True}
 
     start = time.monotonic()
 
@@ -1212,8 +1215,13 @@ async def llm_call_streaming(
         collected_content = ""
         collected_tool_calls: dict[int, dict] = {}  # index -> {id, name, arguments_str}
         finish_reason = "stop"
+        real_usage = None  # populated by the include_usage final chunk
 
         async for chunk in response:
+            # The include_usage final chunk carries token counts and an empty
+            # choices list — capture it before the delta guard skips the chunk.
+            if getattr(chunk, "usage", None):
+                real_usage = chunk.usage
             delta = chunk.choices[0].delta if chunk.choices else None
             if not delta:
                 continue
@@ -1247,9 +1255,14 @@ async def llm_call_streaming(
 
         elapsed_ms = int((time.monotonic() - start) * 1000)
 
-        # Estimate tokens from stream (usage may not be available in all providers)
-        est_input_tokens = sum(len(m.get("content", "")) for m in messages) // 4
-        est_output_tokens = len(collected_content) // 4
+        # Prefer the provider's real usage (includes the tool block); fall back to
+        # a chars/4 estimate when a provider doesn't return stream usage (P6-17).
+        if real_usage is not None:
+            est_input_tokens = getattr(real_usage, "prompt_tokens", 0) or 0
+            est_output_tokens = getattr(real_usage, "completion_tokens", 0) or 0
+        else:
+            est_input_tokens = sum(len(m.get("content", "")) for m in messages) // 4
+            est_output_tokens = len(collected_content) // 4
 
         # If tool calls were collected, yield them
         if collected_tool_calls:

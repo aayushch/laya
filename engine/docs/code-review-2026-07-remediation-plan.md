@@ -234,7 +234,7 @@ Everything else in §2, grouped by domain. Independent — parallelizable across
 |---|---|---|---|
 | **P6-15** | Truncation-doubling retry **overwrites** output tokens instead of adding (§3) | `llm/client.py:926` | Accumulate output tokens across the doubling retry. | S |
 | **P6-16** | `get_current_month_cost` filters `success=1` → JSON-failure loops (Gemma spiral) invisible to the budget cap (§3) | Count failed attempts' token cost toward the cap. | S |
-| **P6-17** | Streaming logs chars/4 estimates that exclude the entire tool block (§3) | Use `stream_options.include_usage` for real streaming usage. | S |
+| **P6-17** ✓ | Streaming logs chars/4 estimates that exclude the entire tool block (§3) | Use `stream_options.include_usage` for real streaming usage. | S |
 
 > P6-8/P6-9 are numbered separately but should share one "prompt-audit + cache-prefix" investigation pass.
 
