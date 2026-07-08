@@ -7,6 +7,7 @@
 	import { lastMessage, wsStatus } from '$lib/stores/websocket';
 	import { feedFilters, feedDate, feedPrevDate, feedNextDate, localToday, allDaysSavedDate, type FeedFilters } from '$lib/stores/feedFilters';
 	import type { ActionCard, CardGroup, GroupSummary, DaySummary, SpaceSummary, Tag } from '$lib/api/types';
+	import { reduceCardUpdated, removeCardFromGroups, type CardUpdatePayload } from '$lib/feed/cardUpdateReducer';
 	import CardGroupComponent from '$lib/components/feed/CardGroup.svelte';
 	import ActionCardComponent from '$lib/components/feed/ActionCard.svelte';
 	import CardDetail from '$lib/components/feed/CardDetail.svelte';
@@ -388,10 +389,6 @@
 	// Persist selected card/group ID across webview navigations (e.g. external link → back)
 	const SELECTED_CARD_KEY = 'laya_feed_selected_card';
 	const SELECTED_GROUP_KEY = 'laya_feed_selected_group';
-
-	// Priority severity rank — mirrors backend `_PRIORITY_ORDER` (cards_api.py). Lower = more
-	// severe. Used to recompute a group's top_priority client-side when a card is reclassified.
-	const PRIORITY_RANK: Record<string, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
 
 	function formatDateLabel(dateStr: string): string {
 		const today = localToday();
@@ -835,107 +832,44 @@
 				sessionStorage.removeItem(SELECTED_CARD_KEY);
 			}
 			feedSelection.removeDeleted(msg.card_id);
-			groups = groups
-				.map((g) => ({ ...g, cards: g.cards.filter((c) => c.card_id !== msg.card_id) }))
-				.filter((g) => g.cards.length > 0);
+			groups = removeCardFromGroups(groups, msg.card_id);
 			totalGroups = groups.length;
 		} else if (msg.type === 'card_updated' && msg.card_id) {
-			const payload = msg.payload as {
-				status?: string;
-				header?: string;
-				summary?: string;
-				priority?: string;
-				persona?: string;
-				category?: string;
-				has_workspace?: boolean;
-				session_id?: string;
-				selected_action_id?: string;
-				bookmarked_at?: string | null;
-			};
-
-			// Check if the new status is excluded by active filters
-			if (payload.status) {
-				const activeStatuses = $feedFilters.statusFilters;
-				const isArchived = payload.status === 'archived';
-				const excludedByArchiveToggle = isArchived && !$feedFilters.showArchived;
-				const excludedByStatusFilter = activeStatuses.length > 0 && !activeStatuses.includes(payload.status);
-
-				if (excludedByArchiveToggle || excludedByStatusFilter) {
-					const cardId = msg.card_id!;
-					// Mark card as exiting to trigger fade-out transition
-					exitingCardIds = new Set([...exitingCardIds, cardId]);
-					feedSelection.removeDeleted(cardId);
-					if (selectedCard?.card_id === cardId) {
-						selectedCard = null;
-						sessionStorage.removeItem(SELECTED_CARD_KEY);
-					}
-					// Remove after transition completes
+			// Pure reducer decides the next state + the side effects; the loop
+			// below runs them. See cardUpdateReducer.ts for the extracted logic
+			// (P7-7) and its unit tests.
+			const result = reduceCardUpdated(
+				groups,
+				selectedCard,
+				msg.card_id,
+				msg.payload as CardUpdatePayload,
+				{
+					statusFilters: $feedFilters.statusFilters,
+					showArchived: $feedFilters.showArchived,
+					sortBy: $feedFilters.sortBy,
+				}
+			);
+			groups = result.groups;
+			selectedCard = result.selectedCard;
+			for (const eff of result.effects) {
+				if (eff.kind === 'reload') {
+					scheduleReload();
+				} else if (eff.kind === 'removeFromSelection') {
+					feedSelection.removeDeleted(eff.cardId);
+				} else if (eff.kind === 'deselect') {
+					sessionStorage.removeItem(SELECTED_CARD_KEY);
+				} else if (eff.kind === 'exitThenRemove') {
+					const id = eff.cardId;
+					// Mark the card exiting to trigger the fade-out, then drop it once
+					// the transition completes (loadGroups' FLIP animates the reflow).
+					exitingCardIds = new Set([...exitingCardIds, id]);
 					setTimeout(() => {
-						groups = groups
-							.map((g) => ({ ...g, cards: g.cards.filter((c) => c.card_id !== cardId) }))
-							.filter((g) => g.cards.length > 0);
+						groups = removeCardFromGroups(groups, id);
 						totalGroups = groups.length;
-						exitingCardIds = new Set([...exitingCardIds].filter((id) => id !== cardId));
+						exitingCardIds = new Set([...exitingCardIds].filter((x) => x !== id));
 					}, EXIT_DURATION);
-					return;
 				}
 			}
-
-			let found = false;
-			for (const group of groups) {
-				const card = group.cards.find((c) => c.card_id === msg.card_id);
-				if (card) {
-					found = true;
-					if (payload.status) {
-						// When a card transitions from agent_running to a real status,
-						// the full card data (suggested_actions, intelligence, etc.) has
-						// changed significantly — reload to get fresh data from the API.
-						const wasAgent = card.status === 'agent_running';
-						card.status = payload.status as ActionCard['status'];
-						if (payload.header) card.header = payload.header;
-						if (payload.summary) card.summary = payload.summary;
-						if (payload.selected_action_id) card.selected_action_id = payload.selected_action_id;
-						group.has_pending = group.cards.some((c) => c.status === 'pending' || c.status === 'ready');
-						if (wasAgent && payload.status !== 'agent_running') {
-							scheduleReload();
-						}
-					}
-					if (payload.priority) {
-						card.priority = payload.priority as ActionCard['priority'];
-						// The group's top_priority is a server-computed field (most severe
-						// priority across its cards). It's shown in the group header badge but
-						// isn't refreshed by the in-place card mutation above — recompute it here
-						// so the header stays correct in every sort/view (incl. Newest, where we
-						// don't refetch below).
-						group.top_priority = group.cards.reduce(
-							(top, c) => (PRIORITY_RANK[c.priority] < PRIORITY_RANK[top] ? c.priority : top),
-							group.cards[0]?.priority ?? 'MEDIUM'
-						) as CardGroup['top_priority'];
-					}
-					if (payload.persona) card.persona = payload.persona as ActionCard['persona'];
-					if (payload.has_workspace !== undefined) card.has_workspace = payload.has_workspace;
-					if ('bookmarked_at' in payload) card.bookmarked_at = payload.bookmarked_at ?? undefined;
-					if (selectedCard?.card_id === msg.card_id) {
-						selectedCard = { ...selectedCard, ...card } as ActionCard;
-					}
-					groups = groups;
-					// Group ordering + section bucketing (group.sort_key) are computed
-					// server-side and go stale on an in-place card mutation. When the active
-					// sort depends on a field that just changed, refetch so the group re-sorts /
-					// re-sections (loadGroups runs a FLIP animation for a smooth move). Without
-					// this, e.g. a card reclassified CRIT→LOW keeps its top slot under Priority.
-					const sort = $feedFilters.sortBy;
-					const affectsSort =
-						(sort === 'priority' && payload.priority) ||
-						(sort === 'persona' && payload.persona) ||
-						(sort === 'status' && payload.status);
-					if (affectsSort) scheduleReload();
-					break;
-				}
-			}
-			// Card not in current groups — may have been created while on another
-			// page or the card_created message was missed. Reload to pick it up.
-			if (!found) scheduleReload();
 		} else if (msg.type === 'context_group_unlinked' || msg.type === 'context_group_merged') {
 			// Context group structure changed — reload to reflect new grouping
 			scheduleReload();
