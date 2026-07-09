@@ -31,7 +31,6 @@
 	let error = $state<string | null>(null);
 	let trace = $state<TraceResponse | null>(get(currentTrace));
 	let exporting = $state(false);
-	let selectingTrace = $state(false);
 	let removedClusterIds = $state<Set<string>>(new Set());
 	let _activeTraceId = $state<string | null>(null);
 	let expandAllClusters = $state<boolean | null>(null);
@@ -246,7 +245,11 @@
 						tracedEntities.add(linked.entity_id);
 					}
 				}
-				if (tracedEntities.has(cardEntityId)) {
+				// Don't raise the "New events detected" banner while a trace is
+				// (re)generating — a card_created arriving mid-rerun would spuriously
+				// show it right after a fresh trace already incorporated everything,
+				// inviting a needless (LLM-cost) rerun (review §2 UI — P4-35).
+				if (tracedEntities.has(cardEntityId) && !get(traceLoading)) {
 					traceNewEventsDetected.set(true);
 				}
 			}
@@ -325,11 +328,10 @@
 	}
 
 	async function handleSelectTrace(traceId: string) {
-		// Use a local flag, NOT traceLoading/traceProgress — those represent an
+		// Do NOT clobber traceLoading/traceProgress here — those represent an
 		// in-flight coherence search and must keep reflecting it while the user
-		// opens another trace from history. Clobbering them here is what caused
-		// the in-flight card to disappear when the user clicked another query.
-		selectingTrace = true;
+		// opens another trace from history. Clobbering them is what caused the
+		// in-flight card to disappear when the user clicked another query.
 		error = null;
 		removedClusterIds = new Set();
 		// Do NOT wipe narrative maps — in-flight streaming state for this trace (e.g. a
@@ -355,14 +357,16 @@
 			});
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load trace';
-		} finally {
-			selectingTrace = false;
 		}
 	}
 
 	async function handleRerun(traceId?: string) {
 		const id = traceId || trace?.trace_id;
 		if (!id) return;
+		// Concurrent-trace guard: don't start a rerun while a search/rerun is
+		// already in flight — a second concurrent trace generation wastes LLM
+		// cost and races the shared trace state (review §2 UI — P4-35).
+		if (get(traceLoading)) return;
 
 		const rerunQuery = trace?.query ?? '';
 		traceLoading.set(true);
@@ -454,6 +458,8 @@
 		try {
 			await engineApi.generateClusterNarrative(trace.trace_id, clusterId);
 		} catch (e) {
+			// Surface the failure, not just console.error (review §2 UI — P4-35).
+			error = e instanceof Error ? e.message : 'Narrative generation failed';
 			console.error('Narrative generation failed:', e);
 		}
 	}
@@ -494,6 +500,8 @@
 		try {
 			await engineApi.generateTraceSummary(trace.trace_id);
 		} catch (e) {
+			// Surface the failure, not just console.error (review §2 UI — P4-35).
+			error = e instanceof Error ? e.message : 'Summary generation failed';
 			console.error('Summary generation failed:', e);
 		}
 	}

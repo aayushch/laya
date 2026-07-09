@@ -354,6 +354,27 @@ async def list_firings(
     return {"entries": entries, "total": total, "limit": limit, "offset": offset}
 
 
+# NOTE: static sub-paths (e.g. /reorder) MUST be declared before the dynamic
+# /{rule_id} routes below. Starlette matches in declaration order, so declaring
+# /reorder after PUT /{rule_id} let {rule_id} capture it and 422 on the non-int
+# path segment — drag-to-reorder was silently broken (review §1.4).
+@router.put("/processing-rules/reorder")
+async def reorder_processing_rules(body: dict) -> dict:
+    """Bulk update rule positions. Body: {"order": [rule_id, rule_id, ...]}"""
+    order = body.get("order", [])
+    if not order:
+        raise HTTPException(status_code=422, detail="Missing 'order' list")
+
+    db = await get_db()
+    for pos, rid in enumerate(order):
+        await db.execute(
+            "UPDATE processing_rules SET position = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (pos, rid),
+        )
+    await db.commit()
+    return {"status": "reordered", "count": len(order)}
+
+
 @router.get("/processing-rules/{rule_id}")
 async def get_processing_rule(rule_id: int) -> dict:
     """Get a single processing rule."""
@@ -453,23 +474,6 @@ async def toggle_processing_rule(rule_id: int) -> dict:
     await db.execute(f"UPDATE processing_rules SET {updates} WHERE id = ?", params)
     await db.commit()
     return {"id": rule_id, "enabled": new_enabled}
-
-
-@router.put("/processing-rules/reorder")
-async def reorder_processing_rules(body: dict) -> dict:
-    """Bulk update rule positions. Body: {"order": [rule_id, rule_id, ...]}"""
-    order = body.get("order", [])
-    if not order:
-        raise HTTPException(status_code=422, detail="Missing 'order' list")
-
-    db = await get_db()
-    for pos, rid in enumerate(order):
-        await db.execute(
-            "UPDATE processing_rules SET position = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (pos, rid),
-        )
-    await db.commit()
-    return {"status": "reordered", "count": len(order)}
 
 
 @router.post("/processing-rules/preview-matches")

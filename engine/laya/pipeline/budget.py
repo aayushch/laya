@@ -18,7 +18,13 @@ log = structlog.get_logger()
 # Re-use the pricing table from dashboard so costs are consistent.
 from laya.api.dashboard_api import MODEL_PRICING  # noqa: E402
 
-_DEFAULT_PRICING = {"input": 1.0, "output": 3.0}
+# Only models present in MODEL_PRICING (known cloud models) are billed. An
+# unknown model is almost always a local backend (Ollama/LMStudio/custom) or an
+# `agent/<id>/<model>` backend metered separately by agent_budget.py. Pricing
+# those at the old $1/$3 cloud default accrued phantom dollars that eventually
+# tripped pause_for_budget() and deactivated ALL ingestion for free-local-model
+# users — so unrecognized models cost $0 (review §1.6).
+_DEFAULT_PRICING = {"input": 0.0, "output": 0.0}
 
 # Maps audit_log step values to high-level features for cost breakdown.
 STEP_TO_FEATURE: dict[str, str] = {
@@ -102,13 +108,17 @@ async def get_current_month_cost(tz_name: str | None = None) -> dict:
                   SUM(input_tokens) as total_in,
                   SUM(output_tokens) as total_out
            FROM audit_log
-           WHERE timestamp > ? AND success = 1
+           -- Count failed calls too: a JSON-parse-failure loop (the Gemma spiral)
+           -- still spends prompt+completion tokens, and filtering success=1 hid
+           -- that cost from the budget cap so it never tripped (review §3 — P6-16).
+           WHERE timestamp > ?
            GROUP BY model_used, step""",
         (month_start_utc,),
     )
 
     total_cost = 0.0
     by_model: dict[str, float] = {}
+    tokens_by_model: dict[str, int] = {}
     by_step: dict[str, float] = {}
     by_feature: dict[str, float] = {}
     total_in = 0
@@ -125,6 +135,9 @@ async def get_current_month_cost(tz_name: str | None = None) -> dict:
         cost = (in_tokens * pricing["input"] + out_tokens * pricing["output"]) / 1_000_000
 
         by_model[model] = round(by_model.get(model, 0.0) + cost, 4)
+        # Per-model token volume so the Cost Control breakdown stays informative
+        # on a local-model setup, where every per-model cost is $0.
+        tokens_by_model[model] = tokens_by_model.get(model, 0) + in_tokens + out_tokens
         by_step[step] = round(by_step.get(step, 0.0) + cost, 4)
         feature = STEP_TO_FEATURE.get(step, "Other")
         by_feature[feature] = round(by_feature.get(feature, 0.0) + cost, 4)
@@ -134,6 +147,7 @@ async def get_current_month_cost(tz_name: str | None = None) -> dict:
         "year_month": year_month,
         "total_cost_usd": round(total_cost, 4),
         "by_model": by_model,
+        "tokens_by_model": tokens_by_model,
         "by_feature": by_feature,
         "by_step": by_step,
         "total_input_tokens": total_in,
@@ -279,7 +293,9 @@ async def snapshot_month(year_month: str) -> None:
                   SUM(input_tokens) as total_in,
                   SUM(output_tokens) as total_out
            FROM audit_log
-           WHERE timestamp >= ? AND timestamp < ? AND success = 1
+           -- Failed calls still consumed tokens; count them so the persisted
+           -- monthly snapshot matches the live cost calc (review §3 — P6-16).
+           WHERE timestamp >= ? AND timestamp < ?
            GROUP BY model_used""",
         (start_utc, end_utc),
     )

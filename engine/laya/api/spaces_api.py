@@ -10,7 +10,7 @@ import uuid
 import structlog
 from fastapi import APIRouter, HTTPException
 
-from laya.db.sqlite import get_db
+from laya.db.sqlite import get_db, transaction
 from laya.integrations.n8n_client import (
     N8nApiError,
     N8nApiKeyMissing,
@@ -185,24 +185,27 @@ async def delete_space(space_id: str) -> dict:
     if rows[0]["is_default"]:
         raise HTTPException(status_code=400, detail="Cannot delete the Default space")
 
-    # Move sources to default
-    await db.execute(
-        "UPDATE sources SET space_id = 'default' WHERE space_id = ?", (space_id,)
-    )
-    # Move cards to default
-    await db.execute(
-        "UPDATE action_cards SET space_id = 'default' WHERE space_id = ?", (space_id,)
-    )
-    # Move events to default
-    await db.execute(
-        "UPDATE events SET space_id = 'default' WHERE space_id = ?", (space_id,)
-    )
-    # Delete space API keys and repo assignments
-    await db.execute("DELETE FROM space_api_keys WHERE space_id = ?", (space_id,))
-    await db.execute("DELETE FROM space_repos WHERE space_id = ?", (space_id,))
-    # Delete the space
-    await db.execute("DELETE FROM spaces WHERE space_id = ?", (space_id,))
-    await db.commit()
+    # Reassign the space's rows to default then drop it — one invariant: a
+    # half-applied delete would orphan api-keys/repos or strand sources/cards on
+    # a space row that no longer exists (review §2 API — P4-12).
+    async with transaction():
+        # Move sources to default
+        await db.execute(
+            "UPDATE sources SET space_id = 'default' WHERE space_id = ?", (space_id,)
+        )
+        # Move cards to default
+        await db.execute(
+            "UPDATE action_cards SET space_id = 'default' WHERE space_id = ?", (space_id,)
+        )
+        # Move events to default
+        await db.execute(
+            "UPDATE events SET space_id = 'default' WHERE space_id = ?", (space_id,)
+        )
+        # Delete space API keys and repo assignments
+        await db.execute("DELETE FROM space_api_keys WHERE space_id = ?", (space_id,))
+        await db.execute("DELETE FROM space_repos WHERE space_id = ?", (space_id,))
+        # Delete the space
+        await db.execute("DELETE FROM spaces WHERE space_id = ?", (space_id,))
 
     log.info("space_deleted", space_id=space_id)
     return {"status": "deleted", "space_id": space_id}
@@ -258,6 +261,15 @@ async def set_space_paused(space_id: str, body: dict) -> dict:
                 await activate_workflow(wf_id, active=True)
             results.append(wf_id)
         except (N8nApiError, N8nApiKeyMissing) as e:
+            # Record per-workflow and carry on so one bad workflow can't fail the
+            # whole pause/resume; the space's paused flag still persists below.
+            # N8nApiError now also covers transport failures — the n8n client
+            # wraps a slow/unreachable n8n (ReadTimeout / ConnectError / ...) into
+            # a 503 N8nApiError, so a sluggish n8n no longer 500s the request.
+            log.warning(
+                "space_pause_workflow_error",
+                workflow_id=wf_id, error=str(e) or type(e).__name__,
+            )
             errors.append({
                 "workflow_id": wf_id,
                 "name": sr["name"],

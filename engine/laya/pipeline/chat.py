@@ -15,12 +15,12 @@ from typing import Any
 import structlog
 
 from laya.db.chromadb_store import memory_search
-from laya.db.fts import build_fts_match, fts_ready
 from laya.db.sqlite import get_db
+from laya.retrieval import extract_keywords, fts_or_like, reciprocal_rank_fusion
 from laya.db.timeutil import db_now
 from laya.llm.client import llm_call, llm_call_streaming, StreamEvent
 from laya.llm.prompts.chat import build_chat_messages, build_title_generation_messages
-from laya.llm.tools.definitions import get_all_tool_definitions
+from laya.llm.tools.definitions import select_chat_tools
 from laya.llm.tools.executor import execute_tool
 from laya.models.chat import ChatMessage, ChatResponse
 from laya.tasks import create_task
@@ -33,18 +33,23 @@ EVENT_REF_PATTERN = re.compile(r"\[event:([^\]]+)\]")
 
 MAX_TOOL_ITERATIONS = 20
 
-# Common English stopwords to skip in keyword search
-_STOPWORDS = frozenset({
-    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
-    "have", "has", "had", "do", "does", "did", "will", "would", "shall",
-    "should", "may", "might", "must", "can", "could", "am", "i", "me",
-    "my", "we", "our", "you", "your", "he", "she", "it", "they", "them",
-    "this", "that", "these", "those", "what", "which", "who", "whom",
-    "how", "when", "where", "why", "and", "or", "but", "not", "no",
-    "if", "then", "so", "to", "of", "in", "on", "at", "by", "for",
-    "with", "about", "from", "up", "out", "into", "over", "after",
-    "all", "any", "some", "just", "also", "than", "very", "too",
-})
+# Cap a single tool result before it re-enters the prompt. A search tool can
+# return up to 200 cards with full intelligence/content_body — tens of thousands
+# of tokens that blow a local context window and get re-sent every subsequent
+# tool-loop iteration. ~12K chars ≈ 3K tokens keeps a rich-but-bounded result and
+# tells the model how to get more (review §3 — P6-12).
+_MAX_TOOL_RESULT_CHARS = 12000
+
+
+def _cap_tool_result(result_str: str) -> str:
+    """Truncate an oversized tool result, appending a use-offset hint."""
+    if len(result_str) <= _MAX_TOOL_RESULT_CHARS:
+        return result_str
+    return (
+        result_str[:_MAX_TOOL_RESULT_CHARS]
+        + f"\n\n… [tool result truncated at {_MAX_TOOL_RESULT_CHARS} chars — "
+        "narrow the query or use a smaller limit / an offset to page for the rest]"
+    )
 
 
 def canonical_card_ids(card_ids: list[str] | None) -> str | None:
@@ -282,19 +287,23 @@ async def process_chat_message(
             name=f"chat_title_{conversation_id}",
         )
 
-    # Skip broad retrieval when card_context is provided — the injected card
-    # context already contains everything the LLM needs, and retrieval would
-    # pull in unrelated cards/events that dilute the focused context.
-    if card_context:
+    # Skip broad retrieval when card_context is provided (the injected card context
+    # already has what the LLM needs) OR when the previous assistant turn used tools
+    # (the conversation is already fetching on demand — ambient retrieval is
+    # redundant and the model re-fetches via tools anyway) — review §3 — P6-14.
+    if card_context or await _prev_turn_used_tools(conversation_id):
         context = {"context_text": "", "result_count": 0, "signals_used": []}
     else:
         context = await _retrieve_context(user_message, space_id=space_id)
 
-    # Load recent chat history (scoped to conversation)
+    # Load recent chat history (scoped to conversation). timestamp has only
+    # 1-second resolution, so a user+assistant pair written in the same second
+    # could otherwise reorder — rowid DESC is the insertion-order tiebreaker
+    # (review §4 — P5-8).
     history_rows = await db.execute_fetchall(
         """SELECT role, content FROM chat_messages
            WHERE conversation_id = ?
-           ORDER BY timestamp DESC LIMIT 10""",
+           ORDER BY timestamp DESC, rowid DESC LIMIT 10""",
         (conversation_id,),
     )
     chat_history = [
@@ -313,7 +322,9 @@ async def process_chat_message(
         card_context=card_context,
     )
 
-    tools = get_all_tool_definitions()
+    # Intent-gated toolset: read + card-write always; settings/rules/egress only
+    # when the turn signals it — ~8.4K → ~2.8K tokens on an ordinary turn (P6-8).
+    tools = select_chat_tools(user_message, chat_history)
     tool_calls_log: list[dict] = []
     total_input_tokens = 0
     total_output_tokens = 0
@@ -357,7 +368,7 @@ async def process_chat_message(
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
-                    "content": result_str,
+                    "content": _cap_tool_result(result_str),
                 })
                 tool_calls_log.append({
                     "name": tc.name,
@@ -477,9 +488,9 @@ async def process_chat_message_streaming(
             name=f"chat_title_{conversation_id}",
         )
 
-    # Skip broad retrieval when card_context is provided — the injected card
-    # context already contains everything the LLM needs.
-    if card_context:
+    # Skip broad retrieval for card_context OR when the previous assistant turn
+    # used tools (fetch-on-demand mode) — review §3 — P6-14.
+    if card_context or await _prev_turn_used_tools(conversation_id):
         context = {"context_text": "", "result_count": 0, "signals_used": []}
     else:
         context = await _retrieve_context(user_message, space_id=space_id)
@@ -506,7 +517,9 @@ async def process_chat_message_streaming(
         card_context=card_context,
     )
 
-    tools = get_all_tool_definitions()
+    # Intent-gated toolset: read + card-write always; settings/rules/egress only
+    # when the turn signals it — ~8.4K → ~2.8K tokens on an ordinary turn (P6-8).
+    tools = select_chat_tools(user_message, chat_history)
     tool_calls_log: list[dict] = []
     total_input_tokens = 0
     total_output_tokens = 0
@@ -570,7 +583,7 @@ async def process_chat_message_streaming(
                         messages.append({
                             "role": "tool",
                             "tool_call_id": tc.id,
-                            "content": result_str,
+                            "content": _cap_tool_result(result_str),
                         })
                         tool_calls_log.append({
                             "name": tc.name,
@@ -665,10 +678,29 @@ async def process_chat_message_streaming(
 # ---------------------------------------------------------------------------
 
 
+async def _prev_turn_used_tools(conversation_id: str | None) -> bool:
+    """True if the most recent assistant turn in this conversation used tools.
+
+    When it did, the chat is already in a fetch-on-demand mode: re-paying ambient
+    retrieval (embedding + ChromaDB + keyword searches + up to ~2K injected
+    tokens) this turn is largely redundant since the model re-fetches via tools
+    anyway (review §3 — P6-14)."""
+    if not conversation_id:
+        return False
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT tool_calls_json FROM chat_messages "
+        "WHERE conversation_id = ? AND role = 'assistant' "
+        "ORDER BY timestamp DESC, rowid DESC LIMIT 1",
+        (conversation_id,),
+    )
+    return bool(rows and rows[0]["tool_calls_json"])
+
+
 async def _retrieve_context(
     user_message: str,
     space_id: str | None = None,
-    token_budget: int = 3000,
+    token_budget: int = 2000,
 ) -> dict[str, Any]:
     """Multi-signal retrieval with Reciprocal Rank Fusion.
 
@@ -693,7 +725,7 @@ async def _retrieve_context(
             log.warning("retrieval_signal_failed", error=str(r))
 
     # Reciprocal Rank Fusion
-    fused = _reciprocal_rank_fusion(ranked_lists, k=60)
+    fused = reciprocal_rank_fusion(ranked_lists, k=60)
 
     # Deduplicate by source ID
     seen: set[str] = set()
@@ -735,13 +767,14 @@ async def _semantic_search(query: str, space_id: str | None, n: int) -> list[dic
 
 async def _card_keyword_search(query: str, space_id: str | None, n: int) -> list[dict]:
     """Keyword search on cards — FTS5/BM25 when available, else SQL LIKE."""
-    match = build_fts_match(query, min_len=3, max_terms=8)
-    if fts_ready() and match:
-        try:
-            return await _card_keyword_search_fts(match, space_id, n)
-        except Exception as e:
-            log.warning("cards_fts_failed_fallback_like", error=str(e))
-    return await _card_keyword_search_like(query, space_id, n)
+    return await fts_or_like(
+        query,
+        min_len=3,
+        max_terms=8,
+        fts=lambda m: _card_keyword_search_fts(m, space_id, n),
+        like=lambda q: _card_keyword_search_like(q, space_id, n),
+        warn_event="cards_fts_failed_fallback_like",
+    )
 
 
 async def _card_keyword_search_fts(match: str, space_id: str | None, n: int) -> list[dict]:
@@ -768,7 +801,7 @@ async def _card_keyword_search_fts(match: str, space_id: str | None, n: int) -> 
 async def _card_keyword_search_like(query: str, space_id: str | None, n: int) -> list[dict]:
     """SQLite LIKE keyword search on cards (fallback when FTS5 is unavailable)."""
     db = await get_db()
-    keywords = [w for w in query.split() if len(w) >= 3 and w.lower() not in _STOPWORDS]
+    keywords = extract_keywords(query, min_len=3)
     if not keywords:
         return []
 
@@ -816,13 +849,14 @@ def _format_card_keyword_rows(rows) -> list[dict]:
 
 async def _event_keyword_search(query: str, space_id: str | None, n: int) -> list[dict]:
     """Keyword search on events — FTS5/BM25 when available, else SQL LIKE."""
-    match = build_fts_match(query, min_len=3, max_terms=5)
-    if fts_ready() and match:
-        try:
-            return await _event_keyword_search_fts(match, space_id, n)
-        except Exception as e:
-            log.warning("events_fts_failed_fallback_like", error=str(e))
-    return await _event_keyword_search_like(query, space_id, n)
+    return await fts_or_like(
+        query,
+        min_len=3,
+        max_terms=5,
+        fts=lambda m: _event_keyword_search_fts(m, space_id, n),
+        like=lambda q: _event_keyword_search_like(q, space_id, n),
+        warn_event="events_fts_failed_fallback_like",
+    )
 
 
 async def _event_keyword_search_fts(match: str, space_id: str | None, n: int) -> list[dict]:
@@ -849,7 +883,7 @@ async def _event_keyword_search_fts(match: str, space_id: str | None, n: int) ->
 async def _event_keyword_search_like(query: str, space_id: str | None, n: int) -> list[dict]:
     """SQLite LIKE keyword search on events (fallback when FTS5 is unavailable)."""
     db = await get_db()
-    keywords = [w for w in query.split() if len(w) >= 3 and w.lower() not in _STOPWORDS]
+    keywords = extract_keywords(query, min_len=3)
     if not keywords:
         return []
 
@@ -897,7 +931,7 @@ def _format_event_keyword_rows(rows) -> list[dict]:
 async def _entity_search(query: str, n: int) -> list[dict]:
     """Search entities table for cross-platform correlations."""
     db = await get_db()
-    keywords = [w for w in query.split() if len(w) >= 3 and w.lower() not in _STOPWORDS]
+    keywords = extract_keywords(query, min_len=3)
     if not keywords:
         return []
 
@@ -936,29 +970,6 @@ async def _entity_search(query: str, n: int) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Reciprocal Rank Fusion
 # ---------------------------------------------------------------------------
-
-
-def _reciprocal_rank_fusion(
-    ranked_lists: list[list[dict]],
-    k: int = 60,
-) -> list[dict]:
-    """Fuse multiple ranked lists using RRF.
-
-    score(d) = Σ 1/(k + rank_i(d)) across all lists that contain d.
-    Higher k reduces the impact of high rankings in individual lists.
-    """
-    scores: dict[str, float] = {}
-    items: dict[str, dict] = {}
-
-    for ranked_list in ranked_lists:
-        for rank, item in enumerate(ranked_list):
-            doc_id = item.get("id") or item.get("card_id") or item.get("event_id") or str(rank)
-            scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank + 1)
-            if doc_id not in items:
-                items[doc_id] = item
-
-    sorted_ids = sorted(scores.keys(), key=lambda d: scores[d], reverse=True)
-    return [items[did] for did in sorted_ids]
 
 
 # ---------------------------------------------------------------------------

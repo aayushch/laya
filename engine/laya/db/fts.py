@@ -48,14 +48,22 @@ _STOPWORDS = frozenset({
 })
 
 
-def build_fts_match(query: str, *, min_len: int = 3, max_terms: int = 8) -> str | None:
-    """Build a safe FTS5 MATCH expression (OR of quoted phrases) from free text.
+def build_fts_match(
+    query: str, *, min_len: int = 3, max_terms: int = 8, match_all: bool = False
+) -> str | None:
+    """Build a safe FTS5 MATCH expression from free text.
 
     Each surviving token is wrapped in double quotes (internal quotes doubled) so
     FTS5 treats it as a literal phrase. This neutralises FTS5 query operators that
     may appear in user input (``*``, ``:``, ``^``, ``AND``/``OR``/``NOT``, parens),
     which would otherwise raise a syntax error inside MATCH. Unqualified phrases
     match across all indexed columns of the target table.
+
+    ``match_all`` controls the join: ``False`` (default) ORs the phrases for broad
+    recall (chat/trace ambient retrieval); ``True`` ANDs them so every term must be
+    present. The card-search tool passes ``match_all=True`` so its FTS path matches
+    the AND semantics of its LIKE fallback and its own tool description — previously
+    the FTS path was OR while the LIKE path was AND (review §5.3 — P7-1).
 
     Returns None when no usable terms remain (stopwords-only / too short), so the
     caller can skip FTS entirely rather than issue an empty match.
@@ -76,7 +84,7 @@ def build_fts_match(query: str, *, min_len: int = 3, max_terms: int = 8) -> str 
     if not terms:
         return None
     quoted = ['"' + t.replace('"', '""') + '"' for t in terms]
-    return " OR ".join(quoted)
+    return (" AND " if match_all else " OR ").join(quoted)
 
 
 # Standalone FTS5 tables (own-content) + triggers that mirror every base-table
@@ -103,7 +111,14 @@ CREATE TRIGGER IF NOT EXISTS cards_fts_ad AFTER DELETE ON action_cards BEGIN
     DELETE FROM cards_fts WHERE card_id = old.card_id;
 END;
 
-CREATE TRIGGER IF NOT EXISTS cards_fts_au AFTER UPDATE ON action_cards BEGIN
+-- Scope the update trigger to the FTS-indexed columns only. As an unconditional
+-- AFTER UPDATE it re-indexed the row on ANY column change — including the
+-- carry-forward group_active_at bump that touches every sibling on each new card
+-- in a thread, making FTS maintenance O(N^2) per thread (review §4 — P5-4). The
+-- DROP makes the narrowing take effect over a pre-existing wide trigger.
+DROP TRIGGER IF EXISTS cards_fts_au;
+CREATE TRIGGER IF NOT EXISTS cards_fts_au
+AFTER UPDATE OF header, summary, intelligence, thread_context ON action_cards BEGIN
     DELETE FROM cards_fts WHERE card_id = old.card_id;
     INSERT INTO cards_fts(card_id, header, summary, intelligence, thread_context)
     VALUES (new.card_id, COALESCE(new.header, ''), COALESCE(new.summary, ''),

@@ -54,6 +54,7 @@ async def transition_card_status(
     last_error: str | None = None,
     save_previous: bool = True,
     extra_fields: dict | None = None,
+    allow_restore: bool = False,
 ) -> str:
     """Validate and apply a status transition on an action card.
 
@@ -67,12 +68,20 @@ async def transition_card_status(
         last_error: Error message (for failed status).
         save_previous: Whether to save current status as previous_status.
         extra_fields: Additional columns to set (e.g. {"selected_action_id": "act_123"}).
+        allow_restore: Skip the forward-only transition check. Reserved for the
+            user-initiated *reopen/restore* operation, which deliberately makes
+            transitions the normal lifecycle forbids (failed→pending, archived→
+            ready, or restoring a saved previous_status). All the other machinery
+            — atomic status guard, resolved_at/failed_stage clearing, broadcast —
+            still applies, so reopen goes through this SSOT instead of a raw
+            UPDATE (review §5.4 — P7-4).
 
     Returns:
         The previous status.
 
     Raises:
-        ValueError: If the card doesn't exist or the transition is invalid.
+        ValueError: If the card doesn't exist, the transition is invalid (and not
+            an allowed restore), or the card's status changed concurrently.
     """
     db = await get_db()
 
@@ -84,7 +93,7 @@ async def transition_card_status(
 
     current = rows[0]["status"]
     allowed = VALID_STATUS_TRANSITIONS.get(current, set())
-    if new_status not in allowed:
+    if not allow_restore and new_status not in allowed:
         raise ValueError(f"Invalid transition {current} -> {new_status} for card {card_id}")
 
     now = db_now()
@@ -127,11 +136,22 @@ async def transition_card_status(
             params.append(val)
 
     params.append(card_id)
-    await db.execute(
-        f"UPDATE action_cards SET {', '.join(sets)} WHERE card_id = ?",
+    # Guard the write on the status we validated against. Without this the
+    # transition was validate-then-write with a gap: a concurrent change (e.g. a
+    # user dismissing the card while an agent finishes) could be clobbered and a
+    # dismissed card resurrected. The conditional UPDATE + rowcount check makes
+    # the check-and-set atomic on the shared connection (review §2 API — P3-8).
+    params.append(current)
+    cursor = await db.execute(
+        f"UPDATE action_cards SET {', '.join(sets)} WHERE card_id = ? AND status = ?",
         params,
     )
     await db.commit()
+    if cursor.rowcount == 0:
+        raise ValueError(
+            f"Concurrent status change on {card_id}: it was no longer "
+            f"'{current}' when the {current} -> {new_status} write ran"
+        )
 
     broadcast_payload: dict = {"status": new_status}
     if extra_fields:

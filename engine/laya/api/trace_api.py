@@ -13,7 +13,7 @@ import structlog
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import PlainTextResponse
 
-from laya.api.cards_api import _row_to_card
+from laya.api.cards_api import CARD_SELECT_COLUMNS, _row_to_card
 from laya.db.sqlite import get_db
 from laya.db.timeutil import db_now
 from laya.models.card import CardResponse
@@ -389,14 +389,7 @@ async def _reconstruct_trace(db, row) -> TraceResponse:
     if card_ids:
         placeholders = ",".join("?" * len(card_ids))
         card_rows = await db.execute_fetchall(
-            f"""SELECT c.card_id, c.event_id, c.created_at, c.priority, c.persona, c.category,
-                       c.header, c.summary, c.intelligence, c.staged_output, c.suggested_actions,
-                       c.status, c.privacy_tier, c.has_workspace, c.resolved_at, c.user_feedback,
-                       c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at,
-                       c.entity_id, c.source_ref, c.source_url, c.selected_action_id,
-                       c.space_id, c.bookmarked_at, c.group_active_at,
-                       e.actor_name, e.actor_email,
-                       s.name AS space_name, s.color AS space_color
+            f"""SELECT {CARD_SELECT_COLUMNS}
                 FROM action_cards c
                 LEFT JOIN events e ON c.event_id = e.event_id
                 LEFT JOIN spaces s ON c.space_id = s.space_id

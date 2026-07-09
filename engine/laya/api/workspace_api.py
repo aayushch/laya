@@ -183,6 +183,56 @@ class ResumePromptRequest(BaseModel):
     mode: str | None = None
 
 
+async def resume_session_with_answer(
+    session_id: str,
+    answer_text: str,
+    *,
+    is_freeform: bool = False,
+    add_dirs: list[str] | None = None,
+    mode: str | None = None,
+) -> bool:
+    """Resume an agent session with the user's answer and stream it in the
+    background: card → agent_running, session → running, then spawn a --resume
+    subprocess carrying ``answer_text``.
+
+    Shared by the HTTP /answer endpoint and the WS approve/deny/user_input
+    handlers. The WS handlers used to write the answer to the agent's stdin, but
+    the subprocess runs with stdin=DEVNULL, so those answers were silently
+    dropped while the UI recorded them as delivered — the only way to reach a
+    headless agent that has already exited to await input is a --resume spawn
+    (review §2 agents — P4-26).
+
+    The caller stores the user-facing workspace event first (the event type
+    differs across approve / deny / freeform). Returns False for an unknown
+    session.
+    """
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT card_id FROM workspace_sessions WHERE session_id = ?", (session_id,)
+    )
+    if not rows:
+        log.warning("resume_answer_unknown_session", session_id=session_id)
+        return False
+    card_id = rows[0]["card_id"]
+
+    await transition_card_status(card_id, "agent_running", actor="agent")
+    await db.execute(
+        "UPDATE workspace_sessions SET status = 'running', completed_at = NULL, "
+        "updated_at = CURRENT_TIMESTAMP WHERE session_id = ?",
+        (session_id,),
+    )
+    await db.commit()
+
+    from laya.tasks import create_task as create_tracked_task
+    create_tracked_task(
+        _run_resumed_session(
+            session_id, card_id, answer_text,
+            add_dirs=add_dirs, mode=mode, is_freeform=is_freeform,
+        )
+    )
+    return True
+
+
 @router.post("/workspace/{session_id}/answer")
 async def answer_agent_question(session_id: str, body: AnswerQuestionRequest) -> dict[str, str]:
     """Submit user answers to an AskUserQuestion and resume the agent.
@@ -224,18 +274,10 @@ async def answer_agent_question(session_id: str, body: AnswerQuestionRequest) ->
     )
     await session_manager.store_workspace_event(user_event)
 
-    # Update card status back to agent_running
-    await transition_card_status(card_id, "agent_running", actor="agent")
-    # Reset session status to running
-    await db.execute(
-        "UPDATE workspace_sessions SET status = 'running', completed_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE session_id = ?",
-        (session_id,),
+    # Card → agent_running, session → running, and background resume+stream.
+    await resume_session_with_answer(
+        session_id, answer_text, add_dirs=body.add_dirs, mode=body.mode,
     )
-    await db.commit()
-
-    # Resume the agent conversation in the background
-    from laya.tasks import create_task as create_tracked_task
-    create_tracked_task(_run_resumed_session(session_id, card_id, answer_text, add_dirs=body.add_dirs, mode=body.mode))
 
     return {"status": "resumed", "session_id": session_id}
 

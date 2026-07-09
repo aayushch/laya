@@ -28,6 +28,46 @@ log = structlog.get_logger()
 _processing_condition_adapter = TypeAdapter(ProcessingCondition)
 _processing_actions_adapter = TypeAdapter(list[ProcessingRuleAction])
 
+# Canonical vocabulary for rule conditions. Kept here as the single source of
+# truth so get_rule_options() can serve it on demand, instead of every rule tool
+# re-embedding the full field + operator list in its own description on every
+# chat turn the rules group is gated in (P6-8). Filter rules (pre-pipeline) and
+# processing rules (post-emit) use distinct field namespaces and operator sets.
+_FILTER_FIELDS = [
+    "actor.email",
+    "actor.name",
+    "source.platform",
+    "source.raw_event_type",
+    "subject.type",
+    "subject.id",
+    "subject.title",
+    "content.body",
+    "content.metadata.*",
+]
+_FILTER_OPERATORS = ["equals", "not_equals", "contains", "starts_with", "ends_with", "in"]
+
+_PROCESSING_FIELDS = [
+    "event.source.platform",
+    "event.source.raw_event_type",
+    "event.actor.name",
+    "event.actor.email",
+    "event.subject.type",
+    "event.subject.title",
+    "event.content.body",
+    "event.content.metadata.*",
+    "classification.persona",
+    "classification.priority",
+    "classification.category",
+    "card.space_id",
+    "context.actor_relationship",
+    "context.hour_of_day",
+    "context.day_of_week",
+]
+_PROCESSING_OPERATORS = [
+    "equals", "not_equals", "contains", "not_contains", "starts_with", "ends_with",
+    "in", "not_in", "matches", "gt", "gte", "lt", "lte", "exists", "not_exists",
+]
+
 
 async def _broadcast_rules_changed(rule_type: str) -> None:
     await manager.broadcast({"type": "rules_changed", "payload": {"rule_type": rule_type}})
@@ -172,6 +212,21 @@ async def get_rule_options(
             "priorities": ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
             "categories": ["CODE", "COMMS", "PEOPLE", "FINANCE", "OPS"],
             "actor_relationships": ["self", "team", "external", "bot"],
+        }
+
+    # Dot-notation condition fields + comparison operators, keyed by rule type.
+    # Static vocabulary the rule tool descriptions used to restate inline —
+    # served here instead (P6-8).
+    if category is None or category == "fields":
+        result["fields"] = {
+            "filter": list(_FILTER_FIELDS),
+            "processing": list(_PROCESSING_FIELDS),
+        }
+
+    if category is None or category == "operators":
+        result["operators"] = {
+            "filter": list(_FILTER_OPERATORS),
+            "processing": list(_PROCESSING_OPERATORS),
         }
 
     return result

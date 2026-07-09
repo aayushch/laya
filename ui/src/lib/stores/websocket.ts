@@ -93,7 +93,17 @@ export function closeWebSocket() {
 	reconnectTimer = null;
 	_msgQueue.length = 0;
 	_draining = false;
-	socket?.close();
+	if (socket) {
+		// Detach handlers BEFORE closing. socket.close() fires onclose
+		// asynchronously, and onclose calls scheduleReconnect() — so an
+		// *intentional* close would otherwise re-arm a zombie reconnect right
+		// after we cleared the timer (review §2 UI — P4-36).
+		socket.onopen = null;
+		socket.onmessage = null;
+		socket.onerror = null;
+		socket.onclose = null;
+		socket.close();
+	}
 	socket = null;
 	wsStatus.set('disconnected');
 }

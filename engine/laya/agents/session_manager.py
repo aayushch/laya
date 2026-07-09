@@ -374,10 +374,18 @@ async def resume_conversation(
     Returns:
         The resumed CodingAgent instance.
     """
+    # Never spawn a second subprocess against a session that is already live.
+    # Two concurrent resumes (double-click, or the manual + processing-rule
+    # paths racing) would otherwise both spawn against the same session id and
+    # the second would orphan the first (review §2 agents — P4-27).
+    live = _active_sessions.get(session_id)
+    if live is not None and live.get_status() in (SessionStatus.RUNNING, SessionStatus.STARTING):
+        raise ValueError(f"Session {session_id} is already running")
+
     db = await get_db()
     rows = await db.execute_fetchall(
         """SELECT ws.cc_session_id, ws.repo_path, ws.agent_type, ws.add_dirs,
-                  ws.session_type, ws.permission_mode, ac.space_id
+                  ws.session_type, ws.permission_mode, ac.space_id, ws.card_id
            FROM workspace_sessions ws
            LEFT JOIN action_cards ac ON ac.card_id = ws.card_id
            WHERE ws.session_id = ?""",
@@ -386,7 +394,7 @@ async def resume_conversation(
     if not rows:
         raise ValueError(f"No session found: {session_id}")
 
-    agent_session_id, repo_path, agent_type_str, existing_dirs_json, session_type, stored_mode, space_id = rows[0]
+    agent_session_id, repo_path, agent_type_str, existing_dirs_json, session_type, stored_mode, space_id, card_id = rows[0]
     is_research = session_type == "research"
 
     # User-provided mode overrides the stored value; persist for future resumes
@@ -466,6 +474,11 @@ async def resume_conversation(
     # Update session status back to running
     await _update_session_status(session_id, SessionStatus.RUNNING)
     _active_sessions[session_id] = agent
+    # Re-register the card→session reverse mapping. start_session sets this, but
+    # a resume didn't — so a resumed session escaped cancel_sessions_for_card and
+    # kept running after its card was archived/deleted (review §2 agents — P4-27).
+    if card_id:
+        _card_sessions[card_id] = session_id
 
     log.info("session_resumed", session_id=session_id, agent_session_id=agent_session_id)
     return agent

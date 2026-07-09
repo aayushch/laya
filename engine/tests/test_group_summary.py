@@ -339,3 +339,62 @@ def test_mixed_key_events():
     assert resp.key_events is not None
     assert isinstance(resp.key_events[0], str)
     assert isinstance(resp.key_events[1], KeyEvent)
+
+
+@pytest.mark.asyncio
+async def test_rolling_update_skips_cascade_when_unchanged(db, mock_llm_response):
+    """P6-5: a rolling update whose headline+status came back identical must NOT
+    trigger the nested context-group cascade (a redundant LLM regen)."""
+    entity_id = "jira:ticket:BUG-9001"
+    await _insert_card(db, "u1", entity_id, "Bug reported", "NPE")
+    await _insert_card(db, "u2", entity_id, "poll", "no change")
+    await db.execute(
+        """INSERT INTO group_summaries (entity_id, headline, summary, key_events,
+               current_status, pending_actions, card_ids, card_count, space_id)
+           VALUES (?, 'Bug reported', 's', '[]', 'Under investigation', 'null',
+                   '["u1","u2"]', 2, 'default')""", (entity_id,))
+    await db.commit()
+    await _insert_card(db, "u3", entity_id, "poll again", "still no change")
+
+    resp = MagicMock()
+    resp.parsed = {"headline": "Bug reported", "summary": "s2", "key_events": [],
+                   "current_status": "Under investigation", "pending_actions": None}
+    resp.model = "claude-haiku-4-5"
+    no_debounce = {"group_summary_seconds": 0, "daily_summary_seconds": 30, "event_batch_window_seconds": 3, "event_batch_max_size": 10}
+    with patch("laya.pipeline.group_summary.llm_call", new_callable=AsyncMock, return_value=resp), \
+         patch("laya.pipeline.group_summary.manager") as mock_ws, \
+         patch("laya.pipeline.group_summary.get_debounce_config", return_value=no_debounce), \
+         patch("laya.pipeline.group_summary._cascade_to_context_group", new_callable=AsyncMock) as mock_cascade:
+        mock_ws.broadcast = AsyncMock()
+        from laya.pipeline.group_summary import trigger_group_summary_update
+        await trigger_group_summary_update(entity_id, "u3", "default")
+    mock_cascade.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_rolling_update_cascades_when_headline_changes(db, mock_llm_response):
+    """A changed headline/status still cascades to the context group."""
+    entity_id = "jira:ticket:BUG-9002"
+    await _insert_card(db, "v1", entity_id, "Bug reported", "NPE")
+    await _insert_card(db, "v2", entity_id, "assigned", "Alice")
+    await db.execute(
+        """INSERT INTO group_summaries (entity_id, headline, summary, key_events,
+               current_status, pending_actions, card_ids, card_count, space_id)
+           VALUES (?, 'Bug reported', 's', '[]', 'Under investigation', 'null',
+                   '["v1","v2"]', 2, 'default')""", (entity_id,))
+    await db.commit()
+    await _insert_card(db, "v3", entity_id, "fixed", "deployed")
+
+    resp = MagicMock()
+    resp.parsed = {"headline": "Bug fixed and deployed", "summary": "s2", "key_events": [],
+                   "current_status": "Resolved", "pending_actions": None}
+    resp.model = "claude-haiku-4-5"
+    no_debounce = {"group_summary_seconds": 0, "daily_summary_seconds": 30, "event_batch_window_seconds": 3, "event_batch_max_size": 10}
+    with patch("laya.pipeline.group_summary.llm_call", new_callable=AsyncMock, return_value=resp), \
+         patch("laya.pipeline.group_summary.manager") as mock_ws, \
+         patch("laya.pipeline.group_summary.get_debounce_config", return_value=no_debounce), \
+         patch("laya.pipeline.group_summary._cascade_to_context_group", new_callable=AsyncMock) as mock_cascade:
+        mock_ws.broadcast = AsyncMock()
+        from laya.pipeline.group_summary import trigger_group_summary_update
+        await trigger_group_summary_update(entity_id, "v3", "default")
+    mock_cascade.assert_called_once()

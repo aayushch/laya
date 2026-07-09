@@ -89,14 +89,11 @@ def mock_llm_ops_worker():
 
 @pytest.fixture
 def mock_memory():
-    """Mock ChromaDB memory_search for workers."""
-    with patch("laya.workers.engineer.memory_search", new_callable=AsyncMock, return_value=[]):
-        with patch("laya.workers.comms.memory_search", new_callable=AsyncMock, return_value=[]):
-            with patch("laya.workers.ops.memory_search", new_callable=AsyncMock, return_value=[]):
-                with patch("laya.workers.sales.memory_search", new_callable=AsyncMock, return_value=[]):
-                    with patch("laya.workers.hr.memory_search", new_callable=AsyncMock, return_value=[]):
-                        with patch("laya.workers.finance.memory_search", new_callable=AsyncMock, return_value=[]):
-                            yield
+    """Mock ChromaDB memory_search for workers. The five drafting personas now
+    share one module (workers/persona.py — P7-2); ENGINEER stays separate."""
+    with patch("laya.pipeline.related_context.memory_search", new_callable=AsyncMock, return_value=[]):
+        with patch("laya.pipeline.related_context.memory_search", new_callable=AsyncMock, return_value=[]):
+            yield
 
 
 @pytest.fixture

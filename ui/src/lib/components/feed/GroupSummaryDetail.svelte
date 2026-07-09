@@ -3,7 +3,8 @@
 <script lang="ts">
 	import type { GroupSummary, CardGroup, ActionCard, CardEgressContext, CardEgressAction, KeyEvent } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
-	import { parseBackendDate } from '$lib/utils/datetime';
+	import { parseBackendDate, timeAgo } from '$lib/utils/datetime';
+	import { PRIORITY_LABELS, PRIORITY_COLORS } from '$lib/utils/cardVisuals';
 	import { goto } from '$app/navigation';
 	import { chatOpen, chatCardContext, chatCardIds, chatListOpen } from '$lib/stores/chat';
 	import PlatformBadge from '$lib/components/PlatformBadge.svelte';
@@ -201,19 +202,9 @@
 		chatOpen.set(true);
 	}
 
-	const priorityColors: Record<string, string> = {
-		CRITICAL: 'bg-red-600 text-red-50',
-		HIGH: 'bg-orange-500 text-orange-50',
-		MEDIUM: 'bg-laya-coral/20 text-laya-coral',
-		LOW: 'bg-laya-gold/25 text-laya-amber'
-	};
+	const priorityColors = PRIORITY_COLORS;
 
-	const priorityLabel: Record<string, string> = {
-		CRITICAL: 'CRIT',
-		HIGH: 'HIGH',
-		MEDIUM: 'MED',
-		LOW: 'LOW'
-	};
+	const priorityLabel = PRIORITY_LABELS;
 
 	const platformLabel: Record<string, string> = {
 		jira: 'Jira', gmail: 'Gmail', slack: 'Slack',
@@ -228,17 +219,6 @@
 		return [...counts.entries()].map(([status, count]) => ({ status, count }));
 	});
 
-	function timeAgo(dateStr?: string): string {
-		const d = parseBackendDate(dateStr);
-		if (!d) return '';
-		const diff = Date.now() - d.getTime();
-		const mins = Math.floor(diff / 60000);
-		if (mins < 1) return 'just now';
-		if (mins < 60) return `${mins}m ago`;
-		const hours = Math.floor(mins / 60);
-		if (hours < 24) return `${hours}h ago`;
-		return `${Math.floor(hours / 24)}d ago`;
-	}
 
 	const platformName = $derived(
 		group.platforms && group.platforms.length > 1

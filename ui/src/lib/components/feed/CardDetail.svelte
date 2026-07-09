@@ -8,6 +8,7 @@
 	import { chatOpen, chatCardContext, chatCardIds, chatListOpen } from '$lib/stores/chat';
 	import { buildSingleCardContext } from '$lib/utils/cardContext';
 	import { parseBackendDate } from '$lib/utils/datetime';
+	import { PRIORITY_LABELS, PRIORITY_COLORS } from '$lib/utils/cardVisuals';
 	import { lastMessage } from '$lib/stores/websocket';
 	import MarkdownRender from '$lib/components/MarkdownRender.svelte';
 	import ClassificationDialog from './ClassificationDialog.svelte';
@@ -32,6 +33,7 @@
 	let dismissing = $state(false);
 	let archiving = $state(false);
 	let reopening = $state(false);
+	let reprocessing = $state(false);
 	let copied = $state(false);
 	let dismissReason = $state('');
 	let showDismissInput = $state(false);
@@ -158,8 +160,16 @@
 		} catch { /* handled silently */ }
 	}
 
+	// Guard the related/egress fetches on the card_id actually changing. The `card`
+	// prop is replaced with a fresh object on every WS status tick of the selected
+	// card (same card_id, new identity), which re-ran these effects and refetched
+	// related + egress context each time (review §2 UI — P4-34). Skip when the
+	// card_id is unchanged.
+	let _relatedFor: string | null = null;
 	$effect(() => {
 		const cardId = card.card_id;
+		if (_relatedFor === cardId) return;
+		_relatedFor = cardId;
 		relatedCount = null;
 		if (!onshowrelated) return;
 		loadingRelated = true;
@@ -170,9 +180,12 @@
 		}).catch(() => {}).finally(() => { loadingRelated = false; });
 	});
 
+	let _egressFor: string | null = null;
 	$effect(() => {
 		const cardId = card.card_id;
 		const entityId = card.entity_id;
+		if (_egressFor === cardId) return;
+		_egressFor = cardId;
 		egressContext = null;
 		egressLoading = false;
 		if (!entityId) return;
@@ -275,19 +288,9 @@
 		}
 	}
 
-	const priorityColors: Record<string, string> = {
-		CRITICAL: 'bg-red-600 text-red-50',
-		HIGH: 'bg-orange-500 text-orange-50',
-		MEDIUM: 'bg-laya-coral/20 text-laya-coral',
-		LOW: 'bg-laya-gold/25 text-laya-amber'
-	};
+	const priorityColors = PRIORITY_COLORS;
 
-	const priorityLabel: Record<string, string> = {
-		CRITICAL: 'CRIT',
-		HIGH: 'HIGH',
-		MEDIUM: 'MED',
-		LOW: 'LOW'
-	};
+	const priorityLabel = PRIORITY_LABELS;
 
 	const personaColors: Record<string, string> = {
 		ENGINEER: 'border-violet-500 text-violet-400',
@@ -535,6 +538,22 @@
 			card.status = result.status as ActionCard['status'];
 		} finally {
 			reopening = false;
+		}
+	}
+
+	async function reprocess() {
+		headerMenuOpen = false;
+		if (reprocessing) return;
+		reprocessing = true;
+		try {
+			await engineApi.reprocessCard(card.card_id);
+			// Reflect the reprocess immediately; the WS card_updated stream drives
+			// the card back through provisional → ready as the pipeline re-runs.
+			card.status = 'pending';
+		} catch (e) {
+			console.error('Reprocess failed:', e);
+		} finally {
+			reprocessing = false;
 		}
 	}
 
@@ -1300,6 +1319,19 @@
 		>
 			<svg class="h-3.5 w-3.5" fill={card.bookmarked_at ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg>
 			{card.bookmarked_at ? 'Remove bookmark' : 'Bookmark'}
+		</button>
+		<!-- Reprocess: re-run the pipeline on this card's event (recovery for a
+		     card whose LLM output came back garbled). Disabled while the card is
+		     already in flight. -->
+		<div class="my-1 border-t border-surface-700/60"></div>
+		<button
+			class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary transition-colors hover:bg-surface-700 disabled:opacity-40 disabled:hover:bg-transparent {reprocessing ? 'text-laya-orange' : 'text-surface-300 hover:text-surface-200'}"
+			role="menuitem"
+			disabled={reprocessing || card.status === 'pending' || card.status === 'agent_running'}
+			onclick={reprocess}
+		>
+			<svg class="h-3.5 w-3.5 {reprocessing ? 'animate-spin' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+			{reprocessing ? 'Reprocessing…' : 'Reprocess'}
 		</button>
 	</div>
 {/if}

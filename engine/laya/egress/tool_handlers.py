@@ -49,6 +49,17 @@ async def handle_egress_tool(
     """
     request = _build_request(tool_name, arguments, space_id)
 
+    # Chat has no originating event to derive the account from, so resolve a
+    # connection for the platform and set it explicitly. Without this the executor
+    # silently used the oldest connection (the wrong account with 2+ accounts) AND
+    # Jira never received its base URL, falling back to the literal
+    # your-domain.atlassian.net (review §2 egress — P4-22). The n8n backend derives
+    # jira_base_url from the connection creds once connection_id is set.
+    if not request.connection_id:
+        conn_id = await _resolve_connection_id(request.platform, space_id)
+        if conn_id:
+            request.connection_id = conn_id
+
     # Get preview
     preview = await egress.preview(request)
 
@@ -185,6 +196,30 @@ def _build_request(
         return _build_slack_request(arguments, space_id)
     else:
         raise ValueError(f"Unknown egress tool: {tool_name}")
+
+
+async def _resolve_connection_id(platform: str, space_id: str | None) -> str | None:
+    """Pick a connected connection for a chat-driven egress action.
+
+    Prefers one scoped to this space, else any connected connection for the
+    platform (review §2 egress — P4-22)."""
+    from laya.db.sqlite import get_db
+    try:
+        db = await get_db()
+        rows = await db.execute_fetchall(
+            "SELECT connection_id, space_id FROM egress_connections "
+            "WHERE platform = ? AND status = 'connected' ORDER BY created_at",
+            (platform,),
+        )
+    except Exception:
+        return None
+    if not rows:
+        return None
+    if space_id:
+        for r in rows:
+            if r["space_id"] == space_id:
+                return r["connection_id"]
+    return rows[0]["connection_id"]
 
 
 def _build_email_request(args: dict, space_id: str | None) -> EgressRequest:

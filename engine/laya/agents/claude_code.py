@@ -7,16 +7,15 @@ from __future__ import annotations
 
 import json
 import re
-import uuid
 from typing import Any, AsyncIterator
 
 import structlog
 
-from laya.agents.base import CodingAgent
+from laya.agents.base import BaseCodingAgent
 from laya.agents.mcp_config import (
     augment_prompt_with_mcp_hint,
-    build_laya_mcp_config_json,
     laya_allowed_tool_flags,
+    write_laya_mcp_config_file,
 )
 from laya.agents.subprocess_helper import AgentProcess, strip_ansi
 from laya.models.workspace import (
@@ -42,7 +41,7 @@ APPROVAL_PATTERNS = [
 ]
 
 
-class ClaudeCodeAgent(CodingAgent):
+class ClaudeCodeAgent(BaseCodingAgent):
     """Claude Code CLI adapter.
 
     Spawns `claude -p "<prompt>" --output-format stream-json` as a subprocess.
@@ -56,6 +55,19 @@ class ClaudeCodeAgent(CodingAgent):
         self._cc_session_id: str | None = None
         self._repo_path: str = ""
         self._status: SessionStatus = SessionStatus.STARTING
+        # 0600 temp files holding the MCP config (with bearer token) passed via
+        # --mcp-config. Tracked so they can be unlinked once the process ends,
+        # keeping the token out of `ps` argv (review §6).
+        self._mcp_config_paths: list[str] = []
+
+    def _cleanup_mcp_configs(self) -> None:
+        import os
+        for p in self._mcp_config_paths:
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+        self._mcp_config_paths.clear()
 
     @property
     def cc_session_id(self) -> str | None:
@@ -81,7 +93,8 @@ class ClaudeCodeAgent(CodingAgent):
         # endpoint. The agent inherits the user's Settings → MCP scope and
         # auth configuration; the in-app agent and external clients share one
         # transport.
-        mcp_config_json = build_laya_mcp_config_json(space_id)
+        mcp_config_path = write_laya_mcp_config_file(space_id)
+        self._mcp_config_paths.append(mcp_config_path)
         effective_prompt = augment_prompt_with_mcp_hint(prompt)
 
         args = [
@@ -94,7 +107,7 @@ class ClaudeCodeAgent(CodingAgent):
             "--permission-mode",
             permission_mode,
             "--mcp-config",
-            mcp_config_json,
+            mcp_config_path,
         ]
 
         # Allowlist Laya MCP tools; any tool not in --allowedTools is denied in -p mode.
@@ -154,7 +167,8 @@ class ClaudeCodeAgent(CodingAgent):
         # Re-pass --mcp-config on every resume; claude -p spawns a fresh
         # child process each invocation and does not inherit MCP config from
         # the original session.
-        mcp_config_json = build_laya_mcp_config_json(space_id)
+        mcp_config_path = write_laya_mcp_config_file(space_id)
+        self._mcp_config_paths.append(mcp_config_path)
 
         args = [
             self._binary,
@@ -168,7 +182,7 @@ class ClaudeCodeAgent(CodingAgent):
             "--permission-mode",
             permission_mode,
             "--mcp-config",
-            mcp_config_json,
+            mcp_config_path,
         ]
 
         args.extend(laya_allowed_tool_flags())
@@ -217,41 +231,7 @@ class ClaudeCodeAgent(CodingAgent):
                     requires_input=True,
                 )
         exit_code = await self._process.wait()
-
-        # If cancel() was already called, honour that status — don't overwrite
-        # based on the exit code (SIGKILL gives -9/137, not the clean 143).
-        if self._status == SessionStatus.CANCELLED:
-            yield self._make_event(
-                WorkspaceEventType.STATUS_CHANGE,
-                WorkspaceEventActor.SYSTEM,
-                {"status": "cancelled", "exit_code": exit_code},
-            )
-        elif exit_code == 0:
-            self._status = SessionStatus.COMPLETED
-            yield self._make_event(
-                WorkspaceEventType.STATUS_CHANGE,
-                WorkspaceEventActor.SYSTEM,
-                {"status": "completed", "exit_code": exit_code},
-            )
-        elif exit_code in (143, -15):
-            # 143 = 128 + 15 (SIGTERM) — clean cancellation
-            self._status = SessionStatus.CANCELLED
-            yield self._make_event(
-                WorkspaceEventType.STATUS_CHANGE,
-                WorkspaceEventActor.SYSTEM,
-                {"status": "cancelled", "exit_code": exit_code},
-            )
-        else:
-            self._status = SessionStatus.FAILED
-            stderr = self._process.stderr_output
-            error_msg = f"Agent exited with code {exit_code}"
-            if stderr:
-                error_msg += f": {stderr}"
-            yield self._make_event(
-                WorkspaceEventType.ERROR,
-                WorkspaceEventActor.SYSTEM,
-                {"error": error_msg, "exit_code": exit_code},
-            )
+        yield self._terminal_status_event(exit_code)
 
     def _parse_stream_json(self, line: str) -> list[WorkspaceEvent]:
         """Parse a stream-json line from Claude Code into workspace events.
@@ -392,40 +372,8 @@ class ClaudeCodeAgent(CodingAgent):
         # return any(pattern.search(text) for pattern in APPROVAL_PATTERNS)
         return False
 
-    def _make_event(
-        self,
-        event_type: WorkspaceEventType,
-        actor: WorkspaceEventActor,
-        content: dict,
-        requires_input: bool = False,
-        agent_message_id: str | None = None,
-    ) -> WorkspaceEvent:
-        return WorkspaceEvent(
-            event_id=f"we_{uuid.uuid4().hex[:12]}",
-            session_id=self._session_id,
-            event_type=event_type,
-            actor=actor,
-            content=content,
-            requires_input=requires_input,
-            agent_message_id=agent_message_id,
-        )
-
-    async def send_input(self, text: str) -> None:
-        if self._status == SessionStatus.AWAITING_INPUT:
-            self._status = SessionStatus.RUNNING
-        await self._process.write(text)
-
-    async def pause(self) -> None:
-        await self._process.pause()
-        self._status = SessionStatus.PAUSED
-
-    async def resume(self) -> None:
-        await self._process.resume()
-        self._status = SessionStatus.RUNNING
-
-    async def cancel(self) -> None:
-        await self._process.terminate()
-        self._status = SessionStatus.CANCELLED
-
-    def get_status(self) -> SessionStatus:
-        return self._status
+    def _on_process_exit(self) -> None:
+        # The subprocess has exited — unlink the 0600 MCP-config temp files it was
+        # spawned with (keeps the bearer token out of `ps`; review §6). Invoked by
+        # BaseCodingAgent.cancel() and _terminal_status_event(); idempotent.
+        self._cleanup_mcp_configs()

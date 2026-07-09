@@ -15,6 +15,7 @@ import uvicorn
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 
 from laya.agents import session_manager
@@ -134,8 +135,32 @@ def _start_parent_watchdog() -> None:
     log.info("parent_watchdog_started", parent_pid=parent_pid)
 
 
+def _is_laya_process(pid: int) -> bool:
+    """Best-effort check that ``pid`` looks like a stale Laya engine before we
+    SIGTERM it to reclaim our port. Without this, reclaiming the port would kill
+    whatever unrelated user process happened to be listening on it (review §6).
+    Uses psutil on Windows (already a dependency there) and `ps` elsewhere so we
+    don't add a hard psutil requirement on Unix."""
+    try:
+        if sys.platform == "win32":
+            import psutil
+            proc = psutil.Process(pid)
+            haystack = " ".join([proc.name() or "", *(proc.cmdline() or [])])
+        else:
+            import subprocess
+            out = subprocess.run(
+                ["ps", "-p", str(pid), "-o", "command="],
+                capture_output=True, text=True, timeout=3,
+            )
+            haystack = out.stdout
+        return "laya" in haystack.lower()
+    except Exception:
+        return False
+
+
 def _kill_stale_engine(host: str, port: int) -> None:
-    """If another process is holding our port, kill it before we proceed."""
+    """If another *Laya* process is holding our port, kill it before we proceed.
+    A foreign process on the port is left alone and logged (review §6)."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         sock.bind((host, port))
@@ -160,6 +185,9 @@ def _kill_stale_engine(host: str, port: int) -> None:
                     and conn.pid
                     and conn.pid != my_pid
                 ):
+                    if not _is_laya_process(conn.pid):
+                        log.warning("port_held_by_foreign_process", pid=conn.pid, port=port)
+                        continue
                     log.warning("killing_stale_engine", pid=conn.pid, port=port)
                     try:
                         psutil.Process(conn.pid).terminate()
@@ -183,11 +211,17 @@ def _kill_stale_engine(host: str, port: int) -> None:
         )
         pids = [int(p) for p in result.stdout.strip().split("\n") if p.strip()]
         my_pid = os.getpid()
+        killed_any = False
         for pid in pids:
-            if pid != my_pid:
-                log.warning("killing_stale_engine", pid=pid, port=port)
-                os.kill(pid, signal.SIGTERM)
-        if pids:
+            if pid == my_pid:
+                continue
+            if not _is_laya_process(pid):
+                log.warning("port_held_by_foreign_process", pid=pid, port=port)
+                continue
+            log.warning("killing_stale_engine", pid=pid, port=port)
+            os.kill(pid, signal.SIGTERM)
+            killed_any = True
+        if killed_any:
             import time
 
             time.sleep(1)
@@ -264,18 +298,34 @@ async def lifespan(app: FastAPI):
 
     # Startup budget month-rollover check (fallback for missed rollovers)
     try:
-        from laya.pipeline.budget import on_month_rollover, _current_year_month_local, _user_timezone
+        from laya.pipeline.budget import (
+            on_month_rollover,
+            snapshot_month,
+            _current_year_month_local,
+            _user_timezone,
+        )
         tz = _user_timezone()
         current_month = _current_year_month_local(tz)
-        # Check if previous month's costs have been snapshotted
+        # Snapshot any PAST month that has audit_log activity but no
+        # monthly_costs row yet. The live scheduler rollover only fires while
+        # the app is running across the midnight-of-the-1st boundary; a desktop
+        # app closed at that moment would otherwise lose that month's history
+        # permanently — this was previously a dead `pass` (review §1.8).
+        # snapshot_month is idempotent (ON CONFLICT DO UPDATE).
         async with db.execute(
-            "SELECT year_month FROM monthly_costs ORDER BY year_month DESC LIMIT 1"
+            """SELECT DISTINCT substr(timestamp, 1, 7) AS ym
+               FROM audit_log
+               WHERE substr(timestamp, 1, 7) < ?
+               ORDER BY ym""",
+            (current_month,),
         ) as cursor:
-            last_snapshot = await cursor.fetchone()
-        if last_snapshot and last_snapshot["year_month"] < current_month:
-            pass  # snapshot_month is idempotent, safe to call
-        elif not last_snapshot:
-            pass  # No history yet, nothing to roll over
+            _audit_months = [r["ym"] for r in await cursor.fetchall()]
+        async with db.execute("SELECT year_month FROM monthly_costs") as cursor:
+            _snapped = {r["year_month"] for r in await cursor.fetchall()}
+        for _ym in _audit_months:
+            if _ym not in _snapped:
+                log.info("startup_month_snapshot_catchup", year_month=_ym)
+                await snapshot_month(_ym)
 
         # Check if budget pause should be cleared (new month)
         async with db.execute("SELECT paused_at FROM budget_config WHERE id = 1") as cursor:
@@ -295,6 +345,9 @@ async def lifespan(app: FastAPI):
     # engine, tracking dict is in-memory) — mark leftover rows as failed
     from laya.agents.session_manager import recover_orphaned_sessions
     await recover_orphaned_sessions()
+    # Clear _polishing flags stranded by a restart mid action-polish (review §2 API).
+    from laya.api.cards_api import clear_stale_polishing_flags
+    await clear_stale_polishing_flags()
     start_consumer()
 
     # Start Omni queue processor — picks up any cards left in omni_queue
@@ -355,6 +408,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Laya Engine", version="0.1.0", lifespan=lifespan)
+
+# Reject requests whose Host header isn't a loopback name. Without this a
+# DNS-rebinding page (attacker domain → 127.0.0.1) sails past the CORS allowlist
+# and can reach the unauthenticated REST API, including GET /mcp/token/reveal
+# (review §6). "test"/"testserver" are allowed only so the ASGI test client
+# (base_url http://test) keeps working — a rebinding attack presents the
+# attacker's own domain as Host, which is not in this list.
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=["127.0.0.1", "localhost", "test", "testserver"],
+)
 
 # Allow the Tauri/SvelteKit frontend to talk to the engine
 app.add_middleware(
@@ -434,11 +498,16 @@ register_mcp_transport(app)
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time UI communication."""
     await manager.connect(websocket)
+    from laya.tasks import create_task as create_tracked_task
     try:
         while True:
             data = await websocket.receive_text()
             log.debug("ws_message_received", data=data[:200])
-            await handle_ws_message(data)
+            # Dispatch as a task so a long-running handler — e.g. a chat streamed
+            # from a slow local model — doesn't block the receive loop. Approve/
+            # deny/cancel messages must be handled WHILE a chat is still streaming,
+            # or the user can't cancel it (review §2 UI — P4-33).
+            create_tracked_task(handle_ws_message(data))
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 

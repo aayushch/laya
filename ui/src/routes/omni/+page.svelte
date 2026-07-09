@@ -25,6 +25,12 @@
 	let error = $state<string | null>(null);
 	let activeSpaceId = $state(get(omniSpace));
 	let nextSynthesis = $state<string | null>(null);
+	// null = viewing the latest snapshot; a number = pinned to a historical
+	// version (so an omni_updated shouldn't yank the user forward). Review P4-32.
+	let viewingSpecificVersion: number | null = null;
+	// Monotonic load id — drops a stale getOmni response (e.g. a slow load for the
+	// previous space arriving after a space switch) so it can't clobber the view.
+	let _loadSeq = 0;
 	const resynthesizing = $derived($resynthesizingSpaces.has(activeSpaceId));
 
 	// Scroll-direction detection for timeline compaction.
@@ -136,6 +142,13 @@
 
 		unsubWs = lastMessage.subscribe((msg) => {
 			if (msg?.type === 'omni_updated') {
+				// Only react to updates for the space we're viewing, and only while
+				// on the latest snapshot. Previously any omni_updated reloaded to
+				// latest — an update for another space, or one arriving while the
+				// user read a historical version, yanked them away (review §2 UI — P4-32).
+				const p = msg.payload as { space_id?: string } | undefined;
+				if (p?.space_id && p.space_id !== activeSpaceId) return;
+				if (viewingSpecificVersion !== null) return;
 				// Resynthesizing flag is cleared by the store's global listener
 				// (only for non-incremental snapshot types like scheduled/rolling/manual).
 				loadOmni();
@@ -151,15 +164,20 @@
 	});
 
 	async function loadOmni(version?: number) {
+		const seq = ++_loadSeq;
+		viewingSpecificVersion = version ?? null;
 		try {
 			loading = !snapshot;
 			error = null;
-			snapshot = await engineApi.getOmni(activeSpaceId, version);
+			const snap = await engineApi.getOmni(activeSpaceId, version);
+			if (seq !== _loadSeq) return; // superseded by a newer load (e.g. space switch)
+			snapshot = snap;
 			loadNextSynthesisTime();
 		} catch (e) {
+			if (seq !== _loadSeq) return;
 			error = e instanceof Error ? e.message : 'Failed to load Omni';
 		} finally {
-			loading = false;
+			if (seq === _loadSeq) loading = false;
 		}
 	}
 
@@ -303,7 +321,9 @@
 			</div>
 		</div>
 	{/if}
-	{#if error && !snapshot}
+	{#if error}
+		<!-- Show errors even once a snapshot is loaded — a failed reload was
+		     previously invisible because this was gated on !snapshot (P4-32). -->
 		<div class="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400">
 			{error}
 		</div>

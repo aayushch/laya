@@ -57,20 +57,7 @@ const UV_VERSION: &str = "0.7.12";
 
 // ── Path helpers ────────────────────────────────────────────────────────
 
-fn home_dir() -> Option<PathBuf> {
-    #[cfg(unix)]
-    {
-        std::env::var_os("HOME").map(PathBuf::from)
-    }
-    #[cfg(windows)]
-    {
-        std::env::var_os("USERPROFILE").map(PathBuf::from)
-    }
-}
-
-fn laya_home() -> PathBuf {
-    home_dir().unwrap_or_default().join(".laya")
-}
+use crate::process_util::laya_home;
 
 fn python_dir() -> PathBuf {
     laya_home().join("python")

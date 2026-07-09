@@ -14,8 +14,8 @@
 	import { cardSize } from '$lib/stores/cardSize';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { portal } from '$lib/actions/portal';
-	import { platformDotColor } from '$lib/utils/cardVisuals';
-	import { parseBackendDate } from '$lib/utils/datetime';
+	import { platformDotColor, PRIORITY_LABELS, PRIORITY_COLORS } from '$lib/utils/cardVisuals';
+	import { parseBackendDate, timeAgo as _timeAgo } from '$lib/utils/datetime';
 	import PlatformIcon from '$lib/components/settings/PlatformIcon.svelte';
 
 	let {
@@ -200,19 +200,9 @@
 		return style;
 	});
 
-	const priorityColors: Record<string, string> = {
-		CRITICAL: 'bg-red-600 text-red-50',
-		HIGH:     'bg-orange-500 text-orange-50',
-		MEDIUM:   'bg-laya-coral/20 text-laya-coral',
-		LOW:      'bg-laya-gold/25 text-laya-amber'
-	};
+	const priorityColors = PRIORITY_COLORS;
 
-	const priorityLabel: Record<string, string> = {
-		CRITICAL: 'CRIT',
-		HIGH: 'HIGH',
-		MEDIUM: 'MED',
-		LOW: 'LOW'
-	};
+	const priorityLabel = PRIORITY_LABELS;
 
 	const personaColors: Record<string, string> = {
 		ENGINEER: 'text-violet-400',
@@ -248,19 +238,7 @@
 		bitbucket: 'Bitbucket', calendar: 'Calendar', github: 'GitHub', laya: 'Laya'
 	};
 
-	function timeAgo(dateStr?: string): string {
-		const d = parseBackendDate(dateStr);
-		if (!d) return '';
-		const diff = Date.now() - d.getTime();
-		const mins = Math.floor(diff / 60000);
-		if (mins < 1) return 'just now';
-		if (mins < 60) return `${mins}m ago`;
-		const hours = Math.floor(mins / 60);
-		if (hours < 24) return `${hours}h ago`;
-		const days = Math.floor(hours / 24);
-		if (days < 7) return `${days}d ago`;
-		return `${Math.floor(days / 7)}w ago`;
-	}
+	const timeAgo = (dateStr?: string) => _timeAgo(dateStr, { weeks: true });
 
 	// Extract subject ID from entity_id (e.g., "jira:ticket:FERR-1056" → "FERR-1056")
 	const subjectId = $derived(group.entity_id?.includes(':') ? group.entity_id.split(':').pop() : group.entity_id);
@@ -343,12 +321,18 @@
 						break;
 					case 'reopen':
 						if (['dismissed', 'archived', 'done'].includes(card.status)) {
-							promises.push(engineApi.reopenCard(card.card_id).then(() => { card.status = 'ready'; }));
+							// Use the backend's restored status, not a hardcoded 'ready' —
+						// reopen restores the card's saved previous_status which may be
+						// pending/requires_approval (review §2 UI — P4-31).
+						promises.push(engineApi.reopenCard(card.card_id).then((r) => { card.status = r.status as ActionCard['status']; }));
 						}
 						break;
 					case 'unarchive':
 						if (card.status === 'archived') {
-							promises.push(engineApi.reopenCard(card.card_id).then(() => { card.status = 'ready'; }));
+							// Use the backend's restored status, not a hardcoded 'ready' —
+						// reopen restores the card's saved previous_status which may be
+						// pending/requires_approval (review §2 UI — P4-31).
+						promises.push(engineApi.reopenCard(card.card_id).then((r) => { card.status = r.status as ActionCard['status']; }));
 						}
 						break;
 				}

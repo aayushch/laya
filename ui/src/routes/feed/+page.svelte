@@ -1,24 +1,28 @@
 <!-- Copyright 2026 Aayush Chawla -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
 	import { parseBackendDate } from '$lib/utils/datetime';
-	import { lastMessage } from '$lib/stores/websocket';
-	import { feedFilters, feedDate, feedPrevDate, feedNextDate, localToday, allDaysSavedDate } from '$lib/stores/feedFilters';
+	import { capturePositions, playFlip } from '$lib/utils/flip';
+	import { lastMessage, wsStatus } from '$lib/stores/websocket';
+	import { feedFilters, feedDate, feedPrevDate, feedNextDate, localToday, allDaysSavedDate, type FeedFilters } from '$lib/stores/feedFilters';
 	import type { ActionCard, CardGroup, GroupSummary, DaySummary, SpaceSummary, Tag } from '$lib/api/types';
+	import { reduceCardUpdated, removeCardFromGroups, type CardUpdatePayload } from '$lib/feed/cardUpdateReducer';
 	import CardGroupComponent from '$lib/components/feed/CardGroup.svelte';
 	import ActionCardComponent from '$lib/components/feed/ActionCard.svelte';
 	import CardDetail from '$lib/components/feed/CardDetail.svelte';
 	import GroupSummaryDetail from '$lib/components/feed/GroupSummaryDetail.svelte';
-	import DaySummaryComponent from '$lib/components/feed/DaySummary.svelte';
+	import SummaryModal from '$lib/components/feed/SummaryModal.svelte';
+	import FilterPopover from '$lib/components/feed/FilterPopover.svelte';
 	import { feedViewMode } from '$lib/stores/feedView';
 	import { feedSelection } from '$lib/stores/feedSelection';
 	import ListRow from '$lib/components/feed/ListRow.svelte';
 	import ListGroupComponent from '$lib/components/feed/ListGroup.svelte';
 	import BulkActionsDropdown from '$lib/components/feed/BulkActionsDropdown.svelte';
 	import LinkDialog from '$lib/components/feed/LinkDialog.svelte';
-	import { recentCards, recentDrawerOpen, trackCardVisit, trackGroupVisit, clearRecentCards, type RecentCardEntry } from '$lib/stores/recentCards';
+	import { recentCards, recentDrawerOpen, trackCardVisit, trackGroupVisit, type RecentCardEntry } from '$lib/stores/recentCards';
+	import RecentDrawer from '$lib/components/feed/RecentDrawer.svelte';
 	import { pendingCardId } from '$lib/stores/chat';
 	import { spaces } from '$lib/stores/spaces';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
@@ -31,7 +35,6 @@
 	// Filter toolbar state
 	let filterPopoverOpen = $state(false);
 	let filterBtnEl: HTMLElement | undefined = $state();
-	let filterMenuEl: HTMLElement | undefined = $state();
 	let filterMenuPos = $state({ top: 0, left: 0 });
 
 	// Responsive toolbar: collapse action buttons into overflow menu when toolbar is too narrow
@@ -44,14 +47,12 @@
 	const activeSpaceCount = $derived($feedFilters.spaceFilter.length);
 	const hasActiveFilters = $derived(activeStatusCount > 0 || activePriorityCount > 0 || $feedFilters.showArchived || $feedFilters.hasWorkspace || $feedFilters.showUnreadOnly || activeSpaceCount > 0);
 
-	function toggleFilter(arr: string[], value: string): string[] {
-		return arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value];
-	}
-
 	function closeFilterDropdown(e: MouseEvent) {
 		const target = e.target as HTMLElement;
 		if (!target.isConnected) return;
-		if (!target.closest('.filter-dropdown') && !target.closest('.feed-overflow-menu') && !filterMenuEl?.contains(target)) {
+		// The FilterPopover keeps the `filter-dropdown` class on its (portaled)
+		// root, so this class check alone recognises clicks inside it.
+		if (!target.closest('.filter-dropdown') && !target.closest('.feed-overflow-menu')) {
 			filterPopoverOpen = false;
 		}
 		if (!target.closest('.feed-overflow-menu')) {
@@ -89,6 +90,11 @@
 
 	let groups = $state<CardGroup[]>([]);
 	let totalGroups = $state(0);
+	// Group pagination (P4-9): the feed loads PAGE_SIZE groups at a time and
+	// appends more on demand, so the unbounded modes no longer ship every group.
+	const GROUPS_PAGE_SIZE = 200;
+	let hasMoreGroups = $state(false);
+	let loadingMoreGroups = $state(false);
 	let availableTags = $state<Tag[]>([]);
 	let loading = $state(true);
 	let markingAllRead = $state(false);
@@ -109,39 +115,6 @@
 	// Link dialog state
 	let linkSourceGroup = $state<CardGroup | null>(null);
 
-	// Recent cards FLIP animation
-	let recentListEl = $state<HTMLElement | null>(null);
-
-	function flipRecentCards() {
-		if (!recentListEl) return;
-		// Reduced motion: skip translate animation; entries just appear in new positions.
-		if ($reducedMotion) return;
-		const oldPositions = new Map<string, DOMRect>();
-		recentListEl.querySelectorAll('[data-recent-id]').forEach((el) => {
-			oldPositions.set((el as HTMLElement).dataset.recentId!, el.getBoundingClientRect());
-		});
-		tick().then(() => {
-			if (!recentListEl) return;
-			recentListEl.querySelectorAll('[data-recent-id]').forEach((el) => {
-				const htmlEl = el as HTMLElement;
-				const id = htmlEl.dataset.recentId!;
-				const oldRect = oldPositions.get(id);
-				if (!oldRect) return;
-				const newRect = el.getBoundingClientRect();
-				const dy = oldRect.top - newRect.top;
-				if (Math.abs(dy) < 1) return;
-				htmlEl.style.transform = `translateY(${dy}px)`;
-				htmlEl.style.transition = 'none';
-				requestAnimationFrame(() => {
-					htmlEl.style.transition = 'transform 250ms ease';
-					htmlEl.style.transform = '';
-					htmlEl.addEventListener('transitionend', () => {
-						htmlEl.style.transition = '';
-					}, { once: true });
-				});
-			});
-		});
-	}
 
 	const hasAnySelection = $derived(!!selectedCard || !!selectedGroupSummary);
 	const selectedEntityId = $derived(selectedGroupSummary?.group.entity_id ?? '');
@@ -384,10 +357,6 @@
 	const SELECTED_CARD_KEY = 'laya_feed_selected_card';
 	const SELECTED_GROUP_KEY = 'laya_feed_selected_group';
 
-	// Priority severity rank — mirrors backend `_PRIORITY_ORDER` (cards_api.py). Lower = more
-	// severe. Used to recompute a group's top_priority client-side when a card is reclassified.
-	const PRIORITY_RANK: Record<string, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
-
 	function formatDateLabel(dateStr: string): string {
 		const today = localToday();
 		const d = new Date();
@@ -418,12 +387,7 @@
 
 	// Capture card positions for FLIP animation before data changes
 	function captureCardPositions(): Map<string, DOMRect> {
-		const positions = new Map<string, DOMRect>();
-		if (!containerEl) return positions;
-		containerEl.querySelectorAll('[data-entity-id]').forEach((el) => {
-			positions.set((el as HTMLElement).dataset.entityId!, el.getBoundingClientRect());
-		});
-		return positions;
+		return capturePositions(containerEl, '[data-entity-id]', (el) => el.dataset.entityId);
 	}
 
 	// Apply FLIP animation from old positions to current positions
@@ -435,44 +399,81 @@
 			_flipSettled = Promise.resolve();
 			return;
 		}
-		// Signal that a FLIP animation is in progress; resolves after animations finish
+		// Signal that a FLIP animation is in progress; resolves after animations finish.
+		// (Owned here, not in playFlip, so instant / reduced-motion runs resolve it
+		// immediately above without a wasted 350ms wait.)
 		_flipSettled = new Promise((resolve) => setTimeout(resolve, 350));
-		await tick();
-		containerEl.querySelectorAll('[data-entity-id]').forEach((el) => {
-			const htmlEl = el as HTMLElement;
-			const id = htmlEl.dataset.entityId!;
-			const oldRect = oldPositions.get(id);
-			if (!oldRect) {
-				// New card — animate entrance
-				htmlEl.style.opacity = '0';
-				htmlEl.style.transform = 'scale(0.95)';
-				htmlEl.style.transition = 'none';
-				requestAnimationFrame(() => {
-					htmlEl.style.transition = 'opacity 250ms ease, transform 250ms ease';
-					htmlEl.style.opacity = '';
-					htmlEl.style.transform = '';
-					htmlEl.addEventListener('transitionend', () => {
-						htmlEl.style.transition = '';
-					}, { once: true });
-				});
-				return;
-			}
-
-			const newRect = el.getBoundingClientRect();
-			const dx = oldRect.left - newRect.left;
-			const dy = oldRect.top - newRect.top;
-			if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
-
-			htmlEl.style.transform = `translate(${dx}px, ${dy}px)`;
-			htmlEl.style.transition = 'none';
-			requestAnimationFrame(() => {
-				htmlEl.style.transition = 'transform 300ms ease';
-				htmlEl.style.transform = '';
-				htmlEl.addEventListener('transitionend', () => {
-					htmlEl.style.transition = '';
-				}, { once: true });
-			});
+		await playFlip(containerEl, '[data-entity-id]', (el) => el.dataset.entityId, oldPositions, {
+			axis: 'xy',
+			durationMs: 300,
+			animateEntrance: true,
+			entranceDurationMs: 250,
 		});
+	}
+
+	// Build the /cards/grouped query params shared by loadGroups and loadMoreGroups
+	// (minus limit/offset, which the caller sets). Pure of the fetch itself so the
+	// two paths can't drift.
+	function buildGroupedParams(f: FeedFilters, date: string) {
+		// Read searchQuery WITHOUT tracking it. loadGroups() runs synchronously
+		// inside the $feedDate/$feedFilters reload effect, so a tracked read here
+		// silently made searchQuery a dependency of that effect — every keystroke
+		// re-ran it and fired a full GET /cards/grouped, defeating the 300ms search
+		// debounce (review §2 UI — P4-29). Backend search only applies in all-days
+		// mode (see the search/tags params below), which reloads via its own
+		// debounced effect; normal-mode search is filtered client-side.
+		const _tagTokens: string[] = [];
+		const _textTokens: string[] = [];
+		untrack(() => {
+			for (const token of searchQuery.trim().split(/\s+/)) {
+				if (token.startsWith('#') && token.length > 1) {
+					_tagTokens.push(token.slice(1));
+				} else if (token) {
+					_textTokens.push(token);
+				}
+			}
+		});
+		const _searchText = _textTokens.join(' ');
+		const isAllDays = f.showAllDaysSearch;
+		return {
+			status: f.statusFilters.length ? f.statusFilters.join(',') : undefined,
+			priority: f.priorityFilters.length ? f.priorityFilters.join(',') : undefined,
+			sort: f.sortBy,
+			sort_asc: f.sortAsc || undefined,
+			show_archived: f.showArchived || undefined,
+			date: (f.showBookmarked || f.showRelated || isAllDays) ? undefined : date,
+			space_id: f.spaceFilter.length ? f.spaceFilter.join(',') : undefined,
+			bookmarked: f.showBookmarked || undefined,
+			related_entity_ids: f.showRelated ? f.relatedEntityIds.join(',') : undefined,
+			has_workspace: f.hasWorkspace || undefined,
+			unread_only: f.showUnreadOnly || undefined,
+			search: isAllDays && _searchText ? _searchText : undefined,
+			tags: isAllDays && _tagTokens.length ? _tagTokens.join(',') : undefined
+		};
+	}
+
+	// Fetch the next page of groups and APPEND (dedup by entity_id — offset paging
+	// over a live, re-sorting list can re-surface a group). Never resets the list,
+	// so it doesn't disturb the current scroll position or selection (P4-9).
+	async function loadMoreGroups() {
+		if (loadingMoreGroups || !hasMoreGroups) return;
+		loadingMoreGroups = true;
+		try {
+			const data = await engineApi.getGroupedCards({
+				...buildGroupedParams($feedFilters, $feedDate),
+				limit: GROUPS_PAGE_SIZE,
+				offset: groups.length
+			});
+			const seen = new Set(groups.map((g) => g.entity_id));
+			const fresh = data.groups.filter((g) => !seen.has(g.entity_id));
+			groups = [...groups, ...fresh];
+			totalGroups = data.total_groups;
+			hasMoreGroups = data.has_more ?? false;
+		} catch {
+			// Best-effort — leave the current list intact on failure.
+		} finally {
+			loadingMoreGroups = false;
+		}
 	}
 
 	async function loadGroups() {
@@ -481,33 +482,10 @@
 		error = null;
 		try {
 			const f = $feedFilters;
-			// Extract #tag tokens from search query
-			const _tagTokens: string[] = [];
-			const _textTokens: string[] = [];
-			for (const token of searchQuery.trim().split(/\s+/)) {
-				if (token.startsWith('#') && token.length > 1) {
-					_tagTokens.push(token.slice(1));
-				} else if (token) {
-					_textTokens.push(token);
-				}
-			}
-			const _searchText = _textTokens.join(' ');
-			const isAllDays = f.showAllDaysSearch;
-
 			const data = await engineApi.getGroupedCards({
-				status: f.statusFilters.length ? f.statusFilters.join(',') : undefined,
-				priority: f.priorityFilters.length ? f.priorityFilters.join(',') : undefined,
-				sort: f.sortBy,
-				sort_asc: f.sortAsc || undefined,
-				show_archived: f.showArchived || undefined,
-				date: (f.showBookmarked || f.showRelated || isAllDays) ? undefined : $feedDate,
-				space_id: f.spaceFilter.length ? f.spaceFilter.join(',') : undefined,
-				bookmarked: f.showBookmarked || undefined,
-				related_entity_ids: f.showRelated ? f.relatedEntityIds.join(',') : undefined,
-				has_workspace: f.hasWorkspace || undefined,
-				unread_only: f.showUnreadOnly || undefined,
-				search: isAllDays && _searchText ? _searchText : undefined,
-				tags: isAllDays && _tagTokens.length ? _tagTokens.join(',') : undefined
+				...buildGroupedParams(f, $feedDate),
+				limit: GROUPS_PAGE_SIZE,
+				offset: 0
 			});
 			if (id !== _fetchId) return;
 
@@ -516,6 +494,7 @@
 
 			groups = data.groups;
 			totalGroups = data.total_groups;
+			hasMoreGroups = data.has_more ?? false;
 			$feedPrevDate = data.prev_date ?? null;
 			$feedNextDate = data.next_date ?? null;
 
@@ -526,7 +505,16 @@
 				if (savedCardId) {
 					for (const g of data.groups) {
 						const found = g.cards.find((c) => c.card_id === savedCardId);
-						if (found) { selectedCard = found; break; }
+						if (found) {
+							selectedCard = found;
+							// The grouped payload is slimmed (no staged_output/suggested_actions
+							// — P4-9); unlike selectCard(), this restore path never hydrated, so
+							// the detail panel would render permanently without them. Re-fetch.
+							engineApi.getCard(found.card_id).then((fresh) => {
+								if (selectedCard?.card_id === found.card_id) selectedCard = fresh as ActionCard;
+							}).catch(() => {});
+							break;
+						}
 					}
 				} else if (savedGroupId) {
 					const g = data.groups.find((g) => g.entity_id === savedGroupId);
@@ -594,6 +582,19 @@
 		loadGroups();
 	});
 
+	// Resync after a WebSocket reconnect. The store wipes its buffered messages on
+	// disconnect, so after an engine restart the feed would otherwise stay silently
+	// stale until the user changed a filter (review §2 UI — P4-30). Fire only on a
+	// genuine reconnect (2nd+ time we reach 'connected'), not the initial connect —
+	// the mount-time reload effect above already fetched.
+	let _hasConnectedBefore = false;
+	$effect(() => {
+		if ($wsStatus === 'connected') {
+			if (_hasConnectedBefore) scheduleReload();
+			_hasConnectedBefore = true;
+		}
+	});
+
 	// Load available tags for the filter
 	$effect(() => {
 		engineApi.listTags().then(r => { availableTags = r.tags; }).catch(() => {});
@@ -615,10 +616,14 @@
 		}
 	});
 
-	// Load summary when date changes while modal is open
+	// Reload the summary only when the DATE changes while the modal is open.
+	// summaryModalOpen is read untracked so the modal-OPEN transition doesn't also
+	// trigger here — the effect above ($summaryModalStore → loadSummary) already
+	// owns "load on open". Both firing (plus the button calling loadSummary
+	// directly) caused 2-3 duplicate fetches per open (review §2 UI — P4-34).
 	$effect(() => {
 		$feedDate;
-		if (summaryModalOpen) loadSummary();
+		if (untrack(() => summaryModalOpen)) loadSummary();
 	});
 
 	// One-time integrations setup popup — show once on first feed visit after setup
@@ -735,22 +740,18 @@
 		_lastProcessedMsg = msg;
 
 		if (msg.type === 'action_payload_updated' && msg.card_id) {
-			// Merge the updated action payload into the cached card so CardDetail
+			// Merge the updated action payload into the open detail card so CardDetail
 			// reflects fresh state (polish result, _polishing spinner, _edited flag).
+			// Only selectedCard is patched now: the grouped list payload is slimmed of
+			// suggested_actions (P4-9) and nothing in the list renders them, so there's
+			// no grouped-card copy to keep in sync.
 			const actionId = (msg as { action_id?: string }).action_id;
 			const newPayload = (msg.payload as { payload?: Record<string, unknown> })?.payload;
-			if (actionId && newPayload) {
-				for (const group of groups) {
-					const card = group.cards.find((c) => c.card_id === msg.card_id);
-					if (!card || !card.suggested_actions) continue;
-					const action = card.suggested_actions.find((a) => a.action_id === actionId);
-					if (!action) continue;
+			if (actionId && newPayload && selectedCard?.card_id === msg.card_id && selectedCard.suggested_actions) {
+				const action = selectedCard.suggested_actions.find((a) => a.action_id === actionId);
+				if (action) {
 					action.payload = { ...action.payload, ...newPayload };
-					if (selectedCard?.card_id === msg.card_id) {
-						selectedCard = { ...card };
-					}
-					groups = groups;
-					break;
+					selectedCard = { ...selectedCard };
 				}
 			}
 			return;
@@ -765,107 +766,44 @@
 				sessionStorage.removeItem(SELECTED_CARD_KEY);
 			}
 			feedSelection.removeDeleted(msg.card_id);
-			groups = groups
-				.map((g) => ({ ...g, cards: g.cards.filter((c) => c.card_id !== msg.card_id) }))
-				.filter((g) => g.cards.length > 0);
+			groups = removeCardFromGroups(groups, msg.card_id);
 			totalGroups = groups.length;
 		} else if (msg.type === 'card_updated' && msg.card_id) {
-			const payload = msg.payload as {
-				status?: string;
-				header?: string;
-				summary?: string;
-				priority?: string;
-				persona?: string;
-				category?: string;
-				has_workspace?: boolean;
-				session_id?: string;
-				selected_action_id?: string;
-				bookmarked_at?: string | null;
-			};
-
-			// Check if the new status is excluded by active filters
-			if (payload.status) {
-				const activeStatuses = $feedFilters.statusFilters;
-				const isArchived = payload.status === 'archived';
-				const excludedByArchiveToggle = isArchived && !$feedFilters.showArchived;
-				const excludedByStatusFilter = activeStatuses.length > 0 && !activeStatuses.includes(payload.status);
-
-				if (excludedByArchiveToggle || excludedByStatusFilter) {
-					const cardId = msg.card_id!;
-					// Mark card as exiting to trigger fade-out transition
-					exitingCardIds = new Set([...exitingCardIds, cardId]);
-					feedSelection.removeDeleted(cardId);
-					if (selectedCard?.card_id === cardId) {
-						selectedCard = null;
-						sessionStorage.removeItem(SELECTED_CARD_KEY);
-					}
-					// Remove after transition completes
+			// Pure reducer decides the next state + the side effects; the loop
+			// below runs them. See cardUpdateReducer.ts for the extracted logic
+			// (P7-7) and its unit tests.
+			const result = reduceCardUpdated(
+				groups,
+				selectedCard,
+				msg.card_id,
+				msg.payload as CardUpdatePayload,
+				{
+					statusFilters: $feedFilters.statusFilters,
+					showArchived: $feedFilters.showArchived,
+					sortBy: $feedFilters.sortBy,
+				}
+			);
+			groups = result.groups;
+			selectedCard = result.selectedCard;
+			for (const eff of result.effects) {
+				if (eff.kind === 'reload') {
+					scheduleReload();
+				} else if (eff.kind === 'removeFromSelection') {
+					feedSelection.removeDeleted(eff.cardId);
+				} else if (eff.kind === 'deselect') {
+					sessionStorage.removeItem(SELECTED_CARD_KEY);
+				} else if (eff.kind === 'exitThenRemove') {
+					const id = eff.cardId;
+					// Mark the card exiting to trigger the fade-out, then drop it once
+					// the transition completes (loadGroups' FLIP animates the reflow).
+					exitingCardIds = new Set([...exitingCardIds, id]);
 					setTimeout(() => {
-						groups = groups
-							.map((g) => ({ ...g, cards: g.cards.filter((c) => c.card_id !== cardId) }))
-							.filter((g) => g.cards.length > 0);
+						groups = removeCardFromGroups(groups, id);
 						totalGroups = groups.length;
-						exitingCardIds = new Set([...exitingCardIds].filter((id) => id !== cardId));
+						exitingCardIds = new Set([...exitingCardIds].filter((x) => x !== id));
 					}, EXIT_DURATION);
-					return;
 				}
 			}
-
-			let found = false;
-			for (const group of groups) {
-				const card = group.cards.find((c) => c.card_id === msg.card_id);
-				if (card) {
-					found = true;
-					if (payload.status) {
-						// When a card transitions from agent_running to a real status,
-						// the full card data (suggested_actions, intelligence, etc.) has
-						// changed significantly — reload to get fresh data from the API.
-						const wasAgent = card.status === 'agent_running';
-						card.status = payload.status as ActionCard['status'];
-						if (payload.header) card.header = payload.header;
-						if (payload.summary) card.summary = payload.summary;
-						if (payload.selected_action_id) card.selected_action_id = payload.selected_action_id;
-						group.has_pending = group.cards.some((c) => c.status === 'pending' || c.status === 'ready');
-						if (wasAgent && payload.status !== 'agent_running') {
-							scheduleReload();
-						}
-					}
-					if (payload.priority) {
-						card.priority = payload.priority as ActionCard['priority'];
-						// The group's top_priority is a server-computed field (most severe
-						// priority across its cards). It's shown in the group header badge but
-						// isn't refreshed by the in-place card mutation above — recompute it here
-						// so the header stays correct in every sort/view (incl. Newest, where we
-						// don't refetch below).
-						group.top_priority = group.cards.reduce(
-							(top, c) => (PRIORITY_RANK[c.priority] < PRIORITY_RANK[top] ? c.priority : top),
-							group.cards[0]?.priority ?? 'MEDIUM'
-						) as CardGroup['top_priority'];
-					}
-					if (payload.persona) card.persona = payload.persona as ActionCard['persona'];
-					if (payload.has_workspace !== undefined) card.has_workspace = payload.has_workspace;
-					if ('bookmarked_at' in payload) card.bookmarked_at = payload.bookmarked_at ?? undefined;
-					if (selectedCard?.card_id === msg.card_id) {
-						selectedCard = { ...selectedCard, ...card } as ActionCard;
-					}
-					groups = groups;
-					// Group ordering + section bucketing (group.sort_key) are computed
-					// server-side and go stale on an in-place card mutation. When the active
-					// sort depends on a field that just changed, refetch so the group re-sorts /
-					// re-sections (loadGroups runs a FLIP animation for a smooth move). Without
-					// this, e.g. a card reclassified CRIT→LOW keeps its top slot under Priority.
-					const sort = $feedFilters.sortBy;
-					const affectsSort =
-						(sort === 'priority' && payload.priority) ||
-						(sort === 'persona' && payload.persona) ||
-						(sort === 'status' && payload.status);
-					if (affectsSort) scheduleReload();
-					break;
-				}
-			}
-			// Card not in current groups — may have been created while on another
-			// page or the card_created message was missed. Reload to pick it up.
-			if (!found) scheduleReload();
 		} else if (msg.type === 'context_group_unlinked' || msg.type === 'context_group_merged') {
 			// Context group structure changed — reload to reflect new grouping
 			scheduleReload();
@@ -1145,8 +1083,7 @@
 	}
 
 	function handleRecentCardClick(entry: RecentCardEntry) {
-		// Capture positions before the reorder for FLIP animation
-		flipRecentCards();
+		// The RecentDrawer owns the reorder FLIP; this just navigates + reorders.
 		if (entry.type === 'group') {
 			const group = groups.find((g) => g.entity_id === entry.card_id);
 			if (group) {
@@ -1169,17 +1106,6 @@
 			gotoCard(card as ActionCard);
 			selectCard(card as ActionCard);
 		}).catch(() => {});
-	}
-
-	function formatRecentTime(epochMs: number): string {
-		const diff = Date.now() - epochMs;
-		const mins = Math.floor(diff / 60_000);
-		if (mins < 1) return 'just now';
-		if (mins < 60) return `${mins}m ago`;
-		const hours = Math.floor(mins / 60);
-		if (hours < 24) return `${hours}h ago`;
-		const days = Math.floor(hours / 24);
-		return `${days}d ago`;
 	}
 
 	const totalCards = $derived(groups.reduce((sum, g) => sum + g.card_count, 0));
@@ -1230,8 +1156,9 @@
 			card.status,
 			privacyLabel,
 			...(card.intelligence ?? []),
-			card.staged_output?.content,
-			...(card.suggested_actions?.map((a) => a.label) ?? []),
+			// staged_output/suggested_actions are slimmed from the grouped payload
+			// (P4-9) and are not scanned by the backend search either (P4-10), so the
+			// client-side filter matches the same fields the server does.
 			...(card.tags?.map((t) => t.tag_name) ?? [])
 		]
 			.filter(Boolean)
@@ -1802,7 +1729,7 @@
 						<button
 							class="flex w-full items-center gap-2 whitespace-nowrap px-4 py-1.5 text-laya-secondary transition-colors hover:bg-surface-700
 								{summaryModalOpen ? 'text-laya-orange' : 'text-surface-300'}"
-							onclick={() => { setSummaryModalOpen(true); loadSummary(); feedActionsMenuOpen = false; }}
+							onclick={() => { setSummaryModalOpen(true); feedActionsMenuOpen = false; }}
 						>
 							<svg class="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
@@ -1879,7 +1806,7 @@
 			<div class="h-5 w-px bg-surface-700/60 mx-0.5"></div>
 
 			<button
-				onclick={() => { setSummaryModalOpen(true); loadSummary(); }}
+				onclick={() => { setSummaryModalOpen(true); }}
 				class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-laya-secondary transition-colors
 					{summaryModalOpen
 						? 'border-laya-orange/30 bg-laya-orange/10 text-laya-orange'
@@ -1893,185 +1820,11 @@
 		{/if}
 
 		<!-- Filter popover (rendered outside collapse conditional so it works in both modes) -->
-		{#if filterPopoverOpen}
-			<div use:portal bind:this={filterMenuEl} class="filter-dropdown fixed z-[100] w-64 overflow-y-auto rounded-xl border p-3 {$glassTheme ? 'glass-menu' : 'border-surface-600 bg-surface-800 shadow-xl shadow-black/30'}" style="top: {filterMenuPos.top}px; left: {filterMenuPos.left}px; max-height: calc(100vh - {filterMenuPos.top}px - 16px);">
-				<!-- Sort -->
-				<div class="mb-3">
-					<div class="mb-1.5 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">Sort</div>
-					<div class="flex items-center gap-1.5">
-						<div class="flex flex-1 items-center gap-1.5 rounded-lg border border-surface-700 bg-surface-900/60 px-2 py-1">
-							<svg class="h-3.5 w-3.5 text-surface-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
-							</svg>
-							<select
-								bind:value={$feedFilters.sortBy}
-								class="flex-1 bg-transparent text-laya-secondary text-surface-200 outline-none cursor-pointer appearance-none pr-4"
-								style="background-image: url('data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%2712%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%23888%27 stroke-width=%272%27%3E%3Cpath d=%27M6 9l6 6 6-6%27/%3E%3C/svg%3E'); background-repeat: no-repeat; background-position: right 0 center;"
-							>
-								<option value="newest">Newest</option>
-								<option value="priority">Priority</option>
-								<option value="status">Status</option>
-								<option value="persona">Persona</option>
-								<option value="category">Category</option>
-								<option value="platform">Source</option>
-								<option value="actor">Actor</option>
-							</select>
-						</div>
-						<button
-							aria-label="Toggle sort direction"
-							class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-surface-700 bg-surface-900/60 text-surface-400 transition-colors hover:bg-surface-700 hover:text-surface-200"
-							onclick={() => ($feedFilters.sortAsc = !$feedFilters.sortAsc)}
-						>
-							<svg class="h-3 w-3 transition-transform {$feedFilters.sortAsc ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-							</svg>
-						</button>
-					</div>
-				</div>
-
-				<!-- Workspace -->
-				{#if $spaces.length > 1}
-					<div class="mb-3">
-						<div class="mb-1.5 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">Workspace</div>
-						<div class="space-y-0.5">
-							{#each $spaces as space}
-								<button
-									class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-laya-secondary transition-colors hover:bg-surface-700
-										{$feedFilters.spaceFilter.includes(space.space_id) ? 'text-laya-orange' : 'text-surface-300'}"
-									onclick={() => ($feedFilters.spaceFilter = toggleFilter($feedFilters.spaceFilter, space.space_id))}
-								>
-									<span class="flex h-4 w-4 items-center justify-center rounded border {$feedFilters.spaceFilter.includes(space.space_id) ? 'border-laya-orange bg-laya-orange/20' : 'border-surface-600'}">
-										{#if $feedFilters.spaceFilter.includes(space.space_id)}
-											<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
-											</svg>
-										{/if}
-									</span>
-									<span class="h-2 w-2 rounded-full shrink-0" style="background-color: {space.color}"></span>
-									{space.name}
-								</button>
-							{/each}
-						</div>
-					</div>
-				{/if}
-
-				<!-- Status -->
-				<div class="mb-3">
-					<div class="mb-1.5 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">Status</div>
-					<div class="space-y-0.5">
-						{#each [['pending', 'Processing'], ['ready', 'Ready'], ['agent_running', 'Running'], ['failed', 'Failed'], ['done', 'Done'], ['dismissed', 'Dismissed']] as [value, label]}
-							<button
-								class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-laya-secondary transition-colors hover:bg-surface-700
-									{$feedFilters.statusFilters.includes(value) ? 'text-laya-orange' : 'text-surface-300'}"
-								onclick={() => ($feedFilters.statusFilters = toggleFilter($feedFilters.statusFilters, value))}
-							>
-								<span class="flex h-4 w-4 items-center justify-center rounded border {$feedFilters.statusFilters.includes(value) ? 'border-laya-orange bg-laya-orange/20' : 'border-surface-600'}">
-									{#if $feedFilters.statusFilters.includes(value)}
-										<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
-										</svg>
-									{/if}
-								</span>
-								{label}
-							</button>
-						{/each}
-					</div>
-				</div>
-
-				<!-- Priority -->
-				<div class="mb-3">
-					<div class="mb-1.5 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">Priority</div>
-					<div class="space-y-0.5">
-						{#each [['CRITICAL', 'Critical'], ['HIGH', 'High'], ['MEDIUM', 'Medium'], ['LOW', 'Low']] as [value, label]}
-							<button
-								class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-laya-secondary transition-colors hover:bg-surface-700
-									{$feedFilters.priorityFilters.includes(value) ? 'text-laya-orange' : 'text-surface-300'}"
-								onclick={() => ($feedFilters.priorityFilters = toggleFilter($feedFilters.priorityFilters, value))}
-							>
-								<span class="flex h-4 w-4 items-center justify-center rounded border {$feedFilters.priorityFilters.includes(value) ? 'border-laya-orange bg-laya-orange/20' : 'border-surface-600'}">
-									{#if $feedFilters.priorityFilters.includes(value)}
-										<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
-										</svg>
-									{/if}
-								</span>
-								{label}
-							</button>
-						{/each}
-					</div>
-				</div>
-
-				<!-- Toggles -->
-				<div class="mb-2 space-y-0.5">
-					<button
-						class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-laya-secondary transition-colors hover:bg-surface-700
-							{$feedFilters.showArchived ? 'text-laya-orange' : 'text-surface-300'}"
-						onclick={() => ($feedFilters.showArchived = !$feedFilters.showArchived)}
-					>
-						<span class="flex h-4 w-4 items-center justify-center rounded border {$feedFilters.showArchived ? 'border-laya-orange bg-laya-orange/20' : 'border-surface-600'}">
-							{#if $feedFilters.showArchived}
-								<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
-								</svg>
-							{/if}
-						</span>
-						Show Archived
-					</button>
-					<button
-						class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-laya-secondary transition-colors hover:bg-surface-700
-							{$feedFilters.hasWorkspace ? 'text-laya-orange' : 'text-surface-300'}"
-						onclick={() => ($feedFilters.hasWorkspace = !$feedFilters.hasWorkspace)}
-					>
-						<span class="flex h-4 w-4 items-center justify-center rounded border {$feedFilters.hasWorkspace ? 'border-laya-orange bg-laya-orange/20' : 'border-surface-600'}">
-							{#if $feedFilters.hasWorkspace}
-								<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
-								</svg>
-							{/if}
-						</span>
-						Has Workspace
-					</button>
-					<button
-						class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-laya-secondary transition-colors hover:bg-surface-700
-							{$feedFilters.showUnreadOnly ? 'text-laya-orange' : 'text-surface-300'}"
-						onclick={() => ($feedFilters.showUnreadOnly = !$feedFilters.showUnreadOnly)}
-					>
-						<span class="flex h-4 w-4 items-center justify-center rounded border {$feedFilters.showUnreadOnly ? 'border-laya-orange bg-laya-orange/20' : 'border-surface-600'}">
-							{#if $feedFilters.showUnreadOnly}
-								<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
-								</svg>
-							{/if}
-						</span>
-						Unread Only
-					</button>
-				</div>
-
-				<!-- Clear all -->
-				{#if hasActiveFilters}
-					<div class="border-t border-surface-700 pt-2">
-						<button
-							class="w-full rounded-md px-2 py-1 text-laya-secondary font-medium text-surface-500 transition-colors hover:text-surface-300 hover:bg-surface-700"
-							onclick={() => {
-								$feedFilters.statusFilters = [];
-								$feedFilters.priorityFilters = [];
-								$feedFilters.showArchived = false;
-								$feedFilters.showBookmarked = false;
-								$feedFilters.hasWorkspace = false;
-								$feedFilters.showUnreadOnly = false;
-								$feedFilters.spaceFilter = [];
-								$feedFilters.showRelated = false;
-								$feedFilters.relatedEntityIds = [];
-								$feedFilters.relatedSourceHeader = '';
-								$feedFilters.relatedSourceCardId = '';
-							}}
-						>
-							Clear all filters
-						</button>
-					</div>
-				{/if}
-			</div>
-		{/if}
+		<FilterPopover
+			open={filterPopoverOpen}
+			pos={filterMenuPos}
+			hasActiveFilters={hasActiveFilters}
+		/>
 
 		<!-- Separator -->
 		<div class="h-5 w-px bg-surface-700/60 mx-1"></div>
@@ -2193,70 +1946,14 @@
 	<!-- Content area: recent drawer + cards + detail panel side by side -->
 	<div class="flex min-h-0 flex-1 gap-4" class:panel-transitioning={panelTransitioning}>
 		<!-- Recent Cards drawer -->
-		<div class="flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-in-out {$recentDrawerOpen ? 'w-[260px]' : 'w-0'}">
-			<div class="flex h-full w-[260px] flex-col overflow-hidden rounded-xl border {$glassTheme ? 'glass-card border-surface-700/40 bg-surface-900/40' : 'border-surface-700/50 bg-surface-900/60'}">
-				<div class="flex items-center justify-between border-b border-surface-700/50 px-3 py-2">
-					<span class="text-laya-secondary font-medium text-surface-300">Recent Cards</span>
-					<div class="flex items-center gap-1">
-						{#if filteredRecentCards.length > 0}
-							<button
-								class="rounded p-0.5 text-surface-600 transition-colors hover:text-surface-300"
-								onclick={() => clearRecentCards()}
-								title="Clear history"
-							>
-								<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-								</svg>
-							</button>
-						{/if}
-						<button
-							class="rounded p-0.5 text-surface-600 transition-colors hover:text-surface-300"
-							onclick={toggleRecentDrawer}
-							title="Close"
-						>
-							<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-							</svg>
-						</button>
-					</div>
-				</div>
-				<div bind:this={recentListEl} class="flex-1 overflow-y-auto">
-					{#if filteredRecentCards.length === 0}
-						<div class="flex flex-col items-center justify-center px-4 py-8 text-surface-600">
-							<svg class="mb-2 h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-							</svg>
-							<p class="text-laya-secondary">{$feedFilters.spaceFilter.length ? 'No recent cards in selected spaces' : 'No recent cards yet'}</p>
-							<p class="mt-0.5 text-laya-micro text-surface-700">Cards you view will appear here</p>
-						</div>
-					{:else}
-						{#each filteredRecentCards as entry (entry.card_id)}
-							<button
-								data-recent-id={entry.card_id}
-								class="flex w-full flex-col gap-0.5 border-b border-surface-800/50 px-3 py-2 text-left transition-colors {$glassTheme ? 'hover:bg-white/[0.06]' : 'hover:bg-surface-800/60'}
-									{(selectedCard?.card_id === entry.card_id || (entry.type === 'group' && selectedGroupSummary?.group.entity_id === entry.card_id)) ? 'bg-laya-orange/5 border-l-2 border-l-laya-orange/40' : ''}"
-								onclick={() => handleRecentCardClick(entry)}
-							>
-								<div class="flex items-start justify-between gap-2">
-									<span class="line-clamp-1 text-laya-secondary text-surface-200">{entry.header}</span>
-									<span class="shrink-0 text-laya-micro text-surface-600">{formatRecentTime(entry.visited_at)}</span>
-								</div>
-								<span class="line-clamp-1 text-laya-micro text-surface-500">
-									{#if entry.type === 'group'}
-										{entry.card_count} cards{#if entry.source_ref} · {entry.source_ref}{/if}
-									{:else}
-										{#if entry.source_ref}{entry.source_ref}{:else if entry.entity_id}{entry.entity_id}{:else if entry.category}{entry.category}{/if}
-									{/if}
-									{#if entry.space_name}
-										<span class="text-surface-600"> · {entry.space_name}</span>
-									{/if}
-								</span>
-							</button>
-						{/each}
-					{/if}
-				</div>
-			</div>
-		</div>
+		<RecentDrawer
+			cards={filteredRecentCards}
+			spaceFiltered={$feedFilters.spaceFilter.length > 0}
+			selectedCardId={selectedCard?.card_id ?? null}
+			selectedGroupEntityId={selectedGroupSummary?.group.entity_id ?? null}
+			onNavigate={handleRecentCardClick}
+			onToggle={toggleRecentDrawer}
+		/>
 		<!-- Cards / Summary / List section -->
 		<!-- data-view-mode: scopes the panel-transitioning container-type toggle in app.css
 		     to list view only — card view must never have container-type flipped mid-slide,
@@ -2420,6 +2117,19 @@
 					{/each}
 				</div>
 			{/if}
+			{#if hasMoreGroups}
+				<!-- Group pagination: load the next page of groups (P4-9). Sits below
+				     both list and card views; hidden when the server has no more. -->
+				<div class="flex w-full justify-center py-6">
+					<button
+						class="rounded-lg border border-surface-600 bg-surface-800 px-6 py-2.5 text-laya-base font-medium text-surface-200 transition-colors hover:border-laya-orange/40 hover:bg-surface-700 disabled:cursor-not-allowed disabled:opacity-60"
+						onclick={loadMoreGroups}
+						disabled={loadingMoreGroups}
+					>
+						{loadingMoreGroups ? 'Loading…' : `Load more (${totalGroups - groups.length} more)`}
+					</button>
+				</div>
+			{/if}
 		</div>
 
 		<!-- Detail panel -->
@@ -2551,45 +2261,16 @@
 {/if}
 
 <!-- Summary modal -->
-{#if summaryModalOpen}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div
-		class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-		onclick={(e) => { if (e.target === e.currentTarget) setSummaryModalOpen(false); }}
-		onkeydown={(e) => { if (e.key === 'Escape') setSummaryModalOpen(false); }}
-	>
-		<div class="relative mx-4 flex max-h-[90vh] w-full max-w-6xl flex-col rounded-xl border {$glassTheme ? 'glass-card border-surface-700/40 bg-surface-900/40' : 'border-surface-700 bg-surface-800 shadow-2xl'}">
-			<!-- Header -->
-			<div class="flex items-center justify-between border-b px-6 py-4 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
-				<div class="flex items-center gap-2">
-					<svg class="h-4 w-4 text-laya-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-					</svg>
-					<h2 class="text-laya-base font-semibold text-surface-100">Day Summary — {formatDateLabel($feedDate)}</h2>
-				</div>
-				<button
-					onclick={() => setSummaryModalOpen(false)}
-					class="text-surface-500 hover:text-surface-300 transition-colors"
-					aria-label="Close"
-				>
-					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-					</svg>
-				</button>
-			</div>
-			<!-- Body -->
-			<div class="flex-1 overflow-y-auto p-6">
-				{#if summaryLoading}
-					<div class="flex h-48 items-center justify-center text-surface-400">
-						<span class="text-laya-base">Loading summary...</span>
-					</div>
-				{:else}
-					<DaySummaryComponent summary={filteredDaySummary} updatedAt={summaryUpdatedAt} ongotocard={handleSummaryGotoCard} spaceFilter={$feedFilters.spaceFilter} />
-				{/if}
-			</div>
-		</div>
-	</div>
-{/if}
+<SummaryModal
+	open={summaryModalOpen}
+	summary={filteredDaySummary}
+	loading={summaryLoading}
+	updatedAt={summaryUpdatedAt}
+	dateLabel={formatDateLabel($feedDate)}
+	spaceFilter={$feedFilters.spaceFilter}
+	onClose={() => setSummaryModalOpen(false)}
+	onGotoCard={handleSummaryGotoCard}
+/>
 
 {#if showTagAutocomplete && tagSuggestions.length > 0}
 	<div

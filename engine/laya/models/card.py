@@ -38,6 +38,10 @@ class ActionCardData(BaseModel):
     suggested_actions: list[SuggestedAction] = Field(default_factory=list)
     privacy_tier: int = Field(default=2, ge=1, le=3)
     suggested_tags: list[str] = Field(default_factory=list)
+    # Cross-entity context match the stager already identified. Carried through
+    # so emit.py can reuse it instead of paying a redundant post-emit ChromaDB
+    # search + confirm_context_link LLM call (see code-review-2026-07 §1.1).
+    context_match: dict | None = None
 
 
 class TagResponse(BaseModel):
@@ -159,6 +163,7 @@ class GroupedCardsResponse(BaseModel):
 
     groups: list[CardGroup]
     total_groups: int
+    has_more: bool = False
     date: str | None = None
     prev_date: str | None = None
     next_date: str | None = None

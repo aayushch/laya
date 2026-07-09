@@ -1,6 +1,7 @@
 <!-- Copyright 2026 Aayush Chawla -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
+	import { PRIORITY_COLORS } from '$lib/utils/cardVisuals';
 	import type { ActionCard } from '$lib/api/types';
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
@@ -56,12 +57,7 @@
 		archived: 'text-surface-600'
 	};
 
-	const priorityColors: Record<string, string> = {
-		CRITICAL: 'bg-red-600 text-red-50',
-		HIGH: 'bg-orange-500 text-orange-50',
-		MEDIUM: 'bg-laya-coral/20 text-laya-coral',
-		LOW: 'bg-laya-gold/25 text-laya-amber'
-	};
+	const priorityColors = PRIORITY_COLORS;
 
 	let platform = $derived(
 		card.entity_id && card.entity_id.includes(':') ? card.entity_id.split(':')[0] : ''

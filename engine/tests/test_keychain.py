@@ -20,12 +20,17 @@ from laya.security.keychain import (
 @pytest.fixture
 def mock_keyring():
     """Mock the keyring module."""
+    # Clear the module's TTL read cache so a value stored by one test doesn't
+    # leak into another test that expects a fresh keyring read (P5-2 cache).
+    from laya.security import keychain as _kc
+    _kc._KEY_CACHE.clear()
     mock = MagicMock()
     mock.get_password = MagicMock(return_value=None)
     mock.set_password = MagicMock()
     mock.delete_password = MagicMock()
     with patch.dict("sys.modules", {"keyring": mock}):
         yield mock
+    _kc._KEY_CACHE.clear()
 
 
 def test_store_and_retrieve(mock_keyring):

@@ -311,6 +311,22 @@ class N8nBackend(EgressBackend):
         """
         payload, event_ctx = await enrich_payload_from_event(request)
 
+        # Validate the enriched payload against the platform adapter's contract
+        # before dispatch. validate_payload was previously dead (~250 lines across
+        # 10 adapters) — invalid payloads travelled to n8n and failed with an
+        # opaque generic error. This single point covers the card, composer and
+        # chat paths, which all execute through here (review §2 egress — P4-19).
+        # Raises ValueError → caught in execute() and surfaced as a failed result.
+        from laya.egress import platforms as _platforms
+        _mod = _platforms.for_platform(request.platform)
+        if _mod is not None:
+            _errors = _mod.validate_payload(request.action_type, payload)
+            if _errors:
+                raise ValueError(
+                    f"Invalid {request.platform} {request.action_type} payload: "
+                    + "; ".join(_errors)
+                )
+
         # Guard: on-prem Bitbucket Server / Data Center can't be driven through the
         # Cloud executor (it targets api.bitbucket.org). Reject before dispatch so we
         # never fire a doomed Cloud API call. Raises ValueError → caught in execute().
@@ -418,10 +434,17 @@ class N8nBackend(EgressBackend):
                 )
 
         except httpx.TimeoutException:
+            # The n8n executor workflow runs to completion server-side; a POST
+            # timeout means the engine stopped waiting, NOT that the action
+            # failed. Marking it retryable re-executed the workflow and sent a
+            # SECOND email/comment. Treat a timeout as OUTCOME-UNKNOWN (not
+            # retryable) so it isn't blindly re-sent — the stable egr_{card_id}
+            # action_id would let the workflows dedupe a genuine retry, but that
+            # is a workflow-side change (review §2 egress — P4-20).
             return EgressResult(
                 success=False,
-                error="n8n request timed out",
-                retryable=True,
+                error="n8n request timed out — the action may have completed; verify before retrying",
+                retryable=False,
             )
         except httpx.ConnectError:
             return EgressResult(

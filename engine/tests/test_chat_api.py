@@ -378,3 +378,45 @@ class TestTitleGenerationBackground:
                 await _generate_title_background(conv_id, "triage my jira", None)
 
         assert await self._get_title(db, conv_id) == "Triage Jira Tickets"
+
+
+def test_cap_tool_result_passthrough_and_truncation():
+    """P6-12: small results pass through; oversized ones truncate with a hint."""
+    from laya.pipeline.chat import _cap_tool_result, _MAX_TOOL_RESULT_CHARS
+    assert _cap_tool_result("tiny") == "tiny"
+    big = "y" * (_MAX_TOOL_RESULT_CHARS * 3)
+    out = _cap_tool_result(big)
+    assert out.startswith("y" * _MAX_TOOL_RESULT_CHARS)
+    assert len(out) < len(big)
+    assert "truncated" in out and "offset" in out
+
+
+@pytest.mark.asyncio
+async def test_prev_turn_used_tools_signal(db):
+    """P6-14: ambient retrieval is skipped when the last assistant turn used tools."""
+    from laya.pipeline.chat import _prev_turn_used_tools
+
+    await db.execute("INSERT INTO chat_conversations (conversation_id) VALUES ('conv_x')")
+    await db.commit()
+
+    async def _msg(mid, role, tools_json, conv="conv_x"):
+        await db.execute(
+            """INSERT INTO chat_messages (message_id, timestamp, role, content,
+                   conversation_id, tool_calls_json)
+               VALUES (?, datetime('now'), ?, 'hi', ?, ?)""",
+            (mid, role, conv, tools_json),
+        )
+        await db.commit()
+
+    # No conversation → False
+    assert await _prev_turn_used_tools(None) is False
+    # No messages yet → False
+    assert await _prev_turn_used_tools("conv_x") is False
+    # Last assistant turn had NO tools → False
+    await _msg("m1", "user", None)
+    await _msg("m2", "assistant", None)
+    assert await _prev_turn_used_tools("conv_x") is False
+    # Newer assistant turn USED tools → True
+    await _msg("m3", "user", None)
+    await _msg("m4", "assistant", '[{"name": "search_cards"}]')
+    assert await _prev_turn_used_tools("conv_x") is True

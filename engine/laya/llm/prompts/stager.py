@@ -49,6 +49,63 @@ def format_supported_actions(platform: str) -> str:
     lines.append("[END SUPPORTED ACTIONS]")
     return "\n".join(lines)
 
+_EMAIL_LINKS_BLOCK = """## Actionable Links (open_url)
+
+When the email body contains a URL that represents a clear user action — such as an \
+unsubscribe link, a subscription confirmation link, an approval link, or a verification \
+link — suggest an open_url action. Extract the EXACT URL from the email body and emit it \
+as the "url" content field. Use a descriptive label that explains what the link does \
+(e.g., "Unsubscribe", "Confirm Subscription", "View Invoice", "Approve Request"). \
+Do NOT suggest open_url for generic marketing links, homepage links, social media \
+profile links, or every hyperlink in the content — only for links that represent a \
+specific action the user would want to take.
+
+SECURITY — NEVER suggest open_url in any of these situations:
+- The email shows signs of phishing or social engineering: sender domain mismatch, \
+urgency/threat language ("your account will be suspended", "act now or lose access"), \
+requests for credentials or personal information, impersonation of known brands with \
+slight misspellings, or generic greetings ("Dear Customer", "Dear User").
+- The link domain does not plausibly match the sender's organization (e.g., sender is \
+newsletter@acme.com but the link goes to acme-login.suspicious-site.xyz).
+- The URL looks obfuscated, uses URL shorteners from unfamiliar services, or contains \
+suspicious patterns (IP addresses instead of domains, excessive subdomains, encoded \
+characters in the domain).
+When in doubt about the email's legitimacy, mention the link in the intelligence report \
+ONLY — do not surface it as a suggested action. A missed unsubscribe button is harmless; \
+a phishing link disguised as one is not. If the email appears to be spam or phishing, \
+flag it in the intelligence report."""
+
+
+_ISSUE_UPDATE_BLOCK = """- **Status changes** (issue_status_changed, issue_resolved, issue_assigned, \
+issue_priority_changed, issue_reopened): Generate a brief status update card. The header \
+should reflect the change (e.g., "BUG-1234 resolved as Fixed"), not re-describe the \
+original issue. Summary should be 1-2 sentences. Intelligence report should be 1-3 \
+bullets max. Do NOT repeat research or analysis from existing cards.
+
+- **Closure/Resolution** (issue_resolved): Summarize the outcome. If a resolution \
+comment or details exist, include them. Suggest relevant follow-up actions (e.g., \
+"Close related PR", "Update documentation", "Verify fix in staging").
+
+- **Comments** (issue_commented): Focus on the new comment content and what action it \
+requires. Do not re-summarize the original ticket.
+
+- **Reopened** (issue_reopened): Note the ticket was reopened and what the new status is. \
+Suggest investigation if the reopening implies the original fix was insufficient.
+
+- **New issues** (issue_created, or no existing cards): Full investigation as normal."""
+
+
+_PR_LIFECYCLE_BLOCK = """### PR lifecycle (Bitbucket / GitHub):
+- **Approvals** (pr_approved): Brief card noting who approved. 1-2 sentences max.
+- **Comments** (pr_commented): Focus on the comment content. Inline code comments \
+should reference the file and line. Do not re-summarize the PR description.
+- **Merged** (pr_merged): Concise closure card noting the merge. Include merge commit \
+if available. Suggest follow-up actions (e.g., "Delete source branch", "Deploy to staging").
+- **Declined** (pr_declined): Note the decline and reason if provided.
+- **Reopened** (pr_reopened): Note the reopen and suggest re-review if needed.
+- **New PRs** (pr_created, or no existing cards): Full investigation as normal."""
+
+
 STAGER_SYSTEM_PROMPT = """\
 You are the Stager for Laya, an AI-powered professional work assistant. Your job is to \
 synthesize worker investigation findings and event context into a polished action card \
@@ -102,31 +159,7 @@ conversation_id, thread_id, comment_id, timestamp, to) — they are filled \
 automatically by the engine from the source event. Emit ONLY the content \
 fields the action needs (e.g., comment body, email subject+body, issue \
 title+description, transition target_status, merge_method).
-## Actionable Links (open_url)
-
-When the email body contains a URL that represents a clear user action — such as an \
-unsubscribe link, a subscription confirmation link, an approval link, or a verification \
-link — suggest an open_url action. Extract the EXACT URL from the email body and emit it \
-as the "url" content field. Use a descriptive label that explains what the link does \
-(e.g., "Unsubscribe", "Confirm Subscription", "View Invoice", "Approve Request"). \
-Do NOT suggest open_url for generic marketing links, homepage links, social media \
-profile links, or every hyperlink in the content — only for links that represent a \
-specific action the user would want to take.
-
-SECURITY — NEVER suggest open_url in any of these situations:
-- The email shows signs of phishing or social engineering: sender domain mismatch, \
-urgency/threat language ("your account will be suspended", "act now or lose access"), \
-requests for credentials or personal information, impersonation of known brands with \
-slight misspellings, or generic greetings ("Dear Customer", "Dear User").
-- The link domain does not plausibly match the sender's organization (e.g., sender is \
-newsletter@acme.com but the link goes to acme-login.suspicious-site.xyz).
-- The URL looks obfuscated, uses URL shorteners from unfamiliar services, or contains \
-suspicious patterns (IP addresses instead of domains, excessive subdomains, encoded \
-characters in the domain).
-When in doubt about the email's legitimacy, mention the link in the intelligence report \
-ONLY — do not surface it as a suggested action. A missed unsubscribe button is harmless; \
-a phishing link disguised as one is not. If the email appears to be spam or phishing, \
-flag it in the intelligence report.
+{email_links_block}
 
 - **privacy_tier**: 1 (public-safe), 2 (internal), 3 (confidential — PII, credentials, \
 financial data detected)
@@ -147,33 +180,9 @@ summaries, intelligence bullets, or drafted content. Use plain text only.
 When existing cards are listed for the same entity, you are generating an UPDATE card, \
 not a first-time investigation. Follow these rules:
 
-- **Status changes** (issue_status_changed, issue_resolved, issue_assigned, \
-issue_priority_changed, issue_reopened): Generate a brief status update card. The header \
-should reflect the change (e.g., "BUG-1234 resolved as Fixed"), not re-describe the \
-original issue. Summary should be 1-2 sentences. Intelligence report should be 1-3 \
-bullets max. Do NOT repeat research or analysis from existing cards.
+{issue_update_block}
 
-- **Closure/Resolution** (issue_resolved): Summarize the outcome. If a resolution \
-comment or details exist, include them. Suggest relevant follow-up actions (e.g., \
-"Close related PR", "Update documentation", "Verify fix in staging").
-
-- **Comments** (issue_commented): Focus on the new comment content and what action it \
-requires. Do not re-summarize the original ticket.
-
-- **Reopened** (issue_reopened): Note the ticket was reopened and what the new status is. \
-Suggest investigation if the reopening implies the original fix was insufficient.
-
-- **New issues** (issue_created, or no existing cards): Full investigation as normal.
-
-### PR lifecycle (Bitbucket / GitHub):
-- **Approvals** (pr_approved): Brief card noting who approved. 1-2 sentences max.
-- **Comments** (pr_commented): Focus on the comment content. Inline code comments \
-should reference the file and line. Do not re-summarize the PR description.
-- **Merged** (pr_merged): Concise closure card noting the merge. Include merge commit \
-if available. Suggest follow-up actions (e.g., "Delete source branch", "Deploy to staging").
-- **Declined** (pr_declined): Note the decline and reason if provided.
-- **Reopened** (pr_reopened): Note the reopen and suggest re-review if needed.
-- **New PRs** (pr_created, or no existing cards): Full investigation as normal.
+{pr_lifecycle_block}
 
 For update cards, the staged_output type should be "status_update" unless the update \
 contains substantive new content requiring action (e.g., a comment requesting code review \
@@ -407,6 +416,38 @@ def _build_role_directive(
     return base + role_guidance
 
 
+# Platform families deciding which conditional stager blocks ship (review §3 —
+# P6-9). The email links/phishing block, the issue_* update rules, and the PR
+# lifecycle block are ~29% of the stager system prompt and were sent on EVERY
+# event regardless of source (email-phishing guidance on Jira events, PR-lifecycle
+# on emails). Each event now gets only its family's block(s); an unrecognized
+# platform (chat/calendar/new) gets the universal core alone.
+_EMAIL_PLATFORMS = frozenset({"gmail", "outlook"})
+_CODE_PLATFORMS = frozenset({"github", "bitbucket"})
+_ISSUE_PLATFORMS = frozenset({"jira", "linear"})
+
+
+def _stager_platform_blocks(platform: str | None) -> dict[str, str]:
+    """Return the conditional-block substitutions for an event's platform."""
+    p = (platform or "").lower()
+    return {
+        "email_links_block": _EMAIL_LINKS_BLOCK if p in _EMAIL_PLATFORMS else "",
+        "issue_update_block": _ISSUE_UPDATE_BLOCK if p in _ISSUE_PLATFORMS else "",
+        "pr_lifecycle_block": _PR_LIFECYCLE_BLOCK if p in _CODE_PLATFORMS else "",
+    }
+
+
+def build_stager_system_prompt(platform: str | None, strictness: str = "balanced") -> str:
+    """Assemble the stager system prompt for an event's platform family (P6-9)."""
+    directive = _CONTEXT_MATCHING_DIRECTIVES.get(
+        strictness, _CONTEXT_MATCHING_DIRECTIVES["balanced"]
+    )
+    return STAGER_SYSTEM_PROMPT.format(
+        context_matching_directive=directive,
+        **_stager_platform_blocks(platform),
+    )
+
+
 def build_stager_messages(
     event: LayaEvent,
     router_output: RouterOutput,
@@ -591,12 +632,8 @@ Router classification:
 
 Produce a JSON action card matching the required schema."""
 
-    directive = _CONTEXT_MATCHING_DIRECTIVES.get(
-        strictness, _CONTEXT_MATCHING_DIRECTIVES["balanced"]
-    )
-    system_prompt = STAGER_SYSTEM_PROMPT.format(
-        context_matching_directive=directive,
-    )
+    # Only ship the conditional blocks relevant to this event's platform (P6-9).
+    system_prompt = build_stager_system_prompt(event.source.platform, strictness)
 
     return [
         {"role": "system", "content": get_prompt("stager", system_prompt)},

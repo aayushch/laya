@@ -149,7 +149,9 @@
 							break;
 						case 'reopen':
 						case 'unarchive':
-							promises.push(engineApi.reopenCard(card.card_id).then(() => { card.status = 'ready'; }));
+							// Use the backend's restored status, not a hardcoded 'ready'
+							// (reopen restores the saved previous_status — review §2 UI — P4-31).
+							promises.push(engineApi.reopenCard(card.card_id).then((r) => { card.status = r.status as ActionCard['status']; }));
 							break;
 						case 'delete':
 							promises.push(engineApi.deleteCard(card.card_id).then(() => {

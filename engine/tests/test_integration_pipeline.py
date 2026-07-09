@@ -119,7 +119,7 @@ class TestPipelineIntegration:
         # Mock all router dependencies
         mock_router_resp = _mock_llm_response(MOCK_ROUTER_RESULT)
         with patch("laya.pipeline.router.llm_call", new_callable=AsyncMock, return_value=mock_router_resp):
-            with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]):
+            with patch("laya.pipeline.related_context.memory_search", new_callable=AsyncMock, return_value=[]):
                 with patch("laya.pipeline.feedback.query_feedback_patterns", new_callable=AsyncMock, return_value=[]):
                     router_output = await run_router(event, relationship)
 
@@ -129,7 +129,7 @@ class TestPipelineIntegration:
         # Mock stager dependencies
         mock_stager_resp = _mock_llm_response(MOCK_STAGER_RESULT)
         with patch("laya.pipeline.stager.llm_call", new_callable=AsyncMock, return_value=mock_stager_resp):
-            with patch("laya.pipeline.stager.memory_search", new_callable=AsyncMock, return_value=[]):
+            with patch("laya.pipeline.related_context.memory_search", new_callable=AsyncMock, return_value=[]):
                 stager_output = await run_stager(event, router_output)
 
         assert stager_output.header == "Fix NPE in PaymentService"
@@ -180,7 +180,7 @@ class TestPipelineIntegration:
             raise Exception("LLM down")
 
         with patch("laya.pipeline.router.llm_call", side_effect=_llm_fail):
-            with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]):
+            with patch("laya.pipeline.related_context.memory_search", new_callable=AsyncMock, return_value=[]):
                     with patch("laya.pipeline.feedback.query_feedback_patterns", new_callable=AsyncMock, return_value=[]):
                         with pytest.raises(Exception, match="LLM down"):
                             await run_router(event, relationship)
@@ -199,14 +199,14 @@ class TestPipelineIntegration:
                 relationship, _pr = await run_ingest(event)
 
         with patch("laya.pipeline.router.llm_call", new_callable=AsyncMock, return_value=mock_router_resp):
-            with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]):
+            with patch("laya.pipeline.related_context.memory_search", new_callable=AsyncMock, return_value=[]):
                 with patch("laya.pipeline.feedback.query_feedback_patterns", new_callable=AsyncMock, return_value=[]):
                     router_output = await run_router(event, relationship)
 
         assert not router_output.requires_research
 
         with patch("laya.pipeline.stager.llm_call", new_callable=AsyncMock, return_value=mock_stager_resp):
-            with patch("laya.pipeline.stager.memory_search", new_callable=AsyncMock, return_value=[]):
+            with patch("laya.pipeline.related_context.memory_search", new_callable=AsyncMock, return_value=[]):
                 stager_output = await run_stager(event, router_output)
 
         with patch("laya.pipeline.emit.embed_document", new_callable=AsyncMock):
@@ -235,14 +235,14 @@ class TestPipelineIntegration:
                 relationship, _pr = await run_ingest(event)
 
         with patch("laya.pipeline.router.llm_call", new_callable=AsyncMock, return_value=mock_router_resp):
-            with patch("laya.pipeline.router.memory_search", new_callable=AsyncMock, return_value=[]):
+            with patch("laya.pipeline.related_context.memory_search", new_callable=AsyncMock, return_value=[]):
                 with patch("laya.pipeline.feedback.query_feedback_patterns", new_callable=AsyncMock, return_value=[]):
                     router_output = await run_router(event, relationship)
 
         assert router_output.requires_research
 
         with patch("laya.pipeline.stager.llm_call", new_callable=AsyncMock, return_value=mock_stager_resp):
-            with patch("laya.pipeline.stager.memory_search", new_callable=AsyncMock, return_value=[]):
+            with patch("laya.pipeline.related_context.memory_search", new_callable=AsyncMock, return_value=[]):
                 stager_output = await run_stager(event, router_output)
 
         # Pass worker_results with a session_id to simulate research

@@ -24,7 +24,15 @@ log = structlog.get_logger()
 
 # Module-level state
 _consumer_task: asyncio.Task | None = None
+# Reaper runs independently of the consumer loop so a consumer blocked on
+# asyncio.wait (one hung LLM call) can't also block stale-event recovery (§1.3).
+_reaper_task: asyncio.Task | None = None
 _semaphore: asyncio.Semaphore | None = None
+# The limit the current _semaphore was built with. Tracked separately because a
+# live Semaphore's internal counter reflects AVAILABLE permits (which drop as
+# tasks acquire), not its configured maximum — so we can't recover the limit
+# from the semaphore itself to decide whether the config changed.
+_semaphore_limit: int | None = None
 _shutdown_event: asyncio.Event = asyncio.Event()
 # Pre-computed router outputs from batch routing (event_id → RouterOutput).
 # Populated by _batch_route_events, consumed by process_event.
@@ -40,6 +48,9 @@ _BATCH_BREAKER_COOLDOWN = 300  # seconds
 # Track in-flight processing tasks so we can cancel them on shutdown,
 # aborting pending LLM HTTP requests instead of blocking until they complete.
 _inflight_tasks: set[asyncio.Task] = set()
+# event_id → its in-flight task, so the reaper can cancel the specific hung task
+# for a stale event (preventing it from racing the retry into duplicate cards).
+_inflight_by_event: dict[str, asyncio.Task] = {}
 
 # ── settings helpers ──────────────────────────────────────────────────────
 
@@ -52,6 +63,10 @@ def _get_pipeline_settings() -> dict:
         "max_retry_attempts": int(pipeline.get("max_retry_attempts", 3)),
         "queue_poll_interval": float(pipeline.get("queue_poll_interval", 2.0)),
         "model_timeout": float(pipeline.get("model_timeout", 480)),
+        # Previously omitted here, so get_llm_retries() below always fell back to
+        # its own default and the user's pipeline.llm_retries setting was silently
+        # ignored end-to-end (review §5.7). Wire it through so it takes effect.
+        "llm_retries": int(pipeline.get("llm_retries", 3)),
     }
 
 
@@ -62,17 +77,28 @@ def get_model_timeout() -> float:
 
 def get_llm_retries() -> int:
     """Return configured per-call LLM retry attempts. Used by llm/client.py."""
-    cfg = _get_pipeline_settings()
-    return int(cfg.get("llm_retries", 3))
+    return _get_pipeline_settings()["llm_retries"]
 
 
 def _get_semaphore() -> asyncio.Semaphore:
-    """Return (and lazily create) the global concurrency semaphore."""
-    global _semaphore
+    """Return (and lazily create) the global concurrency semaphore.
+
+    Recreate ONLY when the configured limit actually changes. The previous check
+    compared `_semaphore._value` (the live *available*-permit count) against the
+    limit, so whenever any events held permits — the normal case under load,
+    especially since timed-out-but-still-running tasks keep their permits across
+    poll cycles (see _consumer_loop) — `_value != limit` was true and the
+    semaphore was rebuilt with a fresh full set of permits every poll. That let
+    far more than `limit` events (and their LLM calls) run at once: the user sets
+    concurrency to 2 but sees a flood of concurrent requests hammering the local
+    model. Compare against the tracked configured limit instead.
+    """
+    global _semaphore, _semaphore_limit
     cfg = _get_pipeline_settings()
     limit = cfg["max_concurrent_events"]
-    if _semaphore is None or _semaphore._value != limit:  # noqa: SLF001
+    if _semaphore is None or _semaphore_limit != limit:
         _semaphore = asyncio.Semaphore(limit)
+        _semaphore_limit = limit
     return _semaphore
 
 
@@ -212,6 +238,22 @@ async def _load_event(event_id: str) -> LayaEvent | None:
         return None
 
 
+async def _load_persisted_router_output(event_id: str):
+    """Return the RouterOutput persisted on the event row by a prior attempt's
+    run_router, or None. Lets retries skip re-running the router (review §3.2)."""
+    from laya.models.classification import RouterOutput
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT router_output FROM events WHERE event_id = ?", (event_id,)
+    )
+    if rows and rows[0]["router_output"]:
+        try:
+            return RouterOutput.model_validate_json(rows[0]["router_output"])
+        except Exception:
+            return None
+    return None
+
+
 async def process_event(event_id: str) -> None:
     """Run the full pipeline for a single event (with claim/complete/fail)."""
     from laya.api.websocket import manager
@@ -266,11 +308,19 @@ async def process_event(event_id: str) -> None:
         if router_output:
             log.debug("router_from_batch_cache", event_id=event.event_id)
         else:
-            try:
-                router_output = await run_router(event, actor_relationship, space_id=space_id)
-            except Exception as e:
-                log.error("router_failed", event_id=event.event_id, error=str(e))
-                raise  # let the queue retry
+            # On a retry the router already ran on a prior attempt and persisted
+            # its output on the event row. Re-running it re-pays the router LLM
+            # call on every one of up to 3 retries — reuse the persisted result
+            # instead (review §2 / §3.2). On the first attempt this is None.
+            router_output = await _load_persisted_router_output(event_id)
+            if router_output is not None:
+                log.debug("router_from_persisted", event_id=event.event_id)
+            else:
+                try:
+                    router_output = await run_router(event, actor_relationship, space_id=space_id)
+                except Exception as e:
+                    log.error("router_failed", event_id=event.event_id, error=str(e))
+                    raise  # let the queue retry
 
         # Broadcast classification
         broadcast_payload: dict = {
@@ -422,14 +472,14 @@ async def _run_workers_pipeline(
         stager_output = await run_stager(event, router_output, results, space_id=space_id, user_identity=user_identity, actor_relationship=actor_relationship, participant_roles=participant_roles)
         await run_emit(event, router_output, stager_output, results, card_id=card_id, space_id=space_id)
     except Exception as e:
-        # Mark the provisional card as failed
+        # Mark the provisional card as failed via the lifecycle SSOT (review §5.4
+        # — P7-4). Best-effort: a card in a state that can't transition to failed
+        # just leaves the outer error to propagate.
         try:
-            db = await get_db()
-            await db.execute(
-                "UPDATE action_cards SET status='failed', failed_stage='pipeline', updated_at=CURRENT_TIMESTAMP WHERE card_id=?",
-                (card_id,),
+            from laya.models.card_lifecycle import transition_card_status
+            await transition_card_status(
+                card_id, "failed", actor="pipeline", failed_stage="pipeline"
             )
-            await db.commit()
         except Exception:
             pass
         raise
@@ -595,18 +645,40 @@ async def _reap_stale_events() -> int:
     )
 
     db = await get_db()
-    cursor = await db.execute(
-        """UPDATE events
-           SET processing_status = 'retrying',
-               last_error = 'recovered: stale processing (exceeded timeout)',
-               next_retry_at = ?
+    # Grab the stale ids first so we can cancel their specific in-flight tasks.
+    stale_rows = await db.execute_fetchall(
+        """SELECT event_id FROM events
            WHERE processing_status = 'processing'
              AND processing_started_at IS NOT NULL
              AND processing_started_at < ?""",
-        (db_now(), cutoff),
+        (cutoff,),
+    )
+    stale_ids = [r["event_id"] for r in stale_rows]
+    if not stale_ids:
+        return 0
+
+    placeholders = ",".join("?" * len(stale_ids))
+    await db.execute(
+        f"""UPDATE events
+           SET processing_status = 'retrying',
+               last_error = 'recovered: stale processing (exceeded timeout)',
+               next_retry_at = ?
+           WHERE event_id IN ({placeholders})""",
+        (db_now(), *stale_ids),
     )
     await db.commit()
-    count = cursor.rowcount
+
+    # Cancel the hung in-flight task for each reaped event. Without this the hung
+    # task keeps running and, when it finally resolves, races the retry task that
+    # re-claimed the event through the emit-time existing-card check → duplicate
+    # cards and double LLM spend. Cancelling also unblocks the consumer loop's
+    # asyncio.wait(ALL_COMPLETED) that the hung task was holding open (§1.3).
+    for eid in stale_ids:
+        t = _inflight_by_event.get(eid)
+        if t and not t.done():
+            t.cancel()
+
+    count = len(stale_ids)
     if count:
         log.warning("stale_events_reaped", count=count, threshold_seconds=stale_threshold)
         from laya.llm.client import log_to_audit
@@ -692,16 +764,28 @@ async def _batch_route_events(event_ids: list[str]) -> None:
     if len(events_data) < 2:
         return  # Not enough events for batching to save anything
 
+    # Group by space so each batch's LLM call uses that space's model/key and its
+    # space-scoped classification rules — the batch previously used events_data[0]'s
+    # space for the whole mixed batch (review §1.7). run_batch_router handles a
+    # single-event group by falling back to the individual (feedback-injecting) path.
+    from collections import defaultdict
+    by_space: dict[str, list[dict]] = defaultdict(list)
+    for it in events_data:
+        by_space[it.get("space_id") or "default"].append(it)
+
+    total_classified = 0
     try:
-        results = await run_batch_router(events_data)
-        _batch_router_cache.update(results)
-        log.info("batch_route_cached", count=len(results))
-        # A partial/empty result means the batch LLM call truncated or returned
-        # unparseable JSON for some events — trip the breaker so we stop re-attempting
-        # doomed batch routes during a large drain.
-        if len(results) < len(events_data):
+        for group in by_space.values():
+            results = await run_batch_router(group)
+            _batch_router_cache.update(results)
+            total_classified += len(results)
+        log.info("batch_route_cached", count=total_classified)
+        # A partial result means the batch LLM call truncated or returned
+        # unparseable JSON for some events — trip the breaker so we stop
+        # re-attempting doomed batch routes during a large drain.
+        if total_classified < len(events_data):
             _trip_batch_breaker(
-                "partial_batch_result", got=len(results), expected=len(events_data)
+                "partial_batch_result", got=total_classified, expected=len(events_data)
             )
     except Exception as e:
         log.warning("batch_route_failed", error=str(e))
@@ -738,8 +822,6 @@ async def _consumer_loop() -> None:
     """
     log.info("queue_consumer_started")
 
-    last_stale_check = 0.0
-
     while not _shutdown_event.is_set():
         try:
             cfg = _get_pipeline_settings()
@@ -748,12 +830,9 @@ async def _consumer_loop() -> None:
             batch_window = debounce_cfg.get("event_batch_window_seconds", 3)
             batch_max = debounce_cfg.get("event_batch_max_size", 10)
 
-            # Periodically reap stale events
-            import time
-            now_mono = time.monotonic()
-            if now_mono - last_stale_check >= _STALE_CHECK_INTERVAL:
-                await _reap_stale_events()
-                last_stale_check = now_mono
+            # Stale-event reaping runs on its own task (_reaper_loop), not inline
+            # here — an inline reap can't run while this loop is blocked on the
+            # asyncio.wait below, which is exactly when a hung task needs it (§1.3).
 
             fetch_limit = min(batch_max, cfg["max_concurrent_events"]) if batch_window > 0 else cfg["max_concurrent_events"]
             event_ids = await _fetch_ready_events(limit=fetch_limit)
@@ -805,11 +884,25 @@ async def _consumer_loop() -> None:
                 )
                 tasks.append(task)
                 _inflight_tasks.add(task)
-                task.add_done_callback(_inflight_tasks.discard)
+                _inflight_by_event[eid] = task
 
-            # Wait for this batch (or until shutdown)
+                def _on_done(t: asyncio.Task, _eid: str = eid) -> None:
+                    _inflight_tasks.discard(t)
+                    if _inflight_by_event.get(_eid) is t:
+                        _inflight_by_event.pop(_eid, None)
+
+                task.add_done_callback(_on_done)
+
+            # Wait for this batch, but bounded — never block the loop on a single
+            # straggler/hung task. On timeout the pending tasks keep running (they
+            # stay in _inflight_tasks and hold their claimed events, so they can't
+            # be re-fetched) while the loop moves on to spawn/serve other events
+            # on the free semaphore slots. The reaper cancels a truly hung task
+            # once it crosses the stale threshold (§1.3).
             done, pending = await asyncio.wait(
-                tasks, return_when=asyncio.ALL_COMPLETED
+                tasks,
+                timeout=_STALE_CHECK_INTERVAL,
+                return_when=asyncio.ALL_COMPLETED,
             )
 
         except Exception as e:
@@ -825,13 +918,36 @@ async def _process_with_semaphore(sem: asyncio.Semaphore, event_id: str) -> None
         await process_event(event_id)
 
 
+async def _reaper_loop() -> None:
+    """Reap stale 'processing' events on an independent task.
+
+    Runs on its own task (not inline in _consumer_loop) so that a consumer loop
+    blocked on asyncio.wait — the exact symptom of one hung LLM call — can't also
+    block recovery. Each tick flips stale events to 'retrying' AND cancels their
+    hung in-flight task, which both prevents a duplicate-card race and unblocks
+    the consumer's wait (review §1.3)."""
+    log.info("queue_reaper_started")
+    while not _shutdown_event.is_set():
+        try:
+            await asyncio.wait_for(_shutdown_event.wait(), timeout=_STALE_CHECK_INTERVAL)
+            break  # shutdown requested
+        except asyncio.TimeoutError:
+            pass
+        try:
+            await _reap_stale_events()
+        except Exception as e:
+            log.error("queue_reaper_error", error=str(e))
+    log.info("queue_reaper_stopped")
+
+
 # ── lifecycle ─────────────────────────────────────────────────────────────
 
 def start_consumer() -> None:
-    """Start the background queue consumer. Call during app startup."""
-    global _consumer_task
+    """Start the background queue consumer + reaper. Call during app startup."""
+    global _consumer_task, _reaper_task
     _shutdown_event.clear()
     _consumer_task = asyncio.create_task(_consumer_loop(), name="queue_consumer")
+    _reaper_task = asyncio.create_task(_reaper_loop(), name="queue_reaper")
 
 
 async def stop_consumer() -> None:
@@ -840,7 +956,7 @@ async def stop_consumer() -> None:
     Cancels all in-flight event processing tasks so pending LLM HTTP
     requests are aborted immediately instead of blocking shutdown.
     """
-    global _consumer_task
+    global _consumer_task, _reaper_task
     _shutdown_event.set()
 
     # Cancel in-flight processing tasks (aborts pending LLM calls)
@@ -850,6 +966,14 @@ async def stop_consumer() -> None:
     if _inflight_tasks:
         await asyncio.gather(*list(_inflight_tasks), return_exceptions=True)
     _inflight_tasks.clear()
+    _inflight_by_event.clear()
+
+    if _reaper_task and not _reaper_task.done():
+        try:
+            await asyncio.wait_for(_reaper_task, timeout=5)
+        except asyncio.TimeoutError:
+            _reaper_task.cancel()
+    _reaper_task = None
 
     if _consumer_task and not _consumer_task.done():
         try:

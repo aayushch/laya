@@ -95,10 +95,13 @@ async def _resolve_backend(request: EgressRequest) -> EgressBackend | None:
     if _n8n_backend.supports(request.platform, request.action_type):
         return _n8n_backend
 
-    # Special case: calendar actions sometimes tagged as "gmail" by stager
+    # Special case: calendar actions sometimes tagged as "gmail" by stager.
+    # Remap to the canonical "calendar" platform (name in registry/sources), NOT
+    # "google_calendar" — the latter resolves to a hyphenated default webhook
+    # path that doesn't exist on cloned-workflow installs and 404s (review §2).
     if request.platform == "gmail" and request.action_type in ("calendar", "create_calendar_event"):
-        request.platform = "google_calendar"
-        if _n8n_backend.supports("google_calendar", request.action_type):
+        request.platform = "calendar"
+        if _n8n_backend.supports("calendar", request.action_type):
             return _n8n_backend
 
     log.warning(

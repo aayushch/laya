@@ -67,7 +67,12 @@ class LayaEvent(BaseModel):
         never disagree. Relies on n8n delivering a canonical ``subject.id``
         (e.g. Gmail's thread root); per-platform shape correction lives in the
         ingestion workflows, not here."""
-        return f"{self.source.platform}:{self.subject.type}:{self.subject.id}"
+        # A null/empty subject.id would collapse every such event into one shared
+        # key (e.g. "gmail:email_thread:"), causing false carry-forward and
+        # unrelated cards being auto-resolved as siblings. Fall back to the unique
+        # event_id so degenerate events each get their own group (review §2).
+        sid = self.subject.id or self.event_id
+        return f"{self.source.platform}:{self.subject.type}:{sid}"
 
     @property
     def is_terminal(self) -> bool:

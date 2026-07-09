@@ -27,6 +27,25 @@ from laya.workers.base import WorkerResult
 
 log = structlog.get_logger()
 
+# Event IDs currently being REPROCESSED via the user-triggered "Reprocess" action
+# on a card. Reprocessing regenerates a card's content in place (reusing the retry
+# pipeline) but deliberately does NOT refresh the group / daily / Omni summaries —
+# a manual redo of one card shouldn't churn every rollup (product decision:
+# keep-it-simple). The reprocess endpoint marks the id before re-enqueuing; run_emit
+# clears it once the card has been persisted. Mirrors the _batch_router_cache pattern
+# in queue.py (module dict keyed by event_id, populated before / consumed during a
+# pipeline run).
+_reprocess_event_ids: set[str] = set()
+
+
+def mark_reprocess(event_id: str) -> None:
+    """Flag an event so its imminent re-emit skips the summary rollups."""
+    _reprocess_event_ids.add(event_id)
+
+
+def _skip_summaries(event_id: str) -> bool:
+    return event_id in _reprocess_event_ids
+
 
 def _event_ts(event: LayaEvent) -> str:
     """The originating event's platform time in canonical DB format.
@@ -252,10 +271,12 @@ async def _persist_card(
         )
 
     # Enqueue for Omni processing (same transaction as the card persist — crash-safe).
-    await db.execute(
-        "INSERT OR IGNORE INTO omni_queue (card_id, space_id, created_at) VALUES (?, ?, ?)",
-        (card_id, space_id, db_now()),
-    )
+    # Skipped on reprocess: a manual card redo shouldn't trigger an Omni resynthesis.
+    if not _skip_summaries(event.event_id):
+        await db.execute(
+            "INSERT OR IGNORE INTO omni_queue (card_id, space_id, created_at) VALUES (?, ?, ?)",
+            (card_id, space_id, db_now()),
+        )
 
     # Carry forward: bump group_active_at for ALL cards in this entity group to the
     # group's latest ACTIVITY time. The just-persisted card carries its own event time
@@ -267,8 +288,15 @@ async def _persist_card(
            SET group_active_at = (
                SELECT MAX(group_active_at) FROM action_cards WHERE entity_id = ?
            )
-           WHERE entity_id = ?""",
-        (entity_id, entity_id),
+           WHERE entity_id = ?
+             -- Only touch rows actually below the new max: skips the no-op
+             -- self-update of the just-inserted card, and skips the whole update
+             -- for a late/out-of-order older event whose siblings already sit at
+             -- the max — avoiding needless writes (review §4 — P5-4).
+             AND group_active_at < (
+                 SELECT MAX(group_active_at) FROM action_cards WHERE entity_id = ?
+             )""",
+        (entity_id, entity_id, entity_id),
     )
     await db.commit()
 
@@ -390,6 +418,10 @@ async def _embed_card(
                 "card_id": card_id,
                 "source_event_id": event.event_id,
                 "source_platform": event.source.platform,
+                # The canonical grouping key — trace seeds need this for dedup and
+                # feedback exclusion; previously only entity_refs (a CSV) was
+                # stored and trace mis-used it as entity_id (review §2 — P4-4).
+                "entity_id": entity_id,
                 "entity_refs": entity_refs,
                 "persona": router_output.persona.value,
                 "priority": router_output.priority.value,
@@ -550,31 +582,34 @@ def _trigger_followups(
     multi-card groups — i.e. carry-forward), the daily summary update, and the
     bounded processing-rules evaluation. Omni needs no trigger here: the card was
     enqueued atomically in _persist_card and the omni queue processor picks it up."""
-    # A group summary only makes sense at >= 2 cards, which is exactly carry-forward.
-    if is_carry_forward:
-        from laya.pipeline.group_summary import trigger_group_summary_update
-        create_task(
-            trigger_group_summary_update(entity_id, card_id, space_id),
-            name=f"group_summary_{entity_id}",
-        )
+    # Summaries are skipped on reprocess (a manual card redo shouldn't churn the
+    # rollups); processing rules still run, since reprocess means "as if new".
+    if not _skip_summaries(event.event_id):
+        # A group summary only makes sense at >= 2 cards, which is exactly carry-forward.
+        if is_carry_forward:
+            from laya.pipeline.group_summary import trigger_group_summary_update
+            create_task(
+                trigger_group_summary_update(entity_id, card_id, space_id),
+                name=f"group_summary_{entity_id}",
+            )
 
-    # Daily summary (space metadata is hydrated inside summarize.py via a DB join).
-    create_task(
-        trigger_summary_update(
-            card_id=card_id,
-            card_header=stager_output.header,
-            card_summary=stager_output.summary,
-            card_priority=router_output.priority.value,
-            card_category=router_output.category.value,
-            space_id=space_id,
-            card_persona=router_output.persona.value,
-            card_intelligence=stager_output.intelligence_report,
-            actor_name=event.actor.name,
-            source_platform=event.source.platform,
-            card_tags=stager_output.suggested_tags,
-        ),
-        name=f"summary_{card_id}",
-    )
+        # Daily summary (space metadata is hydrated inside summarize.py via a DB join).
+        create_task(
+            trigger_summary_update(
+                card_id=card_id,
+                card_header=stager_output.header,
+                card_summary=stager_output.summary,
+                card_priority=router_output.priority.value,
+                card_category=router_output.category.value,
+                space_id=space_id,
+                card_persona=router_output.persona.value,
+                card_intelligence=stager_output.intelligence_report,
+                actor_name=event.actor.name,
+                source_platform=event.source.platform,
+                card_tags=stager_output.suggested_tags,
+            ),
+            name=f"summary_{card_id}",
+        )
 
     # Processing rules — evaluate automated actions (non-blocking, bounded).
     from laya.pipeline.processing_rules import run_processing_rules, _processing_semaphore
@@ -702,8 +737,26 @@ async def run_emit(
         entity_refs=entity_refs,
     )
 
-    # 5. Semantic context grouping across entity boundaries (best-effort).
-    await _resolve_context_grouping(
+    # 5. Broadcast to the feed IMMEDIATELY after embed, BEFORE the enrichment
+    # steps below. Context grouping (step 6) makes a blocking LLM confirm call;
+    # broadcasting after it meant the user saw new cards seconds-to-tens-of-
+    # seconds late while a pipeline semaphore slot was held (review §4 — P5-5).
+    # Grouping/entity-resolution then run and emit a card_updated follow-up.
+    await _broadcast_card(
+        pre_created=pre_created,
+        card_id=card_id,
+        entity_id=entity_id,
+        stager_output=stager_output,
+        router_output=router_output,
+        card_status=card_status,
+        has_workspace=has_workspace,
+        is_carry_forward=is_carry_forward,
+    )
+
+    # 6. Semantic context grouping across entity boundaries (best-effort). If it
+    # assigns a context, tell the feed via a card_updated follow-up so it can
+    # re-group without a full reload.
+    assigned_context_id = await _resolve_context_grouping(
         db,
         event=event,
         stager_output=stager_output,
@@ -713,8 +766,17 @@ async def run_emit(
         space_id=space_id,
         entity_refs=entity_refs,
     )
+    if assigned_context_id:
+        try:
+            await manager.broadcast({
+                "type": "card_updated",
+                "card_id": card_id,
+                "payload": {"context_id": assigned_context_id},
+            })
+        except Exception as e:
+            log.warning("context_update_broadcast_failed", card_id=card_id, error=str(e))
 
-    # 6. Entity resolution Layer 2 (semantic, non-blocking).
+    # 7. Entity resolution Layer 2 (semantic, non-blocking).
     entity_values = [e.value for e in router_output.entities]
     if entity_values:
         try:
@@ -722,7 +784,7 @@ async def run_emit(
         except Exception as e:
             log.warning("entity_resolution_failed", card_id=card_id, error=str(e))
 
-    # 7. Audit log.
+    # 8. Audit log.
     await log_to_audit(
         event_id=event.event_id,
         card_id=card_id,
@@ -735,18 +797,6 @@ async def run_emit(
         metadata={"has_workspace": has_workspace, "privacy_tier": stager_output.privacy_tier},
     )
 
-    # 8. Broadcast to the feed (runs even if the enrichment steps above degraded).
-    await _broadcast_card(
-        pre_created=pre_created,
-        card_id=card_id,
-        entity_id=entity_id,
-        stager_output=stager_output,
-        router_output=router_output,
-        card_status=card_status,
-        has_workspace=has_workspace,
-        is_carry_forward=is_carry_forward,
-    )
-
     # 9. Kick off non-blocking follow-ups (group summary, daily summary, rules).
     _trigger_followups(
         event=event,
@@ -757,5 +807,9 @@ async def run_emit(
         space_id=space_id,
         is_carry_forward=is_carry_forward,
     )
+
+    # Consume the one-shot reprocess flag now that this event's card has been
+    # re-emitted (both _persist_card and _trigger_followups have run).
+    _reprocess_event_ids.discard(event.event_id)
 
     return card_id

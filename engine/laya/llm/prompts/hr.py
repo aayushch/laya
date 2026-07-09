@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 from laya.llm.prompts.overrides import get_prompt
+from laya.llm.prompts import summarize_findings
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 
@@ -78,7 +79,7 @@ Body:
 
     findings_text = ""
     if prior_findings:
-        findings_text = f"\n\nFindings from prior worker:\n{_summarize_findings(prior_findings)}"
+        findings_text = f"\n\nFindings from prior worker:\n{summarize_findings(prior_findings)}"
 
     identity_text = ""
     if user_identity:
@@ -128,22 +129,6 @@ Respond with a drafted reply, the tone, a sensitivity_note, and your reasoning."
         {"role": "system", "content": get_prompt("hr", HR_SYSTEM_PROMPT)},
         {"role": "user", "content": user_message},
     ]
-
-
-def _summarize_findings(findings: dict[str, Any]) -> str:
-    """Summarize findings dict into readable text."""
-    parts = []
-    if "agent_result" in findings:
-        parts.append(f"Agent result: {str(findings['agent_result'])[:500]}")
-    if "draft" in findings:
-        draft = findings["draft"]
-        if isinstance(draft, dict):
-            parts.append(f"Draft: {draft.get('draft_reply', str(draft))[:500]}")
-        else:
-            parts.append(f"Draft: {str(draft)[:500]}")
-    if not parts:
-        parts.append(str(findings)[:500])
-    return "\n".join(parts)
 
 
 def get_hr_json_schema() -> dict[str, Any]:

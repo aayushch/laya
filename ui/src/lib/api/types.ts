@@ -22,13 +22,16 @@ export interface HealthResponse {
 /** WebSocket message from the engine */
 export interface WsMessage {
 	type:
-		| 'card_created' | 'card_updated'
+		| 'card_created' | 'card_updated' | 'card_deleted'
+		| 'action_payload_updated'
 		| 'group_carried_forward' | 'group_summary_updated'
+		| 'context_group_merged' | 'context_group_unlinked'
 		| 'summary_updated'
 		| 'budget_status'
 		| 'agent_budget_status'
 		| 'omni_updated'
 		| 'settings_changed'
+		| 'rules_changed' | 'tags_changed'
 		| 'open_compose'
 		| 'processing_rule_auto_disabled'
 		| 'push_notification'
@@ -641,6 +644,7 @@ export interface CardGroup {
 export interface GroupedCardsResponse {
 	groups: CardGroup[];
 	total_groups: number;
+	has_more?: boolean;
 	date?: string;
 	prev_date?: string;
 	next_date?: string;
@@ -1156,6 +1160,7 @@ export interface BudgetConfig {
 	current_month_cost: number;
 	current_month: string;
 	by_model: Record<string, number>;
+	tokens_by_model: Record<string, number>;
 	by_feature: Record<string, number>;
 	by_step: Record<string, number>;
 	total_input_tokens: number;

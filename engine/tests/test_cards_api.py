@@ -558,3 +558,207 @@ class TestContextGrouping:
         # Should be a normal entity group, not a context group
         assert group["context_id"] is None
         assert group["entity_id"] == entity
+
+
+@pytest.mark.asyncio
+class TestGroupedPrevNextDates:
+    async def test_prev_next_dates_use_local_tz(self, db):
+        """prev/next pagination converts each boundary card's UTC group_active_at
+        to the user's LOCAL date via an indexed range lookup (DST-correct) —
+        review P4-16 (no fixed-offset DATE()-per-row full scan)."""
+        await insert_test_card(db, "card_p", "evt_p", entity_id="jira:ticket:A")
+        await insert_test_card(db, "card_t", "evt_t", entity_id="jira:ticket:B")
+        await insert_test_card(db, "card_n", "evt_n", entity_id="jira:ticket:C")
+        # Noon UTC on three consecutive days → local date = same day in EST (UTC-5).
+        for cid, ts in (
+            ("card_p", "2026-01-10 12:00:00"),
+            ("card_t", "2026-01-11 12:00:00"),
+            ("card_n", "2026-01-12 12:00:00"),
+        ):
+            await db.execute(
+                "UPDATE action_cards SET group_active_at = ? WHERE card_id = ?", (ts, cid)
+            )
+        await db.commit()
+
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get(
+                "/cards/grouped?date=2026-01-11&tz=America/New_York"
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["prev_date"] == "2026-01-10"
+        assert data["next_date"] == "2026-01-12"
+
+
+@pytest.mark.asyncio
+class TestReopenCardSSOT:
+    async def test_reopen_dismissed_restores_previous_status(self, db):
+        """Reopening a dismissed card restores its saved previous_status through the
+        lifecycle SSOT (allow_restore), clearing resolved_at/previous_status (P7-4)."""
+        await insert_test_card(db, status="pending")
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            await client.post("/cards/card_test/dismiss", json={})  # saves previous_status=pending
+            resp = await client.post("/cards/card_test/reopen")
+
+        assert resp.status_code == 200
+        rows = await db.execute_fetchall(
+            "SELECT status, previous_status, resolved_at FROM action_cards WHERE card_id = ?",
+            ("card_test",),
+        )
+        assert rows[0]["status"] == "pending"        # restored
+        assert rows[0]["previous_status"] is None     # consumed
+        assert rows[0]["resolved_at"] is None         # cleared
+
+    async def test_reopen_archived_bypasses_forward_only(self, db):
+        """An archived card has NO valid forward transitions, but reopen still works
+        because it goes through the SSOT with allow_restore=True (P7-4)."""
+        await insert_test_card(db, status="archived")
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post("/cards/card_test/reopen")
+
+        assert resp.status_code == 200
+        rows = await db.execute_fetchall(
+            "SELECT status FROM action_cards WHERE card_id = ?", ("card_test",)
+        )
+        assert rows[0]["status"] == "pending"  # no previous_status → full reprocess
+
+
+@pytest.mark.asyncio
+class TestFeedSearch:
+    """GET /cards/grouped?search= — perf-only refactor keeps substring matching,
+    de-correlates the tag lookup, and drops the giant JSON-blob fields (P4-10)."""
+
+    async def _search_ids(self, term):
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get(f"/cards/grouped?search={term}")
+        assert resp.status_code == 200
+        data = resp.json()
+        return {c["card_id"] for g in data["groups"] for c in g["cards"]}
+
+    async def test_substring_match_preserved(self, db):
+        """A partial-word term still matches via LIKE substring (not FTS tokens)."""
+        await insert_test_card(
+            db, "card_q", "evt_q", header="Quokkapayment overdue", summary="none",
+            entity_id="jira:ticket:Q-1",
+        )
+        # 'quokka' is a substring of the header token 'Quokkapayment' — a token/FTS
+        # search would miss it; substring LIKE must still find it.
+        assert "card_q" in await self._search_ids("quokka")
+
+    async def test_tag_name_match_decorrelated(self, db):
+        """Searching a tag name matches via the hoisted ctag join."""
+        await insert_test_card(
+            db, "card_t", "evt_t", header="Nothing special", summary="none",
+            entity_id="jira:ticket:T-1",
+        )
+        cur = await db.execute(
+            "INSERT INTO tags (name, color) VALUES (?, ?)", ("wafflewatch", "#0f0")
+        )
+        await db.execute(
+            "INSERT INTO tag_assignments (tag_id, target_type, target_id) VALUES (?, 'card', ?)",
+            (cur.lastrowid, "card_t"),
+        )
+        await db.commit()
+        assert "card_t" in await self._search_ids("wafflewatch")
+        # A card without the tag is not returned for that term.
+        assert await self._search_ids("wafflewatch") == {"card_t"}
+
+    async def test_staged_output_no_longer_searched(self, db):
+        """Terms that appear only in staged_output/suggested_actions don't match.
+
+        insert_test_card's default staged_output is {"content": "Add null check"};
+        'checkzzz' is a unique token so we can prove the field is no longer scanned
+        without a false positive from other columns."""
+        await insert_test_card(
+            db, "card_s", "evt_s", header="Plain header", summary="plain",
+            entity_id="jira:ticket:S-1",
+            actions=[{"action_id": "a1", "label": "do", "action_type": "comment",
+                      "target_platform": "jira", "payload": {"body": "checkzzz here"}}],
+        )
+        # 'checkzzz' lives only in suggested_actions JSON → dropped from search.
+        assert "card_s" not in await self._search_ids("checkzzz")
+        # Sanity: a term in a retained field (header) still matches.
+        assert "card_s" in await self._search_ids("plain")
+
+
+@pytest.mark.asyncio
+class TestGroupedPayloadSlim:
+    """/cards/grouped ships a slim list payload (P4-9): staged_output +
+    suggested_actions dropped, intelligence kept; the detail route stays full."""
+
+    async def test_grouped_omits_heavy_blobs_but_keeps_intelligence(self, db):
+        await insert_test_card(db, "card_slim", "evt_slim")  # default fixture has all 3
+
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            grouped = await client.get("/cards/grouped")
+            detail = await client.get("/cards/card_slim")
+
+        assert grouped.status_code == 200 and detail.status_code == 200
+        card = next(
+            c for g in grouped.json()["groups"] for c in g["cards"] if c["card_id"] == "card_slim"
+        )
+        # Slimmed in the list payload...
+        assert card["staged_output"] is None
+        assert card["suggested_actions"] is None
+        # ...but intelligence is kept (small + client-searchable).
+        assert card["intelligence"] == ["Finding 1", "Finding 2"]
+
+        # The detail endpoint still returns the full heavy fields.
+        full = detail.json()
+        assert full["staged_output"] is not None
+        assert full["suggested_actions"] is not None
+
+
+@pytest.mark.asyncio
+class TestGroupedPagination:
+    """/cards/grouped caps groups with limit/offset + has_more (P4-9 part b)."""
+
+    async def _insert_n_groups(self, db, n):
+        for i in range(n):
+            await insert_test_card(
+                db, card_id=f"card_{i}", event_id=f"evt_{i}",
+                entity_id=f"jira:ticket:PAGE-{i}",
+            )
+
+    async def test_limit_caps_and_reports_has_more(self, db):
+        await self._insert_n_groups(db, 3)
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            page1 = (await client.get("/cards/grouped?limit=2&offset=0")).json()
+            page2 = (await client.get("/cards/grouped?limit=2&offset=2")).json()
+
+        # total_groups is the FULL count regardless of the page window.
+        assert page1["total_groups"] == 3
+        assert len(page1["groups"]) == 2
+        assert page1["has_more"] is True
+
+        assert page2["total_groups"] == 3
+        assert len(page2["groups"]) == 1
+        assert page2["has_more"] is False
+
+        # The two pages cover distinct groups (no overlap, full coverage).
+        ids1 = {g["entity_id"] for g in page1["groups"]}
+        ids2 = {g["entity_id"] for g in page2["groups"]}
+        assert ids1.isdisjoint(ids2)
+        assert len(ids1 | ids2) == 3
+
+    async def test_default_limit_returns_all_when_under_cap(self, db):
+        await self._insert_n_groups(db, 3)
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            data = (await client.get("/cards/grouped")).json()
+        assert data["total_groups"] == 3
+        assert len(data["groups"]) == 3
+        assert data["has_more"] is False  # 3 < default cap of 200

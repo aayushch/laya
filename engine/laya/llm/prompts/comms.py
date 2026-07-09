@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 from laya.llm.prompts.overrides import get_prompt
+from laya.llm.prompts import summarize_findings
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 
@@ -77,7 +78,7 @@ Body:
 
     findings_text = ""
     if prior_findings:
-        findings_text = f"\n\nFindings from prior ENGINEER worker:\n{_summarize_findings(prior_findings)}"
+        findings_text = f"\n\nFindings from prior ENGINEER worker:\n{summarize_findings(prior_findings)}"
 
     # Actor–user relationship context (pre-resolved by the system)
     identity_text = ""
@@ -128,22 +129,6 @@ Respond with a drafted reply, the tone, and your reasoning."""
         {"role": "system", "content": get_prompt("comms", COMMS_SYSTEM_PROMPT)},
         {"role": "user", "content": user_message},
     ]
-
-
-def _summarize_findings(findings: dict[str, Any]) -> str:
-    """Summarize findings dict into readable text."""
-    parts = []
-    if "agent_result" in findings:
-        parts.append(f"Agent result: {str(findings['agent_result'])[:500]}")
-    if "draft" in findings:
-        draft = findings["draft"]
-        if isinstance(draft, dict):
-            parts.append(f"Draft: {draft.get('draft_reply', str(draft))[:500]}")
-        else:
-            parts.append(f"Draft: {str(draft)[:500]}")
-    if not parts:
-        parts.append(str(findings)[:500])
-    return "\n".join(parts)
 
 
 def get_comms_json_schema() -> dict[str, Any]:

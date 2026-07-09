@@ -8,8 +8,8 @@
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { portal } from '$lib/actions/portal';
 	import StatusDot from './StatusDot.svelte';
-	import { platformDotColor, platformKey } from '$lib/utils/cardVisuals';
-	import { parseBackendDate } from '$lib/utils/datetime';
+	import { platformDotColor, platformKey, PRIORITY_LABELS, PRIORITY_COLORS } from '$lib/utils/cardVisuals';
+	import { timeAgo } from '$lib/utils/datetime';
 
 	let {
 		card,
@@ -59,18 +59,8 @@
 	}
 	function hideTooltip() { fixedTooltip = null; }
 
-	const priorityColors: Record<string, string> = {
-		CRITICAL: 'bg-red-600 text-red-50',
-		HIGH: 'bg-rose-500/25 text-rose-300',
-		MEDIUM: 'bg-amber-500/20 text-amber-300',
-		LOW: 'bg-surface-700/40 text-surface-400'
-	};
-	const priorityLabel: Record<string, string> = {
-		CRITICAL: 'CRIT',
-		HIGH: 'HIGH',
-		MEDIUM: 'MED',
-		LOW: 'LOW'
-	};
+	const priorityColors = PRIORITY_COLORS;
+	const priorityLabel = PRIORITY_LABELS;
 	const personaColors: Record<string, string> = {
 		ENGINEER: 'text-violet-400 bg-violet-500/10 border-violet-500/20',
 		COMMS: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
@@ -158,17 +148,6 @@
 	const isArchived = $derived(card.status === 'archived');
 	const isDimmed = $derived(!isSelected && hasSelection && !isArchived);
 
-	function timeAgo(dateStr?: string): string {
-		const d = parseBackendDate(dateStr);
-		if (!d) return '';
-		const diff = Date.now() - d.getTime();
-		const mins = Math.floor(diff / 60000);
-		if (mins < 1) return 'just now';
-		if (mins < 60) return `${mins}m ago`;
-		const hours = Math.floor(mins / 60);
-		if (hours < 24) return `${hours}h ago`;
-		return `${Math.floor(hours / 24)}d ago`;
-	}
 
 	async function markDone(e: Event) {
 		e.stopPropagation();

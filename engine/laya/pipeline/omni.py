@@ -35,11 +35,52 @@ from laya.models.omni import OmniItem, OmniSection, OmniSnapshot, OmniStats
 
 log = structlog.get_logger()
 
+# Max new cards folded into a single resynthesis LLM call. A full run can fetch
+# up to fetch_cap (~100-150) cards; combined with the current snapshot that
+# exceeds a local model's usable window, and the omni JSON schema is unforgiving
+# — a truncated response yields NO parsed output, losing the whole batch AND
+# handing the next run an even bigger backlog (the failure spiral flagged in the
+# Jul-2026 review, P6-13). We fold new cards in chunks of this size across
+# sequential smaller calls instead. ~30-50 is the sweet spot: strictly smaller
+# calls that local models can complete, at the cost of more of them.
+_RESYNTH_CHUNK_SIZE = 40
+
 # ---------------------------------------------------------------------------
 # In-memory cache for the latest reconstructed snapshot per space.
 # Populated on every write, avoids delta chain reconstruction on hot reads.
 # ---------------------------------------------------------------------------
 _latest_cache: dict[str, dict] = {}
+
+_VALID_OMNI_PRIORITIES = {"CRITICAL", "HIGH", "MEDIUM", "LOW"}
+
+
+def _is_degenerate_sections(sections: list[dict]) -> bool:
+    """Detect a placeholder/skeleton resynthesis result rather than real content.
+
+    A local model under load (e.g. flooded because the concurrency cap wasn't
+    honored) can return every field as a literal '...' — observed: all items with
+    text='...' and priority='...', plus a hallucinated extra section. Because
+    resynthesis carries the snapshot FORWARD, storing such a result poisons the
+    base and EVERY later incremental inherits it, so the whole Omni page renders
+    as '...' until a good full snapshot replaces it.
+
+    We use this to (a) reject a degenerate result before storing it — treating it
+    like a failed synthesis so the last good snapshot stays — and (b) refuse to
+    feed an already-poisoned snapshot back to the model on the next run, so it
+    regenerates fresh instead of echoing the '...'.
+    """
+    items = [it for s in sections for it in s.get("items", [])]
+    if not items:
+        return False
+    bad = 0
+    for it in items:
+        text = (it.get("text") or "").strip()
+        prio = it.get("priority")
+        if text in ("", "...", "…") or (prio is not None and prio not in _VALID_OMNI_PRIORITIES):
+            bad += 1
+    # Half or more of the items being placeholders is unmistakable — a healthy
+    # synthesis has ~zero. A ratio (not "all") tolerates one odd item.
+    return bad >= len(items) * 0.5
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +200,17 @@ async def _load_full_snapshot(
     # Cache hit for latest
     if version is None and space_id in _latest_cache:
         c = _latest_cache[space_id]
-        return c["content"], c["version"], c["card_ids"], c.get("meta", {})
+        # Deep-copy so a caller that mutates the returned content (e.g.
+        # _append_to_recent appending recent items) can't corrupt the cached
+        # snapshot before the DB commit. A failed commit would otherwise leave
+        # the cache serving phantom state and re-processing would double-append
+        # (review §2 pipeline / §4). Installs into the cache stay post-commit.
+        return (
+            copy.deepcopy(c["content"]),
+            c["version"],
+            list(c["card_ids"]),
+            dict(c.get("meta", {})),
+        )
 
     # Load the target row
     if version is not None:
@@ -672,6 +723,17 @@ async def _resynthesize_space(
     # 1. Load latest snapshot (reconstructed if delta chain)
     current_snapshot, current_version, existing_card_ids, _meta = await _load_full_snapshot(db, space_id)
 
+    # Recovery: if the last snapshot is itself degenerate (a prior bad synthesis
+    # poisoned the chain), don't feed it back to the model — that just makes it
+    # echo the '...'. Drop it so this run regenerates real content from scratch;
+    # item_states/resolved-pruning below are skipped when there's no snapshot.
+    if current_snapshot and _is_degenerate_sections(current_snapshot.get("sections", [])):
+        log.warning(
+            "omni_resynthesis_discarding_degenerate_snapshot",
+            space_id=space_id, version=current_version,
+        )
+        current_snapshot = None
+
     # 2. Load pinned items
     pin_rows = await db.execute_fetchall(
         "SELECT item_text, source_card_ids, platforms FROM omni_pins WHERE space_id = ?",
@@ -818,50 +880,101 @@ async def _resynthesize_space(
             "status": r["status"],
         })
 
-    # 5. Build LLM prompt
-    messages = build_omni_resynthesis_messages(
-        current_snapshot=current_snapshot,
-        new_cards=new_cards,
-        acted_cards=acted_cards,
-        pinned_items=pinned_items,
-        density=density,
-        space_id=space_id,
-        item_states=item_states,
-        resolved_cards=resolved_cards,
-    )
-
+    # 5. Fold the new cards into the snapshot across one or more LLM calls.
+    #
+    # Small batches run as a SINGLE call, byte-identical to the pre-P6-13 path.
+    # Large bursts are folded in chunks of _RESYNTH_CHUNK_SIZE across sequential
+    # calls, each folding one chunk into the evolving snapshot, so no single call
+    # carries the whole burst (see the constant's comment for why that matters).
+    #
+    # Ordering: new_cards is newest-first (created_at DESC), so we fold the
+    # OLDEST chunk first and the newest last — that way the freshest cards land
+    # in the final call and dominate the "recent" section. Snapshot-relative
+    # inputs (item_states / resolved_cards, which prune subjects that resolved
+    # since the last synthesis) apply only to the FIRST fold; afterwards the
+    # evolving snapshot already reflects them. Pins carry through every fold, and
+    # each chunk brings its own acted cards.
+    #
+    # Failure handling is deliberately all-or-nothing: if any chunk fails to
+    # parse we discard the whole run and return None WITHOUT storing, leaving
+    # `since` unadvanced so every card returns next run. That avoids the plumbing
+    # needed to store a partial fold without silently dropping the un-folded
+    # cards (the fetch is purely `since`-driven — line ~724), and because each
+    # chunk is small the retry almost always succeeds. The previous snapshot
+    # stays on screen until it does.
     schema = get_omni_json_schema(density)
 
-    # --- GATE: pause queue processing for this space during LLM call ---
+    chunks = [
+        new_cards[i:i + _RESYNTH_CHUNK_SIZE]
+        for i in range(0, len(new_cards), _RESYNTH_CHUNK_SIZE)
+    ]
+    chunks.reverse()  # oldest chunk first, newest last
+
+    # --- GATE: pause queue processing for this space during the LLM call(s) ---
     gate.clear()
-    log.info("omni_resynthesis_gate_closed", space_id=space_id)
+    log.info("omni_resynthesis_gate_closed", space_id=space_id, chunks=len(chunks))
 
-    # 6. Call LLM
+    # 6. Call LLM (once per chunk)
     try:
-        response = await llm_call(
-            role="omni",
-            messages=messages,
-            response_schema=schema,
-            step="omni_resynthesis",
-            temperature=0.3,
-            max_tokens=DEFAULT_MAX_TOKENS,
-            space_id=space_id,
-        )
-
-        if not response.parsed:
-            truncation_hint = " (response was truncated)" if response.truncated else ""
-            raise ValueError(
-                f"LLM returned malformed JSON for Omni resynthesis{truncation_hint} "
-                f"(output_tokens={response.output_tokens}, model={response.model})"
+        folded_snapshot = current_snapshot
+        result_sections: list[dict] = []
+        for idx, chunk in enumerate(chunks):
+            first = idx == 0
+            chunk_acted = [
+                c for c in chunk
+                if c.get("user_feedback")
+                or c.get("status") in ("done", "dismissed", "archived")
+            ]
+            messages = build_omni_resynthesis_messages(
+                current_snapshot=folded_snapshot,
+                new_cards=chunk,
+                acted_cards=chunk_acted,
+                pinned_items=pinned_items,
+                density=density,
+                space_id=space_id,
+                # Prune-resolved hints only make sense against the ORIGINAL
+                # snapshot — apply them once, on the first fold.
+                item_states=item_states if first else [],
+                resolved_cards=resolved_cards if first else [],
+            )
+            response = await llm_call(
+                role="omni",
+                messages=messages,
+                response_schema=schema,
+                step="omni_resynthesis",
+                temperature=0.3,
+                max_tokens=DEFAULT_MAX_TOKENS,
+                space_id=space_id,
             )
 
-        result_sections = response.parsed.get("sections", [])
+            if not response.parsed:
+                truncation_hint = " (response was truncated)" if response.truncated else ""
+                raise ValueError(
+                    f"LLM returned malformed JSON for Omni resynthesis "
+                    f"chunk {idx + 1}/{len(chunks)}{truncation_hint} "
+                    f"(output_tokens={response.output_tokens}, model={response.model})"
+                )
+
+            result_sections = response.parsed.get("sections", [])
+            folded_snapshot = response.parsed  # feed the fold forward
 
     except Exception as e:
         log.error("omni_resynthesis_llm_failed", space_id=space_id, error=str(e))
         # Re-open the gate so queued cards resume processing
         gate.set()
         log.info("omni_resynthesis_gate_opened", space_id=space_id, reason="llm_failed")
+        return None
+
+    # Reject a degenerate ('...'-everywhere) result before it can be stored and
+    # poison the forward-carried snapshot — see _is_degenerate_sections. Treat it
+    # like a failed synthesis: keep the last good snapshot, retry next run.
+    if _is_degenerate_sections(result_sections):
+        log.warning(
+            "omni_resynthesis_degenerate_result",
+            space_id=space_id, items=sum(len(s.get("items", [])) for s in result_sections),
+        )
+        gate.set()
+        log.info("omni_resynthesis_gate_opened", space_id=space_id, reason="degenerate_result")
         return None
 
     # 7. Inject space_id into all items

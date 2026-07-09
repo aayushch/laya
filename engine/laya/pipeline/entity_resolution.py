@@ -18,7 +18,7 @@ log = structlog.get_logger()
 # Configurable via settings.json tuning.semantic_entity_threshold
 def _get_semantic_threshold() -> float:
     from laya.config import get_tuning
-    return get_tuning("semantic_entity_threshold", 0.35)
+    return get_tuning("semantic_entity_threshold")
 
 
 async def resolve_semantic_entities(
@@ -135,93 +135,9 @@ async def _create_semantic_link(
         return None
 
 
-async def confirm_entity_link(
-    entity_a: str,
-    entity_b: str,
-    context: str = "",
-) -> bool:
-    """Layer 3: LLM confirmation of entity link.
-
-    Asks a cheap model whether two entity references refer to the same thing.
-    If confirmed, updates the link_method to 'llm_confirmed' with confidence 1.0.
-
-    Args:
-        entity_a: First entity reference.
-        entity_b: Second entity reference.
-        context: Optional context about where these entities appear.
-
-    Returns:
-        True if the LLM confirms the entities match.
-    """
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "You determine whether two entity references refer to the same thing. "
-                "Consider aliases, abbreviations, and platform-specific identifiers."
-            ),
-        },
-        {
-            "role": "user",
-            "content": (
-                f"Do these two references refer to the same entity?\n\n"
-                f"Entity A: {entity_a}\n"
-                f"Entity B: {entity_b}\n"
-                f"{'Context: ' + context if context else ''}\n\n"
-                f"Respond with JSON matching the schema."
-            ),
-        },
-    ]
-
-    schema = {
-        "name": "entity_match",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "match": {"type": "boolean"},
-                "reasoning": {"type": "string"},
-            },
-            "required": ["match", "reasoning"],
-            "additionalProperties": False,
-        },
-    }
-
-    try:
-        response = await llm_call(
-            role="router",  # cheap model
-            messages=messages,
-            response_schema=schema,
-            step="entity_confirm",
-            temperature=0.0,
-            max_tokens=DEFAULT_MAX_TOKENS,
-        )
-
-        if response.parsed and response.parsed.get("match"):
-            # Update existing semantic links to llm_confirmed
-            db = await get_db()
-            await db.execute(
-                """UPDATE entities
-                   SET link_method = 'llm_confirmed', confidence = 1.0
-                   WHERE canonical_name = ?""",
-                (f"{entity_a} <-> {entity_b}",),
-            )
-            await db.commit()
-
-            log.info("entity_link_confirmed", entity_a=entity_a, entity_b=entity_b)
-            return True
-
-        log.debug(
-            "entity_link_rejected",
-            entity_a=entity_a,
-            entity_b=entity_b,
-            reasoning=response.parsed.get("reasoning", "") if response.parsed else "",
-        )
-        return False
-
-    except Exception as e:
-        log.warning("entity_confirm_failed", error=str(e))
-        return False
+# NOTE: the former Layer-3 `confirm_entity_link` LLM confirmation was removed as
+# dead code — it was never called anywhere in the pipeline while still carrying a
+# maintained prompt (review §5.7 / §2 entity dedup).
 
 
 _CONTEXT_SYSTEM_PROMPTS = {
@@ -289,8 +205,8 @@ async def confirm_context_link(
 ) -> tuple[bool, str]:
     """LLM confirmation that two cards are about the same real-world context.
 
-    Unlike confirm_entity_link (which compares entity identifiers), this
-    compares full card content to decide whether two notifications relate
+    Unlike entity-identifier comparison, this compares full card content to
+    decide whether two notifications relate
     to the same underlying topic — e.g. a bill notification and a payment
     receipt for that bill.
 

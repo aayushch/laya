@@ -12,16 +12,20 @@ export const budgetData = writable<{
 	currentMonthCost: number;
 	monthlyLimit: number | null;
 	enabled: boolean;
+	totalTokens: number;
 } | null>(null);
 
 function fmtCost(n: number): string {
 	return n < 0.01 && n > 0 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`;
 }
 
-/** Formatted current cost: "$4.23" — links to /status */
+/** Formatted current cost with token volume: "$4.23 (27M)". The token count is
+ *  what makes the meter meaningful on a local-model setup, where every model is
+ *  free so the dollar figure stays at $0.00 no matter how much you run. */
 export const costAmount = derived(budgetData, ($d) => {
 	if (!$d) return null;
-	return fmtCost($d.currentMonthCost);
+	const cost = fmtCost($d.currentMonthCost);
+	return $d.totalTokens > 0 ? `${cost} (${fmtTokens($d.totalTokens)})` : cost;
 });
 
 /** Formatted budget limit: "/ $30.00" — links to settings cost control (null if no budget) */
@@ -58,6 +62,7 @@ export function loadBudgetStatus() {
 				currentMonthCost: data.current_month_cost,
 				monthlyLimit: data.monthly_limit_usd,
 				enabled: data.enabled,
+				totalTokens: (data.total_input_tokens ?? 0) + (data.total_output_tokens ?? 0),
 			});
 			_initialized = true;
 		} catch {
@@ -81,7 +86,7 @@ export function handleBudgetWsMessage(msg: { type: string; paused?: boolean }) {
 export const agentBudgetPaused = writable(false);
 export const agentBudgetData = writable<AgentBudgetStatus | null>(null);
 
-function fmtTokens(n: number): string {
+export function fmtTokens(n: number): string {
 	if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
 	if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
 	return `${n}`;

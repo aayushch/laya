@@ -258,10 +258,14 @@ async def embed_document(
     entity_refs, persona, timestamp, content_type.
     """
     collection = get_collection()
-    collection.upsert(
-        ids=[doc_id],
-        documents=[text],
-        metadatas=[metadata],
+    # upsert runs SentenceTransformer.encode synchronously (50–500ms CPU, ~2s on
+    # first load) plus the Chroma write — running it inline froze all API/WS
+    # traffic on every card emit and serialized bursts (review §1.2 / §4). Push
+    # it to the executor, mirroring memory_search below.
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(
+        None,
+        partial(collection.upsert, ids=[doc_id], documents=[text], metadatas=[metadata]),
     )
     log.debug("document_embedded", doc_id=doc_id, content_type=metadata.get("content_type"))
 
@@ -307,7 +311,9 @@ async def embed_document_chunked(
 async def delete_document(doc_id: str) -> None:
     """Remove a document from the laya_memory collection by ID."""
     collection = get_collection()
-    collection.delete(ids=[doc_id])
+    # Chroma delete is synchronous I/O — keep it off the event loop (review §4).
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, partial(collection.delete, ids=[doc_id]))
     log.debug("document_deleted", doc_id=doc_id)
 
 

@@ -11,11 +11,8 @@ from typing import Any
 import structlog
 
 from laya.api.websocket import manager
-from laya.db.fts import build_fts_match, fts_ready
 from laya.db.sqlite import get_db
 from laya.db.timeutil import db_now, db_ts_from_epoch
-
-log = structlog.get_logger()
 from laya.llm.tools.constants import (
     CARDS_BY_ENTITY_DEFAULT,
     CARDS_BY_ENTITY_MAX,
@@ -23,6 +20,9 @@ from laya.llm.tools.constants import (
     CHAT_SEARCH_MAX,
     parse_iso_to_timestamp,
 )
+from laya.retrieval import fts_or_like
+
+log = structlog.get_logger()
 
 
 def _parse_entity_platform(entity_id: str) -> str:
@@ -111,18 +111,24 @@ async def _search_keyword(
 
     Returns (rows, total, has_more).
     """
-    match = build_fts_match(query, min_len=2, max_terms=8) if query else None
-    if query and fts_ready() and match:
-        try:
-            return await _search_keyword_fts(
-                match, status, priority, capped_limit, offset, space_id,
-                date_from_ts, date_to_ts,
-            )
-        except Exception as e:
-            log.warning("card_tools_fts_failed_fallback_like", error=str(e))
-    return await _search_keyword_like(
-        query, status, priority, capped_limit, offset, space_id,
-        date_from_ts, date_to_ts,
+    # match_all=True → the FTS path requires ALL terms, matching the LIKE
+    # fallback's AND semantics and the tool's documented "all terms" contract.
+    # Previously FTS was OR and LIKE was AND, so results silently differed by
+    # whether FTS5 was available (review §5.3 — P7-1).
+    return await fts_or_like(
+        query,
+        min_len=2,
+        max_terms=8,
+        match_all=True,
+        fts=lambda m: _search_keyword_fts(
+            m, status, priority, capped_limit, offset, space_id,
+            date_from_ts, date_to_ts,
+        ),
+        like=lambda q: _search_keyword_like(
+            q, status, priority, capped_limit, offset, space_id,
+            date_from_ts, date_to_ts,
+        ),
+        warn_event="card_tools_fts_failed_fallback_like",
     )
 
 
@@ -558,10 +564,19 @@ async def get_cards_by_entity(
 # ---------------------------------------------------------------------------
 
 
-async def _update_card_status(card_id: str, new_status: str) -> dict[str, Any]:
-    """Update a card's status, broadcast to frontend, and return result."""
+async def _update_card_status(
+    card_id: str, new_status: str, *, allow_restore: bool = False
+) -> dict[str, Any]:
+    """Update a card's status via the lifecycle SSOT, then audit and return.
+
+    Routes through transition_card_status (review §5.4 — P7-4) so a chat-initiated
+    status change gets the same validation, atomic status guard, resolved_at
+    handling and card_updated broadcast as a UI-initiated one, instead of a raw
+    UPDATE. An invalid transition is returned as an error (the tool contract) rather
+    than raised. allow_restore is set by reopen, whose dismissed/archived → pending
+    is a deliberate non-forward move.
+    """
     db = await get_db()
-    now = db_now()
 
     rows = await db.execute_fetchall(
         "SELECT card_id, status FROM action_cards WHERE card_id = ?",
@@ -571,20 +586,14 @@ async def _update_card_status(card_id: str, new_status: str) -> dict[str, Any]:
         return {"error": f"Card '{card_id}' not found"}
 
     old_status = rows[0]["status"]
-    resolved_at = now if new_status in ("dismissed", "done", "archived") else None
 
-    await db.execute(
-        """UPDATE action_cards
-           SET status = ?, resolved_at = COALESCE(?, resolved_at), updated_at = ?
-           WHERE card_id = ?""",
-        (new_status, resolved_at, now, card_id),
-    )
-    await db.commit()
-
-    # Broadcast status change to frontend so UI updates in real-time
-    await manager.broadcast(
-        {"type": "card_updated", "card_id": card_id, "payload": {"status": new_status}}
-    )
+    from laya.models.card_lifecycle import transition_card_status
+    try:
+        await transition_card_status(
+            card_id, new_status, actor="chat", allow_restore=allow_restore
+        )
+    except ValueError as e:
+        return {"error": str(e)}
 
     # Mirror the audit trail the REST card-lifecycle endpoints write (cards_api.py),
     # so a card mutated via chat is recorded the same as one mutated via the UI.
@@ -625,4 +634,5 @@ async def archive_card(card_id: str) -> dict[str, Any]:
 
 async def reopen_card(card_id: str) -> dict[str, Any]:
     """Reopen a dismissed/archived card back to pending."""
-    return await _update_card_status(card_id, "pending")
+    # allow_restore: dismissed/archived → pending is a deliberate non-forward move.
+    return await _update_card_status(card_id, "pending", allow_restore=True)

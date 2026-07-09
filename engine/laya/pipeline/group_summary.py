@@ -29,6 +29,22 @@ _pending_updates: dict[str, list[str]] = {}  # entity_id → [card_ids]
 _pending_space: dict[str, str | None] = {}  # entity_id → space_id
 _debounce_tasks: dict[str, asyncio.Task] = {}  # entity_id → timer task
 
+# Per-entity run locks. A new debounce batch can be scheduled while the previous
+# batch is still mid-LLM (the timer task removes itself from _debounce_tasks
+# before running), so two _run_group_summary calls for the same entity could
+# otherwise overlap and lost-update the forward-only rolling summary — dropping
+# cards from it permanently (review §2 pipeline / §3.4).
+_entity_run_locks: dict[str, asyncio.Lock] = {}
+
+
+def _get_run_lock(key: str) -> asyncio.Lock:
+    # Safe without a guard: creation is synchronous (no await between get/set).
+    lock = _entity_run_locks.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _entity_run_locks[key] = lock
+    return lock
+
 
 async def trigger_group_summary_update(
     entity_id: str,
@@ -49,7 +65,8 @@ async def trigger_group_summary_update(
 
     if debounce_seconds <= 0:
         # Debounce disabled — run immediately (backwards compat)
-        await _run_group_summary(entity_id, [new_card_id], space_id)
+        async with _get_run_lock(entity_id):
+            await _run_group_summary(entity_id, [new_card_id], space_id)
         return
 
     async with _debounce_lock:
@@ -84,7 +101,10 @@ async def _debounced_group_summary(entity_id: str, delay: float) -> None:
     if not card_ids:
         return
 
-    await _run_group_summary(entity_id, card_ids, space_id)
+    # Serialize per-entity so a batch scheduled while this one is mid-LLM can't
+    # lost-update the rolling summary (review §2 pipeline / §3.4).
+    async with _get_run_lock(entity_id):
+        await _run_group_summary(entity_id, card_ids, space_id)
 
 
 async def _run_group_summary(
@@ -364,7 +384,17 @@ async def _rolling_update(
         model=resp.model,
     )
 
-    await _cascade_to_context_group(db, entity_id, card_ids, resolved_space_id)
+    # Skip the context-group cascade when this entity's summary headline+status
+    # came back identical — the context summary is derived from its member
+    # entities' headline+status, so an unchanged entity can't move it. Avoids a
+    # redundant nested LLM regen on every no-op rolling update (review §3.5 — P6-5).
+    if (
+        parsed["headline"] == existing_summary["headline"]
+        and parsed.get("current_status") == existing_summary["current_status"]
+    ):
+        log.debug("context_cascade_skipped_unchanged", entity_id=entity_id)
+    else:
+        await _cascade_to_context_group(db, entity_id, card_ids, resolved_space_id)
     return summary_data
 
 

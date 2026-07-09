@@ -20,9 +20,14 @@ from laya.security.keychain import get_api_key, has_api_key, store_api_key
 
 log = structlog.get_logger()
 
-# Default owner credentials — falling back to hardcoded defaults.
+# Default owner credentials. The password is only needed on a *fresh* n8n
+# install; it is randomly generated (then persisted to the OS keychain) unless
+# the operator pins one via LAYA_N8N_OWNER_PASSWORD. The previous hardcoded
+# literal was repo-public — n8n holds every connected platform's OAuth tokens
+# and can run arbitrary code via its nodes, so any local process (or a
+# DNS-rebinding page, since n8n doesn't validate Host) could log in (review §1.5).
 _DEFAULT_EMAIL = os.environ.get("LAYA_N8N_OWNER_EMAIL", "laya@local.host")
-_DEFAULT_PASSWORD = os.environ.get("LAYA_N8N_OWNER_PASSWORD", "LayaAutoAdmin2026!")
+_ENV_PASSWORD = os.environ.get("LAYA_N8N_OWNER_PASSWORD")  # optional operator override
 _DEFAULT_FIRST_NAME = "Laya"
 _DEFAULT_LAST_NAME = "Admin"
 
@@ -826,7 +831,9 @@ async def ensure_n8n_ready(*, _retries: int = 3, _backoff: float = 10.0) -> dict
     # owner already exists), then fall back to login.
     cookies = None
     stored_password = get_api_key("n8n_admin")
-    password = stored_password or _DEFAULT_PASSWORD
+    # Existing installs reuse their keychain password; a pinned env password
+    # wins on first boot; otherwise generate a fresh random one (review §1.5).
+    password = stored_password or _ENV_PASSWORD or _generate_password()
 
     # Try creating owner — succeeds on fresh n8n (returns cookies via auto-login)
     log.info("n8n_attempting_owner_setup")

@@ -6,7 +6,7 @@
 	import { goto } from '$app/navigation';
 	import { chatOpen, chatCardContext, chatCardIds, chatListOpen } from '$lib/stores/chat';
 	import { buildSingleCardContext } from '$lib/utils/cardContext';
-	import { parseBackendDate } from '$lib/utils/datetime';
+	import { parseBackendDate, timeAgo as _timeAgo } from '$lib/utils/datetime';
 	import { cardColors } from '$lib/stores/cardColors';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { cardDescriptions } from '$lib/stores/cardDescriptions';
@@ -14,7 +14,7 @@
 	import { portal } from '$lib/actions/portal';
 	import StatusDot from './StatusDot.svelte';
 	import PlatformIcon from '$lib/components/settings/PlatformIcon.svelte';
-	import { platformDotColor, platformKey, actorInitials, actorAvatarColor } from '$lib/utils/cardVisuals';
+	import { platformDotColor, platformKey, actorInitials, actorAvatarColor, PRIORITY_LABELS, PRIORITY_COLORS } from '$lib/utils/cardVisuals';
 
 	let { card, onselect, ondelete, onlink, selectedCardId = '', hasSelection = false, lastViewedCardId = '' }: { card: ActionCard; onselect: (card: ActionCard) => void; ondelete?: (cardId: string) => void; onlink?: (card: ActionCard) => void; selectedCardId?: string; hasSelection?: boolean; lastViewedCardId?: string } = $props();
 
@@ -77,19 +77,9 @@
 
 	const isArchived = $derived(card.status === 'archived');
 
-	const priorityColors: Record<string, string> = {
-		CRITICAL: 'bg-red-600 text-red-50',
-		HIGH:     'bg-rose-500/25 text-rose-300',
-		MEDIUM:   'bg-amber-500/20 text-amber-300',
-		LOW:      'bg-surface-700/40 text-surface-400'
-	};
+	const priorityColors = PRIORITY_COLORS;
 
-	const priorityLabel: Record<string, string> = {
-		CRITICAL: 'CRIT',
-		HIGH: 'HIGH',
-		MEDIUM: 'MED',
-		LOW: 'LOW'
-	};
+	const priorityLabel = PRIORITY_LABELS;
 
 	const personaColors: Record<string, string> = {
 		ENGINEER: 'text-violet-400',
@@ -200,19 +190,7 @@
 	// hairline all disappear; their information moves inline next to the actor.
 	const compact = $derived($cardSize === 'compact');
 
-	function timeAgo(dateStr?: string): string {
-		const d = parseBackendDate(dateStr);
-		if (!d) return '';
-		const diff = Date.now() - d.getTime();
-		const mins = Math.floor(diff / 60000);
-		if (mins < 1) return 'just now';
-		if (mins < 60) return `${mins}m ago`;
-		const hours = Math.floor(mins / 60);
-		if (hours < 24) return `${hours}h ago`;
-		const days = Math.floor(hours / 24);
-		if (days < 7) return `${days}d ago`;
-		return `${Math.floor(days / 7)}w ago`;
-	}
+	const timeAgo = (dateStr?: string) => _timeAgo(dateStr, { weeks: true });
 
 	function fullDate(dateStr?: string): string {
 		const d = parseBackendDate(dateStr);
@@ -230,6 +208,11 @@
 			await engineApi.markCardDone(card.card_id);
 			card.status = 'done';
 			if (!card.read_at) card.read_at = new Date().toISOString();
+		} catch (err) {
+			// Don't fail silently — an uncaught rejection made the button appear
+			// to 'do nothing' on error (review §2 UI — P4-31). The optimistic
+			// state update runs only after the await, so nothing to revert here.
+			console.error('card_action_failed', 'markDone', card.card_id, err);
 		} finally {
 			markingDone = false;
 		}
@@ -242,6 +225,11 @@
 			await engineApi.dismissCard(card.card_id);
 			card.status = 'dismissed';
 			if (!card.read_at) card.read_at = new Date().toISOString();
+		} catch (err) {
+			// Don't fail silently — an uncaught rejection made the button appear
+			// to 'do nothing' on error (review §2 UI — P4-31). The optimistic
+			// state update runs only after the await, so nothing to revert here.
+			console.error('card_action_failed', 'dismiss', card.card_id, err);
 		} finally {
 			dismissing = false;
 		}
@@ -254,6 +242,11 @@
 			await engineApi.archiveCard(card.card_id);
 			card.status = 'archived';
 			if (!card.read_at) card.read_at = new Date().toISOString();
+		} catch (err) {
+			// Don't fail silently — an uncaught rejection made the button appear
+			// to 'do nothing' on error (review §2 UI — P4-31). The optimistic
+			// state update runs only after the await, so nothing to revert here.
+			console.error('card_action_failed', 'archive', card.card_id, err);
 		} finally {
 			archiving = false;
 		}
@@ -265,6 +258,11 @@
 		try {
 			const result = await engineApi.reopenCard(card.card_id);
 			card.status = result.status as ActionCard['status'];
+		} catch (err) {
+			// Don't fail silently — an uncaught rejection made the button appear
+			// to 'do nothing' on error (review §2 UI — P4-31). The optimistic
+			// state update runs only after the await, so nothing to revert here.
+			console.error('card_action_failed', 'reopen', card.card_id, err);
 		} finally {
 			reopening = false;
 		}
@@ -288,6 +286,11 @@
 				const result = await engineApi.bookmarkCard(card.card_id);
 				card.bookmarked_at = result.bookmarked_at;
 			}
+		} catch (err) {
+			// Don't fail silently — an uncaught rejection made the button appear
+			// to 'do nothing' on error (review §2 UI — P4-31). The optimistic
+			// state update runs only after the await, so nothing to revert here.
+			console.error('card_action_failed', 'toggleBookmark', card.card_id, err);
 		} finally {
 			bookmarking = false;
 		}

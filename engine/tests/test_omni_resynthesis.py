@@ -187,12 +187,15 @@ class TestFetchCapMath:
             )
         await db.commit()
 
-        captured = {"cards": 0}
+        # Cards are now folded across chunked calls (P6-13), so accumulate the
+        # per-call counts rather than reading only the last call's message.
+        captured = {"cards": 0, "calls": 0}
 
         async def fake_llm_call(**kwargs):
             msgs = kwargs.get("messages", [])
             user_msg = next((m["content"] for m in msgs if m["role"] == "user"), "")
-            captured["cards"] = user_msg.count("card_id: card_cap_")
+            captured["cards"] += user_msg.count("card_id: card_cap_")
+            captured["calls"] += 1
 
             class R:
                 parsed = {"sections": []}
@@ -206,8 +209,10 @@ class TestFetchCapMath:
                 db, "default", density="compact", snapshot_type="manual", event_threshold=50
             )
 
-        # With threshold=50 → cap=150, all 130 cards should flow through.
+        # With threshold=50 → cap=150, all 130 cards should flow through, folded
+        # across ceil(130 / 40) = 4 chunked calls.
         assert captured["cards"] == 130
+        assert captured["calls"] == 4
 
     async def test_fetch_cap_floor_with_threshold_disabled(self, db):
         """With threshold=0, cap should be the 100 floor."""
@@ -228,12 +233,13 @@ class TestFetchCapMath:
             )
         await db.commit()
 
-        captured = {"cards": 0}
+        captured = {"cards": 0, "calls": 0}
 
         async def fake_llm_call(**kwargs):
             msgs = kwargs.get("messages", [])
             user_msg = next((m["content"] for m in msgs if m["role"] == "user"), "")
-            captured["cards"] = user_msg.count("card_id: card_floor_")
+            captured["cards"] += user_msg.count("card_id: card_floor_")
+            captured["calls"] += 1
 
             class R:
                 parsed = {"sections": []}
@@ -247,8 +253,10 @@ class TestFetchCapMath:
                 db, "default", density="compact", snapshot_type="manual", event_threshold=0
             )
 
-        # With threshold=0 → cap=100, only 100 of the 130 cards should be included.
+        # With threshold=0 → cap=100, only 100 of the 130 cards should be
+        # included, folded across ceil(100 / 40) = 3 chunked calls.
         assert captured["cards"] == 100
+        assert captured["calls"] == 3
 
 
 @pytest.mark.asyncio
@@ -413,3 +421,350 @@ class TestResolutionDrop:
         att = self._attention_items(content)
         assert len(att) == 1  # live card, not pruned
         assert att[0]["entity_ids"] == ["github:pull_request:org/repo/#7"]
+
+
+@pytest.mark.asyncio
+class TestResynthesisChunking:
+    """P6-13: large card bursts are folded across sequential smaller LLM calls
+    (chunks of _RESYNTH_CHUNK_SIZE) instead of one truncation-prone mega-call."""
+
+    async def _seed(self, db, count, prefix, space_id="default"):
+        """Insert `count` pending cards with strictly increasing created_at."""
+        base = datetime.now(timezone.utc) - timedelta(hours=1)
+        for i in range(count):
+            ts = (base + timedelta(seconds=i)).strftime("%Y-%m-%d %H:%M:%S")
+            await insert_test_card(
+                db, card_id=f"card_{prefix}_{i:03d}",
+                event_id=f"evt_{prefix}_{i:03d}", space_id=space_id,
+            )
+            await db.execute(
+                "UPDATE action_cards SET created_at = ? WHERE card_id = ?",
+                (ts, f"card_{prefix}_{i:03d}"),
+            )
+        await db.commit()
+
+    async def _insert_snapshot(self, db, space_id, version, generated_at, content, card_ids):
+        await db.execute(
+            """INSERT INTO omni_snapshots
+               (snapshot_id, space_id, version, generated_at, snapshot_type,
+                content_json, card_ids, events_processed, created_at,
+                is_delta, base_version)
+               VALUES (?, ?, ?, ?, 'manual', ?, ?, ?, ?, 0, NULL)""",
+            (f"omni_seed_{version}", space_id, version, generated_at,
+             json.dumps(content), json.dumps(card_ids), len(card_ids), generated_at),
+        )
+        await db.commit()
+
+    async def test_small_batch_is_single_call(self, db):
+        """A batch at or under the chunk size runs as exactly one LLM call."""
+        from laya.pipeline import omni as omni_pipeline
+        omni_pipeline._latest_cache.pop("default", None)
+        await self._seed(db, omni_pipeline._RESYNTH_CHUNK_SIZE, "small")
+
+        calls = []
+
+        async def fake_llm(**kwargs):
+            calls.append(kwargs)
+
+            class R:
+                parsed = {"sections": []}
+                truncated = False
+                output_tokens = 10
+                model = "test"
+            return R()
+
+        with patch.object(omni_pipeline, "llm_call", new=fake_llm):
+            await omni_pipeline._resynthesize_space(
+                db, "default", density="compact", snapshot_type="manual", event_threshold=50)
+
+        assert len(calls) == 1
+
+    async def test_large_burst_folds_in_ordered_chunks(self, db):
+        """95 cards → 3 chunks (≤ 40 each), oldest folded first / newest last,
+        and each fold's snapshot is the previous fold's output (feed-forward)."""
+        from laya.pipeline import omni as omni_pipeline
+        omni_pipeline._latest_cache.pop("default", None)
+        await self._seed(db, 95, "burst")
+
+        chunk_ids: list[list[str]] = []
+        snapshots_in: list = []
+        real_build = omni_pipeline.build_omni_resynthesis_messages
+
+        def spy_build(**kwargs):
+            chunk_ids.append([c["card_id"] for c in kwargs["new_cards"]])
+            snapshots_in.append(kwargs["current_snapshot"])
+            return real_build(**kwargs)
+
+        call_n = {"i": 0}
+
+        async def fake_llm(**kwargs):
+            call_n["i"] += 1
+
+            class R:
+                # Distinct marker per call so feed-forward is observable.
+                parsed = {"sections": [{"type": "recent", "items": [], "marker": call_n["i"]}]}
+                truncated = False
+                output_tokens = 10
+                model = "test"
+            return R()
+
+        with patch.object(omni_pipeline, "build_omni_resynthesis_messages", new=spy_build), \
+             patch.object(omni_pipeline, "llm_call", new=fake_llm):
+            await omni_pipeline._resynthesize_space(
+                db, "default", density="compact", snapshot_type="manual", event_threshold=50)
+
+        # ceil(95 / 40) = 3 chunked calls, none over the chunk size.
+        assert len(chunk_ids) == 3
+        assert all(len(ids) <= omni_pipeline._RESYNTH_CHUNK_SIZE for ids in chunk_ids)
+        assert sum(len(ids) for ids in chunk_ids) == 95  # every card folded once
+
+        # Oldest card lands in the FIRST fold, newest in the LAST fold.
+        assert "card_burst_000" in chunk_ids[0]
+        assert "card_burst_094" in chunk_ids[-1]
+
+        # Feed-forward: first fold has no prior snapshot; each later fold's input
+        # snapshot is the immediately preceding fold's output.
+        assert snapshots_in[0] is None
+        assert snapshots_in[1]["sections"][0]["marker"] == 1
+        assert snapshots_in[2]["sections"][0]["marker"] == 2
+
+    async def test_state_inputs_apply_to_first_fold_only(self, db):
+        """Snapshot-relative prune hints (item_states) accompany only the first
+        chunk; later folds get an empty list."""
+        from laya.pipeline import omni as omni_pipeline
+        omni_pipeline._latest_cache.pop("default", None)
+
+        now = datetime.now(timezone.utc)
+        since_dt = now - timedelta(hours=1)
+
+        # A prior snapshot with one attention item → item_states has one entry.
+        await insert_test_card(db, card_id="card_prior", event_id="evt_prior",
+                               status="pending", entity_id="jira:ticket:PRIOR-1",
+                               space_id="default")
+        seed_content = {"sections": [
+            {"type": "attention", "label": None, "items": [
+                {"text": "PRIOR-1 needs review", "source_cards": ["card_prior"],
+                 "entity_ids": ["jira:ticket:PRIOR-1"], "platforms": ["jira"],
+                 "priority": "HIGH", "pinned": False}
+            ]},
+            {"type": "recent", "label": None, "items": []},
+            {"type": "period", "label": None, "items": []},
+            {"type": "milestone", "label": None, "items": []},
+        ]}
+        await self._insert_snapshot(db, "default", 1,
+                                    since_dt.strftime("%Y-%m-%d %H:%M:%S"),
+                                    seed_content, ["card_prior"])
+
+        # 50 fresh cards created after the snapshot → 2 chunks.
+        base = now - timedelta(minutes=30)
+        for i in range(50):
+            ts = (base + timedelta(seconds=i)).strftime("%Y-%m-%d %H:%M:%S")
+            await insert_test_card(db, card_id=f"card_state_{i:03d}",
+                                   event_id=f"evt_state_{i:03d}", space_id="default")
+            await db.execute("UPDATE action_cards SET created_at = ? WHERE card_id = ?",
+                             (ts, f"card_state_{i:03d}"))
+        await db.commit()
+
+        item_states_per_call: list[int] = []
+        real_build = omni_pipeline.build_omni_resynthesis_messages
+
+        def spy_build(**kwargs):
+            item_states_per_call.append(len(kwargs.get("item_states") or []))
+            return real_build(**kwargs)
+
+        async def fake_llm(**kwargs):
+            class R:
+                parsed = {"sections": []}
+                truncated = False
+                output_tokens = 10
+                model = "test"
+            return R()
+
+        with patch.object(omni_pipeline, "build_omni_resynthesis_messages", new=spy_build), \
+             patch.object(omni_pipeline, "llm_call", new=fake_llm):
+            await omni_pipeline._resynthesize_space(
+                db, "default", density="compact", snapshot_type="manual", event_threshold=50)
+
+        assert len(item_states_per_call) == 2      # 50 cards / 40 = 2 folds
+        assert item_states_per_call[0] == 1        # prune hint on the first fold
+        assert item_states_per_call[1] == 0        # and only the first
+
+    async def test_later_chunk_failure_discards_run(self, db):
+        """If a non-first chunk fails to parse, the whole run is discarded: no
+        snapshot is stored and the watermark stays put so all cards retry."""
+        from laya.pipeline import omni as omni_pipeline
+        omni_pipeline._latest_cache.pop("default", None)
+        await self._seed(db, 50, "partial")  # 2 chunks
+
+        call_n = {"i": 0}
+
+        async def fake_llm(**kwargs):
+            call_n["i"] += 1
+
+            class R:
+                # First fold parses; second fold truncates (parsed=None).
+                parsed = {"sections": []} if call_n["i"] == 1 else None
+                truncated = call_n["i"] != 1
+                output_tokens = 10
+                model = "test"
+            return R()
+
+        with patch.object(omni_pipeline, "llm_call", new=fake_llm):
+            result = await omni_pipeline._resynthesize_space(
+                db, "default", density="compact", snapshot_type="manual", event_threshold=50)
+
+        assert result is None
+        assert call_n["i"] == 2  # it did attempt the second fold before failing
+        rows = await db.execute_fetchall(
+            "SELECT COUNT(*) AS n FROM omni_snapshots WHERE space_id = 'default'", ()
+        )
+        assert rows[0]["n"] == 0  # nothing persisted — full retry next run
+
+
+def _degenerate_sections(n_attention=3, n_recent=2):
+    """A skeleton/placeholder result like an overloaded local model produced."""
+    def dots(k):
+        return [{"text": "...", "priority": "...", "source_cards": [], "platforms": []} for _ in range(k)]
+    return [
+        {"type": "attention", "label": None, "items": dots(n_attention)},
+        {"type": "recent", "label": None, "items": dots(n_recent)},
+        {"type": "period", "label": None, "items": []},
+        {"type": "milestone", "label": None, "items": []},
+    ]
+
+
+class TestDegenerateDetection:
+    """Unit coverage for the placeholder-response detector."""
+
+    def test_all_dots_is_degenerate(self):
+        from laya.pipeline.omni import _is_degenerate_sections
+        assert _is_degenerate_sections(_degenerate_sections()) is True
+
+    def test_healthy_sections_are_not_degenerate(self):
+        from laya.pipeline.omni import _is_degenerate_sections
+        healthy = [
+            {"type": "attention", "items": [
+                {"text": "PR #7 needs review", "priority": "HIGH"},
+                {"text": "Deploy blocked on CI", "priority": "CRITICAL"},
+            ]},
+            {"type": "recent", "items": [{"text": "Merged the auth refactor", "priority": "LOW"}]},
+        ]
+        assert _is_degenerate_sections(healthy) is False
+
+    def test_empty_is_not_degenerate(self):
+        from laya.pipeline.omni import _is_degenerate_sections
+        assert _is_degenerate_sections([{"type": "attention", "items": []}]) is False
+
+    def test_one_odd_item_does_not_trip_it(self):
+        from laya.pipeline.omni import _is_degenerate_sections
+        mostly_good = [{"type": "recent", "items": [
+            {"text": "Real update one", "priority": "HIGH"},
+            {"text": "Real update two", "priority": "LOW"},
+            {"text": "...", "priority": "..."},
+        ]}]
+        assert _is_degenerate_sections(mostly_good) is False  # 1/3 < 0.5
+
+
+@pytest.mark.asyncio
+class TestDegenerateSnapshotGuard:
+    """A degenerate LLM result must never be stored (it would poison the
+    forward-carried snapshot), and an already-poisoned snapshot must not be fed
+    back to the model — it regenerates fresh instead (recovery)."""
+
+    async def _seed(self, db, count, prefix, space_id="default"):
+        base = datetime.now(timezone.utc) - timedelta(hours=1)
+        for i in range(count):
+            ts = (base + timedelta(seconds=i)).strftime("%Y-%m-%d %H:%M:%S")
+            await insert_test_card(
+                db, card_id=f"card_{prefix}_{i:03d}",
+                event_id=f"evt_{prefix}_{i:03d}", space_id=space_id,
+            )
+            await db.execute("UPDATE action_cards SET created_at = ? WHERE card_id = ?",
+                             (ts, f"card_{prefix}_{i:03d}"))
+        await db.commit()
+
+    async def _insert_snapshot(self, db, version, generated_at, content, card_ids, space_id="default"):
+        await db.execute(
+            """INSERT INTO omni_snapshots
+               (snapshot_id, space_id, version, generated_at, snapshot_type,
+                content_json, card_ids, events_processed, created_at, is_delta, base_version)
+               VALUES (?, ?, ?, ?, 'rolling', ?, ?, ?, ?, 0, NULL)""",
+            (f"omni_seed_{version}", space_id, version, generated_at,
+             json.dumps(content), json.dumps(card_ids), len(card_ids), generated_at),
+        )
+        await db.commit()
+
+    async def test_degenerate_result_is_not_stored(self, db):
+        from laya.pipeline import omni as omni_pipeline
+        omni_pipeline._latest_cache.pop("default", None)
+        await self._seed(db, 3, "deg")
+
+        async def fake_llm(**kwargs):
+            class R:
+                parsed = {"sections": _degenerate_sections()}
+                truncated = False
+                output_tokens = 10
+                model = "test"
+            return R()
+
+        with patch.object(omni_pipeline, "llm_call", new=fake_llm):
+            result = await omni_pipeline._resynthesize_space(
+                db, "default", density="compact", snapshot_type="manual", event_threshold=50)
+
+        assert result is None
+        rows = await db.execute_fetchall(
+            "SELECT COUNT(*) AS n FROM omni_snapshots WHERE space_id = 'default'", ())
+        assert rows[0]["n"] == 0  # the '...' skeleton never hit the DB
+
+    async def test_poisoned_snapshot_is_dropped_and_regenerated(self, db):
+        from laya.pipeline import omni as omni_pipeline
+        omni_pipeline._latest_cache.pop("default", None)
+
+        now = datetime.now(timezone.utc)
+        since = (now - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+        # A poisoned base snapshot already in the DB.
+        await self._insert_snapshot(db, 1, since, {"sections": _degenerate_sections()}, ["old"])
+        # A fresh card so resynthesis has something to fold.
+        await insert_test_card(db, card_id="card_fresh", event_id="evt_fresh", space_id="default")
+        await db.execute("UPDATE action_cards SET created_at = ? WHERE card_id = ?",
+                         ((now - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S"), "card_fresh"))
+        await db.commit()
+
+        seen_snapshots = []
+        real_build = omni_pipeline.build_omni_resynthesis_messages
+
+        def spy_build(**kwargs):
+            seen_snapshots.append(kwargs["current_snapshot"])
+            return real_build(**kwargs)
+
+        async def fake_llm(**kwargs):
+            class R:
+                parsed = {"sections": [
+                    {"type": "attention", "items": [
+                        {"text": "Fresh real item", "priority": "HIGH",
+                         "source_cards": ["card_fresh"], "platforms": ["jira"]}]},
+                    {"type": "recent", "items": []},
+                    {"type": "period", "items": []},
+                    {"type": "milestone", "items": []},
+                ]}
+                truncated = False
+                output_tokens = 10
+                model = "test"
+            return R()
+
+        with patch.object(omni_pipeline, "build_omni_resynthesis_messages", new=spy_build), \
+             patch.object(omni_pipeline, "llm_call", new=fake_llm):
+            result = await omni_pipeline._resynthesize_space(
+                db, "default", density="compact", snapshot_type="manual", event_threshold=50)
+
+        # The poisoned snapshot was NOT fed to the model...
+        assert seen_snapshots and seen_snapshots[0] is None
+        # ...and a healthy snapshot got stored (recovery).
+        assert result is not None
+        rows = await db.execute_fetchall(
+            """SELECT content_json FROM omni_snapshots WHERE space_id = 'default'
+               AND is_delta = 0 ORDER BY version DESC LIMIT 1""", ())
+        content = json.loads(rows[0]["content_json"])
+        texts = [it["text"] for s in content["sections"] for it in s.get("items", [])]
+        assert "Fresh real item" in texts
+        assert "..." not in texts

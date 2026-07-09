@@ -87,6 +87,9 @@ async def _search_events(
 ) -> list[dict]:
     db = await get_db()
 
+    # ORDER BY recency + LIMIT bounds the fetch IN SQL. The
+    # fuzzy LIKE path previously fetched EVERY matching event row (thousands for a
+    # common name) only to dedupe down to a handful in Python (review §4 — P5-6).
     if exact:
         sql = """
             SELECT actor_email, actor_name, actor_handle,
@@ -96,6 +99,8 @@ async def _search_events(
               AND (LOWER(actor_email) = ?
                    OR LOWER(actor_name) = ?
                    OR LOWER(actor_handle) = ?)
+            ORDER BY created_at DESC
+            LIMIT 300
         """
         params: tuple = (query_lower, query_lower, query_clean)
     else:
@@ -109,6 +114,8 @@ async def _search_events(
               AND (LOWER(actor_name) LIKE ? ESCAPE '\\'
                    OR LOWER(actor_email) LIKE ? ESCAPE '\\'
                    OR LOWER(actor_handle) LIKE ? ESCAPE '\\')
+            ORDER BY created_at DESC
+            LIMIT 300
         """
         params = (pattern, pattern, pattern)
 

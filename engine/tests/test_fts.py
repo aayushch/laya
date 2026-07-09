@@ -35,6 +35,14 @@ class TestBuildFtsMatch:
     def test_max_terms_cap(self):
         assert build_fts_match("alpha beta gamma delta", max_terms=2) == '"alpha" OR "beta"'
 
+    def test_match_all_ands_phrases(self):
+        # match_all=True joins with AND so every term must be present — used by the
+        # card-search tool so its FTS path matches its LIKE fallback (P7-1).
+        assert (
+            build_fts_match("payment service crash", match_all=True)
+            == '"payment" AND "service" AND "crash"'
+        )
+
 
 @pytest.mark.asyncio
 class TestFtsCardSearch:

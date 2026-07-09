@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import structlog
 
@@ -13,6 +13,7 @@ from laya.api.websocket import manager
 from laya.config import load_settings
 from laya.db.sqlite import get_db
 from laya.db.timeutil import db_ts
+from laya.tz import safe_zoneinfo
 from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
 from laya.llm.prompts.briefing import build_briefing_messages
 from laya.models.card import ActionCardData, StagedOutput, SuggestedAction
@@ -48,6 +49,24 @@ async def generate_briefing(space_id: str | None = None) -> str:
     else:
         space_filter = ""
         space_params = ()
+
+    # Short-circuit if today's briefing already exists — done BEFORE the data
+    # queries and the LLM call so a re-trigger (e.g. a scheduler that fires the
+    # briefing more than once) doesn't pay for a briefing that is then discarded
+    # (review §2 briefing / §3.3).
+    suffix = f"_{space_id}" if space_id else ""
+    briefing_event_id = f"evt_briefing_{today}{suffix}"
+    existing = await db.execute_fetchall(
+        "SELECT event_id FROM events WHERE event_id = ?",
+        (briefing_event_id,),
+    )
+    if existing:
+        log.info("briefing_already_exists", date=today, space_id=space_id)
+        card_rows = await db.execute_fetchall(
+            "SELECT card_id FROM action_cards WHERE event_id = ?",
+            (briefing_event_id,),
+        )
+        return card_rows[0][0] if card_rows else ""
 
     # 1. Query overnight events (last 12 hours)
     overnight_rows = await db.execute_fetchall(
@@ -92,15 +111,23 @@ async def generate_briefing(space_id: str | None = None) -> str:
         for row in pending_rows
     ]
 
-    # 3. Query today's calendar events
+    # 3. Query today's calendar events, bounded by the user's LOCAL day.
+    # events.timestamp is space-format UTC; DATE('now') is the UTC day, so a
+    # UTC+ user would get yesterday's meetings near midnight (timezone invariant,
+    # review §2 briefing). Convert the local day window to UTC and range-filter.
+    _tz = safe_zoneinfo(load_settings().get("briefing", {}).get("timezone", "America/New_York"))
+    _now_local = now.astimezone(_tz)
+    _day_start_local = _now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    _cal_start = db_ts(_day_start_local.astimezone(timezone.utc))
+    _cal_end = db_ts((_day_start_local + timedelta(days=1)).astimezone(timezone.utc))
     calendar_rows = await db.execute_fetchall(
         f"""SELECT event_id, subject_title, timestamp
            FROM events
            WHERE source_platform = 'calendar'
-             AND DATE(timestamp) = DATE('now'){space_filter}
+             AND timestamp >= ? AND timestamp < ?{space_filter}
            ORDER BY timestamp ASC
            LIMIT 10""",
-        space_params,
+        (_cal_start, _cal_end, *space_params),
     )
     calendar_events = [
         {
@@ -146,24 +173,7 @@ async def generate_briefing(space_id: str | None = None) -> str:
             overnight_events, pending_cards, stats
         )
 
-    # 6. Create synthetic event
-    suffix = f"_{space_id}" if space_id else ""
-    briefing_event_id = f"evt_briefing_{today}{suffix}"
-
-    # Check if briefing event already exists today
-    existing = await db.execute_fetchall(
-        "SELECT event_id FROM events WHERE event_id = ?",
-        (briefing_event_id,),
-    )
-    if existing:
-        log.info("briefing_already_exists", date=today)
-        # Return existing card
-        card_rows = await db.execute_fetchall(
-            "SELECT card_id FROM action_cards WHERE event_id = ?",
-            (briefing_event_id,),
-        )
-        return card_rows[0][0] if card_rows else ""
-
+    # 6. Create synthetic event (existence was already checked up front)
     await db.execute(
         """INSERT INTO events
            (event_id, timestamp, source_platform, source_raw_event_type,

@@ -8,8 +8,8 @@ import uuid
 
 import structlog
 
-from laya.db.chromadb_store import memory_search
 from laya.db.sqlite import get_db
+from laya.pipeline.related_context import query_related_context
 from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
 from laya.llm.prompts.router import (
     build_batch_router_messages,
@@ -21,20 +21,6 @@ from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 
 log = structlog.get_logger()
-
-
-async def _query_related_context(event: LayaEvent) -> list[dict]:
-    """Search ChromaDB for past events related to this one."""
-    query_parts = [event.subject.title, event.content.body[:300]]
-    query = " ".join(query_parts)
-
-    try:
-        results = await memory_search(query, n_results=3)
-        log.debug("related_context_found", count=len(results), event_id=event.event_id)
-        return results
-    except Exception as e:
-        log.warning("memory_search_skipped", error=str(e), event_id=event.event_id)
-        return []
 
 
 async def _store_entities(event_id: str, router_output: RouterOutput) -> None:
@@ -94,8 +80,8 @@ async def run_router(
     Returns:
         RouterOutput with classification, entities, research plan.
     """
-    # 1. Query ChromaDB for related past events
-    related_context = await _query_related_context(event)
+    # 1. Query ChromaDB for related past events (shared per-event, memoized — P6-7)
+    related_context = await query_related_context(event, n_results=3)
 
     # 1b. Query user feedback patterns + classification rules/corrections for learning loop
     from laya.pipeline.feedback import (
@@ -146,6 +132,13 @@ async def run_router(
                 reasoning=f"Parse error, defaulting: {e}",
             )
 
+    # research_plan only applies to events that need investigation. Enforce it so a
+    # model that ignores the prompt (common on small local models) can't leave a
+    # spurious plan for a worker to follow, and the stored output stays clean
+    # (review §3 — P6-10). The output-token saving itself comes from the prompt cut.
+    if not router_output.requires_research and router_output.research_plan:
+        router_output.research_plan = []
+
     # 4. Store router output in events table
     db = await get_db()
     await db.execute(
@@ -191,10 +184,32 @@ async def run_batch_router(
         )
         return {item["event_id"]: output}
 
-    messages = build_batch_router_messages(events_data)
-    schema = get_batch_router_json_schema(len(events_data))
-
     space_id = events_data[0].get("space_id")
+
+    # Gather a shared feedback section for the whole batch: space-scoped
+    # classification rules (manual + learned) plus recent corrections for the
+    # platforms present. The batch path previously injected neither, so under
+    # burst the user's rules/corrections silently stopped applying — corrections
+    # appeared "not to stick" nondeterministically (review §1.7). Callers group
+    # batches by space (queue._batch_route_events), so space_id is uniform here.
+    from laya.pipeline.feedback import (
+        format_feedback_section,
+        query_classification_corrections,
+        query_classification_rules,
+    )
+    cls_rules = await query_classification_rules(space_id)
+    corrections: list[dict] = []
+    seen_platforms: set[str] = set()
+    for it in events_data:
+        plat = it["event"].source.platform
+        if plat in seen_platforms:
+            continue
+        seen_platforms.add(plat)
+        corrections.extend(await query_classification_corrections(plat))
+    feedback_section = format_feedback_section([], cls_rules, corrections)
+
+    messages = build_batch_router_messages(events_data, feedback_context=feedback_section)
+    schema = get_batch_router_json_schema(len(events_data))
 
     response = await llm_call(
         role="router",
@@ -209,10 +224,17 @@ async def run_batch_router(
     results: dict[str, RouterOutput] = {}
 
     if response.parsed and "classifications" in response.parsed:
-        for i, classification in enumerate(response.parsed["classifications"]):
-            if i >= len(events_data):
-                break
-            event_id = events_data[i]["event_id"]
+        for classification in response.parsed["classifications"]:
+            if not isinstance(classification, dict):
+                continue
+            # Match on the echoed event_index, not array position. A dropped or
+            # reordered classification would otherwise silently misassign every
+            # event after the gap (review §1.7).
+            idx = classification.pop("event_index", None)
+            if not isinstance(idx, int) or not (0 <= idx < len(events_data)):
+                log.warning("batch_router_bad_index", index=idx)
+                continue
+            event_id = events_data[idx]["event_id"]
             try:
                 router_output = RouterOutput(**classification)
                 results[event_id] = router_output
@@ -233,7 +255,7 @@ async def run_batch_router(
                     category=router_output.category.value,
                     persona=router_output.persona.value,
                     priority=router_output.priority.value,
-                    batch_index=i,
+                    batch_index=idx,
                 )
             except Exception as e:
                 log.warning("batch_router_parse_single", event_id=event_id, error=str(e))

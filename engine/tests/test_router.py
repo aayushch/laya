@@ -102,6 +102,47 @@ async def test_router_can_classify_as_sales(db, slack_event, mock_chromadb):
 
     assert result.persona.value == "SALES"
     assert result.category.value == "COMMS"
+    # P6-10: requires_research=False → research_plan is cleared even though the
+    # model emitted one, so no worker follows a spurious plan for a notification.
+    assert result.research_plan == []
+
+
+@pytest.mark.asyncio
+async def test_router_clears_research_plan_when_not_required(db, slack_event, mock_chromadb):
+    """A model that emits a research_plan for a requires_research=False event has
+    it dropped after parse (review §3 — P6-10)."""
+    from unittest.mock import MagicMock
+    await insert_test_event(
+        db, event_id=slack_event.event_id, platform="slack",
+        raw_event_type="message_received", subject_type="thread",
+        subject_id="t-1", subject_title="build passed", actor_name="CI",
+        content_body="Build #42 succeeded.",
+    )
+    resp = {
+        "category": "CODE", "persona": "ENGINEER", "priority": "LOW",
+        "confidence": 0.9, "entities": [],
+        "research_plan": ["step one", "step two", "step three"],
+        "requires_research": False, "secondary_persona": None,
+        "reasoning": "Informational build notification.",
+    }
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = json.dumps(resp)
+    mock_response.choices[0].message.tool_calls = None
+    mock_response.choices[0].finish_reason = "stop"
+    mock_response.usage = MagicMock()
+    mock_response.usage.prompt_tokens = 300
+    mock_response.usage.completion_tokens = 120
+
+    with patch("laya.pipeline.feedback.query_feedback_patterns", new_callable=AsyncMock, return_value=[]):
+        with patch("litellm.acompletion", new_callable=AsyncMock, return_value=mock_response):
+            with patch("laya.llm.client.load_settings", return_value={"models": {"router": "claude-haiku-4-5-20251001"}}):
+                with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                    with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                        result = await run_router(slack_event, "teammate")
+
+    assert result.requires_research is False
+    assert result.research_plan == []
 
 
 @pytest.mark.asyncio
@@ -206,3 +247,66 @@ async def test_entity_merge_on_duplicate(db, sample_event, mock_chromadb):
     refs = json.loads(row[0])
     assert "bitbucket" in refs  # Original
     assert "jira" in refs  # Merged from router output
+
+
+@pytest.mark.asyncio
+async def test_batch_router_matches_by_event_index(db, sample_event):
+    """Batch classifications are matched to their events by the echoed
+    event_index, not by array position — so an out-of-order response still
+    assigns each classification to the right event (review §1.7)."""
+    from laya.pipeline.router import run_batch_router
+
+    await insert_test_event(db, event_id="evt_a")
+    await insert_test_event(db, event_id="evt_b")
+
+    ev_a = sample_event.model_copy(update={"event_id": "evt_a"})
+    ev_b = sample_event.model_copy(update={"event_id": "evt_b"})
+    events_data = [
+        {"event_id": "evt_a", "event": ev_a, "actor_relationship": "teammate", "space_id": "default"},
+        {"event_id": "evt_b", "event": ev_b, "actor_relationship": "teammate", "space_id": "default"},
+    ]
+
+    # Response is deliberately OUT OF ORDER (index 1 before index 0) with
+    # distinct priorities so we can tell which event received which.
+    cls_b = {**MOCK_ROUTER_RESPONSE, "priority": "LOW", "event_index": 1}
+    cls_a = {**MOCK_ROUTER_RESPONSE, "priority": "CRITICAL", "event_index": 0}
+    mock_resp = MagicMock()
+    mock_resp.parsed = {"classifications": [cls_b, cls_a]}
+
+    with patch("laya.pipeline.router.llm_call", new_callable=AsyncMock, return_value=mock_resp), \
+         patch("laya.pipeline.feedback.query_classification_rules", new_callable=AsyncMock, return_value=[]), \
+         patch("laya.pipeline.feedback.query_classification_corrections", new_callable=AsyncMock, return_value=[]):
+        results = await run_batch_router(events_data)
+
+    assert results["evt_a"].priority.value == "CRITICAL"
+    assert results["evt_b"].priority.value == "LOW"
+
+
+@pytest.mark.asyncio
+async def test_batch_router_drops_bad_index(db, sample_event):
+    """A classification with a missing/out-of-range event_index is dropped
+    instead of being misassigned by position (review §1.7)."""
+    from laya.pipeline.router import run_batch_router
+
+    await insert_test_event(db, event_id="evt_a")
+    await insert_test_event(db, event_id="evt_b")
+
+    ev_a = sample_event.model_copy(update={"event_id": "evt_a"})
+    ev_b = sample_event.model_copy(update={"event_id": "evt_b"})
+    events_data = [
+        {"event_id": "evt_a", "event": ev_a, "actor_relationship": "teammate", "space_id": "default"},
+        {"event_id": "evt_b", "event": ev_b, "actor_relationship": "teammate", "space_id": "default"},
+    ]
+
+    good = {**MOCK_ROUTER_RESPONSE, "event_index": 0}
+    bad = {**MOCK_ROUTER_RESPONSE, "event_index": 99}  # out of range
+    mock_resp = MagicMock()
+    mock_resp.parsed = {"classifications": [good, bad]}
+
+    with patch("laya.pipeline.router.llm_call", new_callable=AsyncMock, return_value=mock_resp), \
+         patch("laya.pipeline.feedback.query_classification_rules", new_callable=AsyncMock, return_value=[]), \
+         patch("laya.pipeline.feedback.query_classification_corrections", new_callable=AsyncMock, return_value=[]):
+        results = await run_batch_router(events_data)
+
+    assert "evt_a" in results
+    assert "evt_b" not in results  # the bad-index item was dropped, not misassigned

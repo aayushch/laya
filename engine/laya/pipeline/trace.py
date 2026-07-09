@@ -20,11 +20,11 @@ from datetime import datetime, timezone
 
 import structlog
 
-from laya.api.cards_api import _row_to_card
+from laya.api.cards_api import CARD_SELECT_COLUMNS, _row_to_card
 from laya.pipeline.queue import _get_semaphore
 from laya.api.websocket import manager
 from laya.db.chromadb_store import memory_search
-from laya.db.fts import build_fts_match, fts_ready
+from laya.retrieval import extract_keywords, fts_or_like, reciprocal_rank_fusion
 from laya.db.sqlite import get_db
 from laya.db.timeutil import db_now
 from laya.config import get_self_user
@@ -116,18 +116,6 @@ async def _cancellable(coro, trace_id: str):
 _IDENTIFIER_RE = re.compile(
     r"([A-Za-z]{1,10})[\s\-#]?(\d{1,6})",
 )
-
-_STOPWORDS = frozenset({
-    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
-    "have", "has", "had", "do", "does", "did", "will", "would", "shall",
-    "should", "may", "might", "must", "can", "could", "am", "i", "me",
-    "my", "we", "our", "you", "your", "he", "she", "it", "they", "them",
-    "this", "that", "these", "those", "what", "which", "who", "whom",
-    "how", "when", "where", "why", "and", "or", "but", "not", "no",
-    "if", "then", "so", "to", "of", "in", "on", "at", "by", "for",
-    "with", "about", "from", "up", "out", "into", "over", "after",
-    "all", "any", "some", "just", "also", "than", "very", "too",
-})
 
 # ---------------------------------------------------------------------------
 # Pre-retrieval feedback & post-retrieval relevance filter
@@ -382,7 +370,7 @@ async def _run_trace_inner(
     # Merge non-identifier signals via RRF
     await _progress("Ranking results", 2, total_steps)
     loop = asyncio.get_event_loop()
-    fused = await loop.run_in_executor(None, _reciprocal_rank_fusion, ranked_lists, 60)
+    fused = await loop.run_in_executor(None, reciprocal_rank_fusion, ranked_lists, 60)
 
     # Build seed list: guaranteed identifier matches first, then RRF results
     seen: set[str] = set()
@@ -577,7 +565,11 @@ async def _semantic_search(query: str, space_id: str | None, n: int) -> list[dic
         {
             "id": r["metadata"].get("card_id", r["id"]),
             "card_id": r["metadata"].get("card_id"),
-            "entity_id": r["metadata"].get("entity_refs", ""),
+            # Real grouping key, not the entity_refs CSV that used to sit here and
+            # broke dedup + feedback exclusion for semantic seeds (review §2 — P4-4).
+            # Pre-fix embeds lack this key and fall back to "" (still better than a
+            # wrong value); new embeds carry it (see emit._embed_card metadata).
+            "entity_id": r["metadata"].get("entity_id", ""),
             "source": "semantic",
             "distance": r.get("distance", 1.0),
         }
@@ -635,7 +627,7 @@ async def _card_fuzzy_search(
 ) -> list[dict]:
     """SQLite keyword-split search — each keyword must appear somewhere (broad matching)."""
     db = await get_db()
-    keywords = [w for w in query.split() if len(w) >= 2 and w.lower() not in _STOPWORDS]
+    keywords = extract_keywords(query, min_len=2)
     if not keywords:
         return []
 
@@ -691,7 +683,7 @@ async def _card_fuzzy_search(
 async def _entity_table_search(query: str, n: int) -> list[dict]:
     """Search the entities table by canonical_name and platform_refs."""
     db = await get_db()
-    keywords = [w for w in query.split() if len(w) >= 2 and w.lower() not in _STOPWORDS]
+    keywords = extract_keywords(query, min_len=2)
     if not keywords:
         return []
 
@@ -732,13 +724,14 @@ async def _event_keyword_search(query: str, space_id: str | None, n: int) -> lis
     entity_id, source_url) that are not in cards_fts and use bespoke boost/phrase
     semantics tuned for the RRF ensemble.
     """
-    match = build_fts_match(query, min_len=2, max_terms=5)
-    if fts_ready() and match:
-        try:
-            return await _event_keyword_search_fts(match, space_id, n)
-        except Exception as e:
-            log.warning("trace_events_fts_failed_fallback_like", error=str(e))
-    return await _event_keyword_search_like(query, space_id, n)
+    return await fts_or_like(
+        query,
+        min_len=2,
+        max_terms=5,
+        fts=lambda m: _event_keyword_search_fts(m, space_id, n),
+        like=lambda q: _event_keyword_search_like(q, space_id, n),
+        warn_event="trace_events_fts_failed_fallback_like",
+    )
 
 
 async def _event_keyword_search_fts(match: str, space_id: str | None, n: int) -> list[dict]:
@@ -781,7 +774,7 @@ async def _event_keyword_search_fts(match: str, space_id: str | None, n: int) ->
 async def _event_keyword_search_like(query: str, space_id: str | None, n: int) -> list[dict]:
     """SQLite LIKE keyword search on events (fallback when FTS5 is unavailable)."""
     db = await get_db()
-    keywords = [w for w in query.split() if len(w) >= 2 and w.lower() not in _STOPWORDS]
+    keywords = extract_keywords(query, min_len=2)
     if not keywords:
         return []
 
@@ -822,35 +815,12 @@ async def _event_keyword_search_like(query: str, space_id: str | None, n: int) -
 # ---------------------------------------------------------------------------
 
 
-def _reciprocal_rank_fusion(ranked_lists: list[list[dict]], k: int = 60) -> list[dict]:
-    """Fuse multiple ranked lists using Reciprocal Rank Fusion."""
-    scores: dict[str, float] = {}
-    items: dict[str, dict] = {}
-
-    for ranked_list in ranked_lists:
-        for rank, item in enumerate(ranked_list):
-            doc_id = item.get("id") or item.get("card_id") or item.get("entity_id") or str(rank)
-            scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank + 1)
-            if doc_id not in items:
-                items[doc_id] = item
-
-    sorted_ids = sorted(scores.keys(), key=lambda d: scores[d], reverse=True)
-    return [items[did] for did in sorted_ids]
-
-
 # ---------------------------------------------------------------------------
 # Phase 2 — Expansion
 # ---------------------------------------------------------------------------
 
-_CARD_SELECT = """
-    SELECT c.card_id, c.event_id, c.created_at, c.priority, c.persona, c.category,
-           c.header, c.summary, c.intelligence, c.staged_output, c.suggested_actions,
-           c.status, c.privacy_tier, c.has_workspace, c.resolved_at, c.user_feedback,
-           c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at,
-           c.entity_id, c.source_ref, c.source_url, c.selected_action_id,
-           c.space_id, c.bookmarked_at,
-           e.actor_name, e.actor_email,
-           s.name AS space_name, s.color AS space_color
+_CARD_SELECT = f"""
+    SELECT {CARD_SELECT_COLUMNS}
     FROM action_cards c
     LEFT JOIN events e ON c.event_id = e.event_id
     LEFT JOIN spaces s ON c.space_id = s.space_id
@@ -948,47 +918,67 @@ async def _expand_seeds(
     return all_cards, entity_map
 
 
+# Bounds for _find_linked_entities so a hub entity can't explode into an
+# O(entities × refs) storm of full-table LIKE scans (review §4 — P5-6).
+_MAX_LINK_SUBJECTS = 25
+_MAX_LINK_REFS = 50
+
+
 async def _find_linked_entities(db, entity_ids: set[str]) -> set[str]:
-    """Find cross-referenced entities via the entities table."""
+    """Find cross-referenced entities via the entities table.
+
+    The entities lookup is batched into a single query (was one per entity_id)
+    and the ref-id fan-out is deduped and capped, avoiding a nested N+1 of
+    per-ref full-table LIKE scans (review §4 — P5-6).
+    """
     if not entity_ids:
+        return set()
+
+    # Extract subject_ids (e.g. "BUG-1234" from "jira:ticket:BUG-1234").
+    subject_ids = []
+    for eid in entity_ids:
+        parts = eid.split(":", 2)
+        subject_id = parts[-1] if parts else eid
+        if len(subject_id) >= 3:
+            subject_ids.append(subject_id)
+    if not subject_ids:
         return set()
 
     linked: set[str] = set()
 
-    # Search for entity references that mention any of our entity_ids
-    for eid in entity_ids:
-        # Extract the subject_id part (e.g., "BUG-1234" from "jira:ticket:BUG-1234")
-        parts = eid.split(":", 2)
-        subject_id = parts[-1] if parts else eid
+    # One entities query for all subjects instead of one per entity_id.
+    clauses: list[str] = []
+    params: list = []
+    for sid in subject_ids[:_MAX_LINK_SUBJECTS]:
+        clauses.append("platform_refs LIKE ? OR canonical_name LIKE ?")
+        params.extend([f"%{sid}%", f"%{sid}%"])
+    rows = await db.execute_fetchall(
+        f"SELECT entity_id, platform_refs FROM entities WHERE {' OR '.join(clauses)}",
+        params,
+    )
 
-        if len(subject_id) < 3:
-            continue
+    ref_ids: set[str] = set()
+    for row in rows:
+        linked.add(row["entity_id"])
+        try:
+            refs = json.loads(row["platform_refs"]) if row["platform_refs"] else {}
+            for _platform, rid_list in refs.items():
+                if isinstance(rid_list, list):
+                    for rid in rid_list:
+                        if rid and len(str(rid)) >= 3:
+                            ref_ids.add(str(rid))
+        except (json.JSONDecodeError, TypeError):
+            pass
 
-        rows = await db.execute_fetchall(
-            "SELECT entity_id, platform_refs FROM entities "
-            "WHERE platform_refs LIKE ? OR canonical_name LIKE ?",
-            (f"%{subject_id}%", f"%{subject_id}%"),
+    # Deduped, capped ref fan-out (the final result is a set, so dedup is lossless).
+    for rid in list(ref_ids)[:_MAX_LINK_REFS]:
+        card_rows = await db.execute_fetchall(
+            "SELECT DISTINCT entity_id FROM action_cards WHERE entity_id LIKE ? LIMIT 5",
+            (f"%{rid}%",),
         )
-        for row in rows:
-            linked.add(row["entity_id"])
-
-            # Also parse platform_refs JSON to find more entity_ids
-            try:
-                refs = json.loads(row["platform_refs"]) if row["platform_refs"] else {}
-                for _platform, ref_ids in refs.items():
-                    if isinstance(ref_ids, list):
-                        for ref_id in ref_ids:
-                            # Try to find cards with entity_ids containing this ref
-                            card_rows = await db.execute_fetchall(
-                                "SELECT DISTINCT entity_id FROM action_cards "
-                                "WHERE entity_id LIKE ? LIMIT 5",
-                                (f"%{ref_id}%",),
-                            )
-                            for cr in card_rows:
-                                if cr["entity_id"]:
-                                    linked.add(cr["entity_id"])
-            except (json.JSONDecodeError, TypeError):
-                pass
+        for cr in card_rows:
+            if cr["entity_id"]:
+                linked.add(cr["entity_id"])
 
     return linked - entity_ids  # Only return newly discovered ones
 

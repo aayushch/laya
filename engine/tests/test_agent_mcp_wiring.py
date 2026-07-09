@@ -11,6 +11,7 @@ through to the `claude -p` command line.
 """
 
 import json
+import os
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -123,10 +124,14 @@ class TestClaudeCodeMcpArgs:
             )
         args = spawn.call_args.kwargs["args"]
         assert "--mcp-config" in args
-        cfg_json = args[args.index("--mcp-config") + 1]
-        cfg = json.loads(cfg_json)
+        # The token-bearing config is written to a 0600 temp file (not passed
+        # inline in argv, which would leak it to `ps`) — review §6.
+        cfg_path = args[args.index("--mcp-config") + 1]
+        with open(cfg_path) as f:
+            cfg = json.load(f)
         assert cfg["mcpServers"]["laya"]["type"] == "sse"
         assert cfg["mcpServers"]["laya"]["url"].endswith("?space_id=space_abc")
+        assert (os.stat(cfg_path).st_mode & 0o777) == 0o600
 
     @pytest.mark.asyncio
     async def test_start_session_includes_user_scope_allowlist(self, reset_mcp_settings):
@@ -176,6 +181,7 @@ class TestClaudeCodeMcpArgs:
             )
             args = proc.spawn.call_args.kwargs["args"]
         assert "--mcp-config" in args
-        cfg_json = args[args.index("--mcp-config") + 1]
-        cfg = json.loads(cfg_json)
+        cfg_path = args[args.index("--mcp-config") + 1]
+        with open(cfg_path) as f:
+            cfg = json.load(f)
         assert cfg["mcpServers"]["laya"]["url"].endswith("?space_id=space_xyz")

@@ -1,6 +1,7 @@
 <!-- Copyright 2026 Aayush Chawla -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
+	import { PRIORITY_COLORS } from '$lib/utils/cardVisuals';
 	import type { ActionCard } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
@@ -49,12 +50,7 @@
 		}
 	}
 
-	const priorityColors: Record<string, string> = {
-		CRITICAL: 'bg-red-600 text-red-50',
-		HIGH: 'bg-orange-500 text-orange-50',
-		MEDIUM: 'bg-laya-coral/20 text-laya-coral',
-		LOW: 'bg-laya-gold/25 text-laya-amber'
-	};
+	const priorityColors = PRIORITY_COLORS;
 
 	const personaColors: Record<string, string> = {
 		ENGINEER: 'border-violet-500 text-violet-400',

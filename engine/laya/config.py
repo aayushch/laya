@@ -3,6 +3,7 @@
 
 """Laya Engine configuration and directory management."""
 
+import copy
 import json
 import os
 from pathlib import Path
@@ -147,6 +148,8 @@ DEFAULT_SETTINGS = {
         "classification_learn_threshold": 15,
         "classification_learn_batch": 50,
         "classification_learn_interval_hours": 6,
+        "classification_rules_max_injection": 20,
+        "classification_rules_consolidation_threshold": 40,
         # Context learning
         "context_learn_threshold": 10,
         "context_learn_batch": 40,
@@ -190,7 +193,7 @@ DEFAULT_RULES: dict = {
 def get_tuning(key: str, default=None):
     """Read a tuning parameter from settings.json with fallback to DEFAULT_SETTINGS.
 
-    Usage: ``get_tuning("trace_search_results", 30)``
+    Usage: ``get_tuning("trace_search_results")``
     """
     settings = load_settings()
     tuning = settings.get("tuning", {})
@@ -215,18 +218,40 @@ def ensure_directories() -> None:
     LAYA_LOG_DIR.mkdir(exist_ok=True)
 
 
+# mtime-keyed cache. load_settings() is called ~10× per pipeline event plus per
+# scheduler tick / budget check / rule firing; re-reading and re-merging the file
+# every time was pure overhead (review §4 — P5-3). Invalidated by save_settings
+# and by the file's mtime changing underneath us.
+_settings_cache: dict | None = None
+_settings_cache_mtime: float | None = None
+
+
 def load_settings() -> dict:
-    """Load settings from ~/.laya/settings.json, falling back to defaults."""
-    if LAYA_CONFIG_FILE.exists():
+    """Load settings from ~/.laya/settings.json, merged over defaults.
+
+    Always returns a deep copy so a caller mutating the result (the common
+    ``s = load_settings(); s[...] = ...; save_settings(s)`` pattern) can't corrupt
+    the process-wide DEFAULT_SETTINGS or the cache — the old shallow copy leaked
+    references to nested default dicts (review §2 Config — P4-7)."""
+    global _settings_cache, _settings_cache_mtime
+    try:
+        mtime = LAYA_CONFIG_FILE.stat().st_mtime if LAYA_CONFIG_FILE.exists() else 0.0
+    except OSError:
+        mtime = 0.0
+
+    if _settings_cache is not None and _settings_cache_mtime == mtime:
+        return copy.deepcopy(_settings_cache)
+
+    if mtime:
         with open(LAYA_CONFIG_FILE, encoding="utf-8") as f:
             user_settings = json.load(f)
         # Merge user settings over defaults (two-level deep merge so that
         # e.g. new n8n.webhooks entries added to DEFAULT_SETTINGS aren't
         # dropped when the user's settings.json has an older copy).
-        merged = {**DEFAULT_SETTINGS}
+        merged = copy.deepcopy(DEFAULT_SETTINGS)
         for key, value in user_settings.items():
             if isinstance(value, dict) and key in merged and isinstance(merged[key], dict):
-                inner = {**merged[key]}
+                inner = merged[key]
                 for k2, v2 in value.items():
                     if isinstance(v2, dict) and k2 in inner and isinstance(inner[k2], dict):
                         inner[k2] = {**inner[k2], **v2}
@@ -235,15 +260,23 @@ def load_settings() -> dict:
                 merged[key] = inner
             else:
                 merged[key] = value
-        return merged
-    return dict(DEFAULT_SETTINGS)
+    else:
+        merged = copy.deepcopy(DEFAULT_SETTINGS)
+
+    _settings_cache = merged
+    _settings_cache_mtime = mtime
+    return copy.deepcopy(merged)
 
 
 def save_settings(settings: dict) -> None:
     """Persist settings to ~/.laya/settings.json."""
+    global _settings_cache, _settings_cache_mtime
     ensure_directories()
     with open(LAYA_CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(settings, f, indent=2)
+    # Invalidate the cache so the next load reflects what we just wrote.
+    _settings_cache = None
+    _settings_cache_mtime = None
 
 
 def get_n8n_config() -> dict:

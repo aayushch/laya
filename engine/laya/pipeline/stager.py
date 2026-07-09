@@ -8,7 +8,7 @@ import json
 import structlog
 
 from laya.config import load_settings
-from laya.db.chromadb_store import memory_search
+from laya.pipeline.related_context import query_related_context
 from laya.db.sqlite import get_db
 from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
 from laya.llm.prompts.stager import build_stager_messages, get_stager_json_schema
@@ -62,7 +62,7 @@ async def run_stager(
         ActionCardData ready for the EMIT step.
     """
     # 1. Query ChromaDB for related context
-    related_context = await _query_related_context(event)
+    related_context = await query_related_context(event, n_results=3)
 
     # 1b. Query existing cards for this entity (prevents redundant research)
     entity_history = await _query_entity_history(event)
@@ -88,46 +88,33 @@ async def run_stager(
     )
     schema = get_stager_json_schema()
 
-    try:
-        response = await llm_call(
-            role="stager",
-            messages=messages,
-            response_schema=schema,
-            event_id=event.event_id,
-            step="stage",
-            temperature=0.2,
-            max_tokens=DEFAULT_MAX_TOKENS,
-            space_id=space_id,
-        )
-    except Exception as e:
-        log.error("stager_llm_failed", event_id=event.event_id, error=str(e))
-        return _build_fallback_card(event, router_output)
+    # Transport/LLM-call failures propagate so the durable queue retries the
+    # event, exactly like run_router. Previously any exception here (e.g. a
+    # 30-second LMStudio restart mid-request) was swallowed into a degraded
+    # fallback card and the event was marked completed — the fallback is now
+    # reserved for genuine PARSE failures below (review §2 pipeline).
+    response = await llm_call(
+        role="stager",
+        messages=messages,
+        response_schema=schema,
+        event_id=event.event_id,
+        step="stage",
+        temperature=0.2,
+        max_tokens=DEFAULT_MAX_TOKENS,
+        space_id=space_id,
+    )
 
     # 3. Parse response into ActionCardData
     if response.parsed:
         return _parse_stager_response(response.parsed, event)
 
-    # Fallback: try raw content
+    # Fallback: try raw content (parse failure only, not a transport failure)
     try:
         parsed = json.loads(response.content)
         return _parse_stager_response(parsed, event)
     except (json.JSONDecodeError, Exception) as e:
         log.error("stager_parse_failed", event_id=event.event_id, error=str(e))
         return _build_fallback_card(event, router_output)
-
-
-async def _query_related_context(event: LayaEvent) -> list[dict]:
-    """Search ChromaDB for related content to enrich stager context."""
-    query_parts = [event.subject.title, event.content.body[:300]]
-    query = " ".join(query_parts)
-
-    try:
-        results = await memory_search(query, n_results=3)
-        log.debug("stager_context_found", count=len(results), event_id=event.event_id)
-        return results
-    except Exception as e:
-        log.warning("stager_memory_search_skipped", error=str(e), event_id=event.event_id)
-        return []
 
 
 _CROSS_PLATFORM_ALLOWED: dict[tuple[str, str], bool] = {
@@ -172,15 +159,27 @@ def _parse_stager_response(data: dict, event: LayaEvent) -> ActionCardData:
             })
             continue
 
-        actions.append(
-            SuggestedAction(
-                action_id=act["action_id"],
-                label=act["label"],
-                action_type=act["action_type"],
-                target_platform=target_platform,
-                payload=payload,
+        try:
+            actions.append(
+                SuggestedAction(
+                    action_id=act["action_id"],
+                    label=act["label"],
+                    action_type=act["action_type"],
+                    target_platform=target_platform,
+                    payload=payload,
+                )
             )
-        )
+        except Exception as e:
+            # A single malformed action (missing key / bad type — common on
+            # best-effort agent backends emitting partial JSON) must not raise
+            # KeyError and burn all 3 queue retries before dead-lettering. Drop
+            # the bad action and keep the good ones (review §2 pipeline — P4-5).
+            dropped.append({
+                "action_id": act.get("action_id"),
+                "target_platform": target_platform,
+                "reason": f"malformed: {e}",
+            })
+            continue
 
     if dropped:
         log.info(
@@ -204,6 +203,9 @@ def _parse_stager_response(data: dict, event: LayaEvent) -> ActionCardData:
         suggested_actions=actions,
         privacy_tier=max(1, min(3, int(data.get("privacy_tier", 2)))),
         suggested_tags=suggested_tags,
+        # Thread the stager's context match through so emit.py can skip the
+        # fallback ChromaDB search + confirm_context_link call (review §1.1).
+        context_match=data.get("context_match") if isinstance(data.get("context_match"), dict) else None,
     )
 
 

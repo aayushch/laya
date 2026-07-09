@@ -338,14 +338,41 @@ async def handle_callback(
 
     if n8n_cred_id:
         from laya.egress.connections import _clone_workflows_for_connection
-        activated, workflow_errors = await _clone_workflows_for_connection(
-            platform, connection_id, display_name, n8n_cred_id,
-            space_id=space_id,
-        )
-        all_errors.extend(workflow_errors)
+        try:
+            activated, workflow_errors = await _clone_workflows_for_connection(
+                platform, connection_id, display_name, n8n_cred_id,
+                space_id=space_id,
+            )
+            all_errors.extend(workflow_errors)
 
-        if platform == "slack" and channel_names and activated > 0:
-            await _store_slack_channel_metadata(connection_id, channel_names)
+            if platform == "slack" and channel_names and activated > 0:
+                await _store_slack_channel_metadata(connection_id, channel_names)
+        except Exception as e:
+            # A mid-clone exception here (before the egress_connections INSERT
+            # below) would strand keychain tokens + partially-cloned ACTIVE
+            # ingestion workflows with no connection row — invisible in Settings
+            # and double-ingesting after a reconnect. Roll both back so a failed
+            # connect leaves nothing behind (review §2 egress — P4-25).
+            log.error(
+                "oauth_clone_failed_rolling_back",
+                platform=platform, connection_id=connection_id, error=str(e),
+            )
+            from laya.egress.connections import (
+                _remove_connection_workflows,
+                _remove_from_keychain,
+            )
+            try:
+                await _remove_connection_workflows(connection_id)
+            except Exception:
+                pass
+            _remove_from_keychain(connection_id, platform)
+            return {
+                "status": "error",
+                "connection_id": None,
+                "platform": platform,
+                "capabilities": [],
+                "error_message": f"Failed to set up {platform} workflows: {e}",
+            }
 
     # Determine final status
     status = "error" if all_errors else "connected"
@@ -658,163 +685,11 @@ _PLATFORM_HTTP_CRED_TYPES: dict[str, str] = {
 }
 
 
-async def _setup_n8n_workflows(
-    platform: str, n8n_cred_type: str, n8n_cred_id: str
-) -> list[str]:
-    """Find n8n workflows for a platform, assign the credential, and activate them.
-
-    After OAuth provisioning creates a credential in n8n, this function:
-    1. Finds all Laya workflows related to the platform (ingestion + executor)
-    2. Unarchives them if needed
-    3. Assigns the new credential to nodes that need it
-    4. Activates the workflows
-
-    Returns list of error messages (empty on full success).
-    """
-    errors: list[str] = []
-    try:
-        from laya.integrations.n8n_client import (
-            activate_workflow,
-            get_workflow,
-            list_workflows,
-            unarchive_workflow,
-            update_workflow,
-        )
-
-        target_node_types = set(_PLATFORM_NODE_TYPES.get(platform, []))
-        if not target_node_types:
-            return []
-
-        workflows = await list_workflows()
-
-        # Use explicit workflow names from PLATFORMS config
-        from laya.integrations.platforms import PLATFORMS
-        platform_config = PLATFORMS.get(platform, {})
-        target_names = {n.lower() for n in platform_config.get("workflows", [])}
-
-        for wf in workflows:
-            wf_name = (wf.get("name") or "")
-            if wf_name.lower() not in target_names:
-                continue
-
-            wf_id = str(wf["id"])
-
-            # Unarchive if needed
-            if wf.get("isArchived"):
-                try:
-                    await unarchive_workflow(wf_id)
-                    log.info("n8n_workflow_unarchived", workflow=wf_name)
-                except Exception as e:
-                    log.warning("n8n_workflow_unarchive_failed",
-                                workflow=wf_name, error=str(e))
-                    continue
-
-            full_wf = await get_workflow(wf_id)
-            nodes = full_wf.get("nodes", [])
-            connections = full_wf.get("connections", {})
-            modified = False
-
-            http_cred_type = _PLATFORM_HTTP_CRED_TYPES.get(platform)
-            for node in nodes:
-                node_type = node.get("type", "")
-                is_target_native = node_type in target_node_types
-                is_target_http = (
-                    http_cred_type is not None
-                    and node_type == "n8n-nodes-base.httpRequest"
-                    and node.get("parameters", {}).get("nodeCredentialType") == http_cred_type
-                )
-                if not (is_target_native or is_target_http):
-                    continue
-
-                # Assign the credential to this node. For HTTP Request nodes the
-                # credential must be bound under the nodeCredentialType key so
-                # n8n resolves it at runtime.
-                if "credentials" not in node:
-                    node["credentials"] = {}
-                cred_key = http_cred_type if is_target_http else n8n_cred_type
-                node["credentials"][cred_key] = {
-                    "id": n8n_cred_id,
-                    "name": f"Laya - {platform.title()} (OAuth)",
-                }
-
-                # Skip parameter templating/migration for generic HTTP nodes —
-                # they own their own params.
-                if is_target_http:
-                    modified = True
-                    continue
-
-                # Fill in skeleton node parameters if missing
-                params = node.get("parameters", {})
-                template = _NODE_PARAM_TEMPLATES.get(node_type)
-                if template and not params.get("operation") and not params.get("sendTo") and not params.get("toRecipients"):
-                    node["parameters"] = {**template, **{k: v for k, v in params.items() if v}}
-
-                # Migrate v1 → v2: move fields from additionalFields to top level
-                additional = params.get("additionalFields", {})
-                for field in ("toRecipients", "subject", "bodyContent"):
-                    if field not in params and field in additional:
-                        params[field] = additional.pop(field)
-                if "bodyContentType" in additional:
-                    additional.pop("bodyContentType")  # not a valid v2 field
-
-                modified = True
-
-            if modified:
-                await update_workflow(wf_id, {
-                    "name": full_wf["name"],
-                    "nodes": nodes,
-                    "connections": connections,
-                    "settings": full_wf.get("settings", {}),
-                })
-                log.info("n8n_workflow_credentials_assigned",
-                         workflow=wf_name, credential_id=n8n_cred_id)
-
-            # Activate the workflow
-            if not wf.get("active"):
-                try:
-                    await activate_workflow(wf_id, active=True)
-                    log.info("n8n_workflow_activated", workflow=wf_name)
-                except Exception as e:
-                    errors.append(f"Failed to activate \"{wf_name}\": {e}")
-                    log.warning("n8n_workflow_activate_failed",
-                                workflow=wf_name, error=str(e))
-
-            # Register/update as a source with correct platform and type
-            is_executor = "executor" in wf_name
-            source_type = "executor" if is_executor else "ingestion"
-            webhook_path = None
-            if is_executor:
-                for node in nodes:
-                    if node.get("type") == "n8n-nodes-base.webhook":
-                        webhook_path = node.get("parameters", {}).get("path")
-                        break
-
-            db = await get_db()
-            existing = await db.execute_fetchall(
-                "SELECT source_id, platform FROM sources WHERE workflow_id = ?",
-                (wf_id,),
-            )
-            if existing:
-                # Update platform if it was auto-discovered as 'unknown'
-                await db.execute(
-                    """UPDATE sources SET platform = ?, source_type = ?, webhook_path = ?, name = ?
-                       WHERE workflow_id = ?""",
-                    (platform, source_type, webhook_path, full_wf["name"], wf_id),
-                )
-            else:
-                import uuid
-                source_id = f"src_{uuid.uuid4().hex[:12]}"
-                await db.execute(
-                    """INSERT INTO sources (source_id, name, platform, workflow_id, space_id, source_type, webhook_path)
-                       VALUES (?, ?, ?, ?, 'default', ?, ?)""",
-                    (source_id, full_wf["name"], platform, wf_id, source_type, webhook_path),
-                )
-            await db.commit()
-
-    except Exception as e:
-        errors.append(f"Workflow setup failed: {e}")
-        log.error("n8n_workflow_setup_failed", platform=platform, error=str(e))
-    return errors
+# NOTE: the former async _setup_n8n_workflows lived here — a dead 157-line
+# duplicate of the credential-injection + activation flow already implemented
+# in egress/connections._clone_workflows_for_connection (the live path). It
+# carried a third copy of the _PLATFORM_HTTP_CRED_TYPES matcher logic and was
+# never called; removed (review §5.7 — P7-9). The shared dict above stays.
 
 
 # ---------------------------------------------------------------------------
