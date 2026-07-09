@@ -1031,7 +1031,19 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
 
                                 #[cfg(unix)]
                                 {
-                                    unsafe { libc::kill(pid as i32, libc::SIGTERM); }
+                                    // Signal the whole engine process GROUP (leader pid == `pid`),
+                                    // not just the direct child. In dev, `uvicorn --reload` runs the
+                                    // real server (holding laya.db + the :8420 socket) in a
+                                    // multiprocessing WORKER grandchild; killing only `pid` (the reload
+                                    // supervisor) orphans that worker, leaving the DB open and the port
+                                    // bound. The engine is its own group leader (see sidecar::setpgid),
+                                    // so -pid reaches the supervisor AND the worker.
+                                    unsafe {
+                                        if libc::kill(-(pid as i32), libc::SIGTERM) != 0 {
+                                            // Group missing (setpgid failed?) — fall back to the child.
+                                            libc::kill(pid as i32, libc::SIGTERM);
+                                        }
+                                    }
 
                                     let start = std::time::Instant::now();
                                     loop {
@@ -1042,8 +1054,12 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
                                             }
                                             Ok(None) => {
                                                 if start.elapsed() > Duration::from_secs(5) {
-                                                    log::warn!("Engine did not exit in time, sending SIGKILL");
-                                                    let _ = child.kill();
+                                                    log::warn!("Engine did not exit in time, SIGKILLing process group");
+                                                    unsafe {
+                                                        if libc::kill(-(pid as i32), libc::SIGKILL) != 0 {
+                                                            let _ = child.kill();
+                                                        }
+                                                    }
                                                     let _ = child.wait();
                                                     break;
                                                 }
@@ -1051,7 +1067,11 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
                                             }
                                             Err(e) => {
                                                 log::error!("Error waiting for engine: {}", e);
-                                                let _ = child.kill();
+                                                unsafe {
+                                                    if libc::kill(-(pid as i32), libc::SIGKILL) != 0 {
+                                                        let _ = child.kill();
+                                                    }
+                                                }
                                                 break;
                                             }
                                         }

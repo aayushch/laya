@@ -977,6 +977,32 @@ async def _resynthesize_space(
         log.info("omni_resynthesis_gate_opened", space_id=space_id, reason="degenerate_result")
         return None
 
+    # Reject an all-empty result (zero items across every section) for the same
+    # reason as the '...' skeleton above: it poisons the forward-carried snapshot.
+    # _is_degenerate_sections deliberately EXEMPTS the no-items case (it targets
+    # the placeholder-text variant), so the empty-collapse variant is caught here.
+    # We only reach this point with new_cards non-empty (the `if not new_cards`
+    # early-return above guarantees it), so a synthesis that folds real,
+    # un-summarized cards into *nothing* is a model failure, not a legitimately
+    # empty state — a mid-size local model can over-apply the prompt's "compress
+    # everything / an empty array is allowed" guidance and emit zero items.
+    # Storing it would wipe the recent items the incremental queue accumulated
+    # AND feed the empty snapshot back into the next run, so every later
+    # resynthesis stays empty (observed: high-volume space collapsing 13k→389
+    # bytes over successive rolling runs). Treat it as a failed synthesis: keep
+    # the last good snapshot, leave `since` unadvanced so these cards retry.
+    # NOTE: checked BEFORE the resolved-attention prune below, so a result whose
+    # items were legitimately dropped as resolved still stores (correctly empty)
+    # while a model that returned nothing does not.
+    if sum(len(s.get("items", [])) for s in result_sections) == 0:
+        log.warning(
+            "omni_resynthesis_empty_result",
+            space_id=space_id, new_cards=len(new_cards),
+        )
+        gate.set()
+        log.info("omni_resynthesis_gate_opened", space_id=space_id, reason="empty_result")
+        return None
+
     # 7. Inject space_id into all items
     for section in result_sections:
         for item in section.get("items", []):

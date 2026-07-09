@@ -768,3 +768,169 @@ class TestDegenerateSnapshotGuard:
         texts = [it["text"] for s in content["sections"] for it in s.get("items", [])]
         assert "Fresh real item" in texts
         assert "..." not in texts
+
+
+@pytest.mark.asyncio
+class TestEmptyResultGuard:
+    """A resynthesis that folds real cards into ZERO items is a model failure,
+    not a legitimately empty state. It must be rejected so it can't wipe the
+    accumulated recent items and poison the forward-carried snapshot — the same
+    failure mode as the '...' skeleton, but the empty-collapse variant that
+    _is_degenerate_sections deliberately exempts (it targets placeholder text)."""
+
+    async def _seed(self, db, count, prefix, space_id="default"):
+        base = datetime.now(timezone.utc) - timedelta(hours=1)
+        for i in range(count):
+            ts = (base + timedelta(seconds=i)).strftime("%Y-%m-%d %H:%M:%S")
+            await insert_test_card(
+                db, card_id=f"card_{prefix}_{i:03d}",
+                event_id=f"evt_{prefix}_{i:03d}", space_id=space_id,
+            )
+            await db.execute("UPDATE action_cards SET created_at = ? WHERE card_id = ?",
+                             (ts, f"card_{prefix}_{i:03d}"))
+        await db.commit()
+
+    async def _insert_snapshot(self, db, version, generated_at, content, card_ids, space_id="default"):
+        await db.execute(
+            """INSERT INTO omni_snapshots
+               (snapshot_id, space_id, version, generated_at, snapshot_type,
+                content_json, card_ids, events_processed, created_at, is_delta, base_version)
+               VALUES (?, ?, ?, ?, 'rolling', ?, ?, ?, ?, 0, NULL)""",
+            (f"omni_seed_{version}", space_id, version, generated_at,
+             json.dumps(content), json.dumps(card_ids), len(card_ids), generated_at),
+        )
+        await db.commit()
+
+    def _empty_sections(self):
+        """Well-formed 4 sections but every items array empty — what an
+        over-compressing local model returned on the high-volume space."""
+        return [
+            {"type": "attention", "label": None, "items": []},
+            {"type": "recent", "label": None, "items": []},
+            {"type": "period", "label": None, "items": []},
+            {"type": "milestone", "label": None, "items": []},
+        ]
+
+    async def test_empty_result_is_not_stored(self, db):
+        """LLM folds real cards into zero items → nothing persisted, retry next run."""
+        from laya.pipeline import omni as omni_pipeline
+        omni_pipeline._latest_cache.pop("default", None)
+        await self._seed(db, 3, "empty")
+
+        empty = self._empty_sections()
+
+        async def fake_llm(**kwargs):
+            class R:
+                parsed = {"sections": empty}
+                truncated = False
+                output_tokens = 10
+                model = "test"
+            return R()
+
+        with patch.object(omni_pipeline, "llm_call", new=fake_llm):
+            result = await omni_pipeline._resynthesize_space(
+                db, "default", density="compact", snapshot_type="manual", event_threshold=50)
+
+        assert result is None
+        rows = await db.execute_fetchall(
+            "SELECT COUNT(*) AS n FROM omni_snapshots WHERE space_id = 'default'", ())
+        assert rows[0]["n"] == 0  # the empty collapse never hit the DB
+
+    async def test_empty_result_preserves_prior_snapshot(self, db):
+        """A good snapshot survives an empty resynthesis instead of being
+        overwritten with nothing (which would then feed itself forward)."""
+        from laya.pipeline import omni as omni_pipeline
+        omni_pipeline._latest_cache.pop("default", None)
+
+        now = datetime.now(timezone.utc)
+        since = (now - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+        good = {"sections": [
+            {"type": "attention", "label": None, "items": [
+                {"text": "PR #9 awaiting your review", "source_cards": ["card_old"],
+                 "entity_ids": ["github:pull_request:org/repo/#9"], "platforms": ["github"],
+                 "priority": "HIGH", "pinned": False}]},
+            {"type": "recent", "label": None, "items": []},
+            {"type": "period", "label": None, "items": []},
+            {"type": "milestone", "label": None, "items": []},
+        ]}
+        await self._insert_snapshot(db, 1, since, good, ["card_old"])
+
+        # A fresh card so resynthesis runs (isn't skipped for "no new cards").
+        await insert_test_card(db, card_id="card_fresh", event_id="evt_fresh", space_id="default")
+        await db.execute("UPDATE action_cards SET created_at = ? WHERE card_id = ?",
+                         ((now - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S"), "card_fresh"))
+        await db.commit()
+
+        empty = self._empty_sections()
+
+        async def fake_llm(**kwargs):
+            class R:
+                parsed = {"sections": empty}
+                truncated = False
+                output_tokens = 10
+                model = "test"
+            return R()
+
+        with patch.object(omni_pipeline, "llm_call", new=fake_llm):
+            result = await omni_pipeline._resynthesize_space(
+                db, "default", density="compact", snapshot_type="manual", event_threshold=50)
+
+        assert result is None  # empty result rejected
+        # The good snapshot is still the latest — no new (empty) version written.
+        rows = await db.execute_fetchall(
+            """SELECT version, content_json FROM omni_snapshots
+               WHERE space_id = 'default' ORDER BY version DESC LIMIT 1""", ())
+        assert rows[0]["version"] == 1
+        content = json.loads(rows[0]["content_json"])
+        texts = [it["text"] for s in content["sections"] for it in s.get("items", [])]
+        assert "PR #9 awaiting your review" in texts
+
+    async def test_all_resolved_prune_to_empty_still_stores(self, db):
+        """The guard runs BEFORE the resolved-attention prune: a result whose
+        only item is legitimately dropped as resolved still stores (correctly
+        empty) — it is NOT mistaken for a model that returned nothing."""
+        from laya.pipeline import omni as omni_pipeline
+        omni_pipeline._latest_cache.pop("default", None)
+
+        now = datetime.now(timezone.utc)
+        # A resolved card the LLM will (stubbornly) echo into attention.
+        await insert_test_card(db, card_id="card_done", event_id="evt_done",
+                               status="done", entity_id="jira:ticket:PROJ-9",
+                               space_id="default")
+        await db.execute(
+            "UPDATE action_cards SET created_at = ?, resolved_at = ? WHERE card_id = ?",
+            ((now - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S"),
+             (now - timedelta(minutes=3)).strftime("%Y-%m-%d %H:%M:%S"), "card_done"),
+        )
+        await db.commit()
+
+        async def fake_llm(**kwargs):
+            class R:
+                parsed = {"sections": [
+                    {"type": "attention", "label": None, "items": [
+                        {"text": "PROJ-9 awaiting your review", "source_cards": ["card_done"],
+                         "entity_ids": ["jira:ticket:PROJ-9"], "platforms": ["jira"],
+                         "priority": "HIGH", "pinned": False}]},
+                    {"type": "recent", "label": None, "items": []},
+                    {"type": "period", "label": None, "items": []},
+                    {"type": "milestone", "label": None, "items": []},
+                ]}
+                truncated = False
+                output_tokens = 10
+                model = "test"
+            return R()
+
+        with patch.object(omni_pipeline, "llm_call", new=fake_llm):
+            result = await omni_pipeline._resynthesize_space(
+                db, "default", density="compact", snapshot_type="manual", event_threshold=50)
+
+        # The LLM returned a non-empty result (1 item), so the empty-guard lets
+        # it through; the deterministic prune then drops the resolved item.
+        assert result is not None
+        rows = await db.execute_fetchall(
+            """SELECT content_json FROM omni_snapshots WHERE space_id = 'default'
+               AND is_delta = 0 ORDER BY version DESC LIMIT 1""", ())
+        content = json.loads(rows[0]["content_json"])
+        att = [it for s in content["sections"] if s.get("type") == "attention"
+               for it in s.get("items", [])]
+        assert att == []  # resolved subject pruned, snapshot stored anyway

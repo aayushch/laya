@@ -598,7 +598,17 @@ fn spawn_dev_engine() -> Result<Child, String> {
     #[cfg(unix)]
     unsafe {
         cmd.pre_exec(|| {
-            libc::setpgid(0, libc::getppid());
+            // Make the engine its OWN process-group leader (pgid == its own pid).
+            // In dev, `uvicorn --reload` spawns a multiprocessing WORKER
+            // subprocess that actually holds laya.db and the :8420 socket — that
+            // worker is our GRANDCHILD. Signalling only the direct child (the
+            // reload supervisor) on quit leaves the worker orphaned, keeping the
+            // DB open and the port bound. Owning a dedicated group lets the Exit
+            // handler kill(-pgid) the entire engine subtree in one shot.
+            // (The old setpgid(0, getppid()) tried to JOIN laya-app's group, but
+            // laya-app is usually not a group leader — the dev shell owns the
+            // group — so it silently failed and left us no reliable group handle.)
+            libc::setpgid(0, 0);
             Ok(())
         });
     }
@@ -654,7 +664,12 @@ fn spawn_prod_engine() -> Result<Child, String> {
     #[cfg(unix)]
     unsafe {
         cmd.pre_exec(|| {
-            libc::setpgid(0, libc::getppid());
+            // Own process group (pgid == our pid) so the Exit handler can
+            // kill(-pgid) the whole engine subtree. Prod runs uvicorn without
+            // --reload (single process), but this keeps dev/prod symmetric and
+            // still cleanly reaps any helper subprocesses the engine spawns.
+            // See spawn_dev_engine() for the full rationale.
+            libc::setpgid(0, 0);
             Ok(())
         });
     }
