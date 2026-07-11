@@ -12,6 +12,7 @@
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { compose } from '$lib/stores/compose';
 	import { portal } from '$lib/actions/portal';
+	import { detailExpanded } from '$lib/stores/detailPanel';
 
 	let {
 		summary,
@@ -243,7 +244,9 @@
 	}
 </script>
 
-<div class="flex h-full flex-col overflow-hidden rounded-xl border {$glassTheme ? 'glass-card border-surface-700/40 bg-surface-900/40' : 'border-surface-700 bg-surface-800'}">
+<!-- In focus mode ($detailExpanded) the overlay wrapper provides the panel surface,
+     so we drop our own card chrome to avoid a doubled border/background. -->
+<div class="flex h-full flex-col overflow-hidden {$detailExpanded ? '' : ($glassTheme ? 'rounded-xl border glass-card border-surface-700/40 bg-surface-900/40' : 'rounded-xl border border-surface-700 bg-surface-800')}">
 	<!-- Header bar -->
 	<div class="flex items-center justify-between border-b px-5 py-4 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
 		<div class="flex items-center gap-2">
@@ -281,6 +284,23 @@
 				</button>
 				<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">Chat about group</span>
 			</div>
+			<!-- Expand / collapse the wide focus-mode overlay (same as the chat sidebar). -->
+			<button
+				onclick={() => detailExpanded.set(!$detailExpanded)}
+				aria-label={$detailExpanded ? 'Collapse panel' : 'Expand panel'}
+				title={$detailExpanded ? 'Collapse' : 'Expand'}
+				class="rounded p-1.5 text-surface-500 transition-colors hover:text-surface-200"
+			>
+				{#if $detailExpanded}
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M15 9h4.5M15 9V4.5M15 9l5.25-5.25M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 15h4.5M15 15v4.5M15 15l5.25 5.25" />
+					</svg>
+				{:else}
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+					</svg>
+				{/if}
+			</button>
 			<button aria-label="Close" class="rounded p-1.5 text-surface-400 transition-colors hover:text-surface-100" onclick={() => ondismiss ? ondismiss() : onclose()}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />

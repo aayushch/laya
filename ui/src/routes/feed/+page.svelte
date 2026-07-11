@@ -28,6 +28,7 @@
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { fade, slide } from 'svelte/transition';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { detailExpanded } from '$lib/stores/detailPanel';
 	import { summaryModalOpen as summaryModalStore } from '$lib/stores/summaryModal';
 	import { searchFocusSignal, feedSearchQuery } from '$lib/stores/searchFocus';
 	import { portal } from '$lib/actions/portal';
@@ -118,6 +119,69 @@
 
 	const hasAnySelection = $derived(!!selectedCard || !!selectedGroupSummary);
 	const selectedEntityId = $derived(selectedGroupSummary?.group.entity_id ?? '');
+
+	// Collapse the focus-mode overlay whenever nothing is selected (panel closed,
+	// active card/group dismissed, or the card was deleted via WS). Mirrors the
+	// chat sidebar resetting chatExpanded on close, so the next detail always
+	// opens in the default inline layout. The expand state is intentionally ephemeral.
+	$effect(() => {
+		if (!hasAnySelection) detailExpanded.set(false);
+	});
+
+	// Focus-mode overlay geometry. Unlike the chat sidebar (which spans the whole
+	// content band), the expanded description panel keeps the SAME top/bottom/right
+	// as the inline panel — so it reads as the inline panel widening over the cards,
+	// not a new full-height panel. We measure the inline slot (always mounted, and
+	// kept at its reserved width while expanded) and pin the overlay to that box.
+	// top/bottom/right are all scroll- and open-animation-invariant (the slot is a
+	// right-anchored flex child whose height tracks the row and whose only animated
+	// dimension is width), so measuring any time the panel is open is accurate.
+	let detailSlotEl: HTMLElement | undefined = $state();
+	let overlayGeom = $state<{ top: number; bottom: number; right: number; width: number } | null>(null);
+
+	// Full width of the expanded overlay — mirrors the chat sidebar's
+	// w-[75vw] min-w-[460px] max-w-[1100px] clamp, computed so we can animate a
+	// width grow from the inline 420px to this value (natural expand, no reflow jump).
+	function expandedOverlayWidth(): number {
+		return Math.min(Math.max(Math.round(window.innerWidth * 0.75), 460), 1100);
+	}
+
+	function measureOverlayGeom() {
+		if (!detailSlotEl) return;
+		const r = detailSlotEl.getBoundingClientRect();
+		overlayGeom = {
+			top: Math.round(r.top),
+			bottom: Math.round(Math.max(0, window.innerHeight - r.bottom)),
+			right: Math.round(Math.max(0, window.innerWidth - r.right)),
+			width: expandedOverlayWidth()
+		};
+	}
+
+	// Keep the geometry measured whenever a detail panel is open — i.e. BEFORE the
+	// user clicks expand — so the overlay mounts at the correct box with no flash and
+	// the width-grow transition starts from the right anchor. Re-measure on resize.
+	// We deliberately DON'T reset overlayGeom to null on close: the collapse outro
+	// transition reads overlayGeom.width after the selection may already have cleared
+	// (e.g. dismiss-while-expanded), and a null there would throw. The `{#if}` gate
+	// keeps a stale value from ever being shown; it's refreshed on the next open.
+	$effect(() => {
+		if (!detailPanelOpen || !hasAnySelection) return;
+		measureOverlayGeom();
+		const onResize = () => measureOverlayGeom();
+		window.addEventListener('resize', onResize);
+		return () => window.removeEventListener('resize', onResize);
+	});
+
+	// Custom transition: grow/shrink the overlay width between the inline panel width
+	// and the full focus-mode width, anchored on the right edge. On collapse it shrinks
+	// back to exactly the inline panel's box before unmounting, so the hand-off to the
+	// re-rendered inline panel is seamless (no height/width jitter).
+	function panelGrow(_node: HTMLElement, { start, full, duration }: { start: number; full: number; duration: number }) {
+		return {
+			duration,
+			css: (t: number) => `width:${(start + (full - start) * t).toFixed(1)}px;`
+		};
+	}
 
 	// A card is standalone if its group has exactly 1 card and no context_id
 	const selectedCardIsStandalone = $derived.by(() => {
@@ -1594,7 +1658,12 @@
 	}
 </script>
 
-<svelte:window onkeydown={(e) => { if (e.key === 'Escape' && $feedFilters.showRelated) { clearRelatedFilter(); e.preventDefault(); } }} />
+<svelte:window onkeydown={(e) => {
+	// Escape collapses the focus-mode detail overlay first (matches the chat
+	// sidebar, where Escape steps out of the wide overlay before anything else).
+	if (e.key === 'Escape' && $detailExpanded) { detailExpanded.set(false); e.preventDefault(); return; }
+	if (e.key === 'Escape' && $feedFilters.showRelated) { clearRelatedFilter(); e.preventDefault(); }
+}} />
 
 <div class="flex h-full flex-col">
 	<!-- Feed toolbar -->
@@ -2133,7 +2202,7 @@
 		</div>
 
 		<!-- Detail panel -->
-		<div class="relative flex flex-shrink-0">
+		<div bind:this={detailSlotEl} class="relative flex flex-shrink-0">
 			<!-- Toggle button — always visible on the left edge of the panel area -->
 			<button
 				class="absolute -left-3 top-4 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-surface-600 bg-surface-800 text-surface-400 shadow-md transition-colors hover:bg-surface-700 hover:text-surface-200"
@@ -2145,57 +2214,99 @@
 				</svg>
 			</button>
 
-			<!-- Sliding panel -->
+			<!-- Sliding panel (inline layout). In focus mode ($detailExpanded) the body
+			     renders in the fixed overlay below instead — but this slot keeps its width
+			     so the feed cards don't reflow when the user expands/collapses. -->
 			<div
 				class="overflow-hidden transition-[width] duration-300 ease-in-out {detailPanelOpen ? 'w-[420px]' : 'w-0'}"
 			>
 				<div class="w-[420px] h-full overflow-y-auto">
-					{#if selectedGroupSummary}
-						<GroupSummaryDetail
-							summary={selectedGroupSummary.summary}
-							group={selectedGroupSummary.group}
-							generating={generatingEntityIds.has(selectedGroupSummary.group.entity_id)}
-							onclose={closeDetailPanel}
-							ondismiss={dismissActiveGroupSummary}
-							onshowcards={() => {
-								const entityId = selectedGroupSummary?.group.entity_id;
-								if (entityId) {
-									const el = document.querySelector(`[data-group-entity="${entityId}"]`);
-									if (el) el.dispatchEvent(new CustomEvent('expand'));
-								}
-							}}
-							ongotogroup={(entityId) => scrollToGroupElement(entityId)}
-							ongenerate={(entityId) => {
-								generatingEntityIds.add(entityId);
-								generatingEntityIds = new Set(generatingEntityIds);
-							}}
-							onshowrelated={handleShowRelated}
-							onrunagent={handleRunEntityAgent}
-						/>
-					{:else if selectedCard}
-						<CardDetail
-							card={selectedCard}
-							onclose={closeDetailPanel}
-							ondismiss={dismissActiveCard}
-							ongotocard={gotoCard}
-							onlink={handleLinkCard}
-							onshowrelated={handleShowRelated}
-							onunlinked={handleUnlinked}
-							onrunagent={selectedCardIsSingleEntity ? handleRunEntityAgent : undefined}
-						/>
-					{:else}
-						<div class="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-surface-700 text-surface-600">
-							<svg class="mb-2 h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-							</svg>
-							<p class="text-laya-secondary">Select a card to view details</p>
-						</div>
+					{#if !$detailExpanded}
+						{@render detailBody()}
 					{/if}
 				</div>
 			</div>
 		</div>
 	</div>
 </div>
+
+<!-- Shared description-panel body, rendered either in the inline slot above or in
+     the focus-mode overlay below (never both at once). -->
+{#snippet detailBody()}
+	{#if selectedGroupSummary}
+		<GroupSummaryDetail
+			summary={selectedGroupSummary.summary}
+			group={selectedGroupSummary.group}
+			generating={generatingEntityIds.has(selectedGroupSummary.group.entity_id)}
+			onclose={closeDetailPanel}
+			ondismiss={dismissActiveGroupSummary}
+			onshowcards={() => {
+				const entityId = selectedGroupSummary?.group.entity_id;
+				if (entityId) {
+					const el = document.querySelector(`[data-group-entity="${entityId}"]`);
+					if (el) el.dispatchEvent(new CustomEvent('expand'));
+				}
+			}}
+			ongotogroup={(entityId) => scrollToGroupElement(entityId)}
+			ongenerate={(entityId) => {
+				generatingEntityIds.add(entityId);
+				generatingEntityIds = new Set(generatingEntityIds);
+			}}
+			onshowrelated={handleShowRelated}
+			onrunagent={handleRunEntityAgent}
+		/>
+	{:else if selectedCard}
+		<CardDetail
+			card={selectedCard}
+			onclose={closeDetailPanel}
+			ondismiss={dismissActiveCard}
+			ongotocard={gotoCard}
+			onlink={handleLinkCard}
+			onshowrelated={handleShowRelated}
+			onunlinked={handleUnlinked}
+			onrunagent={selectedCardIsSingleEntity ? handleRunEntityAgent : undefined}
+		/>
+	{:else}
+		<div class="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-surface-700 text-surface-600">
+			<svg class="mb-2 h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+			</svg>
+			<p class="text-laya-secondary">Select a card to view details</p>
+		</div>
+	{/if}
+{/snippet}
+
+<!-- Focus-mode ("expand") overlay for the description panel — identical mechanism
+     to the chat sidebar's focus mode (see ChatSidebar.svelte): a widened panel that
+     floats over the feed behind a dim scrim instead of pushing the cards aside. The
+     inline slot above stays reserved so the cards don't shift when toggling. -->
+{#if hasAnySelection && $detailExpanded && overlayGeom}
+	<!-- Dim scrim behind the overlay; click to collapse. Pinned to the SAME vertical
+	     band as the inline panel (not the full content band) so the toolbar above stays
+	     visible and the dimming reads as "the panel expanded over the cards". z-30 keeps
+	     it below the panel (z-40). -->
+	<button
+		aria-label="Collapse detail panel"
+		onclick={() => detailExpanded.set(false)}
+		class="fixed inset-x-0 z-30 cursor-default chat-scrim backdrop-blur-sm"
+		style="top: {overlayGeom.top}px; bottom: {overlayGeom.bottom}px;"
+		transition:fade={{ duration: $reducedMotion ? 0 : 200 }}
+	></button>
+	<!-- The overlay is pinned to the inline panel's exact box (top/bottom/right) and
+	     only its width grows leftward over the cards, so the focus-mode panel keeps the
+	     same height as the non-focus panel — it reads as the inline panel widening. -->
+	<aside
+		class="fixed z-40 flex flex-col"
+		style="top: {overlayGeom.top}px; bottom: {overlayGeom.bottom}px; right: {overlayGeom.right}px; width: {overlayGeom.width}px;"
+		transition:panelGrow={{ start: DETAIL_PANEL_WIDTH, full: overlayGeom.width, duration: $reducedMotion ? 0 : 240 }}
+	>
+		<!-- When expanded the detail components drop their own card chrome, so this
+		     surface reads as one panel matching the inline panel's rounded box. -->
+		<div class="flex flex-1 flex-col overflow-hidden rounded-xl shadow-2xl {$glassTheme ? 'glass-section chat-overlay-surface' : 'border border-surface-700 bg-surface-900'}">
+			{@render detailBody()}
+		</div>
+	</aside>
+{/if}
 
 <!-- One-time integrations setup popup -->
 {#if showIntegrationsPopup}
