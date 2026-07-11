@@ -680,14 +680,16 @@
 						{filteredTotal.toLocaleString()} event{filteredTotal !== 1 ? 's' : ''} filtered
 					</span>
 				</div>
-				<div class="flex items-center gap-1">
+				<div class="flex items-center gap-2">
 					<button
 						onclick={() => { filteredExpanded = !filteredExpanded; }}
 						class="rounded px-3 py-1 text-laya-secondary font-medium text-surface-300 transition-colors {$glassTheme ? 'hover:bg-white/[0.08]' : 'hover:bg-surface-700'}"
 					>
 						{filteredExpanded ? 'Hide' : 'View'}
 					</button>
-					<ExportMenu onexport={exportFiltered} />
+					<!-- showIcon={false}: keeps this button as wide as Retry/Clear above so the "View"
+					     to its left aligns with the "View" in the failed/ingestion banners. -->
+					<ExportMenu onexport={exportFiltered} showIcon={false} />
 				</div>
 			</div>
 

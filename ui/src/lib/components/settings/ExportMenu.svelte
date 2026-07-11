@@ -11,11 +11,16 @@
 	let {
 		label = 'Export',
 		onexport,
-		disabled = false
+		disabled = false,
+		// The leading download glyph. Off in the Audit "events filtered" banner so this
+		// button matches the width of the sibling Retry/Clear buttons and its neighbouring
+		// "View" lines up with the other banners' "View" (the chevron still signals a menu).
+		showIcon = true
 	}: {
 		label?: string;
 		onexport: (days: number) => void | Promise<void>;
 		disabled?: boolean;
+		showIcon?: boolean;
 	} = $props();
 
 	// Timeframe choices — "how far back". days=0 is the all-time sentinel.
@@ -60,9 +65,11 @@
 			<span class="h-3 w-3 animate-spin rounded-full border-2 border-surface-400 border-t-transparent"></span>
 			Exporting…
 		{:else}
-			<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
-			</svg>
+			{#if showIcon}
+				<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+				</svg>
+			{/if}
 			{label}
 			<svg class="h-3 w-3 transition-transform {open ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />

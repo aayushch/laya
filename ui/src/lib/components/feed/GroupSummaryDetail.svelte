@@ -285,22 +285,24 @@
 				<span class="pointer-events-none absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">Chat about group</span>
 			</div>
 			<!-- Expand / collapse the wide focus-mode overlay (same as the chat sidebar). -->
-			<button
-				onclick={() => detailExpanded.set(!$detailExpanded)}
-				aria-label={$detailExpanded ? 'Collapse panel' : 'Expand panel'}
-				title={$detailExpanded ? 'Collapse' : 'Expand'}
-				class="rounded p-1.5 text-surface-500 transition-colors hover:text-surface-200"
-			>
-				{#if $detailExpanded}
-					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M15 9h4.5M15 9V4.5M15 9l5.25-5.25M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 15h4.5M15 15v4.5M15 15l5.25 5.25" />
-					</svg>
-				{:else}
-					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
-					</svg>
-				{/if}
-			</button>
+			<div class="group/act relative">
+				<button
+					onclick={() => detailExpanded.set(!$detailExpanded)}
+					aria-label={$detailExpanded ? 'Collapse panel' : 'Expand panel'}
+					class="rounded p-1.5 text-surface-500 transition-colors hover:text-surface-200"
+				>
+					{#if $detailExpanded}
+						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 9h5V4M20 9h-5V4M4 15h5v5M20 15h-5v5" />
+						</svg>
+					{:else}
+						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5" />
+						</svg>
+					{/if}
+				</button>
+				<span class="pointer-events-none absolute right-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium opacity-0 transition-opacity duration-75 group-hover/act:opacity-100">{$detailExpanded ? 'Collapse' : 'Expand'}</span>
+			</div>
 			<button aria-label="Close" class="rounded p-1.5 text-surface-400 transition-colors hover:text-surface-100" onclick={() => ondismiss ? ondismiss() : onclose()}>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />

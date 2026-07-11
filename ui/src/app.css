@@ -688,33 +688,33 @@ html, body {
 		0 4px 18px -10px rgb(0 0 0 / 0.08),
 		inset 0 1px 0 rgb(255 255 255 / 0.7);
 }
-/* Expanded chat overlay floats over a dark scrim. The default 50%-translucent
-   light glass-section lets that darkness bleed through, muddying the surface and
-   wrecking contrast for the dark light-theme text. Bump to near-opaque so it reads
-   as a solid frosted panel. We keep the glass-section class (rather than swapping to
-   glass-modal) so all the descendant [data-theme='light'] .glass-section overrides
-   that make bubbles/inputs/tables legible still apply. Dark theme is unaffected —
-   its near-transparent panel over the dark scrim already reads fine. */
-/* Dark theme: give the panel a moderately-translucent frosted body of its own
-   rather than leaning on the near-transparent default glass-section (~3.5%),
-   which let the feed bleed straight through and read as muddy. ~0.62 is glassy
-   (you sense depth + the backdrop blur) without distracting content bleed. */
+/* Expanded overlay surface (chat + description focus mode). It floats over a scrim
+   that sits directly behind it, so its own body must be opaque enough to keep the
+   scrim's darkness from muddying it — but we keep it translucent + heavily frosted so
+   it still reads as glass (matching the rest of the glass theme), not a flat panel.
+   We use the glass-section class (not glass-modal) so all the descendant
+   [data-theme='light'] .glass-section overrides that make bubbles/inputs/tables
+   legible still apply. Stronger blur/saturation than the base .glass-section gives
+   the focus overlay a richer frost (closer to .glass-card's blur(22px)). */
 .glass-section.chat-overlay-surface {
+	-webkit-backdrop-filter: blur(20px) saturate(1.7);
+	backdrop-filter: blur(20px) saturate(1.7);
 	background: rgb(30 26 21 / 0.62);
 }
-/* Light theme: mostly-opaque so the dark text stays readable over the dark
-   scrim behind, but kept translucent enough (~0.80) to retain a frosted-glass
-   feel rather than reading as a flat opaque panel. */
+/* Light theme: was near-opaque white (0.80) which read as a flat, un-glassy panel.
+   Lowered to ~0.62 warm-white so the frosted feed shows through and it looks like
+   glass; the lighter scrim below keeps dark text legible over it. */
 [data-theme='light'] .glass-section.chat-overlay-surface {
-	background: rgb(255 255 255 / 0.80);
+	background: rgb(252 249 244 / 0.62);
 }
-/* Scrim behind the expanded chat overlay — now that the panel has its own body,
-   the scrim only dims the surroundings for focus. */
+/* Scrim behind the expanded overlay — dims the surroundings for focus. Kept lighter
+   (and warm-tinted in light theme) so a translucent glass panel over it stays glassy
+   and legible instead of forcing the panel opaque. */
 .chat-scrim {
 	background-color: rgb(0 0 0 / 0.42);
 }
 [data-theme='light'] .chat-scrim {
-	background-color: rgb(0 0 0 / 0.50);
+	background-color: rgb(38 26 14 / 0.30);
 }
 /* Glass modal — heaviest frosting for large overlays (file viewers, dialogs).
    Needs to be opaque enough to read long-form content comfortably. */
@@ -905,6 +905,9 @@ html, body {
 	background: rgb(255 255 255 / 0.08) !important;
 }
 .glass-section .bg-surface-900,
+.glass-section .bg-surface-900\/30,
+.glass-section .bg-surface-900\/50,
+.glass-section .bg-surface-900\/70,
 .glass-dropdown .bg-surface-900 {
 	background: rgb(255 255 255 / 0.06) !important;
 }
@@ -917,6 +920,9 @@ html, body {
 	background: rgb(0 0 0 / 0.06) !important;
 }
 [data-theme='light'] .glass-section .bg-surface-900,
+[data-theme='light'] .glass-section .bg-surface-900\/30,
+[data-theme='light'] .glass-section .bg-surface-900\/50,
+[data-theme='light'] .glass-section .bg-surface-900\/70,
 [data-theme='light'] .glass-dropdown .bg-surface-900 {
 	background: rgb(0 0 0 / 0.05) !important;
 }
@@ -1135,7 +1141,10 @@ html, body {
 .glass-card .bg-surface-700 {
 	background: rgb(255 255 255 / 0.08) !important;
 }
-.glass-card .bg-surface-900 {
+.glass-card .bg-surface-900,
+.glass-card .bg-surface-900\/30,
+.glass-card .bg-surface-900\/50,
+.glass-card .bg-surface-900\/70 {
 	background: rgb(255 255 255 / 0.03) !important;
 }
 .glass-card .bg-surface-900\/95 {
@@ -1154,7 +1163,10 @@ html, body {
 [data-theme='light'] .glass-card .bg-surface-700 {
 	background: rgb(0 0 0 / 0.05) !important;
 }
-[data-theme='light'] .glass-card .bg-surface-900 {
+[data-theme='light'] .glass-card .bg-surface-900,
+[data-theme='light'] .glass-card .bg-surface-900\/30,
+[data-theme='light'] .glass-card .bg-surface-900\/50,
+[data-theme='light'] .glass-card .bg-surface-900\/70 {
 	background: rgb(0 0 0 / 0.03) !important;
 }
 [data-theme='light'] .glass-card .bg-surface-900\/95 {

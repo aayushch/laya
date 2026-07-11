@@ -2281,15 +2281,16 @@
      floats over the feed behind a dim scrim instead of pushing the cards aside. The
      inline slot above stays reserved so the cards don't shift when toggling. -->
 {#if hasAnySelection && $detailExpanded && overlayGeom}
-	<!-- Dim scrim behind the overlay; click to collapse. Pinned to the SAME vertical
-	     band as the inline panel (not the full content band) so the toolbar above stays
-	     visible and the dimming reads as "the panel expanded over the cards". z-30 keeps
-	     it below the panel (z-40). -->
+	<!-- Dim scrim behind the overlay; click to collapse. Starts at the panel's top
+	     (so the toolbar above stays bright) but extends full-width to the VIEWPORT
+	     bottom — covering main's 16px padding gutter (right) and the padding+footer
+	     strip (bottom) so no feed-page background peeks around the floating panel.
+	     z-30 keeps it below the panel (z-40). -->
 	<button
 		aria-label="Collapse detail panel"
 		onclick={() => detailExpanded.set(false)}
-		class="fixed inset-x-0 z-30 cursor-default chat-scrim backdrop-blur-sm"
-		style="top: {overlayGeom.top}px; bottom: {overlayGeom.bottom}px;"
+		class="fixed inset-x-0 bottom-0 z-30 cursor-default chat-scrim backdrop-blur-sm"
+		style="top: {overlayGeom.top}px;"
 		transition:fade={{ duration: $reducedMotion ? 0 : 200 }}
 	></button>
 	<!-- The overlay is pinned to the inline panel's exact box (top/bottom/right) and
