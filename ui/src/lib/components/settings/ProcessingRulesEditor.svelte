@@ -64,6 +64,13 @@
 	// --- Field groups for the condition builder ---
 	const staticFieldGroups = [
 		{
+			// The card's own LLM-generated title/summary — what the user sees on
+			// the card. Listed first so it's the field users reach for, ahead of
+			// event.subject.title (the raw source subject, labeled "Source subject").
+			label: 'Card',
+			fields: ['card.header', 'card.summary'],
+		},
+		{
 			label: 'Event',
 			fields: [
 				'event.source.platform', 'event.source.raw_event_type', 'event.source.connection_id',
@@ -414,7 +421,7 @@
 	function conditionSummary(cond: ProcessingCondition): string {
 		if ('field' in cond) {
 			const c = cond as ProcessingSimpleCondition;
-			const fieldShort = c.field.split('.').pop() || c.field;
+			const fieldShort = fieldLabel(c.field);
 			const op = operatorLabels[c.operator] || c.operator;
 			if (['exists', 'not_exists'].includes(c.operator)) return `${fieldShort} ${op}`;
 			return `${fieldShort} ${op} "${c.value}"`;
@@ -440,8 +447,17 @@
 
 	const timeAgo = (dateStr?: string | null) => _timeAgo(dateStr, { nullLabel: 'never' });
 
+	// Friendly labels for fields whose bare last path-segment would be ambiguous.
+	// Notably event.subject.title reads as just "title" — indistinguishable from
+	// the card's visible header (card.header) — so we spell both out explicitly.
+	const FIELD_LABELS: Record<string, string> = {
+		'card.header': 'Card title',
+		'card.summary': 'Card summary',
+		'event.subject.title': 'Source subject',
+	};
+
 	function fieldLabel(field: string): string {
-		return field.split('.').pop() || field;
+		return FIELD_LABELS[field] || field.split('.').pop() || field;
 	}
 </script>
 

@@ -472,6 +472,9 @@ export interface Settings {
 		tool_scopes: McpToolScopes;
 		auth_mode: McpAuthMode;
 	};
+	logging?: {
+		level?: 'DEBUG' | 'INFO' | 'WARNING' | 'ERROR';
+	};
 }
 
 export type McpAuthMode = 'bearer' | 'none';

@@ -155,6 +155,14 @@ async def update_settings(body: dict) -> dict:
             et = 50
         omni_cfg["event_threshold"] = max(0, min(100, et))
 
+    # If the log level changed, re-apply it to the running engine so it takes
+    # effect immediately (no restart). Validation lives in apply_log_level, which
+    # coerces anything unknown back to INFO and never raises.
+    logging_cfg = current.get("logging")
+    if isinstance(body.get("logging"), dict) and isinstance(logging_cfg, dict):
+        from laya.logging_setup import apply_log_level
+        apply_log_level(logging_cfg.get("level"))
+
     save_settings(current)
     log.info("settings_updated")
     return {"status": "updated"}

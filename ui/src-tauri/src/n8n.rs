@@ -706,12 +706,6 @@ fn spawn_n8n() -> Result<Child, String> {
     let log_dir = laya_home().join("logs");
     std::fs::create_dir_all(&log_dir).ok();
 
-    let log_file = std::fs::File::create(log_dir.join("n8n.log"))
-        .map_err(|e| format!("Failed to create n8n log: {e}"))?;
-    let stderr_file = log_file
-        .try_clone()
-        .map_err(|e| format!("Failed to clone log handle: {e}"))?;
-
     // The n8n binary is a shell script with `#!/usr/bin/env node`.
     // macOS .app bundles have a minimal PATH, so we must ensure the
     // directory containing `node` is on PATH for the child process.
@@ -751,8 +745,10 @@ fn spawn_n8n() -> Result<Child, String> {
         .env("LAYA_ENGINE_URL", format!("http://127.0.0.1:{}", std::env::var("LAYA_ENGINE_PORT").unwrap_or_else(|_| "8420".to_string())))
         // n8n 2.x blocks $env access in workflow expressions by default
         .env("N8N_BLOCK_ENV_ACCESS_IN_NODE", "false")
-        .stdout(log_file)
-        .stderr(stderr_file);
+        // Pipe stdout/stderr so pipe_to_rotating() can capture them into a
+        // size-capped, rotating n8n.log (see below).
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
     // Create a new process group so we can kill all n8n children on shutdown.
     #[cfg(unix)]
@@ -764,8 +760,23 @@ fn spawn_n8n() -> Result<Child, String> {
         });
     }
 
-    cmd.spawn()
-        .map_err(|e| format!("Failed to spawn n8n: {e}"))
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to spawn n8n: {e}"))?;
+
+    // Capture n8n's stdout/stderr into a size-capped, rotating log so n8n.log
+    // can't grow unbounded within a long session. 10 MB × 3 backups.
+    if let Err(e) = crate::rotating_log::pipe_to_rotating(
+        &mut child,
+        &log_dir,
+        "n8n.log",
+        10 * 1024 * 1024,
+        3,
+    ) {
+        log::warn!("Failed to set up rotating n8n log capture: {e}");
+    }
+
+    Ok(child)
 }
 
 /// Check if n8n is running by hitting its health endpoint.

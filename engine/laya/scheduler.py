@@ -278,7 +278,15 @@ async def _run_omni_housekeeping(retention_days: int) -> None:
 
 async def _scheduler_loop() -> None:
     """Main scheduler loop — runs every 60 seconds."""
-    global _last_briefing_date, _last_housekeeping_date, _last_budget_month, _last_learn_check, _last_omni_rolling, _last_context_learn_check
+    # NOTE: _last_omni_date MUST be here. It is assigned inside this loop (EOD
+    # trigger, below), so without the global declaration Python treats it as a
+    # loop-local — and the read on the EOD branch (`_last_omni_date != omni_today`)
+    # raises UnboundLocalError the first time the local clock passes the EOD
+    # resynthesis_time. That exception is caught by the per-tick handler, so it is
+    # silent, but it kills the ENTIRE Omni block (EOD + rolling interval + event
+    # threshold) for the rest of the process's life once past 17:00 local. This
+    # was the cause of "Omni auto-synthesis silently stops every evening".
+    global _last_briefing_date, _last_housekeeping_date, _last_budget_month, _last_learn_check, _last_omni_rolling, _last_context_learn_check, _last_omni_date
 
     while True:
         await asyncio.sleep(60)

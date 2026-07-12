@@ -214,6 +214,8 @@ def build_trigger_context(
     actor_relationship: str | None = None,
     is_carry_forward: bool = False,
     entity_card_count: int = 1,
+    card_header: str | None = None,
+    card_summary: str | None = None,
 ) -> dict[str, Any]:
     """Build the flat trigger context dict from pipeline data."""
     now = datetime.now()
@@ -251,6 +253,12 @@ def build_trigger_context(
             "card_id": card_id,
             "entity_id": entity_id,
             "space_id": space_id,
+            # The card's LLM-generated title/summary (what the user sees on the
+            # card), distinct from event.subject.title (the raw source subject).
+            # Exposed so rules can match the visible title, not just the origin
+            # subject line. Threaded in from stager_output at the emit call site.
+            "header": card_header,
+            "summary": card_summary,
         },
         "context": {
             "actor_relationship": actor_relationship or "unknown",
@@ -595,6 +603,8 @@ async def run_processing_rules(
     actor_relationship: str | None = None,
     is_carry_forward: bool = False,
     entity_card_count: int = 1,
+    card_header: str | None = None,
+    card_summary: str | None = None,
 ) -> None:
     """Evaluate all enabled processing rules against a newly emitted card.
 
@@ -629,6 +639,7 @@ async def run_processing_rules(
         context = build_trigger_context(
             event, router_output, card_id, entity_id, space_id,
             actor_relationship, is_carry_forward, entity_card_count,
+            card_header=card_header, card_summary=card_summary,
         )
 
         # Enrich context with card tags so rules can condition on them

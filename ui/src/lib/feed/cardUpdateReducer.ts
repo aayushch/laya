@@ -34,6 +34,8 @@ export interface CardUpdatePayload {
 	session_id?: string;
 	selected_action_id?: string;
 	bookmarked_at?: string | null;
+	/** New space the card was moved to (move-to-space feature). */
+	space_id?: string;
 }
 
 /** The slice of feed filter state the reducer needs. */
@@ -41,6 +43,8 @@ export interface FeedFilterState {
 	statusFilters: string[];
 	showArchived: boolean;
 	sortBy: string;
+	/** Active space multi-select; empty = "all spaces" (nothing excluded). */
+	spaceFilter: string[];
 }
 
 /**
@@ -70,6 +74,11 @@ export function isExcludedByFilters(status: string, filters: FeedFilterState): b
 	const excludedByStatusFilter =
 		filters.statusFilters.length > 0 && !filters.statusFilters.includes(status);
 	return excludedByArchiveToggle || excludedByStatusFilter;
+}
+
+/** Would a card in `spaceId` be hidden by the active space filter? Empty filter = all spaces. */
+export function isExcludedBySpace(spaceId: string, filters: FeedFilterState): boolean {
+	return filters.spaceFilter.length > 0 && !filters.spaceFilter.includes(spaceId || 'default');
 }
 
 /** Most-severe priority across a group's cards (the server-computed top_priority). */
@@ -130,6 +139,7 @@ export function applyPayloadToCard(
 	if (payload.persona) next.persona = payload.persona as ActionCard['persona'];
 	if (payload.has_workspace !== undefined) next.has_workspace = payload.has_workspace;
 	if ('bookmarked_at' in payload) next.bookmarked_at = payload.bookmarked_at ?? undefined;
+	if (payload.space_id !== undefined) next.space_id = payload.space_id;
 	return { card: next, wasAgent };
 }
 
@@ -154,8 +164,12 @@ export function reduceCardUpdated(
 ): CardUpdateResult {
 	const effects: CardUpdateEffect[] = [];
 
-	// A card whose new status the active filters exclude leaves the feed.
-	if (payload.status && isExcludedByFilters(payload.status, filters)) {
+	// A card whose new status OR new space the active filters exclude leaves the feed.
+	// The space case fires when a card is moved out of the currently-viewed space
+	// (move-to-space) — treated identically to a filtered-out status change.
+	const statusExcluded = !!payload.status && isExcludedByFilters(payload.status, filters);
+	const spaceExcluded = payload.space_id !== undefined && isExcludedBySpace(payload.space_id, filters);
+	if (statusExcluded || spaceExcluded) {
 		effects.push({ kind: 'removeFromSelection', cardId });
 		let nextSelected = selectedCard;
 		if (selectedCard?.card_id === cardId) {

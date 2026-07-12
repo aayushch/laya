@@ -3,12 +3,51 @@
 
 """Tests for the briefing scheduler."""
 
+import ast
 import asyncio
+import inspect
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+import laya.scheduler as _scheduler_mod
 from laya.scheduler import start_scheduler, stop_scheduler, _scheduler_task
+
+
+class TestSchedulerGlobals:
+    """Regression guard: _scheduler_loop assigns several module-level `_last_*`
+    state vars (EOD/rolling watermarks). Any such var assigned inside the loop
+    but MISSING from its `global` declaration becomes a loop-local, and reading
+    it before the first assignment raises UnboundLocalError. Because the loop
+    swallows per-tick exceptions, that fault is silent but disables the whole
+    block for the process's life. This happened for `_last_omni_date`, silently
+    killing Omni auto-synthesis every evening once the clock passed the EOD time.
+    """
+
+    def test_all_assigned_module_state_is_declared_global(self):
+        src = Path(inspect.getsourcefile(_scheduler_mod)).read_text()
+        tree = ast.parse(src)
+        loop = next(
+            n for n in ast.walk(tree)
+            if isinstance(n, (ast.AsyncFunctionDef, ast.FunctionDef))
+            and n.name == "_scheduler_loop"
+        )
+        declared = {name for n in ast.walk(loop) if isinstance(n, ast.Global) for name in n.names}
+        # Module-level state the loop is responsible for persisting across ticks.
+        module_state = {
+            k for k, v in vars(_scheduler_mod).items()
+            if k.startswith("_last_")
+        }
+        assigned = {
+            n.id for n in ast.walk(loop)
+            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)
+        }
+        leaking = sorted((module_state & assigned) - declared)
+        assert not leaking, (
+            f"module state assigned in _scheduler_loop without a `global` "
+            f"declaration (will UnboundLocalError and silently disable its block): {leaking}"
+        )
 
 
 class TestScheduler:

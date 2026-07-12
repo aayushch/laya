@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import type { ActionCard, CardGroup } from '$lib/api/types';
 import {
 	isExcludedByFilters,
+	isExcludedBySpace,
 	computeTopPriority,
 	computeHasPending,
 	updateAffectsSort,
@@ -38,23 +39,39 @@ function group(entityId: string, cards: ActionCard[], over: Partial<CardGroup> =
 	} as CardGroup;
 }
 
-const NO_FILTERS: FeedFilterState = { statusFilters: [], showArchived: true, sortBy: 'newest' };
+const NO_FILTERS: FeedFilterState = { statusFilters: [], showArchived: true, sortBy: 'newest', spaceFilter: [] };
 
 describe('isExcludedByFilters', () => {
 	it('hides archived cards when the archive toggle is off', () => {
-		expect(isExcludedByFilters('archived', { statusFilters: [], showArchived: false, sortBy: 'newest' })).toBe(true);
+		expect(isExcludedByFilters('archived', { statusFilters: [], showArchived: false, sortBy: 'newest', spaceFilter: [] })).toBe(true);
 	});
 	it('keeps archived cards when the archive toggle is on', () => {
-		expect(isExcludedByFilters('archived', { statusFilters: [], showArchived: true, sortBy: 'newest' })).toBe(false);
+		expect(isExcludedByFilters('archived', { statusFilters: [], showArchived: true, sortBy: 'newest', spaceFilter: [] })).toBe(false);
 	});
 	it('hides a status not in the active status filter', () => {
-		expect(isExcludedByFilters('done', { statusFilters: ['pending'], showArchived: true, sortBy: 'newest' })).toBe(true);
+		expect(isExcludedByFilters('done', { statusFilters: ['pending'], showArchived: true, sortBy: 'newest', spaceFilter: [] })).toBe(true);
 	});
 	it('keeps a status that is in the active filter', () => {
-		expect(isExcludedByFilters('pending', { statusFilters: ['pending'], showArchived: true, sortBy: 'newest' })).toBe(false);
+		expect(isExcludedByFilters('pending', { statusFilters: ['pending'], showArchived: true, sortBy: 'newest', spaceFilter: [] })).toBe(false);
 	});
 	it('excludes nothing when no status filters are set', () => {
 		expect(isExcludedByFilters('done', NO_FILTERS)).toBe(false);
+	});
+});
+
+describe('isExcludedBySpace', () => {
+	it('excludes nothing when the space filter is empty (all spaces)', () => {
+		expect(isExcludedBySpace('work', NO_FILTERS)).toBe(false);
+	});
+	it('hides a card whose space is not in the active space filter', () => {
+		expect(isExcludedBySpace('personal', { ...NO_FILTERS, spaceFilter: ['work'] })).toBe(true);
+	});
+	it('keeps a card whose space is in the active space filter', () => {
+		expect(isExcludedBySpace('work', { ...NO_FILTERS, spaceFilter: ['work'] })).toBe(false);
+	});
+	it('normalizes an empty space id to default', () => {
+		expect(isExcludedBySpace('', { ...NO_FILTERS, spaceFilter: ['default'] })).toBe(false);
+		expect(isExcludedBySpace('', { ...NO_FILTERS, spaceFilter: ['work'] })).toBe(true);
 	});
 });
 
@@ -144,6 +161,7 @@ describe('reduceCardUpdated', () => {
 			statusFilters: [],
 			showArchived: false,
 			sortBy: 'newest',
+			spaceFilter: [],
 		});
 		// Groups untouched (the fade-out removes the card later), selection cleared.
 		expect(res.groups).toBe(groups);
@@ -159,6 +177,7 @@ describe('reduceCardUpdated', () => {
 			statusFilters: [],
 			showArchived: false,
 			sortBy: 'newest',
+			spaceFilter: [],
 		});
 		expect(res.selectedCard?.card_id).toBe('other');
 		expect(res.effects.some((e) => e.kind === 'deselect')).toBe(false);
@@ -205,5 +224,21 @@ describe('reduceCardUpdated', () => {
 		const groups = [group('e1', [card('a', { priority: 'CRITICAL' })])];
 		reduceCardUpdated(groups, null, 'a', { priority: 'LOW' }, NO_FILTERS);
 		expect(groups[0].cards[0].priority).toBe('CRITICAL');
+	});
+
+	it('exits a card moved out of the currently-viewed space', () => {
+		const groups = [group('e1', [card('a', { space_id: 'work' } as Partial<ActionCard>)])];
+		const res = reduceCardUpdated(groups, card('a'), 'a', { space_id: 'personal' }, { ...NO_FILTERS, spaceFilter: ['work'] });
+		expect(res.groups).toBe(groups); // fade-out owns removal
+		expect(res.selectedCard).toBeNull();
+		expect(res.effects).toContainEqual({ kind: 'exitThenRemove', cardId: 'a' });
+		expect(res.effects).toContainEqual({ kind: 'deselect' });
+	});
+
+	it('keeps a moved card in place and updates its space when viewing all spaces', () => {
+		const groups = [group('e1', [card('a', { space_id: 'work' } as Partial<ActionCard>)])];
+		const res = reduceCardUpdated(groups, null, 'a', { space_id: 'personal' }, NO_FILTERS);
+		expect(res.groups[0].cards[0].space_id).toBe('personal');
+		expect(res.effects).toEqual([]); // no re-section on a space change in all-spaces view
 	});
 });

@@ -158,8 +158,9 @@
 </script>
 
 <div class="flex h-full flex-col">
-	<!-- Header -->
-	<div class="flex items-center justify-between border-b {$glassTheme ? 'border-white/[0.06]' : 'border-surface-700'} px-4 py-3">
+	<!-- Header — h-11 (not py-3) to match the workspace panels' h-11 headers so the divider
+	     aligns when the chat is docked flush on the workspace. -->
+	<div class="flex h-11 shrink-0 items-center justify-between border-b {$glassTheme ? 'border-white/[0.06]' : 'border-surface-700'} px-4">
 		<h3 class="text-laya-base font-semibold">Conversations</h3>
 		<div class="flex items-center gap-1">
 			<!-- New Chat -->

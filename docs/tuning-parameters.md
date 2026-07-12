@@ -110,6 +110,16 @@ Parameters governing the automated processing-rules engine (Settings → Rules).
 | `processing_rules.auto_disable_threshold` | `5` | Number of **consecutive** errors that auto-disables a rule. The counter resets to `0` on any successful firing and whenever the rule is re-enabled. Clamped to 1–100 by the settings API. **Lower** = disables flaky rules sooner. |
 | `retention.firing_log_retention_days` | `90` | Days to keep processing-rule firing-log entries (the cross-rule Activity log) before the scheduler prunes them. Lives in the `retention` section alongside the other `*_retention_days` keys. |
 
+## Logging
+
+Controls how verbose the engine is when writing to `~/.laya/logs/engine.log`. Set it from **Settings → Data → Engine Log Level**, directly in settings.json, or via the `LAYA_LOG_LEVEL` environment variable. Lives outside `tuning` in settings.json.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `logging.level` | `"INFO"` | Engine log verbosity: `DEBUG`, `INFO`, `WARNING`, or `ERROR`. Applies immediately (no restart) when changed via the UI/API. **Lower** (`WARNING`/`ERROR`) records only problems and greatly reduces log volume, including quieting the per-request lines from the HTTP client and uvicorn's access log. The `LAYA_LOG_LEVEL` environment variable, if set, overrides this for that run. |
+
+`engine.log` is size-capped and rotated automatically (10 MB × 5 files). The captured process-output logs (`engine-stdout.log`, `n8n.log`) are likewise bounded (10 MB × 3 files), so no log grows unbounded.
+
 ## Agent Inference Backends & Usage Budget
 
 Apply when a pipeline stage runs on an installed CLI agent (model id `agent/<id>/<model>`) instead of an API model. The window-based usage budget lives under `agent_budgets` in settings.json — separate from the monthly `$` budget — and auto-pauses ingestion before an agent's rolling quota is exhausted, auto-resuming at the window reset.
@@ -182,6 +192,9 @@ The embedding model is `nomic-ai/nomic-embed-text-v1.5` (768 dimensions).
 
 ```json
 {
+  "logging": {
+    "level": "INFO"
+  },
   "smart_grouping": {
     "context_association": true,
     "smart_display": true,

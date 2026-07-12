@@ -145,10 +145,10 @@ The fastest way to try Laya is a prebuilt release — no toolchains required.
    | Windows | `.msi` or `.exe` |
    | Linux | `.deb` or `.AppImage` |
 
-2. Install and launch. On first run, Laya provisions its own bundled Python runtime and a local n8n instance under `~/.laya/` — you do **not** need Python, Node, or Rust installed to *run* a release build.
+2. Install and launch. You do **not** need Python, Node, or Rust installed to *run* a release build. On first run, Laya checks for a compatible Python (3.10+) and Node.js (20+) already on your machine and uses those if found; otherwise it provisions its own bundled runtimes. Either way, a local n8n instance is set up under `~/.laya/`.
 3. Add an API key (Anthropic, OpenAI, Google, …) or point Laya at a local Ollama / LM Studio endpoint, then connect your tools from Settings.
 
-> **macOS:** release builds are currently unsigned. The first time you open the app, right-click it and choose **Open** to bypass Gatekeeper.
+> **macOS:** release builds are signed, so they open normally — just double-click to launch.
 
 Want to build from source, hack on the engine, or contribute? Follow the **Development** setup below.
 
@@ -260,6 +260,8 @@ On first launch, the engine creates config files in `~/.laya/`:
 
 API keys (Anthropic, OpenAI, Google, etc.) are stored securely in your OS keychain and can be configured through the Settings UI.
 
+The engine logs at `INFO` by default. Change verbosity from **Settings → Data → Engine Log Level** (`DEBUG` / `INFO` / `WARNING` / `ERROR`) — this maps to the `logging.level` key in `settings.json` and applies immediately, no restart. Set it to `WARNING` to record only warnings and errors and keep logs small. For a single run you can override it with the `LAYA_LOG_LEVEL` environment variable, which takes precedence over the setting (and also sets uvicorn's request-log level).
+
 ### Custom Prompts
 
 Laya's AI pipeline uses system prompts at every stage (routing, staging, summarization, chat, etc.). All prompts ship with sensible defaults, but you can override any of them by placing files in `~/.laya/prompts/`:
@@ -288,7 +290,7 @@ Custom prompts fully replace the built-in default for that stage. If a file is d
 | SQLite | `~/.laya/data/laya.db` | Events, cards, workspaces, spaces, traces, egress, chat |
 | ChromaDB | `~/.laya/data/chroma/` | Vector embeddings for semantic search |
 | n8n | `~/.laya/n8n/` | Workflow data, credentials (encrypted) |
-| Logs | `~/.laya/logs/engine.log` | Rotating engine logs (10 MB x 5 files) |
+| Logs | `~/.laya/logs/` | `engine.log` — rotating engine logs (10 MB × 5 files), verbosity set by the log level above. Also `engine-stdout.log` and `n8n.log` — captured process output, likewise rotated (10 MB × 3 files). |
 
 ## Building for Distribution
 

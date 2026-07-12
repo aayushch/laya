@@ -504,7 +504,7 @@ async def preview_matches(body: dict) -> dict:
     total_in_window = count_rows[0]["n"] if count_rows else 0
 
     rows = await db.execute_fetchall(
-        """SELECT ac.card_id, ac.header, ac.priority, ac.persona, ac.category,
+        """SELECT ac.card_id, ac.header, ac.summary, ac.priority, ac.persona, ac.category,
                   ac.entity_id, ac.space_id, ac.confidence, ac.status,
                   e.raw_json
            FROM action_cards ac
@@ -535,7 +535,10 @@ async def preview_matches(body: dict) -> dict:
                     confidence=row["confidence"] or 0.5,
                     entities=[],
                 )
-                ctx = build_trigger_context(event, router_output, row["card_id"], row["entity_id"], row["space_id"])
+                ctx = build_trigger_context(
+                    event, router_output, row["card_id"], row["entity_id"], row["space_id"],
+                    card_header=row["header"], card_summary=row["summary"],
+                )
                 if evaluate_condition(cond, ctx):
                     matched.append({
                         "card_id": row["card_id"],

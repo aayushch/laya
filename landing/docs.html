@@ -1344,6 +1344,10 @@ curl -X POST http://127.0.0.1:8420/prompts/reload</code></pre>
         <li>Or set the binary path manually</li>
       </ul>
 
+      <h3>Logs &amp; log level</h3>
+      <p>The engine writes to <code>~/.laya/logs/engine.log</code>. It logs at <code>INFO</code> by default — that is normal informational output (Laya's activity plus a line per outbound HTTP request), not debug spam. The file is size-capped and rotated automatically (10&nbsp;MB &times; 5 files); the captured process-output logs <code>engine-stdout.log</code> and <code>n8n.log</code> are likewise bounded (10&nbsp;MB &times; 3 files), so nothing grows without limit.</p>
+      <p>To change how much is logged, open <strong>Settings &rarr; Data &rarr; Engine Log Level</strong> and pick <code>DEBUG</code>, <code>INFO</code>, <code>WARNING</code>, or <code>ERROR</code>. Choose <code>WARNING</code> or <code>ERROR</code> to record only problems and greatly reduce log volume. The change applies immediately — no restart. For a single run you can instead set the <code>LAYA_LOG_LEVEL</code> environment variable, which overrides the setting.</p>
+
       <h3>Export diagnostics</h3>
       <p>For debugging, use the <strong>Export Diagnostics</strong> button at the bottom of the Settings page. This creates a ZIP file containing system info, sanitized config, recent logs, and database statistics.</p>
 

@@ -623,6 +623,11 @@ def _trigger_followups(
                 entity_id=entity_id,
                 space_id=space_id,
                 is_carry_forward=is_carry_forward,
+                # Pass the LLM-generated title/summary so rules can match the
+                # card's visible header, not just event.subject.title (the raw
+                # source subject). Already in scope here — no DB re-fetch needed.
+                card_header=stager_output.header,
+                card_summary=stager_output.summary,
             )
 
     create_task(

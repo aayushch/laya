@@ -29,6 +29,11 @@ log = structlog.get_logger()
 router = APIRouter()
 
 
+class MoveCardRequest(BaseModel):
+    space_id: str
+    dry_run: bool = False
+
+
 @router.post("/cards/group/{entity_id:path}/dismiss-all")
 async def dismiss_group(entity_id: str) -> dict:
     """Dismiss all non-terminal cards in a group (entity or context group)."""
@@ -78,6 +83,172 @@ async def dismiss_group(entity_id: str) -> dict:
 
     log.info("group_dismissed", entity_id=entity_id, count=dismissed)
     return {"dismissed": dismissed, "entity_id": entity_id}
+
+
+@router.post("/cards/{card_id}/move")
+async def move_card(card_id: str, body: MoveCardRequest) -> dict:
+    """Move a card — and its whole group — to another space.
+
+    The unit of a move is the GROUP, never a lone card inside one:
+    - card in a context group          -> the entire context group moves
+    - card in a multi-card entity group -> the entire entity group moves
+    - truly standalone card             -> just that card
+    This guarantees no entity/context group is ever left split across two spaces, so
+    grouping/summary *membership* never needs regeneration — only the space label is
+    re-pointed. Rollups (Omni, daily summaries) are intentionally left stale until the
+    next resynthesis (the UI warns the user); only the cheap, correctness-critical
+    copies are synced here: the card + event columns, the group_summary label, any
+    pending omni_queue rows, and the ChromaDB metadata that semantic search filters on.
+
+    Pass dry_run=true to preview the scope + warning text without mutating anything.
+    """
+    db = await get_db()
+
+    target_space = body.space_id
+    space_rows = await db.execute_fetchall(
+        "SELECT name FROM spaces WHERE space_id = ?", (target_space,)
+    )
+    if not space_rows:
+        raise HTTPException(status_code=404, detail="Target space not found")
+    space_name = space_rows[0]["name"]
+
+    card_rows = await db.execute_fetchall(
+        "SELECT entity_id, context_id, space_id FROM action_cards WHERE card_id = ?",
+        (card_id,),
+    )
+    if not card_rows:
+        raise HTTPException(status_code=404, detail="Card not found")
+    entity_id = card_rows[0]["entity_id"]
+    context_id = card_rows[0]["context_id"]
+    current_space = card_rows[0]["space_id"] or "default"
+
+    # --- Resolve the move scope: which set of cards actually moves ---
+    if context_id:
+        scope = "context"
+        member_rows = await db.execute_fetchall(
+            "SELECT card_id, entity_id FROM action_cards WHERE context_id = ?",
+            (context_id,),
+        )
+    elif entity_id:
+        # An entity group only counts as a "group" when it has siblings; a lone card
+        # with its own entity_id is standalone.
+        member_rows = await db.execute_fetchall(
+            "SELECT card_id, entity_id FROM action_cards WHERE entity_id = ?",
+            (entity_id,),
+        )
+        scope = "entity" if len(member_rows) > 1 else "standalone"
+    else:
+        scope = "standalone"
+        member_rows = []
+
+    if scope == "standalone":
+        affected_card_ids = [card_id]
+        affected_entity_ids = [entity_id] if entity_id else []
+    else:
+        affected_card_ids = [r["card_id"] for r in member_rows]
+        affected_entity_ids = sorted({r["entity_id"] for r in member_rows if r["entity_id"]})
+
+    count = len(affected_card_ids)
+
+    # --- Human-facing warning (also the dry-run preview payload) ---
+    if scope == "context":
+        warning = (
+            f"This card belongs to a context group. Moving it will move the entire "
+            f"context group — {count} cards across {len(affected_entity_ids)} "
+            f"threads — to “{space_name}”. To move only one thread, "
+            f"unlink it from the context group first, then move it."
+        )
+    elif scope == "entity":
+        warning = (
+            f"Moving this card will move its whole group ({count} cards) to "
+            f"“{space_name}”."
+        )
+    else:
+        warning = f"Move this card to “{space_name}”?"
+    warning += (
+        " Its references in Omni and summaries will keep pointing to the previous "
+        "space until the next resynthesis (manual or automatic, whichever comes first)."
+    )
+
+    if body.dry_run:
+        return {
+            "scope": scope,
+            "affected_card_ids": affected_card_ids,
+            "card_count": count,
+            "entity_ids": affected_entity_ids,
+            "context_id": context_id,
+            "space_id": target_space,
+            "space_name": space_name,
+            "warning": warning,
+        }
+
+    if current_space == target_space:
+        return {
+            "status": "unchanged", "card_id": card_id, "space_id": target_space,
+            "scope": scope, "moved_card_ids": [], "count": 0,
+        }
+
+    # --- Perform the move atomically (one shared aiosqlite conn; see db/sqlite) ---
+    card_ph = ",".join("?" for _ in affected_card_ids)
+    async with transaction():
+        await db.execute(
+            f"UPDATE action_cards SET space_id = ? WHERE card_id IN ({card_ph})",
+            (target_space, *affected_card_ids),
+        )
+        # Keep the underlying events' space in sync — event-keyword search
+        # (chat/trace) filters on events.space_id.
+        await db.execute(
+            f"UPDATE events SET space_id = ? WHERE event_id IN "
+            f"(SELECT event_id FROM action_cards WHERE card_id IN ({card_ph}))",
+            (target_space, *affected_card_ids),
+        )
+        # group_summaries is keyed by entity_id; membership is unchanged so only the
+        # space label moves (no LLM regeneration needed).
+        if affected_entity_ids:
+            ent_ph = ",".join("?" for _ in affected_entity_ids)
+            await db.execute(
+                f"UPDATE group_summaries SET space_id = ? WHERE entity_id IN ({ent_ph})",
+                (target_space, *affected_entity_ids),
+            )
+        # Re-point any not-yet-folded omni_queue rows so a fresh fold lands in the new
+        # space instead of the old one (cheap; no LLM).
+        await db.execute(
+            f"UPDATE omni_queue SET space_id = ? WHERE card_id IN ({card_ph})",
+            (target_space, *affected_card_ids),
+        )
+
+    # --- Sync ChromaDB metadata in place (off the transaction; best-effort) ---
+    # Semantic search / chat / context-grouping filter on this copy of space_id; without
+    # it the moved cards would still resolve under the OLD space. In-place metadata
+    # patch — no re-embed. A Chroma hiccup must never fail the move (SQLite already
+    # committed), so we swallow and log.
+    from laya.db.chromadb_store import update_document_metadata
+    for cid in affected_card_ids:
+        try:
+            await update_document_metadata(cid, {"space_id": target_space})
+        except Exception as e:  # noqa: BLE001
+            log.warning("card_move_chromadb_sync_failed", card_id=cid, error=str(e))
+
+    # Broadcast so open feeds re-filter (space is a feed-level filter, not a sort key).
+    for cid in affected_card_ids:
+        await manager.broadcast(
+            {"type": "card_updated", "card_id": cid, "payload": {"space_id": target_space}}
+        )
+
+    await log_to_audit(
+        event_id=None, card_id=card_id, step="lifecycle",
+        model="n/a", input_tokens=0, output_tokens=0, latency_ms=0,
+        success=True,
+        metadata={"action": "move_space", "scope": scope, "count": count,
+                  "from_space": current_space, "to_space": target_space},
+    )
+
+    log.info("card_moved_space", card_id=card_id, scope=scope, count=count,
+             from_space=current_space, to_space=target_space)
+    return {
+        "status": "moved", "scope": scope, "moved_card_ids": affected_card_ids,
+        "count": count, "space_id": target_space,
+    }
 
 
 @router.post("/cards/{card_id}/archive")

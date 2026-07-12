@@ -7,6 +7,8 @@
 	import { goto } from '$app/navigation';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { portal } from '$lib/actions/portal';
+	import { spaces, loadSpaces } from '$lib/stores/spaces';
+	import { get } from 'svelte/store';
 
 	const AGENT_MODES: Record<string, string[]> = {
 		claude_code: ['plan', 'acceptEdits'],
@@ -58,10 +60,17 @@
 	let dirDropdownOpen = $state(false);
 	let dirTriggerRef = $state<HTMLButtonElement | null>(null);
 	let dirDropPos = $state({ top: 0, left: 0, width: 0 });
+	// Space the run-agent card is created in. Defaults to the user's default
+	// space; only surfaced as a picker when more than one space exists.
+	let selectedSpace = $state('default');
+	let spaceDropdownOpen = $state(false);
+	let spaceTriggerRef = $state<HTMLButtonElement | null>(null);
+	let spaceDropPos = $state({ top: 0, left: 0, width: 0 });
 
 	const currentAgent = $derived(agents.find((a) => a.value === selectedAgent));
 	const availableModes = $derived(currentAgent?.modes ?? []);
 	const hasMultipleModes = $derived(availableModes.length > 1);
+	const activeSpace = $derived($spaces.find((s) => s.space_id === selectedSpace));
 
 	// Load settings to get configured agent and paths
 	$effect(() => {
@@ -84,7 +93,8 @@
 		try {
 			const [settings, reposConfig] = await Promise.all([
 				engineApi.getSettings(),
-				engineApi.getRepos()
+				engineApi.getRepos(),
+				loadSpaces()
 			]);
 			const agent = settings.coding_agent || 'claude_code';
 			if (agent !== 'none') {
@@ -93,6 +103,10 @@
 			}
 			agentPaths = settings.agent_paths || {};
 			repos = reposConfig.repos || [];
+			// Default the space picker to the user's default space (its space_id
+			// may not literally be 'default', so resolve it from the loaded list).
+			const def = get(spaces).find((s) => s.is_default);
+			if (def) selectedSpace = def.space_id;
 			settingsLoaded = true;
 		} catch {
 			settingsLoaded = true;
@@ -333,6 +347,7 @@
 				add_dirs: addDirs.length > 0 ? addDirs : undefined,
 				agent_type: selectedAgent,
 				mode: availableModes.length > 0 ? selectedMode : undefined,
+				space_id: selectedSpace || undefined,
 				files: files.length > 0 ? files.map((f) => f.path) : undefined
 			});
 
@@ -364,6 +379,8 @@
 		settingsLoaded = false;
 		dragOver = false;
 		dirDropdownOpen = false;
+		selectedSpace = 'default';
+		spaceDropdownOpen = false;
 	}
 
 	function close() {
@@ -374,6 +391,7 @@
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
 			if (dirDropdownOpen) { e.preventDefault(); dirDropdownOpen = false; return; }
+			if (spaceDropdownOpen) { e.preventDefault(); spaceDropdownOpen = false; return; }
 		}
 		if (e.key === '.' && e.metaKey) { e.preventDefault(); close(); return; }
 		if (e.key === 'Enter' && e.metaKey) submit();
@@ -398,6 +416,9 @@
 		const target = e.target as HTMLElement;
 		if (dirDropdownOpen && !target.closest('[data-dir-dropdown]')) {
 			dirDropdownOpen = false;
+		}
+		if (spaceDropdownOpen && !target.closest('[data-space-dropdown]')) {
+			spaceDropdownOpen = false;
 		}
 	}
 
@@ -517,6 +538,67 @@
 						{/if}
 					</div>
 				</div>
+
+				<!-- Space selector — only shown when the user has more than the default space -->
+				{#if $spaces.length > 1}
+					<div class="relative" data-space-dropdown>
+						<span class={labelClass}>Space</span>
+						<button
+							bind:this={spaceTriggerRef}
+							type="button"
+							class="flex w-full items-center justify-between rounded-md border border-surface-600 bg-surface-800 px-3 py-2 text-left text-sm text-surface-200 transition-colors hover:border-surface-500"
+							onclick={() => { if (!spaceDropdownOpen && spaceTriggerRef) { const r = spaceTriggerRef.getBoundingClientRect(); spaceDropPos = { top: r.bottom + 4, left: r.left, width: r.width }; } spaceDropdownOpen = !spaceDropdownOpen; }}
+						>
+							<span class="flex min-w-0 items-center gap-2">
+								{#if activeSpace}
+									<span class="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style="background-color: {activeSpace.color}"></span>
+									<span class="truncate">{activeSpace.name}</span>
+								{:else}
+									<span class="truncate text-surface-500">Select a space</span>
+								{/if}
+							</span>
+							<svg
+								class="ml-2 h-4 w-4 shrink-0 text-surface-400 transition-transform {spaceDropdownOpen ? 'rotate-180' : ''}"
+								fill="none"
+								stroke="currentColor"
+								viewBox="0 0 24 24"
+							>
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+							</svg>
+						</button>
+
+						{#if spaceDropdownOpen}
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<div
+								use:portal
+								data-space-dropdown
+								class="fixed z-[100] rounded-md border {$glassTheme ? 'glass-dropdown border-white/15' : 'border-surface-600 bg-surface-800 shadow-lg'}"
+								style="top: {spaceDropPos.top}px; left: {spaceDropPos.left}px; width: {spaceDropPos.width}px;"
+								onkeydown={(e) => { if (e.key === 'Escape') spaceDropdownOpen = false; }}
+							>
+								<div class="max-h-48 overflow-y-auto py-1">
+									{#each $spaces as space}
+										<button
+											class="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-surface-700 {space.space_id === selectedSpace ? 'bg-surface-700' : ''}"
+											onclick={() => { selectedSpace = space.space_id; spaceDropdownOpen = false; }}
+										>
+											<span class="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style="background-color: {space.color}"></span>
+											<span class="flex-1 truncate text-xs font-medium text-surface-200">{space.name}</span>
+											{#if space.space_id === selectedSpace}
+												<svg class="h-3 w-3 shrink-0 text-laya-orange" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+													<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+												</svg>
+											{/if}
+										</button>
+									{/each}
+								</div>
+							</div>
+						{/if}
+						<p class="mt-1 text-[10px] text-surface-500">
+							The card for this agent run will be created in this space.
+						</p>
+					</div>
+				{/if}
 
 				<!-- Working Directory -->
 				<div class="relative" data-dir-dropdown>

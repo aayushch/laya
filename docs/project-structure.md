@@ -348,7 +348,9 @@ Laya stores all user data in `~/.laya/`:
 |   |-- laya.db                # SQLite database (events, cards, workspaces, spaces, audit)
 |   |-- chroma/                # ChromaDB persistence directory (vector embeddings)
 |-- logs/
-|   |-- engine.log             # Application logs (rotating, 10 MB x 5 files)
+|   |-- engine.log             # Application logs (rotating, 10 MB x 5 files); level = logging.level / LAYA_LOG_LEVEL
+|   |-- engine-stdout.log      # Captured engine stdout/stderr (rotating, 10 MB x 3 files)
+|   |-- n8n.log                # Captured n8n stdout/stderr (rotating, 10 MB x 3 files)
 |-- venv/                      # Managed Python venv (production, created by Tauri on first launch)
 |-- n8n_module/                # n8n npm installation
 |-- n8n/                       # n8n runtime data (database, encryption key, credentials)
@@ -379,6 +381,9 @@ Laya stores all user data in `~/.laya/`:
     "enabled": true,
     "min_priority": "HIGH"
   },
+  "logging": {
+    "level": "INFO"
+  },
   "n8n": {
     "url": "http://localhost:45678",
     "webhooks": {
@@ -387,10 +392,6 @@ Laya stores all user data in `~/.laya/`:
       "gmail_executor": "/webhook/gmail-exec-id",
       "calendar_executor": "/webhook/cal-exec-id"
     }
-  },
-  "engine": {
-    "port": 8420,
-    "log_level": "INFO"
   }
 }
 ```

@@ -2,6 +2,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	import { get } from 'svelte/store';
+	import { page } from '$app/stores';
 	import {
 		chatOpen,
 		chatMessages,
@@ -42,6 +43,20 @@
 
 	// Show list view when explicitly requested (chatListOpen controls this)
 	const showList = $derived($chatListOpen);
+
+	// The floating-card skin (margins + rounding + shadow) suits the padded pages, but on
+	// the workspace the surrounding panels are full-bleed — so that skin reads as a
+	// mismatched slab bolted on beside them (misaligned top/bottom, corners notching the
+	// flat neighbour). When docked on the workspace, and NOT in the wide expanded overlay,
+	// render flush instead: a full-height, edge-to-edge glass-panel with a left/top divider
+	// that continues the workspace's panel row. Bound to the LIVE route (not the route it
+	// opened on) so navigating to a padded page restores the floating card automatically.
+	const dockedFlush = $derived($page.url.pathname.startsWith('/workspace') && !$chatExpanded);
+	const surfaceClass = $derived(
+		dockedFlush
+			? `border-l border-t ${$glassTheme ? 'glass-panel border-white/[0.06]' : 'border-surface-700 bg-surface-900'}`
+			: `my-4 mr-4 rounded-xl ${$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-900'}${$chatExpanded ? ' shadow-2xl' : ''}${$glassTheme && $chatExpanded ? ' chat-overlay-surface' : ''}`
+	);
 
 	// Reset the wide overlay whenever the chat closes, so reopening always starts
 	// in the default sidebar layout (the expand state is intentionally ephemeral).
@@ -460,14 +475,16 @@
 		style="top: var(--header-h, 45px); bottom: var(--footer-h, 33px);"
 		transition:fly={{ x: 460, duration: $reducedMotion ? 0 : 250, opacity: 1 }}
 	>
-	<!-- Inner container: margins align with main content padding so the panel
-	     floats above the footer with consistent spacing -->
-	<div class="flex flex-1 flex-col overflow-hidden my-4 mr-4 rounded-xl {$glassTheme ? 'glass-section' : 'border border-surface-700 bg-surface-900'} {$chatExpanded ? 'shadow-2xl' : ''} {$glassTheme && $chatExpanded ? 'chat-overlay-surface' : ''}">
+	<!-- Inner container: floating card on padded pages, or a flush full-height panel when
+	     docked on the workspace (see surfaceClass). -->
+	<div class="flex flex-1 flex-col overflow-hidden {surfaceClass}">
 		{#if showList}
 			<ChatConversationList />
 		{:else}
 			<!-- Active Chat Header -->
-			<div class="flex items-center justify-between border-b {$glassTheme ? 'border-white/[0.06]' : 'border-surface-700'} px-4 py-3">
+			<!-- h-11 (not py-3) so this header's divider lines up with the workspace panels'
+			     h-11 headers when docked flush; harmless 44px header on the floating card too. -->
+			<div class="flex h-11 shrink-0 items-center justify-between border-b {$glassTheme ? 'border-white/[0.06]' : 'border-surface-700'} px-4">
 				<div class="group flex items-center gap-2 min-w-0">
 					<button
 						onclick={goBackToList}

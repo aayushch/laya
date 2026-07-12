@@ -18,6 +18,7 @@
 	import { portal } from '$lib/actions/portal';
 	import { compose } from '$lib/stores/compose';
 	import { detailExpanded } from '$lib/stores/detailPanel';
+	import { spaces, loadSpaces } from '$lib/stores/spaces';
 
 	let {
 		card,
@@ -73,6 +74,74 @@
 	let headerMenuEl: HTMLElement | undefined = $state();
 	let headerMenuPos = $state({ top: 0, right: 0 });
 	let fixedTooltip = $state<{ text: string; top: number; left: number } | null>(null);
+
+	// Move-to-space: an inline footer action (lowest priority — the first that would
+	// collapse into overflow) that reparents the card's whole GROUP to another space.
+	let moveMenuOpen = $state(false);
+	let moveBtnEl: HTMLElement | undefined = $state();
+	let moveMenuEl: HTMLElement | undefined = $state();
+	let moveMenuPos = $state({ top: 0, right: 0 });
+	let moveConfirm = $state<null | { space_id: string; space_name: string; warning: string; scope: string; count: number }>(null);
+	let moving = $state(false);
+
+	// Load spaces once so the picker knows the alternatives (store is cheap/cached).
+	$effect(() => { loadSpaces(); });
+
+	const otherSpaces = $derived($spaces.filter((s) => s.space_id !== (card.space_id ?? 'default')));
+
+	$effect(() => {
+		if (!moveMenuOpen) return;
+		function handleClick(e: MouseEvent) {
+			const target = e.target as HTMLElement;
+			if (!moveMenuEl?.contains(target) && !moveBtnEl?.contains(target)) {
+				moveMenuOpen = false;
+			}
+		}
+		document.addEventListener('click', handleClick, true);
+		return () => document.removeEventListener('click', handleClick, true);
+	});
+
+	function toggleMoveMenu() {
+		if (moveMenuOpen) { moveMenuOpen = false; return; }
+		if (!moveBtnEl) return;
+		const rect = moveBtnEl.getBoundingClientRect();
+		moveMenuPos = { top: rect.top - 4, right: window.innerWidth - rect.right };
+		moveMenuOpen = true;
+	}
+
+	// Pick a target space → dry-run the move so the backend tells us the true scope
+	// (entity/context group vs standalone) + the warning to confirm.
+	async function pickMoveSpace(spaceId: string, spaceName: string) {
+		moveMenuOpen = false;
+		try {
+			const preview = await engineApi.moveCard(card.card_id, { space_id: spaceId, dry_run: true });
+			moveConfirm = {
+				space_id: spaceId,
+				space_name: preview.space_name ?? spaceName,
+				warning: preview.warning ?? `Move this card to “${spaceName}”?`,
+				scope: preview.scope ?? 'standalone',
+				count: preview.card_count ?? 1,
+			};
+		} catch {
+			moveConfirm = { space_id: spaceId, space_name: spaceName, warning: `Move this card to “${spaceName}”?`, scope: 'standalone', count: 1 };
+		}
+	}
+
+	async function confirmMove() {
+		if (!moveConfirm) return;
+		moving = true;
+		try {
+			await engineApi.moveCard(card.card_id, { space_id: moveConfirm.space_id });
+			moveConfirm = null;
+			// The card (and its group) left the current space; the WS card_updated
+			// broadcast re-filters the feed. Close the panel since it's no longer in view.
+			onclose();
+		} catch {
+			// Keep the dialog open on failure so the user can retry / cancel.
+		} finally {
+			moving = false;
+		}
+	}
 
 	function showTooltip(el: HTMLElement, text: string) {
 		const rect = el.getBoundingClientRect();
@@ -1025,6 +1094,18 @@
 					Run Agent
 				</button>
 			{/if}
+			<!-- Move to space — last inline action (lowest priority; first to overflow) -->
+			{#if $spaces.length > 1}
+				<button
+					bind:this={moveBtnEl}
+					class="flex items-center gap-1 rounded-md px-2 py-1 text-laya-secondary text-surface-400 transition-colors hover:bg-surface-700/50 hover:text-laya-orange"
+					onclick={toggleMoveMenu}
+					aria-label="Move to space"
+				>
+					<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 13h6m0 0l-2-2m2 2l-2 2" /></svg>
+					Move
+				</button>
+			{/if}
 			<!-- Overflow menu: Link / Unlink / Delete -->
 			<div class="relative">
 				<button
@@ -1185,6 +1266,70 @@
 					disabled={deleting}
 				>
 					{deleting ? 'Deleting...' : 'Delete permanently'}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+{#if moveMenuOpen}
+	<div
+		bind:this={moveMenuEl}
+		use:portal
+		class="fixed z-[100] w-48 rounded-lg border p-1 {$glassTheme ? 'glass-menu' : 'border-surface-600 bg-surface-900 shadow-xl shadow-black/50'}"
+		style="top: {moveMenuPos.top}px; right: {moveMenuPos.right}px; transform: translateY(-100%);"
+		role="menu"
+	>
+		<div class="px-2.5 py-1 text-laya-micro font-medium uppercase tracking-wide text-surface-500">Move to space</div>
+		{#each otherSpaces as space (space.space_id)}
+			<button
+				class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary text-surface-300 transition-colors hover:bg-surface-700 hover:text-surface-200"
+				role="menuitem"
+				onclick={() => pickMoveSpace(space.space_id, space.name)}
+			>
+				<span class="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style="background-color: {space.color}"></span>
+				<span class="truncate">{space.name}</span>
+			</button>
+		{/each}
+		{#if otherSpaces.length === 0}
+			<div class="px-2.5 py-1.5 text-laya-secondary text-surface-500">No other spaces</div>
+		{/if}
+	</div>
+{/if}
+
+{#if moveConfirm}
+	<div
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+		role="dialog"
+		aria-label="Confirm move to space"
+		tabindex="-1"
+		onclick={(e) => { if (e.target === e.currentTarget) moveConfirm = null; }}
+		onkeydown={(e) => { if (e.key === 'Escape') moveConfirm = null; }}
+	>
+		<div class="mx-4 w-full max-w-md rounded-xl border border-surface-700 bg-surface-800 p-5 shadow-2xl">
+			<div class="mb-3 flex items-start gap-3">
+				<div class="mt-0.5 rounded-full bg-laya-orange/15 p-1.5">
+					<svg class="h-4 w-4 text-laya-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 13h6m0 0l-2-2m2 2l-2 2" /></svg>
+				</div>
+				<div>
+					<h4 class="text-laya-base font-semibold text-surface-50">Move to “{moveConfirm.space_name}”?</h4>
+					<p class="mt-1 text-laya-secondary leading-relaxed text-surface-400">{moveConfirm.warning}</p>
+				</div>
+			</div>
+			<div class="flex justify-end gap-2">
+				<button
+					class="rounded-md px-3 py-1.5 text-laya-secondary text-surface-400 transition-colors hover:text-surface-200 disabled:opacity-50"
+					onclick={() => (moveConfirm = null)}
+					disabled={moving}
+				>
+					Cancel
+				</button>
+				<button
+					class="rounded-md bg-laya-orange/20 px-3 py-1.5 text-laya-secondary font-medium text-laya-orange transition-colors hover:bg-laya-orange/30 disabled:opacity-50"
+					onclick={confirmMove}
+					disabled={moving}
+				>
+					{moving ? 'Moving...' : 'Move'}
 				</button>
 			</div>
 		</div>

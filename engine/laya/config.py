@@ -62,6 +62,11 @@ DEFAULT_SETTINGS = {
         "enabled": True,
         "min_priority": "HIGH",
     },
+    "logging": {
+        # Controls ~/.laya/logs/engine.log verbosity. DEBUG | INFO | WARNING | ERROR.
+        # Overridable at runtime via Settings → Data or the LAYA_LOG_LEVEL env var.
+        "level": "INFO",
+    },
     "retention": {
         "card_retention_days": 90,
         "chat_retention_days": 90,

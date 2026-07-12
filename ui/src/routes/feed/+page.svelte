@@ -845,6 +845,7 @@
 					statusFilters: $feedFilters.statusFilters,
 					showArchived: $feedFilters.showArchived,
 					sortBy: $feedFilters.sortBy,
+					spaceFilter: $feedFilters.spaceFilter,
 				}
 			);
 			groups = result.groups;

@@ -317,6 +317,37 @@ async def delete_document(doc_id: str) -> None:
     log.debug("document_deleted", doc_id=doc_id)
 
 
+async def update_document_metadata(doc_id: str, patch: dict[str, Any]) -> None:
+    """Patch metadata fields on an already-embedded document (and its chunks) in place.
+
+    Reads the current metadata, merges `patch`, and re-writes via ``collection.update``
+    — the embedding vector/text is NOT recomputed, so this is cheap. Also patches any
+    chunk docs (``{doc_id}_chunk_i``) written by ``embed_document_chunked``, which copy
+    the parent's metadata. Used by the card-move flow to keep a card's ``space_id``
+    metadata in sync (semantic search / chat / context-grouping filter on it) without a
+    full re-embed — mirrors the in-place tag update in ``pipeline/tags.py``.
+    """
+    collection = get_collection()
+    loop = asyncio.get_event_loop()
+
+    def _patch() -> None:
+        # Base doc (single-doc embeds, e.g. cards via _embed_card). May be absent for
+        # a chunked doc, which stores metadata only on its chunk rows.
+        base = collection.get(ids=[doc_id], include=["metadatas"])
+        if base and base.get("metadatas"):
+            merged = {**base["metadatas"][0], **patch}
+            collection.update(ids=[doc_id], metadatas=[merged])
+        # Chunk docs, if any.
+        chunks = collection.get(where={"parent_id": doc_id}, include=["metadatas"])
+        if chunks and chunks.get("ids"):
+            new_metas = [{**m, **patch} for m in chunks["metadatas"]]
+            collection.update(ids=chunks["ids"], metadatas=new_metas)
+
+    # Chroma get/update are synchronous I/O — keep them off the event loop (review §4).
+    await loop.run_in_executor(None, _patch)
+    log.debug("document_metadata_updated", doc_id=doc_id, fields=list(patch.keys()))
+
+
 async def memory_search(
     query: str,
     n_results: int = 3,

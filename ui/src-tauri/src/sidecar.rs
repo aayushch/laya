@@ -638,19 +638,15 @@ fn spawn_prod_engine() -> Result<Child, String> {
     std::fs::create_dir_all(&log_dir)
         .map_err(|e| format!("Failed to create log dir: {e}"))?;
 
-    let log_file = std::fs::File::create(log_dir.join("engine-stdout.log"))
-        .map_err(|e| format!("Failed to create engine log: {e}"))?;
-    let stderr_file = log_file
-        .try_clone()
-        .map_err(|e| format!("Failed to clone log handle: {e}"))?;
-
     let mut cmd = Command::new(&python);
     no_window(&mut cmd);
     cmd.arg("-m")
         .arg("laya.main")
         .current_dir(&engine)
-        .stdout(log_file)
-        .stderr(stderr_file)
+        // Pipe stdout/stderr so pipe_to_rotating() can capture them into a
+        // size-capped, rotating engine-stdout.log (see below).
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         // Prevent Python from writing __pycache__/*.pyc into the signed .app bundle,
         // which would invalidate the code signature.
         .env("PYTHONDONTWRITEBYTECODE", "1")
@@ -674,8 +670,24 @@ fn spawn_prod_engine() -> Result<Child, String> {
         });
     }
 
-    cmd.spawn()
-        .map_err(|e| format!("Failed to spawn engine: {e}"))
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to spawn engine: {e}"))?;
+
+    // Capture the engine's stdout/stderr into a size-capped, rotating log so
+    // engine-stdout.log can't grow unbounded within a long session (the old
+    // File::create sink was only truncated at launch). 10 MB × 3 backups.
+    if let Err(e) = crate::rotating_log::pipe_to_rotating(
+        &mut child,
+        &log_dir,
+        "engine-stdout.log",
+        10 * 1024 * 1024,
+        3,
+    ) {
+        log::warn!("Failed to set up rotating engine log capture: {e}");
+    }
+
+    Ok(child)
 }
 
 /// Poll the engine's /health endpoint until it responds or timeout.

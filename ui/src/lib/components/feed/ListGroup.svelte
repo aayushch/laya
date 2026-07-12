@@ -451,7 +451,7 @@
 		</div>
 
 		<!-- Persona spacer — matches ListRow w-[62px] -->
-		<span class="col-persona w-[62px] shrink-0 ml-1"></span>
+		<span class="col-persona w-[68px] shrink-0 ml-1"></span>
 
 		<!-- Priority badge — matches ListRow w-[36px] -->
 		<span class="w-[36px] shrink-0 text-center rounded px-1 py-0.5 text-laya-micro font-bold uppercase ml-1 {priorityColors[group.top_priority] ?? priorityColors.MEDIUM}">

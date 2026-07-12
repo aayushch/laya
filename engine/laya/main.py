@@ -57,7 +57,7 @@ from laya.db.chromadb_store import connect_chromadb, disconnect_chromadb
 from laya.db.fts import ensure_fts_tables
 from laya.db.migrate import run_migrations
 from laya.db.sqlite import connect, disconnect
-from laya.logging_setup import setup_logging
+from laya.logging_setup import resolve_log_level, setup_logging
 from laya.pipeline.omni import start_omni_processor, stop_omni_processor
 from laya.pipeline.queue import recover_stalled_cards, recover_stalled_events, start_consumer, stop_consumer
 from laya.scheduler import start_scheduler, stop_scheduler
@@ -525,6 +525,11 @@ if __name__ == "__main__":
     # Kill any stale engine holding our port before uvicorn tries to bind
     _kill_stale_engine(ENGINE_HOST, ENGINE_PORT)
 
+    # Honor the same level for uvicorn's own loggers (access/error) as the engine.
+    # At WARNING this drops uvicorn's per-request access lines from engine-stdout.log
+    # too, so lowering the level quiets both Laya's and uvicorn's output together.
+    uvicorn_log_level = resolve_log_level().lower()
+
     if is_dev:
         uvicorn.run(
             "laya.main:app",
@@ -532,6 +537,13 @@ if __name__ == "__main__":
             port=ENGINE_PORT,
             reload=True,
             timeout_keep_alive=65,
+            log_level=uvicorn_log_level,
         )
     else:
-        uvicorn.run(app, host=ENGINE_HOST, port=ENGINE_PORT, timeout_keep_alive=65)
+        uvicorn.run(
+            app,
+            host=ENGINE_HOST,
+            port=ENGINE_PORT,
+            timeout_keep_alive=65,
+            log_level=uvicorn_log_level,
+        )

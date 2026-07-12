@@ -3,6 +3,7 @@
 
 mod n8n;
 mod process_util;
+mod rotating_log;
 mod runtime;
 mod sidecar;
 

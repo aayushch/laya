@@ -321,6 +321,27 @@ export const engineApi = {
 		request<{ status: string; card_id: string }>(`/cards/${cardId}/reprocess`, {
 			method: 'POST'
 		}),
+	// Move a card (and its whole group) to another space. dry_run=true returns the
+	// scope + warning without mutating; the real move returns what was moved.
+	moveCard: (cardId: string, data: { space_id: string; dry_run?: boolean }) =>
+		request<{
+			// dry-run preview fields
+			scope?: 'context' | 'entity' | 'standalone';
+			affected_card_ids?: string[];
+			card_count?: number;
+			entity_ids?: string[];
+			context_id?: string | null;
+			space_name?: string;
+			warning?: string;
+			// actual-move fields
+			status?: string;
+			moved_card_ids?: string[];
+			count?: number;
+			space_id: string;
+		}>(`/cards/${cardId}/move`, {
+			method: 'POST',
+			body: JSON.stringify(data)
+		}),
 	// Related cards
 	getRelatedCards: (cardId: string) =>
 		request<{ card_id: string; related_cards: Array<{ card_id: string; header: string; entity_id: string; status: string; context_id: string; context_label: string; confidence: number; link_method: string }>; total_related_cards: number }>(`/cards/${cardId}/related`),

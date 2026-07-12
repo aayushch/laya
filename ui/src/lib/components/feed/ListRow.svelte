@@ -329,8 +329,8 @@
 		</span>
 	</div>
 
-	<!-- Persona badge — fixed width -->
-	<span class="col-persona w-[62px] shrink-0 text-center rounded border px-1 py-0.5 text-laya-micro font-bold uppercase ml-1 {personaColors[card.persona] ?? personaColors.ENGINEER}">
+	<!-- Persona badge — fixed width (68px fits the longest label "ENGINEER" with padding, even at the 15px font-base setting; tracking-tight keeps it off the border. Keep in sync with the col-persona placeholder in ListGroup.svelte) -->
+	<span class="col-persona w-[68px] shrink-0 text-center rounded border px-1 py-0.5 text-laya-micro font-bold uppercase tracking-tight ml-1 {personaColors[card.persona] ?? personaColors.ENGINEER}">
 		{card.persona}
 	</span>
 
