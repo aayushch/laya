@@ -19,6 +19,8 @@
 	import TraceSearch from '$lib/components/trace/TraceSearch.svelte';
 	import TraceHeader from '$lib/components/trace/TraceHeader.svelte';
 	import TraceHistory from '$lib/components/trace/TraceHistory.svelte';
+	import layaProcessing from '$lib/assets/laya-processing.gif';
+	import layaProcessingStatic from '$lib/assets/laya-processing-static.png';
 	import type { TraceResponse } from '$lib/api/types';
 
 	// Use the persistent store so loading state survives navigation away and back.
@@ -871,10 +873,12 @@
 				<!-- Current stage + cancel -->
 				<div class="flex items-center justify-between">
 					<div class="flex items-center gap-2 text-laya-secondary text-surface-400">
-						<svg class="w-3.5 h-3.5 animate-spin shrink-0 text-laya-orange" fill="none" viewBox="0 0 24 24">
-							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle>
-							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-						</svg>
+						<!-- laya-processing.gif: the card-grid mark sits inside ~1/3 padding of its
+						     square frame, so an 18px box renders the visible mark at roughly the
+						     neighbouring 11px text's glyph height (matches the spinner it replaced).
+						     A GIF animates unconditionally, so under reduced motion we swap in a
+						     static frame (same geometry/framing) instead of the looping animation. -->
+						<img src={$reducedMotion ? layaProcessingStatic : layaProcessing} alt="" class="w-[18px] h-[18px] shrink-0" />
 						<span class="font-medium transition-all duration-300">{($traceProgress?.step ?? 0) > 0 && ($traceProgress?.step ?? 0) <= coherenceStages.length ? coherenceStages[($traceProgress?.step ?? 1) - 1] : 'Preparing'}</span>
 						<span class="text-surface-600">&middot;</span>
 						<span class="text-surface-500">{$traceProgress?.step ?? 0} / {$traceProgress?.total ?? coherenceStages.length}</span>

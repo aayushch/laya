@@ -490,8 +490,9 @@
 		const _textTokens: string[] = [];
 		untrack(() => {
 			for (const token of searchQuery.trim().split(/\s+/)) {
-				if (token.startsWith('#') && token.length > 1) {
-					_tagTokens.push(token.slice(1));
+				if (token.startsWith('#')) {
+					// Bare '#' is a half-typed tag, not a search for a literal '#'.
+					if (token.length > 1) _tagTokens.push(token.slice(1));
 				} else if (token) {
 					_textTokens.push(token);
 				}
@@ -674,7 +675,7 @@
 
 	// Exit all-days search when search is cleared
 	$effect(() => {
-		if (searchTerms.length === 0 && $feedFilters.showAllDaysSearch) {
+		if (!searchActive && $feedFilters.showAllDaysSearch) {
 			$feedDate = $allDaysSavedDate;
 			$feedFilters = { ...$feedFilters, showAllDaysSearch: false };
 		}
@@ -1204,8 +1205,29 @@
 		}
 	}
 
-	// Search filtering
-	function cardMatchesSearch(card: ActionCard, terms: string[]): boolean {
+	// Search filtering. A `#tag` token is a TAG filter, never text: it matches only
+	// cards carrying that tag (or whose entity group carries it), NOT cards whose
+	// content happens to mention the word. This used to strip the '#' and fold the
+	// tag into `terms`, so "#reviewer" substring-matched the content haystack and
+	// surfaced every card merely mentioning a reviewer. Semantics mirror the
+	// backend's search/tags split in api/cards_feed.py: tag tokens OR together,
+	// text terms AND together, and the two sets AND with each other.
+	function cardMatchesSearch(
+		card: ActionCard,
+		terms: string[],
+		tagTerms: string[],
+		groupTagNames: string[]
+	): boolean {
+		if (tagTerms.length > 0) {
+			const cardTagNames = (card.tags ?? []).map((t) => t.tag_name.toLowerCase());
+			// Entity-level tags apply to every card in the group (backend ORs the
+			// card-tag and entity-tag subqueries the same way).
+			const hasTag = tagTerms.some(
+				(t) => cardTagNames.includes(t) || groupTagNames.includes(t)
+			);
+			if (!hasTag) return false;
+		}
+		if (terms.length === 0) return true;
 		const privacyLabel = card.privacy_tier === 3 ? 'confidential' : card.privacy_tier === 2 ? 'internal' : card.privacy_tier === 1 ? 'public' : '';
 		const searchable = [
 			card.header,
@@ -1232,25 +1254,47 @@
 		return terms.every((term) => searchable.includes(term));
 	}
 
+	// Text terms only — `#tag` tokens are peeled off into activeSearchTags and must
+	// NOT leak in here as text. Any '#'-prefixed token is dropped, including a lone
+	// '#': that's the half-typed state before a tag name (autocomplete is open), so
+	// it filters nothing rather than matching every card containing a literal '#'.
 	const searchTerms = $derived(
 		searchQuery.trim() === ''
 			? []
-			: searchQuery.toLowerCase().split(/\s+/).filter(Boolean).map(t => t.startsWith('#') ? t.slice(1) : t)
+			: searchQuery
+					.toLowerCase()
+					.split(/\s+/)
+					.filter((t) => t && !t.startsWith('#'))
 	);
 
 	const activeSearchTags = $derived(
 		searchQuery.trim().split(/\s+/).filter(t => t.startsWith('#') && t.length > 1).map(t => t.slice(1))
 	);
 
+	// Tag names are UNIQUE COLLATE NOCASE (migration 065), so compare lowercased.
+	// Kept separate from activeSearchTags, which stays as-typed for the chips.
+	const searchTagTerms = $derived(activeSearchTags.map((t) => t.toLowerCase()));
+
+	// "Is search active?" — a pure "#tag" query has no text terms, so length checks
+	// on searchTerms alone would read as "search cleared" and drop the tag filter.
+	const searchActive = $derived(searchTerms.length > 0 || activeSearchTags.length > 0);
+
 	const filteredGroups = $derived.by(() => {
-		if (searchTerms.length === 0) return groups;
+		if (!searchActive) return groups;
 		return groups
 			.map((group) => {
-				// Check group-level fields first
+				const groupTagNames = (group.tags ?? []).map((t) => t.tag_name.toLowerCase());
+				const groupTagMatch =
+					searchTagTerms.length === 0 || searchTagTerms.some((t) => groupTagNames.includes(t));
+				// Check group-level fields first. The tag filter still has to hold —
+				// otherwise a title merely containing the tag word would pull in the
+				// whole group, which is the bug this guards.
 				const groupText = [group.entity_title, group.platform].join(' ').toLowerCase();
-				if (searchTerms.every((t) => groupText.includes(t))) return group;
+				if (groupTagMatch && searchTerms.every((t) => groupText.includes(t))) return group;
 				// Filter individual cards
-				const matching = group.cards.filter((c) => cardMatchesSearch(c, searchTerms));
+				const matching = group.cards.filter((c) =>
+					cardMatchesSearch(c, searchTerms, searchTagTerms, groupTagNames)
+				);
 				if (matching.length === 0) return null;
 				return {
 					...group,
@@ -1265,7 +1309,10 @@
 	});
 
 	const filteredDaySummary = $derived.by((): DaySummary | null => {
-		if (!daySummary || searchTerms.length === 0) return daySummary;
+		if (!daySummary || !searchActive) return daySummary;
+		// Summary items carry no tag assignments, so nothing in the summary can
+		// satisfy a #tag filter — showing it unfiltered would imply it matched.
+		if (searchTagTerms.length > 0) return null;
 		function filterItems(items: import('$lib/api/types').SummaryItem[]) {
 			return items.filter((item) => {
 				const text = item.text.toLowerCase();
@@ -1698,13 +1745,13 @@
 				<span class="text-laya-secondary text-surface-500">{totalGroups} {totalGroups === 1 ? 'group' : 'groups'}</span>
 				<span class="text-laya-micro text-surface-600">·</span>
 				<span class="text-laya-secondary text-surface-500">{totalCards} cards</span>
-				{#if searchTerms.length > 0 && filteredTotalCards !== totalCards}
+				{#if searchActive && filteredTotalCards !== totalCards}
 					<span class="inline-flex items-center gap-1 rounded-full bg-laya-orange/10 px-2 py-0.5 text-laya-micro font-medium text-laya-orange">
 						<svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
 						{filteredGroups.length} shown
 					</span>
 				{/if}
-				{#if searchTerms.length > 0 && !$feedFilters.showAllDaysSearch && !$feedFilters.showBookmarked && !$feedFilters.showRelated}
+				{#if searchActive && !$feedFilters.showAllDaysSearch && !$feedFilters.showBookmarked && !$feedFilters.showRelated}
 					<button
 						class="text-laya-micro font-medium text-laya-orange hover:underline"
 						onclick={() => { $allDaysSavedDate = $feedDate; $feedFilters = { ...$feedFilters, showAllDaysSearch: true }; }}
@@ -2075,7 +2122,7 @@
 					</p>
 
 				</div>
-			{:else if filteredGroups.length === 0 && searchTerms.length > 0}
+			{:else if filteredGroups.length === 0 && searchActive}
 				<div class="py-12 text-center text-surface-500">
 					<svg class="mx-auto mb-2 h-8 w-8 text-surface-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />

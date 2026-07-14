@@ -2,11 +2,11 @@
      favicons it detects as too dark against a dark tab bar, which showed up as a
      white border. viewBox is cropped tight so the mark fills the tab icon. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="4 1.875 24 24">
-  <rect x="13.25" y="5" width="6" height="4.75" rx="1" fill="#F97316"/>
-  <rect x="21" y="5" width="6" height="4.75" rx="1" fill="#F97316"/>
-  <rect x="5" y="11.5" width="6" height="4.75" rx="1" fill="#F97316"/>
-  <rect x="13.25" y="11.5" width="6" height="4.75" rx="1" fill="#F97316"/>
-  <rect x="21" y="11.5" width="6" height="4.75" rx="1" fill="#F97316"/>
-  <rect x="5" y="18" width="6" height="4.75" rx="1" fill="#F97316"/>
-  <rect x="13.25" y="18" width="6" height="4.75" rx="1" fill="#F97316"/>
+  <rect x="13.25" y="5" width="6" height="4.75" rx="1" fill="#E8903A"/>
+  <rect x="21" y="5" width="6" height="4.75" rx="1" fill="#E8903A"/>
+  <rect x="5" y="11.5" width="6" height="4.75" rx="1" fill="#E8903A"/>
+  <rect x="13.25" y="11.5" width="6" height="4.75" rx="1" fill="#E8903A"/>
+  <rect x="21" y="11.5" width="6" height="4.75" rx="1" fill="#E8903A"/>
+  <rect x="5" y="18" width="6" height="4.75" rx="1" fill="#E8903A"/>
+  <rect x="13.25" y="18" width="6" height="4.75" rx="1" fill="#E8903A"/>
 </svg>
