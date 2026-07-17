@@ -65,6 +65,10 @@ class TraceCancelled(Exception):
     """Raised when a trace is cancelled mid-execution."""
 
 
+class TraceAlreadyRunning(Exception):
+    """Raised when a trace_id is already executing (concurrent rerun of the same id)."""
+
+
 def request_cancel(trace_id: str) -> bool:
     """Signal a running trace to abort. Returns True if there was a trace to cancel."""
     ev = _cancel_events.get(trace_id)
@@ -213,7 +217,7 @@ async def _llm_relevance_filter(
         response = await (_cancellable(llm_coro, trace_id) if trace_id else llm_coro)
 
         if not response.parsed or "judgments" not in response.parsed:
-            log.warning("trace_filter_no_judgments")
+            log.warning("trace_filter_no_judgments", trace_id=trace_id)
             return seeds, 0
 
         # Collect relevant seed indices
@@ -237,11 +241,11 @@ async def _llm_relevance_filter(
                 filtered.append(seed)
 
         removed = len(seeds) - len(filtered)
-        log.info("trace_filter_complete", kept=len(filtered), removed=removed)
+        log.info("trace_filter_complete", trace_id=trace_id, kept=len(filtered), removed=removed)
         return filtered, removed
 
     except Exception as e:
-        log.warning("trace_filter_failed", error=str(e))
+        log.warning("trace_filter_failed", trace_id=trace_id, error=str(e))
         return seeds, 0
 
 
@@ -250,14 +254,35 @@ async def _llm_relevance_filter(
 # ---------------------------------------------------------------------------
 
 
-async def run_trace(request: TraceRequest) -> TraceResponse:
-    """Execute a full trace: discovery → expansion → clustering."""
+async def run_trace(request: TraceRequest, trace_id: str | None = None) -> TraceResponse:
+    """Execute a full trace: discovery → expansion → clustering.
+
+    `trace_id` is supplied by a rerun so the run REUSES the existing identity and
+    updates that row in place (see _save_trace's upsert). Minting a fresh id on
+    rerun — and deleting the old row up front, as the API used to — meant every
+    history link and in-flight client poll 404'd the instant a rerun started, and
+    a cancel/crash mid-run destroyed the trace permanently. Reusing the id and
+    upserting only on success makes rerun idempotent and crash-safe.
+    """
     t0 = time.monotonic()
-    trace_id = f"trace_{uuid.uuid4().hex[:12]}"
+    trace_id = trace_id or f"trace_{uuid.uuid4().hex[:12]}"
+
+    # _cancel_events is keyed by trace_id. With unique-per-run ids a same-id
+    # collision was impossible; now that reruns reuse an id, two concurrent runs
+    # of the SAME id would clobber each other's cancel event (making the first
+    # uncancellable, and letting the first's finally-pop deregister the second)
+    # and would race the same row in _save_trace. Reject the second run instead.
+    if trace_id in _cancel_events:
+        raise TraceAlreadyRunning(trace_id)
 
     # Register cancellation event for this trace
     cancel_event = asyncio.Event()
     _cancel_events[trace_id] = cancel_event
+
+    # Logged here (not in the API handlers) so create + rerun both carry a trace_id
+    # from the first line — the API's trace_requested fires before the id is minted,
+    # which made lifecycle events impossible to correlate across a run.
+    log.info("trace_started", trace_id=trace_id, query=request.query, space_id=request.space_id)
 
     async def _progress(stage: str, step: int, total: int) -> None:
         _check_cancelled(trace_id)  # Check before each stage
@@ -360,6 +385,7 @@ async def _run_trace_inner(
 
     log.info(
         "trace_discovery_results",
+        trace_id=trace_id,
         query=request.query,
         identifier_hits=len(guaranteed_seeds),
         identifier_ids=[(s.get("card_id") or s.get("entity_id") or "?")[:30] for s in guaranteed_seeds[:5]],
@@ -390,6 +416,7 @@ async def _run_trace_inner(
 
     log.info(
         "trace_seeds",
+        trace_id=trace_id,
         total=len(seeds),
         seed_ids=[(s.get("card_id") or s.get("entity_id") or "?")[:30] for s in seeds[:10]],
         seed_entity_ids=[(s.get("entity_id") or "?")[:40] for s in seeds[:10]],
@@ -482,6 +509,17 @@ async def _run_trace_inner(
 
     # Persist trace to DB
     await _save_trace(response)
+
+    # Announce completion over WS so a client whose HTTP request already aborted
+    # (a rerun can outlast any timeout) can still recover the result by fetching
+    # this trace_id. Broadcast AFTER _save_trace so any client that reacts by
+    # calling GET /traces/{id} is guaranteed to find the persisted row.
+    await manager.broadcast({
+        "type": "trace_complete",
+        "trace_id": trace_id,
+        "query": request.query,
+        "cluster_count": len(response.clusters),
+    })
 
     return response
 
@@ -1226,10 +1264,32 @@ async def _save_trace(response: TraceResponse) -> None:
             "status_summary": cluster.status_summary.model_dump(),
         })
 
+    # Upsert (not a plain INSERT) so a rerun — which reuses the existing trace_id
+    # (see run_trace) — replaces the row IN PLACE, atomically, and only on success.
+    # This is a single statement, so it's inherently atomic and needs no
+    # db/sqlite.transaction() wrapper (that's for multi-statement invariants);
+    # keeping it single-statement is precisely what makes rerun crash-safe.
+    #   - created_at is deliberately NOT in DO UPDATE SET: the original stands so
+    #     history ordering (ORDER BY created_at DESC) is stable and a rerun doesn't
+    #     jump the row to the top. updated_at moves to the new db_now() value.
+    #   - narrative/summary are cleared: both describe the OLD cluster set (per-cluster
+    #     narratives live inside cluster_data and are already discarded with it, but
+    #     these two top-level columns must be NULLed so _reconstruct_trace doesn't
+    #     render a summary narrating cards that are no longer in the trace).
     await db.execute(
         """INSERT INTO traces (trace_id, query, created_at, updated_at, chapters,
                                cluster_data, card_ids, search_metadata, space_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(trace_id) DO UPDATE SET
+               query           = excluded.query,
+               updated_at      = excluded.updated_at,
+               chapters        = excluded.chapters,
+               cluster_data    = excluded.cluster_data,
+               card_ids        = excluded.card_ids,
+               search_metadata = excluded.search_metadata,
+               space_id        = excluded.space_id,
+               narrative       = NULL,
+               summary         = NULL""",
         (
             response.trace_id,
             response.query,

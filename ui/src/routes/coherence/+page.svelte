@@ -183,6 +183,37 @@
 			return;
 		}
 
+		if (msg.type === 'trace_complete') {
+			_lastProcessedMsg = msg;
+			const raw = msg as unknown as Record<string, unknown>;
+			const tid = raw.trace_id as string;
+			// Only react to the run this view is tracking (latched from the first
+			// trace_progress message) — ignore completions from other/concurrent traces.
+			if (tid !== _activeTraceId) return;
+			// If the HTTP response already delivered this trace, there's nothing to
+			// recover — just make sure history reflects the freshly-persisted row.
+			if (trace?.trace_id === tid) {
+				loadHistory();
+				return;
+			}
+			// The HTTP request aborted (a rerun can outlast even the long timeout) but the
+			// trace IS persisted server-side under this id. Recover it by fetching — but
+			// only if the user hasn't opened a DIFFERENT trace meanwhile (don't clobber
+			// their view). De-duped against the HTTP path via the trace_id checks.
+			if (!trace) {
+				engineApi.getTrace(tid).then((result) => {
+					if (!trace || trace.trace_id === tid) {
+						trace = result;
+						currentTrace.set(result);
+					}
+					loadHistory();
+				}).catch(() => { /* best-effort recovery; history refresh below still runs */ });
+			} else {
+				loadHistory();
+			}
+			return;
+		}
+
 		if (msg.type === 'trace_narrative_start') {
 			_lastProcessedMsg = msg;
 			const raw = msg as unknown as Record<string, unknown>;
@@ -301,8 +332,6 @@
 					error = 'No results found. Try a different search term.';
 				}
 			}
-
-			loadHistory();
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : 'Search failed';
 			// Don't show error for cancellation, and only surface it if the user is
@@ -317,6 +346,10 @@
 			cancelling = false;
 			traceProgress.set(null);
 			showHistoryDuringSearch = false;
+			// Refresh history unconditionally (finally, not the success path): a trace is
+			// now persisted server-side even when the HTTP request aborts client-side, so
+			// the run may have produced a saved trace we should surface in Recent Searches.
+			loadHistory();
 		}
 	}
 
@@ -358,7 +391,18 @@
 				return merged;
 			});
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load trace';
+			const msg = e instanceof Error ? e.message : 'Failed to load trace';
+			// Self-heal a stale history entry: a "Trace not found" here means the row was
+			// deleted (e.g. retention housekeeping) since the list was loaded. Drop it and
+			// refresh so the dead entry can't sit in Recent Searches 404'ing on every click.
+			// (request() throws a bare Error(detail) with no status code, so we match on the
+			// detail text — the only signal available without touching the shared helper.)
+			if (msg.includes('Trace not found')) {
+				traceHistory.update((h) => h.filter((t) => t.trace_id !== traceId));
+				loadHistory();
+			} else {
+				error = msg;
+			}
 		}
 	}
 
@@ -370,7 +414,10 @@
 		// cost and races the shared trace state (review §2 UI — P4-35).
 		if (get(traceLoading)) return;
 
-		const rerunQuery = trace?.query ?? '';
+		// When rerunning from the history list, `trace` is null — fall back to the
+		// history entry's query so the progress bar shows the query being rerun
+		// instead of an empty string.
+		const rerunQuery = trace?.query ?? get(traceHistory).find((t) => t.trace_id === id)?.query ?? '';
 		traceLoading.set(true);
 		error = null;
 		trace = null;
@@ -387,13 +434,22 @@
 			const result = await engineApi.rerunTrace(id);
 			trace = result;
 			currentTrace.set(result);
-			loadHistory();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Rerun failed';
+			const msg = e instanceof Error ? e.message : 'Rerun failed';
+			// Suppress the abort/cancel noise — the rerun now persists server-side under
+			// the SAME trace_id even if the HTTP request timed out, so the finally-block
+			// history refresh (and, once it lands, the trace_complete WS message) recovers
+			// the result. Surfacing a scary error for a run that actually succeeded is wrong.
+			if (!msg.includes('cancelled') && !msg.includes('abort')) {
+				error = msg;
+			}
 		} finally {
 			traceLoading.set(false);
 			traceProgress.set(null);
 			showHistoryDuringSearch = false;
+			// Refresh unconditionally: the rerun replaces the row in place under the same
+			// id, so even an aborted request leaves fresh results reachable from history.
+			loadHistory();
 		}
 	}
 

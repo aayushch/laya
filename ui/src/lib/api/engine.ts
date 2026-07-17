@@ -79,6 +79,13 @@ import { getEngineUrl } from '$lib/config';
 
 const ENGINE_URL = getEngineUrl();
 
+// Trace runs (initial + rerun) execute a multi-stage discovery/LLM pipeline that
+// can take several minutes on a local model — observed up to ~7m40s. A single
+// shared constant applied to BOTH runTrace and rerunTrace: they used to carry
+// separate per-call-site literals (240s vs the inherited 30s default), and that
+// drift is exactly what made every rerun abort client-side at 30s.
+const TRACE_TIMEOUT_MS = 600_000;
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
 	const signal = options?.signal ?? AbortSignal.timeout(30_000);
 	const resp = await fetch(`${ENGINE_URL}${path}`, {
@@ -785,7 +792,7 @@ export const engineApi = {
 	}) =>
 		request<import('./types').TraceResponse>('/trace', {
 			method: 'POST',
-			signal: AbortSignal.timeout(240_000),
+			signal: AbortSignal.timeout(TRACE_TIMEOUT_MS),
 			body: JSON.stringify({
 				query,
 				space_id: spaceId || null,
@@ -808,7 +815,10 @@ export const engineApi = {
 		request<import('./types').TraceResponse>(`/traces/${traceId}`),
 
 	rerunTrace: (traceId: string) =>
-		request<import('./types').TraceResponse>(`/traces/${traceId}/rerun`, { method: 'POST' }),
+		request<import('./types').TraceResponse>(`/traces/${traceId}/rerun`, {
+			method: 'POST',
+			signal: AbortSignal.timeout(TRACE_TIMEOUT_MS),
+		}),
 
 	deleteTrace: (traceId: string) =>
 		request<{ deleted: string }>(`/traces/${traceId}`, { method: 'DELETE' }),

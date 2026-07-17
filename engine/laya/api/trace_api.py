@@ -27,7 +27,14 @@ from laya.models.trace import (
     TraceResponse,
     TraceStatusSummary,
 )
-from laya.pipeline.trace import run_trace, stream_trace_narrative, stream_trace_summary, request_cancel, TraceCancelled
+from laya.pipeline.trace import (
+    run_trace,
+    stream_trace_narrative,
+    stream_trace_summary,
+    request_cancel,
+    TraceCancelled,
+    TraceAlreadyRunning,
+)
 
 log = structlog.get_logger()
 router = APIRouter()
@@ -147,14 +154,21 @@ async def rerun_trace(trace_id: str) -> TraceResponse:
         raise HTTPException(status_code=404, detail="Trace not found")
     row = rows[0]
 
-    # Delete old trace
-    await db.execute("DELETE FROM traces WHERE trace_id = ?", (trace_id,))
-    await db.commit()
+    log.info("trace_rerun_requested", trace_id=trace_id, query=row["query"])
 
-    # Run fresh trace
+    # NO pre-delete. The existing row stays live for the whole run (4-7 min) and is
+    # replaced in place only once the new result persists (run_trace reuses the id +
+    # _save_trace upserts), so an aborted, cancelled or crashed rerun leaves the trace
+    # exactly as it was. Deleting up front destroyed the trace the instant the request
+    # started — the old id 404'd forever because the client (which aborts at its own
+    # timeout) never learned the freshly-minted id.
     request = TraceRequest(query=row["query"], space_id=row["space_id"])
-    response = await run_trace(request)
-    return response
+    try:
+        return await run_trace(request, trace_id=trace_id)
+    except TraceAlreadyRunning:
+        raise HTTPException(status_code=409, detail="This trace is already running")
+    except TraceCancelled:
+        raise HTTPException(status_code=499, detail="Trace cancelled")
 
 
 # ---------------------------------------------------------------------------
