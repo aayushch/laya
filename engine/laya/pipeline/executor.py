@@ -118,6 +118,14 @@ async def execute_action(
         # 6. Client-side-only actions: skip egress, return URL for the UI to open.
         if action_type == "open_url":
             url = payload.get("url")
+            # Salvage: the stager sometimes emits an open_url action's payload as a
+            # bare URL string instead of {"url": ...}. _parse_stager_response can't
+            # json.loads a bare URL, so it wraps it as {"raw": "<url>"} — leaving the
+            # canonical "url" key empty and the action dead-on-arrival ("No URL
+            # provided"). Recover the URL from the salvage key; the scheme check
+            # below still rejects a "raw" value that isn't actually a URL.
+            if not url and isinstance(payload.get("raw"), str):
+                url = payload["raw"]
             if not url or not isinstance(url, str):
                 result = EgressResult(success=False, error="No URL provided in open_url payload")
             elif not url.startswith(("https://", "http://")):

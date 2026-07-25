@@ -201,7 +201,19 @@ export function reduceCardUpdated(
 			nextGroup.top_priority = computeTopPriority(cards);
 		}
 		if (selectedCard?.card_id === cardId) {
-			nextSelected = { ...selectedCard, ...updatedCard } as ActionCard;
+			// Sync the payload-driven change onto the OPEN detail card, but keep its
+			// detail-only blobs. updatedCard is spread from the SLIM grouped-feed card,
+			// where suggested_actions / staged_output are null (P4-9). Spreading it
+			// verbatim wipes the draft + action buttons off the open panel — and breaks
+			// the open_url flow: executeAction reads card.suggested_actions right after
+			// the executor broadcasts card_updated to decide whether to open the URL, so
+			// a clobbered-to-null value silently skips the browser open.
+			nextSelected = {
+				...selectedCard,
+				...updatedCard,
+				suggested_actions: selectedCard.suggested_actions ?? updatedCard.suggested_actions,
+				staged_output: selectedCard.staged_output ?? updatedCard.staged_output,
+			} as ActionCard;
 		}
 		return nextGroup;
 	});

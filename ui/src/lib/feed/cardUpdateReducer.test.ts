@@ -213,6 +213,24 @@ describe('reduceCardUpdated', () => {
 		expect(res.selectedCard?.header).toBe('Fresh');
 	});
 
+	it('preserves the open detail card suggested_actions/staged_output across a slim update', () => {
+		// The grouped-feed card is slim (suggested_actions/staged_output null), but the
+		// open detail card holds the full payload. A card_updated must not let the slim
+		// group card clobber those blobs, or the open_url flow loses the action it needs
+		// to open the URL after execution.
+		const actions: ActionCard['suggested_actions'] = [
+			{ action_id: 'act_1', action_type: 'open_url', label: 'View', target_platform: 'gmail', payload: { url: 'https://x/y' } },
+		];
+		const staged: ActionCard['staged_output'] = { type: 'draft_reply', content: 'hi' };
+		// Slim group card: heavy blobs absent (undefined), as the grouped-feed list serves them.
+		const groups = [group('e1', [card('a', { status: 'ready' })])];
+		const selected = card('a', { status: 'ready', suggested_actions: actions, staged_output: staged });
+		const res = reduceCardUpdated(groups, selected, 'a', { status: 'done' }, NO_FILTERS);
+		expect(res.selectedCard?.status).toBe('done');
+		expect(res.selectedCard?.suggested_actions).toEqual(actions);
+		expect(res.selectedCard?.staged_output).toEqual(staged);
+	});
+
 	it('reloads and leaves state untouched when the card is not present', () => {
 		const groups = [group('e1', [card('a')])];
 		const res = reduceCardUpdated(groups, null, 'missing', { priority: 'HIGH' }, NO_FILTERS);

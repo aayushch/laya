@@ -241,3 +241,27 @@ class TestExecutor:
 
         assert result["status"] == "failed"
         assert "No URL provided" in result["error"]
+
+    async def test_execute_open_url_recovers_raw_wrapped_url(self, db):
+        """When the stager emits the payload as a bare URL string, it lands as
+        {"raw": "<url>"} (the _parse_stager_response salvage shape). open_url must
+        recover the URL from "raw" instead of failing with "No URL provided"."""
+        await insert_test_card(
+            db, "card_rawurl", "evt_rawurl", status="pending",
+            actions=[{
+                "action_id": "act_1", "label": "View Parsed Logs",
+                "action_type": "open_url", "target_platform": "gmail",
+                "payload": {"raw": "https://ci.example.com/job/build/1/parsed_console/"},
+            }],
+        )
+
+        with patch("laya.egress.route_and_execute", new_callable=AsyncMock) as mock_egress:
+            with patch("laya.pipeline.executor.manager.broadcast", new_callable=AsyncMock):
+                from laya.pipeline.executor import execute_action
+
+                result = await execute_action("card_rawurl", "act_1")
+                mock_egress.assert_not_called()
+
+        assert result["status"] == "done"
+        assert result["result_url"] == "https://ci.example.com/job/build/1/parsed_console/"
+        assert result["error"] is None
