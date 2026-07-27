@@ -63,6 +63,7 @@ import type {
 	RetryDeadEventsResponse,
 	FilteredEventsResponse,
 	ExportEnvelope,
+	DayEventsResponse,
 	EventCountsResponse,
 	AuditFailureSummary,
 	IngestionErrorsResponse,
@@ -910,6 +911,17 @@ export const engineApi = {
 
 	// Event counts by processing_status (Audit page summary)
 	getEventCounts: () => request<EventCountsResponse>('/events/counts'),
+
+	// Per-day event shape for the timeline view: density buckets, per-platform
+	// counts, and calendar meetings. Cards alone can't answer any of the three —
+	// meetings carry their real start/end only on the source event.
+	getDayEvents: (params: { date: string; spaceIds?: string[]; tz?: string; bucketMinutes?: number }) => {
+		const searchParams = new URLSearchParams({ date: params.date });
+		if (params.spaceIds?.length) searchParams.set('space_id', params.spaceIds.join(','));
+		if (params.tz) searchParams.set('tz', params.tz);
+		if (params.bucketMinutes) searchParams.set('bucket_minutes', String(params.bucketMinutes));
+		return request<DayEventsResponse>(`/events/day?${searchParams.toString()}`);
+	},
 
 	// Outstanding failure counts — one-shot startup seed for the red-dot indicator
 	getAuditFailureSummary: () => request<AuditFailureSummary>('/audit/failure-summary'),

@@ -14,6 +14,12 @@ export interface FeedFilters {
 	hasWorkspace: boolean;
 	showUnreadOnly: boolean;
 	spaceFilter: string[];
+	// Source platforms to keep ('github', 'gmail', …). Empty = all. Written by the
+	// timeline's SOURCE chips and the filter popover; honoured by every view.
+	platformFilters: string[];
+	// Transient (not persisted) — time-of-day brush from the timeline's hour gutter.
+	// Minutes from LOCAL midnight; narrows every view to cards created in the window.
+	timeBrush: { from: number; to: number } | null;
 	// Transient (not persisted) — related cards filter mode
 	showRelated: boolean;
 	relatedEntityIds: string[];
@@ -48,6 +54,8 @@ const defaults: FeedFilters = {
 	hasWorkspace: false,
 	showUnreadOnly: false,
 	spaceFilter: [],
+	platformFilters: [],
+	timeBrush: null,
 	showRelated: false,
 	relatedEntityIds: [],
 	relatedSourceHeader: '',
@@ -82,6 +90,8 @@ export async function loadFeedFilters(): Promise<void> {
 				hasWorkspace: prefs.hasWorkspace ?? defaults.hasWorkspace,
 				showUnreadOnly: prefs.showUnreadOnly ?? defaults.showUnreadOnly,
 				spaceFilter: Array.isArray(prefs.spaceFilter) ? prefs.spaceFilter : prefs.spaceFilter ? [prefs.spaceFilter] : defaults.spaceFilter,
+				platformFilters: Array.isArray(prefs.platformFilters) ? prefs.platformFilters : defaults.platformFilters,
+				timeBrush: null,
 				showRelated: false,
 				relatedEntityIds: [],
 				relatedSourceHeader: '',
@@ -104,7 +114,7 @@ export function saveFeedFilters(): void {
 	_saveTimer = setTimeout(async () => {
 		_saveTimer = null;
 		try {
-			const { showRelated, relatedEntityIds, relatedSourceHeader, relatedSourceCardId, relatedSourceEntityId, showAllDaysSearch, ...persistable } = get(feedFilters);
+			const { showRelated, relatedEntityIds, relatedSourceHeader, relatedSourceCardId, relatedSourceEntityId, showAllDaysSearch, timeBrush, ...persistable } = get(feedFilters);
 			await engineApi.updateSettings({ feed_preferences: persistable } as Partial<import('$lib/api/types').Settings>);
 		} catch {
 			// Silently fail — don't disrupt UX

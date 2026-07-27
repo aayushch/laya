@@ -1971,3 +1971,235 @@ html, body {
 	animation: none !important;
 }
 
+
+/* ═══════════════════════════════════════════════════════════════
+   TIMELINE — Pulse "Day Column" view
+   Every surface here is a token so the view inherits all four of
+   Laya's appearance combinations (dark/light × glass on/off) from
+   one place. Components use these vars, never raw colours.
+   ═══════════════════════════════════════════════════════════════ */
+:root {
+	/* Chrome */
+	--tl-rail-bg:        oklch(0.140 0.006 46);
+	--tl-controls-bg:    oklch(0.150 0.006 46);
+	--tl-grid:           oklch(0.205 0.007 48);
+	--tl-divider:        oklch(0.225 0.008 50);
+	--tl-chip-inactive:  oklch(0.225 0.008 50);
+	--tl-chip-inactive-border: oklch(0.300 0.008 50);
+	--tl-control-bg:     oklch(0.185 0.007 48);
+	--tl-control-border: oklch(0.340 0.009 52);
+
+	/* Capsule body */
+	--tl-capsule-bg:     oklch(0.205 0.008 49);
+	--tl-capsule-border: oklch(0.295 0.009 51);
+	--tl-capsule-title:  oklch(0.66 0.012 60);
+	--tl-capsule-foot:   oklch(0.50 0.011 55);
+	--tl-dot-ring:       oklch(0.155 0.006 47);
+
+	/* Quiet band */
+	--tl-quiet-a:        oklch(0.165 0.006 48);
+	--tl-quiet-b:        oklch(0.145 0.006 46);
+	--tl-quiet-border:   oklch(0.245 0.008 50);
+	--tl-quiet-label:    oklch(0.55 0.012 56);
+	--tl-quiet-text:     oklch(0.48 0.011 54);
+
+	/* Status tints: node dot / chip background / chip foreground */
+	--tl-node-ready:     oklch(0.72 0.17 65);
+	--tl-bg-ready:       oklch(0.34 0.095 68);
+	--tl-fg-ready:       oklch(0.86 0.10 68);
+	--tl-node-running:   oklch(0.58 0.20 285);
+	--tl-bg-running:     oklch(0.30 0.090 288);
+	--tl-fg-running:     oklch(0.82 0.11 288);
+	--tl-node-done:      oklch(0.53 0.18 148);
+	--tl-bg-done:        oklch(0.29 0.075 152);
+	--tl-fg-done:        oklch(0.80 0.11 152);
+	--tl-node-failed:    oklch(0.53 0.22 27);
+	--tl-bg-failed:      oklch(0.31 0.100 22);
+	--tl-fg-failed:      oklch(0.82 0.13 25);
+	--tl-node-dormant:   oklch(0.66 0.11 62);
+	--tl-bg-dormant:     oklch(0.28 0.030 60);
+	--tl-fg-dormant:     oklch(0.72 0.030 62);
+
+	/* Attention states */
+	--tl-escalate-border: oklch(0.60 0.20 27 / 0.75);
+	--tl-escalate-a:      oklch(0.300 0.085 22);
+	--tl-escalate-b:      oklch(0.375 0.125 22);
+	--tl-escalate-entity: oklch(0.86 0.10 25);
+	--tl-escalate-title:  oklch(0.78 0.08 25);
+	--tl-agent-border:    oklch(0.55 0.18 285 / 0.6);
+	--tl-agent-glow:      oklch(0.65 0.20 285 / 0.75);
+
+	/* Meetings */
+	--tl-meet-bg:        oklch(0.255 0.055 255);
+	--tl-meet-edge:      oklch(0.55 0.14 250);
+	--tl-meet-fg:        oklch(0.85 0.06 250);
+	--tl-meet-clash-bg:  oklch(0.300 0.090 22);
+	--tl-meet-clash-edge: oklch(0.62 0.22 27);
+	--tl-meet-clash-fg:  oklch(0.88 0.09 25);
+
+	/* Rails */
+	--tl-heat:           oklch(0.775 0.130 63);
+	--tl-tick-escalate:  oklch(0.62 0.22 27);
+	--tl-tick-agent:     oklch(0.65 0.20 285);
+	--tl-tick-needs-you: oklch(0.75 0.16 65);
+	--tl-now:            oklch(0.62 0.22 27);
+	--tl-now-fg:         oklch(0.98 0.01 60);
+	--tl-strip-border:   oklch(0.30 0.009 51);
+	--tl-micro:          oklch(0.45 0.011 54);
+	--tl-brush:          oklch(0.775 0.130 63 / 0.14);
+	--tl-brush-edge:     oklch(0.775 0.130 63 / 0.55);
+}
+
+/* Light theme — same hues, inverted lightness (the surface scale in app.css
+   already flips; only the tinted values need explicit counterparts). */
+[data-theme='light'] {
+	--tl-rail-bg:        oklch(0.955 0.005 74);
+	--tl-controls-bg:    oklch(0.975 0.004 74);
+	--tl-grid:           oklch(0.905 0.006 70);
+	--tl-divider:        oklch(0.880 0.006 70);
+	--tl-chip-inactive:  oklch(0.945 0.005 72);
+	--tl-chip-inactive-border: oklch(0.880 0.006 70);
+	--tl-control-bg:     oklch(0.980 0.004 74);
+	--tl-control-border: oklch(0.870 0.006 70);
+
+	--tl-capsule-bg:     oklch(0.985 0.004 76);
+	--tl-capsule-border: oklch(0.880 0.007 68);
+	--tl-capsule-title:  oklch(0.410 0.016 53);
+	--tl-capsule-foot:   oklch(0.615 0.012 62);
+	--tl-dot-ring:       oklch(0.985 0.004 76);
+
+	--tl-quiet-a:        oklch(0.945 0.006 72);
+	--tl-quiet-b:        oklch(0.975 0.004 74);
+	--tl-quiet-border:   oklch(0.890 0.006 70);
+	--tl-quiet-label:    oklch(0.560 0.014 58);
+	--tl-quiet-text:     oklch(0.620 0.012 60);
+
+	--tl-node-ready:     oklch(0.72 0.17 65);
+	--tl-bg-ready:       oklch(0.955 0.030 70);
+	--tl-fg-ready:       oklch(0.46 0.15 58);
+	--tl-node-running:   oklch(0.58 0.20 285);
+	--tl-bg-running:     oklch(0.955 0.028 288);
+	--tl-fg-running:     oklch(0.42 0.19 285);
+	--tl-node-done:      oklch(0.53 0.18 148);
+	--tl-bg-done:        oklch(0.955 0.028 152);
+	--tl-fg-done:        oklch(0.38 0.15 148);
+	--tl-node-failed:    oklch(0.53 0.22 27);
+	--tl-bg-failed:      oklch(0.950 0.038 22);
+	--tl-fg-failed:      oklch(0.45 0.20 27);
+	--tl-node-dormant:   oklch(0.66 0.11 62);
+	--tl-bg-dormant:     oklch(0.950 0.012 66);
+	--tl-fg-dormant:     oklch(0.520 0.020 60);
+
+	--tl-escalate-border: oklch(0.62 0.20 27 / 0.55);
+	--tl-escalate-a:      oklch(0.952 0.032 22);
+	--tl-escalate-b:      oklch(0.905 0.070 22);
+	--tl-escalate-entity: oklch(0.44 0.19 25);
+	--tl-escalate-title:  oklch(0.48 0.15 25);
+	--tl-agent-border:    oklch(0.55 0.18 285 / 0.45);
+	--tl-agent-glow:      oklch(0.60 0.18 285 / 0.35);
+
+	--tl-meet-bg:        oklch(0.945 0.035 250);
+	--tl-meet-edge:      oklch(0.55 0.14 250);
+	--tl-meet-fg:        oklch(0.40 0.12 250);
+	--tl-meet-clash-bg:  oklch(0.950 0.038 22);
+	--tl-meet-clash-edge: oklch(0.58 0.20 27);
+	--tl-meet-clash-fg:  oklch(0.44 0.18 25);
+
+	--tl-tick-needs-you: oklch(0.62 0.16 60);
+	--tl-micro:          oklch(0.620 0.012 62);
+	--tl-brush:          oklch(0.775 0.130 63 / 0.20);
+	--tl-brush-edge:     oklch(0.62 0.15 55 / 0.65);
+}
+
+/* Glass theme — surfaces go translucent so the frosted blur applied by
+   .glass-card-flat / .glass-section has something to show through. */
+[data-glass-theme] {
+	--tl-rail-bg:      oklch(0.140 0.006 46 / 0.45);
+	--tl-controls-bg:  oklch(0.150 0.006 46 / 0.35);
+	--tl-capsule-bg:   oklch(0.205 0.008 49 / 0.55);
+	--tl-capsule-border: oklch(0.75 0.02 60 / 0.16);
+	--tl-chip-inactive: oklch(0.225 0.008 50 / 0.45);
+	--tl-control-bg:   oklch(0.185 0.007 48 / 0.45);
+	--tl-meet-bg:      oklch(0.255 0.055 255 / 0.70);
+	--tl-meet-clash-bg: oklch(0.300 0.090 22 / 0.72);
+	--tl-escalate-a:   oklch(0.300 0.085 22 / 0.72);
+	--tl-escalate-b:   oklch(0.375 0.125 22 / 0.80);
+}
+[data-theme='light'][data-glass-theme] {
+	--tl-rail-bg:      oklch(0.975 0.004 74 / 0.55);
+	--tl-controls-bg:  oklch(0.985 0.004 74 / 0.45);
+	--tl-capsule-bg:   rgb(255 255 255 / 0.55);
+	--tl-capsule-border: oklch(0.40 0.03 55 / 0.14);
+	--tl-chip-inactive: rgb(255 255 255 / 0.5);
+	--tl-control-bg:   rgb(255 255 255 / 0.55);
+	--tl-meet-bg:      oklch(0.945 0.035 250 / 0.75);
+	--tl-meet-clash-bg: oklch(0.950 0.038 22 / 0.78);
+	--tl-escalate-a:   oklch(0.952 0.032 22 / 0.80);
+	--tl-escalate-b:   oklch(0.905 0.070 22 / 0.85);
+}
+
+/* Escalation pulse. Both keyframe sets read the same two tokens, so the blink
+   stays theme-correct without a per-theme animation. */
+@keyframes tl-escalate {
+	0%, 100% { background: var(--tl-escalate-a); }
+	50%      { background: var(--tl-escalate-b); }
+}
+@keyframes tl-soft-pulse {
+	0%, 100% { opacity: 1; }
+	50%      { opacity: 0.45; }
+}
+
+.tl-capsule {
+	background: var(--tl-capsule-bg);
+	border: 1px solid var(--tl-capsule-border);
+	border-radius: 7px;
+	transition: filter 120ms ease, height 200ms ease, top 200ms ease;
+}
+.tl-capsule:hover { filter: brightness(1.18); }
+[data-theme='light'] .tl-capsule:hover { filter: brightness(0.97); }
+
+.tl-capsule--escalating {
+	border-color: var(--tl-escalate-border);
+	background: var(--tl-escalate-a);
+	animation: tl-escalate 1.4s ease-in-out infinite;
+}
+.tl-capsule--agent {
+	border-color: var(--tl-agent-border);
+	box-shadow: 0 0 16px -4px var(--tl-agent-glow);
+}
+.tl-capsule--selected {
+	border-color: var(--color-laya-orange);
+	box-shadow: 0 0 0 1px var(--color-laya-orange);
+}
+
+.tl-quiet-band {
+	background: repeating-linear-gradient(45deg,
+		var(--tl-quiet-a) 0 6px,
+		var(--tl-quiet-b) 6px 12px);
+	border-bottom: 1px solid var(--tl-quiet-border);
+}
+
+.tl-soft-pulse { animation: tl-soft-pulse 1.6s ease-in-out infinite; }
+
+/* Motion is opt-out everywhere else in Laya; the timeline's two loops are the
+   loudest, so kill them explicitly as well as via the global rule. */
+[data-reduced-motion] .tl-capsule--escalating,
+[data-reduced-motion] .tl-soft-pulse {
+	animation: none !important;
+}
+[data-reduced-motion] .tl-capsule {
+	transition: none !important;
+}
+
+/* Timeline chrome (control strip, calendar rail, heat rail, overflow strip).
+   Under the glass theme their tokens go translucent, so they also need the
+   frost — without the blur they'd read as flat washed-out panels rather than
+   glass. No-op when the glass theme is off. */
+[data-glass-theme] .tl-glass-surface {
+	-webkit-backdrop-filter: blur(16px) saturate(1.4);
+	backdrop-filter: blur(16px) saturate(1.4);
+}
+[data-theme='light'][data-glass-theme] .tl-glass-surface {
+	-webkit-backdrop-filter: blur(20px) saturate(1.6);
+	backdrop-filter: blur(20px) saturate(1.6);
+}

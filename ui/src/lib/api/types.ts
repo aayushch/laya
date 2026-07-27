@@ -903,6 +903,33 @@ export interface EventCountsResponse {
 	total: number;
 }
 
+/** One calendar entry on the selected day (timeline view's calendar rail). */
+export interface DayMeeting {
+	event_id: string;
+	platform: string;
+	title: string;
+	url?: string | null;
+	/** ISO-8601 with offset, or a bare 'YYYY-MM-DD' when all_day. */
+	start: string | null;
+	end: string | null;
+	all_day: boolean;
+	cancelled: boolean;
+	location?: string | null;
+	attendee_count: number;
+}
+
+/** Raw event volume + meetings for one day — the timeline view's second data source. */
+export interface DayEventsResponse {
+	date: string;
+	total: number;
+	bucket_minutes: number;
+	/** Event count per source platform, e.g. { github: 214, gmail: 388 }. */
+	platforms: Record<string, number>;
+	/** Density buckets keyed by minutes from local midnight. */
+	buckets: { start_minute: number; count: number }[];
+	meetings: DayMeeting[];
+}
+
 /** Outstanding failure counts driving the Audit/Settings red dot */
 export interface AuditFailureSummary {
 	dead_events: number;

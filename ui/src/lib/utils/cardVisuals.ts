@@ -31,10 +31,39 @@ const PLATFORM_DOT_COLORS: Record<string, string> = {
 	bitbucket: '#2684FF',
 	jira: '#2684FF',
 	outlook: '#0078D4',
+	// Calendar ingestion writes platform-specific keys ('outlook_calendar',
+	// 'google_calendar'); without these they fell through to the grey fallback
+	// and every calendar source looked like an unknown platform.
+	outlook_calendar: '#0078D4',
 	calendar: '#1A73E8',
+	google_calendar: '#1A73E8',
 	slack: '#611F69',
+	linear: '#5E6AD2',
+	notion: '#8B8B85',
 	laya: '#F97316'
 };
+
+/** Display name for a source platform key ('github' → 'GitHub'). */
+const PLATFORM_LABELS: Record<string, string> = {
+	gmail: 'Gmail',
+	github: 'GitHub',
+	bitbucket: 'Bitbucket',
+	jira: 'Jira',
+	outlook: 'Outlook',
+	outlook_calendar: 'Outlook Cal',
+	calendar: 'Calendar',
+	google_calendar: 'Google Cal',
+	slack: 'Slack',
+	linear: 'Linear',
+	notion: 'Notion',
+	laya: 'Laya'
+};
+
+export function platformLabel(platform: string): string {
+	if (!platform) return '';
+	const key = platform.toLowerCase();
+	return PLATFORM_LABELS[key] ?? platform;
+}
 
 export function platformDotColor(platform: string): string {
 	if (!platform) return '#6B7280';

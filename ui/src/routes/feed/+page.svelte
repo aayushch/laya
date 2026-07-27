@@ -7,7 +7,7 @@
 	import { capturePositions, playFlip } from '$lib/utils/flip';
 	import { lastMessage, wsStatus } from '$lib/stores/websocket';
 	import { feedFilters, feedDate, feedPrevDate, feedNextDate, localToday, allDaysSavedDate, type FeedFilters } from '$lib/stores/feedFilters';
-	import type { ActionCard, CardGroup, GroupSummary, DaySummary, SpaceSummary, Tag } from '$lib/api/types';
+	import type { ActionCard, CardGroup, GroupSummary, DaySummary, DayEventsResponse, SpaceSummary, Tag } from '$lib/api/types';
 	import { reduceCardUpdated, removeCardFromGroups, type CardUpdatePayload } from '$lib/feed/cardUpdateReducer';
 	import CardGroupComponent from '$lib/components/feed/CardGroup.svelte';
 	import ActionCardComponent from '$lib/components/feed/ActionCard.svelte';
@@ -32,6 +32,10 @@
 	import { summaryModalOpen as summaryModalStore } from '$lib/stores/summaryModal';
 	import { searchFocusSignal, feedSearchQuery } from '$lib/stores/searchFocus';
 	import { portal } from '$lib/actions/portal';
+	import TimelineView from '$lib/components/feed/timeline/TimelineView.svelte';
+	import { platformKey } from '$lib/utils/cardVisuals';
+	import { threadAttention } from '$lib/utils/threadAttention';
+	import { formatMinutes, localMinutes } from '$lib/timeline/scale';
 
 	// Filter toolbar state
 	let filterPopoverOpen = $state(false);
@@ -46,7 +50,12 @@
 	const activeStatusCount = $derived($feedFilters.statusFilters.length);
 	const activePriorityCount = $derived($feedFilters.priorityFilters.length);
 	const activeSpaceCount = $derived($feedFilters.spaceFilter.length);
-	const hasActiveFilters = $derived(activeStatusCount > 0 || activePriorityCount > 0 || $feedFilters.showArchived || $feedFilters.hasWorkspace || $feedFilters.showUnreadOnly || activeSpaceCount > 0);
+	const activePlatformCount = $derived($feedFilters.platformFilters.length);
+	const hasActiveFilters = $derived(activeStatusCount > 0 || activePriorityCount > 0 || $feedFilters.showArchived || $feedFilters.hasWorkspace || $feedFilters.showUnreadOnly || activeSpaceCount > 0 || activePlatformCount > 0);
+	const activeFilterCount = $derived(
+		activeStatusCount + activePriorityCount + activeSpaceCount + activePlatformCount +
+		($feedFilters.showArchived ? 1 : 0) + ($feedFilters.hasWorkspace ? 1 : 0) + ($feedFilters.showUnreadOnly ? 1 : 0)
+	);
 
 	function closeFilterDropdown(e: MouseEvent) {
 		const target = e.target as HTMLElement;
@@ -459,6 +468,11 @@
 	// Reduced motion takes the same early-exit path so columns repack without any translate/fade.
 	async function animateFlip(oldPositions: Map<string, DOMRect>, instant = false) {
 		if (!containerEl || oldPositions.size === 0) return;
+		// Timeline capsules are absolutely positioned on a time axis — FLIP would
+		// translate them off their true minute mid-animation, which is the one
+		// thing that view must never do. Its own height/top transitions cover the
+		// reflow (see .tl-capsule in app.css).
+		if ($feedViewMode === 'timeline') return;
 		if (instant || $reducedMotion) {
 			_flipSettled = Promise.resolve();
 			return;
@@ -621,8 +635,39 @@
 		_reloadTimer = setTimeout(() => {
 			_reloadTimer = null;
 			loadGroups();
+			// The timeline's heat rail / source chips count RAW events, which the
+			// grouped card payload can't tell us about — refresh them on the same
+			// beat so both halves of the view stay in step.
+			if (untrack(() => $feedViewMode) === 'timeline') loadDayEvents();
 		}, 300);
 	}
+
+	// ── timeline day events (heat rail, source chip counts, meetings) ────
+	let dayEvents = $state<DayEventsResponse | null>(null);
+	let _dayEventsFetchId = 0;
+
+	async function loadDayEvents() {
+		const id = ++_dayEventsFetchId;
+		try {
+			const data = await engineApi.getDayEvents({
+				date: $feedDate,
+				spaceIds: $feedFilters.spaceFilter,
+				// Local day + local buckets: the timeline's axis is the user's wall
+				// clock, so an unzoned UTC histogram would sit at the wrong hours.
+				tz: Intl.DateTimeFormat().resolvedOptions().timeZone
+			});
+			if (id === _dayEventsFetchId) dayEvents = data;
+		} catch {
+			if (id === _dayEventsFetchId) dayEvents = null;
+		}
+	}
+
+	$effect(() => {
+		if ($feedViewMode !== 'timeline') return;
+		$feedDate;
+		$feedFilters.spaceFilter;
+		loadDayEvents();
+	});
 
 	async function loadSummary() {
 		summaryLoading = true;
@@ -1184,6 +1229,39 @@
 
 	const hasUnread = $derived(groups.some(g => g.unread_count > 0));
 
+	// ── timeline toolbar readouts ────────────────────────────────────────
+	// Counted over the FILTERED groups so the numbers track what's on screen.
+	const attentionCounts = $derived.by(() => {
+		if ($feedViewMode !== 'timeline') return { escalating: 0, agents: 0, awaiting: 0 };
+		let escalating = 0;
+		let agents = 0;
+		let awaiting = 0;
+		for (const group of filteredGroups) {
+			const a = threadAttention(group.cards);
+			if (a.escalating) escalating++;
+			if (a.agentRunning) agents++;
+			else if (a.awaitingInput || a.needsYou) awaiting++;
+		}
+		return { escalating, agents, awaiting };
+	});
+
+	// Raw event volume for the day (everything ingested, not just what became a
+	// card) — falls back to the loaded card count until /events/day answers.
+	const timelineEventTotal = $derived(dayEvents?.total ?? totalCards);
+
+	const sourcePlatformCounts = $derived.by(() => {
+		const counts = new Map<string, number>(Object.entries(dayEvents?.platforms ?? {}));
+		for (const group of groups) {
+			for (const card of group.cards) {
+				const key = platformKey(card.entity_id);
+				if (key && !counts.has(key)) counts.set(key, 0);
+			}
+		}
+		return [...counts.entries()]
+			.map(([key, count]) => ({ key, count }))
+			.sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+	});
+
 	async function handleMarkAllRead() {
 		markingAllRead = true;
 		try {
@@ -1279,8 +1357,31 @@
 	// on searchTerms alone would read as "search cleared" and drop the tag filter.
 	const searchActive = $derived(searchTerms.length > 0 || activeSearchTags.length > 0);
 
+	// Source-platform and time-of-day brush are client-side dimensions shared by
+	// all three views: the timeline's SOURCE chips and gutter drag write them, and
+	// switching back to card/list keeps the same narrowed set.
+	const platformFilterSet = $derived(new Set($feedFilters.platformFilters));
+
+	function cardPassesPlatform(card: ActionCard): boolean {
+		if (platformFilterSet.size === 0) return true;
+		return platformFilterSet.has(platformKey(card.entity_id));
+	}
+
+	function cardPassesBrush(card: ActionCard): boolean {
+		const brush = $feedFilters.timeBrush;
+		if (!brush) return true;
+		const d = parseBackendDate(card.created_at);
+		if (!d) return false;
+		const minute = localMinutes(d);
+		return minute >= brush.from && minute <= brush.to;
+	}
+
+	const clientFiltersActive = $derived(
+		searchActive || platformFilterSet.size > 0 || $feedFilters.timeBrush !== null
+	);
+
 	const filteredGroups = $derived.by(() => {
-		if (!searchActive) return groups;
+		if (!clientFiltersActive) return groups;
 		return groups
 			.map((group) => {
 				const groupTagNames = (group.tags ?? []).map((t) => t.tag_name.toLowerCase());
@@ -1290,10 +1391,16 @@
 				// otherwise a title merely containing the tag word would pull in the
 				// whole group, which is the bug this guards.
 				const groupText = [group.entity_title, group.platform].join(' ').toLowerCase();
-				if (groupTagMatch && searchTerms.every((t) => groupText.includes(t))) return group;
-				// Filter individual cards
-				const matching = group.cards.filter((c) =>
-					cardMatchesSearch(c, searchTerms, searchTagTerms, groupTagNames)
+				const groupMatchesSearch =
+					groupTagMatch && searchTerms.every((t) => groupText.includes(t));
+				// Platform/brush are per-card even when the GROUP matched the search:
+				// a context group can span platforms, and a thread can straddle the
+				// brushed window.
+				const matching = group.cards.filter(
+					(c) =>
+						cardPassesPlatform(c) &&
+						cardPassesBrush(c) &&
+						(groupMatchesSearch || cardMatchesSearch(c, searchTerms, searchTagTerms, groupTagNames))
 				);
 				if (matching.length === 0) return null;
 				return {
@@ -1742,9 +1849,16 @@
 			</div>
 		{:else}
 			<div class="flex items-center gap-1.5 flex-wrap whitespace-nowrap">
-				<span class="text-laya-secondary text-surface-500">{totalGroups} {totalGroups === 1 ? 'group' : 'groups'}</span>
-				<span class="text-laya-micro text-surface-600">·</span>
-				<span class="text-laya-secondary text-surface-500">{totalCards} cards</span>
+				{#if $feedViewMode === 'timeline'}
+					<!-- Timeline counts the day's whole event stream, not just the cards -->
+					<span class="text-laya-secondary text-surface-500"><span class="font-mono font-semibold text-surface-100">{timelineEventTotal.toLocaleString()}</span> events</span>
+					<span class="text-laya-micro text-surface-600">·</span>
+					<span class="text-laya-secondary text-surface-500"><span class="font-mono font-semibold text-surface-100">{filteredGroups.length}</span> {filteredGroups.length === 1 ? 'thread' : 'threads'}</span>
+				{:else}
+					<span class="text-laya-secondary text-surface-500">{totalGroups} {totalGroups === 1 ? 'group' : 'groups'}</span>
+					<span class="text-laya-micro text-surface-600">·</span>
+					<span class="text-laya-secondary text-surface-500">{totalCards} cards</span>
+				{/if}
 				{#if searchActive && filteredTotalCards !== totalCards}
 					<span class="inline-flex items-center gap-1 rounded-full bg-laya-orange/10 px-2 py-0.5 text-laya-micro font-medium text-laya-orange">
 						<svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
@@ -1758,6 +1872,33 @@
 					>
 						Search all days
 					</button>
+				{/if}
+				{#if $feedFilters.timeBrush}
+					<!-- Time-range brush from the timeline's hour gutter. Lives in the
+					     shared filter store, so it survives a switch to card/list. -->
+					<span class="inline-flex items-center gap-1 rounded-full bg-laya-orange/10 px-2 py-0.5 text-laya-micro font-medium text-laya-orange">
+						{formatMinutes($feedFilters.timeBrush.from)} – {formatMinutes($feedFilters.timeBrush.to)}
+						<span class="opacity-70">· {filteredTotalCards} cards</span>
+						<button
+							class="ml-0.5 rounded p-px hover:bg-laya-orange/20"
+							aria-label="Clear time range filter"
+							onclick={() => ($feedFilters.timeBrush = null)}
+						>
+							<svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12" /></svg>
+						</button>
+					</span>
+				{/if}
+				{#if $feedViewMode === 'timeline' && attentionCounts.escalating > 0}
+					<span class="tl-soft-pulse inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-laya-micro font-medium text-red-400">
+						<span class="h-1.5 w-1.5 rounded-full bg-red-400"></span>
+						{attentionCounts.escalating} escalating
+					</span>
+				{/if}
+				{#if $feedViewMode === 'timeline' && attentionCounts.awaiting > 0}
+					<span class="inline-flex items-center gap-1 rounded-full bg-laya-orange/10 px-2 py-0.5 text-laya-micro font-medium text-laya-orange">
+						<span class="h-1.5 w-1.5 rounded-full bg-laya-orange"></span>
+						{attentionCounts.awaiting} awaiting you
+					</span>
 				{/if}
 				{#if agentRunningCount > 0}
 					<span class="inline-flex items-center gap-1 rounded-full bg-laya-coral/10 px-2 py-0.5 text-laya-micro font-medium text-laya-coral">
@@ -1807,7 +1948,7 @@
 							</svg>
 							Filters
 							{#if hasActiveFilters}
-								<span class="flex h-4 w-4 items-center justify-center rounded-full bg-laya-orange text-laya-micro font-bold text-surface-900">{activeStatusCount + activePriorityCount + activeSpaceCount + ($feedFilters.showArchived ? 1 : 0) + ($feedFilters.hasWorkspace ? 1 : 0) + ($feedFilters.showUnreadOnly ? 1 : 0)}</span>
+								<span class="flex h-4 w-4 items-center justify-center rounded-full bg-laya-orange text-laya-micro font-bold text-surface-900">{activeFilterCount}</span>
 							{/if}
 						</button>
 						<button
@@ -1871,7 +2012,7 @@
 					</svg>
 					Filters
 					{#if hasActiveFilters}
-						<span class="flex h-4 w-4 items-center justify-center rounded-full bg-laya-orange text-laya-micro font-bold text-surface-900">{activeStatusCount + activePriorityCount + activeSpaceCount + ($feedFilters.showArchived ? 1 : 0) + ($feedFilters.hasWorkspace ? 1 : 0) + ($feedFilters.showUnreadOnly ? 1 : 0)}</span>
+						<span class="flex h-4 w-4 items-center justify-center rounded-full bg-laya-orange text-laya-micro font-bold text-surface-900">{activeFilterCount}</span>
 					{/if}
 				</button>
 			</div>
@@ -1941,6 +2082,7 @@
 			open={filterPopoverOpen}
 			pos={filterMenuPos}
 			hasActiveFilters={hasActiveFilters}
+			sourcePlatforms={sourcePlatformCounts}
 		/>
 
 		<!-- Separator -->
@@ -2057,6 +2199,21 @@
 				</button>
 				<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100">List View</span>
 			</div>
+			<div class="group/tip relative">
+				<button
+					class="flex items-center gap-1 rounded-md px-2 py-1 text-laya-secondary transition-colors {$feedViewMode === 'timeline' ? 'bg-laya-orange/15 text-laya-orange' : 'text-surface-400 hover:text-surface-200'}"
+					onclick={() => ($feedViewMode = 'timeline')}
+					aria-label="Timeline View"
+				>
+					<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+						<path stroke-linecap="round" d="M3 7h7M14 7h7M3 13h4M11 13h10M3 19h12M19 19h2" />
+						<circle cx="12" cy="7" r="1.9" fill="currentColor" stroke="none" />
+						<circle cx="9" cy="13" r="1.9" fill="currentColor" stroke="none" />
+						<circle cx="17" cy="19" r="1.9" fill="currentColor" stroke="none" />
+					</svg>
+				</button>
+				<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100">Timeline View</span>
+			</div>
 		</div>
 	</div>
 
@@ -2075,7 +2232,9 @@
 		<!-- data-view-mode: scopes the panel-transitioning container-type toggle in app.css
 		     to list view only — card view must never have container-type flipped mid-slide,
 		     it causes WKWebView to skip painting descendants. -->
-		<div bind:this={containerEl} data-view-mode={$feedViewMode} class="feed-list-container flex min-w-0 flex-1 flex-col overflow-y-auto p-3 transition-opacity duration-[250ms] ease-out {relatedViewExiting ? 'opacity-0' : 'opacity-100'}">
+		<!-- Timeline owns its own scrolling (the lanes column scrolls, the heat rail
+		     stays pinned), so the shared container must not scroll or pad in that mode. -->
+		<div bind:this={containerEl} data-view-mode={$feedViewMode} class="feed-list-container flex min-w-0 flex-1 flex-col {$feedViewMode === 'timeline' ? 'overflow-hidden' : 'overflow-y-auto p-3'} transition-opacity duration-[250ms] ease-out {relatedViewExiting ? 'opacity-0' : 'opacity-100'}">
 			{#if $feedFilters.showRelated}
 				<div class="mb-3 flex items-center gap-2 rounded-lg border border-laya-orange/30 bg-laya-orange/10 px-3 py-2">
 					<svg class="h-4 w-4 shrink-0 text-laya-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2095,7 +2254,36 @@
 					</button>
 				</div>
 			{/if}
-			{#if loading && groups.length === 0}
+			{#if $feedViewMode === 'timeline'}
+				<!-- ── TIMELINE VIEW ── -->
+				{#if error}
+					<div class="m-3 flex items-start gap-2 rounded-lg border border-red-800 bg-red-900/30 px-4 py-3 text-laya-base text-red-300">
+						<span class="flex-1">{error}</span>
+						<button class="shrink-0 text-red-400 hover:text-red-200" onclick={() => (error = null)} aria-label="Dismiss error">
+							<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+						</button>
+					</div>
+				{/if}
+				<TimelineView
+					groups={filteredGroups}
+					{dayEvents}
+					{loading}
+					date={$feedDate}
+					{isToday}
+					selectedCardId={selectedCard?.card_id ?? ''}
+					{selectedEntityId}
+					{hasAnySelection}
+					hasMore={hasMoreGroups}
+					loadingMore={loadingMoreGroups}
+					remaining={Math.max(0, totalGroups - groups.length)}
+					onloadmore={loadMoreGroups}
+					onselectcard={selectCard}
+					onselectgroup={selectGroupSummary}
+					emptyLabel={searchActive
+						? `No cards match "${searchQuery}"`
+						: `No cards for ${formatDateLabel($feedDate)}`}
+				/>
+			{:else if loading && groups.length === 0}
 				<div class="py-12 text-center text-surface-400">Loading cards...</div>
 			{:else if error}
 				<div class="flex items-start gap-2 rounded-lg border border-red-800 bg-red-900/30 px-4 py-3 text-laya-base text-red-300">
@@ -2234,9 +2422,10 @@
 					{/each}
 				</div>
 			{/if}
-			{#if hasMoreGroups}
+			{#if hasMoreGroups && $feedViewMode !== 'timeline'}
 				<!-- Group pagination: load the next page of groups (P4-9). Sits below
-				     both list and card views; hidden when the server has no more. -->
+				     both list and card views; the timeline carries its own control in
+				     the control strip (it has no scroll room below the lanes). -->
 				<div class="flex w-full justify-center py-6">
 					<button
 						class="rounded-lg border border-surface-600 bg-surface-800 px-6 py-2.5 text-laya-base font-medium text-surface-200 transition-colors hover:border-laya-orange/40 hover:bg-surface-700 disabled:cursor-not-allowed disabled:opacity-60"
@@ -2427,7 +2616,6 @@
 	loading={summaryLoading}
 	updatedAt={summaryUpdatedAt}
 	dateLabel={formatDateLabel($feedDate)}
-	spaceFilter={$feedFilters.spaceFilter}
 	onClose={() => setSummaryModalOpen(false)}
 	onGotoCard={handleSummaryGotoCard}
 />

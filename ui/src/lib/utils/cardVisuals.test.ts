@@ -34,6 +34,14 @@ describe('platformDotColor', () => {
 		expect(platformDotColor('')).toBe('#6B7280');
 		expect(platformDotColor('myspace')).toBe('#6B7280');
 	});
+	it('covers every platform the ingestion pipeline actually emits', () => {
+		// These are the source_platform / entity_id prefixes present in real data;
+		// linear, notion and the two calendar variants used to fall through to grey.
+		for (const p of ['gmail', 'jira', 'bitbucket', 'slack', 'outlook', 'outlook_calendar',
+			'calendar', 'google_calendar', 'github', 'linear', 'notion', 'laya']) {
+			expect(platformDotColor(p)).not.toBe('#6B7280');
+		}
+	});
 });
 
 describe('platformKey', () => {

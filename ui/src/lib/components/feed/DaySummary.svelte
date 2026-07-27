@@ -7,14 +7,24 @@
 	let {
 		summary,
 		updatedAt,
-		ongotocard,
-		spaceFilter = []
+		ongotocard
 	}: {
 		summary: DaySummary | null;
 		updatedAt: string | null;
 		ongotocard: (cardId: string) => void;
-		spaceFilter?: string[];
 	} = $props();
+
+	// Space filtering is owned locally (decoupled from the Feed page's space filter):
+	// the summary always loads every space, and the legend below acts as an in-panel
+	// toggle. We track spaces the user has toggled OFF — empty = show all — so newly
+	// arriving spaces (via live summary_updated WS) default to visible without extra
+	// bookkeeping. Chart-legend semantics: click a space to hide/show it.
+	let hiddenSpaces = $state<string[]>([]);
+	function toggleSpace(id: string) {
+		hiddenSpaces = hiddenSpaces.includes(id)
+			? hiddenSpaces.filter((s) => s !== id)
+			: [...hiddenSpaces, id];
+	}
 
 	function priorityColor(priority: string): string {
 		switch (priority) {
@@ -52,8 +62,7 @@
 	}
 
 	function matchesSpace(item: SummaryItem): boolean {
-		if (!spaceFilter.length) return true;
-		return spaceFilter.includes(item.space_id || 'default');
+		return !hiddenSpaces.includes(item.space_id || 'default');
 	}
 
 	/** Collect unique spaces across all summary items for the legend */
@@ -123,24 +132,43 @@
 		<p class="mt-1 text-laya-secondary text-surface-600">Summary builds as events arrive throughout the day</p>
 	</div>
 {:else}
-	<div class="flex flex-col gap-5">
-		<!-- Last updated -->
-		{#if updatedAt}
-			<p class="text-laya-micro text-surface-500">Last updated {formatTime(updatedAt)}</p>
-		{/if}
+	<!-- h-full flex column: fixed sub-header (last updated + legend) stays put while
+	     only the sections region below scrolls when items overflow. -->
+	<div class="flex h-full flex-col gap-4">
+		<!-- Fixed sub-header (does not scroll) -->
+		{#if updatedAt || hasMultipleSpaces}
+			<div class="flex shrink-0 flex-col gap-3">
+				<!-- Last updated -->
+				{#if updatedAt}
+					<p class="text-laya-micro text-surface-500">Last updated {formatTime(updatedAt)}</p>
+				{/if}
 
-		<!-- Space legend (only when multiple spaces) -->
-		{#if hasMultipleSpaces}
-			<div class="flex flex-wrap gap-2">
-				{#each uniqueSpaces as space}
-					<span class="summary-space-legend" style:--space-color={space.color}>
-						<span class="summary-space-legend-dot" style:background={space.color}></span>
-						{space.name}
-					</span>
-				{/each}
+				<!-- Space legend (only when multiple spaces) — interactive: acts as an
+				     in-panel space filter, independent of the Feed page's filter. -->
+				{#if hasMultipleSpaces}
+					<div class="flex flex-wrap items-center gap-2">
+						{#each uniqueSpaces as space}
+							<button
+								type="button"
+								class="summary-space-legend"
+								class:summary-space-legend--off={hiddenSpaces.includes(space.id)}
+								style:--space-color={space.color}
+								onclick={() => toggleSpace(space.id)}
+								aria-pressed={!hiddenSpaces.includes(space.id)}
+								title={hiddenSpaces.includes(space.id) ? `Show ${space.name}` : `Hide ${space.name}`}
+							>
+								<span class="summary-space-legend-dot" style:background={space.color}></span>
+								{space.name}
+							</button>
+						{/each}
+					</div>
+				{/if}
 			</div>
 		{/if}
 
+		<!-- Scrollable sections region (min-h-0 lets this flex child shrink so it,
+		     not the whole panel, owns the scrollbar) -->
+		<div class="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
 		<!-- Events & Meetings -->
 		{#if summary.events_and_meetings.length > 0}
 			<section class="summary-section summary-section--events">
@@ -269,6 +297,7 @@
 				{/if}
 			</section>
 		{/if}
+		</div>
 	</div>
 {/if}
 
@@ -467,21 +496,52 @@
 		background: color-mix(in oklch, var(--space-color, #F97316) 18%, transparent);
 	}
 
-	/* ── Space legend (top bar) ── */
+	/* ── Space legend (top bar) — interactive filter toggle ── */
 	.summary-space-legend {
 		display: flex;
 		align-items: center;
-		gap: 0.3rem;
+		gap: 0.35rem;
 		font-size: calc(var(--laya-font-base) - 4px);
 		font-weight: 500;
-		color: var(--color-surface-400);
+		color: var(--color-surface-300);
+		padding: 0.15rem 0.5rem 0.15rem 0.4rem;
+		border-radius: 9999px;
+		border: 1px solid color-mix(in oklch, var(--space-color, #F97316) 30%, transparent);
+		background: color-mix(in oklch, var(--space-color, #F97316) 10%, transparent);
+		cursor: pointer;
+		transition: background-color 150ms, border-color 150ms, opacity 150ms, color 150ms;
+	}
+	.summary-space-legend:hover {
+		background: color-mix(in oklch, var(--space-color, #F97316) 18%, transparent);
+		border-color: color-mix(in oklch, var(--space-color, #F97316) 45%, transparent);
 	}
 	:global([data-theme='light']) .summary-space-legend {
 		color: oklch(0.42 0.025 55);
+		background: color-mix(in oklch, var(--space-color, #F97316) 14%, transparent);
 	}
+
+	/* Toggled off: muted, hollow dot, struck-through name */
+	.summary-space-legend--off {
+		color: var(--color-surface-500);
+		border-color: color-mix(in oklch, var(--color-surface-500) 30%, transparent);
+		background: transparent;
+		text-decoration: line-through;
+		opacity: 0.6;
+	}
+	.summary-space-legend--off:hover {
+		background: color-mix(in oklch, var(--color-surface-500) 12%, transparent);
+		border-color: color-mix(in oklch, var(--color-surface-500) 40%, transparent);
+		opacity: 0.85;
+	}
+	.summary-space-legend--off .summary-space-legend-dot {
+		background: transparent !important;
+		box-shadow: inset 0 0 0 1.5px var(--space-color, #F97316);
+		opacity: 0.7;
+	}
+
 	.summary-space-legend-dot {
-		width: 0.4rem;
-		height: 0.4rem;
+		width: 0.45rem;
+		height: 0.45rem;
 		border-radius: 9999px;
 		flex-shrink: 0;
 	}

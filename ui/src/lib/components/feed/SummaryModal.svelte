@@ -16,7 +16,6 @@
 		loading,
 		updatedAt,
 		dateLabel,
-		spaceFilter,
 		onClose,
 		onGotoCard,
 	}: {
@@ -25,7 +24,6 @@
 		loading: boolean;
 		updatedAt: string | null;
 		dateLabel: string;
-		spaceFilter: string[];
 		onClose: () => void;
 		onGotoCard: (cardId: string) => void;
 	} = $props();
@@ -38,7 +36,10 @@
 		onclick={(e) => { if (e.target === e.currentTarget) onClose(); }}
 		onkeydown={(e) => { if (e.key === 'Escape') onClose(); }}
 	>
-		<div class="relative mx-4 flex max-h-[90vh] w-full max-w-6xl flex-col rounded-xl border {$glassTheme ? 'glass-card border-surface-700/40 bg-surface-900/40' : 'border-surface-700 bg-surface-800 shadow-2xl'}">
+		<!-- Fixed height (h-[90vh], not max-h): the body area stays constant so
+		     toggling the space legend filter shows/hides items without the whole
+		     panel resizing and jumping. -->
+		<div class="relative mx-4 flex h-[90vh] w-full max-w-6xl flex-col rounded-xl border {$glassTheme ? 'glass-card border-surface-700/40 bg-surface-900/40' : 'border-surface-700 bg-surface-800 shadow-2xl'}">
 			<!-- Header -->
 			<div class="flex items-center justify-between border-b px-6 py-4 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
 				<div class="flex items-center gap-2">
@@ -57,14 +58,15 @@
 					</svg>
 				</button>
 			</div>
-			<!-- Body -->
-			<div class="flex-1 overflow-y-auto p-6">
+			<!-- Body — overflow-hidden + min-h-0 so the inner sections region (in
+			     DaySummary) owns the scrollbar, keeping last-updated + legend fixed. -->
+			<div class="min-h-0 flex-1 overflow-hidden p-6">
 				{#if loading}
-					<div class="flex h-48 items-center justify-center text-surface-400">
+					<div class="flex h-full items-center justify-center text-surface-400">
 						<span class="text-laya-base">Loading summary...</span>
 					</div>
 				{:else}
-					<DaySummaryComponent summary={summary} updatedAt={updatedAt} ongotocard={onGotoCard} spaceFilter={spaceFilter} />
+					<DaySummaryComponent summary={summary} updatedAt={updatedAt} ongotocard={onGotoCard} />
 				{/if}
 			</div>
 		</div>

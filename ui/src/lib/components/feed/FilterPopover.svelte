@@ -12,12 +12,26 @@
 	import { spaces } from '$lib/stores/spaces';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { portal } from '$lib/actions/portal';
+	import { platformDotColor, platformLabel } from '$lib/utils/cardVisuals';
 
-	let { open, pos, hasActiveFilters }: {
+	let { open, pos, hasActiveFilters, sourcePlatforms = [] }: {
 		open: boolean;
 		pos: { top: number; left: number };
 		hasActiveFilters: boolean;
+		/** Platforms present on the current day, with event counts (timeline feeds these). */
+		sourcePlatforms?: { key: string; count: number }[];
 	} = $props();
+
+	// A platform can be filtered out while absent from today's list (yesterday's
+	// selection, still active). Show those too so the user can always clear them.
+	const platformRows = $derived.by(() => {
+		const rows = [...sourcePlatforms];
+		const present = new Set(rows.map((r) => r.key));
+		for (const key of $feedFilters.platformFilters) {
+			if (!present.has(key)) rows.push({ key, count: 0 });
+		}
+		return rows;
+	});
 
 	// Toggle a value in a string[] filter array (add if absent, remove if present).
 	function toggleFilter(arr: string[], value: string): string[] {
@@ -81,6 +95,35 @@
 							</span>
 							<span class="h-2 w-2 rounded-full shrink-0" style="background-color: {space.color}"></span>
 							{space.name}
+						</button>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
+		<!-- Sources — shared with the timeline view's SOURCE chips -->
+		{#if platformRows.length > 0}
+			<div class="mb-3">
+				<div class="mb-1.5 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">Sources</div>
+				<div class="space-y-0.5">
+					{#each platformRows as row (row.key)}
+						<button
+							class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-laya-secondary transition-colors hover:bg-surface-700
+								{$feedFilters.platformFilters.includes(row.key) ? 'text-laya-orange' : 'text-surface-300'}"
+							onclick={() => ($feedFilters.platformFilters = toggleFilter($feedFilters.platformFilters, row.key))}
+						>
+							<span class="flex h-4 w-4 items-center justify-center rounded border {$feedFilters.platformFilters.includes(row.key) ? 'border-laya-orange bg-laya-orange/20' : 'border-surface-600'}">
+								{#if $feedFilters.platformFilters.includes(row.key)}
+									<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+									</svg>
+								{/if}
+							</span>
+							<span class="h-2 w-2 rounded-full shrink-0" style="background-color: {platformDotColor(row.key)}"></span>
+							<span class="truncate">{platformLabel(row.key)}</span>
+							{#if row.count > 0}
+								<span class="ml-auto font-mono text-laya-micro text-surface-500">{row.count.toLocaleString()}</span>
+							{/if}
 						</button>
 					{/each}
 				</div>
@@ -192,6 +235,8 @@
 						$feedFilters.hasWorkspace = false;
 						$feedFilters.showUnreadOnly = false;
 						$feedFilters.spaceFilter = [];
+						$feedFilters.platformFilters = [];
+						$feedFilters.timeBrush = null;
 						$feedFilters.showRelated = false;
 						$feedFilters.relatedEntityIds = [];
 						$feedFilters.relatedSourceHeader = '';
