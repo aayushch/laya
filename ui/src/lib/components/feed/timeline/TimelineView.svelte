@@ -24,7 +24,7 @@
 		type QuietRun
 	} from '$lib/timeline/scale';
 	import { packLanes, laneGeometry, lanesForWidth } from '$lib/timeline/lanes';
-	import { timelineView, COMPACT_BELOW_HOUR_PX } from '$lib/stores/timelineView';
+	import { timelineView } from '$lib/stores/timelineView';
 	import { feedFilters } from '$lib/stores/feedFilters';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { glassTheme } from '$lib/stores/glassTheme';
@@ -76,7 +76,10 @@
 	const HEAT_W = 46;
 	const HEAT_W_SLIVER = 12;
 	const STRIP_W = 56;
-	const MAX_EXPANDED_LANES = 16;
+	/** Enough lanes for a heavy day; the expanded area scrolls sideways to reach them. */
+	const MAX_EXPANDED_LANES = 40;
+	/** Lane width in expanded mode — fits an entity key plus readable subject text. */
+	const EXPANDED_LANE_PX = 132;
 
 	// ── clock ───────────────────────────────────────────────────────────
 	// One shared ticker: the now line, the "jump to now" label and the ageing
@@ -170,11 +173,15 @@
 	);
 
 	// ── lanes ───────────────────────────────────────────────────────────
-	let lanesWidth = $state(1200);
+	// The lanes' AVAILABLE width is derived from the scroll viewport rather than
+	// measured on the lanes element: in expanded mode that element is deliberately
+	// wider than the viewport, so measuring it would feed its own width back in.
+	let scrollViewportWidth = $state(1400);
 	let bodyWidth = $state(1400);
 
 	const heatWidth = $derived(bodyWidth < 900 ? HEAT_W_SLIVER : HEAT_W);
 	const railWidth = $derived(bodyWidth < 1000 ? RAIL_W_COMPACT : RAIL_W);
+	const lanesWidth = $derived(Math.max(240, scrollViewportWidth - GUTTER_W - railWidth));
 	const baseLanes = $derived(lanesForWidth(lanesWidth, $timelineView.laneCount));
 
 	const laneInputs = $derived(
@@ -197,6 +204,11 @@
 		})
 	);
 
+	// Expanding does NOT squeeze the lanes — a lane too narrow for an entity key
+	// and a subject line shows nothing but a priority badge, which is worse than
+	// the overflow strip it replaced. Instead the lanes area grows past the
+	// viewport at a fixed readable width and scrolls sideways, so every
+	// overflowed thread is reachable at full fidelity.
 	const effectiveLanes = $derived(
 		$timelineView.overflowExpanded
 			? Math.min(MAX_EXPANDED_LANES, baseLanes + basePack.overflow.length)
@@ -210,11 +222,12 @@
 	);
 
 	const stripWidth = $derived(pack.overflow.length > 0 && !$timelineView.overflowExpanded ? STRIP_W : 0);
-	const geo = $derived(laneGeometry(lanesWidth, effectiveLanes, stripWidth));
-
-	// Capsules drop to a single line when zoomed out (their body has no vertical
-	// room) or when expanding the overflow has squeezed the lanes narrow.
-	const compactCapsules = $derived($timelineView.hourPx < COMPACT_BELOW_HOUR_PX || geo.width < 150);
+	const lanesContentWidth = $derived(
+		$timelineView.overflowExpanded
+			? Math.max(lanesWidth, effectiveLanes * EXPANDED_LANE_PX)
+			: lanesWidth
+	);
+	const geo = $derived(laneGeometry(lanesContentWidth, effectiveLanes, stripWidth));
 
 	// A capsule starting near the end of the day still gets the 98px minimum, so
 	// it can reach past the scale's own height — the column has to grow to it or
@@ -425,16 +438,18 @@
 		<div
 			bind:this={scrollEl}
 			bind:clientHeight={viewportHeight}
+			bind:clientWidth={scrollViewportWidth}
 			onscroll={handleScroll}
-			class="relative min-w-0 flex-1 overflow-y-auto overflow-x-hidden"
+			class="relative min-w-0 flex-1 overflow-y-auto {$timelineView.overflowExpanded ? 'overflow-x-auto' : 'overflow-x-hidden'}"
 			style="background: var(--color-surface-950)"
 		>
-			<div class="flex" style="height: {contentHeight}px">
-				<!-- Hour gutter — also the drag surface for the time-range brush -->
+			<div class="flex {$timelineView.overflowExpanded ? 'w-max' : ''}" style="height: {contentHeight}px">
+				<!-- Hour gutter — also the drag surface for the time-range brush.
+				     Sticky so the clock stays put while expanded lanes scroll past it. -->
 				<div
 					bind:this={gutterEl}
-					class="relative flex-none cursor-ns-resize select-none border-r"
-					style="width: {GUTTER_W}px; border-color: var(--tl-divider)"
+					class="sticky left-0 z-20 flex-none cursor-ns-resize select-none border-r"
+					style="width: {GUTTER_W}px; border-color: var(--tl-divider); background: var(--color-surface-950)"
 					onpointerdown={startBrush}
 					onpointermove={moveBrush}
 					onpointerup={endBrush}
@@ -460,6 +475,7 @@
 					{scale}
 					height={contentHeight}
 					width={railWidth}
+					stickyLeft={$timelineView.overflowExpanded ? GUTTER_W : null}
 					compact={railWidth === RAIL_W_COMPACT}
 					nowMinute={isToday ? nowMinute : null}
 					onhover={showTextTooltip}
@@ -467,7 +483,7 @@
 				/>
 
 				<!-- Lanes -->
-				<div class="relative min-w-0 flex-1" bind:clientWidth={lanesWidth}>
+				<div class="relative flex-none" style="width: {lanesContentWidth}px">
 					{#each scale.hourLines as line (line.minute)}
 						<div class="absolute inset-x-0 h-px" style="top: {line.y}px; background: var(--tl-grid)"></div>
 					{/each}
@@ -525,7 +541,6 @@
 								height={item.height}
 								left={geo.left(item.lane)}
 								width={geo.width}
-								compact={compactCapsules}
 								selected={item.data.entityId === selectedEntityId ||
 									item.data.events.some((e) => e.cardId === selectedCardId)}
 								dimmed={hasAnySelection &&

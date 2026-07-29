@@ -18,6 +18,7 @@
 		scale,
 		height,
 		width = 132,
+		stickyLeft = null,
 		compact = false,
 		nowMinute = null,
 		onhover,
@@ -28,6 +29,8 @@
 		/** Row height, which can exceed the scale's own (see contentHeight). */
 		height: number;
 		width?: number;
+		/** Pins the rail this far from the left while expanded lanes scroll past it. */
+		stickyLeft?: number | null;
 		/** Narrow windows drop to time-only blocks (title on hover). */
 		compact?: boolean;
 		nowMinute?: number | null;
@@ -70,8 +73,13 @@
 </script>
 
 <div
-	class="tl-glass-surface relative flex-none border-r"
-	style="width: {width}px; border-color: var(--tl-divider); background: var(--tl-rail-bg); height: {height}px;"
+	class="tl-glass-surface {stickyLeft === null ? 'relative' : 'sticky z-10'} flex-none border-r"
+	style="width: {width}px; border-color: var(--tl-divider); height: {height}px;
+		{stickyLeft === null
+			? 'background: var(--tl-rail-bg);'
+			/* Pinned over scrolling lanes: layer the (translucent under glass) rail
+			   tint on an opaque page base, or capsules would slide visibly through it. */
+			: `left: ${stickyLeft}px; background: linear-gradient(var(--tl-rail-bg), var(--tl-rail-bg)), var(--color-surface-950);`}"
 >
 	<span class="absolute left-2 top-1.5 font-mono text-[8px] uppercase tracking-[0.1em]" style="color: var(--tl-micro)">Calendar</span>
 

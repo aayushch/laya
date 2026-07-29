@@ -33,6 +33,8 @@ export interface Thread {
 	persona: string;
 	spaceName?: string;
 	spaceColor?: string;
+	/** Short entity keys (PR-851, FERR-1585, …), most identifying first. */
+	labels: string[];
 	events: ThreadEvent[];
 	firstMinute: number;
 	lastMinute: number;
@@ -78,6 +80,51 @@ export function statusTone(status: string): 'ready' | 'running' | 'done' | 'fail
 		default:
 			return 'dormant';
 	}
+}
+
+/**
+ * The readable tail of an entity id: the last path segment of the last
+ * colon-segment. `bitbucket:pull_request:groundlabs/ferret-backend/PR-851`
+ * → `PR-851`, `jira:ticket:FERR-1585` → `FERR-1585`. Slack thread ids carry a
+ * channel plus a timestamp (`thread-C08JSD56XNE-1785308884.008409`); only the
+ * channel is worth the pixels.
+ */
+export function shortEntityLabel(entityId?: string): string {
+	if (!entityId) return '';
+	const tail = entityId.split(':').pop() ?? entityId;
+	const segment = tail.split('/').filter(Boolean).pop() ?? tail;
+	const slackThread = segment.match(/^thread-([A-Za-z0-9]+)-[\d.]+$/);
+	const label = slackThread ? slackThread[1] : segment;
+	return label.length > 14 ? `${label.slice(0, 13)}…` : label;
+}
+
+/**
+ * Rank: ticket/PR keys (`PR-851`, `FERR-1585`) first, opaque ids (gmail thread
+ * hashes, slack channel ids) last. A context group can hold all three, and the
+ * capsule only has room for one or two — so the useful one has to win.
+ */
+export function labelRank(label: string): number {
+	if (/^[A-Za-z]{1,10}[-_ ]?\d+$/.test(label)) return 0;
+	if (/^[0-9a-f]{10,}…?$/i.test(label)) return 3;
+	if (/\d/.test(label) && /[A-Za-z]/.test(label) && label.length <= 12) return 1;
+	return 2;
+}
+
+/** Distinct, ranked short labels for a thread's entities (context groups have several). */
+export function entityLabels(cards: ActionCard[]): string[] {
+	const seen = new Set<string>();
+	const labels: string[] = [];
+	for (const card of cards) {
+		const label = shortEntityLabel(card.entity_id);
+		if (!label || seen.has(label)) continue;
+		seen.add(label);
+		labels.push(label);
+	}
+	// Stable within a rank so the order still reflects the thread's chronology.
+	return labels
+		.map((label, i) => ({ label, rank: labelRank(label), i }))
+		.sort((a, b) => a.rank - b.rank || a.i - b.i)
+		.map((x) => x.label);
 }
 
 /** Local YYYY-MM-DD for a Date (matches feedDate, which is a local date). */
@@ -140,6 +187,7 @@ export function buildThreads(groups: CardGroup[], opts: BuildThreadsOptions): Th
 			persona: firstCard.persona,
 			spaceName: firstCard.space_name,
 			spaceColor: firstCard.space_color,
+			labels: entityLabels(group.cards),
 			events,
 			firstMinute,
 			lastMinute,

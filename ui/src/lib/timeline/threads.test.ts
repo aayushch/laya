@@ -3,7 +3,14 @@
 
 import { describe, it, expect } from 'vitest';
 import type { ActionCard, CardGroup } from '$lib/api/types';
-import { buildThreads, layoutMeetings, statusTone, attentionMarks } from './threads';
+import {
+	buildThreads,
+	layoutMeetings,
+	statusTone,
+	attentionMarks,
+	shortEntityLabel,
+	entityLabels
+} from './threads';
 
 const DATE = '2026-05-02';
 const NOW = new Date(2026, 4, 2, 16, 0, 0);
@@ -106,6 +113,61 @@ describe('buildThreads', () => {
 	it('derives attention state from the cards in the thread', () => {
 		const [thread] = buildThreads([group([card({ status: 'agent_running' })])], { date: DATE, now: NOW });
 		expect(thread.attention.agentRunning).toBe(true);
+	});
+});
+
+describe('shortEntityLabel', () => {
+	it('takes the last path segment of a repo-scoped id', () => {
+		expect(shortEntityLabel('bitbucket:pull_request:groundlabs/ferret-backend/PR-852')).toBe('PR-852');
+		expect(shortEntityLabel('github:pull_request:acme/web/PR-12')).toBe('PR-12');
+	});
+	it('keeps ticket keys whole', () => {
+		expect(shortEntityLabel('jira:ticket:FERR-1585')).toBe('FERR-1585');
+		expect(shortEntityLabel('linear:issue:ENG-42')).toBe('ENG-42');
+	});
+	it('reduces a slack thread id to its channel', () => {
+		expect(shortEntityLabel('slack:thread:thread-C08JSD56XNE-1785308884.008409')).toBe('C08JSD56XNE');
+	});
+	it('truncates opaque ids rather than blowing out the lane', () => {
+		const label = shortEntityLabel('gmail:email_thread:19fa84e9125ad3d7');
+		expect(label.length).toBeLessThanOrEqual(14);
+		expect(label.endsWith('…')).toBe(true);
+	});
+	it('handles a bare id and empty input', () => {
+		expect(shortEntityLabel('PR-9')).toBe('PR-9');
+		expect(shortEntityLabel(undefined)).toBe('');
+		expect(shortEntityLabel('')).toBe('');
+	});
+});
+
+describe('entityLabels', () => {
+	it('puts the identifying key first in a mixed context group', () => {
+		// Exactly the reported case: a PR, a gmail thread and a slack thread in one
+		// context group — only the PR key is worth the first slot.
+		const labels = entityLabels([
+			card({ card_id: 'a', entity_id: 'gmail:email_thread:19fa84e9125ad3d7' }),
+			card({ card_id: 'b', entity_id: 'slack:thread:thread-C08JSD56XNE-1785308884.008409' }),
+			card({ card_id: 'c', entity_id: 'bitbucket:pull_request:groundlabs/ferret-backend/PR-852' })
+		]);
+		expect(labels[0]).toBe('PR-852');
+		expect(labels).toHaveLength(3);
+	});
+	it('dedupes entities that appear on several cards', () => {
+		const labels = entityLabels([
+			card({ card_id: 'a', entity_id: 'jira:ticket:FERR-1585' }),
+			card({ card_id: 'b', entity_id: 'jira:ticket:FERR-1585' })
+		]);
+		expect(labels).toEqual(['FERR-1585']);
+	});
+	it('is stable within a rank so chronology still shows through', () => {
+		const labels = entityLabels([
+			card({ card_id: 'a', entity_id: 'jira:ticket:FERR-2' }),
+			card({ card_id: 'b', entity_id: 'jira:ticket:FERR-1' })
+		]);
+		expect(labels).toEqual(['FERR-2', 'FERR-1']);
+	});
+	it('ignores cards with no entity', () => {
+		expect(entityLabels([card({ entity_id: undefined })])).toEqual([]);
 	});
 });
 

@@ -22,7 +22,6 @@
 		height,
 		left,
 		width,
-		compact = false,
 		selected = false,
 		dimmed = false,
 		selectedCardId = '',
@@ -37,8 +36,6 @@
 		height: number;
 		left: number;
 		width: number;
-		/** At 2h/4h zoom the body degrades to a single line (entity + priority). */
-		compact?: boolean;
 		selected?: boolean;
 		dimmed?: boolean;
 		selectedCardId?: string;
@@ -51,6 +48,12 @@
 	} = $props();
 
 	const tone = $derived(statusTone(thread.latest.status));
+	// The chip + footer are pinned to the bottom, so the subject can only use what
+	// is left between them and the header row. A tall capsule spends it on more
+	// lines of subject rather than on empty space.
+	// 56px covers the header row plus the pinned chip and footer; 14px is one line
+	// at 10.5px/1.3. At the 98px minimum that still leaves room for three lines.
+	const subjectLines = $derived(Math.max(1, Math.min(6, Math.floor((height - 56) / 14))));
 	const priorityLabel = $derived(PRIORITY_LABELS[thread.priority] ?? thread.priority);
 	// Escalation owns the capsule's colour; the agent glow is the next loudest.
 	const escalating = $derived(thread.attention.escalating);
@@ -109,39 +112,47 @@
 		></button>
 	{/each}
 
-	<!-- Header: platform dot · entity · priority -->
-	<div class="absolute flex items-center gap-[5px]" style="left: 20px; right: 8px; top: 6px;">
+	<!-- Row 1: platform dot + priority badge. The badge keeps this row to itself so
+	     the subject below gets the capsule's full width — at 9 lanes there is only
+	     ~120px, and sharing the row cost the subject about a third of it. -->
+	<div class="absolute flex items-center gap-[5px]" style="left: 20px; right: 8px; top: 5px;">
 		<span class="h-[5px] w-[5px] shrink-0 rounded-full" style="background-color: {platformDotColor(thread.platform)}"></span>
-		<span
-			class="min-w-0 truncate font-mono text-[9px] font-semibold"
-			style="color: {escalating ? 'var(--tl-escalate-entity)' : 'var(--color-surface-100)'}"
-		>{thread.title}</span>
+		{#if thread.labels.length > 0}
+			<!-- Entity keys: PR-851 / FERR-1585 are the most scannable thing a thread
+			     has. A context group shows its best two and a +N for the rest. -->
+			<span class="min-w-0 truncate font-mono text-[8.5px] font-semibold" style="color: {escalating ? 'var(--tl-escalate-entity)' : 'var(--color-surface-200)'}">
+				{thread.labels.slice(0, 2).join(' · ')}
+			</span>
+			{#if thread.labels.length > 2}
+				<span class="shrink-0 font-mono text-[8px]" style="color: var(--tl-capsule-foot)">+{thread.labels.length - 2}</span>
+			{/if}
+		{/if}
 		<span class="ml-auto shrink-0 rounded px-1 py-px text-[8px] font-bold leading-none" style={priorityStyle[thread.priority] ?? priorityStyle.MEDIUM}>
 			{priorityLabel}
 		</span>
 	</div>
 
-	{#if !compact}
-		<!-- Title: two-line clamp; the capsule's body text -->
-		<div
-			class="absolute overflow-hidden text-[10.5px] leading-[1.35]"
-			style="left: 20px; right: 8px; top: 22px; color: {escalating ? 'var(--tl-escalate-title)' : 'var(--tl-capsule-title)'};
-				display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;"
-		>
-			{thread.latest.card.header}
-		</div>
+	<!-- Subject: the thread's own title, on its own lines. Always rendered —
+	     truncation (vertical clamp + horizontal ellipsis) is what adapts to a
+	     narrow lane, not hiding the text. -->
+	<div
+		class="absolute overflow-hidden text-[10.5px] leading-[1.3]"
+		style="left: 20px; right: 6px; top: 19px; color: {escalating ? 'var(--tl-escalate-title)' : 'var(--color-surface-100)'};
+			display: -webkit-box; -webkit-line-clamp: {subjectLines}; -webkit-box-orient: vertical; word-break: break-word;"
+	>
+		{thread.title}
+	</div>
 
-		<!-- Latest chip: when the thread last moved, in that event's status tint -->
-		<div
-			class="absolute max-w-[calc(100%-30px)] truncate rounded px-[5px] py-px text-[9.5px] font-semibold"
-			style="left: 20px; bottom: 17px; width: fit-content; background: var(--tl-bg-{tone}); color: var(--tl-fg-{tone});"
-		>
-			{formatMinutes(thread.latest.minute)} · {thread.latest.statusLabel}
-		</div>
+	<!-- Latest chip: when the thread last moved, in that event's status tint -->
+	<div
+		class="absolute max-w-[calc(100%-26px)] truncate rounded px-[5px] py-px text-[9.5px] font-semibold"
+		style="left: 20px; bottom: 17px; width: fit-content; background: var(--tl-bg-{tone}); color: var(--tl-fg-{tone});"
+	>
+		{formatMinutes(thread.latest.minute)} · {thread.latest.statusLabel}
+	</div>
 
-		<!-- Footer: event count and how long the thread stayed open -->
-		<div class="absolute font-mono text-[8px]" style="left: 20px; bottom: 4px; color: var(--tl-capsule-foot)">
-			{thread.cardCount} {thread.cardCount === 1 ? 'event' : 'events'} · open {thread.openHours.toFixed(1)}h{thread.carriedForward ? ' · carried' : ''}
-		</div>
-	{/if}
+	<!-- Footer: event count and how long the thread stayed open -->
+	<div class="absolute truncate font-mono text-[8px]" style="left: 20px; right: 6px; bottom: 4px; color: var(--tl-capsule-foot)">
+		{thread.cardCount} {thread.cardCount === 1 ? 'event' : 'events'} · {thread.openHours.toFixed(1)}h{thread.carriedForward ? ' · carried' : ''}
+	</div>
 </div>

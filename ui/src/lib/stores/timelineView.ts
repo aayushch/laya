@@ -20,9 +20,6 @@ export const ZOOM_STEPS: { hourPx: TimelineZoom; label: string }[] = [
 	{ hourPx: 120, label: '30m' }
 ];
 
-/** Below this zoom, capsules drop to a single compact line (entity + priority). */
-export const COMPACT_BELOW_HOUR_PX = 60;
-
 export interface TimelineViewState {
 	hourPx: TimelineZoom;
 	/** Default collapse state for newly-detected quiet runs. */

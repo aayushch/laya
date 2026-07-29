@@ -2212,7 +2212,10 @@
 						<circle cx="17" cy="19" r="1.9" fill="currentColor" stroke="none" />
 					</svg>
 				</button>
-				<span class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100">Timeline View</span>
+				<!-- Right-anchored, not centred like its two siblings: this is the last
+				     element in the toolbar, so a centred tooltip overhangs the window
+				     edge and gets clipped by the page's overflow:hidden. -->
+				<span class="pointer-events-none absolute right-0 top-full z-50 mt-1.5 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-laya-micro font-medium opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100">Timeline View</span>
 			</div>
 		</div>
 	</div>
