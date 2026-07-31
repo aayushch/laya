@@ -19,6 +19,7 @@
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { cardDescriptions } from '$lib/stores/cardDescriptions';
+	import { cardColors } from '$lib/stores/cardColors';
 	import { cardSize } from '$lib/stores/cardSize';
 	import { feedViewMode } from '$lib/stores/feedView';
 	import { fly } from 'svelte/transition';
@@ -150,9 +151,14 @@
 		document.documentElement.setAttribute('data-theme', $theme);
 	});
 
-	// Apply font scale as CSS custom property on <html>
+	// Apply font scale as CSS custom properties on <html>.
+	// --om-scale is the same setting as a unitless ratio, for the Omni board's
+	// type scale. It has to be computed here: CSS can't divide a length by a
+	// number and get a number back, and a value carrying `px` would invalidate
+	// every `calc(Npx * var(--om-scale))` rule in the board's token block.
 	$effect(() => {
 		document.documentElement.style.setProperty('--laya-font-base', `${$fontScale}px`);
+		document.documentElement.style.setProperty('--om-scale', String($fontScale / 13));
 	});
 
 	// Apply system font override on <html>
@@ -195,6 +201,13 @@
 	// Sync feed view mode to <html> for CSS-based mesh gradient switching
 	$effect(() => {
 		document.documentElement.setAttribute('data-feed-view', $feedViewMode);
+	});
+
+	// Expose Status Colors as an attribute. Feed cards branch on the store
+	// inline, but the Omni board resolves every tint through CSS custom
+	// properties, so it needs the setting reachable from a selector.
+	$effect(() => {
+		document.documentElement.setAttribute('data-card-colors', $cardColors ? 'on' : 'off');
 	});
 
 	// Persist when filters change (only after initial load to avoid overwriting saved prefs with defaults)

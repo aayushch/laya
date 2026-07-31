@@ -27,7 +27,6 @@
 	import { timelineView } from '$lib/stores/timelineView';
 	import { feedFilters } from '$lib/stores/feedFilters';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
-	import { glassTheme } from '$lib/stores/glassTheme';
 	import { portal } from '$lib/actions/portal';
 	import { platformDotColor, platformLabel } from '$lib/utils/cardVisuals';
 	import TimelineControls from './TimelineControls.svelte';
@@ -609,9 +608,13 @@
 </div>
 
 {#if tooltip}
+	<!-- Portalled to <body>, so backdrop-filter reaches the real page: this wants
+	     the translucent .glass-tooltip, not the near-opaque -dense variant (which
+	     exists for tooltips trapped inside a glass container that can't blur
+	     through to content). The class carries its own border under glass. -->
 	<div
 		use:portal
-		class="pointer-events-none fixed z-[100] w-[300px] rounded-lg border border-transparent px-3 py-2 {$glassTheme ? 'glass-tooltip-dense' : 'glass-tooltip'}"
+		class="pointer-events-none fixed z-[100] w-[300px] rounded-lg px-3 py-2 glass-tooltip"
 		style="top: {tooltip.top}px; left: {tooltip.left}px"
 	>
 		{#if tooltip.thread && tooltipCard}

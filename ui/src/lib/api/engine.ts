@@ -59,6 +59,10 @@ import type {
 	OmniTimelineResponse,
 	OmniPinsResponse,
 	OmniPin,
+	OmniChangesResponse,
+	OmniVolumeResponse,
+	OmniItemResponse,
+	OmniResynthesisStatus,
 	DeadEventsResponse,
 	RetryDeadEventsResponse,
 	FilteredEventsResponse,
@@ -1069,9 +1073,44 @@ export const engineApi = {
 		}),
 
 	getOmniResynthesisStatus: (spaceId = 'default') =>
-		request<{ space_id: string; in_progress: boolean }>(
+		request<OmniResynthesisStatus>(
 			`/omni/resynthesis/status?space_id=${encodeURIComponent(spaceId)}`
 		),
+
+	// What moved between two snapshot versions. `base` is exclusive, `to`
+	// inclusive; omitting either compares the latest version against the one
+	// before it.
+	getOmniChanges: (spaceId = 'default', base?: number, to?: number) => {
+		const params = new URLSearchParams({ space_id: spaceId });
+		if (base !== undefined) params.set('base', String(base));
+		if (to !== undefined) params.set('to', String(to));
+		return request<OmniChangesResponse>(`/omni/changes?${params}`);
+	},
+
+	// Trailing-window event counts for the volume bars and platform-mix stack.
+	// Sent with the browser's zone so day buckets line up with the user's clock.
+	getOmniVolume: (spaceId = 'default', days = 14) => {
+		const params = new URLSearchParams({ space_id: spaceId, days: String(days) });
+		const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+		if (tz) params.set('tz', tz);
+		return request<OmniVolumeResponse>(`/omni/volume?${params}`);
+	},
+
+	// One call for the item page: the claim, its evidence cards (bucketed), its
+	// lineage, and what it could NOT load. Replaces the old N+1 /cards/{id} fan-out.
+	getOmniItem: (params: {
+		spaceId?: string;
+		version?: number;
+		section?: string;
+		itemKey: string;
+	}) => {
+		const qs = new URLSearchParams({ space_id: params.spaceId ?? 'default', item: params.itemKey });
+		if (params.version !== undefined) qs.set('v', String(params.version));
+		if (params.section) qs.set('section', params.section);
+		const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+		if (tz) qs.set('tz', tz);
+		return request<OmniItemResponse>(`/omni/item?${qs}`);
+	},
 
 	getOmniPins: (spaceId = 'default') =>
 		request<OmniPinsResponse>(`/omni/pins?space_id=${encodeURIComponent(spaceId)}`),

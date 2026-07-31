@@ -1,0 +1,14 @@
+-- Persist per-version Omni change summaries (added / folded / resolved).
+--
+-- Until now the only diff Omni kept was `_compute_delta()`'s output, and only on
+-- INCREMENTAL rows (is_delta=1) — a resynthesis stores the full structure
+-- instead, so the versions where the interesting movement happens (folds down
+-- the compression chain, resolved subjects dropping out) recorded nothing at
+-- all. The LLM applies the prompt's R1-R4 resolution rules and the reasoning was
+-- discarded. This column stores that reasoning as data so the Omni board's
+-- "What changed" rail and the funnel's fold annotations can read it back.
+--
+-- Nullable on purpose: pre-existing rows have no summary and the API treats
+-- NULL as "unknown", not "nothing changed" — there is no backfill because the
+-- inputs (the prior snapshot's live card states) no longer exist.
+ALTER TABLE omni_snapshots ADD COLUMN change_summary_json TEXT;

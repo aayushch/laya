@@ -27,6 +27,17 @@ _last_context_learn_check: datetime | None = None
 _threshold_cooldowns: dict[str, datetime] = {}
 _THRESHOLD_COOLDOWN_MINUTES = 10
 
+
+def omni_rolling_anchor() -> datetime | None:
+    """The instant the rolling-resynthesis interval is currently measured from.
+
+    Exposed for the Omni API's "next synthesis" prediction. It is deliberately
+    the in-process anchor rather than the last stored snapshot: this loop seeds
+    it to *now* on its first tick after startup, so on a restarted instance the
+    two differ by however long the engine was down. None until that first tick.
+    """
+    return _last_omni_rolling
+
 # Statuses that are safe to auto-delete (never auto-delete active/in-progress cards)
 _HOUSEKEEPING_STATUSES = ("archived", "dismissed", "done", "failed")
 

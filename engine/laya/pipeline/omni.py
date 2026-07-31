@@ -32,6 +32,11 @@ from laya.llm.prompts.omni import (
     get_omni_json_schema,
 )
 from laya.models.omni import OmniItem, OmniSection, OmniSnapshot, OmniStats
+from laya.pipeline.omni_change import (
+    compute_incremental_change_summary,
+    compute_resynthesis_change_summary,
+    decorate_item_keys,
+)
 
 log = structlog.get_logger()
 
@@ -526,39 +531,53 @@ async def _append_to_recent(cards: list[dict]) -> None:
         all_card_ids = existing_card_ids + new_card_ids
         now = db_now()
 
+        # Keys are stamped on every write so the drill-down link and the
+        # changelog name the same item; recomputing on read yields the same
+        # value, so pre-072 snapshots stay addressable too.
+        decorate_item_keys(content.get("sections", []))
+
         # Create a new incremental snapshot (version++)
         new_snapshot_id = f"omni_{uuid.uuid4().hex[:12]}"
         new_version = version + 1
 
         if is_first:
-            # First snapshot ever — store as full base (no delta possible)
+            # First snapshot ever — store as full base (no delta possible).
+            # Every item is new, so the change summary is the whole recent list.
+            change_summary = compute_incremental_change_summary(
+                recent_section.get("items", []), "recent"
+            )
             await db.execute(
                 """INSERT INTO omni_snapshots
                    (snapshot_id, space_id, version, generated_at, snapshot_type,
                     content_json, card_ids, events_processed, created_at,
-                    is_delta, base_version)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    is_delta, base_version, change_summary_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     new_snapshot_id, space_id, new_version, now, "incremental",
                     json.dumps(content), json.dumps(all_card_ids),
                     len(all_card_ids), now, 0, None,
+                    json.dumps(change_summary),
                 ),
             )
         else:
             # Compute delta from old state and store only the diff
             delta = _compute_delta(old_recent_items, recent_section.get("items", []))
             base_ver = await _find_base_version(db, space_id, version)
+            change_summary = compute_incremental_change_summary(
+                delta.get("added_items", []), "recent"
+            )
 
             await db.execute(
                 """INSERT INTO omni_snapshots
                    (snapshot_id, space_id, version, generated_at, snapshot_type,
                     content_json, card_ids, events_processed, created_at,
-                    is_delta, base_version)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    is_delta, base_version, change_summary_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     new_snapshot_id, space_id, new_version, now, "incremental",
                     json.dumps(delta), json.dumps(new_card_ids),
                     len(all_card_ids), now, 1, base_ver,
+                    json.dumps(change_summary),
                 ),
             )
 
@@ -606,14 +625,23 @@ _PRIORITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
 
 
 async def _fetch_card_meta(db, card_ids: list[str]) -> dict[str, dict]:
-    """Fetch {card_id: {status, priority, entity_id}} for a set of card_ids."""
+    """Fetch live per-card state for a set of card_ids.
+
+    Returns ``{card_id: {status, priority, entity_id, created_at, resolved_at,
+    source_platform}}``. The last three feed the API's per-item ``live``
+    decoration (item age, resolution timestamps, the platform-mix instrument);
+    the pipeline itself only reads status/priority/entity_id.
+    """
     if not card_ids:
         return {}
     unique_ids = list(dict.fromkeys(card_ids))
     placeholders = ",".join("?" for _ in unique_ids)
     rows = await db.execute_fetchall(
-        f"""SELECT card_id, status, priority, entity_id
-            FROM action_cards WHERE card_id IN ({placeholders})""",
+        f"""SELECT ac.card_id, ac.status, ac.priority, ac.entity_id,
+                   ac.created_at, ac.resolved_at, e.source_platform
+            FROM action_cards ac
+            LEFT JOIN events e ON ac.event_id = e.event_id
+            WHERE ac.card_id IN ({placeholders})""",
         unique_ids,
     )
     return {
@@ -621,6 +649,9 @@ async def _fetch_card_meta(db, card_ids: list[str]) -> dict[str, dict]:
             "status": r["status"],
             "priority": r["priority"],
             "entity_id": r["entity_id"],
+            "created_at": r["created_at"],
+            "resolved_at": r["resolved_at"],
+            "source_platform": r["source_platform"] or "unknown",
         }
         for r in rows
     }
@@ -722,6 +753,12 @@ async def _resynthesize_space(
 
     # 1. Load latest snapshot (reconstructed if delta chain)
     current_snapshot, current_version, existing_card_ids, _meta = await _load_full_snapshot(db, space_id)
+
+    # The pre-fold sections, kept separately because `current_snapshot` may be
+    # discarded below (degenerate recovery) and is fed forward through the LLM
+    # calls. The change summary must diff against what the user was ACTUALLY
+    # looking at, so it reads this copy.
+    prior_sections = copy.deepcopy((current_snapshot or {}).get("sections", []))
 
     # Recovery: if the last snapshot is itself degenerate (a prior bad synthesis
     # poisoned the chain), don't feed it back to the model — that just makes it
@@ -868,8 +905,15 @@ async def _resynthesize_space(
     )
     resolved_cards: list[dict] = []
     _seen_entities: set[str] = set()
+    # entity_id → when that subject reached a terminal state. The changelog rail
+    # renders "closed 14:22" beside a resolved line; the card that resolved a
+    # subject is often NOT one of the aggregate's own source_cards (a merge event
+    # mints a new card on the same entity), so the timestamp is keyed by entity.
+    resolved_at_by_entity: dict[str, str] = {}
     for r in resolved_rows:
         eid = r["entity_id"]
+        if eid and r["resolved_at"] and eid not in resolved_at_by_entity:
+            resolved_at_by_entity[eid] = r["resolved_at"]
         if eid and eid in _seen_entities:
             continue  # dedupe by entity — one resolution line per subject
         if eid:
@@ -1019,6 +1063,12 @@ async def _resynthesize_space(
     for section in result_sections:
         for item in section.get("items", []):
             output_card_ids.extend(_item_source_cards(item))
+    # Prior cards are fetched in the same batch: the change summary has to decide
+    # whether a line that VANISHED did so because its subjects resolved, and
+    # those cards are by definition absent from the new output.
+    for section in prior_sections:
+        for item in section.get("items", []):
+            output_card_ids.extend(_item_source_cards(item))
     out_meta = await _fetch_card_meta(db, output_card_ids)
 
     pruned_attention = 0
@@ -1043,6 +1093,19 @@ async def _resynthesize_space(
 
     if pruned_attention:
         log.info("omni_attention_pruned", space_id=space_id, dropped=pruned_attention)
+
+    # 7c. Stamp item keys, then diff this result against what the user was
+    # looking at. Order matters: keys are computed from the FINAL entity_ids
+    # (backfilled just above), and the diff must see the post-prune sections so a
+    # resolved attention item reads as `resolved`, not as a silent disappearance.
+    decorate_item_keys(result_sections)
+    change_summary = compute_resynthesis_change_summary(
+        prior_sections,
+        result_sections,
+        out_meta,
+        _TERMINAL_STATUSES,
+        resolved_at_by_entity,
+    )
 
     # 8. Build stats
     cards_acted_count = len(acted_cards)
@@ -1079,8 +1142,8 @@ async def _resynthesize_space(
         """INSERT INTO omni_snapshots
            (snapshot_id, space_id, version, generated_at, snapshot_type,
             content_json, card_ids, events_processed, created_at,
-            is_delta, base_version)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            is_delta, base_version, change_summary_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             snapshot_id,
             space_id,
@@ -1093,6 +1156,7 @@ async def _resynthesize_space(
             now,
             0,     # Full base snapshot, not a delta
             None,
+            json.dumps(change_summary),
         ),
     )
     await db.commit()
@@ -1131,6 +1195,7 @@ async def _resynthesize_space(
         snapshot_id=snapshot_id,
         items=total_items_after,
         compression=round(compression, 2),
+        **{f"changed_{k}": v for k, v in change_summary["counts"].items()},
     )
 
     return snapshot_id

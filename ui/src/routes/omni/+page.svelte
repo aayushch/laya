@@ -4,135 +4,102 @@
 	import { engineApi } from '$lib/api/engine';
 	import { lastMessage } from '$lib/stores/websocket';
 	import { spaces, loadSpaces } from '$lib/stores/spaces';
-	import type { OmniSnapshot, OmniItem as OmniItemType, TimelineSegment } from '$lib/api/types';
-	import OmniView from '$lib/components/omni/OmniView.svelte';
-	import OmniHeader from '$lib/components/omni/OmniHeader.svelte';
+	import type {
+		OmniChangesResponse,
+		OmniItem,
+		OmniSnapshot,
+		OmniVolumeResponse,
+		TimelineEntry
+	} from '$lib/api/types';
 	import { goto } from '$app/navigation';
-	import { onMount, onDestroy, tick } from 'svelte'; // tick used for scroll restore
+	import { page } from '$app/stores';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import { get } from 'svelte/store';
-	import { glassTheme } from '$lib/stores/glassTheme';
-	import { parseBackendDate } from '$lib/utils/datetime';
 	import type { Unsubscriber } from 'svelte/store';
 	import { omniSpace } from '$lib/stores/omniSpace';
-	import { resynthesizingSpaces, markResynthesizing, clearResynthesizing } from '$lib/stores/omniResynthesis';
-	import type { Settings } from '$lib/api/types';
+	import { cardSize } from '$lib/stores/cardSize';
+	import {
+		resynthesizingSpaces,
+		markResynthesizing,
+		clearResynthesizing
+	} from '$lib/stores/omniResynthesis';
+	import { lastSeenVersion, markVersionSeen } from '$lib/stores/omniView';
+	import OmniIdentityBar from '$lib/components/omni/board/OmniIdentityBar.svelte';
+	import InstrumentCluster from '$lib/components/omni/board/InstrumentCluster.svelte';
+	import TriageColumn from '$lib/components/omni/board/TriageColumn.svelte';
+	import CompressionFunnel from '$lib/components/omni/board/CompressionFunnel.svelte';
+	import ChangelogRail from '$lib/components/omni/board/ChangelogRail.svelte';
 
+	// Where to scroll back to after returning from an item page.
 	const SCROLL_TARGET_KEY = 'laya_omni_scroll_target';
 
 	let snapshot = $state<OmniSnapshot | null>(null);
-	let segments = $state<TimelineSegment[]>([]);
+	let volume = $state<OmniVolumeResponse | null>(null);
+	let changes = $state<OmniChangesResponse | null>(null);
+	let changesLoading = $state(false);
+	let timelineEntries = $state<TimelineEntry[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let activeSpaceId = $state(get(omniSpace));
-	let nextSynthesis = $state<string | null>(null);
-	// null = viewing the latest snapshot; a number = pinned to a historical
-	// version (so an omni_updated shouldn't yank the user forward). Review P4-32.
-	let viewingSpecificVersion: number | null = null;
-	// Monotonic load id — drops a stale getOmni response (e.g. a slow load for the
+	let nextSynthesisAt = $state<string | null>(null);
+
+	// null = pinned to the latest snapshot; a number = time-travelled, so an
+	// omni_updated must NOT yank the user forward.
+	let viewingVersion = $state<number | null>(null);
+	// User's chosen comparison base. null = derive it (last-seen, else previous).
+	let comparisonBase = $state<number | null>(null);
+	// Monotonic load id — drops a stale response (e.g. a slow load for the
 	// previous space arriving after a space switch) so it can't clobber the view.
 	let _loadSeq = 0;
+
 	const resynthesizing = $derived($resynthesizingSpaces.has(activeSpaceId));
+	const latestVersion = $derived(
+		timelineEntries.length > 0
+			? Math.max(...timelineEntries.map((e) => e.version), snapshot?.version ?? 0)
+			: (snapshot?.version ?? 0)
+	);
+	const isViewingOlder = $derived(
+		viewingVersion !== null && snapshot !== null && snapshot.version < latestVersion
+	);
 
-	// Scroll-direction detection for timeline compaction.
-	// Accumulates delta in one direction; only toggles after a sustained
-	// threshold is crossed — prevents jitter from macOS rubber-band bounce.
-	let timelineCompact = $state(false);
-	let lastScrollY = 0;
-	let accumulatedDelta = 0;
-	const SCROLL_THRESHOLD = 50;
-	let scrollRaf: number | null = null;
+	const attentionItems = $derived(
+		snapshot?.sections.find((s) => s.type === 'attention')?.items ?? []
+	);
 
-	function handleMainScroll(e: Event) {
-		if (scrollRaf) return;
-		scrollRaf = requestAnimationFrame(() => {
-			scrollRaf = null;
-			const el = e.target as HTMLElement;
-			const y = el.scrollTop;
-			const delta = y - lastScrollY;
-			lastScrollY = y;
+	/**
+	 * item_keys the user has not seen. Taken from the change summary rather than
+	 * diffed client-side: the previous version's items aren't in the browser, and
+	 * the engine already recorded exactly what it added.
+	 */
+	const newKeys = $derived(new Set((changes?.added ?? []).map((a) => a.item_key)));
 
-			// Ignore rubber-band zones (overscroll past boundaries)
-			if (y <= 0 || y >= el.scrollHeight - el.clientHeight) {
-				accumulatedDelta = 0;
-				return;
-			}
+	// Attention delta vs. the comparison base, from the same recorded diff.
+	const attentionDelta = $derived.by(() => {
+		if (!changes) return null;
+		const added = changes.added.filter((a) => a.section === 'attention').length;
+		const gone =
+			changes.resolved.filter((r) => r.section === 'attention').length +
+			changes.folded.filter((f) => f.from_section === 'attention').length;
+		const delta = added - gone;
+		return delta === 0 ? null : delta;
+	});
 
-			// Reset accumulator on direction change
-			if ((delta > 0 && accumulatedDelta < 0) || (delta < 0 && accumulatedDelta > 0)) {
-				accumulatedDelta = 0;
-			}
-			accumulatedDelta += delta;
-
-			if (accumulatedDelta > SCROLL_THRESHOLD && !timelineCompact) {
-				timelineCompact = true;
-				accumulatedDelta = 0;
-			} else if (accumulatedDelta < -SCROLL_THRESHOLD && timelineCompact) {
-				timelineCompact = false;
-				accumulatedDelta = 0;
-			}
-		});
-	}
-
-	// Use store.subscribe for the WS listener to avoid Svelte 5 tracking
-	// the state writes inside loadOmni/loadTimeline, which causes infinite loops.
 	let unsubWs: Unsubscriber;
-
-	async function loadNextSynthesisTime() {
-		try {
-			const settings: Settings = await engineApi.getSettings();
-			const omniCfg = settings.omni;
-			if (!omniCfg?.enabled) { nextSynthesis = null; return; }
-
-			const now = new Date();
-			const candidates: Date[] = [];
-
-			// (1) EOD scheduled resynthesis
-			if (omniCfg.resynthesis_time) {
-				const [h, m] = omniCfg.resynthesis_time.split(':').map(Number);
-				const eod = new Date(now);
-				eod.setHours(h, m, 0, 0);
-				if (eod <= now) eod.setDate(eod.getDate() + 1);
-				candidates.push(eod);
-			}
-
-			// (2) Rolling interval
-			const rollingHours = omniCfg.rolling_interval_hours ?? 0;
-			const lastGen = rollingHours > 0 ? parseBackendDate(snapshot?.generated_at) : null;
-			if (lastGen) {
-				const rolling = new Date(lastGen.getTime() + rollingHours * 3600000);
-				if (rolling > now) candidates.push(rolling);
-				else candidates.push(new Date(now.getTime() + 60000)); // imminent
-			}
-
-			if (candidates.length === 0) { nextSynthesis = null; return; }
-			const nearest = candidates.reduce((a, b) => a < b ? a : b);
-			const diffMs = nearest.getTime() - now.getTime();
-			const diffMins = Math.floor(diffMs / 60000);
-			if (diffMins < 1) nextSynthesis = 'imminent';
-			else if (diffMins < 60) nextSynthesis = `in ${diffMins}m`;
-			else {
-				const diffHours = Math.floor(diffMins / 60);
-				if (diffHours < 24) nextSynthesis = `in ${diffHours}h ${diffMins % 60}m`;
-				else nextSynthesis = nearest.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-			}
-		} catch {
-			nextSynthesis = null;
-		}
-	}
-
-	let mainEl: HTMLElement | null = null;
+	let boardEl = $state<HTMLElement | null>(null);
 
 	onMount(async () => {
-		// Attach scroll listener to <main> for timeline compaction
-		mainEl = document.querySelector('main');
-		mainEl?.addEventListener('scroll', handleMainScroll, { passive: true });
-
 		await loadSpaces();
-		await loadOmni();
+
+		// A `?v=` in the URL means a time-travelled board was linked to, or the
+		// item page navigated back to the version its claim came from.
+		const urlVersion = Number($page.url.searchParams.get('v'));
+		if (Number.isFinite(urlVersion) && urlVersion > 0) viewingVersion = urlVersion;
+
+		await loadOmni(viewingVersion ?? undefined);
 		loadTimeline();
+		loadVolume();
 		syncResynthesisStatus(activeSpaceId);
 
-		// Scroll to the item user was viewing before navigating to insight
 		const scrollTarget = sessionStorage.getItem(SCROLL_TARGET_KEY);
 		if (scrollTarget) {
 			sessionStorage.removeItem(SCROLL_TARGET_KEY);
@@ -140,39 +107,60 @@
 			scrollToItem(scrollTarget);
 		}
 
-		unsubWs = lastMessage.subscribe((msg) => {
-			if (msg?.type === 'omni_updated') {
-				// Only react to updates for the space we're viewing, and only while
-				// on the latest snapshot. Previously any omni_updated reloaded to
-				// latest — an update for another space, or one arriving while the
-				// user read a historical version, yanked them away (review §2 UI — P4-32).
-				const p = msg.payload as { space_id?: string } | undefined;
-				if (p?.space_id && p.space_id !== activeSpaceId) return;
-				if (viewingSpecificVersion !== null) return;
-				// Resynthesizing flag is cleared by the store's global listener
-				// (only for non-incremental snapshot types like scheduled/rolling/manual).
-				loadOmni();
-				loadTimeline();
-			}
-		});
+		// store.subscribe (not $effect) so the state writes inside the loaders
+		// aren't tracked — that would re-trigger this listener in a loop.
+		// `[` / `]` step the displayed version. Guarded against inputs, and against
+		// the modifier form — Cmd+[ / Cmd+] are the layout's history back/forward.
+		document.addEventListener('keydown', handleVersionStep);
 
+		unsubWs = lastMessage.subscribe((msg) => {
+			if (msg?.type !== 'omni_updated') return;
+			const p = msg.payload as { space_id?: string } | undefined;
+			if (p?.space_id && p.space_id !== activeSpaceId) return;
+			if (viewingVersion !== null) return; // reading history — don't jump
+			loadOmni();
+			loadTimeline();
+			loadVolume();
+		});
 	});
 
 	onDestroy(() => {
 		unsubWs?.();
-		mainEl?.removeEventListener('scroll', handleMainScroll);
+		document.removeEventListener('keydown', handleVersionStep);
 	});
+
+	function handleVersionStep(e: KeyboardEvent) {
+		if (e.key !== '[' && e.key !== ']') return;
+		if (e.metaKey || e.ctrlKey || e.altKey) return;
+		const el = e.target as HTMLElement | null;
+		const tag = el?.tagName;
+		if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable) return;
+		const current = snapshot?.version;
+		if (!current) return;
+		const versions = timelineEntries.map((v) => v.version).sort((a, b) => a - b);
+		const idx = versions.indexOf(current);
+		if (idx === -1) return;
+		const next = e.key === '[' ? versions[idx - 1] : versions[idx + 1];
+		if (next === undefined) return;
+		e.preventDefault();
+		setDisplayVersion(next);
+	}
 
 	async function loadOmni(version?: number) {
 		const seq = ++_loadSeq;
-		viewingSpecificVersion = version ?? null;
 		try {
 			loading = !snapshot;
 			error = null;
 			const snap = await engineApi.getOmni(activeSpaceId, version);
-			if (seq !== _loadSeq) return; // superseded by a newer load (e.g. space switch)
+			if (seq !== _loadSeq) return;
 			snapshot = snap;
-			loadNextSynthesisTime();
+			loadChanges();
+			loadSchedule();
+			// Only the live view advances the seen mark; reading history must not
+			// silently mark newer versions as seen.
+			if (version === undefined && snap.version > 0) {
+				markVersionSeen(activeSpaceId, snap.version);
+			}
 		} catch (e) {
 			if (seq !== _loadSeq) return;
 			error = e instanceof Error ? e.message : 'Failed to load Omni';
@@ -181,12 +169,95 @@
 		}
 	}
 
+	/**
+	 * Resolve the comparison base: the user's pick, else the last version they
+	 * actually saw, else the version before the displayed one. Clamped below the
+	 * displayed version so time-travelling backwards can't leave the base ahead
+	 * of the board.
+	 */
+	function resolveBase(displayVersion: number): number {
+		const candidates = [comparisonBase, lastSeenVersion(activeSpaceId)].filter(
+			(v): v is number => v !== null && v > 0 && v < displayVersion
+		);
+		if (candidates.length > 0) return Math.max(...candidates);
+		const older = timelineEntries
+			.map((e) => e.version)
+			.filter((v) => v < displayVersion)
+			.sort((a, b) => b - a);
+		return older[0] ?? Math.max(0, displayVersion - 1);
+	}
+
+	async function loadChanges() {
+		const snap = snapshot;
+		if (!snap || snap.version === 0) {
+			changes = null;
+			return;
+		}
+		changesLoading = true;
+		const seq = _loadSeq;
+		try {
+			const resp = await engineApi.getOmniChanges(
+				activeSpaceId,
+				resolveBase(snap.version),
+				snap.version
+			);
+			if (seq !== _loadSeq) return;
+			changes = resp;
+		} catch {
+			// Non-critical: the rail degrades to its empty state, the board stays up.
+			if (seq === _loadSeq) changes = null;
+		} finally {
+			if (seq === _loadSeq) changesLoading = false;
+		}
+	}
+
 	async function loadTimeline() {
 		try {
 			const resp = await engineApi.getOmniTimeline(activeSpaceId);
-			segments = resp.segments;
+			// Newest first, deduped — the sampled tiers can repeat a boundary entry.
+			const seen = new Set<number>();
+			timelineEntries = resp.segments
+				.flatMap((s) => s.entries)
+				.sort((a, b) => b.version - a.version)
+				.filter((e) => (seen.has(e.version) ? false : (seen.add(e.version), true)));
 		} catch {
-			// Non-critical
+			/* non-critical — the pickers just offer fewer versions */
+		}
+	}
+
+	/**
+	 * Pull the complete version list into the pickers. The sampled timeline only
+	 * carries every snapshot for today (hourly for the week, syntheses beyond), so
+	 * "full history" needs the unsampled endpoint.
+	 */
+	async function loadFullHistory() {
+		try {
+			const resp = await engineApi.getOmniHistory(activeSpaceId, 200);
+			const merged = new Map(timelineEntries.map((e) => [e.version, e]));
+			for (const s of resp.snapshots) {
+				if (!merged.has(s.version)) merged.set(s.version, s);
+			}
+			timelineEntries = [...merged.values()].sort((a, b) => b.version - a.version);
+		} catch {
+			/* non-critical — the picker keeps the sampled list it already has */
+		}
+	}
+
+	async function loadVolume() {
+		try {
+			volume = await engineApi.getOmniVolume(activeSpaceId, 14);
+		} catch {
+			/* non-critical — the instruments fall back to snapshot-derived counts */
+		}
+	}
+
+	async function loadSchedule() {
+		try {
+			const status = await engineApi.getOmniResynthesisStatus(activeSpaceId);
+			nextSynthesisAt = status.next_scheduled_at;
+			if (status.in_progress) markResynthesizing(activeSpaceId);
+		} catch {
+			nextSynthesisAt = null;
 		}
 	}
 
@@ -195,94 +266,110 @@
 			const { in_progress } = await engineApi.getOmniResynthesisStatus(spaceId);
 			if (in_progress) markResynthesizing(spaceId);
 			else clearResynthesizing(spaceId);
-		} catch { /* non-critical */ }
+		} catch {
+			/* non-critical */
+		}
 	}
 
 	async function handleResynthesis() {
 		markResynthesizing(activeSpaceId);
 		try {
-			// Backend returns 202 immediately — resynthesis runs in background.
-			// The omni_updated WebSocket event will clear the flag and reload.
+			// 202 — runs in the background; the omni_updated WS event clears the flag.
 			await engineApi.triggerOmniResynthesis(activeSpaceId);
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : 'Resynthesis failed';
-			// 409 = already in progress — keep the flag set, don't show error
 			if (msg.includes('already in progress')) return;
 			clearResynthesizing(activeSpaceId);
 			error = msg;
 		}
 	}
 
-	function handleVersionChange(version: number) {
-		loadOmni(version);
+	function setDisplayVersion(version: number) {
+		viewingVersion = version === latestVersion ? null : version;
+		// Linkable, and the item page's Back lands on the same view.
+		const url = new URL($page.url);
+		if (viewingVersion === null) url.searchParams.delete('v');
+		else url.searchParams.set('v', String(version));
+		goto(`${url.pathname}${url.search}`, { replaceState: true, noScroll: true, keepFocus: true });
+
+		// Keep the base strictly older than what's on screen.
+		if (comparisonBase !== null && comparisonBase >= version) comparisonBase = null;
+		loadOmni(viewingVersion ?? undefined);
 	}
 
-	async function handlePin(item: OmniItemType) {
-		try {
-			await engineApi.pinOmniItem({
-				space_id: activeSpaceId,
-				text: item.text,
-				source_cards: item.source_cards,
-				platforms: item.platforms
-			});
-			item.pinned = true;
-			snapshot = snapshot ? { ...snapshot } : null;
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to pin item';
-		}
+	function jumpToLatest() {
+		setDisplayVersion(latestVersion);
 	}
 
-	async function handleUnpin(item: OmniItemType) {
-		try {
-			const pinsResp = await engineApi.getOmniPins(activeSpaceId);
-			const matchingPin = pinsResp.pins.find((p) => p.item_text === item.text);
-			if (matchingPin) {
-				await engineApi.unpinOmniItem(matchingPin.pin_id);
-				item.pinned = false;
-				snapshot = snapshot ? { ...snapshot } : null;
-			}
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to unpin item';
-		}
+	function setComparisonBase(version: number) {
+		comparisonBase = version;
+		loadChanges();
 	}
 
-	async function handleBookmark(item: OmniItemType) {
-		const sourceCardId = item.source_cards[0];
-		if (!sourceCardId) return;
-		const newState = !item.bookmarked;
-		try {
-			await engineApi.toggleOmniBookmark({
-				space_id: activeSpaceId,
-				source_card_id: sourceCardId,
-				bookmarked: newState
-			});
-			item.bookmarked = newState;
-			snapshot = snapshot ? { ...snapshot } : null;
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to toggle bookmark';
-		}
+	function switchSpace(spaceId: string) {
+		activeSpaceId = spaceId;
+		omniSpace.set(spaceId);
+		snapshot = null;
+		changes = null;
+		volume = null;
+		timelineEntries = [];
+		viewingVersion = null;
+		comparisonBase = null;
+		loadOmni();
+		loadTimeline();
+		loadVolume();
+		syncResynthesisStatus(spaceId);
 	}
 
-	function handleDrillDown(cardIds: string[]) {
-		if (cardIds[0]) {
-			sessionStorage.setItem(SCROLL_TARGET_KEY, cardIds[0]);
+	/** Screen B carries the item's identity, not just a bag of card ids. */
+	function openItem(item: OmniItem, section: string) {
+		if (!snapshot) return;
+		if (!item.item_key) {
+			// Pre-072 snapshot with no derivable key: fall back to the legacy
+			// card-list link so the drill-down still works, just degraded.
+			if (item.source_cards.length === 0) return;
+			const params = new URLSearchParams();
+			item.source_cards.forEach((id) => params.append('cards', id));
+			goto(`/omni/insight?${params}`);
+			return;
 		}
-		const params = new URLSearchParams();
-		cardIds.forEach((id) => params.append('cards', id));
+		if (item.source_cards[0]) sessionStorage.setItem(SCROLL_TARGET_KEY, item.source_cards[0]);
+		const params = new URLSearchParams({
+			v: String(snapshot.version),
+			section,
+			item: item.item_key,
+			space_id: activeSpaceId
+		});
 		goto(`/omni/insight?${params}`);
 	}
 
-	/** Scroll to item and apply highlight animation. */
-	function scrollToItem(itemId: string) {
+	/** Changelog rows carry a key + section but no item object. */
+	function openItemKey(itemKey: string, section: string) {
+		if (!snapshot || !itemKey) return;
+		const params = new URLSearchParams({
+			v: String(snapshot.version),
+			section,
+			item: itemKey,
+			space_id: activeSpaceId
+		});
+		goto(`/omni/insight?${params}`);
+	}
+
+	/**
+	 * Bring the row the user drilled into back into view when they return.
+	 * Retried across frames because the board's columns are still laying out when
+	 * this runs — the target may not exist on the first attempt.
+	 */
+	function scrollToItem(cardId: string) {
 		const attempt = (tries: number) => {
 			requestAnimationFrame(() => {
-				const el = document.querySelector(`[data-omni-item="${itemId}"]`);
+				const el = boardEl?.querySelector(`[data-omni-item="${cardId}"]`);
 				if (el) {
 					el.scrollIntoView({ behavior: 'smooth', block: 'center' });
 					el.classList.add('card-highlight-fade');
-					el.addEventListener('animationend', () => {
-						el.classList.remove('card-highlight-fade');
-					}, { once: true });
+					el.addEventListener('animationend', () => el.classList.remove('card-highlight-fade'), {
+						once: true
+					});
 				} else if (tries > 0) {
 					attempt(tries - 1);
 				}
@@ -290,99 +377,117 @@
 		};
 		attempt(5);
 	}
-
-	function switchSpace(spaceId: string) {
-		activeSpaceId = spaceId;
-		omniSpace.set(spaceId);
-		// Reset and reload for the new space
-		snapshot = null;
-		segments = [];
-		loadOmni();
-		loadTimeline();
-		syncResynthesisStatus(spaceId);
-	}
 </script>
 
 <svelte:head>
 	<title>Omni - Laya</title>
 </svelte:head>
 
-<div class="relative min-h-screen p-6 overflow-x-clip {$glassTheme ? 'bg-transparent' : 'bg-surface-900'}">
-<div class="max-w-5xl mx-auto">
-	<!-- Loading overlay -->
-	{#if loading && !snapshot}
-		<div class="absolute inset-0 z-10 flex items-start justify-center pt-20">
-			<div class="flex items-center gap-2">
-				<svg class="h-4 w-4 animate-spin text-laya-orange" fill="none" viewBox="0 0 24 24">
-					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-					<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-				</svg>
-				<span class="text-sm text-surface-500">Loading Omni...</span>
-			</div>
-		</div>
-	{/if}
+<!-- Full-bleed: the layout's <main> has p-4, which the negative margin cancels so
+     the board's columns reach the window edges as designed. `data-omni-density`
+     carries the Card Size setting to the CSS that tightens row padding. -->
+<div
+	bind:this={boardEl}
+	class="-m-4 flex h-[calc(100%+2rem)] flex-col overflow-hidden"
+	style="color: var(--om-text);"
+	data-omni-density={$cardSize}
+>
 	{#if error}
-		<!-- Show errors even once a snapshot is loaded — a failed reload was
-		     previously invisible because this was gated on !snapshot (P4-32). -->
-		<div class="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400">
-			{error}
-		</div>
+		<div
+			class="om-entry-t flex-none px-[18px] py-2"
+			style="background: var(--om-alert-bg); color: var(--om-alert-fg);"
+		>{error}</div>
 	{/if}
-	{#if snapshot}
-		<!-- Header with controls — sticky, edge-to-edge background -->
-		<div class="sticky -top-4 z-20 relative pb-4 pt-4 before:absolute before:inset-y-0 before:-left-[50vw] before:-right-[50vw] before:z-[-1] {$glassTheme ? 'before:backdrop-blur-xl' : 'before:bg-surface-900'}">
-		<OmniHeader
+
+	{#if loading && !snapshot}
+		<div class="flex flex-1 items-center justify-center gap-2">
+			<svg class="text-laya-orange h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+				<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+			</svg>
+			<span class="om-row-t" style="color: var(--om-text-meta);">Loading Omni…</span>
+		</div>
+	{:else if snapshot}
+		<OmniIdentityBar
 			version={snapshot.version}
 			generatedAt={snapshot.generated_at}
 			snapshotType={snapshot.snapshot_type}
-			stats={snapshot.stats ?? { events_processed: 0, cards_acted_on: 0, compression_ratio: 0 }}
-			{segments}
-			{resynthesizing}
-			{nextSynthesis}
 			spaces={$spaces}
 			{activeSpaceId}
-			compact={timelineCompact}
-			onVersionChange={handleVersionChange}
-			onResynthesis={handleResynthesis}
+			{resynthesizing}
+			{isViewingOlder}
 			onSpaceChange={switchSpace}
+			onResynthesis={handleResynthesis}
+			onJumpToLatest={jumpToLatest}
 		/>
-		</div>
 
-		<!-- Summary view -->
-		{#if snapshot.sections.length === 0 && snapshot.version === 0}
-			<!-- Empty state -->
-			<div class="mt-12 flex flex-col items-center gap-4 text-center">
-				<div class="flex h-16 w-16 items-center justify-center rounded-full bg-surface-800">
-					<svg class="h-8 w-8 text-surface-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-						<path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2z"/>
-						<path d="M12 6v6l4 2"/>
+		{#if snapshot.version === 0 && snapshot.sections.length === 0}
+			<div class="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+				<div
+					class="flex h-16 w-16 items-center justify-center rounded-full"
+					style="background: var(--om-instrument);"
+				>
+					<svg
+						class="h-8 w-8"
+						style="color: var(--om-text-meta);"
+						fill="none"
+						viewBox="0 0 24 24"
+						stroke="currentColor"
+						stroke-width="1.5"
+					>
+						<path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2z" />
+						<path d="M12 6v6l4 2" />
 					</svg>
 				</div>
 				<div>
-					<h3 class="text-lg font-semibold text-surface-200">Omni is warming up</h3>
-					<p class="mt-1 text-sm text-surface-500 max-w-sm">
-						As Laya processes events, Omni will build a rolling summary of your professional activity across all platforms.
+					<h3 class="om-title" style="color: var(--om-text);">Omni is warming up</h3>
+					<p class="om-row-t mt-1 max-w-sm" style="color: var(--om-text-meta);">
+						As Laya processes events, Omni will build a rolling summary of your professional
+						activity across all platforms.
 					</p>
 				</div>
 				<button
-					onclick={handleResynthesis}
+					type="button"
+					class="om-row-t rounded-lg px-4 py-2 font-medium disabled:opacity-50"
+					style="background: var(--om-comp-bg); color: var(--om-comp-num);"
 					disabled={resynthesizing}
-					class="mt-2 rounded-lg bg-laya-orange/15 px-4 py-2 text-sm font-medium text-laya-orange transition-colors hover:bg-laya-orange/25 disabled:opacity-50"
-				>
-					{resynthesizing ? 'Synthesizing...' : 'Generate first summary'}
-				</button>
+					onclick={handleResynthesis}
+				>{resynthesizing ? 'Synthesizing…' : 'Generate first summary'}</button>
 			</div>
 		{:else}
-			<div class="mt-4">
-				<OmniView
+			<InstrumentCluster
+				{snapshot}
+				{volume}
+				{attentionItems}
+				{attentionDelta}
+				{nextSynthesisAt}
+				{resynthesizing}
+			/>
+
+			<div class="flex min-h-0 flex-1" style="border-top: 1px solid var(--om-border);">
+				<TriageColumn
+					items={attentionItems}
+					{newKeys}
+					onOpen={(item) => openItem(item, 'attention')}
+				/>
+				<CompressionFunnel
 					{snapshot}
-					onPin={handlePin}
-					onUnpin={handleUnpin}
-					onDrillDown={handleDrillDown}
-					onBookmark={handleBookmark}
+					changes={changes}
+					version={snapshot.version}
+					onOpen={openItem}
+				/>
+				<ChangelogRail
+					{changes}
+					loading={changesLoading}
+					baseVersion={changes?.base_version ?? resolveBase(snapshot.version)}
+					displayVersion={snapshot.version}
+					entries={timelineEntries}
+					onBaseChange={setComparisonBase}
+					onDisplayChange={setDisplayVersion}
+					onFullHistory={loadFullHistory}
+					onOpenItem={openItemKey}
 				/>
 			</div>
 		{/if}
 	{/if}
-</div>
 </div>

@@ -390,7 +390,10 @@ html, body {
 	-webkit-backdrop-filter: blur(16px) saturate(1.4);
 	backdrop-filter: blur(16px) saturate(1.4);
 	background-color: oklch(0.98 0.004 72 / 0.35);
-	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.7), 0 4px 16px -4px rgb(0 0 0 / 0.08);
+	/* The dark rule's white 10% border is invisible on cream — a floating tooltip
+	   needs a warm edge to separate from the page, especially at card size. */
+	border: 0.5px solid rgb(110 60 25 / 0.22);
+	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.7), 0 6px 20px -5px rgb(60 30 10 / 0.16);
 }
 /* Dense variant — for tooltips inside glass containers where backdrop-filter
    can't reach through to real content (e.g. chat bubbles). Higher opacity
@@ -406,7 +409,8 @@ html, body {
 	-webkit-backdrop-filter: blur(16px) saturate(1.4);
 	backdrop-filter: blur(16px) saturate(1.4);
 	background-color: oklch(0.98 0.004 72 / 0.75);
-	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.7), 0 4px 16px -4px rgb(0 0 0 / 0.08);
+	border: 0.5px solid rgb(110 60 25 / 0.22);
+	box-shadow: inset 0 0.5px 0 0 rgb(255 255 255 / 0.7), 0 6px 20px -5px rgb(60 30 10 / 0.16);
 }
 
 /* Glass menu — for overflow/action menus when glass theme is on */
@@ -2202,4 +2206,482 @@ html, body {
 [data-theme='light'][data-glass-theme] .tl-glass-surface {
 	-webkit-backdrop-filter: blur(20px) saturate(1.6);
 	backdrop-filter: blur(20px) saturate(1.6);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   OMNI — Situation Board (/omni) and Item Page (/omni/insight)
+   Same contract as the TIMELINE block above: every surface, tint and
+   type size is a token, so the four appearance combinations
+   (dark/light × glass on/off) plus the accessible palette, the text-size
+   setting and the density setting all resolve HERE. Components read
+   var(--om-*) and never a raw colour or a raw px size.
+   ═══════════════════════════════════════════════════════════════ */
+:root {
+	/* Text-size setting (Appearance → Text Size, 12-15px) applied as a ratio.
+	   The board's type scale is designed at the 13px default; scaling the whole
+	   scale by one factor keeps its proportions instead of flattening a 9px
+	   micro-label and a 34px numeral toward each other.
+
+	   MUST be a unitless number — every rule below is `calc(Npx * var(--om-scale))`
+	   and px×px is not a length, so a value with units makes each of those
+	   declarations invalid and the whole board silently falls back to inherited
+	   16px text. It cannot be derived here (`calc(var(--laya-font-base) / 13)`
+	   yields 1px, not 1), so +layout.svelte sets it alongside --laya-font-base.
+	   This is the no-JS default. */
+	--om-scale: 1;
+
+	/* Card-size setting (Appearance → Card Size). Compact tightens the board
+	   the same way it tightens feed cards; the multiplier is applied to row and
+	   band padding only, never to type. */
+	--om-density: 1;
+
+	/* Chrome surfaces */
+	--om-bar:        oklch(0.150 0.006 46);   /* identity bar, instrument tray */
+	--om-rail:       oklch(0.142 0.006 47);   /* triage / changelog / context rails */
+	--om-claim:      oklch(0.145 0.006 47);   /* item-page claim header */
+	--om-inset:      oklch(0.155 0.007 47);   /* draft box, composer */
+	--om-detail:     oklch(0.160 0.007 48);   /* expanded evidence detail */
+	--om-band:       oklch(0.165 0.007 48);   /* funnel band body */
+	--om-prompt:     oklch(0.170 0.007 48);   /* suggested-prompt pill */
+	--om-instrument: oklch(0.175 0.007 48);   /* instrument card */
+	--om-popover:    oklch(0.175 0.007 48);   /* version picker */
+	--om-row-hover:  oklch(0.190 0.008 49);
+	--om-row-open:   oklch(0.195 0.008 49);
+	--om-pill:       oklch(0.205 0.008 49);   /* funnel item pill */
+	--om-pill-hover: oklch(0.225 0.009 50);
+	--om-chip:       oklch(0.245 0.008 50);   /* neutral chip fill */
+
+	/* Lines */
+	--om-divider:      oklch(0.225 0.008 50);
+	--om-border:       oklch(0.245 0.008 50);
+	--om-border-card:  oklch(0.295 0.009 51);
+	--om-border-soft:  oklch(0.275 0.009 51);
+	--om-border-input: oklch(0.310 0.009 51);
+	--om-border-pill:  oklch(0.340 0.009 52);
+
+	/* Text */
+	--om-text:        oklch(0.940 0.008 65);
+	--om-text-strong: oklch(0.890 0.010 64);
+	--om-text-body:   oklch(0.770 0.010 62);
+	--om-text-mid:    oklch(0.660 0.012 60);
+	--om-text-dim:    oklch(0.600 0.012 58);
+	--om-text-meta:   oklch(0.540 0.012 57);
+	--om-text-faint:  oklch(0.460 0.011 54);
+
+	/* Outcome / status tints — dot, background, foreground.
+	   `ok` resolved/merged/added · `warn` awaiting-you/folded · `alert`
+	   failed/changes-requested/attention · `neutral` everything else. */
+	--om-ok-dot:      oklch(0.53 0.18 148);
+	--om-ok-bg:       oklch(0.50 0.19 145 / 0.16);
+	--om-ok-fg:       oklch(0.78 0.13 148);
+	--om-warn-dot:    oklch(0.72 0.17 65);
+	--om-warn-bg:     oklch(0.775 0.130 63 / 0.16);
+	--om-warn-fg:     oklch(0.82 0.11 63);
+	--om-alert-dot:   oklch(0.58 0.20 27);
+	--om-alert-bg:    oklch(0.55 0.22 27 / 0.16);
+	--om-alert-fg:    oklch(0.82 0.13 27);
+	--om-neutral-dot: oklch(0.42 0.010 53);
+	--om-neutral-bg:  oklch(0.28 0.008 52);
+	--om-neutral-fg:  oklch(0.66 0.012 60);
+
+	/* Attention chrome — the only coloured instrument, and the funnel's top band */
+	--om-attn-border:  oklch(0.55 0.22 27 / 0.30);
+	--om-attn-bg:      oklch(0.55 0.22 27 / 0.07);
+	--om-attn-band-bg: oklch(0.55 0.22 27 / 0.05);
+	--om-attn-label:   oklch(0.76 0.13 27);
+	--om-attn-num:     oklch(0.86 0.11 27);
+	--om-attn-delta:   oklch(0.75 0.15 27);
+	--om-attn-badge:   oklch(0.55 0.22 27 / 0.20);
+	--om-attn-badge-fg: oklch(0.78 0.16 27);
+
+	/* Compression chrome */
+	--om-comp-border: oklch(0.775 0.130 63 / 0.28);
+	--om-comp-bg:     oklch(0.775 0.130 63 / 0.07);
+	--om-comp-label:  oklch(0.72 0.10 63);
+	--om-comp-num:    oklch(0.84 0.12 63);
+	/* Accent outline for the selected/primary control — laya-orange at alpha.
+	   A token rather than a literal because the light theme needs more chroma
+	   to stay visible against cream. */
+	--om-accent-border: oklch(0.775 0.130 63 / 0.45);
+	--om-accent-hover:  oklch(0.775 0.130 63 / 0.50);
+
+	/* Layer tints — dot and title, one pair per compression layer */
+	--om-layer-attention:     oklch(0.62 0.20 27);
+	--om-layer-attention-fg:  oklch(0.84 0.13 27);
+	--om-layer-recent:        oklch(0.72 0.17 65);
+	--om-layer-recent-fg:     oklch(0.82 0.12 63);
+	--om-layer-period:        oklch(0.58 0.16 250);
+	--om-layer-period-fg:     oklch(0.76 0.11 250);
+	--om-layer-milestone:     oklch(0.66 0.14 90);
+	--om-layer-milestone-fg:  oklch(0.80 0.11 88);
+
+	/* Priority — badge pair + the triage row's 2.5px accent bar */
+	--om-pri-critical-bg: oklch(0.53 0.22 27);
+	--om-pri-critical-fg: oklch(0.98 0.01 25);
+	--om-pri-high-bg:     oklch(0.60 0.20 20 / 0.26);
+	--om-pri-high-fg:     oklch(0.82 0.14 22);
+	--om-pri-medium-bg:   oklch(0.70 0.18 58 / 0.20);
+	--om-pri-medium-fg:   oklch(0.83 0.13 62);
+	--om-pri-low-bg:      oklch(0.30 0.008 52);
+	--om-pri-low-fg:      oklch(0.62 0.012 58);
+	--om-bar-critical: oklch(0.53 0.22 27);
+	--om-bar-high:     oklch(0.62 0.20 24);
+	--om-bar-medium:   oklch(0.72 0.17 62);
+	--om-bar-low:      oklch(0.40 0.010 53);
+
+	/* NEW marker (an item absent from the last version the user saw) */
+	--om-new-bg:  oklch(0.50 0.19 145 / 0.20);
+	--om-new-fg:  oklch(0.80 0.13 148);
+	--om-new-row: oklch(0.50 0.19 145 / 0.05);
+
+	/* Instruments */
+	--om-volume-bar:   oklch(0.32 0.010 52);
+	--om-volume-today: var(--color-laya-orange);
+	--om-track:        oklch(0.265 0.009 51);   /* mini-timeline baseline */
+	--om-popover-shadow: 0 18px 40px -12px oklch(0.06 0.01 50 / 0.85);
+}
+
+/* Light theme — same hues, inverted lightness. The surface scale already flips
+   in app.css; only the tinted values need explicit counterparts. */
+[data-theme='light'] {
+	--om-bar:        oklch(0.975 0.004 74);
+	--om-rail:       oklch(0.955 0.005 74);
+	--om-claim:      oklch(0.968 0.005 74);
+	--om-inset:      oklch(0.985 0.004 76);
+	--om-detail:     oklch(0.980 0.004 75);
+	--om-band:       oklch(0.978 0.004 75);
+	--om-prompt:     oklch(0.982 0.004 75);
+	--om-instrument: oklch(0.985 0.004 76);
+	--om-popover:    oklch(0.988 0.003 76);
+	--om-row-hover:  oklch(0.945 0.006 72);
+	--om-row-open:   oklch(0.935 0.006 72);
+	--om-pill:       oklch(0.945 0.006 72);
+	--om-pill-hover: oklch(0.920 0.006 71);
+	--om-chip:       oklch(0.925 0.005 72);
+
+	--om-divider:      oklch(0.895 0.006 70);
+	--om-border:       oklch(0.880 0.006 70);
+	--om-border-card:  oklch(0.870 0.007 68);
+	--om-border-soft:  oklch(0.890 0.006 70);
+	--om-border-input: oklch(0.860 0.007 68);
+	--om-border-pill:  oklch(0.855 0.007 68);
+
+	--om-text:        oklch(0.220 0.018 44);
+	--om-text-strong: oklch(0.280 0.017 46);
+	--om-text-body:   oklch(0.400 0.016 52);
+	--om-text-mid:    oklch(0.500 0.014 57);
+	--om-text-dim:    oklch(0.560 0.013 60);
+	--om-text-meta:   oklch(0.600 0.012 62);
+	--om-text-faint:  oklch(0.650 0.011 64);
+
+	--om-ok-bg:       oklch(0.955 0.028 152);
+	--om-ok-fg:       oklch(0.38 0.15 148);
+	--om-warn-bg:     oklch(0.955 0.030 70);
+	--om-warn-fg:     oklch(0.46 0.15 58);
+	--om-alert-bg:    oklch(0.950 0.038 22);
+	--om-alert-fg:    oklch(0.45 0.20 27);
+	--om-neutral-bg:  oklch(0.920 0.005 72);
+	--om-neutral-fg:  oklch(0.480 0.014 60);
+
+	--om-attn-border:  oklch(0.58 0.20 27 / 0.30);
+	--om-attn-bg:      oklch(0.955 0.030 22);
+	--om-attn-band-bg: oklch(0.968 0.020 22);
+	--om-attn-label:   oklch(0.48 0.19 27);
+	--om-attn-num:     oklch(0.44 0.20 27);
+	--om-attn-delta:   oklch(0.48 0.19 27);
+	--om-attn-badge:   oklch(0.930 0.045 22);
+	--om-attn-badge-fg: oklch(0.45 0.20 27);
+
+	--om-comp-border: oklch(0.72 0.12 63 / 0.45);
+	--om-comp-bg:     oklch(0.965 0.030 70);
+	--om-comp-label:  oklch(0.50 0.14 58);
+	--om-comp-num:    oklch(0.50 0.15 55);
+	--om-accent-border: oklch(0.68 0.15 58 / 0.70);
+	--om-accent-hover:  oklch(0.62 0.16 55 / 0.80);
+
+	--om-layer-attention-fg:  oklch(0.45 0.19 27);
+	--om-layer-recent-fg:     oklch(0.48 0.15 58);
+	--om-layer-period-fg:     oklch(0.44 0.15 250);
+	--om-layer-milestone-fg:  oklch(0.46 0.12 88);
+
+	--om-pri-high-bg:   oklch(0.930 0.048 22);
+	--om-pri-high-fg:   oklch(0.46 0.19 25);
+	--om-pri-medium-bg: oklch(0.945 0.045 65);
+	--om-pri-medium-fg: oklch(0.48 0.14 58);
+	--om-pri-low-bg:    oklch(0.920 0.005 72);
+	--om-pri-low-fg:    oklch(0.520 0.013 60);
+	--om-bar-low:       oklch(0.780 0.008 68);
+
+	--om-new-bg:  oklch(0.930 0.055 152);
+	--om-new-fg:  oklch(0.38 0.15 148);
+	--om-new-row: oklch(0.50 0.19 145 / 0.06);
+
+	--om-volume-bar: oklch(0.855 0.008 68);
+	--om-track:      oklch(0.885 0.006 70);
+	--om-popover-shadow: 0 18px 40px -12px oklch(0.55 0.02 60 / 0.28);
+}
+
+/* Glass theme — surfaces go translucent so .om-glass's blur has something to
+   diffuse. Borders warm up slightly; a flat grey hairline reads as a seam on
+   frosted glass. */
+[data-glass-theme] {
+	--om-bar:        oklch(0.150 0.006 46 / 0.35);
+	--om-rail:       oklch(0.142 0.006 47 / 0.45);
+	--om-claim:      oklch(0.145 0.006 47 / 0.40);
+	--om-inset:      oklch(0.155 0.007 47 / 0.50);
+	--om-detail:     oklch(0.160 0.007 48 / 0.50);
+	--om-band:       oklch(0.165 0.007 48 / 0.42);
+	--om-prompt:     oklch(0.170 0.007 48 / 0.50);
+	--om-instrument: oklch(0.175 0.007 48 / 0.45);
+	--om-popover:    oklch(0.175 0.007 48 / 0.94);
+	--om-pill:       oklch(0.205 0.008 49 / 0.55);
+	--om-pill-hover: oklch(0.225 0.009 50 / 0.70);
+	--om-row-hover:  oklch(0.190 0.008 49 / 0.60);
+	--om-row-open:   oklch(0.195 0.008 49 / 0.65);
+	--om-chip:       oklch(0.245 0.008 50 / 0.55);
+
+	--om-divider:      oklch(0.75 0.02 60 / 0.10);
+	--om-border:       oklch(0.75 0.02 60 / 0.12);
+	--om-border-card:  oklch(0.75 0.02 60 / 0.16);
+	--om-border-soft:  oklch(0.75 0.02 60 / 0.14);
+	--om-border-input: oklch(0.75 0.02 60 / 0.18);
+	--om-border-pill:  oklch(0.75 0.02 60 / 0.22);
+
+	--om-attn-bg:      oklch(0.55 0.22 27 / 0.12);
+	--om-attn-band-bg: oklch(0.55 0.22 27 / 0.09);
+	--om-comp-bg:      oklch(0.775 0.130 63 / 0.12);
+	--om-neutral-bg:   oklch(0.28 0.008 52 / 0.55);
+}
+[data-theme='light'][data-glass-theme] {
+	--om-bar:        rgb(255 255 255 / 0.45);
+	--om-rail:       rgb(255 255 255 / 0.50);
+	--om-claim:      rgb(255 255 255 / 0.45);
+	--om-inset:      rgb(255 255 255 / 0.60);
+	--om-detail:     rgb(255 255 255 / 0.58);
+	--om-band:       rgb(255 255 255 / 0.48);
+	--om-prompt:     rgb(255 255 255 / 0.58);
+	--om-instrument: rgb(255 255 255 / 0.55);
+	--om-popover:    rgb(255 255 255 / 0.96);
+	--om-pill:       rgb(255 255 255 / 0.55);
+	--om-pill-hover: rgb(255 255 255 / 0.75);
+	--om-row-hover:  rgb(255 255 255 / 0.60);
+	--om-row-open:   rgb(255 255 255 / 0.70);
+	--om-chip:       rgb(0 0 0 / 0.06);
+
+	--om-divider:      oklch(0.40 0.03 55 / 0.10);
+	--om-border:       oklch(0.40 0.03 55 / 0.12);
+	--om-border-card:  oklch(0.40 0.03 55 / 0.16);
+	--om-border-soft:  oklch(0.40 0.03 55 / 0.14);
+	--om-border-input: oklch(0.40 0.03 55 / 0.18);
+	--om-border-pill:  oklch(0.40 0.03 55 / 0.22);
+
+	--om-attn-bg:      oklch(0.62 0.20 27 / 0.10);
+	--om-attn-band-bg: oklch(0.62 0.20 27 / 0.07);
+	--om-comp-bg:      oklch(0.775 0.130 63 / 0.14);
+	--om-neutral-bg:   rgb(0 0 0 / 0.06);
+}
+
+/* Accessible Colors (Appearance → Status Colors → Accessible Colors).
+   Shifts the outcome hues to the same colourblind-safe palette the feed uses:
+   green→yellow, amber→cyan-blue, red→slate. Attention/priority reds follow, or
+   the board would keep signalling urgency in the one hue that mode avoids. */
+[data-accessible-colors] {
+	--om-ok-dot:      oklch(0.79 0.17 88);
+	--om-ok-bg:       oklch(0.60 0.17 88 / 0.18);
+	--om-ok-fg:       oklch(0.86 0.14 90);
+	--om-warn-dot:    oklch(0.69 0.15 230);
+	--om-warn-bg:     oklch(0.60 0.15 230 / 0.20);
+	--om-warn-fg:     oklch(0.82 0.11 230);
+	--om-alert-dot:   oklch(0.62 0.05 257);
+	--om-alert-bg:    oklch(0.45 0.04 257 / 0.30);
+	--om-alert-fg:    oklch(0.84 0.03 257);
+
+	--om-attn-border:  oklch(0.60 0.06 257 / 0.40);
+	--om-attn-bg:      oklch(0.45 0.05 257 / 0.12);
+	--om-attn-band-bg: oklch(0.45 0.05 257 / 0.09);
+	--om-attn-label:   oklch(0.80 0.05 257);
+	--om-attn-num:     oklch(0.88 0.04 257);
+	--om-attn-delta:   oklch(0.80 0.05 257);
+	--om-attn-badge:   oklch(0.45 0.05 257 / 0.30);
+	--om-attn-badge-fg: oklch(0.84 0.04 257);
+
+	--om-layer-attention:    oklch(0.62 0.05 257);
+	--om-layer-attention-fg: oklch(0.85 0.04 257);
+	--om-layer-recent:       oklch(0.69 0.15 230);
+	--om-layer-recent-fg:    oklch(0.82 0.11 230);
+
+	--om-pri-critical-bg: oklch(0.45 0.05 257);
+	--om-pri-critical-fg: oklch(0.97 0.01 257);
+	--om-pri-high-bg:     oklch(0.50 0.05 257 / 0.35);
+	--om-pri-high-fg:     oklch(0.84 0.04 257);
+	--om-pri-medium-bg:   oklch(0.60 0.15 230 / 0.22);
+	--om-pri-medium-fg:   oklch(0.82 0.11 230);
+	--om-bar-critical: oklch(0.55 0.06 257);
+	--om-bar-high:     oklch(0.62 0.05 257);
+	--om-bar-medium:   oklch(0.69 0.15 230);
+
+	--om-new-bg: oklch(0.60 0.17 88 / 0.22);
+	--om-new-fg: oklch(0.86 0.14 90);
+}
+[data-accessible-colors][data-theme='light'] {
+	--om-ok-bg:      oklch(0.955 0.045 92);
+	--om-ok-fg:      oklch(0.44 0.13 88);
+	--om-warn-bg:    oklch(0.950 0.035 230);
+	--om-warn-fg:    oklch(0.44 0.14 235);
+	--om-alert-bg:   oklch(0.930 0.010 257);
+	--om-alert-fg:   oklch(0.40 0.04 257);
+	--om-attn-bg:      oklch(0.945 0.012 257);
+	--om-attn-band-bg: oklch(0.965 0.008 257);
+	--om-attn-label:   oklch(0.42 0.04 257);
+	--om-attn-num:     oklch(0.36 0.05 257);
+	--om-attn-delta:   oklch(0.42 0.04 257);
+	--om-attn-badge:   oklch(0.910 0.014 257);
+	--om-attn-badge-fg: oklch(0.38 0.05 257);
+	--om-pri-high-bg:   oklch(0.910 0.014 257);
+	--om-pri-high-fg:   oklch(0.38 0.05 257);
+	--om-pri-medium-bg: oklch(0.945 0.035 230);
+	--om-pri-medium-fg: oklch(0.42 0.13 235);
+	--om-new-bg: oklch(0.955 0.045 92);
+	--om-new-fg: oklch(0.44 0.13 88);
+}
+
+/* Status Colors OFF (Appearance → Status Colors). The setting's promise is "a
+   uniform look": outcome tinting collapses to neutral so evidence rows, filter
+   chips and changelog glyphs stop colour-coding. Priority, attention and layer
+   identity are deliberately NOT neutralised — they are the board's information,
+   not decoration, and the feed's own toggle leaves priority badges alone too. */
+[data-card-colors='off'] {
+	--om-ok-dot:   var(--om-neutral-dot);
+	--om-ok-bg:    var(--om-neutral-bg);
+	--om-ok-fg:    var(--om-neutral-fg);
+	--om-warn-dot: var(--om-neutral-dot);
+	--om-warn-bg:  var(--om-neutral-bg);
+	--om-warn-fg:  var(--om-neutral-fg);
+	--om-alert-dot: var(--om-neutral-dot);
+	--om-alert-bg:  var(--om-neutral-bg);
+	--om-alert-fg:  var(--om-neutral-fg);
+	--om-new-bg:   var(--om-neutral-bg);
+	--om-new-fg:   var(--om-neutral-fg);
+	--om-new-row:  transparent;
+}
+
+/* Compact card size tightens the board's rows and bands (never its type). */
+[data-omni-density='compact'] { --om-density: 0.72; }
+
+/* ── Type scale ──────────────────────────────────────────────────
+   Every size is design-px × --om-scale, so Text Size moves the whole
+   board together. Mono roles also pin the font so a system-font
+   override can't turn a numeral column proportional — the board's
+   aligned digits depend on 'tnum', which is global in app.css. */
+.om-mono { font-family: var(--font-mono); }
+.om-num-lg   { font-family: var(--font-mono); font-size: calc(34px * var(--om-scale)); font-weight: 600; line-height: 1; letter-spacing: -0.03em; }
+.om-num-md   { font-family: var(--font-mono); font-size: calc(26px * var(--om-scale)); font-weight: 600; line-height: 1; letter-spacing: -0.03em; }
+.om-claim-t  { font-size: calc(19px * var(--om-scale)); font-weight: 500; line-height: 1.45; letter-spacing: -0.012em; text-wrap: pretty; }
+.om-title    { font-size: calc(13.5px * var(--om-scale)); font-weight: 600; }
+.om-title-sm { font-size: calc(12.5px * var(--om-scale)); font-weight: 600; }
+.om-band-t   { font-size: calc(11.5px * var(--om-scale)); font-weight: 600; }
+.om-item-t   { font-size: calc(11.5px * var(--om-scale)); line-height: 1.45; text-wrap: pretty; }
+.om-row-t    { font-size: calc(11.5px * var(--om-scale)); }
+.om-entry-t  { font-size: calc(11px * var(--om-scale)); line-height: 1.45; text-wrap: pretty; }
+.om-pill-t   { font-size: calc(10.5px * var(--om-scale)); line-height: 1.4; }
+.om-body     { font-size: calc(12px * var(--om-scale)); line-height: 1.6; text-wrap: pretty; }
+.om-hint     { font-size: calc(10px * var(--om-scale)); }
+.om-micro {
+	font-family: var(--font-mono);
+	font-size: calc(9px * var(--om-scale));
+	letter-spacing: 0.13em;
+	text-transform: uppercase;
+	color: var(--om-text-meta);
+}
+.om-meta   { font-family: var(--font-mono); font-size: calc(8.5px * var(--om-scale)); color: var(--om-text-faint); }
+.om-ref    { font-family: var(--font-mono); font-size: calc(10px * var(--om-scale)); font-weight: 600; }
+.om-stamp  { font-family: var(--font-mono); font-size: calc(9.5px * var(--om-scale)); }
+.om-tag    { font-family: var(--font-mono); font-size: calc(8px * var(--om-scale)); letter-spacing: 0.06em; }
+.om-badge  { font-size: calc(8px * var(--om-scale)); font-weight: 700; letter-spacing: 0.08em; }
+.om-badge-lg { font-size: calc(9px * var(--om-scale)); font-weight: 700; letter-spacing: 0.1em; }
+.om-status { font-size: calc(8.5px * var(--om-scale)); font-weight: 700; letter-spacing: 0.06em; }
+
+/* ── Surfaces ────────────────────────────────────────────────── */
+.om-bar        { background: var(--om-bar); }
+.om-rail       { background: var(--om-rail); }
+.om-claim      { background: var(--om-claim); }
+.om-instrument { background: var(--om-instrument); border: 1px solid var(--om-border-card); }
+.om-band       { background: var(--om-band); border: 1px solid var(--om-border-soft); }
+.om-inset      { background: var(--om-inset); border: 1px solid var(--om-border-card); }
+.om-detail     { background: var(--om-detail); border: 1px solid var(--om-border-card); }
+
+/* Under the glass theme the surfaces above are translucent, so the panels that
+   are meant to read as glass need the frost too. No-op when glass is off. */
+[data-glass-theme] .om-glass {
+	-webkit-backdrop-filter: blur(16px) saturate(1.4);
+	backdrop-filter: blur(16px) saturate(1.4);
+}
+[data-theme='light'][data-glass-theme] .om-glass {
+	-webkit-backdrop-filter: blur(20px) saturate(1.6);
+	backdrop-filter: blur(20px) saturate(1.6);
+}
+
+/* Floating lists (version pickers, the space menu). These sit over dense
+   changelog text, so they get the app's dropdown-strength frost — .om-glass's
+   16px panel blur is tuned for full columns and leaves a small popover looking
+   see-through. Opaque by default; only glass mode diffuses. */
+.om-popover-surface {
+	background: var(--om-popover);
+	border: 1px solid var(--om-border-pill);
+	box-shadow: var(--om-popover-shadow);
+}
+[data-glass-theme] .om-popover-surface {
+	-webkit-backdrop-filter: blur(28px) saturate(1.8);
+	backdrop-filter: blur(28px) saturate(1.8);
+	box-shadow:
+		var(--om-popover-shadow),
+		inset 0 0.5px 0 rgb(255 255 255 / 0.08);
+}
+[data-theme='light'][data-glass-theme] .om-popover-surface {
+	box-shadow:
+		var(--om-popover-shadow),
+		inset 0 1px 0 rgb(255 255 255 / 0.8);
+}
+
+/* ── Rows ────────────────────────────────────────────────────── */
+.om-row {
+	border-radius: 7px;
+	cursor: pointer;
+	transition: background 120ms ease;
+}
+.om-row:hover { background: var(--om-row-hover); }
+.om-row--open { background: var(--om-row-open); }
+.om-row--new  { background: var(--om-new-row); }
+
+.om-item-pill {
+	background: var(--om-pill);
+	border-radius: 5px;
+	transition: background 120ms ease;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.om-item-pill:hover { background: var(--om-pill-hover); }
+
+.om-chev { transition: transform 120ms ease; }
+.om-chev--open { transform: rotate(90deg); }
+
+/* ── The one loop on the board: the attention dot ─────────────── */
+@keyframes om-soft-pulse {
+	0%, 100% { opacity: 1; }
+	50%      { opacity: 0.45; }
+}
+.om-pulse { animation: om-soft-pulse 1.8s ease-in-out infinite; }
+
+/* Motion is opt-out globally, but the pulse is the loudest thing here so it is
+   killed explicitly as well — and by the OS preference, which the global rule
+   keys off the store rather than the media query. */
+[data-reduced-motion] .om-pulse { animation: none !important; }
+[data-reduced-motion] .om-row,
+[data-reduced-motion] .om-item-pill,
+[data-reduced-motion] .om-chev { transition: none !important; }
+@media (prefers-reduced-motion: reduce) {
+	.om-pulse { animation: none !important; }
+	.om-row, .om-item-pill, .om-chev { transition: none !important; }
 }
