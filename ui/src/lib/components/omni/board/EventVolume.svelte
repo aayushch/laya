@@ -26,7 +26,10 @@
 	});
 </script>
 
-<div class="om-instrument om-glass flex min-w-0 flex-1 flex-col gap-[7px] rounded-[9px] px-[13px] py-[11px]">
+<div
+	class="om-instrument om-glass flex min-w-0 flex-1 flex-col gap-[5px] rounded-[9px] px-[11px]"
+	style="padding-block: calc(8px * var(--om-density));"
+>
 	<div class="flex items-center gap-2">
 		<span class="om-micro whitespace-nowrap">Event volume · {volume?.days ?? 14} days</span>
 		<span class="flex-1"></span>

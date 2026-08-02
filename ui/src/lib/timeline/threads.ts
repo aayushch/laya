@@ -31,6 +31,7 @@ export interface Thread {
 	platform: string;
 	priority: string;
 	persona: string;
+	spaceId?: string;
 	spaceName?: string;
 	spaceColor?: string;
 	/** Short entity keys (PR-851, FERR-1585, …), most identifying first. */
@@ -185,6 +186,7 @@ export function buildThreads(groups: CardGroup[], opts: BuildThreadsOptions): Th
 			platform: (group.platform || platformKey(group.entity_id) || '').toLowerCase(),
 			priority: group.top_priority,
 			persona: firstCard.persona,
+			spaceId: firstCard.space_id,
 			spaceName: firstCard.space_name,
 			spaceColor: firstCard.space_color,
 			labels: entityLabels(group.cards),
@@ -219,18 +221,21 @@ export interface AttentionMark {
 	kind: 'escalating' | 'agent' | 'needs-you';
 	label: string;
 	entityId: string;
+	spaceName?: string;
+	spaceColor?: string;
 }
 
 export function attentionMarks(threads: Thread[]): AttentionMark[] {
 	const marks: AttentionMark[] = [];
 	for (const t of threads) {
 		const minute = t.lastMinute;
+		const space = { spaceName: t.spaceName, spaceColor: t.spaceColor };
 		if (t.attention.escalating) {
-			marks.push({ minute, kind: 'escalating', label: `${t.title} — ${t.attention.reason}`, entityId: t.entityId });
+			marks.push({ minute, kind: 'escalating', label: `${t.title} — ${t.attention.reason}`, entityId: t.entityId, ...space });
 		} else if (t.attention.agentRunning || t.attention.awaitingInput) {
-			marks.push({ minute, kind: 'agent', label: `${t.title} — ${t.attention.reason}`, entityId: t.entityId });
+			marks.push({ minute, kind: 'agent', label: `${t.title} — ${t.attention.reason}`, entityId: t.entityId, ...space });
 		} else if (t.attention.needsYou) {
-			marks.push({ minute, kind: 'needs-you', label: `${t.title} — needs you`, entityId: t.entityId });
+			marks.push({ minute, kind: 'needs-you', label: `${t.title} — needs you`, entityId: t.entityId, ...space });
 		}
 	}
 	return marks;

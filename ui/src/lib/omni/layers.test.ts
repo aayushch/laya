@@ -22,11 +22,13 @@ describe('LAYERS', () => {
 		]);
 	});
 
-	it('narrows monotonically — the funnel shape is the message', () => {
-		const widths = LAYERS.map((l) => parseInt(l.width, 10));
-		expect(widths).toEqual([100, 89, 75, 60]);
-		for (let i = 1; i < widths.length; i++) {
-			expect(widths[i]).toBeLessThan(widths[i - 1]);
+	it('steps in monotonically — the compression shape is the message', () => {
+		// Bands run to the right edge and inset from the left, so the chain still
+		// reads as a funnel without spending board width on symmetry.
+		const indents = LAYERS.map((l) => parseFloat(l.indent));
+		expect(indents).toEqual([0, 3, 6, 9]);
+		for (let i = 1; i < indents.length; i++) {
+			expect(indents[i]).toBeGreaterThan(indents[i - 1]);
 		}
 	});
 });

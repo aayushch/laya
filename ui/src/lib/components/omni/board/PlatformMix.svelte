@@ -17,7 +17,10 @@
 	const total = $derived(entries.reduce((sum, [, n]) => sum + n, 0));
 </script>
 
-<div class="om-instrument om-glass flex w-[300px] flex-none flex-col gap-2 rounded-[9px] px-[13px] py-[11px]">
+<div
+	class="om-instrument om-glass flex w-[290px] flex-none flex-col gap-1.5 rounded-[9px] px-[11px]"
+	style="padding-block: calc(8px * var(--om-density));"
+>
 	<span class="om-micro">Platform mix</span>
 
 	{#if entries.length === 0}

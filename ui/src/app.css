@@ -2575,9 +2575,11 @@ html, body {
    override can't turn a numeral column proportional — the board's
    aligned digits depend on 'tnum', which is global in app.css. */
 .om-mono { font-family: var(--font-mono); }
-.om-num-lg   { font-family: var(--font-mono); font-size: calc(34px * var(--om-scale)); font-weight: 600; line-height: 1; letter-spacing: -0.03em; }
+.om-num-lg   { font-family: var(--font-mono); font-size: calc(29px * var(--om-scale)); font-weight: 600; line-height: 1; letter-spacing: -0.03em; }
 .om-num-md   { font-family: var(--font-mono); font-size: calc(26px * var(--om-scale)); font-weight: 600; line-height: 1; letter-spacing: -0.03em; }
-.om-claim-t  { font-size: calc(19px * var(--om-scale)); font-weight: 500; line-height: 1.45; letter-spacing: -0.012em; text-wrap: pretty; }
+/* The claim is still the biggest type on the page by 4px — it just no longer
+   spends a third line and 45% leading to say so. */
+.om-claim-t  { font-size: calc(17.5px * var(--om-scale)); font-weight: 500; line-height: 1.34; letter-spacing: -0.012em; text-wrap: pretty; }
 .om-title    { font-size: calc(13.5px * var(--om-scale)); font-weight: 600; }
 .om-title-sm { font-size: calc(12.5px * var(--om-scale)); font-weight: 600; }
 .om-band-t   { font-size: calc(11.5px * var(--om-scale)); font-weight: 600; }

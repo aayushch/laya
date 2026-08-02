@@ -29,7 +29,7 @@
 	import { layerLabel } from '$lib/omni/layers';
 	import type { EvidenceActionContext } from '$lib/omni/evidenceActions';
 	import {
-		omniExpandedCard,
+		omniExpandedCards,
 		omniItemFilter,
 		omniShowAllEvidence,
 		resetItemView
@@ -149,11 +149,19 @@
 
 	/** The first row of the active filter opens by default. */
 	function autoExpandFirst() {
-		omniExpandedCard.set(filtered[0]?.card_id ?? null);
+		omniExpandedCards.set(new Set(filtered[0] ? [filtered[0].card_id] : []));
 	}
 
 	function toggleCard(cardId: string) {
-		omniExpandedCard.update((current) => (current === cardId ? null : cardId));
+		omniExpandedCards.update((current) => {
+			const next = new Set(current);
+			if (!next.delete(cardId)) next.add(cardId);
+			return next;
+		});
+	}
+
+	function expandCards(cardIds: string[]) {
+		omniExpandedCards.set(new Set(cardIds));
 	}
 
 	function setFilter(bucket: OmniBucket | null) {
@@ -162,12 +170,13 @@
 		// Expand the first row of the new filter, and put the list back at the top
 		// by setting scrollTop directly — scrollIntoView would move the whole page.
 		const next = bucket ? cards.filter((c) => cardBucket(c) === bucket) : cards;
-		omniExpandedCard.set(next[0]?.card_id ?? null);
+		omniExpandedCards.set(new Set(next[0] ? [next[0].card_id] : []));
 		evidenceList?.scrollToTop();
 	}
 
+	/** Focus a single card (from the claim breakdown) — everything else closes. */
 	function selectCard(cardId: string) {
-		omniExpandedCard.set(cardId);
+		omniExpandedCards.set(new Set([cardId]));
 	}
 
 	// --- Chat ---
@@ -455,11 +464,12 @@
 					cards={filtered}
 					totalCount={sourceCardCount}
 					activeFilter={$omniItemFilter}
-					expandedCardId={$omniExpandedCard}
+					expandedCardIds={$omniExpandedCards}
 					showAll={$omniShowAllEvidence}
 					{loading}
 					onToggleCard={toggleCard}
-					onCollapseAll={() => omniExpandedCard.set(null)}
+					onExpandAll={expandCards}
+					onCollapseAll={() => omniExpandedCards.set(new Set())}
 					onShowAll={() => omniShowAllEvidence.set(true)}
 					actions={actionContext}
 				/>

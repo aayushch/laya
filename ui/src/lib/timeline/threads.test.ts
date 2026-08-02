@@ -183,7 +183,34 @@ describe('statusTone', () => {
 	});
 });
 
+describe('space identity', () => {
+	it('carries the space onto the thread so the capsule can mark it', () => {
+		const [thread] = buildThreads(
+			[group([card({ space_id: 'work', space_name: 'Work', space_color: '#F97316' })])],
+			{ date: DATE, now: NOW }
+		);
+		expect(thread.spaceId).toBe('work');
+		expect(thread.spaceName).toBe('Work');
+		expect(thread.spaceColor).toBe('#F97316');
+	});
+
+	it('leaves the space undefined when the card carries none', () => {
+		const [thread] = buildThreads([group([card()])], { date: DATE, now: NOW });
+		expect(thread.spaceId).toBeUndefined();
+		expect(thread.spaceColor).toBeUndefined();
+	});
+});
+
 describe('attentionMarks', () => {
+	it('tags each mark with its space so the heat rail can tint it', () => {
+		const threads = buildThreads(
+			[group([card({ status: 'failed', space_id: 'work', space_name: 'Work', space_color: '#F97316' })])],
+			{ date: DATE, now: NOW }
+		);
+		const [mark] = attentionMarks(threads);
+		expect(mark).toMatchObject({ kind: 'escalating', spaceName: 'Work', spaceColor: '#F97316' });
+	});
+
 	it('emits one mark per attention-worthy thread, escalation first', () => {
 		const threads = buildThreads(
 			[

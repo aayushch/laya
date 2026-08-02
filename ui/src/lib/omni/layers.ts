@@ -19,15 +19,21 @@ export interface LayerMeta {
 	window: string;
 	/** CSS var suffix — var(--om-layer-<token>) / var(--om-layer-<token>-fg). */
 	token: string;
-	/** Funnel band width. The narrowing IS the idea: content compresses downward. */
-	width: string;
+	/**
+	 * Left inset of the band. The step-down IS the idea — content compresses
+	 * downward — but the bands keep their right edge, so the step reads as
+	 * indentation rather than as a centred funnel that gives away the width of
+	 * the board on both sides. Lines are what this page is short of; a Milestones
+	 * band at 60% width was losing 40% of every line to symmetry.
+	 */
+	indent: string;
 }
 
 export const LAYERS: LayerMeta[] = [
-	{ type: 'attention', title: 'Needs Attention', window: 'OPEN NOW', token: 'attention', width: '100%' },
-	{ type: 'recent', title: 'Recent', window: 'LAST 24–48H', token: 'recent', width: '89%' },
-	{ type: 'period', title: 'This Week', window: 'MON–TODAY', token: 'period', width: '75%' },
-	{ type: 'milestone', title: 'Milestones', window: 'BEYOND', token: 'milestone', width: '60%' }
+	{ type: 'attention', title: 'Needs Attention', window: 'OPEN NOW', token: 'attention', indent: '0' },
+	{ type: 'recent', title: 'Recent', window: 'LAST 24–48H', token: 'recent', indent: '3%' },
+	{ type: 'period', title: 'This Week', window: 'MON–TODAY', token: 'period', indent: '6%' },
+	{ type: 'milestone', title: 'Milestones', window: 'BEYOND', token: 'milestone', indent: '9%' }
 ];
 
 export const LAYER_BY_TYPE: Record<string, LayerMeta> = Object.fromEntries(

@@ -62,8 +62,12 @@ export function markVersionSeen(spaceId: string, version: number): void {
 /** Active outcome filter on the item page. null = show every bucket. */
 export const omniItemFilter = writable<OmniBucket | null>(null);
 
-/** card_id of the single expanded evidence row (only one opens at a time). */
-export const omniExpandedCard = writable<string | null>(null);
+/**
+ * card_ids of the expanded evidence rows. Rows open independently rather than
+ * as an accordion, so "expand all" / "collapse all" are both meaningful; the
+ * page still opens exactly one row by default.
+ */
+export const omniExpandedCards = writable<Set<string>>(new Set());
 
 /** Whether the user asked to see past the initial 8-row window. */
 export const omniShowAllEvidence = writable(false);
@@ -71,6 +75,6 @@ export const omniShowAllEvidence = writable(false);
 /** Reset per-item view state — called when the item page loads a new claim. */
 export function resetItemView(): void {
 	omniItemFilter.set(null);
-	omniExpandedCard.set(null);
+	omniExpandedCards.set(new Set());
 	omniShowAllEvidence.set(false);
 }

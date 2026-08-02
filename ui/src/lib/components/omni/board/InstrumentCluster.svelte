@@ -51,8 +51,9 @@
      collapses to nothing if the row's height is left to the tallest sibling and
      that sibling happens to be short (an empty attention instrument). -->
 <div
-	class="om-bar om-glass flex flex-none gap-2.5 px-[18px] pb-3"
-	style="min-height: calc(108px * var(--om-scale));"
+	class="om-bar om-glass flex flex-none gap-2 px-[18px]"
+	style="min-height: calc(88px * var(--om-scale));
+		padding-bottom: calc(10px * var(--om-density));"
 >
 	<AttentionLoad items={attentionItems} delta={attentionDelta} />
 	<EventVolume {volume} />

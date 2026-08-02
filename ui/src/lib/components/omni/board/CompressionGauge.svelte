@@ -32,8 +32,9 @@
 </script>
 
 <div
-	class="om-glass flex w-[214px] flex-none flex-col gap-1.5 rounded-[9px] px-[13px] py-[11px]"
-	style="border: 1px solid var(--om-comp-border); background: var(--om-comp-bg);"
+	class="om-glass flex w-[204px] flex-none flex-col gap-1 rounded-[9px] px-[11px]"
+	style="border: 1px solid var(--om-comp-border); background: var(--om-comp-bg);
+		padding-block: calc(8px * var(--om-density));"
 >
 	<span class="om-micro" style="color: var(--om-comp-label);">Compression</span>
 

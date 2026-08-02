@@ -15,6 +15,7 @@
 		threads = [],
 		scale,
 		width = 50,
+		showSpace = false,
 		onexpand,
 		onhover,
 		onleave
@@ -22,6 +23,8 @@
 		threads?: { thread: Thread; startMin: number; endMin: number }[];
 		scale: TimeScale;
 		width?: number;
+		/** Only true when the day's threads span more than one space. */
+		showSpace?: boolean;
 		onexpand: () => void;
 		onhover?: (el: HTMLElement, text: string) => void;
 		onleave?: () => void;
@@ -49,19 +52,29 @@
 	{#each threads as item, i (item.thread.key)}
 		{@const top = scale.y(item.startMin)}
 		{@const height = Math.max(14, scale.y(item.endMin) - top)}
+		{@const tone = `var(--tl-node-${statusTone(item.thread.latest.status)})`}
+		{@const spaceColor = showSpace ? item.thread.spaceColor : undefined}
 		<!-- Each bar is itself the expand affordance: it sits above the full-strip
-		     button, so a click landing on a bar would otherwise do nothing. -->
+		     button, so a click landing on a bar would otherwise do nothing.
+		     Across spaces the bar body takes the space colour and keeps the latest
+		     status as a cap, so spilled threads still say both. -->
 		<button
-			class="absolute w-1 rounded-[2px] opacity-[0.32] transition-opacity hover:opacity-90"
-			style="top: {top}px; height: {height}px; left: {8 + (i % 6) * 7}px; background: var(--tl-node-{statusTone(item.thread.latest.status)});"
+			class="absolute w-1 overflow-hidden rounded-[2px] opacity-[0.32] transition-opacity hover:opacity-90"
+			style="top: {top}px; height: {height}px; left: {8 + (i % 6) * 7}px; background: {spaceColor ?? tone};"
 			aria-label="{item.thread.title} — expand overflow lanes"
 			onclick={onexpand}
 			onmouseenter={(e) =>
 				onhover?.(
 					e.currentTarget as HTMLElement,
-					`${item.thread.title} · ${formatMinutes(item.startMin)}–${formatMinutes(item.endMin)} · ${item.thread.cardCount} events`
+					`${item.thread.title} · ${formatMinutes(item.startMin)}–${formatMinutes(item.endMin)} · ${item.thread.cardCount} events${
+						showSpace && item.thread.spaceName ? ` · ${item.thread.spaceName}` : ''
+					}`
 				)}
 			onmouseleave={() => onleave?.()}
-		></button>
+		>
+			{#if spaceColor}
+				<span class="absolute inset-x-0 top-0 h-[5px]" style="background: {tone};"></span>
+			{/if}
+		</button>
 	{/each}
 </div>

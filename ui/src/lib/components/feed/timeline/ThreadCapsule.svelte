@@ -22,6 +22,7 @@
 		height,
 		left,
 		width,
+		showSpace = false,
 		selected = false,
 		dimmed = false,
 		selectedCardId = '',
@@ -36,6 +37,8 @@
 		height: number;
 		left: number;
 		width: number;
+		/** Only true when the day's threads span more than one space. */
+		showSpace?: boolean;
 		selected?: boolean;
 		dimmed?: boolean;
 		selectedCardId?: string;
@@ -54,6 +57,12 @@
 	// 56px covers the header row plus the pinned chip and footer; 14px is one line
 	// at 10.5px/1.3. At the 98px minimum that still leaves room for three lines.
 	const subjectLines = $derived(Math.max(1, Math.min(6, Math.floor((height - 56) / 14))));
+
+	// The space paints the capsule's TOP-RIGHT corner arc. Top rather than bottom
+	// because capsules are stacked down a lane and their top edge is where the eye
+	// lands — and a corner is chrome, so it can't be mistaken for a status dot the
+	// way a free-floating dot on the footer line was.
+	const spaceCorner = $derived(showSpace ? thread.spaceColor : undefined);
 	const priorityLabel = $derived(PRIORITY_LABELS[thread.priority] ?? thread.priority);
 	// Escalation owns the capsule's colour; the agent glow is the next loudest.
 	const escalating = $derived(thread.attention.escalating);
@@ -155,4 +164,16 @@
 	<div class="absolute truncate font-mono text-[8px]" style="left: 20px; right: 6px; bottom: 4px; color: var(--tl-capsule-foot)">
 		{thread.cardCount} {thread.cardCount === 1 ? 'event' : 'events'} · {thread.openHours.toFixed(1)}h{thread.carriedForward ? ' · carried' : ''}
 	</div>
+
+	{#if spaceCorner}
+		<!-- Two borders on a transparent box = the corner's arc plus a short tangent
+		     down each edge. Radius 6px nests inside the capsule's 7px minus its 1px
+		     border, so the arc sits ON the frame's curve rather than beside it. The
+		     capsule's overflow:hidden keeps it from bleeding past the rounding. -->
+		<span
+			class="pointer-events-none absolute"
+			style="top: 0; right: 0; width: 10px; height: 10px; border-top: 2px solid {spaceCorner};
+				border-right: 2px solid {spaceCorner}; border-top-right-radius: 6px;"
+		></span>
+	{/if}
 </div>

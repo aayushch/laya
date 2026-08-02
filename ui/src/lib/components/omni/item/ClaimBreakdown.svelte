@@ -60,13 +60,19 @@
 	});
 </script>
 
-<div class="flex flex-none gap-2.5 px-[22px] pt-3 pb-[11px]" style="border-bottom: 1px solid var(--om-border);">
+<div
+	class="flex flex-none gap-2.5 px-[22px]"
+	style="border-bottom: 1px solid var(--om-border);
+		padding-top: calc(9px * var(--om-density));
+		padding-bottom: calc(9px * var(--om-density));"
+>
 	<!-- Left: the claim, broken down — the page's primary control -->
-	<div class="flex min-w-0 flex-[1.35] flex-col gap-2">
-		<span class="om-micro">The claim, broken down — click to filter</span>
-
+	<div class="flex min-w-0 flex-[1.35] flex-col gap-1.5">
 		{#if total > 0}
-			<div class="flex h-2 gap-0.5 overflow-hidden rounded">
+			<!-- No caption: the bar and its pills are the same colours, and the pills
+			     are plainly buttons — a "click to filter" instruction line cost a row
+			     of header to say what the control already says. -->
+			<div class="flex h-[6px] gap-0.5 overflow-hidden rounded">
 				{#each buckets as bucket (bucket)}
 					<span
 						style="flex: {counts[bucket]};
@@ -76,7 +82,7 @@
 				{/each}
 			</div>
 
-			<div class="flex flex-wrap gap-[7px]">
+			<div class="flex flex-wrap gap-[6px]">
 				{#each buckets as bucket (bucket)}
 					{@const active = activeFilter === bucket}
 					<button
@@ -86,6 +92,9 @@
 							color: var(--om-{BUCKET_TOKEN[bucket]}-fg);
 							border: 1px solid {active ? `var(--om-${BUCKET_TOKEN[bucket]}-dot)` : 'transparent'};"
 						aria-pressed={active}
+						title={active
+							? `Showing only ${BUCKET_LABELS[bucket]} — click to clear`
+							: `Filter to ${BUCKET_LABELS[bucket]}`}
 						onclick={() => onFilter(active ? null : bucket)}
 					>
 						<span
@@ -106,7 +115,7 @@
 
 	<!-- Right: when it happened, and who -->
 	<div
-		class="flex min-w-0 flex-1 flex-col gap-2 pl-4"
+		class="flex min-w-0 flex-1 flex-col gap-1.5 pl-4"
 		style="border-left: 1px solid var(--om-border);"
 	>
 		<div class="flex items-center gap-2">
@@ -117,9 +126,10 @@
 			</span>
 		</div>
 
-		<div class="relative h-[30px]">
+		<!-- 18px: the dots carry the meaning, the empty air above them didn't. -->
+		<div class="relative h-[18px]">
 			<div
-				class="absolute right-0 bottom-2.5 left-0 h-px"
+				class="absolute right-0 bottom-[7px] left-0 h-px"
 				style="background: var(--om-track);"
 			></div>
 			{#each times as entry (entry.card.card_id)}
@@ -128,7 +138,7 @@
 				{@const pct = Math.max(1, Math.min(99, ((entry.t - first) / spanMs) * 100))}
 				<button
 					type="button"
-					class="absolute bottom-[6px] h-2 w-2 -translate-x-1/2 rounded-full"
+					class="absolute bottom-[3px] h-2 w-2 -translate-x-1/2 rounded-full"
 					style="left: {pct}%;
 						background: var(--om-{BUCKET_TOKEN[bucket]}-dot);
 						box-shadow: 0 0 0 2.5px var(--om-bar);"
@@ -140,14 +150,14 @@
 		</div>
 
 		{#if actors.length > 0}
-			<div class="flex flex-wrap gap-x-[11px] gap-y-1">
+			<div class="flex flex-wrap gap-x-2.5 gap-y-0.5">
 				{#each actors as [name, count] (name)}
 					<span
 						class="om-hint inline-flex items-center gap-1.5"
 						style="color: var(--om-text-meta);"
 					>
 						<span
-							class="flex h-[15px] w-[15px] items-center justify-center rounded-full text-[calc(8px*var(--om-scale))] font-semibold text-white"
+							class="flex h-[14px] w-[14px] items-center justify-center rounded-full text-[calc(8px*var(--om-scale))] font-semibold text-white"
 							style="background: {actorAvatarColor(name)};"
 						>{actorInitials(name)}</span>
 						{name}

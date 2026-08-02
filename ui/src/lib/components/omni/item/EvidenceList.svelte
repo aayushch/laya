@@ -11,10 +11,11 @@
 		cards,
 		totalCount,
 		activeFilter,
-		expandedCardId,
+		expandedCardIds,
 		showAll,
 		loading,
 		onToggleCard,
+		onExpandAll,
 		onCollapseAll,
 		onShowAll,
 		actions
@@ -24,10 +25,11 @@
 		/** Total source_cards on the item, including any that failed to load. */
 		totalCount: number;
 		activeFilter: OmniBucket | null;
-		expandedCardId: string | null;
+		expandedCardIds: Set<string>;
 		showAll: boolean;
 		loading: boolean;
 		onToggleCard: (cardId: string) => void;
+		onExpandAll: (cardIds: string[]) => void;
 		onCollapseAll: () => void;
 		onShowAll: () => void;
 		actions: EvidenceActionContext;
@@ -40,6 +42,12 @@
 	const visible = $derived(showAll ? cards : cards.slice(0, PAGE_SIZE));
 	const hidden = $derived(showAll ? [] : cards.slice(PAGE_SIZE));
 	const groups = $derived(groupByBucket(visible));
+
+	// The control acts on what is on screen: "expand all" opens the rendered rows
+	// (not the ones still behind "show all"), and only flips to "collapse all"
+	// once every one of them is open.
+	const visibleIds = $derived(visible.map((c) => c.card_id));
+	const allExpanded = $derived(visibleIds.length > 0 && visibleIds.every((id) => expandedCardIds.has(id)));
 
 	// The scroller is set directly rather than via scrollIntoView: the row expands
 	// in place, and scrollIntoView would yank the whole page around it.
@@ -62,9 +70,9 @@
 			type="button"
 			class="om-hint rounded-md px-2 py-[3px] transition-colors disabled:opacity-40"
 			style="border: 1px solid var(--om-border-input); color: var(--om-text-mid);"
-			disabled={!expandedCardId}
-			onclick={onCollapseAll}
-		>Collapse all</button>
+			disabled={visibleIds.length === 0}
+			onclick={() => (allExpanded ? onCollapseAll() : onExpandAll(visibleIds))}
+		>{allExpanded ? 'Collapse all' : 'Expand all'}</button>
 	</div>
 
 	<div bind:this={listEl} class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3.5">
@@ -105,7 +113,7 @@
 				{#each group.cards as card (card.card_id)}
 					<EvidenceRow
 						{card}
-						expanded={expandedCardId === card.card_id}
+						expanded={expandedCardIds.has(card.card_id)}
 						onToggle={() => onToggleCard(card.card_id)}
 						{actions}
 					/>

@@ -74,7 +74,10 @@
 	}
 </script>
 
-<div class="flex min-w-0 flex-1 flex-col items-center overflow-y-auto px-4 pt-3 pb-3.5">
+<!-- Bands are stretched, not centred: each one steps in from the left and runs
+     to the right edge, so the compression chain still reads top-down without
+     the board paying for it in unused margin on both sides. -->
+<div class="flex min-w-0 flex-1 flex-col items-stretch overflow-y-auto px-4 pt-3 pb-3.5">
 	<div class="mb-[9px] flex w-full items-center gap-[9px] self-stretch">
 		<span class="om-micro whitespace-nowrap">Compression funnel</span>
 		<span
@@ -90,7 +93,7 @@
 		{@const isAttention = band.layer.type === 'attention'}
 		<div
 			class="{isAttention ? 'om-glass' : 'om-band om-glass'} flex-none rounded-[9px]"
-			style="width: {band.layer.width};
+			style="margin-left: {band.layer.indent};
 				padding: calc(9px * var(--om-density)) 12px;
 				{isAttention
 					? 'border: 1px solid var(--om-attn-border); background: var(--om-attn-band-bg);'
@@ -150,9 +153,11 @@
 		{#if i < bands.length - 1}
 			{@const note = annotation(band.layer.type)}
 			{#if note}
+				<!-- Indented to the band it points INTO, so the arrow reads as the step
+				     down between the two rather than floating loose in the gap. -->
 				<div
 					class="flex items-center gap-[7px] py-[5px] text-[calc(9.5px*var(--om-scale))]"
-					style="color: var(--om-text-meta);"
+					style="color: var(--om-text-meta); margin-left: {bands[i + 1].layer.indent};"
 				>
 					<span class="om-mono text-[calc(11px*var(--om-scale))]" aria-hidden="true">↓</span>
 					{note}
@@ -167,7 +172,7 @@
 	{#if annotation('milestone')}
 		<div
 			class="flex items-center gap-[7px] py-[5px] text-[calc(9.5px*var(--om-scale))]"
-			style="color: var(--om-text-meta);"
+			style="color: var(--om-text-meta); margin-left: {LAYERS[LAYERS.length - 1].indent};"
 		>
 			<span class="om-mono text-[calc(11px*var(--om-scale))]" aria-hidden="true">↓</span>
 			{annotation('milestone')}

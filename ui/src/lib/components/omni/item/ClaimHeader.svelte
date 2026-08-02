@@ -62,39 +62,44 @@
 	});
 </script>
 
-<div class="om-claim om-glass flex-none px-[22px] pt-4 pb-[13px]" style="border-bottom: 1px solid var(--om-border);">
-	<div class="mb-2 flex items-center gap-2">
+<div
+	class="om-claim om-glass flex-none px-[22px]"
+	style="border-bottom: 1px solid var(--om-border);
+		padding-top: calc(10px * var(--om-density));
+		padding-bottom: calc(10px * var(--om-density));"
+>
+	<!-- Eyebrow, rule and provenance share one rail. The stats used to own a
+	     third row below the claim, which cost ~26px of header for six short
+	     numbers; on the rule line they read as the claim's dateline instead. -->
+	<div class="mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
 		<span class="om-micro whitespace-nowrap">The line you clicked</span>
 		<span
-			class="h-px flex-1"
+			class="h-px min-w-[20px] flex-1"
 			style="background: linear-gradient(90deg, var(--om-border-soft), transparent);"
 		></span>
-	</div>
-
-	{#if item}
-		<!-- Verbatim from item.text. The aggregate sentence IS the subject of this
-		     page; reformatting it would lose the question on the way to the answer. -->
-		<h1 class="om-claim-t max-w-[940px]" style="color: var(--om-text);">{item.text}</h1>
-	{:else}
-		<!-- Legacy ?cards= link: there is no claim to show, so say that plainly
-		     rather than rendering an empty heading. -->
-		<h1 class="om-claim-t max-w-[940px]" style="color: var(--om-text-dim);">
-			{sourceCardCount}
-			{sourceCardCount === 1 ? 'card' : 'cards'} from an older Omni link
-		</h1>
-	{/if}
-
-	<div class="mt-[11px] flex flex-wrap items-center gap-x-3.5 gap-y-1">
 		{#each provenance as entry (entry.label)}
 			<span
-				class="om-row-t inline-flex items-center gap-1.5"
+				class="om-hint inline-flex items-center gap-1 whitespace-nowrap"
 				style="color: var(--om-text-meta);"
 			>
 				<span
-					class="om-mono text-[calc(12px*var(--om-scale))] font-semibold"
+					class="om-mono text-[calc(11px*var(--om-scale))] font-semibold"
 					style="color: var(--om-text-strong);">{entry.value}</span
 				>{entry.label}
 			</span>
 		{/each}
 	</div>
+
+	{#if item}
+		<!-- Verbatim from item.text. The aggregate sentence IS the subject of this
+		     page; reformatting it would lose the question on the way to the answer. -->
+		<h1 class="om-claim-t max-w-[1080px]" style="color: var(--om-text);">{item.text}</h1>
+	{:else}
+		<!-- Legacy ?cards= link: there is no claim to show, so say that plainly
+		     rather than rendering an empty heading. -->
+		<h1 class="om-claim-t max-w-[1080px]" style="color: var(--om-text-dim);">
+			{sourceCardCount}
+			{sourceCardCount === 1 ? 'card' : 'cards'} from an older Omni link
+		</h1>
+	{/if}
 </div>

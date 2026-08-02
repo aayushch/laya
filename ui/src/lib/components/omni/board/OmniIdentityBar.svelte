@@ -65,8 +65,9 @@
 />
 
 <div
-	class="om-bar om-glass flex flex-none items-center gap-3 px-[18px] py-[11px]"
-	style="border-top: 1px solid var(--om-border);"
+	class="om-bar om-glass flex flex-none items-center gap-3 px-[18px]"
+	style="border-top: 1px solid var(--om-border);
+		padding-block: calc(7px * var(--om-density));"
 >
 	<span
 		class="text-[calc(17px*var(--om-scale))] font-bold tracking-[-0.02em] whitespace-nowrap"

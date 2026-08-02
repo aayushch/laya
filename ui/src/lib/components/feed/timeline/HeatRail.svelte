@@ -21,6 +21,7 @@
 		domainEnd,
 		viewport = null,
 		width = 46,
+		showSpace = false,
 		onseek,
 		onhover,
 		onleave
@@ -33,6 +34,8 @@
 		/** Minute range currently visible in the lanes column. */
 		viewport?: { from: number; to: number } | null;
 		width?: number;
+		/** Only true when the day's threads span more than one space. */
+		showSpace?: boolean;
 		onseek: (minute: number) => void;
 		onhover?: (el: HTMLElement, text: string) => void;
 		onleave?: () => void;
@@ -112,12 +115,24 @@
 	{/each}
 
 	{#each marks as mark, i (mark.entityId + i)}
+		{@const spaceColor = showSpace ? mark.spaceColor : undefined}
+		<!-- Across spaces the tick's tail takes the space colour while its leading
+		     4px keeps the attention KIND — which of the two you need first depends
+		     on the moment, and the tick is wide enough to say both. -->
 		<div
-			class="absolute h-[3px] w-3 rounded-[2px]"
-			style="left: 2px; top: {railY(mark.minute)}px; background: {tickColor[mark.kind]};"
+			class="absolute h-[3px] w-3 overflow-hidden rounded-[2px]"
+			style="left: 2px; top: {railY(mark.minute)}px; background: {spaceColor ?? tickColor[mark.kind]};"
 			role="presentation"
-			onmouseenter={(e) => onhover?.(e.currentTarget as HTMLElement, mark.label)}
+			onmouseenter={(e) =>
+				onhover?.(
+					e.currentTarget as HTMLElement,
+					mark.label + (showSpace && mark.spaceName ? ` · ${mark.spaceName}` : '')
+				)}
 			onmouseleave={() => onleave?.()}
-		></div>
+		>
+			{#if spaceColor}
+				<span class="absolute inset-y-0 left-0 w-1" style="background: {tickColor[mark.kind]};"></span>
+			{/if}
+		</div>
 	{/each}
 </div>

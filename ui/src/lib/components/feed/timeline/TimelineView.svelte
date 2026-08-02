@@ -237,6 +237,11 @@
 
 	const marks = $derived(attentionMarks(threads));
 
+	// Space marks only appear when they can actually tell you something: with a
+	// single space on screen every capsule would carry an identical stripe, which
+	// is noise. Same rule as the overflow strip only appearing once lanes run out.
+	const multiSpace = $derived(new Set(threads.map((t) => t.spaceId ?? 'default')).size > 1);
+
 	const sourcePlatforms = $derived.by(() => {
 		const counts = new Map<string, number>(Object.entries(dayEvents?.platforms ?? {}));
 		// A platform with cards but no counted events (space mismatch, older data)
@@ -540,6 +545,7 @@
 								height={item.height}
 								left={geo.left(item.lane)}
 								width={geo.width}
+								showSpace={multiSpace}
 								selected={item.data.entityId === selectedEntityId ||
 									item.data.events.some((e) => e.cardId === selectedCardId)}
 								dimmed={hasAnySelection &&
@@ -563,6 +569,7 @@
 								}))}
 								{scale}
 								width={STRIP_W - 6}
+								showSpace={multiSpace}
 								onexpand={() => timelineView.setOverflowExpanded(true)}
 								onhover={showTextTooltip}
 								onleave={hideTooltip}
@@ -599,6 +606,7 @@
 				domainEnd={domain.end}
 				viewport={viewportRange}
 				width={heatWidth}
+				showSpace={multiSpace}
 				onseek={(minute) => scrollToMinute(minute, 'center')}
 				onhover={showTextTooltip}
 				onleave={hideTooltip}
@@ -635,6 +643,14 @@
 			<div class="mt-2 flex flex-wrap items-center gap-1.5 text-[9px] font-medium">
 				<span class="rounded px-1.5 py-0.5" style="background: var(--tl-bg-dormant); color: var(--tl-fg-dormant)">{tooltipCard.persona}</span>
 				<span class="rounded px-1.5 py-0.5" style="background: var(--tl-bg-ready); color: var(--tl-fg-ready)">{thread.latest.statusLabel}</span>
+				{#if thread.spaceName}
+					<!-- Named here rather than on the capsule: the stripe carries the
+					     colour, the tooltip is where it gets a word. -->
+					<span class="inline-flex items-center gap-1 rounded px-1.5 py-0.5" style="background: var(--tl-bg-dormant); color: var(--tl-fg-dormant)">
+						<span class="h-1.5 w-1.5 rounded-full" style="background: {thread.spaceColor ?? 'var(--color-laya-orange)'}"></span>
+						{thread.spaceName}
+					</span>
+				{/if}
 				<span class="font-mono opacity-70">{thread.cardCount} events · {thread.openHours.toFixed(1)}h</span>
 			</div>
 			{#if thread.attention.reason}

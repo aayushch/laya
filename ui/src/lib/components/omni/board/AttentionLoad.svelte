@@ -33,8 +33,9 @@
 </script>
 
 <div
-	class="om-glass flex w-[250px] flex-none flex-col gap-2 rounded-[9px] px-[13px] py-[11px]"
-	style="border: 1px solid var(--om-attn-border); background: var(--om-attn-bg);"
+	class="om-glass flex w-[236px] flex-none flex-col gap-1.5 rounded-[9px] px-[11px]"
+	style="border: 1px solid var(--om-attn-border); background: var(--om-attn-bg);
+		padding-block: calc(8px * var(--om-density));"
 >
 	<div class="flex items-center gap-1.5">
 		<span
