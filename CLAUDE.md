@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is Laya
 
-Laya is a local-first desktop app (Tauri + Svelte + Python) that intercepts professional tool events (Jira, Slack, Gmail, GitHub, Bitbucket, Linear, Notion, Google Calendar, Outlook Calendar, Outlook Email), classifies them with LLM-powered personas (Engineer, Comms, Ops, Sales, HR, Finance), stages actions, and presents Action Cards for user approval. n8n handles event ingestion and outbound action execution.
+Laya is a local-first desktop app (Tauri + Svelte + Python) that intercepts professional tool events (Jira, Slack, Gmail, GitHub, Bitbucket, Bitbucket Server, Linear, Notion, Google Calendar, Outlook Calendar, Outlook Email), classifies them with LLM-powered personas (Engineer, Comms, Ops, Sales, HR, Finance), stages actions, and presents Action Cards for user approval. n8n handles event ingestion and outbound action execution.
 
 ## Development Commands
 
@@ -83,7 +83,7 @@ Supporting pipelines (triggered separately):
 - `feedback.py` / `budget.py` — feedback processing and monthly $ token-budget tracking
 - `agent_budget.py` — window-based usage-limit budgeting for agent inference backends (auto-pause ingestion when an agent's rolling window is exhausted, auto-resume at window reset)
 
-**Egress** (`engine/laya/egress/`): Outbound action execution across 9 platforms (GitHub, Bitbucket, Jira, Linear, Gmail, Slack, Calendar, Outlook, Notion). Each platform owns its contract (capabilities, draft schema, terminal events, normalize/validate) as a `Platform` subclass in `platforms/` extending `platforms/base.py`; `registry.py` is a thin facade that delegates to these adapters (adding a platform = write one file, not edit many tables). Execution backends in `backends/` (n8n, SMTP — `platforms/smtp.py` is a data-only adapter for the SMTP backend), connection management via `connections.py` + `oauth.py` + OS keychain, action routing via `router.py` + `registry.py`, and chat-driven egress via `tools.py` + `tool_handlers.py`.
+**Egress** (`engine/laya/egress/`): Outbound action execution across 10 platforms (GitHub, Bitbucket, Bitbucket Server, Jira, Linear, Gmail, Slack, Calendar, Outlook, Notion). Bitbucket Server (on-prem) mirrors Bitbucket Cloud's contract but is host-driven end to end: repos are selected via the generic `GET /repos?host=` filter, the cloned ingestion workflow reads its server URL from a `{platform}-config:{workflow_id}` metadata entry written at clone time, and the executor gets the connection's base URL injected into the payload via `Platform.payload_credential_fields` — no cloud-vs-server predicates. Each platform owns its contract (capabilities, draft schema, terminal events, normalize/validate) as a `Platform` subclass in `platforms/` extending `platforms/base.py`; `registry.py` is a thin facade that delegates to these adapters (adding a platform = write one file, not edit many tables). Execution backends in `backends/` (n8n, SMTP — `platforms/smtp.py` is a data-only adapter for the SMTP backend), connection management via `connections.py` + `oauth.py` + OS keychain, action routing via `router.py` + `registry.py`, and chat-driven egress via `tools.py` + `tool_handlers.py`.
 
 **Agents** (`engine/laya/agents/`): CLI coding agent adapters (Claude Code, Gemini CLI, Codex CLI, Pi CLI) for the workspace feature. Abstract protocol in `base.py`, session management in `session_manager.py`.
 

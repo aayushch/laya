@@ -75,6 +75,51 @@ PLATFORMS: dict[str, dict] = {
             },
         ],
     },
+    "bitbucket_server": {
+        "label": "Bitbucket Server",
+        "category": "development",
+        "icon": "bitbucket",
+        # No native n8n Bitbucket Server node exists — workflows use plain HTTP
+        # Request nodes with a generic header credential (Authorization: Bearer).
+        # n8n_node stays empty so credential injection matches ONLY the nodes
+        # that carry an httpHeaderAuth placeholder block in the template.
+        "n8n_type": "httpHeaderAuth",
+        "n8n_node": "",
+        "oauth": False,
+        "workflows": ["Laya - Bitbucket Server Ingestion", "Laya - Bitbucket Server Executor"],
+        "fields": [
+            {
+                "key": "server",
+                "label": "Server URL",
+                "type": "text",
+                "placeholder": "https://bitbucket.your-company.com",
+                "help": "Base URL of your Bitbucket Server / Data Center instance",
+            },
+            {
+                "key": "accessToken",
+                "label": "HTTP Access Token",
+                "type": "password",
+                "help": "Create under Profile -> Manage account -> HTTP access tokens (Repository write for PR actions)",
+            },
+            {
+                "key": "allowInsecureSsl",
+                "label": "Skip TLS certificate verification",
+                "type": "checkbox",
+                "help": "Enable if your server uses a self-signed or internal-CA certificate that this machine does not trust. Connections are still encrypted, but the server's identity is not verified.",
+            },
+        ],
+        # httpHeaderAuth's n8n schema is {name, value} — it can't store our
+        # server/accessToken fields directly. Values are format-templates over
+        # the connection's fields (see _provision_to_n8n).
+        "n8n_credential_template": {
+            "name": "Authorization",
+            "value": "Bearer {accessToken}",
+        },
+        # Non-secret fields the cloned workflows need at runtime; written to the
+        # metadata table as {platform}-config:{workflow_id} at clone time so the
+        # ingestion clone can build REST URLs and the /repos?host= filter.
+        "workflow_config_fields": ["server", "allowInsecureSsl"],
+    },
     # --- Project Management ---
     "linear": {
         "label": "Linear",

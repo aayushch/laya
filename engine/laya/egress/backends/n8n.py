@@ -334,6 +334,21 @@ class N8nBackend(EgressBackend):
             from laya.egress.platforms.bitbucket import PLATFORM as _bitbucket
             _bitbucket.ensure_cloud_repo(payload)
 
+        # Generic connection-credential → payload injection, declared per adapter
+        # (payload_credential_fields). Lets executor workflows build REST URLs
+        # against per-connection hosts (e.g. Bitbucket Server's base_url) without
+        # platform predicates here. String values are treated as URL-ish (trailing
+        # slash stripped so workflow expressions can concatenate paths); non-string
+        # values (e.g. the allow_insecure_ssl boolean) pass through untouched.
+        # Falsy values are never injected, so a False toggle simply stays absent.
+        if _mod is not None and _mod.payload_credential_fields and request.connection_id:
+            from laya.egress.connections import _get_from_keychain
+            _creds = _get_from_keychain(request.connection_id, request.platform) or {}
+            for _cred_field, _payload_field in _mod.payload_credential_fields.items():
+                _val = _creds.get(_cred_field)
+                if _val and not payload.get(_payload_field):
+                    payload[_payload_field] = _val.rstrip("/") if isinstance(_val, str) else _val
+
         # Jira: retrieve connection credentials once for base URL injection
         # and assignee resolution (email/name → accountId).
         if request.platform == "jira" and request.connection_id:

@@ -423,7 +423,7 @@ def _build_role_directive(
 # on emails). Each event now gets only its family's block(s); an unrecognized
 # platform (chat/calendar/new) gets the universal core alone.
 _EMAIL_PLATFORMS = frozenset({"gmail", "outlook"})
-_CODE_PLATFORMS = frozenset({"github", "bitbucket"})
+_CODE_PLATFORMS = frozenset({"github", "bitbucket", "bitbucket_server"})
 _ISSUE_PLATFORMS = frozenset({"jira", "linear"})
 
 

@@ -235,7 +235,8 @@
 
 	const platformLabel: Record<string, string> = {
 		jira: 'Jira', gmail: 'Gmail', slack: 'Slack',
-		bitbucket: 'Bitbucket', calendar: 'Calendar', github: 'GitHub', laya: 'Laya'
+		bitbucket: 'Bitbucket', bitbucket_server: 'Bitbucket Server',
+		calendar: 'Calendar', github: 'GitHub', laya: 'Laya'
 	};
 
 	const timeAgo = (dateStr?: string) => _timeAgo(dateStr, { weeks: true });

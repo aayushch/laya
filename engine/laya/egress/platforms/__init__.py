@@ -24,6 +24,7 @@ To add a platform: implement the ``Platform`` interface in a new file, expose
 from laya.egress.platforms.base import Platform
 from laya.egress.platforms import (
     bitbucket,
+    bitbucket_server,
     calendar,
     github,
     gmail,
@@ -45,6 +46,7 @@ _REGISTRY: dict[str, Platform] = {
     "notion": notion.PLATFORM,
     "github": github.PLATFORM,
     "bitbucket": bitbucket.PLATFORM,
+    "bitbucket_server": bitbucket_server.PLATFORM,
     "slack": slack.PLATFORM,
     "linear": linear.PLATFORM,
     "calendar": calendar.GOOGLE_CALENDAR,
@@ -61,6 +63,7 @@ _DISPATCH: dict[str, Platform] = {
     "linear": linear.PLATFORM,
     "notion": notion.PLATFORM,
     "bitbucket": bitbucket.PLATFORM,
+    "bitbucket_server": bitbucket_server.PLATFORM,
     "gmail": gmail.PLATFORM,
     "outlook": outlook.PLATFORM,
     "slack": slack.PLATFORM,

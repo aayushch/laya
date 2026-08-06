@@ -34,6 +34,7 @@ _PLATFORM_TO_WORKFLOW = {
     "notion": "notion-executor.json",
     "github": "github-executor.json",
     "bitbucket": "bitbucket-executor.json",
+    "bitbucket_server": "bitbucket-server-executor.json",
     "slack": "slack-executor.json",
     "calendar": "google-calendar-executor.json",
     "outlook_calendar": "outlook-calendar-executor.json",

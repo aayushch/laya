@@ -192,7 +192,7 @@ async def get_prefill_for_card(card_id: str) -> tuple[str, dict, str | None, str
     probe_actions = ["comment"]
     if platform == "github":
         probe_actions = ["comment", "approve_pr"]
-    elif platform == "bitbucket":
+    elif platform in ("bitbucket", "bitbucket_server"):
         probe_actions = ["comment_pr"]
 
     for action_type in probe_actions:

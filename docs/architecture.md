@@ -146,9 +146,9 @@ External Services (Jira, Bitbucket, Slack, Gmail, Calendar)
 |  |  +------------------------------------------------------------+  |    |
 |  |                                                                  |    |
 |  |  +- Egress Module --------------------------------------------+  |    |
-|  |  |  Outbound action execution for 9 platforms                 |  |    |
-|  |  |  Gmail | Slack | Jira | GitHub | Bitbucket | Calendar      |  |    |
-|  |  |  Linear | Outlook | Notion | Connection broker | OAuth mgmt|  |    |
+|  |  |  Outbound action execution for 10 platforms                |  |    |
+|  |  |  Gmail | Slack | Jira | GitHub | Bitbucket | BB Server    |  |    |
+|  |  |  Calendar | Linear | Outlook | Notion | Connection broker |  |    |
 |  |  +------------------------------------------------------------+  |    |
 |  |                                                                  |    |
 |  |  +- Scheduled Jobs -------------------------------------------+  |    |
@@ -415,8 +415,9 @@ EXECUTE
 CONNECTION BROKER
   - Manage OAuth credentials
   - Health check connections
-  - 9 platforms: Gmail, Slack, Jira, GitHub,
-    Bitbucket, Calendar, Linear, Outlook, Notion
+  - 10 platforms: Gmail, Slack, Jira, GitHub,
+    Bitbucket, Bitbucket Server, Calendar,
+    Linear, Outlook, Notion
 ```
 
 Each platform owns its own contract — capabilities, draft/compose schema, terminal event types, and payload `normalize`/`validate` logic — as a `Platform` subclass under `egress/platforms/` extending `platforms/base.py`. `registry.py` is a thin facade that delegates to these adapters, so adding a platform means writing one file rather than editing several parallel tables. SMTP is a data-only adapter (`platforms/smtp.py`) used by the SMTP execution backend for direct email delivery, and is excluded from compose enrichment.
@@ -567,7 +568,9 @@ Events dropped by a filter rule are **terminal and informational** — unlike de
 
 ### On-Prem Repositories
 
-Each repo in `repos.json` carries an optional `host` field that distinguishes cloud from self-hosted. An empty host, or a cloud domain (`bitbucket.org`, `github.com`), means Cloud; any other value (e.g. `git.acme.com`) marks a self-hosted instance — Bitbucket Server / Data Center or GitHub Enterprise — and the egress platform adapts its API base URL and auth scheme accordingly. A missing host always resolves to Cloud, so existing configs keep working.
+Each repo in `repos.json` carries an optional `host` field that distinguishes cloud from self-hosted. An empty host, or a cloud domain (`bitbucket.org`, `github.com`), means Cloud; any other value (e.g. `git.acme.com`) marks a self-hosted instance — Bitbucket Server / Data Center or GitHub Enterprise. A missing host always resolves to Cloud, so existing configs keep working.
+
+Bitbucket Server / Data Center is a full first-class integration (`bitbucket_server` platform): the user connects it with their server base URL + HTTP access token, the cloned ingestion workflow selects exactly the repos on that host via the generic `GET /repos?host=` filter (the host is derived from the server URL the workflow reads from its clone-time `{platform}-config:{workflow_id}` metadata entry), and the executor workflow drives the Server REST API (`{base_url}/rest/api/1.0/...`) with the connection's base URL injected into the payload by the n8n backend (`Platform.payload_credential_fields`). Repo selection is host-driven throughout — there are no cloud-vs-server predicates in the engine.
 
 ### Dead Event Recovery
 

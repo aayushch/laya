@@ -130,6 +130,10 @@ _PLATFORM_KEYWORDS: dict[str, str] = {
     "gmail": "gmail",
     "jira": "jira",
     "slack": "slack",
+    # Insertion order matters: consumers iterate and take the FIRST keyword
+    # contained in the workflow name, so the two-word "bitbucket server" must
+    # precede plain "bitbucket" or every Server workflow would resolve to Cloud.
+    "bitbucket server": "bitbucket_server",
     "bitbucket": "bitbucket",
     "calendar": "calendar",
     "outlook": "outlook",
@@ -208,7 +212,7 @@ def format_source_ref(
     # need the repo prefix stripped before template substitution.
     display_id = subject_id
     repo_prefix = ""
-    if platform in ("github", "bitbucket") and "/" in subject_id:
+    if platform in ("github", "bitbucket", "bitbucket_server") and "/" in subject_id:
         parts = subject_id.rsplit("/", 1)
         repo_prefix = parts[0]
         display_id = parts[1]

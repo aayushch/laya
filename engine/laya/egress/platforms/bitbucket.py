@@ -17,6 +17,9 @@ _EVENT_ID_PR_RE = re.compile(r"^evt_bb_pr_.+_(?P<id>\d+)_\d+$")
 
 class BitbucketPlatform(Platform):
     name = "bitbucket"
+    # Class attribute (not module constant) so BitbucketServerPlatform can swap
+    # in its own evt_bbs_pr_ prefix while inheriting identifiers_from_event.
+    event_id_pr_re = _EVENT_ID_PR_RE
     terminal_event_types = frozenset({"pr_merged", "pr_declined"})
     platform_hint = "a Bitbucket PR or comment"
     chapter_default = "Code"
@@ -108,9 +111,9 @@ class BitbucketPlatform(Platform):
                 continue
             if not self._is_cloud_host(r.get("host", "")):
                 raise ValueError(
-                    f"On-prem Bitbucket Server is not supported for outbound actions "
-                    f"(repo '{remote_id}' is hosted on '{r.get('host')}'). "
-                    f"Only Bitbucket Cloud (bitbucket.org) actions can be executed."
+                    f"Repo '{remote_id}' is hosted on '{r.get('host')}' (on-prem Bitbucket "
+                    f"Server), which the Bitbucket Cloud connection cannot execute against. "
+                    f"Connect a 'Bitbucket Server' integration for that host instead."
                 )
             return
 
@@ -137,7 +140,7 @@ class BitbucketPlatform(Platform):
             ids["repo"] = repo
 
         if event_id:
-            m = _EVENT_ID_PR_RE.match(event_id)
+            m = self.event_id_pr_re.match(event_id)
             if m:
                 ids["pr_id"] = m.group("id")
 

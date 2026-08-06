@@ -8,6 +8,7 @@ import pytest
 # Bind each platform's singleton adapter to the short name so the existing
 # `gmail.normalize_payload(...)` call sites exercise the Platform methods.
 from laya.egress.platforms.bitbucket import PLATFORM as bitbucket
+from laya.egress.platforms.bitbucket_server import PLATFORM as bitbucket_server
 from laya.egress.platforms.calendar import PLATFORM as calendar
 from laya.egress.platforms.github import PLATFORM as github
 from laya.egress.platforms.gmail import PLATFORM as gmail
@@ -228,6 +229,59 @@ class TestBitbucket:
     def test_validate_create_pr_missing_branches(self):
         errors = bitbucket.validate_payload("create_pr", {"workspace": "w", "repo": "r", "title": "x"})
         assert any("source_branch" in e for e in errors)
+
+
+class TestBitbucketServer:
+    """Server adapter mirrors Cloud's payload contract; only the event-id
+    prefix, the merge-strategy default, and the injected base_url differ."""
+
+    def test_normalize_comment_from_body(self):
+        p = bitbucket_server.normalize_payload("comment_pr", {"workspace": "SRC", "repo": "r", "pr_id": "1", "body": "Hi"})
+        assert p["comment"] == "Hi"
+
+    def test_normalize_merge_strategy_not_defaulted(self):
+        # Unlike Cloud, no implicit "squash" — the server applies the repo's
+        # configured strategy when none is given.
+        p = bitbucket_server.normalize_payload("merge_pr", {"workspace": "SRC", "repo": "r", "pr_id": "1"})
+        assert "merge_strategy" not in p
+
+    def test_normalize_merge_strategy_explicit_passthrough(self):
+        p = bitbucket_server.normalize_payload(
+            "merge_pr", {"workspace": "SRC", "repo": "r", "pr_id": "1", "merge_strategy": "fast_forward"}
+        )
+        assert p["merge_strategy"] == "fast_forward"
+
+    def test_validate_missing_workspace(self):
+        errors = bitbucket_server.validate_payload("approve_pr", {"repo": "r", "pr_id": "1"})
+        assert any("workspace" in e for e in errors)
+
+    def test_identifiers_from_event(self):
+        ids = bitbucket_server.identifiers_from_event(
+            "comment_pr",
+            "evt_bbs_pr_SRC_xrecon_7_1776",
+            {"bb_repository": "SRC/xrecon", "bb_comment_id": 42},
+            {},
+        )
+        assert ids == {
+            "workspace": "SRC",
+            "repo": "xrecon",
+            "pr_id": "7",
+            "comment_id": "42",
+        }
+
+    def test_cloud_event_id_not_matched(self):
+        # Cloud's evt_bb_ prefix must not satisfy the Server regex — the two
+        # platforms' events stay distinguishable.
+        ids = bitbucket_server.identifiers_from_event("comment_pr", "evt_bb_pr_acme_repo_9_1", {}, {})
+        assert "pr_id" not in ids
+
+    def test_payload_credential_fields_declared(self):
+        # The n8n backend injects the connection's server URL as payload.base_url
+        # and the TLS opt-out toggle as payload.allow_insecure_ssl.
+        assert bitbucket_server.payload_credential_fields == {
+            "server": "base_url",
+            "allowInsecureSsl": "allow_insecure_ssl",
+        }
 
 
 class TestSlack:

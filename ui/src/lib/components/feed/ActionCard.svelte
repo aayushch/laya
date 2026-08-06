@@ -119,6 +119,7 @@
 		gmail:     'Gmail',
 		slack:     'Slack',
 		bitbucket: 'Bitbucket',
+		bitbucket_server: 'Bitbucket Server',
 		calendar:  'Calendar',
 		github:    'GitHub',
 		laya:      'Laya'

@@ -23,7 +23,7 @@ class TestN8nConfig:
 
         assert config["base_url"] == "http://localhost:45678"
         assert config["webhooks"]["jira"] == "jira-executor"
-        assert len(config["webhooks"]) == 10
+        assert len(config["webhooks"]) == 11
 
     def test_env_var_overrides_base_url(self, tmp_path):
         """N8N_URL env var overrides base_url from settings."""

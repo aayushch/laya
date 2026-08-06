@@ -88,6 +88,7 @@ DEFAULT_SETTINGS = {
         "webhooks": {
             "jira": "jira-executor",
             "bitbucket": "bitbucket-executor",
+            "bitbucket_server": "bitbucket-server-executor",
             "slack": "slack-executor",
             "gmail": "gmail-executor",
             "github": "github-executor",

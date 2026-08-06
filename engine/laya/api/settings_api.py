@@ -570,13 +570,42 @@ async def reload_prompts() -> dict:
     return {"status": "reloaded", "overridden_keys": sorted(loaded.keys())}
 
 
+def _normalize_host(value: str) -> str:
+    """Reduce a host or base URL to a bare lowercase hostname for comparison.
+
+    Repo entries store a bare hostname (scheme/port stripped at remote-URL parse
+    time in the Tauri shell), but callers may hold a full server base URL —
+    tolerate scheme, port, path, and trailing slash so both spellings compare equal.
+    """
+    v = (value or "").strip().lower()
+    if "://" in v:
+        from urllib.parse import urlparse
+
+        v = urlparse(v).netloc or v
+    return v.split("/", 1)[0].rsplit(":", 1)[0] if v else ""
+
+
 @router.get("/repos")
-async def get_repos(platform: str | None = Query(default=None)) -> dict:
-    """Return configured repositories, optionally filtered by platform."""
+async def get_repos(
+    platform: str | None = Query(default=None),
+    host: str | None = Query(default=None),
+) -> dict:
+    """Return configured repositories, optionally filtered by platform and/or host.
+
+    ``host`` matches each repo's configured git host (empty repo host only
+    matches an empty/absent filter), so e.g. a self-hosted ingestion workflow
+    can ask for exactly the repos living on its server.
+    """
     data = load_repos()
+    repos = data.get("repos", [])
     if platform:
+        repos = [r for r in repos if r.get("platform") == platform]
+    if host:
+        want = _normalize_host(host)
+        repos = [r for r in repos if _normalize_host(r.get("host", "")) == want]
+    if platform or host:
         data = dict(data)
-        data["repos"] = [r for r in data.get("repos", []) if r.get("platform") == platform]
+        data["repos"] = repos
     return data
 
 

@@ -702,8 +702,13 @@ async def _propagate_to_clones(base_url: str, api_key: str, changed_templates: l
                 )
                 is_native_match = (
                     n8n_type in node_creds
-                    or node_type == n8n_node
-                    or node_type.startswith(n8n_node)
+                    # n8n_node may be "" for generic-HTTP platforms
+                    # (bitbucket_server); unguarded startswith("") would match
+                    # EVERY node and spray the credential across the workflow.
+                    or (bool(n8n_node) and (
+                        node_type == n8n_node
+                        or node_type.startswith(n8n_node)
+                    ))
                     or node_cred_type == n8n_type
                 )
                 if is_http_match or is_native_match:

@@ -998,7 +998,7 @@ export interface LayaEvent {
 export interface FieldDef {
 	key: string;
 	label: string;
-	type: 'text' | 'password';
+	type: 'text' | 'password' | 'checkbox';
 	placeholder?: string;
 	help?: string;
 }
@@ -1401,7 +1401,7 @@ export interface EgressConnectionsResponse {
 export interface EgressConnectRequest {
 	platform: string;
 	name?: string;
-	credentials: Record<string, string>;
+	credentials: Record<string, string | boolean>;
 	space_id?: string;
 }
 

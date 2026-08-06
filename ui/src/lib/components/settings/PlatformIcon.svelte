@@ -1,7 +1,12 @@
 <!-- Copyright 2026 Aayush Chawla -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
-	let { platform, size = 24 }: { platform: string; size?: number } = $props();
+	let { platform: rawPlatform, size = 24 }: { platform: string; size?: number } = $props();
+
+	// Variant platforms share their parent's mark (bitbucket_server has no logo
+	// of its own); alias before branching so callers can pass either key.
+	const ICON_ALIASES: Record<string, string> = { bitbucket_server: 'bitbucket' };
+	const platform = $derived(ICON_ALIASES[rawPlatform] ?? rawPlatform);
 </script>
 
 {#if platform === 'github'}

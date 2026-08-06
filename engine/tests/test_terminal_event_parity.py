@@ -35,6 +35,7 @@ _WORKFLOWS_DIR = Path(__file__).resolve().parents[2] / "n8n" / "workflows"
 _PLATFORM_TO_WORKFLOW = {
     "github": "github-ingestion.json",
     "bitbucket": "bitbucket-ingestion.json",
+    "bitbucket_server": "bitbucket-server-ingestion.json",
     "jira": "jira-ingestion.json",
     "linear": "linear-ingestion.json",
 }

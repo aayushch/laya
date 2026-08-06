@@ -29,8 +29,8 @@
 	let existingNames = $state<string[]>([]);
 	let nameError = $state<string | null>(null);
 
-	// API-key form state
-	let fieldValues = $state<Record<string, string>>({});
+	// API-key form state (checkbox fields hold booleans, everything else strings)
+	let fieldValues = $state<Record<string, string | boolean>>({});
 	let submitting = $state(false);
 	let error = $state<string | null>(null);
 
@@ -53,9 +53,9 @@
 
 	// Initialize field values
 	$effect(() => {
-		const vals: Record<string, string> = {};
+		const vals: Record<string, string | boolean> = {};
 		for (const f of fields) {
-			vals[f.key] = '';
+			vals[f.key] = f.type === 'checkbox' ? false : '';
 		}
 		fieldValues = vals;
 	});
@@ -383,8 +383,19 @@
 				<div class="space-y-4">
 					{#each fields as field}
 						<div>
-							<label for="field-{field.key}" class="mb-1 block text-laya-secondary font-medium text-surface-400">{field.label}</label>
-							{#if field.type === 'password'}
+							{#if field.type === 'checkbox'}
+								<label for="field-{field.key}" class="flex items-center gap-2 text-laya-secondary font-medium text-surface-400">
+									<input
+										id="field-{field.key}"
+										type="checkbox"
+										checked={fieldValues[field.key] === true}
+										onchange={(e) => (fieldValues[field.key] = e.currentTarget.checked)}
+										class="h-4 w-4 rounded border-surface-600 bg-surface-700 accent-laya-orange"
+									/>
+									{field.label}
+								</label>
+							{:else if field.type === 'password'}
+								<label for="field-{field.key}" class="mb-1 block text-laya-secondary font-medium text-surface-400">{field.label}</label>
 								<input
 									id="field-{field.key}"
 									type="password"
@@ -393,6 +404,7 @@
 									class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
 								/>
 							{:else}
+								<label for="field-{field.key}" class="mb-1 block text-laya-secondary font-medium text-surface-400">{field.label}</label>
 								<input
 									id="field-{field.key}"
 									type="text"
@@ -409,7 +421,7 @@
 
 					<button
 						onclick={handleApiKeySubmit}
-						disabled={submitting || fields.some((f) => !fieldValues[f.key]?.trim())}
+						disabled={submitting || fields.some((f) => f.type !== 'checkbox' && !String(fieldValues[f.key] ?? '').trim())}
 						class="w-full rounded-md bg-laya-orange px-4 py-2 text-laya-base font-medium text-white transition-colors hover:bg-laya-gold disabled:opacity-50"
 					>
 						{submitting ? 'Connecting...' : 'Connect'}

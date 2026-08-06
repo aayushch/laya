@@ -88,6 +88,11 @@ class Platform(abc.ABC):
 
     # ---- Optional declarative data (defaults == registry getter fallbacks)
     terminal_event_types: frozenset[str] = frozenset()        # is_terminal_event
+    # Connection-credential field → payload field. The n8n backend copies each
+    # named credential value into the outgoing payload (when absent) so executor
+    # workflows can target per-connection hosts (e.g. Bitbucket Server's base
+    # URL) without platform predicates in the backend.
+    payload_credential_fields: dict[str, str] = {}
     compose_guidance: str = ""                                # get_compose_guidance
     body_field: str = "body"                                  # get_body_field
     draft_schema: dict = DEFAULT_DRAFT_SCHEMA                  # get_draft_schema

@@ -1,0 +1,405 @@
+{
+  "name": "Laya - Bitbucket Server Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      },
+      "name": "Every 2 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.LAYA_ENGINE_URL }}/metadata/bitbucket_server-config:{{ $workflow.id }}",
+        "options": {}
+      },
+      "name": "Fetch Server Config",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        420,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// The engine writes { server, allowInsecureSsl } into the metadata table at\n// clone time (key: bitbucket_server-config:{workflow_id}). Derive the bare\n// hostname for the /repos?host= filter from the server base URL.\nconst cfg = $input.first().json.value;\nif (!cfg || !cfg.server) {\n  // Throwing routes to the shared error handler -> ingestion_errors, instead of\n  // silently polling nothing forever.\n  throw new Error('bitbucket_server config missing for this workflow - reconnect the Bitbucket Server integration');\n}\nconst server = cfg.server.replace(/\\/+$/, '');\nconst host = server.replace(/^https?:\\/\\//, '').split('/')[0].split(':')[0];\n// Opt-in from the connection form for servers with internal-CA/self-signed\n// certs; feeds allowUnauthorizedCerts on the Bitbucket API nodes below.\nconst allowInsecureSsl = cfg.allowInsecureSsl === true;\nreturn [{ json: { server, host, allowInsecureSsl } }];"
+      },
+      "name": "Prepare Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.LAYA_ENGINE_URL }}/repos?host={{ encodeURIComponent($json.host) }}",
+        "options": {}
+      },
+      "name": "Get Repos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const repos = $input.first().json.repos ?? [];\nconst server = $('Prepare Config').first().json.server;\n// Host filtering happens server-side (GET /repos?host=...), so every repo here\n// lives on this connection's Bitbucket Server. remote_id is \"PROJECT/repo-slug\"\n// as parsed from the on-prem clone URL.\nreturn repos\n  .filter(r => r.remote_id && r.remote_id.includes('/'))\n  .map(r => {\n    const [project, repo] = r.remote_id.split('/');\n    return { json: { project, repo, name: r.name, server } };\n  });"
+      },
+      "name": "Build Repo Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.server + '/rest/api/1.0/projects/' + $json.project + '/repos/' + $json.repo + '/pull-requests' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "state",
+              "value": "ALL"
+            },
+            {
+              "name": "order",
+              "value": "NEWEST"
+            },
+            {
+              "name": "limit",
+              "value": "25"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": "={{ $('Prepare Config').first().json.allowInsecureSsl }}"
+        }
+      },
+      "name": "Get Pull Requests",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1140,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACED_AT_CLONE",
+          "name": "Bitbucket Server"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Collect PR data with repo context for the activities lookup. Unlike Cloud,\n// the Server list API has no updated-since query (Cloud's q=updated_on), so\n// filter the page client-side; order=NEWEST returns most-recently-updated\n// first, so recent changes are always inside the 25-PR page.\n// Server timestamps are epoch milliseconds.\nconst prItems = [];\nconst since = Date.now() - 150000;\nfor (const item of $input.all()) {\n  const prs = item.json.values || [];\n  for (const pr of prs) {\n    const repo = pr.toRef && pr.toRef.repository;\n    const repoSlug = repo ? ((repo.project && repo.project.key) || '') + '/' + (repo.slug || '') : '';\n    if (!repoSlug || repoSlug === '/') continue;\n    if ((pr.updatedDate || 0) < since) continue;\n    prItems.push({ json: { pr, repoSlug } });\n  }\n}\nreturn prItems.length ? prItems : [{ json: { _skip: true } }];"
+      },
+      "name": "Extract PRs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "skip-check",
+              "leftValue": "={{ $json.pr?.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "name": "Has PRs",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Prepare Config').first().json.server + '/rest/api/1.0/projects/' + $json.repoSlug.split('/')[0] + '/repos/' + $json.repoSlug.split('/')[1] + '/pull-requests/' + $json.pr.id + '/activities' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "10"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": "={{ $('Prepare Config').first().json.allowInsecureSsl }}"
+        }
+      },
+      "name": "Get PR Activity",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        450
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACED_AT_CLONE",
+          "name": "Bitbucket Server"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Wrap the activities response so it doesn't overwrite PR data on merge.\nreturn $input.all().map(item => ({\n  json: { _activity: item.json.values || [] }\n}));"
+      },
+      "name": "Wrap Activity",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1860,
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "name": "Merge PR + Activity",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        2040,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Classify PR changes using the Server activities feed.\n// Bitbucket Server/DC shapes differ from Cloud: timestamps are epoch ms,\n// activities carry an `action` enum (OPENED/COMMENTED/APPROVED/MERGED/...),\n// and reviewers ride on the PR object itself, so no detail fetch is needed.\n// Emits the same raw_event_type set and bb_* metadata keys as the Cloud\n// ingestion so all downstream processing is shared.\n\nconst POLL_WINDOW_MS = 150000; // 2.5 minutes\nconst now = Date.now();\n\nconst pr = $json.pr;\nconst repoSlug = $json.repoSlug;\nconst activity = $json._activity || []; // entries from Wrap Activity node\nconst reviewers = (pr.reviewers || []).map(rv => rv.user || {});\nconst state = (pr.state || '').toUpperCase();\nconst isNew = pr.createdDate === pr.updatedDate;\n\nconst recentActivity = activity.filter(a => a.createdDate && (now - a.createdDate) < POLL_WINDOW_MS);\n\nlet rawEventType = 'pr_updated';\nlet body = '';\nlet changeType = 'generic_update';\nlet previousState = null;\nlet newState = null;\nlet actorName = (pr.author && pr.author.user && pr.author.user.displayName) || 'Unknown';\nlet actorHandle = (pr.author && pr.author.user && (pr.author.user.name || pr.author.user.slug)) || '';\nlet actorEmail = (pr.author && pr.author.user && pr.author.user.emailAddress) || '';\nlet commentId = null;\n\nif (isNew) {\n  // Brand-new PR\n  rawEventType = 'pr_created';\n  changeType = 'created';\n  body = pr.description || pr.title || '';\n\n} else {\n  // Check the activities feed for specific change types (newest first)\n  let classified = false;\n\n  for (const entry of recentActivity) {\n    const act = (entry.action || '').toUpperCase();\n    const user = entry.user || {};\n\n    if (act === 'MERGED') {\n      rawEventType = 'pr_merged';\n      changeType = 'merged';\n      body = 'Pull request merged into ' + ((pr.toRef && pr.toRef.displayId) || 'target branch') + '.';\n      previousState = 'OPEN';\n      newState = 'MERGED';\n    } else if (act === 'DECLINED') {\n      rawEventType = 'pr_declined';\n      changeType = 'declined';\n      body = 'Pull request declined.';\n      previousState = 'OPEN';\n      newState = 'DECLINED';\n    } else if (act === 'REOPENED') {\n      rawEventType = 'pr_reopened';\n      changeType = 'reopened';\n      body = 'Pull request reopened.';\n      newState = 'OPEN';\n    } else if (act === 'APPROVED') {\n      rawEventType = 'pr_approved';\n      changeType = 'approved';\n      body = 'Pull request approved by ' + (user.displayName || 'a reviewer') + '.';\n    } else if (act === 'COMMENTED' && entry.comment && (entry.commentAction || 'ADDED') === 'ADDED') {\n      rawEventType = 'pr_commented';\n      changeType = 'commented';\n      const commentBody = entry.comment.text || '';\n      body = 'New comment from ' + (user.displayName || 'Unknown') + ':\\n' + commentBody;\n      if (entry.comment.id != null) commentId = String(entry.comment.id);\n      // Inline code comments carry a commentAnchor with file path + line\n      if (entry.commentAnchor) {\n        const file = entry.commentAnchor.path || 'unknown file';\n        const line = entry.commentAnchor.line || '';\n        body = 'Inline comment on ' + file + (line ? ':' + line : '') + ' from ' + (user.displayName || 'Unknown') + ':\\n' + commentBody;\n        changeType = 'inline_comment';\n      }\n    } else if (act === 'UPDATED') {\n      rawEventType = 'pr_updated';\n      changeType = 'fields_updated';\n      body = 'PR fields updated.';\n    } else if (act === 'RESCOPED') {\n      rawEventType = 'pr_updated';\n      changeType = 'new_commits';\n      body = 'New commits pushed to the pull request.';\n    } else {\n      // OPENED is covered by the isNew branch; REVIEWED/UNAPPROVED etc. are\n      // low-signal - fall through to the next entry.\n      continue;\n    }\n\n    actorName = user.displayName || actorName;\n    actorHandle = user.name || user.slug || actorHandle;\n    actorEmail = user.emailAddress || actorEmail;\n    classified = true;\n    break;\n  }\n\n  // Fallback: no recent activity matched - use PR state\n  if (!classified) {\n    if (state === 'MERGED') {\n      rawEventType = 'pr_merged';\n      changeType = 'merged';\n      body = 'Pull request merged into ' + ((pr.toRef && pr.toRef.displayId) || 'target branch') + '.';\n    } else if (state === 'DECLINED') {\n      rawEventType = 'pr_declined';\n      changeType = 'declined';\n      body = 'Pull request declined.';\n    } else {\n      rawEventType = 'pr_updated';\n      changeType = 'no_change_detected';\n      body = 'PR polled with no detectable changes. Current state: ' + state + '.';\n    }\n  }\n}\n\nconst epoch = pr.updatedDate || Date.now();\n\nreturn {\n  json: {\n    event_id: 'evt_bbs_pr_' + repoSlug.replace('/', '_') + '_' + pr.id + '_' + epoch,\n    timestamp: new Date(epoch).toISOString(),\n    source: {\n      platform: 'bitbucket_server',\n      connection_id: $workflow.id,\n      raw_event_type: rawEventType\n    },\n    actor: {\n      name: actorName,\n      email: actorEmail,\n      platform_handle: actorHandle\n    },\n    subject: {\n      type: 'pull_request',\n      id: repoSlug + '/PR-' + pr.id,\n      title: pr.title || '',\n      url: (pr.links && pr.links.self && pr.links.self[0] && pr.links.self[0].href) || ''\n    },\n    content: {\n      body: body,\n      attachments: [],\n      metadata: {\n        bb_repository: repoSlug,\n        bb_branch: (pr.fromRef && pr.fromRef.displayId) || '',\n        bb_target_branch: (pr.toRef && pr.toRef.displayId) || '',\n        bb_state: state,\n        bb_reviewers: reviewers.map(u => u.displayName || u.name || ''),\n        bb_change_type: changeType,\n        bb_previous_state: previousState,\n        bb_new_state: newState,\n        bb_description: pr.description || '',\n        bb_comment_id: commentId,\n        participants: [\n          { role: 'author', name: (pr.author && pr.author.user && pr.author.user.displayName) || '', handle: (pr.author && pr.author.user && (pr.author.user.name || pr.author.user.slug)) || '' },\n          ...reviewers.map(u => ({ role: 'reviewer', name: u.displayName || '', handle: u.name || u.slug || '' }))\n        ]\n      }\n    }\n  }\n};"
+      },
+      "name": "Classify Change",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LAYA_ENGINE_URL }}/events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "name": "POST to Laya Engine",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2400,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Every 2 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Fetch Server Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Server Config": {
+      "main": [
+        [
+          {
+            "node": "Prepare Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Config": {
+      "main": [
+        [
+          {
+            "node": "Get Repos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Repos": {
+      "main": [
+        [
+          {
+            "node": "Build Repo Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Repo Items": {
+      "main": [
+        [
+          {
+            "node": "Get Pull Requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Pull Requests": {
+      "main": [
+        [
+          {
+            "node": "Extract PRs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PRs": {
+      "main": [
+        [
+          {
+            "node": "Has PRs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has PRs": {
+      "main": [
+        [
+          {
+            "node": "Merge PR + Activity",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get PR Activity",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Get PR Activity": {
+      "main": [
+        [
+          {
+            "node": "Wrap Activity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wrap Activity": {
+      "main": [
+        [
+          {
+            "node": "Merge PR + Activity",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge PR + Activity": {
+      "main": [
+        [
+          {
+            "node": "Classify Change",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Change": {
+      "main": [
+        [
+          {
+            "node": "POST to Laya Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "meta": {
+    "laya_version": "2026.08.7"
+  }
+}

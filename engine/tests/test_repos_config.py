@@ -61,6 +61,33 @@ class TestReposAPI:
         data = resp.json()
         assert len(data["repos"]) == 1
 
+    async def test_get_repos_host_filter(self, db):
+        """GET /repos?host= returns only repos on that host; cloud repos
+        (empty host) never match a host filter."""
+        repos_data = {"repos": [
+            {"name": "cloud", "path": "/c", "platform": "bitbucket", "remote_id": "ws/cloud"},
+            {"name": "onprem", "path": "/o", "platform": "bitbucket",
+             "remote_id": "src/xrecon", "host": "bb.internal.example.com"},
+            {"name": "gh", "path": "/g", "platform": "github",
+             "remote_id": "org/gh", "host": "github.com"},
+        ]}
+        with patch("laya.api.settings_api.load_repos", return_value=repos_data):
+            from laya.main import app
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.get("/repos", params={"host": "bb.internal.example.com"})
+                resp_url = await client.get(
+                    # Callers may pass a full base URL; scheme/port/slash are tolerated
+                    "/repos", params={"host": "https://BB.internal.example.com:8443/"}
+                )
+                resp_both = await client.get(
+                    "/repos", params={"platform": "bitbucket", "host": "github.com"}
+                )
+
+        assert [r["name"] for r in resp.json()["repos"]] == ["onprem"]
+        assert [r["name"] for r in resp_url.json()["repos"]] == ["onprem"]
+        assert resp_both.json()["repos"] == []
+
     async def test_put_repos(self, db):
         """PUT /repos saves repos config."""
         new_repos = {"repos": [{"name": "new", "path": "/new", "platform": "github", "remote_id": "org/new"}]}

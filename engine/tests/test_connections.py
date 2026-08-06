@@ -27,8 +27,8 @@ class TestPlatformsRegistry:
             assert "icon" in p, f"{key} missing icon"
 
     def test_platform_count(self):
-        """Registry should have 12 platforms."""
-        assert len(PLATFORMS) == 12
+        """Registry should have 13 platforms."""
+        assert len(PLATFORMS) == 13
 
     def test_supported_n8n_types_matches(self):
         """SUPPORTED_N8N_TYPES set matches all platform n8n_types."""

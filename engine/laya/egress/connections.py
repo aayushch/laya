@@ -308,6 +308,8 @@ async def _validate_credentials(platform: str, credentials: dict) -> tuple[bool,
             return await _validate_github(credentials)
         elif platform == "bitbucket":
             return await _validate_bitbucket(credentials)
+        elif platform == "bitbucket_server":
+            return await _validate_bitbucket_server(credentials)
         elif platform == "slack":
             return True, None
         elif platform == "linear":
@@ -396,6 +398,45 @@ async def _validate_bitbucket(creds: dict) -> tuple[bool, str | None]:
         return False, "Invalid username or app password"
     else:
         return False, f"Bitbucket returned HTTP {resp.status_code}"
+
+
+async def _validate_bitbucket_server(creds: dict) -> tuple[bool, str | None]:
+    """Validate a Bitbucket Server / Data Center HTTP access token.
+
+    Probes the authenticated-only inbox count endpoint — present on every
+    supported Server/DC version and, unlike /application-properties, never
+    answers anonymously, so a bad token can't slip through as valid.
+    """
+    server = (creds.get("server", "")).strip().rstrip("/")
+    token = creds.get("accessToken", "")
+    if not all([server, token]):
+        return False, "Missing required fields: server, accessToken"
+
+    if not server.startswith(("http://", "https://")):
+        return False, "Server URL must start with http:// or https:// (e.g. https://bitbucket.your-company.com)"
+
+    # On-prem servers commonly present certificates from an internal CA that
+    # certifi doesn't trust; the connection form's opt-in toggle disables
+    # verification (still TLS-encrypted). The same flag reaches the n8n workflow
+    # nodes as allowUnauthorizedCerts via workflow-config/payload injection.
+    verify = creds.get("allowInsecureSsl") not in (True, "true", "True", "1")
+
+    url = f"{server}/rest/api/1.0/inbox/pull-requests/count"
+    async with httpx.AsyncClient(verify=verify) as client:
+        resp = await client.get(
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10.0,
+        )
+
+    if resp.status_code == 200:
+        return True, None
+    elif resp.status_code == 401:
+        return False, "Invalid or expired access token"
+    elif resp.status_code == 404:
+        return False, "Server URL does not look like a Bitbucket Server instance (REST API not found)"
+    else:
+        return False, f"Bitbucket Server returned HTTP {resp.status_code}"
 
 
 async def _validate_linear(creds: dict) -> tuple[bool, str | None]:
@@ -552,6 +593,13 @@ def _remove_from_keychain(connection_id: str, platform: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+class _BlankOnMissing(dict):
+    """format_map source that resolves missing template fields to ""."""
+
+    def __missing__(self, key: str) -> str:
+        return ""
+
+
 async def _provision_to_n8n(
     platform: str, name: str, credentials: dict
 ) -> str | None:
@@ -564,13 +612,29 @@ async def _provision_to_n8n(
         from laya.integrations.n8n_client import create_credential
 
         # Merge any n8n-specific defaults (e.g. server URL)
-        cred_data = {**platform_config.get("n8n_defaults", {}), **credentials}
+        source = {**platform_config.get("n8n_defaults", {}), **credentials}
+
+        # Platforms whose n8n credential schema differs from our stored fields
+        # (e.g. bitbucket_server: httpHeaderAuth wants {name, value}, we store
+        # {server, accessToken}) declare a declarative n8n_credential_template —
+        # string values are str.format templates over the connection's fields.
+        template = platform_config.get("n8n_credential_template")
+        if template:
+            cred_data = {
+                k: v.format_map(_BlankOnMissing(source)) if isinstance(v, str) else v
+                for k, v in template.items()
+            }
+        else:
+            cred_data = source
 
         result = await create_credential(
             name=name,
             n8n_type=platform_config["n8n_type"],
             data=cred_data,
-            node_type=platform_config["n8n_node"],
+            # node_type feeds the (deprecated, ignored-by-n8n-v1) nodesAccess
+            # field; generic-HTTP platforms have no native node, so fall back to
+            # the httpRequest node type rather than sending an empty string.
+            node_type=platform_config["n8n_node"] or "n8n-nodes-base.httpRequest",
         )
         return str(result.get("id", ""))
     except Exception as e:
@@ -658,6 +722,19 @@ async def _clone_workflows_for_connection(
     short_id = connection_id.replace("conn_", "")
     platform_label = platform_config.get("label", platform.title())
 
+    # Snapshot the declared non-secret runtime config fields once (credentials
+    # were stored in the keychain in create_connection step 2, so the cached
+    # read is cheap). URL-ish values lose their trailing slash so workflow
+    # expressions can concatenate paths without double slashes.
+    workflow_config: dict | None = None
+    config_fields = platform_config.get("workflow_config_fields") or []
+    if config_fields:
+        creds = _get_from_keychain(connection_id, platform) or {}
+        workflow_config = {
+            k: (creds.get(k).rstrip("/") if isinstance(creds.get(k), str) else creds.get(k))
+            for k in config_fields
+        }
+
     # Fetch existing n8n workflows to prevent creating duplicates.
     # Without this check, restarts or retries can create orphan workflows
     # in n8n that the engine doesn't track, leading to double-ingestion.
@@ -721,8 +798,13 @@ async def _clone_workflows_for_connection(
             )
             is_native_match = (
                 n8n_type in node_creds
-                or node_type == n8n_node
-                or node_type.startswith(n8n_node)  # matches gmailTrigger, googleCalendarTrigger, etc.
+                # n8n_node may be "" for generic-HTTP platforms (bitbucket_server);
+                # unguarded startswith("") would match EVERY node and spray the
+                # credential across the whole workflow.
+                or (bool(n8n_node) and (
+                    node_type == n8n_node
+                    or node_type.startswith(n8n_node)  # matches gmailTrigger, googleCalendarTrigger, etc.
+                ))
                 or node_cred_type == n8n_type
             )
             if is_http_match or is_native_match:
@@ -818,6 +900,22 @@ async def _clone_workflows_for_connection(
         )
         await db.commit()
 
+        # Per-clone runtime config: platforms may declare non-secret credential
+        # fields (workflow_config_fields) their workflows need at runtime — e.g.
+        # bitbucket_server's server base URL, which the ingestion clone reads via
+        # GET /metadata/{platform}-config:{{ $workflow.id }} to build REST URLs
+        # and the /repos?host= filter (same per-clone pattern as slack-channels).
+        # Always written under space 'default': workflow ids are globally unique
+        # and the metadata GET the workflow performs defaults to that space.
+        if workflow_config:
+            await db.execute(
+                """INSERT INTO metadata (key, value, space_id)
+                   VALUES (?, ?, 'default')
+                   ON CONFLICT (key, space_id) DO UPDATE SET value = excluded.value""",
+                (f"{platform}-config:{wf_id}", json.dumps(workflow_config)),
+            )
+            await db.commit()
+
         # Track deployed version for this template
         bundled_version = (template_data.get("meta") or {}).get("laya_version")
         if bundled_version:
@@ -844,13 +942,18 @@ async def _remove_connection_workflows(connection_id: str) -> None:
     if not rows:
         return
 
-    # Clean up Slack channel metadata keyed by workflow_id
+    # Clean up per-clone metadata keyed by workflow_id (Slack channel config,
+    # per-platform workflow config written at clone time).
     for row in rows:
         wf_id = row["workflow_id"]
         if wf_id:
             await db.execute(
                 "DELETE FROM metadata WHERE key = ?",
                 (f"slack-channels:{wf_id}",),
+            )
+            await db.execute(
+                "DELETE FROM metadata WHERE key LIKE ?",
+                (f"%-config:{wf_id}",),
             )
     await db.commit()
 

@@ -148,7 +148,7 @@ ROUTER_SYSTEM_PROMPT = _ROUTER_HEAD + _JIRA_LIFECYCLE_BLOCK + _PR_LIFECYCLE_BLOC
 # P6-9). The Jira issue-lifecycle and Bitbucket/GitHub PR-lifecycle guidelines
 # (~450 tok) were sent on every event, including Gmail/Slack that have neither.
 _ISSUE_PLATFORMS = frozenset({"jira", "linear"})
-_CODE_PLATFORMS = frozenset({"github", "bitbucket"})
+_CODE_PLATFORMS = frozenset({"github", "bitbucket", "bitbucket_server"})
 
 
 def build_router_system_prompt(platforms: "str | None | list | set") -> str:

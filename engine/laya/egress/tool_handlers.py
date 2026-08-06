@@ -355,7 +355,7 @@ def _build_pr_request(args: dict, space_id: str | None) -> EgressRequest:
         }
         action_type = action_type_map.get(action, action)
 
-    elif platform == "bitbucket":
+    elif platform in ("bitbucket", "bitbucket_server"):
         parts = pr_id.split("/")
         if len(parts) >= 3:
             workspace, repo, pr_num = parts[0], parts[1], parts[2]
