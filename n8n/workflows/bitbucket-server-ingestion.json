@@ -116,7 +116,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Collect PR data with repo context for the activities lookup. Unlike Cloud,\n// the Server list API has no updated-since query (Cloud's q=updated_on), so\n// filter the page client-side; order=NEWEST returns most-recently-updated\n// first, so recent changes are always inside the 25-PR page.\n// Server timestamps are epoch milliseconds.\nconst prItems = [];\nconst since = Date.now() - 150000;\nfor (const item of $input.all()) {\n  const prs = item.json.values || [];\n  for (const pr of prs) {\n    const repo = pr.toRef && pr.toRef.repository;\n    const repoSlug = repo ? ((repo.project && repo.project.key) || '') + '/' + (repo.slug || '') : '';\n    if (!repoSlug || repoSlug === '/') continue;\n    if ((pr.updatedDate || 0) < since) continue;\n    prItems.push({ json: { pr, repoSlug } });\n  }\n}\nreturn prItems.length ? prItems : [{ json: { _skip: true } }];"
+        "jsCode": "// Collect PRs whose activities are worth scanning. The Server list API has no\n// updated-since query, and — verified against a live instance — comments and\n// approvals DO NOT bump a PR's updatedDate on Server/DC (unlike Cloud), so a\n// window test on updatedDate alone silently misses them. Scan activities for:\n// PRs updated inside the poll window (state changes), every OPEN PR (live\n// review traffic), and recently-closed PRs (post-merge comments). Classify\n// Change decides per PR whether anything actually happened; the Has Change\n// gate drops the quiet ones so idle polls emit nothing.\n// Server timestamps are epoch milliseconds.\nconst prItems = [];\nconst now = Date.now();\nconst since = now - 150000;\nconst RECENT_CLOSED_MS = 7 * 24 * 3600 * 1000;\nfor (const item of $input.all()) {\n  const prs = item.json.values || [];\n  for (const pr of prs) {\n    const repo = pr.toRef && pr.toRef.repository;\n    const repoSlug = repo ? ((repo.project && repo.project.key) || '') + '/' + (repo.slug || '') : '';\n    if (!repoSlug || repoSlug === '/') continue;\n    const updated = pr.updatedDate || 0;\n    const open = (pr.state || '').toUpperCase() === 'OPEN';\n    if (updated < since && !open && updated < now - RECENT_CLOSED_MS) continue;\n    prItems.push({ json: { pr, repoSlug } });\n  }\n}\nreturn prItems.length ? prItems : [{ json: { _skip: true } }];"
       },
       "name": "Extract PRs",
       "type": "n8n-nodes-base.code",
@@ -167,7 +167,7 @@
           "parameters": [
             {
               "name": "limit",
-              "value": "10"
+              "value": "25"
             }
           ]
         },
@@ -218,7 +218,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "// Classify PR changes using the Server activities feed.\n// Bitbucket Server/DC shapes differ from Cloud: timestamps are epoch ms,\n// activities carry an `action` enum (OPENED/COMMENTED/APPROVED/MERGED/...),\n// and reviewers ride on the PR object itself, so no detail fetch is needed.\n// Emits the same raw_event_type set and bb_* metadata keys as the Cloud\n// ingestion so all downstream processing is shared.\n\nconst POLL_WINDOW_MS = 150000; // 2.5 minutes\nconst now = Date.now();\n\nconst pr = $json.pr;\nconst repoSlug = $json.repoSlug;\nconst activity = $json._activity || []; // entries from Wrap Activity node\nconst reviewers = (pr.reviewers || []).map(rv => rv.user || {});\nconst state = (pr.state || '').toUpperCase();\nconst isNew = pr.createdDate === pr.updatedDate;\n\nconst recentActivity = activity.filter(a => a.createdDate && (now - a.createdDate) < POLL_WINDOW_MS);\n\nlet rawEventType = 'pr_updated';\nlet body = '';\nlet changeType = 'generic_update';\nlet previousState = null;\nlet newState = null;\nlet actorName = (pr.author && pr.author.user && pr.author.user.displayName) || 'Unknown';\nlet actorHandle = (pr.author && pr.author.user && (pr.author.user.name || pr.author.user.slug)) || '';\nlet actorEmail = (pr.author && pr.author.user && pr.author.user.emailAddress) || '';\nlet commentId = null;\n\nif (isNew) {\n  // Brand-new PR\n  rawEventType = 'pr_created';\n  changeType = 'created';\n  body = pr.description || pr.title || '';\n\n} else {\n  // Check the activities feed for specific change types (newest first)\n  let classified = false;\n\n  for (const entry of recentActivity) {\n    const act = (entry.action || '').toUpperCase();\n    const user = entry.user || {};\n\n    if (act === 'MERGED') {\n      rawEventType = 'pr_merged';\n      changeType = 'merged';\n      body = 'Pull request merged into ' + ((pr.toRef && pr.toRef.displayId) || 'target branch') + '.';\n      previousState = 'OPEN';\n      newState = 'MERGED';\n    } else if (act === 'DECLINED') {\n      rawEventType = 'pr_declined';\n      changeType = 'declined';\n      body = 'Pull request declined.';\n      previousState = 'OPEN';\n      newState = 'DECLINED';\n    } else if (act === 'REOPENED') {\n      rawEventType = 'pr_reopened';\n      changeType = 'reopened';\n      body = 'Pull request reopened.';\n      newState = 'OPEN';\n    } else if (act === 'APPROVED') {\n      rawEventType = 'pr_approved';\n      changeType = 'approved';\n      body = 'Pull request approved by ' + (user.displayName || 'a reviewer') + '.';\n    } else if (act === 'COMMENTED' && entry.comment && (entry.commentAction || 'ADDED') === 'ADDED') {\n      rawEventType = 'pr_commented';\n      changeType = 'commented';\n      const commentBody = entry.comment.text || '';\n      body = 'New comment from ' + (user.displayName || 'Unknown') + ':\\n' + commentBody;\n      if (entry.comment.id != null) commentId = String(entry.comment.id);\n      // Inline code comments carry a commentAnchor with file path + line\n      if (entry.commentAnchor) {\n        const file = entry.commentAnchor.path || 'unknown file';\n        const line = entry.commentAnchor.line || '';\n        body = 'Inline comment on ' + file + (line ? ':' + line : '') + ' from ' + (user.displayName || 'Unknown') + ':\\n' + commentBody;\n        changeType = 'inline_comment';\n      }\n    } else if (act === 'UPDATED') {\n      rawEventType = 'pr_updated';\n      changeType = 'fields_updated';\n      body = 'PR fields updated.';\n    } else if (act === 'RESCOPED') {\n      rawEventType = 'pr_updated';\n      changeType = 'new_commits';\n      body = 'New commits pushed to the pull request.';\n    } else {\n      // OPENED is covered by the isNew branch; REVIEWED/UNAPPROVED etc. are\n      // low-signal - fall through to the next entry.\n      continue;\n    }\n\n    actorName = user.displayName || actorName;\n    actorHandle = user.name || user.slug || actorHandle;\n    actorEmail = user.emailAddress || actorEmail;\n    classified = true;\n    break;\n  }\n\n  // Fallback: no recent activity matched - use PR state\n  if (!classified) {\n    if (state === 'MERGED') {\n      rawEventType = 'pr_merged';\n      changeType = 'merged';\n      body = 'Pull request merged into ' + ((pr.toRef && pr.toRef.displayId) || 'target branch') + '.';\n    } else if (state === 'DECLINED') {\n      rawEventType = 'pr_declined';\n      changeType = 'declined';\n      body = 'Pull request declined.';\n    } else {\n      rawEventType = 'pr_updated';\n      changeType = 'no_change_detected';\n      body = 'PR polled with no detectable changes. Current state: ' + state + '.';\n    }\n  }\n}\n\nconst epoch = pr.updatedDate || Date.now();\n\nreturn {\n  json: {\n    event_id: 'evt_bbs_pr_' + repoSlug.replace('/', '_') + '_' + pr.id + '_' + epoch,\n    timestamp: new Date(epoch).toISOString(),\n    source: {\n      platform: 'bitbucket_server',\n      connection_id: $workflow.id,\n      raw_event_type: rawEventType\n    },\n    actor: {\n      name: actorName,\n      email: actorEmail,\n      platform_handle: actorHandle\n    },\n    subject: {\n      type: 'pull_request',\n      id: repoSlug + '/PR-' + pr.id,\n      title: pr.title || '',\n      url: (pr.links && pr.links.self && pr.links.self[0] && pr.links.self[0].href) || ''\n    },\n    content: {\n      body: body,\n      attachments: [],\n      metadata: {\n        bb_repository: repoSlug,\n        bb_branch: (pr.fromRef && pr.fromRef.displayId) || '',\n        bb_target_branch: (pr.toRef && pr.toRef.displayId) || '',\n        bb_state: state,\n        bb_reviewers: reviewers.map(u => u.displayName || u.name || ''),\n        bb_change_type: changeType,\n        bb_previous_state: previousState,\n        bb_new_state: newState,\n        bb_description: pr.description || '',\n        bb_comment_id: commentId,\n        participants: [\n          { role: 'author', name: (pr.author && pr.author.user && pr.author.user.displayName) || '', handle: (pr.author && pr.author.user && (pr.author.user.name || pr.author.user.slug)) || '' },\n          ...reviewers.map(u => ({ role: 'reviewer', name: u.displayName || '', handle: u.name || u.slug || '' }))\n        ]\n      }\n    }\n  }\n};"
+        "jsCode": "// Classify what changed on this PR inside the poll window, from the Server\n// activities feed. Server/DC quirks this must handle (all verified against a\n// live instance):\n// - comments and approvals DO NOT bump pr.updatedDate (unlike Cloud), so\n//   Extract PRs passes through every open PR and this code decides from\n//   activities alone;\n// - replies DO NOT get their own COMMENTED activity - they nest (recursively)\n//   under the parent comment's activity, which keeps the parent's timestamp,\n//   so every comment thread must be walked;\n// - the activities feed is NOT strictly newest-first (comment entries are\n//   thread-anchored), so \"first matching entry\" picks stale data - collect ALL\n//   in-window candidates and choose by significance, newest first.\n// Events are stamped with the chosen activity's own timestamp (NOT\n// pr.updatedDate) so distinct changes get distinct event_ids and the engine's\n// event_id dedupe works across overlapping poll windows.\n// PRs with nothing in the window come out bb_change_type=no_change_detected\n// and are dropped by the Has Change gate downstream.\n\nconst POLL_WINDOW_MS = 150000; // 2.5 minutes\nconst now = Date.now();\n\nconst pr = $json.pr;\nconst repoSlug = $json.repoSlug;\nconst activity = $json._activity || [];\nconst reviewers = (pr.reviewers || []).map(rv => rv.user || {});\nconst state = (pr.state || '').toUpperCase();\n\n// --- Collect in-window change candidates ---\nconst candidates = [];\n\nfunction walkThread(node, anchor, parent) {\n  if (!node) return;\n  if (node.createdDate && (now - node.createdDate) < POLL_WINDOW_MS) {\n    candidates.push({ kind: 'COMMENTED', ts: node.createdDate, user: node.author || {}, comment: node, anchor, parent });\n  }\n  for (const child of (node.comments || [])) walkThread(child, anchor, node);\n}\n\nfor (const entry of activity) {\n  const act = (entry.action || '').toUpperCase();\n  if (act === 'COMMENTED') {\n    // Walk the whole thread regardless of the entry's own age - a fresh reply\n    // hides under an old parent activity.\n    walkThread(entry.comment, entry.commentAnchor || null, null);\n  } else if (entry.createdDate && (now - entry.createdDate) < POLL_WINDOW_MS) {\n    candidates.push({ kind: act, ts: entry.createdDate, user: entry.user || {} });\n  }\n}\n\n// Most significant change wins; ties broken newest-first. Unlisted actions\n// (OPENED, REVIEWED, UNAPPROVED, ...) are dropped.\nconst PRIORITY = ['MERGED', 'DECLINED', 'REOPENED', 'COMMENTED', 'APPROVED', 'RESCOPED', 'UPDATED'];\nconst known = candidates.filter(c => PRIORITY.indexOf(c.kind) !== -1);\nknown.sort((a, b) => {\n  const p = PRIORITY.indexOf(a.kind) - PRIORITY.indexOf(b.kind);\n  return p !== 0 ? p : b.ts - a.ts;\n});\nconst chosen = known[0];\n\nlet rawEventType = 'pr_updated';\nlet body = '';\nlet changeType = 'no_change_detected';\nlet previousState = null;\nlet newState = null;\nlet actorName = (pr.author && pr.author.user && pr.author.user.displayName) || 'Unknown';\nlet actorHandle = (pr.author && pr.author.user && (pr.author.user.name || pr.author.user.slug)) || '';\nlet actorEmail = (pr.author && pr.author.user && pr.author.user.emailAddress) || '';\nlet commentId = null;\nlet eventTs = pr.updatedDate || now;\n\nif (pr.createdDate && (now - pr.createdDate) < POLL_WINDOW_MS) {\n  // Brand-new PR\n  rawEventType = 'pr_created';\n  changeType = 'created';\n  body = pr.description || pr.title || '';\n  eventTs = pr.createdDate;\n} else if (chosen) {\n  const user = chosen.user || {};\n  actorName = user.displayName || actorName;\n  actorHandle = user.name || user.slug || actorHandle;\n  actorEmail = user.emailAddress || actorEmail;\n  eventTs = chosen.ts;\n\n  if (chosen.kind === 'MERGED') {\n    rawEventType = 'pr_merged';\n    changeType = 'merged';\n    body = 'Pull request merged into ' + ((pr.toRef && pr.toRef.displayId) || 'target branch') + '.';\n    previousState = 'OPEN';\n    newState = 'MERGED';\n  } else if (chosen.kind === 'DECLINED') {\n    rawEventType = 'pr_declined';\n    changeType = 'declined';\n    body = 'Pull request declined.';\n    previousState = 'OPEN';\n    newState = 'DECLINED';\n  } else if (chosen.kind === 'REOPENED') {\n    rawEventType = 'pr_reopened';\n    changeType = 'reopened';\n    body = 'Pull request reopened.';\n    newState = 'OPEN';\n  } else if (chosen.kind === 'COMMENTED') {\n    rawEventType = 'pr_commented';\n    changeType = 'commented';\n    const commentBody = chosen.comment.text || '';\n    if (chosen.comment.id != null) commentId = String(chosen.comment.id);\n    if (chosen.parent) {\n      // Reply nested in a thread; carry the parent's context into the body so\n      // the card reads as a conversation, not a floating remark.\n      changeType = 'comment_reply';\n      const parentAuthor = (chosen.parent.author && chosen.parent.author.displayName) || 'a comment';\n      const parentText = (chosen.parent.text || '').substring(0, 120);\n      body = 'Reply from ' + actorName + ' to ' + parentAuthor + ' (\"' + parentText + '\"):\\n' + commentBody;\n    } else if (chosen.anchor && chosen.anchor.path) {\n      const line = chosen.anchor.line || '';\n      body = 'Inline comment on ' + chosen.anchor.path + (line ? ':' + line : '') + ' from ' + actorName + ':\\n' + commentBody;\n      changeType = 'inline_comment';\n    } else {\n      body = 'New comment from ' + actorName + ':\\n' + commentBody;\n    }\n  } else if (chosen.kind === 'APPROVED') {\n    rawEventType = 'pr_approved';\n    changeType = 'approved';\n    body = 'Pull request approved by ' + (user.displayName || 'a reviewer') + '.';\n  } else if (chosen.kind === 'RESCOPED') {\n    rawEventType = 'pr_updated';\n    changeType = 'new_commits';\n    body = 'New commits pushed to the pull request.';\n  } else {\n    rawEventType = 'pr_updated';\n    changeType = 'fields_updated';\n    body = 'PR fields updated.';\n  }\n} else if ((pr.updatedDate || 0) && (now - pr.updatedDate) < POLL_WINDOW_MS) {\n  // updatedDate moved but nothing classifiable in the activities page (e.g.\n  // page truncation) - fall back to PR state so merges/declines are never lost.\n  if (state === 'MERGED') {\n    rawEventType = 'pr_merged';\n    changeType = 'merged';\n    body = 'Pull request merged into ' + ((pr.toRef && pr.toRef.displayId) || 'target branch') + '.';\n  } else if (state === 'DECLINED') {\n    rawEventType = 'pr_declined';\n    changeType = 'declined';\n    body = 'Pull request declined.';\n  } else {\n    rawEventType = 'pr_updated';\n    changeType = 'fields_updated';\n    body = 'PR fields updated.';\n  }\n}\n// else: nothing in the window - stays no_change_detected, dropped downstream.\n\nreturn {\n  json: {\n    event_id: 'evt_bbs_pr_' + repoSlug.replace('/', '_') + '_' + pr.id + '_' + eventTs,\n    timestamp: new Date(eventTs).toISOString(),\n    source: {\n      platform: 'bitbucket_server',\n      connection_id: $workflow.id,\n      raw_event_type: rawEventType\n    },\n    actor: {\n      name: actorName,\n      email: actorEmail,\n      platform_handle: actorHandle\n    },\n    subject: {\n      type: 'pull_request',\n      id: repoSlug + '/PR-' + pr.id,\n      title: pr.title || '',\n      url: (pr.links && pr.links.self && pr.links.self[0] && pr.links.self[0].href) || ''\n    },\n    content: {\n      body: body,\n      attachments: [],\n      metadata: {\n        bb_repository: repoSlug,\n        bb_branch: (pr.fromRef && pr.fromRef.displayId) || '',\n        bb_target_branch: (pr.toRef && pr.toRef.displayId) || '',\n        bb_state: state,\n        bb_reviewers: reviewers.map(u => u.displayName || u.name || ''),\n        bb_change_type: changeType,\n        bb_previous_state: previousState,\n        bb_new_state: newState,\n        bb_description: pr.description || '',\n        bb_comment_id: commentId,\n        participants: [\n          { role: 'author', name: (pr.author && pr.author.user && pr.author.user.displayName) || '', handle: (pr.author && pr.author.user && (pr.author.user.name || pr.author.user.slug)) || '' },\n          ...reviewers.map(u => ({ role: 'reviewer', name: u.displayName || '', handle: u.name || u.slug || '' }))\n        ]\n      }\n    }\n  }\n};"
       },
       "name": "Classify Change",
       "type": "n8n-nodes-base.code",
@@ -251,6 +251,36 @@
       "typeVersion": 4.2,
       "position": [
         2400,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "drop-no-change",
+              "leftValue": "={{ $json.content.metadata.bb_change_type }}",
+              "rightValue": "no_change_detected",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "name": "Has Change",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2310,
         300
       ]
     }
@@ -387,11 +417,23 @@
       "main": [
         [
           {
-            "node": "POST to Laya Engine",
+            "node": "Has Change",
             "type": "main",
             "index": 0
           }
         ]
+      ]
+    },
+    "Has Change": {
+      "main": [
+        [
+          {
+            "node": "POST to Laya Engine",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
       ]
     }
   },
@@ -400,6 +442,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.08.7"
+    "laya_version": "2026.08.8"
   }
 }

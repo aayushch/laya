@@ -45,6 +45,17 @@ def section_rank(section_type: str | None) -> int:
 # ---------------------------------------------------------------------------
 
 
+def _entity_set(item: dict) -> set[str]:
+    """All entity ids on an item — the plural list plus the incremental path's
+    singular ``entity_id`` (resynthesis output carries the plural, incremental
+    fusion the singular; identity must not depend on which path wrote the item)."""
+    eids = {e for e in (item.get("entity_ids") or []) if e}
+    single = item.get("entity_id")
+    if single:
+        eids.add(single)
+    return eids
+
+
 def compute_item_key(
     section_type: str,
     entity_ids: list[str] | None,
@@ -55,12 +66,17 @@ def compute_item_key(
 
     ``sha1(section + "|" + sorted(entity_ids))`` truncated to 12 hex chars.
     Entity ids are the join key because they outlive the cards that carry them.
+    Callers reading from an item dict must pass the FULL entity set — plural
+    ``entity_ids`` merged with the singular ``entity_id`` (via ``_entity_set``):
+    incremental items carry only the singular field, and without it every one
+    of them fell through to the source_cards fallback, whose hash changes each
+    time a fusion appends a card — the key drifted version to version and every
+    stored changelog entry naming it became a dead drill-down link.
 
-    Fallback chain, for snapshots the prompt's entity_ids requirement didn't
-    reach (older models, or the backfill in ``_resynthesize_space`` finding no
-    cards to backfill from):
+    Fallback chain, for items with no entity identity at all (older models, or
+    the backfill in ``_resynthesize_space`` finding no cards to backfill from):
 
-      entity_ids → source_cards → text
+      entity ids (plural ∪ singular) → source_cards → text
 
     The text fallback matters: an item with NEITHER entity_ids nor source_cards
     has no other identity at all, and two of them in the same section would
@@ -92,7 +108,7 @@ def item_key_of(section_type: str, item: dict) -> str:
     if stored:
         return str(stored)
     return compute_item_key(
-        section_type, item.get("entity_ids"), item.get("source_cards"), item.get("text")
+        section_type, sorted(_entity_set(item)), item.get("source_cards"), item.get("text")
     )
 
 
@@ -115,7 +131,7 @@ def decorate_item_keys(sections: list[dict]) -> list[dict]:
         for item in section.get("items", []) or []:
             base = compute_item_key(
                 stype,
-                item.get("entity_ids"),
+                sorted(_entity_set(item)),
                 item.get("source_cards"),
                 item.get("text"),
             )
@@ -128,14 +144,6 @@ def decorate_item_keys(sections: list[dict]) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Diffing
 # ---------------------------------------------------------------------------
-
-
-def _entity_set(item: dict) -> set[str]:
-    eids = {e for e in (item.get("entity_ids") or []) if e}
-    single = item.get("entity_id")
-    if single:
-        eids.add(single)
-    return eids
 
 
 def _card_set(item: dict) -> set[str]:
@@ -249,6 +257,13 @@ def compute_resynthesis_change_summary(
     imported so this module stays free of the lifecycle import cycle.
     """
     summary = empty_change_summary()
+    # Re-stamp keys on both sides before diffing: item_key_of prefers the stored
+    # key, and prior_sections come from a persisted snapshot whose stored keys
+    # may predate a change in key derivation (e.g. the singular-entity_id fix).
+    # Recomputing here keeps every recorded entry consistent with what
+    # decorate-on-read produces when the drill-down later resolves the key.
+    decorate_item_keys(prior_sections)
+    decorate_item_keys(new_sections)
     prior = _flatten(prior_sections)
     new = _flatten(new_sections)
     resolved_at_by_entity = resolved_at_by_entity or {}

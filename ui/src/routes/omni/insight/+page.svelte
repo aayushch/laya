@@ -47,11 +47,17 @@
 	const sectionParam = $derived($page.url.searchParams.get('section'));
 	const spaceId = $derived($page.url.searchParams.get('space_id') ?? 'default');
 	const versionParam = $derived(Number($page.url.searchParams.get('v')) || undefined);
+	const atParam = $derived(Number($page.url.searchParams.get('at')) || undefined);
 	const legacyCardIds = $derived($page.url.searchParams.getAll('cards'));
 
 	let item = $state<OmniItem | null>(null);
 	let section = $state<string | null>(null);
 	let version = $state<number | null>(null);
+	// The engine's walk-back can serve an item that is gone from the displayed
+	// snapshot (resolved / compressed away) at its last live state — flagged so
+	// the claim is never mistaken for current state.
+	let isHistorical = $state(false);
+	let foundVersion = $state<number | null>(null);
 	let cards = $state<OmniEvidenceCard[]>([]);
 	let missingCardIds = $state<string[]>([]);
 	let lineage = $state<OmniLineage | null>(null);
@@ -91,18 +97,23 @@
 	async function load() {
 		loading = true;
 		error = null;
+		isHistorical = false;
+		foundVersion = null;
 		resetItemView();
 		try {
 			if (itemKey) {
 				const resp = await engineApi.getOmniItem({
 					spaceId,
 					version: versionParam,
+					at: atParam,
 					section: sectionParam ?? undefined,
 					itemKey
 				});
 				item = resp.item;
 				section = resp.section;
 				version = resp.version;
+				isHistorical = resp.is_historical ?? false;
+				foundVersion = resp.found_version ?? resp.version;
 				cards = resp.cards;
 				missingCardIds = resp.missing_card_ids;
 				lineage = resp.lineage;
@@ -410,6 +421,13 @@
 				class="om-badge-lg rounded px-1.5 py-0.5"
 				style="background: var(--om-warn-bg); color: var(--om-warn-fg);"
 			>{layerLabel(section)}</span>
+		{/if}
+		{#if isHistorical && foundVersion}
+			<span
+				class="om-badge-lg rounded px-1.5 py-0.5"
+				style="background: var(--om-neutral-bg); color: var(--om-neutral-fg);"
+				title="This line is no longer in v{version} — it resolved or was compressed away. Showing its last recorded state, from v{foundVersion}."
+			>last state · v{foundVersion}</span>
 		{/if}
 		<span class="om-row-t" style="color: var(--om-text-dim);">Omni item</span>
 

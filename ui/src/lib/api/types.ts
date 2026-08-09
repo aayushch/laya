@@ -1481,6 +1481,9 @@ export interface OmniChangeAdded {
 	text: string;
 	source_count: number;
 	platforms: string[];
+	/** Version of the write that recorded this entry. Stamped by GET
+	 *  /omni/changes only — absent on the summary embedded in snapshot rows. */
+	version?: number;
 }
 
 export interface OmniChangeFolded {
@@ -1490,6 +1493,9 @@ export interface OmniChangeFolded {
 	to_section: OmniSectionType | null;
 	from_text: string;
 	to_text: string | null;
+	/** Version of the write that recorded this entry. Stamped by GET
+	 *  /omni/changes only — absent on the summary embedded in snapshot rows. */
+	version?: number;
 }
 
 export interface OmniChangeResolved {
@@ -1498,6 +1504,9 @@ export interface OmniChangeResolved {
 	text: string;
 	entity_ids: string[];
 	resolved_at: string | null;
+	/** Version of the write that recorded this entry. Stamped by GET
+	 *  /omni/changes only — absent on the summary embedded in snapshot rows. */
+	version?: number;
 }
 
 export interface OmniChangeSummary {
@@ -1575,6 +1584,14 @@ export interface OmniItemResponse {
 	version: number;
 	generated_at: string | null;
 	snapshot_type: string | null;
+	/**
+	 * Version whose snapshot the item state came from. Equals `version` normally;
+	 * older when the item is gone from the displayed snapshot (resolved or
+	 * compressed away) and the engine served its last live state instead.
+	 */
+	found_version: number;
+	found_generated_at: string | null;
+	is_historical: boolean;
 	cards: OmniEvidenceCard[];
 	/** Source cards the engine could not load — surfaced, never silently dropped. */
 	missing_card_ids: string[];

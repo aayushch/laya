@@ -208,6 +208,14 @@ async def get_omni_changes(
         if parsed is None:
             unsummarized.append(row["version"])
         else:
+            # Stamp the write that recorded each entry (read-time only, nothing
+            # stored). A resolved/compressed-away entry names an item that is
+            # gone from the displayed snapshot by definition — the drill-down
+            # needs this pointer to load the exact snapshot that still had it,
+            # rather than searching history for it.
+            for kind in ("added", "folded", "resolved"):
+                for entry in parsed.get(kind) or []:
+                    entry["version"] = row["version"]
             summaries.append(parsed)
 
     merged = merge_change_summaries(summaries)
@@ -702,6 +710,37 @@ def _locate_item(sections: list[dict], item_key: str, section_type: str | None) 
     return fallback
 
 
+# User-facing: the insight page renders this verbatim, so no item keys or
+# version numbers — those mean nothing to the user and read as a system fault.
+_ITEM_GONE_DETAIL = "The item behind this entry could not be found."
+
+
+async def _locate_item_at(
+    db, space_id: str, at_version: int, item_key: str, section_type: str | None
+) -> tuple[int, str | None, str, dict] | None:
+    """Locate an item in the exact snapshot version the changelog pointed at.
+
+    Changelog rows outlive the items they name: a resolved line or a fold that
+    compressed a line away refers, by definition, to a key absent from the
+    displayed snapshot. Each changelog entry carries the version of the write
+    that recorded it, so the caller hands us the precise version where the item
+    last existed — one snapshot load, no history search.
+
+    Returns (version, generated_at, section_type, item) or None.
+    """
+    from laya.pipeline.omni import _load_full_snapshot
+
+    if at_version < 1:
+        return None
+    content, ver, _card_ids, meta = await _load_full_snapshot(db, space_id, at_version)
+    if content is None:
+        return None
+    located = _locate_item(content.get("sections", []), item_key, section_type)
+    if located is None:
+        return None
+    return ver, meta.get("generated_at"), located[0], located[1]
+
+
 async def _build_lineage(
     db, space_id: str, version: int, section_type: str, item: dict, omni_cfg: dict
 ) -> dict:
@@ -779,6 +818,7 @@ async def _build_lineage(
 async def get_omni_item(
     space_id: str = "default",
     v: int | None = None,
+    at: int | None = None,
     section: str | None = None,
     item: str = "",
     tz: str | None = None,
@@ -803,11 +843,18 @@ async def get_omni_item(
 
     sections = content.get("sections", [])
     located = _locate_item(sections, item, section)
+    found_version = ver
+    found_generated_at = meta.get("generated_at")
+    if located is None and at is not None and at != ver:
+        # Gone from the displayed snapshot (resolved / compressed away). The
+        # changelog stamped `at` — the version where the item last existed —
+        # so serve its last live state from exactly there.
+        hist = await _locate_item_at(db, space_id, at, item, section)
+        if hist is not None:
+            found_version, found_generated_at, hist_section, hist_item = hist
+            located = (hist_section, hist_item)
     if located is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Item {item} not found in snapshot v{ver}",
-        )
+        raise HTTPException(status_code=404, detail=_ITEM_GONE_DETAIL)
     found_section, found_item = located
 
     source_cards = [c for c in (found_item.get("source_cards") or []) if c]
@@ -840,8 +887,11 @@ async def get_omni_item(
         order = {cid: i for i, cid in enumerate(source_cards)}
         cards.sort(key=lambda c: order.get(c["card_id"], 1_000_000))
 
+    # Lineage walks from where the item actually was, so a walked-back claim's
+    # history ends at its last live state rather than probing versions that no
+    # longer carry it.
     lineage = await _build_lineage(
-        db, space_id, ver, found_section, found_item, load_settings().get("omni", {})
+        db, space_id, found_version, found_section, found_item, load_settings().get("omni", {})
     )
 
     # Share of today — the same local-day window /events/day uses.
@@ -866,6 +916,13 @@ async def get_omni_item(
         "version": ver,
         "generated_at": meta.get("generated_at"),
         "snapshot_type": meta.get("snapshot_type"),
+        # Where the item state actually came from: equals `version` normally,
+        # older when the display snapshot no longer carries the key and the
+        # walk-back served its last live state. The UI must flag historical
+        # claims so they aren't mistaken for current state.
+        "found_version": found_version,
+        "found_generated_at": found_generated_at,
+        "is_historical": found_version != ver,
         "cards": cards,
         "missing_card_ids": [c for c in source_cards if c not in found_ids],
         "lineage": lineage,
@@ -881,6 +938,7 @@ async def get_omni_item(
 async def get_omni_item_lineage(
     space_id: str = "default",
     v: int | None = None,
+    at: int | None = None,
     section: str | None = None,
     item: str = "",
 ):
@@ -896,9 +954,16 @@ async def get_omni_item_lineage(
         raise HTTPException(status_code=404, detail="No Omni snapshot for this space")
 
     located = _locate_item(content.get("sections", []), item, section)
+    if located is None and at is not None and at != ver:
+        # Same fallback as GET /omni/item: the key may name an item that has
+        # since resolved or been compressed away. Lineage then walks from its
+        # last live state.
+        hist = await _locate_item_at(db, space_id, at, item, section)
+        if hist is not None:
+            ver, _gen, hist_section, hist_item = hist
+            located = (hist_section, hist_item)
     if located is None:
-        raise HTTPException(status_code=404, detail=f"Item {item} not found in snapshot v{ver}")
-
+        raise HTTPException(status_code=404, detail=_ITEM_GONE_DETAIL)
     found_section, found_item = located
     return await _build_lineage(
         db, space_id, ver, found_section, found_item, load_settings().get("omni", {})

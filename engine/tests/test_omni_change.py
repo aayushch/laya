@@ -116,6 +116,35 @@ class TestItemKey:
             i["item_key"] for i in sections[0]["items"]
         ]
 
+    def test_singular_entity_id_keys_the_item(self):
+        """Incremental items carry entity_id (singular), never entity_ids — the
+        key must come from the entity, not the source_cards fallback: cards grow
+        on every fusion, so a cards-based key drifts version to version and every
+        stored changelog entry naming the item becomes a dead drill-down link."""
+        item = {"text": "PR-504 polled", "entity_id": "bitbucket:pr:504",
+                "source_cards": ["c1"], "platforms": ["bitbucket"]}
+        sections = [{"type": "recent", "items": [item]}]
+        decorate_item_keys(sections)
+        key_before = item["item_key"]
+        assert key_before == compute_item_key("recent", ["bitbucket:pr:504"])
+
+        item["source_cards"].append("c2")  # a later event fuses in
+        item["text"] = "PR-504 approved"
+        decorate_item_keys(sections)
+        assert item["item_key"] == key_before
+
+    def test_resynthesis_summary_ignores_stale_stored_keys(self):
+        """prior_sections come from a persisted snapshot whose stored item_key
+        may predate a change in key derivation. Entries must be named by the key
+        decorate-on-read produces today, or the drill-down can never resolve
+        what the changelog reports."""
+        prior_item = _item("old line", entities=["x:1"], cards=["c1"])
+        prior_item["item_key"] = "deadbeef0000"  # stale stored derivation
+        summary = compute_resynthesis_change_summary(
+            _sections(recent=[prior_item]), _sections(recent=[]), {}, TERMINAL
+        )
+        assert summary["folded"][0]["item_key"] == compute_item_key("recent", ["x:1"])
+
 
 class TestSubjectMatching:
     def test_matches_on_entity_overlap(self):

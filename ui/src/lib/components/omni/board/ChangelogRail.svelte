@@ -26,7 +26,10 @@
 		onBaseChange: (version: number) => void;
 		onDisplayChange: (version: number) => void;
 		onFullHistory: () => void;
-		onOpenItem: (itemKey: string, section: string) => void;
+		/** `atVersion` is the version where the entry last saw its item — folded
+		 *  and resolved rows name items the displayed snapshot no longer carries,
+		 *  and the drill-down needs to know where to look instead. */
+		onOpenItem: (itemKey: string, section: string, atVersion?: number) => void;
 	} = $props();
 
 	// The base list only offers versions OLDER than the displayed one — comparing
@@ -47,6 +50,7 @@
 		meta: string;
 		itemKey: string;
 		section: string;
+		atVersion?: number;
 	};
 
 	// Order: added → folded → resolved. What arrived, what moved, what's finished.
@@ -66,7 +70,8 @@
 				text: a.text,
 				meta: bits.join(' · '),
 				itemKey: a.item_key,
-				section: a.section
+				section: a.section,
+				atVersion: a.version
 			});
 		}
 
@@ -83,7 +88,10 @@
 				text,
 				meta,
 				itemKey: f.item_key,
-				section: f.to_section ?? f.from_section
+				section: f.to_section ?? f.from_section,
+				// A real fold's key names the DESTINATION item, present at the fold's
+				// own version; a compressed-away line last existed one version before.
+				atVersion: f.version !== undefined ? (f.to_section ? f.version : f.version - 1) : undefined
 			});
 		}
 
@@ -95,7 +103,9 @@
 				text: `"${r.text}" resolved`,
 				meta: closed ? `${layerLabel(r.section)} · closed ${closed}` : layerLabel(r.section),
 				itemKey: r.item_key,
-				section: r.section
+				section: r.section,
+				// The write at r.version dropped the line; its last state is one back.
+				atVersion: r.version !== undefined ? r.version - 1 : undefined
 			});
 		}
 
@@ -197,7 +207,7 @@
 					class="om-row flex w-full gap-[9px] rounded-none px-[15px] text-left"
 					style="padding-block: calc(9px * var(--om-density));
 						border-bottom: 1px solid var(--om-divider);"
-					onclick={() => onOpenItem(row.itemKey, row.section)}
+					onclick={() => onOpenItem(row.itemKey, row.section, row.atVersion)}
 				>
 					<span
 						class="om-mono flex h-[17px] w-[17px] flex-none items-center justify-center rounded-[5px] text-[calc(10px*var(--om-scale))] font-semibold"

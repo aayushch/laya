@@ -1101,11 +1101,16 @@ export const engineApi = {
 	getOmniItem: (params: {
 		spaceId?: string;
 		version?: number;
+		/** Version where a changelog entry last saw the item — lets the engine
+		 *  serve the last live state of a line the displayed snapshot no longer
+		 *  carries (resolved / compressed away). */
+		at?: number;
 		section?: string;
 		itemKey: string;
 	}) => {
 		const qs = new URLSearchParams({ space_id: params.spaceId ?? 'default', item: params.itemKey });
 		if (params.version !== undefined) qs.set('v', String(params.version));
+		if (params.at !== undefined) qs.set('at', String(params.at));
 		if (params.section) qs.set('section', params.section);
 		const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 		if (tz) qs.set('tz', tz);

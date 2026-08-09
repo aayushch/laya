@@ -344,7 +344,7 @@
 	}
 
 	/** Changelog rows carry a key + section but no item object. */
-	function openItemKey(itemKey: string, section: string) {
+	function openItemKey(itemKey: string, section: string, atVersion?: number) {
 		if (!snapshot || !itemKey) return;
 		const params = new URLSearchParams({
 			v: String(snapshot.version),
@@ -352,6 +352,10 @@
 			item: itemKey,
 			space_id: activeSpaceId
 		});
+		// Where the entry last saw the item — resolved/compressed-away rows name
+		// lines the displayed snapshot no longer carries, and without this the
+		// engine has nowhere to look for their last live state.
+		if (atVersion !== undefined) params.set('at', String(atVersion));
 		goto(`/omni/insight?${params}`);
 	}
 
@@ -363,13 +367,21 @@
 	function scrollToItem(cardId: string) {
 		const attempt = (tries: number) => {
 			requestAnimationFrame(() => {
-				const el = boardEl?.querySelector(`[data-omni-item="${cardId}"]`);
-				if (el) {
-					el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-					el.classList.add('card-highlight-fade');
-					el.addEventListener('animationend', () => el.classList.remove('card-highlight-fade'), {
-						once: true
-					});
+				// querySelectorAll, not querySelector: attention items render TWICE —
+				// once in the Triage rail and once in the funnel's Needs Attention
+				// band. A single-element lookup always hit the Triage row (first in
+				// DOM order), so returning from an item opened via the funnel band
+				// never flashed where the user actually clicked. Every representation
+				// sits in its own scroll rail, so scrolling each one is conflict-free.
+				const els = boardEl?.querySelectorAll(`[data-omni-item="${cardId}"]`);
+				if (els && els.length > 0) {
+					for (const el of els) {
+						el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+						el.classList.add('card-highlight-fade');
+						el.addEventListener('animationend', () => el.classList.remove('card-highlight-fade'), {
+							once: true
+						});
+					}
 				} else if (tries > 0) {
 					attempt(tries - 1);
 				}

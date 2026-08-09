@@ -198,6 +198,15 @@ class TestChangesEndpoint:
         assert resp.status_code == 200
         assert resp.json()["counts"] == {"added": 0, "folded": 0, "resolved": 0}
 
+    async def test_entries_carry_their_recording_version(self, db):
+        """Each entry is stamped with the write that recorded it — the drill-down
+        uses it (`at` param) to find items the displayed snapshot no longer has."""
+        await self._seed_range(db)
+        async with _client() as client:
+            data = (await client.get("/omni/changes?base=1&to=3")).json()
+        # Added at v2, resolved at v3 → final state wins and carries v3
+        assert data["resolved"][0]["version"] == 3
+
 
 @pytest.mark.asyncio
 class TestVolumeEndpoint:
@@ -309,6 +318,75 @@ class TestItemEndpoint:
         async with _client() as client:
             resp = await client.get("/omni/item?section=recent&item=deadbeef1234")
         assert resp.status_code == 404
+
+    async def test_current_item_is_not_historical(self, db):
+        key = await self._seed_item(db)
+        async with _client() as client:
+            data = (await client.get(f"/omni/item?section=recent&item={key}")).json()
+        assert data["found_version"] == data["version"]
+        assert data["is_historical"] is False
+
+    async def _seed_vanished_item(self, db):
+        """v1 has the item; v2 dropped it (resolved). Returns its key."""
+        await _insert_event(db, "evt_1", "github", datetime(2026, 5, 4, 9, 0))
+        await _insert_card(db, "card_1", "evt_1", status="done", entity_id="github:pr:9",
+                           resolved_at=_ts(datetime(2026, 5, 4, 15, 0)))
+        gone_item = {"text": "PR #9 awaiting review", "source_cards": ["card_1"],
+                     "platforms": ["github"], "priority": "HIGH",
+                     "entity_ids": ["github:pr:9"]}
+        await _insert_snapshot(db, 1, _snapshot([
+            {"type": "recent", "label": None, "items": [gone_item]},
+        ]), generated_at=_ts(datetime(2026, 5, 4, 12, 0)))
+        await _insert_snapshot(db, 2, _snapshot([
+            {"type": "recent", "label": None, "items": []},
+        ]), generated_at=_ts(datetime(2026, 5, 4, 17, 0)))
+        await db.commit()
+        return compute_item_key("recent", ["github:pr:9"])
+
+    async def test_vanished_item_served_from_the_version_that_had_it(self, db):
+        """Resolved/compressed-away changelog rows point at keys that are, by
+        definition, absent from the displayed snapshot. The changelog stamps each
+        entry with its recording version; passing it as `at` (here: the version
+        before the resolving write) serves the item's last live state."""
+        key = await self._seed_vanished_item(db)
+        async with _client() as client:
+            resp = await client.get(f"/omni/item?v=2&at=1&section=recent&item={key}")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["version"] == 2            # the display version the URL asked for
+        assert data["found_version"] == 1      # where the item last actually was
+        assert data["is_historical"] is True
+        assert data["item"]["text"] == "PR #9 awaiting review"
+        assert [c["card_id"] for c in data["cards"]] == ["card_1"]
+        # Lineage walks from the last live state, not the version that lost it
+        assert data["lineage"]["first_version"] == 1
+
+    async def test_vanished_item_without_at_is_a_friendly_404(self, db):
+        key = await self._seed_vanished_item(db)
+        async with _client() as client:
+            resp = await client.get(f"/omni/item?v=2&section=recent&item={key}")
+        assert resp.status_code == 404
+        # User-facing message: no item keys or version numbers
+        assert key not in resp.json()["detail"]
+        assert "v2" not in resp.json()["detail"]
+
+    async def test_vanished_item_lineage_falls_back_too(self, db):
+        gone_item = {"text": "old line", "source_cards": ["c1"], "platforms": [],
+                     "priority": "LOW", "entity_ids": ["y:7"]}
+        await _insert_snapshot(db, 1, _snapshot([
+            {"type": "recent", "label": None, "items": [gone_item]},
+        ]))
+        await _insert_snapshot(db, 2, _snapshot([
+            {"type": "recent", "label": None, "items": []},
+        ]))
+        await db.commit()
+
+        key = compute_item_key("recent", ["y:7"])
+        async with _client() as client:
+            resp = await client.get(f"/omni/item/lineage?v=2&at=1&section=recent&item={key}")
+        assert resp.status_code == 200
+        assert resp.json()["first_version"] == 1
 
     async def test_missing_item_param_is_400(self, db):
         async with _client() as client:

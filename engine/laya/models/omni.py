@@ -36,9 +36,10 @@ class OmniItem(BaseModel):
     # produces a NEW card_id on the same entity_id.
     entity_ids: list[str] = []
     space_id: str = "default"
-    # Stable identity across versions — sha1(section|sorted(entity_ids)), see
-    # pipeline/omni_change.compute_item_key. Stamped on write and recomputed on
-    # read, so snapshots written before migration 072 are addressable too.
+    # Stable identity across versions — sha1(section|sorted(entity_ids ∪
+    # entity_id)), see pipeline/omni_change.compute_item_key. Stamped on write
+    # and recomputed on read, so snapshots written before migration 072 are
+    # addressable too.
     item_key: str | None = None
     # Live state of the item's source cards at read time, decorated by GET /omni.
     # NOT persisted: `priority` above is frozen at synthesis time, so a resolved
