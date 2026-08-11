@@ -3,7 +3,8 @@
 <!--
 	Calendar rail — meetings for the selected day, positioned by their REAL
 	start/end (which live on the source event, never on a card; see
-	GET /events/day). Overlapping meetings split the rail and turn red: a
+	GET /events/day). Meetings whose rendered blocks overlap shrink and sit
+	side by side; the red tone is reserved for true time overlaps, because a
 	double-booking is the one calendar fact worth shouting about.
 -->
 <script lang="ts">
@@ -60,7 +61,7 @@
 			.filter((m): m is { meeting: DayMeeting; startMin: number; endMin: number } => m !== null)
 	);
 
-	const blocks = $derived(layoutMeetings(timed));
+	const blocks = $derived(layoutMeetings(timed, (minute) => scale.y(minute)));
 	const allDay = $derived(meetings.filter((m) => m.all_day));
 
 	function tooltipText(m: DayMeeting, startMin: number, endMin: number): string {
@@ -105,23 +106,24 @@
 	{/if}
 
 	{#each blocks as block (block.meeting.event_id)}
-		{@const clash = block.slots > 1}
-		{@const top = scale.y(block.startMin)}
-		{@const height = Math.max(22, scale.y(block.endMin) - top - 2)}
 		{@const slotWidth = (width - 12) / block.slots}
 		<div
 			class="absolute overflow-hidden rounded px-[5px] py-[3px] leading-[1.25]"
-			style="top: {top}px; height: {height}px; left: {6 + block.slot * slotWidth}px; width: {slotWidth - (block.slots > 1 ? 4 : 0)}px;
-				background: {clash ? 'var(--tl-meet-clash-bg)' : 'var(--tl-meet-bg)'};
-				border-left: 2px solid {clash ? 'var(--tl-meet-clash-edge)' : 'var(--tl-meet-edge)'};
-				color: {clash ? 'var(--tl-meet-clash-fg)' : 'var(--tl-meet-fg)'};
+			style="top: {block.top}px; height: {block.height}px; left: {6 + block.slot * slotWidth}px; width: {slotWidth - (block.slots > 1 ? 4 : 0)}px;
+				background: {block.clash ? 'var(--tl-meet-clash-bg)' : 'var(--tl-meet-bg)'};
+				border-left: 2px solid {block.clash ? 'var(--tl-meet-clash-edge)' : 'var(--tl-meet-edge)'};
+				color: {block.clash ? 'var(--tl-meet-clash-fg)' : 'var(--tl-meet-fg)'};
 				{block.meeting.cancelled ? 'opacity: 0.6;' : ''}"
 			role="note"
 			onmouseenter={(e) => onhover?.(e.currentTarget as HTMLElement, tooltipText(block.meeting, block.startMin, block.endMin))}
 			onmouseleave={() => onleave?.()}
 		>
-			<div class="font-mono text-[8px] opacity-80">{formatMinutes(block.startMin)}</div>
-			{#if !compact}
+			<!-- The axis already gives the start time (and the tooltip the exact
+			     range), so blocks show only the title — except compact windows,
+			     where the title can't fit and the time is the whole block. -->
+			{#if compact}
+				<div class="font-mono text-[8px] opacity-80">{formatMinutes(block.startMin)}</div>
+			{:else}
 				<div class="truncate text-[9px] font-medium {block.meeting.cancelled ? 'line-through' : ''}">
 					{block.meeting.title}
 				</div>

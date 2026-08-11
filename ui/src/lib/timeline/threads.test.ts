@@ -226,36 +226,76 @@ describe('attentionMarks', () => {
 });
 
 describe('layoutMeetings', () => {
+	/** Identity scale: 1px per minute, roomy enough that time and pixels agree. */
+	const px = (minute: number) => minute;
+
 	it('gives a lone meeting the full rail', () => {
-		const [block] = layoutMeetings([{ meeting: 'standup', startMin: 570, endMin: 585 }]);
-		expect(block).toMatchObject({ slot: 0, slots: 1 });
+		const [block] = layoutMeetings([{ meeting: 'standup', startMin: 570, endMin: 585 }], px);
+		expect(block).toMatchObject({ slot: 0, slots: 1, clash: false });
 	});
 
-	it('splits the rail between colliding meetings', () => {
-		const blocks = layoutMeetings([
-			{ meeting: 'incident', startMin: 960, endMin: 1020 },
-			{ meeting: 'board', startMin: 960, endMin: 1050 }
-		]);
+	it('splits the rail between colliding meetings and flags the double-booking', () => {
+		const blocks = layoutMeetings(
+			[
+				{ meeting: 'incident', startMin: 960, endMin: 1020 },
+				{ meeting: 'board', startMin: 960, endMin: 1050 }
+			],
+			px
+		);
 		expect(blocks.map((b) => b.slot)).toEqual([0, 1]);
 		expect(blocks.every((b) => b.slots === 2)).toBe(true);
+		expect(blocks.every((b) => b.clash)).toBe(true);
 	});
 
 	it('starts a fresh cluster once the overlap ends', () => {
-		const blocks = layoutMeetings([
-			{ meeting: 'a', startMin: 540, endMin: 600 },
-			{ meeting: 'b', startMin: 570, endMin: 630 },
-			{ meeting: 'c', startMin: 700, endMin: 730 }
-		]);
-		expect(blocks.find((b) => b.meeting === 'c')).toMatchObject({ slot: 0, slots: 1 });
+		const blocks = layoutMeetings(
+			[
+				{ meeting: 'a', startMin: 540, endMin: 600 },
+				{ meeting: 'b', startMin: 570, endMin: 630 },
+				{ meeting: 'c', startMin: 700, endMin: 730 }
+			],
+			px
+		);
+		expect(blocks.find((b) => b.meeting === 'c')).toMatchObject({ slot: 0, slots: 1, clash: false });
 		expect(blocks.find((b) => b.meeting === 'a')?.slots).toBe(2);
 	});
 
 	it('handles three-way overlaps', () => {
-		const blocks = layoutMeetings([
-			{ meeting: 'a', startMin: 540, endMin: 660 },
-			{ meeting: 'b', startMin: 550, endMin: 620 },
-			{ meeting: 'c', startMin: 560, endMin: 600 }
-		]);
+		const blocks = layoutMeetings(
+			[
+				{ meeting: 'a', startMin: 540, endMin: 660 },
+				{ meeting: 'b', startMin: 550, endMin: 620 },
+				{ meeting: 'c', startMin: 560, endMin: 600 }
+			],
+			px
+		);
 		expect(blocks.every((b) => b.slots === 3)).toBe(true);
+	});
+
+	it('splits back-to-back meetings whose rendered rects collide, without a clash', () => {
+		// 0.2px/min ≈ a compressed zoom: the 15-min standup renders 3px tall,
+		// so the 22px minimum height pushes it over the 10:30 interview.
+		const compressed = (minute: number) => minute * 0.2;
+		const blocks = layoutMeetings(
+			[
+				{ meeting: 'standup', startMin: 615, endMin: 630 },
+				{ meeting: 'interview', startMin: 630, endMin: 690 }
+			],
+			compressed
+		);
+		expect(blocks.every((b) => b.slots === 2)).toBe(true);
+		expect(blocks.every((b) => !b.clash)).toBe(true);
+	});
+
+	it('keeps back-to-back meetings full-width when the zoom gives them room', () => {
+		const roomy = (minute: number) => minute * 2;
+		const blocks = layoutMeetings(
+			[
+				{ meeting: 'standup', startMin: 615, endMin: 630 },
+				{ meeting: 'interview', startMin: 630, endMin: 690 }
+			],
+			roomy
+		);
+		expect(blocks.every((b) => b.slots === 1)).toBe(true);
 	});
 });

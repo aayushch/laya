@@ -241,35 +241,68 @@ export function attentionMarks(threads: Thread[]): AttentionMark[] {
 	return marks;
 }
 
-/** Overlapping meetings split the calendar rail and turn red. */
+/** Visually overlapping meetings split the calendar rail; true time overlaps also turn red. */
 export interface MeetingBlock<T> {
 	meeting: T;
 	startMin: number;
 	endMin: number;
+	/** Rendered rect on the axis, min block height already applied. */
+	top: number;
+	height: number;
 	/** Index within its overlapping cluster, and the cluster's size. */
 	slot: number;
 	slots: number;
+	/** True TIME overlap with another meeting (a double-booking) — drives the red tone. */
+	clash: boolean;
 }
 
+/**
+ * Clusters on RENDERED rects, not raw times: the minimum block height makes a
+ * short meeting occupy more axis than its duration at compressed zoom, so
+ * back-to-back entries (10:15 standup, 10:30 interview) can cover each other
+ * even though their times never overlap. Splitting on pixel overlap keeps both
+ * readable, while `clash` stays reserved for true time overlaps — a
+ * double-booking is the one calendar fact worth shouting about, and a merely
+ * cramped zoom level must not raise that alarm.
+ */
 export function layoutMeetings<T>(
-	meetings: { meeting: T; startMin: number; endMin: number }[]
+	meetings: { meeting: T; startMin: number; endMin: number }[],
+	y: (minute: number) => number,
+	minHeight = 22
 ): MeetingBlock<T>[] {
 	const sorted = [...meetings].sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
+	const rects: MeetingBlock<T>[] = sorted.map((m) => {
+		const top = y(m.startMin);
+		// -2 keeps a breathing gap between vertically adjacent blocks.
+		const height = Math.max(minHeight, y(m.endMin) - top - 2);
+		return { ...m, top, height, slot: 0, slots: 1, clash: false };
+	});
+
+	for (let i = 0; i < rects.length; i++) {
+		for (let j = i + 1; j < rects.length; j++) {
+			if (rects[j].startMin < rects[i].endMin && rects[i].startMin < rects[j].endMin) {
+				rects[i].clash = true;
+				rects[j].clash = true;
+			}
+		}
+	}
+
 	const out: MeetingBlock<T>[] = [];
 	let cluster: MeetingBlock<T>[] = [];
-	let clusterEnd = -Infinity;
+	let clusterBottom = -Infinity;
 
 	const flush = () => {
 		for (const block of cluster) block.slots = cluster.length;
 		out.push(...cluster);
 		cluster = [];
-		clusterEnd = -Infinity;
+		clusterBottom = -Infinity;
 	};
 
-	for (const m of sorted) {
-		if (m.startMin >= clusterEnd) flush();
-		cluster.push({ ...m, slot: cluster.length, slots: 1 });
-		clusterEnd = Math.max(clusterEnd, m.endMin);
+	for (const r of rects) {
+		if (r.top >= clusterBottom) flush();
+		r.slot = cluster.length;
+		cluster.push(r);
+		clusterBottom = Math.max(clusterBottom, r.top + r.height);
 	}
 	flush();
 	return out;
