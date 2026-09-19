@@ -420,3 +420,113 @@ async def test_prev_turn_used_tools_signal(db):
     await _msg("m3", "user", None)
     await _msg("m4", "assistant", '[{"name": "search_cards"}]')
     assert await _prev_turn_used_tools("conv_x") is True
+
+
+@pytest.mark.asyncio
+class TestStreamingPersistence:
+    """The streaming pipeline persists the assistant row up front and salvages
+    partial content when the stream is interrupted — an interrupted or hung
+    stream used to lose the entire reply (it was only INSERTed at the end)."""
+
+    async def _rows(self, db, conv_id, role):
+        return await db.execute_fetchall(
+            "SELECT message_id, content, model_used FROM chat_messages "
+            "WHERE conversation_id = ? AND role = ? ORDER BY rowid",
+            (conv_id, role),
+        )
+
+    async def test_completed_stream_finalizes_single_row(self, db):
+        """Happy path: content lands in the pre-inserted row (no duplicate)."""
+        import asyncio
+        from laya.llm.client import StreamEvent
+        from laya.pipeline.chat import process_chat_message_streaming
+
+        conv_id = await _create_conversation(db, "conv_stream_ok")
+
+        async def fake_stream(**kwargs):
+            yield StreamEvent(type="chunk", content="Hello ")
+            yield StreamEvent(type="chunk", content="world")
+            yield StreamEvent(
+                type="done", model="test-model",
+                input_tokens=10, output_tokens=5, latency_ms=100,
+            )
+
+        events = []
+        with patch("laya.pipeline.chat.llm_call_streaming", new=fake_stream), \
+             patch("laya.pipeline.chat.memory_search", new_callable=AsyncMock, return_value=[]):
+            async for ev in process_chat_message_streaming("hi", conversation_id=conv_id):
+                events.append(ev)
+
+        assert events[0]["type"] == "chat_stream_start"
+        assert events[-1]["type"] == "chat_stream_done"
+        assert events[-1]["message"]["content"] == "Hello world"
+
+        rows = await self._rows(db, conv_id, "assistant")
+        assert len(rows) == 1
+        assert rows[0]["content"] == "Hello world"
+        assert rows[0]["model_used"] == "test-model"
+        # The done event's id matches the persisted row (UI keys on it)
+        assert rows[0]["message_id"] == events[-1]["message"]["message_id"]
+
+    async def test_closed_generator_salvages_partial_content(self, db):
+        """Consumer dies mid-stream (GeneratorExit) → partial reply survives
+        with an interrupted marker; the user message survives too."""
+        import asyncio
+        from laya.llm.client import StreamEvent
+        from laya.pipeline.chat import process_chat_message_streaming, _INTERRUPTED_MARKER
+
+        conv_id = await _create_conversation(db, "conv_stream_cut")
+
+        async def fake_stream(**kwargs):
+            yield StreamEvent(type="chunk", content="Partial ")
+            yield StreamEvent(type="chunk", content="answer")
+            await asyncio.Event().wait()  # would hang forever
+            yield StreamEvent(type="done")  # pragma: no cover
+
+        with patch("laya.pipeline.chat.llm_call_streaming", new=fake_stream), \
+             patch("laya.pipeline.chat.memory_search", new_callable=AsyncMock, return_value=[]):
+            gen = process_chat_message_streaming("continue", conversation_id=conv_id)
+            assert (await anext(gen))["type"] == "chat_stream_start"
+            assert (await anext(gen))["content"] == "Partial "
+            assert (await anext(gen))["content"] == "answer"
+            await gen.aclose()
+
+        rows = await self._rows(db, conv_id, "assistant")
+        assert len(rows) == 1
+        assert rows[0]["content"] == "Partial answer" + _INTERRUPTED_MARKER
+
+        user_rows = await self._rows(db, conv_id, "user")
+        assert len(user_rows) == 1
+        assert user_rows[0]["content"] == "continue"
+
+    async def test_cancelled_task_with_no_content_deletes_placeholder(self, db):
+        """Task cancelled (engine shutdown) before any chunk arrived → the empty
+        placeholder row is removed so history gets no blank assistant bubble."""
+        import asyncio
+        from laya.llm.client import StreamEvent
+        from laya.pipeline.chat import process_chat_message_streaming
+
+        conv_id = await _create_conversation(db, "conv_stream_cancel")
+        llm_entered = asyncio.Event()
+
+        async def fake_stream(**kwargs):
+            llm_entered.set()
+            await asyncio.Event().wait()  # hang until cancelled
+            yield StreamEvent(type="chunk", content="never")  # pragma: no cover
+
+        async def consume():
+            async for _ in process_chat_message_streaming("hi", conversation_id=conv_id):
+                pass
+
+        with patch("laya.pipeline.chat.llm_call_streaming", new=fake_stream), \
+             patch("laya.pipeline.chat.memory_search", new_callable=AsyncMock, return_value=[]):
+            task = asyncio.create_task(consume())
+            await asyncio.wait_for(llm_entered.wait(), timeout=5)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+        assert await self._rows(db, conv_id, "assistant") == []
+        # The user message still survives the cancellation
+        user_rows = await self._rows(db, conv_id, "user")
+        assert len(user_rows) == 1

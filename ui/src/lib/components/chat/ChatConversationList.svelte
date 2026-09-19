@@ -10,6 +10,7 @@
 		chatOpen,
 		chatExpanded
 	} from '$lib/stores/chat';
+	import { applyLoadedMessages } from '$lib/stores/chatStream';
 	import type { Conversation } from '$lib/api/types';
 	import { parseBackendDate } from '$lib/utils/datetime';
 	import { glassTheme } from '$lib/stores/glassTheme';
@@ -49,10 +50,12 @@
 		if (editingId === conv.conversation_id) return;
 		activeConversationId.set(conv.conversation_id);
 		chatListOpen.set(false);
-		// Load messages for this conversation
+		// Load messages for this conversation. Merge-aware: a reply may still be
+		// streaming into this conversation (its DB row lags the live content),
+		// so never plain-set over an active streaming placeholder.
 		try {
 			const msgs = await engineApi.getConversationMessages(conv.conversation_id, 50);
-			chatMessages.set(msgs.reverse());
+			applyLoadedMessages(conv.conversation_id, msgs.reverse());
 		} catch {
 			chatMessages.set([]);
 		}

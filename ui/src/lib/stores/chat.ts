@@ -11,6 +11,12 @@ export const chatInputPreset = writable('');
 /** ID of the message currently being streamed (null when idle) */
 export const streamingMessageId = writable<string | null>(null);
 
+/** True from send() until the stream completes (or the WS drops). Store-backed
+ *  (not component state) so closing/reopening the sidebar can't orphan it, and
+ *  so the chatStream handler — which lives outside the component — can clear it.
+ *  Overall busy state = chatSending || streamingMessageId !== null. */
+export const chatSending = writable(false);
+
 /** Tools currently being called by the assistant */
 export const activeTools = writable<string[]>([]);
 

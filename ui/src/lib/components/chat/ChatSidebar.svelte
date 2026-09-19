@@ -8,6 +8,7 @@
 		chatMessages,
 		chatInputPreset,
 		streamingMessageId,
+		chatSending,
 		activeTools,
 		activeConversationId,
 		conversations,
@@ -16,7 +17,8 @@
 		chatCardContext,
 		chatCardIds
 	} from '$lib/stores/chat';
-	import { wsStatus, lastMessage, sendMessage } from '$lib/stores/websocket';
+	import { applyLoadedMessages } from '$lib/stores/chatStream';
+	import { wsStatus, sendMessage } from '$lib/stores/websocket';
 	import { engineApi } from '$lib/api/engine';
 	import type { ChatMessage as ChatMessageType } from '$lib/api/types';
 	import ChatMessage from './ChatMessage.svelte';
@@ -27,7 +29,6 @@
 	import { glassTheme } from '$lib/stores/glassTheme';
 
 	let input = $state('');
-	let sending = $state(false);
 	let clearPending = $state(false);
 	let messagesEl: HTMLDivElement | undefined = $state();
 	let textareaEl: HTMLTextAreaElement | undefined = $state();
@@ -43,6 +44,13 @@
 
 	// Show list view when explicitly requested (chatListOpen controls this)
 	const showList = $derived($chatListOpen);
+
+	// Busy = a send is in flight or a reply is streaming. Store-backed (see
+	// stores/chat.ts) so it survives close/reopen and gets cleared by the
+	// module-level chatStream handler — the old component-local `sending` flag
+	// stayed true forever when a stream never delivered its done-event, which
+	// silently blocked all further sends.
+	const chatBusy = $derived($chatSending || $streamingMessageId !== null);
 
 	// The floating-card skin (margins + rounding + shadow) suits the padded pages, but on
 	// the workspace the surrounding panels are full-bleed — so that skin reads as a
@@ -123,7 +131,8 @@
 				if (conv) {
 					activeConversationId.set(conv.conversation_id);
 					const msgs = await engineApi.getConversationMessages(conv.conversation_id, 100);
-					chatMessages.set([...msgs].reverse());
+					// Merge-aware: don't clobber an in-flight streaming reply
+					applyLoadedMessages(conv.conversation_id, [...msgs].reverse());
 				} else {
 					activeConversationId.set(null);
 					chatMessages.set([]);
@@ -175,121 +184,14 @@
 		pinnedToBottom = true;
 	});
 
-	// Handle streaming WS events
-	// NOTE: We use get(streamingMessageId) instead of $streamingMessageId to avoid
-	// tracking it as a reactive dependency, which would re-trigger this effect
-	// when streamingMessageId changes and cause duplicate message processing.
-	$effect(() => {
-		const msg = $lastMessage;
-		if (!msg) return;
-
-		const raw = msg as unknown as Record<string, unknown>;
-
-		switch (msg.type) {
-			case 'chat_stream_start': {
-				const msgId = raw.message_id as string;
-				const convId = raw.conversation_id as string | undefined;
-				streamingMessageId.set(msgId);
-				activeTools.set([]);
-				// Track the conversation if auto-created by backend
-				if (convId && !get(activeConversationId)) {
-					activeConversationId.set(convId);
-				}
-				// Add placeholder message
-				const placeholder: ChatMessageType = {
-					message_id: msgId,
-					timestamp: new Date().toISOString(),
-					role: 'assistant',
-					content: '',
-					referenced_cards: [],
-					referenced_events: [],
-					conversation_id: convId
-				};
-				chatMessages.update((msgs) => [...msgs, placeholder]);
-				break;
-			}
-
-			case 'chat_stream_chunk': {
-				const chunk = raw.content as string;
-				if (chunk) {
-					const currentStreamId = get(streamingMessageId);
-					chatMessages.update((msgs) => {
-						const last = msgs[msgs.length - 1];
-						if (last && last.role === 'assistant' && last.message_id === currentStreamId) {
-							return [
-								...msgs.slice(0, -1),
-								{ ...last, content: last.content + chunk }
-							];
-						}
-						return msgs;
-					});
-				}
-				break;
-			}
-
-			case 'chat_stream_tool': {
-				const toolName = raw.tool as string;
-				const status = raw.status as string;
-				if (status === 'calling') {
-					activeTools.update((t) => [...t, toolName]);
-				} else if (status === 'done') {
-					activeTools.update((t) => t.filter((n) => n !== toolName));
-				}
-				break;
-			}
-
-			case 'chat_stream_done': {
-				const chatMsg = raw.message as ChatMessageType;
-				if (chatMsg) {
-					const currentStreamId = get(streamingMessageId);
-					chatMessages.update((msgs) => {
-						const idx = msgs.findIndex((m) => m.message_id === currentStreamId);
-						if (idx >= 0) {
-							const updated = [...msgs];
-							updated[idx] = chatMsg;
-							return updated;
-						}
-						return [...msgs, chatMsg];
-					});
-				}
-				streamingMessageId.set(null);
-				activeTools.set([]);
-				sending = false;
-				// Refresh conversations list to update preview/timestamp
-				engineApi.getConversations(100).then((list) => conversations.set(list)).catch(() => {});
-				break;
-			}
-
-			case 'conversation_title_updated': {
-				// Backend finished router-model title generation — patch the
-				// store so the sidebar header and list row update in-place.
-				const convId = raw.conversation_id as string | undefined;
-				const newTitle = raw.title as string | undefined;
-				if (convId && newTitle) {
-					conversations.update((list) =>
-						list.map((c) =>
-							c.conversation_id === convId ? { ...c, title: newTitle } : c
-						)
-					);
-				}
-				break;
-			}
-
-			// Legacy non-streaming fallback
-			case 'chat_response': {
-				const payload = msg.payload as unknown as { message: ChatMessageType };
-				if (payload?.message) {
-					chatMessages.update((msgs) => [...msgs, payload.message]);
-					sending = false;
-				}
-				break;
-			}
-		}
-	});
+	// Streaming WS events are handled by the module-level subscriber in
+	// $lib/stores/chatStream.ts (initialized from the root layout), NOT here —
+	// an in-component handler dies with the component on close, dropping every
+	// chunk of a still-running chat and making it look aborted on reopen.
 
 	async function send() {
 		const text = input.trim();
-		if (!text || sending) return;
+		if (!text || chatBusy) return;
 
 		const convId = get(activeConversationId);
 
@@ -304,7 +206,7 @@
 		};
 		chatMessages.update((msgs) => [...msgs, userMsg]);
 		input = '';
-		sending = true;
+		chatSending.set(true);
 		pinnedToBottom = true;
 
 		// Try WS first, fallback to REST
@@ -346,7 +248,7 @@
 				};
 				chatMessages.update((msgs) => [...msgs, errMsg]);
 			} finally {
-				sending = false;
+				chatSending.set(false);
 			}
 		}
 	}
@@ -611,7 +513,7 @@
 				{/if}
 
 				<!-- Waiting indicator (before stream starts) -->
-				{#if sending && !$streamingMessageId && $activeTools.length === 0}
+				{#if $chatSending && !$streamingMessageId && $activeTools.length === 0}
 					<div class="flex justify-start">
 						<div class="rounded-xl {$glassTheme ? 'bg-white/[0.06]' : 'bg-surface-700'} px-3.5 py-2.5 text-laya-base text-surface-400">
 							<span class="inline-flex gap-1">
@@ -638,7 +540,7 @@
 					></textarea>
 					<button
 						onclick={send}
-						disabled={!input.trim() || sending}
+						disabled={!input.trim() || chatBusy}
 						aria-label="Send message"
 						class="absolute bottom-2 right-2 rounded-md p-1 transition-colors disabled:opacity-30
 							{input.trim() ? 'text-laya-orange hover:text-laya-peach' : 'text-surface-600'}"

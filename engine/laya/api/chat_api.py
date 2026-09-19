@@ -73,12 +73,15 @@ async def get_chat_history(
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
+    # rowid DESC breaks same-second ties (timestamp has 1s resolution): the
+    # streaming pipeline inserts the user row and the assistant placeholder in
+    # the same second, so without it a mid-stream reload could swap their order.
     rows = await db.execute_fetchall(
         f"""SELECT message_id, timestamp, role, content,
                    referenced_cards, referenced_events, conversation_id
             FROM chat_messages
             {where}
-            ORDER BY timestamp DESC
+            ORDER BY timestamp DESC, rowid DESC
             LIMIT ?""",
         (*params, limit),
     )
@@ -213,13 +216,14 @@ async def get_conversation_messages(
     """Get messages for a specific conversation."""
     db = await get_db()
 
+    # rowid DESC: same-second tiebreaker — see get_chat_history above.
     if before:
         rows = await db.execute_fetchall(
             """SELECT message_id, timestamp, role, content,
                       referenced_cards, referenced_events, conversation_id
                FROM chat_messages
                WHERE conversation_id = ? AND timestamp < ?
-               ORDER BY timestamp DESC
+               ORDER BY timestamp DESC, rowid DESC
                LIMIT ?""",
             (conversation_id, before, limit),
         )
@@ -229,7 +233,7 @@ async def get_conversation_messages(
                       referenced_cards, referenced_events, conversation_id
                FROM chat_messages
                WHERE conversation_id = ?
-               ORDER BY timestamp DESC
+               ORDER BY timestamp DESC, rowid DESC
                LIMIT ?""",
             (conversation_id, limit),
         )

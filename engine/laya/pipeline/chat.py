@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -460,6 +461,70 @@ async def process_chat_message(
     )
 
 
+# How often (at most) the in-flight assistant content is flushed to its DB row
+# during streaming. Bounds the data lost to a hard kill to ~1s of chunks without
+# hammering the shared SQLite connection on every token.
+_PARTIAL_FLUSH_INTERVAL_S = 1.0
+
+# Appended to a salvaged partial reply so both the user and the model (on a
+# later "continue" turn, via chat history) can see the response was cut short.
+_INTERRUPTED_MARKER = "\n\n[response interrupted]"
+
+
+async def _flush_partial_assistant(db, message_id: str, content: str) -> None:
+    """Throttled mid-stream write of the accumulated assistant content."""
+    await db.execute(
+        "UPDATE chat_messages SET content = ? WHERE message_id = ?",
+        (content, message_id),
+    )
+    await db.commit()
+
+
+async def _salvage_interrupted_assistant(
+    db,
+    message_id: str,
+    conversation_id: str,
+    content: str,
+    model_used: str | None,
+) -> None:
+    """Persist (or discard) the pre-inserted assistant row after an interrupted stream.
+
+    Called from the streaming generator's ``finally`` when the normal finalize
+    never ran — i.e. on CancelledError from engine-shutdown task cancellation
+    (cancel_all() runs BEFORE the DB closes, see main.py lifespan) or on
+    GeneratorExit when the WS consumer died. Without this, everything the user
+    already watched stream in was silently lost on the next history load.
+    A partial reply is kept with an "interrupted" marker; an empty one is
+    deleted so history doesn't accumulate blank assistant bubbles.
+    """
+    try:
+        now = db_now()
+        if content:
+            await db.execute(
+                """UPDATE chat_messages
+                   SET timestamp = ?, content = ?, model_used = ?
+                   WHERE message_id = ?""",
+                (now, content + _INTERRUPTED_MARKER, model_used, message_id),
+            )
+            await db.execute(
+                "UPDATE chat_conversations SET updated_at = ? WHERE conversation_id = ?",
+                (now, conversation_id),
+            )
+        else:
+            await db.execute(
+                "DELETE FROM chat_messages WHERE message_id = ?", (message_id,)
+            )
+        await db.commit()
+        log.info(
+            "chat_stream_salvaged",
+            message_id=message_id,
+            conversation_id=conversation_id,
+            chars=len(content),
+        )
+    except Exception as exc:
+        log.warning("chat_stream_salvage_failed", message_id=message_id, error=str(exc))
+
+
 async def process_chat_message_streaming(
     user_message: str,
     space_id: str | None = None,
@@ -495,11 +560,13 @@ async def process_chat_message_streaming(
     else:
         context = await _retrieve_context(user_message, space_id=space_id)
 
-    # Chat history (scoped to conversation)
+    # Chat history (scoped to conversation). rowid DESC is the insertion-order
+    # tiebreaker for same-second user+assistant pairs — the timestamp column
+    # only has 1-second resolution (review §4 — P5-8).
     history_rows = await db.execute_fetchall(
         """SELECT role, content FROM chat_messages
            WHERE conversation_id = ?
-           ORDER BY timestamp DESC LIMIT 10""",
+           ORDER BY timestamp DESC, rowid DESC LIMIT 10""",
         (conversation_id,),
     )
     chat_history = [
@@ -541,122 +608,155 @@ async def process_chat_message_streaming(
            VALUES (?, ?, ?, ?, ?, ?)""",
         (user_msg_id, now, "user", user_message, space_id, conversation_id),
     )
-    await db.commit()
-
-    try:
-        for iteration in range(MAX_TOOL_ITERATIONS + 1):
-            use_tools = tools if iteration < MAX_TOOL_ITERATIONS else None
-            had_tool_calls = False
-
-            async for event in llm_call_streaming(
-                role="chat",
-                messages=messages,
-                step="chat",
-                temperature=0.3,
-                max_tokens=65536,
-                space_id=space_id,
-                tools=use_tools,
-            ):
-                if event.type == "chunk":
-                    full_content += event.content
-                    yield {"type": "chat_stream_chunk", "content": event.content}
-
-                elif event.type == "tool_calls" and event.tool_calls:
-                    had_tool_calls = True
-
-                    # Notify UI about tool execution
-                    for tc in event.tool_calls:
-                        yield {
-                            "type": "chat_stream_tool",
-                            "tool": tc.name,
-                            "status": "calling",
-                        }
-
-                    # Append assistant message with tool calls to conversation
-                    messages.append(event.raw_message_dict)
-
-                    # Execute tools
-                    for tc in event.tool_calls:
-                        result_str = await execute_tool(
-                            tc.name, tc.arguments, space_id=space_id,
-                        )
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tc.id,
-                            "content": _cap_tool_result(result_str),
-                        })
-                        tool_calls_log.append({
-                            "name": tc.name,
-                            "arguments": tc.arguments,
-                            "result_preview": result_str[:200],
-                        })
-                        yield {
-                            "type": "chat_stream_tool",
-                            "tool": tc.name,
-                            "status": "done",
-                        }
-
-                    # Content accumulates across iterations so the final
-                    # persisted message contains all streamed text.
-
-                elif event.type == "done":
-                    total_input_tokens += event.input_tokens
-                    total_output_tokens += event.output_tokens
-                    total_latency_ms += event.latency_ms
-                    model_used = event.model
-
-                elif event.type == "error":
-                    full_content = "I'm sorry, I encountered an error processing your message. Please try again."
-                    model_used = event.model
-                    break
-
-            # If no tool calls this iteration, we have the final response
-            if not had_tool_calls:
-                break
-
-    except Exception as e:
-        log.error("chat_stream_failed", error=str(e))
-        full_content = "I'm sorry, I encountered an error processing your message. Please try again."
-        model_used = None
-
-    # Extract references
-    referenced_cards = CARD_REF_PATTERN.findall(full_content)
-    referenced_events = EVENT_REF_PATTERN.findall(full_content)
-
-    # Store assistant message
-    assistant_ts = db_now()
+    # Insert the assistant row up front too (same id the stream events carry),
+    # filled by throttled flushes below and finalized after the stream ends.
+    # The reply used to be INSERTed only after the whole stream + tool loop
+    # completed, so any interruption — engine restart, shutdown task
+    # cancellation, a hung local model — silently discarded everything the
+    # user had already watched stream in, and a reopened UI had nothing to
+    # rehydrate from. This row is what makes an in-flight reply survive.
     await db.execute(
         """INSERT INTO chat_messages
-           (message_id, timestamp, role, content, referenced_cards,
-            referenced_events, context_used, model_used, input_tokens,
-            output_tokens, latency_ms, tool_calls_json, space_id, conversation_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           (message_id, timestamp, role, content, context_used, space_id, conversation_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
         (
             assistant_msg_id,
-            assistant_ts,
+            db_now(),
             "assistant",
-            full_content,
-            json.dumps(referenced_cards) if referenced_cards else None,
-            json.dumps(referenced_events) if referenced_events else None,
+            "",
             json.dumps({
                 "result_count": context["result_count"],
                 "signals_used": context["signals_used"],
             }),
-            model_used,
-            total_input_tokens,
-            total_output_tokens,
-            total_latency_ms,
-            json.dumps(tool_calls_log) if tool_calls_log else None,
             space_id,
             conversation_id,
         ),
     )
-    # Update conversation timestamp
-    await db.execute(
-        "UPDATE chat_conversations SET updated_at = ? WHERE conversation_id = ?",
-        (assistant_ts, conversation_id),
-    )
     await db.commit()
+
+    finalized = False
+    last_flush = time.monotonic()
+    try:
+        try:
+            for iteration in range(MAX_TOOL_ITERATIONS + 1):
+                use_tools = tools if iteration < MAX_TOOL_ITERATIONS else None
+                had_tool_calls = False
+
+                async for event in llm_call_streaming(
+                    role="chat",
+                    messages=messages,
+                    step="chat",
+                    temperature=0.3,
+                    max_tokens=65536,
+                    space_id=space_id,
+                    tools=use_tools,
+                ):
+                    if event.type == "chunk":
+                        full_content += event.content
+                        yield {"type": "chat_stream_chunk", "content": event.content}
+                        if time.monotonic() - last_flush >= _PARTIAL_FLUSH_INTERVAL_S:
+                            await _flush_partial_assistant(db, assistant_msg_id, full_content)
+                            last_flush = time.monotonic()
+
+                    elif event.type == "tool_calls" and event.tool_calls:
+                        had_tool_calls = True
+
+                        # Notify UI about tool execution
+                        for tc in event.tool_calls:
+                            yield {
+                                "type": "chat_stream_tool",
+                                "tool": tc.name,
+                                "status": "calling",
+                            }
+
+                        # Append assistant message with tool calls to conversation
+                        messages.append(event.raw_message_dict)
+
+                        # Execute tools
+                        for tc in event.tool_calls:
+                            result_str = await execute_tool(
+                                tc.name, tc.arguments, space_id=space_id,
+                            )
+                            messages.append({
+                                "role": "tool",
+                                "tool_call_id": tc.id,
+                                "content": _cap_tool_result(result_str),
+                            })
+                            tool_calls_log.append({
+                                "name": tc.name,
+                                "arguments": tc.arguments,
+                                "result_preview": result_str[:200],
+                            })
+                            yield {
+                                "type": "chat_stream_tool",
+                                "tool": tc.name,
+                                "status": "done",
+                            }
+
+                        # Content accumulates across iterations so the final
+                        # persisted message contains all streamed text.
+
+                    elif event.type == "done":
+                        total_input_tokens += event.input_tokens
+                        total_output_tokens += event.output_tokens
+                        total_latency_ms += event.latency_ms
+                        model_used = event.model
+
+                    elif event.type == "error":
+                        full_content = "I'm sorry, I encountered an error processing your message. Please try again."
+                        model_used = event.model
+                        break
+
+                # If no tool calls this iteration, we have the final response
+                if not had_tool_calls:
+                    break
+
+        except Exception as e:
+            log.error("chat_stream_failed", error=str(e))
+            full_content = "I'm sorry, I encountered an error processing your message. Please try again."
+            model_used = None
+
+        # Extract references
+        referenced_cards = CARD_REF_PATTERN.findall(full_content)
+        referenced_events = EVENT_REF_PATTERN.findall(full_content)
+
+        # Finalize the pre-inserted assistant row
+        assistant_ts = db_now()
+        await db.execute(
+            """UPDATE chat_messages
+               SET timestamp = ?, content = ?, referenced_cards = ?,
+                   referenced_events = ?, model_used = ?, input_tokens = ?,
+                   output_tokens = ?, latency_ms = ?, tool_calls_json = ?
+               WHERE message_id = ?""",
+            (
+                assistant_ts,
+                full_content,
+                json.dumps(referenced_cards) if referenced_cards else None,
+                json.dumps(referenced_events) if referenced_events else None,
+                model_used,
+                total_input_tokens,
+                total_output_tokens,
+                total_latency_ms,
+                json.dumps(tool_calls_log) if tool_calls_log else None,
+                assistant_msg_id,
+            ),
+        )
+        # Update conversation timestamp
+        await db.execute(
+            "UPDATE chat_conversations SET updated_at = ? WHERE conversation_id = ?",
+            (assistant_ts, conversation_id),
+        )
+        await db.commit()
+        finalized = True
+    finally:
+        # Reached with finalized=False only when the stream was interrupted —
+        # CancelledError (engine shutdown) or GeneratorExit (consumer died).
+        # Awaiting DB writes here is safe: cleanup awaits are permitted during
+        # cancellation/aclose, and shutdown cancels tasks before closing the DB.
+        if not finalized:
+            await _salvage_interrupted_assistant(
+                db, assistant_msg_id, conversation_id, full_content, model_used
+            )
 
     # Final done event with the complete message
     yield {

@@ -36,6 +36,7 @@ export interface WsMessage {
 		| 'processing_rule_auto_disabled'
 		| 'push_notification'
 		| 'audit_failure'
+		| 'connection_status'
 		| (string & {});
 	event_id?: string;
 	card_id?: string;

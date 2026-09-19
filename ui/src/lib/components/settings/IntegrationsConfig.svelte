@@ -6,6 +6,7 @@
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
+	import { setIntegrationErrorsFromConnections } from '$lib/stores/integrationErrors';
 	import PlatformCard from './PlatformCard.svelte';
 	import ConnectModal from './ConnectModal.svelte';
 	import N8nAdvancedSection from './N8nAdvancedSection.svelte';
@@ -57,6 +58,10 @@
 			]);
 			platforms = platformsResp.platforms;
 			connections = connectionsResp.connections;
+			// Re-seed the Integrations/Settings red dot from this fresh list so
+			// fixing or breaking a connection here updates the dot immediately
+			// (connect / test / disconnect all funnel through loadData).
+			setIntegrationErrorsFromConnections(connections);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load integrations';
 		} finally {

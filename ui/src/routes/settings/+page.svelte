@@ -22,6 +22,7 @@
 	import { portal } from '$lib/actions/portal';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import { hasAuditFailures } from '$lib/stores/auditFailures';
+	import { hasIntegrationErrors } from '$lib/stores/integrationErrors';
 	import { fade } from 'svelte/transition';
 
 	type TabId = 'team' | 'rules' | 'models' | 'repos' | 'agent' | 'integrations' | 'spaces' | 'scheduling' | 'mcp' | 'audit' | 'appearance' | 'keybindings' | 'data' | 'about';
@@ -182,7 +183,7 @@
 				>
 					<span class="relative">
 						{tab.label}
-						{#if tab.id === 'audit' && $hasAuditFailures}
+						{#if (tab.id === 'audit' && $hasAuditFailures) || (tab.id === 'integrations' && $hasIntegrationErrors)}
 							<span class="absolute -right-2 -top-0.5 h-1.5 w-1.5 rounded-full bg-red-500" aria-label="Unresolved failures"></span>
 						{/if}
 					</span>
@@ -226,7 +227,7 @@
 						>
 							<span class="relative">
 								{tab.label}
-								{#if tab.id === 'audit' && $hasAuditFailures}
+								{#if (tab.id === 'audit' && $hasAuditFailures) || (tab.id === 'integrations' && $hasIntegrationErrors)}
 									<span class="absolute -right-2 -top-0.5 h-1.5 w-1.5 rounded-full bg-red-500" aria-label="Unresolved failures"></span>
 								{/if}
 							</span>
