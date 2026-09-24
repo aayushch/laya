@@ -690,8 +690,112 @@ fn spawn_prod_engine() -> Result<Child, String> {
     Ok(child)
 }
 
-/// Poll the engine's /health endpoint until it responds or timeout.
-pub fn wait_for_engine(timeout: Duration) -> bool {
+/// Outcome of waiting for a freshly spawned engine to answer `/health`.
+pub enum EngineWait {
+    Ready,
+    /// The engine process exited before `/health` ever answered. `status` is
+    /// the exit status description (`exit status: 1`, `signal: 9`) and
+    /// `last_line` is the final non-empty line it wrote to stdout/stderr —
+    /// for a Python crash that is the `SomeError: ...` line of the traceback.
+    Exited { status: String, last_line: Option<String> },
+    TimedOut,
+}
+
+impl EngineWait {
+    /// One-line, user-facing description suitable for the setup screen. The
+    /// last log line is included verbatim because the setup screen is often
+    /// the only thing a user looks at before filing a bug report.
+    pub fn describe(&self) -> String {
+        match self {
+            EngineWait::Ready => "Engine is running".to_string(),
+            EngineWait::TimedOut => "Engine started but is not responding".to_string(),
+            EngineWait::Exited { status, last_line } => {
+                // Dev mode inherits the terminal instead of piping into the
+                // log file, so the traceback is only in the terminal.
+                let where_to_look = if cfg!(dev) {
+                    "the terminal running the app".to_string()
+                } else {
+                    engine_stdout_log_path().display().to_string()
+                };
+                match last_line {
+                    Some(line) => format!(
+                        "Engine exited during startup ({status}): {line} — full traceback in {where_to_look}"
+                    ),
+                    None => format!(
+                        "Engine exited during startup ({status}) — see {where_to_look}"
+                    ),
+                }
+            }
+        }
+    }
+}
+
+/// Where `spawn_prod_engine` captures the engine's stdout/stderr.
+fn engine_stdout_log_path() -> PathBuf {
+    laya_home().join("logs").join("engine-stdout.log")
+}
+
+/// The most informative line of the captured engine log, trimmed to a length
+/// that still fits on the setup screen.
+///
+/// Returns `None` in dev mode: `spawn_dev_engine` inherits the terminal
+/// instead of piping into the log, so any file present was written by an
+/// earlier packaged run and would describe the wrong process.
+fn engine_log_last_line() -> Option<String> {
+    if cfg!(dev) {
+        return None;
+    }
+    let content = std::fs::read_to_string(engine_stdout_log_path()).ok()?;
+    let line = pick_error_line(&content)?;
+    const MAX: usize = 300;
+    if line.chars().count() > MAX {
+        Some(format!("{}…", line.chars().take(MAX).collect::<String>()))
+    } else {
+        Some(line.to_string())
+    }
+}
+
+/// Choose the line that best explains a crash. A Python traceback ends with
+/// `SomeError: message`, but interpreter warnings emitted at shutdown append
+/// their source context (`  warnings.warn(`) after it, so the literal last
+/// line is often noise. Prefer the last line that reads as an exception or an
+/// `ERROR`/`CRITICAL` log line, and fall back to the last non-empty line.
+fn pick_error_line(content: &str) -> Option<&str> {
+    let lines: Vec<&str> = content.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    lines
+        .iter()
+        .rev()
+        .find(|l| looks_like_error_line(l))
+        .or_else(|| lines.last())
+        .copied()
+}
+
+fn looks_like_error_line(line: &str) -> bool {
+    if line.starts_with("ERROR") || line.starts_with("CRITICAL") || line.starts_with("FATAL") {
+        return true;
+    }
+    // `pkg.mod.NameError: detail` or a bare `KeyboardInterrupt`.
+    let head = line.split(':').next().unwrap_or("");
+    let is_dotted_ident = !head.is_empty()
+        && head.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.');
+    is_dotted_ident
+        && ["Error", "Exception", "Exit", "Interrupt"]
+            .iter()
+            .any(|suffix| head.ends_with(suffix))
+}
+
+/// Poll the engine's /health endpoint until it responds, the engine process
+/// exits, or the timeout elapses.
+///
+/// `engine` is the shared child handle (the `EngineProcess` state). Checking it
+/// each iteration distinguishes "crashed at import" from "still booting": an
+/// engine that dies on startup (e.g. an ImportError from a bad dependency
+/// resolution) would otherwise sit through the full timeout and surface as a
+/// generic "not responding", with the real traceback buried in the log file.
+pub fn wait_for_engine(
+    timeout: Duration,
+    engine: Option<&std::sync::Mutex<Option<Child>>>,
+) -> EngineWait {
     let start = std::time::Instant::now();
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(2))
@@ -699,10 +803,21 @@ pub fn wait_for_engine(timeout: Duration) -> bool {
         .unwrap();
 
     while start.elapsed() < timeout {
+        if let Some(exit) = engine.and_then(child_exit_status) {
+            log::error!("Engine process exited before becoming healthy: {exit}");
+            // The log-capture threads copy the pipes until the child closes
+            // them; give them a moment to land the traceback's final lines.
+            std::thread::sleep(Duration::from_millis(300));
+            return EngineWait::Exited {
+                status: exit,
+                last_line: engine_log_last_line(),
+            };
+        }
+
         match client.get(format!("{}/health", engine_url())).send() {
             Ok(resp) if resp.status().is_success() => {
                 log::info!("Engine is ready");
-                return true;
+                return EngineWait::Ready;
             }
             _ => {
                 std::thread::sleep(Duration::from_millis(500));
@@ -710,5 +825,102 @@ pub fn wait_for_engine(timeout: Duration) -> bool {
         }
     }
     log::error!("Engine failed to start within {:?}", timeout);
-    false
+    EngineWait::TimedOut
+}
+
+/// Non-blocking check that the shared engine child exists and has not exited.
+pub fn child_is_running(engine: &std::sync::Mutex<Option<Child>>) -> bool {
+    let Ok(mut guard) = engine.try_lock() else { return false };
+    match guard.as_mut() {
+        Some(child) => matches!(child.try_wait(), Ok(None)),
+        None => false,
+    }
+}
+
+/// Non-blocking check of the shared engine child. Returns the exit status
+/// description if the process has already terminated, `None` if it is still
+/// running, was never stored, or the lock is unavailable.
+fn child_exit_status(engine: &std::sync::Mutex<Option<Child>>) -> Option<String> {
+    let mut guard = engine.try_lock().ok()?;
+    let child = guard.as_mut()?;
+    match child.try_wait() {
+        Ok(Some(status)) => Some(status.to_string()),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    /// A child that dies before ever answering `/health` must be reported as
+    /// `Exited` with its exit status, not as a timeout.
+    #[cfg(unix)]
+    #[test]
+    fn wait_for_engine_reports_child_exit() {
+        let child = Command::new("sh")
+            .args(["-c", "echo 'ImportError: boom' >&2; exit 3"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn sh");
+        let engine = Mutex::new(Some(child));
+        // Let the child finish so the exit check fires on the first poll,
+        // regardless of whether a real engine happens to be listening.
+        std::thread::sleep(Duration::from_millis(200));
+
+        let outcome = wait_for_engine(Duration::from_secs(5), Some(&engine));
+        match outcome {
+            EngineWait::Exited { status, .. } => assert!(status.contains('3'), "status: {status}"),
+            EngineWait::Ready => panic!("dead child reported as ready"),
+            EngineWait::TimedOut => panic!("dead child reported as timeout"),
+        }
+    }
+
+    #[test]
+    fn pick_error_line_prefers_exception_over_trailing_warning_context() {
+        let log = "Traceback (most recent call last):\n  File \"x.py\", line 1\n\
+ImportError: cannot import name 'McpError' from 'mcp.shared.exceptions'\n\
+/usr/lib/python3.13/multiprocessing/resource_tracker.py:324: UserWarning: leaked semaphore\n\
+  warnings.warn(\n";
+        assert_eq!(
+            pick_error_line(log),
+            Some("ImportError: cannot import name 'McpError' from 'mcp.shared.exceptions'")
+        );
+    }
+
+    #[test]
+    fn pick_error_line_recognises_uvicorn_bind_error() {
+        let log = "INFO:     Will watch for changes\n\
+ERROR:    [Errno 48] error while attempting to bind on address ('127.0.0.1', 8420): address already in use\n\
+INFO:     Waiting for child process\n";
+        assert!(pick_error_line(log).unwrap().starts_with("ERROR:"));
+    }
+
+    #[test]
+    fn pick_error_line_falls_back_to_last_nonempty_line() {
+        assert_eq!(pick_error_line("hello\nworld\n\n"), Some("world"));
+        assert_eq!(pick_error_line("\n \n"), None);
+    }
+
+    /// A child that is still running is never reported as `Exited`; with no
+    /// engine listening the wait simply times out.
+    #[cfg(unix)]
+    #[test]
+    fn wait_for_engine_does_not_mistake_running_child_for_exit() {
+        let child = Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn sleep");
+        let engine = Mutex::new(Some(child));
+
+        let outcome = wait_for_engine(Duration::from_millis(1200), Some(&engine));
+        assert!(!matches!(outcome, EngineWait::Exited { .. }));
+
+        if let Some(mut child) = engine.lock().ok().and_then(|mut g| g.take()) {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
 }

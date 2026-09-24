@@ -20,7 +20,7 @@ aiosmtplib>=5.1.0
 litellm>=1.81.14
 openai>=2.21.0
 tiktoken>=0.12.0
-mcp>=1.0.0
+mcp>=1.0.0,<2
 
 # Vector DB
 chromadb>=1.5.1

@@ -407,19 +407,42 @@ fn setup_environment(app: tauri::AppHandle) {
             return;
         }
         emit("engine", "running", "Starting Laya engine...");
-        match sidecar::spawn_engine() {
-            Ok(child) => {
-                if let Some(state) = app.try_state::<EngineProcess>() {
+        let engine_state = app.try_state::<EngineProcess>();
+
+        // An engine may already be running from the launch-time spawn: dev
+        // mode always spawns at launch, and a Retry re-enters this step while
+        // the previous child may still be booting. A second engine would race
+        // the first for port 8420 and one of them dies, so reuse a live child
+        // and only spawn when there is none (or the stored one has exited).
+        let already_running = engine_state
+            .as_ref()
+            .map(|s| sidecar::child_is_running(&s.0))
+            .unwrap_or(false);
+        let spawned = if already_running {
+            log::info!("Engine already running; waiting for it instead of spawning another");
+            Ok(())
+        } else {
+            sidecar::spawn_engine().map(|child| {
+                if let Some(state) = engine_state.as_ref() {
                     if let Ok(mut guard) = state.0.lock() {
                         *guard = Some(child);
                     }
                 }
+            })
+        };
 
-                if sidecar::wait_for_engine(std::time::Duration::from_secs(60)) {
-                    emit("engine", "done", "Engine is running");
-                } else {
-                    emit("engine", "error", "Engine started but is not responding");
-                }
+        match spawned {
+            Ok(()) => {
+                // Watch the child handle while polling so a crash at import
+                // (a dependency resolved to an incompatible version, a syntax
+                // error in the engine source, ...) reports its exit status and
+                // last traceback line instead of a timeout after 60 s.
+                let outcome = sidecar::wait_for_engine(
+                    std::time::Duration::from_secs(60),
+                    engine_state.as_ref().map(|s| &s.0),
+                );
+                let status = if matches!(outcome, sidecar::EngineWait::Ready) { "done" } else { "error" };
+                emit("engine", status, &outcome.describe());
             }
             Err(e) => {
                 emit("engine", "error", &e);
@@ -897,8 +920,16 @@ pub fn run() {
                                 *guard = Some(child);
                             }
                         }
-                        std::thread::spawn(|| {
-                            sidecar::wait_for_engine(Duration::from_secs(30));
+                        let handle = app.handle().clone();
+                        std::thread::spawn(move || {
+                            let engine_state = handle.try_state::<EngineProcess>();
+                            let outcome = sidecar::wait_for_engine(
+                                Duration::from_secs(30),
+                                engine_state.as_ref().map(|s| &s.0),
+                            );
+                            if !matches!(outcome, sidecar::EngineWait::Ready) {
+                                log::error!("Engine startup failed: {}", outcome.describe());
+                            }
                         });
                     }
                     Err(e) => {
