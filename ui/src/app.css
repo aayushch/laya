@@ -2175,6 +2175,19 @@ html, body {
 	border-color: var(--color-laya-orange);
 	box-shadow: 0 0 0 1px var(--color-laya-orange);
 }
+/* Dimmed capsules (another thread is selected) stay fully opaque so the
+   quiet-band labels and grid lines painted beneath them never show through;
+   only the content fades and the surface recedes toward the page background.
+   Declared after the other modifiers so it wins over their border/shadow, and
+   the escalation animation is stopped because it animates `background`, which
+   would otherwise override the recessed surface. */
+.tl-capsule--dimmed {
+	background: color-mix(in oklch, var(--tl-capsule-bg) 75%, var(--color-surface-950));
+	border-color: color-mix(in oklch, var(--tl-capsule-border) 60%, var(--color-surface-950));
+	box-shadow: none;
+	animation: none;
+}
+.tl-capsule--dimmed > * { opacity: 0.45; }
 
 .tl-quiet-band {
 	background: repeating-linear-gradient(45deg,

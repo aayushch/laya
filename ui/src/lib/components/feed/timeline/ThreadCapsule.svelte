@@ -77,8 +77,8 @@
 </script>
 
 <div
-	class="tl-capsule absolute overflow-hidden text-left {escalating ? 'tl-capsule--escalating' : ''} {agentGlow ? 'tl-capsule--agent' : ''} {selected ? 'tl-capsule--selected' : ''} {$glassTheme ? 'glass-card-flat' : ''}"
-	style="top: {top}px; height: {height}px; left: {left}px; width: {width}px; box-sizing: border-box; {dimmed ? 'opacity: 0.45;' : ''}"
+	class="tl-capsule absolute overflow-hidden text-left {escalating ? 'tl-capsule--escalating' : ''} {agentGlow ? 'tl-capsule--agent' : ''} {selected ? 'tl-capsule--selected' : ''} {dimmed ? 'tl-capsule--dimmed' : ''} {$glassTheme ? 'glass-card-flat' : ''}"
+	style="top: {top}px; height: {height}px; left: {left}px; width: {width}px; box-sizing: border-box;"
 	data-entity-id={thread.entityId}
 	data-group-entity={thread.entityId}
 	role="button"
