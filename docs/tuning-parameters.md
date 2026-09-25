@@ -127,8 +127,8 @@ Apply when a pipeline stage runs on an installed CLI agent (model id `agent/<id>
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `agent_backend_concurrency` | `3` | Maximum agent subprocesses run concurrently across the pipeline. Floored at 1. **Higher** = more throughput but more local CPU/RAM and faster quota burn. |
-| `coding_agent` | `"claude_code"` | Which installed CLI agent the workspace feature drives. One of `claude_code`, `gemini_cli`, `codex_cli`, `pi_cli`. |
-| `agent_paths.<id>` | `""` | Explicit path to an agent's CLI binary (keys: `claude_code`, `gemini_cli`, `codex_cli`, `pi_cli`). Empty = auto-detect on `PATH` (augmented with common install dirs like `/opt/homebrew/bin`, `~/.local/bin`). |
+| `coding_agent` | `"claude_code"` | Which installed CLI agent the workspace feature drives. One of `claude_code`, `gemini_cli`, `codex_cli`, `pi_cli`, `cursor_cli`. |
+| `agent_paths.<id>` | `""` | Explicit path to an agent's CLI binary (keys: `claude_code`, `gemini_cli`, `codex_cli`, `pi_cli`, `cursor_cli`). Empty = auto-detect on every engine start for any key left empty, never overwriting a set path; the generic `agent` name for Cursor is validated (symlink into `cursor-agent/` or a Cursor build id from `--version`) so an unrelated `agent` on PATH is skipped. Detection runs on `PATH` (augmented with common install dirs like `/opt/homebrew/bin`, `~/.local/bin`). |
 | `agent_budgets.enabled` | `false` | Master switch for window-based agent usage budgeting. |
 | `agent_budgets.agents.<id>.window_token_limit` | `0` | Token budget per rolling window for that agent (`0` = no limit). |
 | `agent_budgets.agents.<id>.window_hours` | `5.0` | Rolling window length in hours (Claude Code's quota window is ~5 h). |

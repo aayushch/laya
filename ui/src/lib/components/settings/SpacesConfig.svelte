@@ -7,7 +7,7 @@
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import type { Space, Source, AvailableWorkflow, Repo, ProviderModels, AgentBackend } from '$lib/api/types';
-	import { CODING_AGENTS } from '$lib/config';
+	import { CODING_AGENTS, agentLabel } from '$lib/config';
 	import ModelSelect from './ModelSelect.svelte';
 
 	const providers = [
@@ -560,11 +560,6 @@
 		return value;
 	}
 
-	function agentLabel(value: string | undefined | null): string {
-		if (!value) return 'Default';
-		const a = agentOptions.find((a) => a.value === value);
-		return a ? a.label : value;
-	}
 </script>
 
 {#if !loaded}

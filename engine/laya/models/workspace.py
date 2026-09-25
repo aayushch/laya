@@ -17,6 +17,7 @@ class AgentType(str, Enum):
     GEMINI_CLI = "gemini_cli"
     CODEX_CLI = "codex_cli"
     PI_CLI = "pi_cli"
+    CURSOR_CLI = "cursor_cli"
 
 
 class SessionStatus(str, Enum):

@@ -6,7 +6,10 @@
 import copy
 import json
 import os
+import re
+import subprocess
 from pathlib import Path
+from typing import Callable, Iterator
 
 # Laya data directory
 LAYA_HOME = Path.home() / ".laya"
@@ -40,6 +43,7 @@ DEFAULT_SETTINGS = {
         "gemini_cli": "",
         "codex_cli": "",
         "pi_cli": "",
+        "cursor_cli": "",
     },
     # Usage-limit budgeting for the agent inference backend. Per-agent token budget over a
     # rolling window (agents bill against usage limits, not $). agents maps agent_id ->
@@ -375,6 +379,63 @@ _AGENT_BINARIES = {
     "gemini_cli": "gemini",
     "codex_cli": "codex",
     "pi_cli": "pi",
+    "cursor_cli": "agent",
+}
+
+# Cursor's CLI prints a date-stamped build id (e.g. "2026.09.23-86fc751") for
+# `agent --version`. Used to recognise the binary when its name alone can't.
+_CURSOR_VERSION_RE = re.compile(r"^\d{4}\.\d{2}\.\d{2}-[0-9a-f]+$")
+
+# Cache for the `--version` probe in _is_cursor_agent, keyed by
+# (candidate path, mtime) so a reinstall invalidates the entry. Detection runs
+# on every session start and every capabilities() call, so the subprocess must
+# not be re-spawned each time.
+_cursor_probe_cache: dict[tuple[str, float], bool] = {}
+
+
+def _iter_executable_candidates(binary_name: str, path: str) -> Iterator[str]:
+    """Yield every executable named ``binary_name`` across the PATH dirs, in order."""
+    for d in path.split(os.pathsep):
+        if not d:
+            continue
+        candidate = os.path.join(d, binary_name)
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            yield candidate
+
+
+def _is_cursor_agent(candidate: str) -> bool:
+    """True if ``candidate`` is Cursor's ``agent`` CLI rather than some other
+    program that happens to be called ``agent``.
+
+    Cursor installs ``~/.local/bin/agent`` as a symlink into
+    ``~/.local/share/cursor-agent/versions/<ver>/cursor-agent``, so the resolved
+    path is the cheap primary check. Anything else is probed with ``--version``
+    (3s timeout, cached) and matched against Cursor's build-id format.
+    """
+    try:
+        if "cursor-agent" in os.path.realpath(candidate):
+            return True
+        key = (candidate, os.stat(candidate).st_mtime)
+    except OSError:
+        return False
+    cached = _cursor_probe_cache.get(key)
+    if cached is not None:
+        return cached
+    try:
+        proc = subprocess.run(
+            [candidate, "--version"], capture_output=True, text=True, timeout=3,
+        )
+        ok = proc.returncode == 0 and bool(_CURSOR_VERSION_RE.match(proc.stdout.strip()))
+    except (OSError, subprocess.SubprocessError):
+        ok = False
+    _cursor_probe_cache[key] = ok
+    return ok
+
+
+# Agents whose binary name is too generic to trust the first PATH hit. The
+# validator is applied to every candidate in PATH order and the first match wins.
+_AGENT_VALIDATORS: dict[str, Callable[[str], bool]] = {
+    "cursor_cli": _is_cursor_agent,
 }
 
 # Extra PATH locations to search — covers common install paths that
@@ -411,11 +472,38 @@ def detect_agent_paths() -> dict[str, str]:
     results: dict[str, str] = {}
 
     for agent_type, binary_name in _AGENT_BINARIES.items():
-        # shutil.which respects the `path` argument
-        found = shutil.which(binary_name, path=augmented)
+        validator = _AGENT_VALIDATORS.get(agent_type)
+        if validator is None:
+            # shutil.which respects the `path` argument
+            found = shutil.which(binary_name, path=augmented)
+        else:
+            found = next(
+                (c for c in _iter_executable_candidates(binary_name, augmented) if validator(c)),
+                "",
+            )
         results[agent_type] = found or ""
 
     return results
+
+
+def fill_missing_agent_paths(agent_paths: dict[str, str]) -> tuple[dict[str, str], bool]:
+    """Auto-detect binaries only for agents whose configured path is empty.
+
+    User-set paths are never overwritten. Returns the merged mapping and
+    whether anything changed, so callers can skip a settings write when
+    nothing was detected.
+    """
+    merged = dict(agent_paths)
+    missing = [k for k in _AGENT_BINARIES if not merged.get(k)]
+    if not missing:
+        return merged, False
+    detected = detect_agent_paths()
+    changed = False
+    for k in missing:
+        if detected.get(k):
+            merged[k] = detected[k]
+            changed = True
+    return merged, changed
 
 
 def get_agent_binary(agent_type: str) -> str:

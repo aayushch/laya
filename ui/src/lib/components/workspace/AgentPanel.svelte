@@ -6,6 +6,7 @@
 	import { sendMessage } from '$lib/stores/websocket';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { parseBackendDate } from '$lib/utils/datetime';
+	import { agentLabel } from '$lib/config';
 	import { tick } from 'svelte';
 	import MarkdownRender from '$lib/components/MarkdownRender.svelte';
 
@@ -34,9 +35,11 @@
 	let scrollContainer = $state<HTMLElement | null>(null);
 	let sendingPrompt = $state(false);
 
-	// Agent permission mode toggle — 'plan' or 'acceptEdits'.
+	// Agent permission mode sent on resume. The toggle offers 'plan' and
+	// 'acceptEdits'; a session may also hold an agent-specific mode such as
+	// Cursor's 'force', which counts as "Act" until the user picks Plan.
 	// Initialized to 'plan'; the $effect below syncs from session on mount.
-	let agentMode = $state<'plan' | 'acceptEdits'>('plan');
+	let agentMode = $state<string>('plan');
 
 	// Sync agentMode when the DB value actually changes (not on every poll cycle).
 	// Without tracking lastSyncedMode, each 5s poll replaces the session object
@@ -47,7 +50,7 @@
 		const mode = session?.permission_mode;
 		if (mode && mode !== lastSyncedMode) {
 			lastSyncedMode = mode;
-			agentMode = mode as 'plan' | 'acceptEdits';
+			agentMode = mode;
 		}
 	});
 
@@ -369,7 +372,7 @@
 						disabled={!canToggleMode}
 					>Plan</button>
 					<button
-						class="px-2 py-0.5 transition-colors {agentMode === 'acceptEdits' ? ($glassTheme ? 'backdrop-blur-sm bg-amber-400/15 text-amber-300' : 'bg-amber-900/50 text-amber-300') : $glassTheme ? 'bg-white/[0.04] text-surface-400 hover:text-surface-200' : 'bg-surface-800 text-surface-400 hover:text-surface-200'}"
+						class="px-2 py-0.5 transition-colors {agentMode !== 'plan' ? ($glassTheme ? 'backdrop-blur-sm bg-amber-400/15 text-amber-300' : 'bg-amber-900/50 text-amber-300') : $glassTheme ? 'bg-white/[0.04] text-surface-400 hover:text-surface-200' : 'bg-surface-800 text-surface-400 hover:text-surface-200'}"
 						onclick={() => (agentMode = 'acceptEdits')}
 						disabled={!canToggleMode}
 					>Act</button>
@@ -378,7 +381,7 @@
 				<span class="rounded px-1.5 py-0.5 text-[10px] font-medium {sessionStatusColors[session.status] ?? 'bg-surface-700 text-surface-300'}">
 					{session.status}
 				</span>
-				<span class="text-[10px] text-surface-500">{session.agent_type}</span>
+				<span class="text-[10px] text-surface-500">{agentLabel(session.agent_type, session.agent_type)}</span>
 			{/if}
 
 			{#if session && !['completed', 'failed', 'cancelled'].includes(session.status)}

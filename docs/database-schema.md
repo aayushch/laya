@@ -135,7 +135,7 @@ Active or completed agent sessions within card workspaces.
 CREATE TABLE workspace_sessions (
     session_id      TEXT PRIMARY KEY,
     card_id         TEXT NOT NULL REFERENCES action_cards(card_id),
-    agent_type      TEXT NOT NULL,    -- claude_code | gemini_cli | codex_cli
+    agent_type      TEXT NOT NULL,    -- claude_code | gemini_cli | codex_cli | pi_cli | cursor_cli
     status          TEXT DEFAULT 'starting',
     -- starting | running | awaiting_input | paused | completed | failed | cancelled
     repo_path       TEXT,             -- local filesystem path to the repo

@@ -127,6 +127,45 @@ class TestSessionManager:
         content = json.loads(row["content"])
         assert content["text"] == "Reading file..."
 
+    async def test_create_agent_cursor_uses_resolved_binary(self):
+        """_create_agent builds the Cursor adapter with the detected binary path."""
+        from laya.agents.cursor_cli import CursorCliAgent
+
+        with patch("laya.agents.session_manager.get_agent_binary", return_value="/x/agent"):
+            agent = session_manager._create_agent(AgentType.CURSOR_CLI)
+
+        assert isinstance(agent, CursorCliAgent)
+        assert agent._binary == "/x/agent"
+
+    async def test_resume_conversation_cursor(self, db):
+        """resume_conversation rebuilds a Cursor adapter from the stored session id
+        and forwards the stored permission mode."""
+        from laya.agents.cursor_cli import CursorCliAgent
+
+        await insert_test_card(db, card_id="card_cur", event_id="evt_cur")
+        await db.execute(
+            """INSERT INTO workspace_sessions
+               (session_id, card_id, agent_type, status, repo_path, initial_prompt,
+                cc_session_id, session_type, permission_mode)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            ("sess_cur", "card_cur", "cursor_cli", "completed", "/tmp/repo", "plan it",
+             "cursor-uuid", "code", "acceptEdits"),
+        )
+        await db.commit()
+
+        with patch("laya.agents.session_manager.get_agent_binary", return_value="/x/agent"), \
+             patch.object(CursorCliAgent, "resume_with_answer", new=AsyncMock()) as resume:
+            agent = await session_manager.resume_conversation("sess_cur", "implement it")
+
+        assert isinstance(agent, CursorCliAgent)
+        assert agent._binary == "/x/agent"
+        assert agent._cursor_session_id == "cursor-uuid"
+        assert agent._repo_path == "/tmp/repo"
+        resume.assert_awaited_once()
+        assert resume.call_args.args[0] == "implement it"
+        assert resume.call_args.kwargs["mode"] == "acceptEdits"
+        assert resume.call_args.kwargs["research"] is False
+
     async def test_get_configured_agent_type(self):
         """get_configured_agent_type reads from settings."""
         with patch("laya.agents.session_manager.load_settings", return_value={"coding_agent": "gemini_cli"}):

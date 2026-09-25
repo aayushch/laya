@@ -12,7 +12,8 @@
 
 	const AGENT_MODES: Record<string, string[]> = {
 		claude_code: ['plan', 'acceptEdits'],
-		codex_cli: ['read-only', 'full-auto']
+		codex_cli: ['read-only', 'full-auto'],
+		cursor_cli: ['plan', 'acceptEdits', 'force']
 	};
 
 	const agents = CODING_AGENTS
@@ -23,14 +24,16 @@
 		plan: 'Plan',
 		acceptEdits: 'Accept Edits',
 		'read-only': 'Read Only',
-		'full-auto': 'Full Auto'
+		'full-auto': 'Full Auto',
+		force: 'Full Access'
 	};
 
 	const modeDescriptions: Record<string, string> = {
 		plan: 'Agent creates a plan and asks for approval before making changes',
 		acceptEdits: 'Agent can read and write files without asking',
 		'read-only': 'Agent can only read files, sandbox mode',
-		'full-auto': 'Agent can read and write files automatically'
+		'full-auto': 'Agent can read and write files automatically',
+		force: 'Edits auto-applied and shell commands run without asking'
 	};
 
 	interface UploadedFile {
@@ -487,16 +490,18 @@
 				<!-- Agent selector -->
 				<div>
 					<span class={labelClass}>Agent</span>
-					<div class="flex gap-2">
+					<!-- Grid (not flex) so all agent buttons share one row height; 3 columns below
+					     560px where five cells would force labels onto two lines. -->
+					<div class="grid grid-cols-5 gap-2 max-[560px]:grid-cols-3">
 						{#each agents as agent}
 							<button
-								class="flex-1 rounded-lg border px-3 py-2 text-left transition-colors
+								class="min-w-0 rounded-lg border px-3 py-2 text-left transition-colors
 									{selectedAgent === agent.value
 									? 'border-laya-orange bg-laya-orange/10'
 									: 'border-surface-600 bg-surface-800 hover:border-surface-500'}"
 								onclick={() => (selectedAgent = agent.value)}
 							>
-								<div class="text-xs font-medium">{agent.label}</div>
+								<div class="truncate text-xs font-medium" title={agent.label}>{agent.label}</div>
 								{#if agentPaths[agent.value]}
 									<div class="mt-0.5 text-[10px] text-green-400/70">configured</div>
 								{:else}

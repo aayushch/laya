@@ -26,8 +26,10 @@ class RunAgentRequest(BaseModel):
     prompt: str
     directory: str | None = None  # If omitted, defaults to ~/.laya/tmp/research/<card_id>/
     add_dirs: list[str] | None = None
-    agent_type: str | None = None  # claude_code, gemini_cli, codex_cli
-    mode: str | None = None  # e.g. plan, acceptEdits (claude), read-only, full-auto (codex)
+    agent_type: str | None = None  # claude_code, gemini_cli, codex_cli, pi_cli, cursor_cli
+    # Agent-specific permission mode: plan / acceptEdits (claude), read-only / full-auto
+    # (codex), plan / acceptEdits / force (cursor).
+    mode: str | None = None
     space_id: str | None = None
     files: list[str] | None = None  # Absolute paths to uploaded staging files
 

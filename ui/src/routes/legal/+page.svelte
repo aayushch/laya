@@ -229,7 +229,7 @@
 			<section>
 				<h2 class="mb-3 text-lg font-semibold text-surface-100">8. Coding Agents</h2>
 				<p>
-					Laya can optionally integrate with coding agents (such as Claude Code, Gemini CLI, or OpenAI Codex CLI)
+					Laya can optionally integrate with coding agents (such as Claude Code, Gemini CLI, OpenAI Codex CLI, Pi CLI, or Cursor Agent CLI)
 					to execute development tasks on your behalf. When enabled, these agents operate in your local
 					development environment and may:
 				</p>

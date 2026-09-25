@@ -22,6 +22,8 @@ class TestEnums:
         assert AgentType.CLAUDE_CODE.value == "claude_code"
         assert AgentType.GEMINI_CLI.value == "gemini_cli"
         assert AgentType.CODEX_CLI.value == "codex_cli"
+        assert AgentType.PI_CLI.value == "pi_cli"
+        assert AgentType.CURSOR_CLI.value == "cursor_cli"
 
     def test_session_statuses(self):
         assert SessionStatus.STARTING.value == "starting"

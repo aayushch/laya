@@ -47,7 +47,7 @@ Your Tools (Jira, Slack, Gmail, Bitbucket, Calendar)
 ## Key Features
 
 - **Multi-persona brain:** Routes events to specialized AI personas (Engineer, Comms, Ops, Sales, HR, Finance) with domain-specific tools and prompts, with AI prioritization of every notification
-- **Card Workspaces:** Agent workflows for complex tasks (bug fixes, code reviews) — interactive workspaces where you collaborate with a coding agent (Claude Code, Gemini CLI, Codex, or Pi CLI) through multiple approval steps
+- **Card Workspaces:** Agent workflows for complex tasks (bug fixes, code reviews) — interactive workspaces where you collaborate with a coding agent (Claude Code, Gemini CLI, Codex, Pi CLI, or Cursor Agent) through multiple approval steps
 - **Card Research:** Launch on-demand deep research sessions on any card — a coding agent investigates with web search, semantic context, and sandboxed file access
 - **Agent inference backends:** Run the classification/synthesis pipeline on an installed CLI agent's own quota instead of an API key — select a model of the form `agent/<id>/<model>` (Claude Code, Codex, Gemini, or Pi) for any stage. Claude Code enforces JSON schemas natively; other agents use best-effort schema + retry
 - **Spaces:** User-defined contexts grouping event sources with per-space model and API key configurations
@@ -82,7 +82,7 @@ Your Tools (Jira, Slack, Gmail, Bitbucket, Calendar)
 | Structured Storage | SQLite (async via aiosqlite, WAL mode) |
 | Vector Storage | ChromaDB (embedded PersistentClient) |
 | Embeddings | ONNX (built-in to ChromaDB) or sentence-transformers (optional) |
-| Coding Agents | Claude Code / Gemini CLI / OpenAI Codex CLI / Pi CLI (usable as workspace agents and as inference backends) |
+| Coding Agents | Claude Code / Gemini CLI / OpenAI Codex CLI / Pi CLI / Cursor Agent CLI (all usable as workspace agents; all but Cursor also as inference backends) |
 
 ## Project Structure
 
@@ -96,7 +96,7 @@ laya/
 │   │   ├── db/              # SQLite (+ FTS5) + ChromaDB + 70 migrations
 │   │   ├── pipeline/        # Event processing (ingest → route → stage → emit → trace → learn → context_learn → omni)
 │   │   ├── llm/             # LiteLLM client, agent inference backends, prompts, tools
-│   │   ├── agents/          # Coding agent adapters (Claude, Gemini, Codex, Pi)
+│   │   ├── agents/          # Coding agent adapters (Claude, Gemini, Codex, Pi, Cursor)
 │   │   ├── workers/         # Multi-persona LLM workers (engineer, comms, ops, sales, hr, finance)
 │   │   ├── egress/          # Outbound action execution (9 platforms)
 │   │   ├── integrations/    # n8n bootstrap & client
