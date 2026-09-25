@@ -19,16 +19,37 @@ tauri-build = { version = "2.5.4", features = [] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-tauri = { version = "2.10.0", features = ["tray-icon", "image-png"] }
+# Crates that have an npm counterpart in ui/package.json are tilde-pinned to the same
+# major.minor as that package. `tauri dev`/`tauri build` checks the two sides agree on
+# major.minor and reports "Found version mismatched Tauri packages" otherwise. Cargo.lock
+# is gitignored, so a caret range ("2") lets a fresh clone resolve a newer crate minor than
+# the npm lockfile has and trip that check. Bump both sides together.
+tauri = { version = "~2.11", features = ["tray-icon", "image-png"] }
 tauri-plugin-log = "2"
-tauri-plugin-shell = "2"
+tauri-plugin-shell = "~2.3"
 tauri-plugin-dialog = "2"
-tauri-plugin-updater = "2"
-tauri-plugin-process = "2"
-reqwest = { version = "0.12", features = ["json", "rustls-tls", "blocking"] }
+tauri-plugin-updater = "~2.12"
+tauri-plugin-process = "~2.3"
+# `default-features = false` is deliberate: reqwest's defaults include `default-tls`
+# (native-tls -> openssl-sys), which makes the final link require system OpenSSL
+# (`-lssl -lcrypto`, i.e. libssl-dev on Debian/Ubuntu). That package is not in the
+# README/CI apt dependency list, so builds fail with "unable to find library -lssl"
+# on machines without it. We use rustls instead; `rustls-tls-native-roots` keeps
+# trusting the OS certificate store (parity with the native-tls backend reqwest was
+# previously picking at runtime), so corporate proxies / custom CAs still work for
+# the runtime downloads in runtime.rs. `charset`/`http2`/`system-proxy` are the
+# remaining reqwest defaults, re-listed so behaviour is otherwise unchanged.
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "blocking",
+    "rustls-tls-native-roots",
+    "charset",
+    "http2",
+    "system-proxy",
+] }
 tokio = { version = "1", features = ["time", "process"] }
 tauri-plugin-decorum = "1.1.1"
-tauri-plugin-os = "2.3.2"
+tauri-plugin-os = "~2.3"
 which = "6"
 flate2 = "1"
 tar = "0.4"

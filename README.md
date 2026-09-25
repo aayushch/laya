@@ -267,6 +267,19 @@ npm install --prefix ~/.laya/n8n_module n8n@2.15.0
 
 </details>
 
+<details>
+<summary><strong>Linux: Tauri build fails with <code>unable to find library -lssl</code> / <code>-lcrypto</code></strong></summary>
+
+The Rust shell is rustls-only and should not need system OpenSSL, which is why `libssl-dev` is not in the apt list above. If the linker asks for `-lssl`/`-lcrypto`, a dependency has pulled in `native-tls` (→ `openssl-sys`) again -- usually a `reqwest` declared without `default-features = false`. Find the culprit with:
+
+```bash
+cd ui/src-tauri && cargo tree -i openssl-sys
+```
+
+and fix the offending dependency's features. As a stop-gap, `sudo apt install libssl-dev` lets the build link as-is.
+
+</details>
+
 ### Setup
 
 ```bash
