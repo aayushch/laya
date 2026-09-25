@@ -218,6 +218,55 @@ sudo sysctl -p
 
 </details>
 
+<details>
+<summary><strong>Linux AppImage: blank white window, WebKitWebProcess aborts with <code>EGL_BAD_PARAMETER</code></strong></summary>
+
+On distros whose Mesa is built against libwayland 1.23 or newer (Arch/CachyOS, Fedora 44+, Ubuntu 25.04+ in some configurations), the AppImage may open a blank window and print:
+
+```text
+Could not create default EGL display: EGL_BAD_PARAMETER. Aborting...
+```
+
+The AppImage bundles an old `libwayland-client.so.0` (from the Ubuntu 22.04 build host) and forces it onto every process via `LD_LIBRARY_PATH`, while EGL/Mesa come from your system. Newer Mesa needs Wayland symbols the bundled copy lacks, so its EGL driver fails to load and WebKit aborts. `WEBKIT_DISABLE_DMABUF_RENDERER`, `GDK_BACKEND=x11` and similar variables do not help because the failure happens before any renderer is chosen.
+
+**Workaround:** extract the AppImage, delete the bundled Wayland libraries so the system copies are used, and run the extracted app:
+
+```bash
+./Laya_*_amd64.AppImage --appimage-extract
+mv squashfs-root ~/.local/share/laya-app        # or anywhere permanent
+rm ~/.local/share/laya-app/usr/lib/libwayland-*.so.*
+~/.local/share/laya-app/AppRun
+```
+
+The `.deb` and `.rpm` packages use your system WebKitGTK and are not affected, so prefer them where they install cleanly. This is caused by the AppImage bundler Laya uses (Tauri pins an old `linuxdeploy` whose exclude list predates the upstream `libwayland-client` exclusion); see [tauri-apps/tauri#15665](https://github.com/tauri-apps/tauri/issues/15665) and [tauri-apps/tauri#15976](https://github.com/tauri-apps/tauri/issues/15976), tracked for Laya in [#17](https://github.com/aayushch/laya/issues/17).
+
+</details>
+
+<details>
+<summary><strong>Linux setup: "Setting up automation" fails with <code>EALLOWREMOTE</code> (npm 12+)</strong></summary>
+
+If `~/.laya/logs/n8n-install.log` ends with:
+
+```text
+npm error code EALLOWREMOTE
+npm error Fetching packages of type "remote" have been disabled
+npm error Refusing to fetch "xlsx@https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz"
+```
+
+your `npm` is version 12 or newer, which defaults `allow-remote` to `none`. n8n depends on `n8n-nodes-base`, which pins `xlsx` to a tarball hosted outside the npm registry, so npm refuses to install it. This happens when Laya finds a system Node 22+ whose `npm` was upgraded separately (for example Arch's `npm` package). Laya's managed Node download ships npm 10 and is unaffected.
+
+Laya passes `--allow-remote=all` on its n8n install starting with the release after v1.9.1. On v1.9.1 or earlier, install n8n by hand with a project-local `.npmrc` so your global npm settings stay untouched, then click **Retry** in the setup screen:
+
+```bash
+mkdir -p ~/.laya/n8n_module
+printf 'allow-remote=all\n' > ~/.laya/n8n_module/.npmrc
+npm install --prefix ~/.laya/n8n_module n8n@2.15.0
+```
+
+`allow-remote=root` is not enough because `xlsx` is a transitive dependency. Tracked in [#18](https://github.com/aayushch/laya/issues/18).
+
+</details>
+
 ### Setup
 
 ```bash

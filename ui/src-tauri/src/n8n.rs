@@ -545,10 +545,19 @@ fn run_npm_install<F: FnMut(&str)>(
     no_window(&mut cmd);
     let prefix = module_dir.to_string_lossy();
 
+    // `--allow-remote=all`: npm 12 defaults `allow-remote` to "none" and refuses
+    // any dependency resolved to a non-registry tarball URL (EALLOWREMOTE).
+    // n8n's tree has one: n8n-nodes-base pins `xlsx` to
+    // https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz. Without this flag the
+    // install fails on every machine whose `npm` is 12+ (e.g. Arch's separate
+    // `npm` package next to a system Node 22). `root` is not enough because
+    // xlsx is transitive. npm 10 accepts the flag silently and npm 11 only
+    // warns "Unknown cli config", so it is safe to pass unconditionally.
+    // See https://github.com/aayushch/laya/issues/18.
     if ignore_scripts {
-        cmd.args(["install", "--prefix", &prefix, "--ignore-scripts", "n8n@2.15.0"]);
+        cmd.args(["install", "--prefix", &prefix, "--ignore-scripts", "--allow-remote=all", "n8n@2.15.0"]);
     } else {
-        cmd.args(["install", "--prefix", &prefix, "n8n@2.15.0"]);
+        cmd.args(["install", "--prefix", &prefix, "--allow-remote=all", "n8n@2.15.0"]);
     }
 
     cmd.env("PATH", path);
