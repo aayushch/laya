@@ -91,6 +91,7 @@ laya/
 |   |   |   |-- gemini_cli.py             # Gemini CLI adapter
 |   |   |   |-- codex_cli.py              # OpenAI Codex CLI adapter
 |   |   |   |-- pi_cli.py                 # Pi CLI adapter
+|   |   |   |-- cursor_cli.py             # Cursor Agent CLI adapter
 |   |   |   |-- session_manager.py        # Manages active sessions across cards
 |   |   |
 |   |   |-- llm/                          # LLM interaction layer

@@ -525,7 +525,7 @@ User presses Ctrl+A or clicks "Run Agent"
        v
 AGENT DIALOG
   - Custom prompt (what to investigate/code/research)
-  - Agent selection (Claude Code / Gemini CLI / Codex / Pi CLI)
+  - Agent selection (Claude Code / Gemini CLI / Codex / Pi CLI / Cursor Agent)
   - Working directory (repo path or ~/.laya/tmp/research/<card_id>/)
   - Additional directories
        |

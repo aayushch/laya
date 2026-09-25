@@ -17,6 +17,7 @@ import structlog
 from laya.agents.base import CodingAgent
 from laya.agents.claude_code import ClaudeCodeAgent
 from laya.agents.codex_cli import CodexCliAgent
+from laya.agents.cursor_cli import CursorCliAgent
 from laya.agents.gemini_cli import GeminiCliAgent
 from laya.agents.pi_cli import PiCliAgent
 from laya.config import get_agent_binary, load_settings
@@ -45,6 +46,8 @@ def _create_agent(agent_type: AgentType) -> CodingAgent:
             return CodexCliAgent(binary_path=binary)
         case AgentType.PI_CLI:
             return PiCliAgent(binary_path=binary)
+        case AgentType.CURSOR_CLI:
+            return CursorCliAgent(binary_path=binary)
         case _:
             raise ValueError(f"Unknown agent type: {agent_type}")
 
@@ -87,7 +90,9 @@ async def start_session(
 
     Args:
         add_dirs: Additional directory paths to include via --add-dir / --include-directories.
-        mode: Agent-specific permission/sandbox mode override (e.g. "plan", "acceptEdits").
+        mode: Agent-specific permission/sandbox mode override (e.g. "plan" /
+            "acceptEdits" for Claude Code and Cursor, "force" for Cursor's
+            full access, "read-only" / "full-auto" for Codex).
         research: If True, enable web search and file write permissions for research tasks.
         entity_id: Entity group this session belongs to (for entity-level agent runs).
 
@@ -452,6 +457,14 @@ async def resume_conversation(
             pi_agent._pi_session_id = agent_session_id
             pi_agent._repo_path = repo_path
             agent = pi_agent
+        elif agent_type == AgentType.CURSOR_CLI:
+            # Resolve the binary here: "agent" is too generic a name to rely on
+            # the bare-command fallback (see config._is_cursor_agent).
+            cursor_agent = CursorCliAgent(binary_path=get_agent_binary(AgentType.CURSOR_CLI.value))
+            cursor_agent._session_id = session_id
+            cursor_agent._cursor_session_id = agent_session_id
+            cursor_agent._repo_path = repo_path
+            agent = cursor_agent
         else:
             raise ValueError(f"Agent type {agent_type.value} does not support session resumption")
 

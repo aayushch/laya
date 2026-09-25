@@ -198,7 +198,7 @@ npm run dev</code></pre>
       <ol>
         <li><strong>LLM Provider</strong> &mdash; Enter a cloud API key (Anthropic, OpenAI, Google, OpenRouter) or connect a self-hosted model server (Ollama, LM Studio, or any OpenAI-compatible endpoint)</li>
         <li><strong>n8n Check</strong> &mdash; Detects Node.js, installs n8n locally if needed, and auto-configures it</li>
-        <li><strong>Coding Agent + Repo</strong> &mdash; Select an agent (Claude Code, Gemini CLI, or Codex) and add your first repository</li>
+        <li><strong>Coding Agent + Repo</strong> &mdash; Select an agent (Claude Code, Gemini CLI, Codex, Pi, or Cursor Agent) and add your first repository</li>
         <li><strong>Team Setup</strong> &mdash; Add team members so Laya can recognize actors in events</li>
         <li><strong>Rules</strong> &mdash; Configure basic event filtering (e.g., ignore bot messages)</li>
       </ol>
@@ -532,7 +532,7 @@ npm install --prefix ~/.laya/n8n_module n8n</code></pre>
         <tr><td><strong>Reopen</strong></td><td>Bring back a dismissed, archived, or failed card for reprocessing.</td></tr>
         <tr><td><strong>Approve Agent</strong></td><td>Start a coding agent to work on the task (for <code>requires_approval</code> cards).</td></tr>
         <tr><td><strong>Execute Action</strong></td><td>Run a suggested action (send email, post comment) via n8n.</td></tr>
-        <tr><td><strong>Run Agent</strong></td><td>Run a coding agent (Claude Code, Gemini CLI, Codex) on the card or its entity group. Provide a custom prompt and interact via the workspace.</td></tr>
+        <tr><td><strong>Run Agent</strong></td><td>Run a coding agent (Claude Code, Gemini CLI, Codex, Pi, Cursor Agent) on the card or its entity group. Provide a custom prompt and interact via the workspace.</td></tr>
         <tr><td><strong>Delete</strong></td><td>Permanently remove an archived card and all its data.</td></tr>
       </table>
 
@@ -564,7 +564,7 @@ npm install --prefix ~/.laya/n8n_module n8n</code></pre>
       <p>Any card or entity group can have a coding agent run against it. Press <strong>Ctrl+A</strong> (Cmd+A on Mac) or click <strong>Run Agent</strong> on a card to open the agent dialog:</p>
       <ul>
         <li><strong>Custom prompt</strong> &mdash; Describe what you want the agent to do (investigate, code, research, etc.)</li>
-        <li><strong>Agent selection</strong> &mdash; Choose Claude Code, Gemini CLI, or Codex (defaults to your configured agent)</li>
+        <li><strong>Agent selection</strong> &mdash; Choose Claude Code, Gemini CLI, Codex, Pi, or Cursor Agent (defaults to your configured agent)</li>
         <li><strong>Working directory</strong> &mdash; Defaults to <code>~/.laya/tmp/research/&lt;card_id&gt;/</code> for research sessions, or your repo directory for code tasks</li>
         <li><strong>Additional directories</strong> &mdash; Pass extra repo paths for the agent to access</li>
       </ul>

@@ -263,17 +263,17 @@ async def lifespan(app: FastAPI):
     from laya.llm.prompts.overrides import load_custom_prompts
     load_custom_prompts()
 
-    # Auto-detect agent binary paths (if not already configured)
+    # Auto-detect agent binary paths for any agent whose path is still empty.
+    # Empty means "auto-detect" (docs/tuning-parameters.md), so a newly added
+    # agent gets picked up on existing installs without touching user-set paths.
     try:
-        from laya.config import detect_agent_paths, save_settings
+        from laya.config import fill_missing_agent_paths, save_settings
         _settings = load_settings()
-        _agent_paths = _settings.get("agent_paths", {})
-        if not any(_agent_paths.values()):
-            detected = detect_agent_paths()
-            if any(detected.values()):
-                _settings["agent_paths"] = detected
-                save_settings(_settings)
-                log.info("agent_paths_detected", **detected)
+        _agent_paths, _changed = fill_missing_agent_paths(_settings.get("agent_paths", {}))
+        if _changed:
+            _settings["agent_paths"] = _agent_paths
+            save_settings(_settings)
+            log.info("agent_paths_detected", **_agent_paths)
     except Exception as e:
         log.warning("agent_path_detection_failed", error=str(e))
 

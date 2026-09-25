@@ -35,6 +35,7 @@ export const CODING_AGENTS: AgentOption[] = [
 	{ value: 'gemini_cli', label: 'Gemini CLI', description: 'Google CLI — structured JSON output' },
 	{ value: 'codex_cli', label: 'Codex CLI', description: 'OpenAI CLI — structured JSON output' },
 	{ value: 'pi_cli', label: 'Pi', description: 'Local-first agent — supports Ollama and 15+ providers' },
+	{ value: 'cursor_cli', label: 'Cursor Agent', description: 'Cursor CLI — plan / edit / full-access modes, structured JSON streaming' },
 ];
 
 export const DEFAULT_AGENT_PATHS: Record<string, string> = Object.fromEntries(
@@ -46,4 +47,11 @@ export const AGENT_BINARY_NAMES: Record<string, string> = {
 	gemini_cli: 'gemini',
 	codex_cli: 'codex',
 	pi_cli: 'pi',
+	cursor_cli: 'agent',
 };
+
+/** Human label for a coding-agent id; unknown ids render as-is, empty as `fallback`. */
+export function agentLabel(value: string | null | undefined, fallback = 'Default'): string {
+	if (!value) return fallback;
+	return CODING_AGENTS.find((a) => a.value === value)?.label ?? value;
+}

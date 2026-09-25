@@ -23,7 +23,7 @@ Events flow through: Ingest → Space Resolution → Rules → Router (fast LLM 
 - **Coherence**: Cross-platform entity search using hybrid retrieval — dense vectors (ChromaDB) + lexical BM25 (SQLite FTS5) + entity search merged via Reciprocal Rank Fusion, with AI-generated narratives
 - **Omni**: Rolling cross-platform summary with four temporal layers (Attention, Recent, Period, Milestone) and progressive summarization
 - **Context Association**: Automatic semantic grouping of related cards across platforms; learns editable natural-language context rules from user corrections (auto-consolidated by an LLM)
-- **Coding Agents**: Run Claude Code, Gemini CLI, Codex, or Pi CLI directly from any card with a dedicated workspace
+- **Coding Agents**: Run Claude Code, Gemini CLI, Codex, Pi CLI, or Cursor Agent directly from any card with a dedicated workspace
 - **Agent inference backends**: Run any pipeline stage on an installed CLI agent's own quota via `agent/<id>/<model>` model ids (native schema enforcement on Claude Code; best-effort + retry on others)
 - **Agent Studio**: Full agent configuration — runtime, execution mode, working directories, detailed prompts
 - **Composer**: Cross-platform outbound actions from a single interface (9 platform backends, plus a direct SMTP backend)

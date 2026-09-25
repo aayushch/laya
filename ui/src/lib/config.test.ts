@@ -7,7 +7,8 @@ import {
 	getEngineWsUrl,
 	CODING_AGENTS,
 	DEFAULT_AGENT_PATHS,
-	AGENT_BINARY_NAMES
+	AGENT_BINARY_NAMES,
+	agentLabel
 } from './config';
 
 describe('engine URL helpers', () => {
@@ -28,9 +29,9 @@ describe('engine URL helpers', () => {
 });
 
 describe('coding-agent registry', () => {
-	it('offers "none" plus the four CLI agents', () => {
+	it('offers "none" plus the five CLI agents', () => {
 		const values = CODING_AGENTS.map((a) => a.value);
-		expect(values).toEqual(['none', 'claude_code', 'gemini_cli', 'codex_cli', 'pi_cli']);
+		expect(values).toEqual(['none', 'claude_code', 'gemini_cli', 'codex_cli', 'pi_cli', 'cursor_cli']);
 	});
 
 	it('derives default paths for every real agent but never for "none"', () => {
@@ -46,12 +47,21 @@ describe('coding-agent registry', () => {
 			claude_code: 'claude',
 			gemini_cli: 'gemini',
 			codex_cli: 'codex',
-			pi_cli: 'pi'
+			pi_cli: 'pi',
+			cursor_cli: 'agent'
 		});
 		// Every non-"none" agent has a binary name.
 		for (const a of CODING_AGENTS) {
 			if (a.value === 'none') continue;
 			expect(AGENT_BINARY_NAMES[a.value]).toBeTruthy();
 		}
+	});
+
+	it('labels agent ids for display', () => {
+		expect(agentLabel('cursor_cli')).toBe('Cursor Agent');
+		expect(agentLabel('claude_code')).toBe('Claude Code');
+		expect(agentLabel('')).toBe('Default');
+		expect(agentLabel(null, 'unset')).toBe('unset');
+		expect(agentLabel('mystery_cli')).toBe('mystery_cli');
 	});
 });
