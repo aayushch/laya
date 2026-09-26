@@ -145,7 +145,7 @@ The fastest way to try Laya is a prebuilt release — no toolchains required.
    | Windows | `.msi` or `.exe` |
    | Linux | `.deb` or `.AppImage` |
 
-2. Install and launch. You do **not** need Python, Node, or Rust installed to *run* a release build. On first run, Laya checks for a compatible Python (3.10+) and Node.js (20+) already on your machine and uses those if found; otherwise it provisions its own bundled runtimes. Either way, a local n8n instance is set up under `~/.laya/`.
+2. Install and launch. You do **not** need Python, Node, or Rust installed to *run* a release build. On first run, Laya checks for a compatible Python (3.10–3.14; on Windows, an x64 build) and Node.js (20+) already on your machine and uses those if found; otherwise it provisions its own bundled runtimes. Either way, a local n8n instance is set up under `~/.laya/`.
 3. Add an API key (Anthropic, OpenAI, Google, …) or point Laya at a local Ollama / LM Studio endpoint, then connect your tools from Settings.
 
 > **macOS:** release builds are signed, so they open normally — just double-click to launch.
@@ -264,6 +264,42 @@ npm install --prefix ~/.laya/n8n_module n8n@2.15.0
 ```
 
 `allow-remote=root` is not enough because `xlsx` is a transitive dependency. Tracked in [#18](https://github.com/aayushch/laya/issues/18).
+
+</details>
+
+<details>
+<summary><strong>Windows (incl. Windows on ARM): setup fails with "Wheels are required for <code>aiohttp</code>" / <code>tiktoken</code> / <code>chromadb</code></strong></summary>
+
+If the "Installing Python packages" step fails and `%USERPROFILE%\.laya\logs\pip-install.log` contains a line like:
+
+```text
+hint: Wheels are required for `aiohttp` because building from source is disabled for all packages (i.e., with `--no-build`)
+```
+
+Laya picked up a Python from your `PATH` that it can't install its dependencies into. Laya installs only prebuilt wheels (it never compiles packages), and two kinds of interpreter have no wheels for some of its dependencies:
+
+- **Python newer than 3.14** (e.g. 3.15): `aiohttp`, `torch` and others haven't published wheels for it yet. This affects every platform.
+- **Native ARM64 Python on Windows** (`win-arm64`), any version: `chromadb`, `tiktoken`, `litellm` (via `fastuuid`), `grpcio` and `torch` publish no Windows-on-ARM wheels. The Windows release of Laya is an x64 app, which Windows on ARM runs under emulation, so it works with an **x64** Python.
+
+Releases after v1.9.2 skip these interpreters automatically. They download Laya's own x64 Python 3.12 instead and rebuild a venv that was created with the wrong interpreter. On v1.9.2 or earlier, quit Laya and point it at a compatible Python yourself, using either option below. Then relaunch Laya. Setup rebuilds the venv, which takes a few minutes.
+
+**Option A (recommended): pre-install Laya's managed Python.** Laya prefers `%USERPROFILE%\.laya\python` over anything on `PATH`, so this works regardless of which other Pythons you have. In PowerShell:
+
+```powershell
+$laya = "$env:USERPROFILE\.laya"
+Remove-Item -Recurse -Force "$laya\venv", "$laya\.deps_hash", "$laya\python" -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force $laya | Out-Null
+$tag = "20260510"; $ver = "3.12.13"
+$url = "https://github.com/astral-sh/python-build-standalone/releases/download/$tag/cpython-$ver+$tag-x86_64-pc-windows-msvc-install_only.tar.gz"
+Invoke-WebRequest $url -OutFile "$env:TEMP\laya-python.tar.gz"
+tar -xzf "$env:TEMP\laya-python.tar.gz" -C $laya       # creates .laya\python
+Set-Content "$laya\python\.version" $ver -NoNewline
+Remove-Item "$env:TEMP\laya-python.tar.gz"
+```
+
+**Option B: install an x64 Python 3.12 or 3.13 and put it first on `PATH`.** Download the **"Windows installer (64-bit)"**, not the ARM64 one, from [python.org](https://www.python.org/downloads/windows/) and tick "Add python.exe to PATH". Then make sure `python --version` in a new terminal reports that version. Run `python -c "import sysconfig; print(sysconfig.get_platform())"` to confirm it prints `win-amd64`. Finally, delete `%USERPROFILE%\.laya\venv` and `%USERPROFILE%\.laya\.deps_hash`.
+
+`pip install laya` is **not** a way to install this app. The `laya` package on PyPI is an unrelated project that requires `torch`. Use the installers on the [Releases page](https://github.com/aayushch/laya/releases). Tracked in [#14](https://github.com/aayushch/laya/issues/14).
 
 </details>
 

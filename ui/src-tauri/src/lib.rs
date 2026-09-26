@@ -305,7 +305,7 @@ fn setup_environment(app: tauri::AppHandle) {
                 path
             }
             Err(e) => {
-                emit("preflight", "error", &format!("Python 3.10+ is required. {}", e));
+                emit("preflight", "error", &e);
                 return;
             }
         };
@@ -322,7 +322,16 @@ fn setup_environment(app: tauri::AppHandle) {
 
         // ── Step 2: Set up environment ──────────────────────────────
         if !sidecar::check_environment().venv_ready {
-            emit("environment", "running", "Creating Python environment...");
+            // A venv that exists but isn't ready is broken or was built on an
+            // interpreter we no longer accept (e.g. ARM64 / too-new Python,
+            // issue #14); create_venv wipes and rebuilds it. Say so, since
+            // the rebuild also re-downloads every package.
+            let msg = if sidecar::venv_exists() {
+                "Rebuilding Python environment (the existing one is incompatible or incomplete)..."
+            } else {
+                "Creating Python environment..."
+            };
+            emit("environment", "running", msg);
             match sidecar::create_venv(&python_path) {
                 Ok(()) => emit("environment", "done", "Python environment created"),
                 Err(e) => {

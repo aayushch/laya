@@ -41,7 +41,9 @@ use sha2::{Digest, Sha256};
 // must match what is actually published.
 
 /// CPython version shipped by python-build-standalone (Astral/indygreg).
-const PYTHON_VERSION: &str = "3.12.13";
+/// Must stay within sidecar's MIN/MAX_PYTHON_MINOR (enforced by a test),
+/// or venvs built from it are treated as unusable and rebuilt every launch.
+pub(crate) const PYTHON_VERSION: &str = "3.12.13";
 
 /// indygreg release tag that contains the above CPython version.
 /// Releases are dated YYYYMMDD; see
