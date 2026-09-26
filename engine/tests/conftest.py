@@ -3,6 +3,74 @@
 
 """Shared test fixtures for Laya Engine tests."""
 
+# --- Test isolation from the developer's real Laya install (issue #19) ------
+#
+# laya.config derives every path from Path.home() at import time, and many
+# modules copy those constants (``from laya.config import LAYA_HOME``), so they
+# can't be patched after the fact. Without this, running pytest reads/writes
+# the real ~/.laya (settings.json, team.json, data/, logs/) and the real OS
+# keychain -- e.g. test_mcp_http's teardown deleted the user's MCP token.
+#
+# So point the home directory at a throwaway dir BEFORE anything imports laya.
+# This block must stay above every ``laya`` import in this file.
+import atexit
+import os
+import shutil
+import tempfile
+from pathlib import Path
+
+_REAL_HOME = Path.home()
+_TEST_HOME = Path(tempfile.mkdtemp(prefix="laya-test-home-"))
+os.environ["HOME"] = str(_TEST_HOME)
+os.environ["USERPROFILE"] = str(_TEST_HOME)  # Path.home() reads this on Windows
+atexit.register(shutil.rmtree, _TEST_HOME, ignore_errors=True)
+
+# Model caches are not Laya state; keep them in the real home so the embedding
+# models aren't re-downloaded into every throwaway home.
+os.environ.setdefault("HF_HOME", str(_REAL_HOME / ".cache" / "huggingface"))
+try:
+    from chromadb.utils.embedding_functions.onnx_mini_lm_l6_v2 import ONNXMiniLM_L6_V2
+
+    ONNXMiniLM_L6_V2.DOWNLOAD_PATH = (
+        _REAL_HOME / ".cache" / "chroma" / "onnx_models" / ONNXMiniLM_L6_V2.MODEL_NAME
+    )
+except ImportError:
+    pass
+
+import keyring
+from keyring.backend import KeyringBackend
+from keyring.errors import PasswordDeleteError
+
+
+class _InMemoryKeyring(KeyringBackend):
+    """Process-local keyring so tests never touch the OS keychain.
+
+    Also makes the keychain tests pass on machines with no keyring backend
+    (headless Linux, CI containers).
+    """
+
+    priority = 1
+
+    def __init__(self):
+        super().__init__()
+        self._store: dict[tuple[str, str], str] = {}
+
+    def get_password(self, service, username):
+        return self._store.get((service, username))
+
+    def set_password(self, service, username, password):
+        self._store[(service, username)] = password
+
+    def delete_password(self, service, username):
+        try:
+            del self._store[(service, username)]
+        except KeyError:
+            raise PasswordDeleteError(username) from None
+
+
+keyring.set_keyring(_InMemoryKeyring())
+# ---------------------------------------------------------------------------
+
 import json
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -17,6 +85,14 @@ from laya.models.classification import Persona, RouterOutput
 from laya.models.event import LayaEvent
 from laya.models.rules import RulesConfig
 from laya.models.team import TeamConfig
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "network: needs internet (e.g. first-run embedding model download); "
+        "deselect with -m 'not network'",
+    )
 
 
 @pytest.fixture(autouse=True)

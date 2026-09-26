@@ -98,7 +98,14 @@ pytest tests/test_cards_api.py
 
 # Run a single test
 pytest tests/test_cards_api.py::test_function_name -v
+
+# Skip tests that need internet (e.g. embedding model download)
+pytest -m "not network"
 ```
+
+The suite runs against a throwaway home directory and an in-memory keyring
+(see `engine/tests/conftest.py`), so it never touches your real `~/.laya` or
+OS keychain.
 
 ### Frontend
 

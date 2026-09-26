@@ -28,8 +28,8 @@ if [ ! -d ".venv" ]; then
     echo "  Created venv"
 fi
 source .venv/bin/activate
-pip install -q -r requirements.txt
-echo "  Python deps installed"
+pip install -q -r requirements-dev.txt
+echo "  Python deps installed (incl. test deps)"
 
 # Node dependencies
 echo ""

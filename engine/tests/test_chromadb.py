@@ -42,6 +42,7 @@ def chromadb_collection(tmp_path, request):
     chromadb_store._collection = original_collection
 
 
+@pytest.mark.network
 @pytest.mark.asyncio
 async def test_embed_and_search(chromadb_collection):
     """Embed a document and find it via semantic search."""
@@ -71,6 +72,7 @@ async def test_search_empty_collection(chromadb_collection):
     assert results == []
 
 
+@pytest.mark.network
 @pytest.mark.asyncio
 async def test_embed_multiple_and_search(chromadb_collection):
     """Embed multiple docs and verify search relevance."""
@@ -101,6 +103,7 @@ async def test_embed_multiple_and_search(chromadb_collection):
     assert "evt_1" in result_ids
 
 
+@pytest.mark.network
 @pytest.mark.asyncio
 async def test_upsert_updates_document(chromadb_collection):
     """Upserting with same ID updates the document."""

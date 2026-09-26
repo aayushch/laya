@@ -1,0 +1,7 @@
+# Laya Engine — development/test dependencies
+# Installs the core deps plus what the test suite needs.
+
+-r requirements.txt
+
+pytest>=8.0
+pytest-asyncio>=1.0
