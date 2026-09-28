@@ -21,7 +21,7 @@ class TestN8nConfig:
         with patch("laya.config.LAYA_CONFIG_FILE", tmp_path / "missing.json"):
             config = get_n8n_config()
 
-        assert config["base_url"] == "http://localhost:45678"
+        assert config["base_url"] == "http://127.0.0.1:45678"
         assert config["webhooks"]["jira"] == "jira-executor"
         assert len(config["webhooks"]) == 11
 
@@ -54,6 +54,18 @@ class TestN8nConfig:
         assert config["base_url"] == "http://myserver:5678"
         assert config["webhooks"]["jira"] == "custom-jira"
         assert config["webhooks"]["github"] == "github-executor"
+
+    def test_legacy_localhost_default_rewritten(self, tmp_path):
+        """A persisted old default (localhost) is pointed at the IPv4 loopback n8n binds."""
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps({
+            "n8n": {"base_url": "http://localhost:45678"}
+        }))
+
+        with patch("laya.config.LAYA_CONFIG_FILE", settings_file):
+            config = get_n8n_config()
+
+        assert config["base_url"] == "http://127.0.0.1:45678"
 
 
 @pytest.mark.asyncio

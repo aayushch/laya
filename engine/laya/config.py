@@ -23,7 +23,7 @@ LAYA_REPOS_FILE = LAYA_HOME / "repos.json"
 # Engine defaults (overridable via environment)
 ENGINE_HOST = os.environ.get("LAYA_ENGINE_HOST", "127.0.0.1")
 ENGINE_PORT = int(os.environ.get("LAYA_ENGINE_PORT", "8420"))
-N8N_URL = "http://localhost:45678"
+N8N_URL = "http://127.0.0.1:45678"
 DB_PATH = LAYA_DATA_DIR / "laya.db"
 MIGRATIONS_DIR = Path(__file__).parent / "db" / "migrations"
 
@@ -88,7 +88,7 @@ DEFAULT_SETTINGS = {
     },
     "setup_complete": False,
     "n8n": {
-        "base_url": "http://localhost:45678",
+        "base_url": "http://127.0.0.1:45678",
         "webhooks": {
             "jira": "jira-executor",
             "bitbucket": "bitbucket-executor",
@@ -293,6 +293,13 @@ def get_n8n_config() -> dict:
     """Return the n8n config block from settings, with env var override."""
     settings = load_settings()
     n8n = settings.get("n8n", DEFAULT_SETTINGS["n8n"])
+    # The bundled n8n listens on 127.0.0.1 only (N8N_LISTEN_ADDRESS in
+    # n8n.rs). Older installs persisted the previous default, localhost, into
+    # settings.json; localhost often resolves to ::1 first, which is now
+    # refused, costing ~0.25s (async) to ~2s (sync, Windows) per connection
+    # before falling back to IPv4. Rewrite only that exact legacy default.
+    if n8n.get("base_url") == "http://localhost:45678":
+        n8n = {**n8n, "base_url": N8N_URL}
     env_url = os.getenv("N8N_URL")
     if env_url:
         n8n = {**n8n, "base_url": env_url}

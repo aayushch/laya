@@ -731,9 +731,14 @@ fn spawn_n8n() -> Result<Child, String> {
         .env("N8N_USER_FOLDER", data_dir.to_string_lossy().as_ref())
         .env("N8N_PORT", N8N_PORT.to_string())
         .env("N8N_HOST", "127.0.0.1")
+        // N8N_HOST only sets the host n8n reports in URLs; the bind address
+        // is N8N_LISTEN_ADDRESS, which defaults to "::" (every interface).
+        // Bind loopback only so the editor, REST API and webhooks are not
+        // reachable from the LAN.
+        .env("N8N_LISTEN_ADDRESS", "127.0.0.1")
         .env(
             "WEBHOOK_URL",
-            format!("http://localhost:{}/", N8N_PORT),
+            format!("http://127.0.0.1:{}/", N8N_PORT),
         )
         .env("N8N_SECURE_COOKIE", "false")
         .env("N8N_PUBLIC_API_DISABLED", "false")
