@@ -83,7 +83,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const configResp = $('Fetch Channel Config').first().json;\nconst usersResp = $input.first().json;\nconst staticData = $getWorkflowStaticData('global');\n\nstaticData.allowedChannels = configResp.value || null;\n\n// Cache workspace url + team id (from auth.test) so Normalize can build Slack\n// permalinks. If auth.test failed these stay unset and links fall back to null.\nconst wsResp = $('Fetch Workspace Info').first().json;\nif (wsResp && wsResp.ok !== false) {\n  if (wsResp.url) staticData.workspaceUrl = wsResp.url.replace(/\\/+$/, '');\n  if (wsResp.team_id) staticData.teamId = wsResp.team_id;\n}\n\nconst now = Date.now();\nconst cacheAge = now - (staticData.userMapUpdatedAt || 0);\nif (usersResp.ok !== false && usersResp.members && cacheAge > 600000) {\n  const map = {};\n  for (const m of usersResp.members) {\n    if (m.id && !m.deleted) {\n      const p = m.profile || {};\n      map[m.id] = {\n        name: p.display_name || p.real_name || m.name || m.id,\n        email: p.email || ''\n      };\n    }\n  }\n  staticData.userMap = map;\n  staticData.userMapUpdatedAt = now;\n}\n\nreturn [{ json: { cursor: '' } }];"
+        "jsCode": "const configResp = $('Fetch Channel Config').first().json;\n// Read users.list by node name: $input here is Fetch Workspace Info (auth.test),\n// which has no members, so the userMap would never be built.\nconst usersResp = $('Fetch Users').first().json;\nconst staticData = $getWorkflowStaticData('global');\n\nstaticData.allowedChannels = configResp.value || null;\n\n// Cache workspace url + team id (from auth.test) so Normalize can build Slack\n// permalinks. If auth.test failed these stay unset and links fall back to null.\nconst wsResp = $('Fetch Workspace Info').first().json;\nif (wsResp && wsResp.ok !== false) {\n  if (wsResp.url) staticData.workspaceUrl = wsResp.url.replace(/\\/+$/, '');\n  if (wsResp.team_id) staticData.teamId = wsResp.team_id;\n}\n\nconst now = Date.now();\nconst cacheAge = now - (staticData.userMapUpdatedAt || 0);\nif (usersResp.ok !== false && usersResp.members && cacheAge > 600000) {\n  const map = {};\n  for (const m of usersResp.members) {\n    if (m.id && !m.deleted) {\n      const p = m.profile || {};\n      map[m.id] = {\n        name: p.display_name || p.real_name || m.name || m.id,\n        email: p.email || ''\n      };\n    }\n  }\n  staticData.userMap = map;\n  staticData.userMapUpdatedAt = now;\n}\n\nreturn [{ json: { cursor: '' } }];"
       },
       "name": "Build Allowed Set",
       "type": "n8n-nodes-base.code",
@@ -313,6 +313,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.06.24"
+    "laya_version": "2026.09.28"
   }
 }
