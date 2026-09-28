@@ -229,6 +229,46 @@ def get_collection() -> Collection:
     return _collection
 
 
+# How long async callers wait for connect_chromadb_background() before failing
+# like get_collection(). A cold first launch on Windows took ~108s (#24).
+_CONNECT_WAIT_TIMEOUT = 300.0
+_connecting = False
+
+
+async def connect_chromadb_background() -> None:
+    """Run connect_chromadb() in a thread, off the lifespan startup path.
+
+    connect_chromadb() imports sentence_transformers (torch + transformers),
+    which takes 30-100s on a cold disk cache. uvicorn serves no route (incl.
+    /health) until lifespan startup returns, so running it inline kept /health
+    down past the Tauri shell's wait_for_engine() budget and setup reported
+    "Engine started but is not responding" (#24). Callers that need the
+    collection meanwhile use wait_for_collection().
+    """
+    global _connecting
+    _connecting = True
+    try:
+        await asyncio.to_thread(connect_chromadb)
+    except Exception as e:
+        # Previously this aborted engine startup; now it only disables vector
+        # search (waiters stop waiting and get the usual RuntimeError).
+        log.error("chromadb_connect_failed", error=str(e))
+    finally:
+        _connecting = False
+
+
+async def wait_for_collection(timeout: float = _CONNECT_WAIT_TIMEOUT) -> Collection:
+    """Get the collection, waiting only while a background connect is running.
+
+    Raises RuntimeError (as get_collection does) if not connected afterwards.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while _collection is None and _connecting and loop.time() < deadline:
+        await asyncio.sleep(0.25)
+    return get_collection()
+
+
 def disconnect_chromadb() -> None:
     """Clean up ChromaDB resources."""
     global _client, _collection
@@ -257,7 +297,7 @@ async def embed_document(
     Metadata should include: source_event_id, source_platform,
     entity_refs, persona, timestamp, content_type.
     """
-    collection = get_collection()
+    collection = await wait_for_collection()
     # upsert runs SentenceTransformer.encode synchronously (50–500ms CPU, ~2s on
     # first load) plus the Chroma write — running it inline froze all API/WS
     # traffic on every card emit and serialized bursts (review §1.2 / §4). Push
@@ -287,7 +327,7 @@ async def embed_document_chunked(
         return 1
 
     # Delete any previous chunks for this doc
-    collection = get_collection()
+    collection = await wait_for_collection()
     try:
         existing = collection.get(where={"parent_id": doc_id})
         if existing and existing["ids"]:
@@ -310,7 +350,7 @@ async def embed_document_chunked(
 
 async def delete_document(doc_id: str) -> None:
     """Remove a document from the laya_memory collection by ID."""
-    collection = get_collection()
+    collection = await wait_for_collection()
     # Chroma delete is synchronous I/O — keep it off the event loop (review §4).
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, partial(collection.delete, ids=[doc_id]))
@@ -327,7 +367,7 @@ async def update_document_metadata(doc_id: str, patch: dict[str, Any]) -> None:
     metadata in sync (semantic search / chat / context-grouping filter on it) without a
     full re-embed — mirrors the in-place tag update in ``pipeline/tags.py``.
     """
-    collection = get_collection()
+    collection = await wait_for_collection()
     loop = asyncio.get_event_loop()
 
     def _patch() -> None:
@@ -368,7 +408,7 @@ async def memory_search(
 
     Returns list of dicts with keys: id, document, metadata, distance.
     """
-    collection = get_collection()
+    collection = await wait_for_collection()
 
     kwargs: dict[str, Any] = {"n_results": n_results}
     if where:

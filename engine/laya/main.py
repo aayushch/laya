@@ -53,7 +53,7 @@ from laya.api.ws_router import handle_ws_message
 from laya.config import ENGINE_HOST, ENGINE_PORT, ensure_directories, load_repos, load_rules, load_settings, load_team
 from laya.http_client import close_client as close_http_client
 from laya.integrations.n8n_bootstrap import provision_n8n_background, sync_workflows_background
-from laya.db.chromadb_store import connect_chromadb, disconnect_chromadb
+from laya.db.chromadb_store import connect_chromadb_background, disconnect_chromadb
 from laya.db.fts import ensure_fts_tables
 from laya.db.migrate import run_migrations
 from laya.db.sqlite import connect, disconnect
@@ -290,8 +290,11 @@ async def lifespan(app: FastAPI):
     # 10 min so a slow-starting n8n is handled gracefully.
     _workflow_sync_task = create_tracked_task(sync_workflows_background())  # noqa: F841
 
-    # Connect ChromaDB vector store
-    connect_chromadb()
+    # Connect ChromaDB vector store in the background, for the same reason as
+    # n8n provisioning above: it imports torch/transformers, which took ~108s
+    # on a cold first launch (#24). The async store functions wait for it, so
+    # events consumed meanwhile are still indexed once it is ready.
+    create_tracked_task(connect_chromadb_background())
 
     # Start briefing scheduler
     start_scheduler()
