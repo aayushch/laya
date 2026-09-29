@@ -123,7 +123,7 @@ Supporting pipelines (triggered separately):
 
 ## Dependencies
 
-- **Python**: `engine/requirements.txt` (core), `engine/requirements-ml.txt` (optional: torch + sentence-transformers)
+- **Python**: `engine/requirements.txt` (core), `engine/requirements-ml.txt` (optional: torch + sentence-transformers), `engine/requirements-dev.txt` (core + test tools). These are hand-edited version ranges; each has a generated `.lock` (exact pins + hashes, universal across OS/Python 3.10–3.14) and the locks are what gets installed — by first-run setup (`sidecar.rs`, which resolves the `.txt` only if a lock can't be installed on that machine) and by `scripts/setup-dev.sh`. After editing a requirements file run `scripts/lock-deps.sh` (add `--upgrade-package <name>` to move a pin), then `scripts/check-locks.sh` (wheel availability per OS/Python) and `scripts/smoke-install.sh` (fresh venv → import engine → embed → pytest). CI runs the same checks (`.github/workflows/engine-deps.yml`).
 - **Frontend**: `ui/package.json` — Svelte 5, SvelteKit, Skeleton UI, Tailwind v4, Tauri APIs
 - **Rust**: `ui/src-tauri/Cargo.toml` — Tauri v2, tokio, reqwest
 

@@ -4,9 +4,9 @@
 //! Python environment and engine lifecycle management.
 //!
 //! In development: spawns `python -m laya.main` from the engine's dev venv.
-//! In production: manages a venv at `~/.laya/venv/`, installs requirements
-//! from the bundled `requirements.txt`, and runs the engine from the bundled
-//! Python source in `Contents/Resources/engine/`.
+//! In production: manages a venv at `~/.laya/venv/`, installs the exact
+//! package versions pinned in the bundled `requirements.lock`, and runs the
+//! engine from the bundled Python source in `Contents/Resources/engine/`.
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -107,6 +107,17 @@ fn requirements_path() -> PathBuf {
 /// Path to the optional ML requirements (torch, sentence-transformers, etc.).
 fn requirements_ml_path() -> PathBuf {
     engine_source_dir().join("requirements-ml.txt")
+}
+
+/// Path to the bundled lock for the core requirements: every package,
+/// including transitive ones, pinned to an exact version with hashes.
+fn requirements_lock_path() -> PathBuf {
+    engine_source_dir().join("requirements.lock")
+}
+
+/// Path to the bundled lock for the optional ML requirements.
+fn requirements_ml_lock_path() -> PathBuf {
+    engine_source_dir().join("requirements-ml.lock")
 }
 
 /// Path to the requirements hash file (used to detect when deps need updating).
@@ -523,22 +534,39 @@ fn find_uv() -> Option<PathBuf> {
     crate::runtime::managed_uv()
 }
 
-/// Check if installed deps match the bundled requirements files (by hash).
+/// Hash of everything that decides which packages get installed: the core
+/// requirements file (required) followed by the ML requirements and both lock
+/// files (each skipped when absent). Returns None if the core file is unreadable.
+///
+/// The locks are part of the hash because a relock changes the installed
+/// versions without touching the requirements files.
+fn deps_fingerprint(core: &Path, optional: &[PathBuf]) -> Option<String> {
+    let mut combined = std::fs::read_to_string(core).ok()?;
+    for path in optional {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            combined.push_str(&content);
+        }
+    }
+    Some(simple_hash(&combined))
+}
+
+fn bundled_deps_fingerprint() -> Option<String> {
+    deps_fingerprint(
+        &requirements_path(),
+        &[
+            requirements_ml_path(),
+            requirements_lock_path(),
+            requirements_ml_lock_path(),
+        ],
+    )
+}
+
+/// Check if installed deps match the bundled requirements and lock files (by hash).
 fn deps_up_to_date() -> bool {
-    let hash_path = deps_hash_path();
-
-    let mut combined = String::new();
-    if let Ok(content) = std::fs::read_to_string(requirements_path()) {
-        combined.push_str(&content);
-    } else {
+    let Some(current_hash) = bundled_deps_fingerprint() else {
         return false;
-    }
-    if let Ok(content) = std::fs::read_to_string(requirements_ml_path()) {
-        combined.push_str(&content);
-    }
-
-    let current_hash = simple_hash(&combined);
-    match std::fs::read_to_string(&hash_path) {
+    };
+    match std::fs::read_to_string(deps_hash_path()) {
         Ok(stored) => stored.trim() == current_hash,
         Err(_) => false,
     }
@@ -546,11 +574,9 @@ fn deps_up_to_date() -> bool {
 
 /// Save the current requirements hash after successful install.
 fn save_deps_hash() {
-    let mut combined = String::new();
-    if let Ok(c) = std::fs::read_to_string(requirements_path()) { combined.push_str(&c); }
-    if let Ok(c) = std::fs::read_to_string(requirements_ml_path()) { combined.push_str(&c); }
-    let hash = simple_hash(&combined);
-    let _ = std::fs::write(deps_hash_path(), hash);
+    if let Some(hash) = bundled_deps_fingerprint() {
+        let _ = std::fs::write(deps_hash_path(), hash);
+    }
 }
 
 /// Simple string hash (not cryptographic — just for change detection).
@@ -562,12 +588,55 @@ fn simple_hash(s: &str) -> String {
     format!("{:016x}", h.finish())
 }
 
+/// Whether a requirements file is a lock (exact pins with hashes) or a
+/// hand-written list of version ranges that the installer has to resolve.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum ReqKind {
+    Locked,
+    Ranges,
+}
+
+/// Arguments for `uv pip install` of one requirements file into `python`'s venv.
+fn uv_install_args(req: &Path, python: &Path, kind: ReqKind) -> Vec<String> {
+    let mut args: Vec<String> = vec![
+        "pip".into(), "install".into(),
+        "-r".into(), req.to_string_lossy().into_owned(),
+        "--python".into(), python.to_string_lossy().into_owned(),
+        "--only-binary".into(), ":all:".into(),
+        // Keep the streamed output / log free of ANSI escape codes.
+        "--color".into(), "never".into(),
+    ];
+    if kind == ReqKind::Locked {
+        // Refuse any package that is not pinned with a matching hash, so the
+        // venv holds exactly what the lock names.
+        args.push("--require-hashes".into());
+    }
+    args
+}
+
+/// Arguments for `python -m pip install` of one requirements file.
+fn pip_install_args(req: &Path, kind: ReqKind) -> Vec<String> {
+    // No --log: run_install_cmd tees the streamed stdout/stderr to the log
+    // file, so a pip --log here would be a second writer racing the same file.
+    let mut args: Vec<String> = vec![
+        "-m".into(), "pip".into(),
+        "install".into(), "-r".into(), req.to_string_lossy().into_owned(),
+        "--only-binary".into(), ":all:".into(),
+        "--progress-bar".into(), "off".into(),
+    ];
+    if kind == ReqKind::Locked {
+        args.push("--require-hashes".into());
+    }
+    args
+}
+
 /// Run package install for a given requirements file.
 /// Prefers `uv pip install` (10-100x faster) with fallback to regular pip.
 /// Returns Ok(true) on success, Ok(false) if the file doesn't exist (skipped),
 /// or Err on failure.
 fn pip_install<F: FnMut(&str)>(
     req: &std::path::Path,
+    kind: ReqKind,
     log_name: &str,
     on_line: &mut F,
 ) -> Result<bool, String> {
@@ -576,15 +645,77 @@ fn pip_install<F: FnMut(&str)>(
     }
 
     if let Some(uv) = find_uv() {
-        return uv_pip_install(&uv, req, log_name, on_line);
+        return uv_pip_install(&uv, req, kind, log_name, on_line);
     }
-    legacy_pip_install(req, log_name, on_line)
+    legacy_pip_install(req, kind, log_name, on_line)
+}
+
+/// Install from `lock`, and if that is not possible, from `req`.
+///
+/// The lock gives every install the same tested versions. It can still be
+/// unusable on a particular machine: a pinned version may publish no wheel for
+/// an OS or Python the lock was never checked against (scripts/check-locks.sh
+/// lists the ones it was). Resolving `req` instead lets the installer pick
+/// versions that do have wheels there, so setup succeeds wherever it would
+/// without a lock.
+///
+/// Both installers resolve and download everything before changing the venv,
+/// so a failed locked install leaves nothing behind for the second attempt.
+///
+/// `install(file, kind, log_name)` performs one install attempt and `notify`
+/// receives a progress line when the lock is abandoned.
+fn install_locked_or_ranges(
+    lock: &Path,
+    req: &Path,
+    log_name: &str,
+    fallback_log_name: &str,
+    notify: &mut dyn FnMut(&str),
+    install: &mut dyn FnMut(&Path, ReqKind, &str) -> Result<bool, String>,
+) -> Result<bool, String> {
+    if lock.exists() {
+        match install(lock, ReqKind::Locked, log_name) {
+            Ok(installed) => return Ok(installed),
+            Err(e) => {
+                log::warn!(
+                    "Install from {} failed, resolving {} instead: {}",
+                    lock.display(),
+                    req.display(),
+                    e
+                );
+                notify("Pinned package set unavailable on this system, resolving compatible versions...");
+            }
+        }
+    } else {
+        log::warn!("{} not found, resolving {} instead", lock.display(), req.display());
+    }
+    install(req, ReqKind::Ranges, fallback_log_name)
+}
+
+/// `install_locked_or_ranges` with the real installer, streaming to `on_line`.
+fn pip_install_locked_or_ranges<F: FnMut(&str)>(
+    lock: &Path,
+    req: &Path,
+    log_name: &str,
+    fallback_log_name: &str,
+    on_line: &mut F,
+) -> Result<bool, String> {
+    // Both closures report through `on_line`, one at a time.
+    let on_line = std::cell::RefCell::new(on_line);
+    install_locked_or_ranges(
+        lock,
+        req,
+        log_name,
+        fallback_log_name,
+        &mut |line| (*on_line.borrow_mut())(line),
+        &mut |file, kind, log| pip_install(file, kind, log, &mut |line| (*on_line.borrow_mut())(line)),
+    )
 }
 
 /// Install packages using uv (Astral's fast pip replacement).
 fn uv_pip_install<F: FnMut(&str)>(
     uv: &Path,
     req: &Path,
+    kind: ReqKind,
     log_name: &str,
     on_line: &mut F,
 ) -> Result<bool, String> {
@@ -601,14 +732,7 @@ fn uv_pip_install<F: FnMut(&str)>(
 
     let mut cmd = Command::new(uv);
     no_window(&mut cmd);
-    cmd.args([
-            "pip", "install",
-            "-r", &req.to_string_lossy(),
-            "--python", &python.to_string_lossy(),
-            "--only-binary", ":all:",
-            // Keep the streamed output / log free of ANSI escape codes.
-            "--color", "never",
-        ])
+    cmd.args(uv_install_args(req, &python, kind))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     sanitize_python_cmd(&mut cmd);
@@ -619,6 +743,7 @@ fn uv_pip_install<F: FnMut(&str)>(
 /// Install packages using regular pip (fallback when uv is unavailable).
 fn legacy_pip_install<F: FnMut(&str)>(
     req: &Path,
+    kind: ReqKind,
     log_name: &str,
     on_line: &mut F,
 ) -> Result<bool, String> {
@@ -635,14 +760,7 @@ fn legacy_pip_install<F: FnMut(&str)>(
 
     let mut cmd = Command::new(&python);
     no_window(&mut cmd);
-    // No --log: run_install_cmd tees the streamed stdout/stderr to log_path,
-    // so a pip --log here would be a second writer racing the same file.
-    cmd.args([
-            "-m", "pip",
-            "install", "-r", &req.to_string_lossy(),
-            "--only-binary", ":all:",
-            "--progress-bar", "off",
-        ])
+    cmd.args(pip_install_args(req, kind))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     sanitize_python_cmd(&mut cmd);
@@ -709,6 +827,9 @@ fn run_install_cmd<F: FnMut(&str)>(
 /// 1. Core deps (required — fails the setup if these fail)
 /// 2. ML deps (optional — logs a warning but continues if unavailable)
 ///
+/// Each set is installed from its lock file, falling back to the requirements
+/// file (see `install_locked_or_ranges`).
+///
 /// Calls `on_line` for each line of pip output (for progress reporting).
 pub fn install_requirements<F: FnMut(&str)>(mut on_line: F) -> Result<(), String> {
     // Core dependencies — must succeed
@@ -716,7 +837,13 @@ pub fn install_requirements<F: FnMut(&str)>(mut on_line: F) -> Result<(), String
     if !req.exists() {
         return Err(format!("requirements.txt not found at {}", req.display()));
     }
-    pip_install(&req, "pip-install.log", &mut on_line)?;
+    pip_install_locked_or_ranges(
+        &requirements_lock_path(),
+        &req,
+        "pip-install.log",
+        "pip-install-fallback.log",
+        &mut on_line,
+    )?;
 
     // ML dependencies (torch, sentence-transformers, onnxruntime) — optional.
     // These may fail on platforms without compatible wheels (e.g., macOS x86_64).
@@ -727,7 +854,18 @@ pub fn install_requirements<F: FnMut(&str)>(mut on_line: F) -> Result<(), String
         // footer holds an explanatory message instead of looking frozen.
         on_line("Downloading large ML packages (torch, sentence-transformers) — this can take several minutes...");
     }
-    match pip_install(&ml_req, "pip-install-ml.log", &mut on_line) {
+    let ml_result = if ml_req.exists() {
+        pip_install_locked_or_ranges(
+            &requirements_ml_lock_path(),
+            &ml_req,
+            "pip-install-ml.log",
+            "pip-install-ml-fallback.log",
+            &mut on_line,
+        )
+    } else {
+        Ok(false)
+    };
+    match ml_result {
         Ok(true) => {
             log::info!("ML dependencies installed successfully");
         }
@@ -1036,6 +1174,137 @@ fn child_exit_status(engine: &std::sync::Mutex<Option<Child>>) -> Option<String>
 mod tests {
     use super::*;
     use std::sync::Mutex;
+
+    #[test]
+    fn locked_installs_require_hashes_and_range_installs_do_not() {
+        let req = Path::new("requirements.lock");
+        let py = Path::new("python");
+        let has = |args: &[String]| args.iter().any(|a| a == "--require-hashes");
+
+        assert!(has(&uv_install_args(req, py, ReqKind::Locked)));
+        assert!(has(&pip_install_args(req, ReqKind::Locked)));
+        assert!(!has(&uv_install_args(req, py, ReqKind::Ranges)));
+        assert!(!has(&pip_install_args(req, ReqKind::Ranges)));
+
+        // Wheels-only applies to both kinds.
+        for args in [
+            uv_install_args(req, py, ReqKind::Locked),
+            uv_install_args(req, py, ReqKind::Ranges),
+            pip_install_args(req, ReqKind::Locked),
+            pip_install_args(req, ReqKind::Ranges),
+        ] {
+            let i = args.iter().position(|a| a == "--only-binary").expect("wheels only");
+            assert_eq!(args[i + 1], ":all:");
+        }
+    }
+
+    /// Runs `install_locked_or_ranges` with a fake installer whose result for
+    /// the lock is `lock_result`; returns the outcome and the attempts made.
+    fn run_locked_or_ranges(
+        lock_exists: bool,
+        lock_result: Result<bool, String>,
+        ranges_result: Result<bool, String>,
+    ) -> (Result<bool, String>, Vec<(String, ReqKind, String)>, Vec<String>) {
+        let dir = std::env::temp_dir().join(format!(
+            "laya-lock-fallback-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let lock = dir.join("requirements.lock");
+        let req = dir.join("requirements.txt");
+        std::fs::remove_file(&lock).ok();
+        if lock_exists {
+            std::fs::write(&lock, "mcp==1.26.0\n").unwrap();
+        }
+
+        let mut attempts = Vec::new();
+        let mut notes = Vec::new();
+        let result = install_locked_or_ranges(
+            &lock,
+            &req,
+            "pip-install.log",
+            "pip-install-fallback.log",
+            &mut |line| notes.push(line.to_string()),
+            &mut |file, kind, log| {
+                let name = file.file_name().unwrap().to_string_lossy().into_owned();
+                attempts.push((name, kind, log.to_string()));
+                match kind {
+                    ReqKind::Locked => lock_result.clone(),
+                    ReqKind::Ranges => ranges_result.clone(),
+                }
+            },
+        );
+        std::fs::remove_dir_all(&dir).ok();
+        (result, attempts, notes)
+    }
+
+    #[test]
+    fn usable_lock_is_the_only_install_attempt() {
+        let (result, attempts, notes) = run_locked_or_ranges(true, Ok(true), Ok(true));
+        assert_eq!(result, Ok(true));
+        assert_eq!(
+            attempts,
+            vec![("requirements.lock".to_string(), ReqKind::Locked, "pip-install.log".to_string())]
+        );
+        assert!(notes.is_empty());
+    }
+
+    /// A lock that cannot be installed on this machine must not fail setup.
+    #[test]
+    fn unusable_lock_falls_back_to_resolving_the_requirements_file() {
+        let (result, attempts, notes) =
+            run_locked_or_ranges(true, Err("no wheel for this platform".into()), Ok(true));
+        assert_eq!(result, Ok(true));
+        assert_eq!(
+            attempts,
+            vec![
+                ("requirements.lock".to_string(), ReqKind::Locked, "pip-install.log".to_string()),
+                // A separate log keeps the locked attempt's output for diagnosis.
+                ("requirements.txt".to_string(), ReqKind::Ranges, "pip-install-fallback.log".to_string()),
+            ]
+        );
+        assert_eq!(notes.len(), 1);
+    }
+
+    #[test]
+    fn missing_lock_resolves_the_requirements_file() {
+        let (result, attempts, _) = run_locked_or_ranges(false, Ok(true), Ok(true));
+        assert_eq!(result, Ok(true));
+        assert_eq!(attempts.len(), 1);
+        assert_eq!(attempts[0].1, ReqKind::Ranges);
+    }
+
+    #[test]
+    fn failure_of_both_attempts_reports_the_fallback_error() {
+        let (result, attempts, _) =
+            run_locked_or_ranges(true, Err("lock failed".into()), Err("network down".into()));
+        assert_eq!(result, Err("network down".to_string()));
+        assert_eq!(attempts.len(), 2);
+    }
+
+    /// A relock changes installed versions without touching requirements.txt,
+    /// so it must invalidate the stored hash and trigger a reinstall.
+    #[test]
+    fn deps_fingerprint_changes_when_a_lock_changes() {
+        let dir = std::env::temp_dir().join(format!("laya-deps-fp-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let core = dir.join("requirements.txt");
+        let lock = dir.join("requirements.lock");
+        let missing = dir.join("requirements-ml.lock");
+        std::fs::write(&core, "mcp>=1.0.0,<2\n").unwrap();
+        std::fs::write(&lock, "mcp==1.26.0\n").unwrap();
+        let optional = [lock.clone(), missing];
+
+        let before = deps_fingerprint(&core, &optional).expect("core readable");
+        assert_eq!(deps_fingerprint(&core, &optional).as_ref(), Some(&before));
+
+        std::fs::write(&lock, "mcp==1.30.0\n").unwrap();
+        assert_ne!(deps_fingerprint(&core, &optional), Some(before));
+
+        assert_eq!(deps_fingerprint(&dir.join("absent.txt"), &optional), None);
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     fn probe(minor: u32, version: &str, platform: &str) -> PythonProbe {
         PythonProbe {

@@ -1,5 +1,8 @@
 # Laya Engine — development/test dependencies
 # Installs the core deps plus what the test suite needs.
+#
+# Hand-edited input for requirements-dev.lock, which scripts/setup-dev.sh
+# installs. Regenerate the lock with scripts/lock-deps.sh after editing.
 
 -r requirements.txt
 

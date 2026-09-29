@@ -1,0 +1,139 @@
+name: Engine dependencies
+
+# Checks that the engine's pinned Python packages install and run on every
+# platform the app ships for. The release build never installs them (the app
+# does that on the user's machine at first run), so this is the only place a
+# broken or uninstallable pin shows up before a user hits it.
+
+on:
+  pull_request:
+    paths:
+      - 'engine/requirements*'
+      - 'scripts/lock-deps.sh'
+      - 'scripts/check-locks.sh'
+      - 'scripts/smoke-install.sh'
+      - 'scripts/check-embedding.py'
+      - 'ui/src-tauri/src/sidecar.rs'
+      - 'ui/src-tauri/src/runtime.rs'
+      - '.github/workflows/engine-deps.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'engine/requirements*'
+      - 'scripts/lock-deps.sh'
+      - 'scripts/check-locks.sh'
+      - 'scripts/smoke-install.sh'
+      - 'scripts/check-embedding.py'
+      - '.github/workflows/engine-deps.yml'
+  schedule:
+    # Weekly: pinned files can be yanked or removed upstream, and the
+    # requirements ranges can start resolving to versions that break.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Keep in step with UV_VERSION in ui/src-tauri/src/runtime.rs so CI resolves
+  # and installs with the same uv the app downloads.
+  UV_VERSION: '0.7.12'
+
+jobs:
+  locks:
+    name: Lock files
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Locks install on every supported target
+        run: scripts/check-locks.sh -v
+
+      - name: Locks are in step with the requirements files
+        # Compares pinned versions only: upstream can add wheels (and so
+        # hashes) to an existing release, which changes the hash lists of a
+        # regenerated lock without changing what gets installed.
+        run: |
+          pins() { grep -E '^[A-Za-z0-9_.-]+==' "$1" | sed -E 's/ *\\$//'; }
+          for f in requirements.lock requirements-ml.lock requirements-dev.lock; do
+            pins "engine/$f" > "/tmp/$f.committed"
+          done
+          scripts/lock-deps.sh
+          status=0
+          for f in requirements.lock requirements-ml.lock requirements-dev.lock; do
+            if ! diff -u "/tmp/$f.committed" <(pins "engine/$f"); then
+              echo "::error file=engine/$f::$f is out of date. Run scripts/lock-deps.sh and commit the result."
+              status=1
+            fi
+          done
+          exit $status
+
+  smoke:
+    name: Install (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The release targets, on the oldest and newest Python the app accepts
+        # and on the version of its managed runtime (3.12).
+        os: [ubuntu-22.04, windows-latest, macos-latest, macos-15-intel]
+        python: ['3.10', '3.12', '3.14']
+        exclude:
+          # No onnxruntime wheel exists for Python 3.14 on Intel macOS.
+          - os: macos-15-intel
+            python: '3.14'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        id: python
+        with:
+          python-version: ${{ matrix.python }}
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Install from the locks and run the engine
+        shell: bash
+        env:
+          PYTHON: ${{ steps.python.outputs.python-path }}
+        run: |
+          args=(--python "$PYTHON")
+          # The ML packages are large; one Python per OS covers them. They
+          # have no Intel macOS wheels.
+          if [ "${{ matrix.python }}" = "3.12" ] && [ "${{ matrix.os }}" != "macos-15-intel" ]; then
+            args+=(--ml)
+          fi
+          # Windows runs the install, import and embedding checks only.
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            args+=(--no-tests)
+          fi
+          scripts/smoke-install.sh "${args[@]}"
+
+  ranges:
+    name: Install from requirements ranges
+    # What the app installs on a machine where a lock cannot be used, and what
+    # the next relock would pick up.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        id: python
+        with:
+          python-version: '3.12'
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Resolve the requirements files and run the engine
+        env:
+          PYTHON: ${{ steps.python.outputs.python-path }}
+        run: scripts/smoke-install.sh --python "$PYTHON" --source ranges --ml

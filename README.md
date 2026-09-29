@@ -101,8 +101,9 @@ laya/
 │   │   ├── egress/          # Outbound action execution (9 platforms)
 │   │   ├── integrations/    # n8n bootstrap & client
 │   │   └── security/        # OS keychain integration
-│   ├── requirements.txt     # Core Python dependencies
-│   └── requirements-ml.txt  # Optional: torch + sentence-transformers
+│   ├── requirements.txt     # Core Python dependencies (version ranges)
+│   ├── requirements-ml.txt  # Optional: torch + sentence-transformers
+│   └── requirements*.lock   # Exact pinned versions that get installed
 │
 ├── ui/                      # SvelteKit + Tauri desktop app
 │   ├── src/                 # Svelte 5 frontend (runes syntax)
@@ -402,7 +403,7 @@ scripts/build.sh
 
 This does two things:
 
-1. **Bundles engine source** -- copies `engine/laya/`, `requirements.txt`, `requirements-ml.txt`, and `n8n/workflows/` into `ui/src-tauri/resources/engine/`
+1. **Bundles engine source** -- copies `engine/laya/`, the requirements files and their lock files, and `n8n/workflows/` into `ui/src-tauri/resources/engine/`
 2. **Builds the Tauri app** -- compiles the Rust shell, bundles the SvelteKit frontend, and packages everything into a platform-native installer
 
 ### Build Options

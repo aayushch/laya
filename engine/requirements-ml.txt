@@ -6,11 +6,21 @@
 #
 # If these fail to install, Laya still works — ChromaDB falls back to
 # its default embedding function.
+#
+# This file is the hand-edited input. Installs use requirements-ml.lock;
+# regenerate it with scripts/lock-deps.sh after editing this file.
 
-sentence-transformers>=5.2.3
-torch>=2.0.0
-transformers>=5.2.0
+sentence-transformers>=5.2.3,<6
+# torch 2.12 raised its macOS wheels from macOS 11 to macOS 14. Staying below
+# it keeps local embeddings installable on macOS 11-13 (Apple Silicon).
+torch>=2.0.0,<2.12
+# transformers 5.17.0 removed `get_extended_attention_mask` from the model base
+# class. The default embedding model (nomic-embed-text-v1.5, loaded with
+# trust_remote_code at a pinned revision) calls it, so every embed call raises
+# AttributeError from 5.17.0 on. Raise this bound only together with a nomic
+# revision that works on the newer transformers.
+transformers>=5.2.0,<5.17
 einops>=0.8.1
-numpy>=2.0.0
+numpy>=2.0.0,<3
 scipy>=1.13.0
 scikit-learn>=1.5.0

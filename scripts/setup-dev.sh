@@ -28,8 +28,10 @@ if [ ! -d ".venv" ]; then
     echo "  Created venv"
 fi
 source .venv/bin/activate
-pip install -q -r requirements-dev.txt
-echo "  Python deps installed (incl. test deps)"
+# The dev lock pins the same package versions the app installs for users
+# (plus the test tools), so the test suite runs against what ships.
+pip install -q --require-hashes -r requirements-dev.lock
+echo "  Python deps installed from requirements-dev.lock (incl. test deps)"
 
 # Node dependencies
 echo ""

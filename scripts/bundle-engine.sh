@@ -25,6 +25,11 @@ cp -R "$REPO_ROOT/engine/laya" "$ENGINE_BUNDLE/laya"
 cp "$REPO_ROOT/engine/requirements.txt" "$ENGINE_BUNDLE/requirements.txt"
 cp "$REPO_ROOT/engine/requirements-ml.txt" "$ENGINE_BUNDLE/requirements-ml.txt"
 
+# Copy the lock files. First-run setup installs the exact versions pinned here;
+# the requirements files above are what it resolves if a lock cannot be used.
+cp "$REPO_ROOT/engine/requirements.lock" "$ENGINE_BUNDLE/requirements.lock"
+cp "$REPO_ROOT/engine/requirements-ml.lock" "$ENGINE_BUNDLE/requirements-ml.lock"
+
 # Copy n8n workflows (imported into n8n on first run)
 if [ -d "$REPO_ROOT/n8n/workflows" ]; then
     cp -R "$REPO_ROOT/n8n/workflows" "$ENGINE_BUNDLE/n8n_workflows"

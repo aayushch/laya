@@ -1,10 +1,17 @@
 # Laya Engine — core dependencies (all platforms)
+#
+# This file is the hand-edited input. Installs use requirements.lock, which
+# pins every package (including transitive ones) to an exact, hashed version.
+# After editing this file, regenerate the locks with scripts/lock-deps.sh.
+#
+# Upper bounds stop a relock from crossing into a major version the engine
+# has never run against. Raise one only after the test suite passes on it.
 
 # Web framework
-fastapi>=0.131.0
+fastapi>=0.131.0,<1
 uvicorn>=0.41.0
 uvloop>=0.22.1; sys_platform != "win32"
-starlette>=0.52.1
+starlette>=0.52.1,<1
 
 # Database
 aiosqlite>=0.22.1
@@ -17,14 +24,21 @@ aiohttp>=3.13.5
 aiosmtplib>=5.1.0
 
 # LLM
-litellm>=1.81.14
-openai>=2.21.0
+litellm>=1.81.14,<2
+openai>=2.21.0,<3
 tiktoken>=0.12.0
 mcp>=1.0.0,<2
 
 # Vector DB
-chromadb>=1.5.1
-onnxruntime>=1.18.0
+# 1.5.4 is the first release that imports on Python 3.14; earlier ones raise
+# pydantic.v1 ConfigError ("unable to infer type") while loading their settings.
+chromadb>=1.5.4,<2
+# onnxruntime 1.24 dropped its wheels for Python 3.10, for Intel macOS, and for
+# macOS 13 on Apple Silicon. Those environments take the 1.23 series, which is
+# the last one that publishes wheels for them. Python 3.14 has wheels only from
+# 1.24 on, so on macOS it needs macOS 14+ on Apple Silicon.
+onnxruntime>=1.18.0,<1.24 ; python_full_version < '3.11' or (sys_platform == 'darwin' and python_full_version < '3.14')
+onnxruntime>=1.18.0,<2 ; python_full_version >= '3.11' and (sys_platform != 'darwin' or python_full_version >= '3.14')
 
 # Structured logging
 structlog>=25.5.0
@@ -36,7 +50,7 @@ bcrypt>=5.0.0
 PyYAML>=6.0.3
 
 # Schema validation
-pydantic>=2.12.5
+pydantic>=2.12.5,<3
 jsonschema>=4.26.0
 
 # IANA timezone database. The Windows-bundled CPython ships without the
