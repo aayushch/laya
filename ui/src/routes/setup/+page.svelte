@@ -40,7 +40,8 @@
 	const providerModelDefaults: Record<string, Record<string, string>> = {
 		anthropic: { router: 'claude-haiku-4-5', stager: 'claude-sonnet-4-6', chat: 'claude-sonnet-4-6', trace: 'claude-sonnet-4-6', omni: 'claude-sonnet-4-6' },
 		openai: { router: 'gpt-4o-mini', stager: 'gpt-4o', chat: 'gpt-4o', trace: 'gpt-4o', omni: 'gpt-4o' },
-		google: { router: 'gemini-2.0-flash', stager: 'gemini-2.5-pro', chat: 'gemini-2.5-pro', trace: 'gemini-2.5-pro', omni: 'gemini-2.5-pro' }
+		// gemini/-prefixed to match Google's live model list, so the dropdown shows their names (#25)
+		google: { router: 'gemini/gemini-3.6-flash', stager: 'gemini/gemini-3.8-flash', chat: 'gemini/gemini-3.8-flash', trace: 'gemini/gemini-3.8-flash', omni: 'gemini/gemini-3.8-flash' }
 	};
 
 	// Step 2: Model defaults

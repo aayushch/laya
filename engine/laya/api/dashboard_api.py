@@ -48,7 +48,9 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
     "anthropic/claude-opus-4-6": {"input": 15.00, "output": 75.00},
     "openai/gpt-4o": {"input": 2.50, "output": 10.00},
     "openai/gpt-4o-mini": {"input": 0.15, "output": 0.60},
-    "google/gemini-2.0-flash": {"input": 0.10, "output": 0.40},
+    # gemini/ prefix: that's what llm_call writes to audit_log.model_used (#25).
+    "gemini/gemini-3.6-flash": {"input": 0.75, "output": 3.75},
+    "gemini/gemini-3.8-flash": {"input": 0.75, "output": 3.75},
 }
 
 

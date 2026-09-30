@@ -5,6 +5,8 @@
 
 import asyncio
 import time
+from datetime import date
+from typing import Any
 
 import httpx
 import structlog
@@ -20,9 +22,9 @@ log = structlog.get_logger()
 router = APIRouter()
 
 # ---------------------------------------------------------------------------
-# Model list cache: provider -> (timestamp, models)
+# Model list cache: provider -> (timestamp, provider entry incl. `verified`)
 # ---------------------------------------------------------------------------
-_model_cache: dict[str, tuple[float, list[dict[str, str]]]] = {}
+_model_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _MODEL_CACHE_TTL = 600  # 10 minutes
 
 # Mapping from our provider names to LiteLLM provider names
@@ -40,6 +42,10 @@ _PROVIDER_LABELS = {
     "google": "Google",
     "openrouter": "OpenRouter",
 }
+
+# litellm only lists these providers' models live; for others (e.g. OpenRouter)
+# get_valid_models returns its static table (#25).
+_LIVE_LISTING_PROVIDERS = frozenset({"anthropic", "openai", "gemini"})
 
 # Non-chat model patterns to filter out
 _EXCLUDE_PATTERNS = (
@@ -70,17 +76,30 @@ def _is_chat_model(model_id: str) -> bool:
     return not any(pat in lower for pat in _EXCLUDE_PATTERNS)
 
 
-def _fetch_models_for_provider(provider: str) -> list[dict[str, str]]:
-    """Fetch available models for a provider. Runs synchronously (call from executor)."""
+def _deprecation_date(model_id: str, litellm_provider: str) -> str | None:
+    """Return litellm's deprecation date for a model, with or without the provider prefix."""
+    import litellm
+
+    prefix = f"{litellm_provider}/"
+    bare = model_id[len(prefix):] if model_id.startswith(prefix) else model_id
+    for key in (model_id, bare, prefix + bare):
+        info = litellm.model_cost.get(key)
+        if isinstance(info, dict) and info.get("deprecation_date"):
+            return str(info["deprecation_date"])
+    return None
+
+
+def _fetch_models_for_provider(provider: str) -> tuple[list[dict[str, str]], bool]:
+    """Fetch a provider's chat models and whether the list was verified live. Runs synchronously (call from executor)."""
     import litellm
 
     litellm_provider = _PROVIDER_TO_LITELLM.get(provider)
     if not litellm_provider:
-        return []
+        return [], False
 
     api_key = get_api_key(provider)
     if not api_key:
-        return []
+        return [], False
 
     models: list[str] = []
 
@@ -95,16 +114,42 @@ def _fetch_models_for_provider(provider: str) -> list[dict[str, str]]:
     except Exception as e:
         log.warning("models_dynamic_fetch_failed", provider=provider, error=str(e))
 
+    verified = bool(models) and litellm_provider in _LIVE_LISTING_PROVIDERS
+
     # Fall back to static list if dynamic fetch returned nothing
     if not models:
+        # litellm returns [] on error, so the except above never fires.
+        log.warning("models_live_listing_empty", provider=provider)
         static = litellm.models_by_provider.get(litellm_provider, set())
         models = list(static)
         log.info("models_fetched_static", provider=provider, count=len(models))
 
-    # Filter to chat models and sort
-    models = sorted([m for m in models if _is_chat_model(m)])
+    today = date.today().isoformat()
+    entries: list[dict[str, str]] = []
+    for m in sorted(m for m in models if _is_chat_model(m)):
+        retires_on = _deprecation_date(m, litellm_provider)
+        if retires_on and retires_on <= today:
+            # Never filter the provider's own list; litellm's dates are estimates.
+            # The static table still lists shut-down models, so drop them (#25).
+            if not verified:
+                continue
+            retires_on = None
+        entry = {"id": m, "name": _generate_label(m)}
+        if retires_on:
+            entry["retires_on"] = retires_on
+        entries.append(entry)
 
-    return [{"id": m, "name": _generate_label(m)} for m in models]
+    return entries, verified
+
+
+def _provider_entry(provider: str, models: list[dict[str, str]], verified: bool) -> dict[str, Any]:
+    """Build one provider group as returned by GET /settings/available-models."""
+    return {
+        "provider": provider,
+        "label": _PROVIDER_LABELS.get(provider, provider),
+        "models": models,
+        "verified": verified,
+    }
 
 
 @router.get("/settings/setup-status")
@@ -227,36 +272,24 @@ async def get_available_models(refresh: bool = Query(default=False)) -> dict:
     for provider in providers_to_query:
         # Check cache
         if not refresh and provider in _model_cache:
-            cached_time, cached_models = _model_cache[provider]
+            cached_time, cached_entry = _model_cache[provider]
             if now - cached_time < _MODEL_CACHE_TTL:
-                result.append({
-                    "provider": provider,
-                    "label": _PROVIDER_LABELS.get(provider, provider),
-                    "models": cached_models,
-                })
+                result.append(cached_entry)
                 continue
 
         # Fetch in executor (litellm.get_valid_models is sync)
         try:
-            models = await asyncio.get_event_loop().run_in_executor(
+            models, verified = await asyncio.get_event_loop().run_in_executor(
                 None, _fetch_models_for_provider, provider
             )
-            _model_cache[provider] = (now, models)
-            result.append({
-                "provider": provider,
-                "label": _PROVIDER_LABELS.get(provider, provider),
-                "models": models,
-            })
+            entry = _provider_entry(provider, models, verified)
+            _model_cache[provider] = (now, entry)
+            result.append(entry)
         except Exception as e:
             log.error("available_models_failed", provider=provider, error=str(e))
             # Return stale cache if available
             if provider in _model_cache:
-                _, cached_models = _model_cache[provider]
-                result.append({
-                    "provider": provider,
-                    "label": _PROVIDER_LABELS.get(provider, provider),
-                    "models": cached_models,
-                })
+                result.append(_model_cache[provider][1])
 
     # Also include models from custom providers
     for custom_provider in get_all_custom_providers():
