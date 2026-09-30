@@ -75,8 +75,8 @@
 		CODING_AGENTS.filter((a) => a.value !== 'none').map((a) => [a.value, a.label])
 	);
 	const AGENT_MODEL_PH: Record<string, string> = {
-		claude_code: 'claude-sonnet-4-6', codex_cli: 'gpt-5-codex',
-		gemini_cli: 'gemini-2.5-pro', pi_cli: 'lmstudio/qwen3.6-35b-a3b'
+		claude_code: 'claude-sonnet-4-6', codex_cli: 'gpt-5.6-sol',
+		gemini_cli: 'gemini-3.8-flash', pi_cli: 'lmstudio/qwen3.6-35b-a3b'
 	};
 	let agentBackends = $state<AgentBackend[]>([]);
 	let formAgentMode = $state(false);

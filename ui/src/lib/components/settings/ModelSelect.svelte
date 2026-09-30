@@ -4,6 +4,7 @@
 	import type { ProviderModels } from '$lib/api/types';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { portal } from '$lib/actions/portal';
+	import { retirementLabel, unverifiedNote } from '$lib/utils/modelCatalog';
 
 	interface Props {
 		id?: string;
@@ -197,6 +198,9 @@
 					<div class="px-3 pb-0.5 pt-2 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">
 						{providerGroup.label}
 					</div>
+					{#if unverifiedNote(providerGroup)}
+						<div class="px-3 pb-1 text-laya-micro text-laya-amber">{unverifiedNote(providerGroup)}</div>
+					{/if}
 					{#each providerGroup.models as model, i}
 						{@const flatIdx = flatOptions.findIndex((o) => o.id === model.id)}
 						<button
@@ -210,6 +214,9 @@
 									: ($glassTheme ? 'text-surface-300 hover:bg-white/[0.06]' : 'text-surface-300 hover:bg-surface-700')}"
 						>
 							{model.name}
+							{#if retirementLabel(model.retires_on)}
+								<span class="ml-1.5 text-laya-micro text-laya-amber">{retirementLabel(model.retires_on)}</span>
+							{/if}
 						</button>
 					{/each}
 				{/each}

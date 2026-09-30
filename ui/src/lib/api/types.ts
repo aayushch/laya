@@ -313,6 +313,8 @@ export interface ApiKeyStatus {
 export interface ModelOption {
 	id: string;
 	name: string;
+	/** Future shutdown date (YYYY-MM-DD), if known. */
+	retires_on?: string;
 }
 
 /** A provider group in the available-models response */
@@ -320,6 +322,8 @@ export interface ProviderModels {
 	provider: string;
 	label: string;
 	models: ModelOption[];
+	/** False when the list couldn't be checked with the provider. */
+	verified?: boolean;
 }
 
 /** Response from GET /settings/available-models */

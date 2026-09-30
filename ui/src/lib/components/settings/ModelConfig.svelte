@@ -70,8 +70,8 @@
 	);
 	const AGENT_MODEL_PLACEHOLDERS: Record<string, string> = {
 		claude_code: 'e.g. claude-sonnet-4-6 — blank uses Claude Code’s default',
-		codex_cli: 'e.g. gpt-5-codex — blank uses Codex’s default',
-		gemini_cli: 'e.g. gemini-2.5-pro — blank uses Gemini’s default',
+		codex_cli: 'e.g. gpt-5.6-sol — blank uses Codex’s default',
+		gemini_cli: 'e.g. gemini-3.8-flash — blank uses Gemini’s default',
 		pi_cli: 'e.g. lmstudio/qwen3.6-35b-a3b — blank uses Pi’s default'
 	};
 

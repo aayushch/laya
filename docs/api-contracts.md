@@ -514,6 +514,29 @@ Update configuration. Partial updates supported.
 }
 ```
 
+### `GET /settings/available-models`
+
+Models for each provider with an API key, plus custom providers. Cached for 10 minutes; `?refresh=true` busts the cache.
+
+**Response (200):**
+```json
+{
+  "providers": [
+    {
+      "provider": "google",
+      "label": "Google",
+      "verified": true,
+      "models": [
+        {"id": "gemini/gemini-3.8-flash", "name": "gemini/gemini-3.8-flash"},
+        {"id": "gemini/gemini-3.1-flash-lite", "name": "gemini/gemini-3.1-flash-lite", "retires_on": "2027-05-07"}
+      ]
+    }
+  ]
+}
+```
+
+`verified` is `false` when the list couldn't be checked live with the provider and came from litellm's static table instead; that fallback omits models whose deprecation date has passed. `retires_on` appears only for a known future shutdown date. Custom providers omit both.
+
 ### `GET /settings/agent-backends`
 
 Per-agent availability and capability tier for the "use an installed CLI agent as the inference backend" picker. Tier `native` = the CLI enforces the JSON schema for us (Claude Code); `best_effort` = the schema is injected as text and validated/retried.
