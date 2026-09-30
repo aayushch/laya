@@ -41,6 +41,8 @@ TIME_ESTIMATES: dict[str, float] = {
 
 # LLM pricing per 1M tokens (input, output) in USD
 MODEL_PRICING: dict[str, dict[str, float]] = {
+    # Jev (router fast path, llm/jev.py): billed on input only, via OpenRouter.
+    "typesafe/jev-1.13": {"input": 0.042, "output": 0.0},
     "anthropic/claude-haiku-4-5": {"input": 0.80, "output": 4.00},
     "anthropic/claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.00},
     "anthropic/claude-sonnet-4-6": {"input": 3.00, "output": 15.00},

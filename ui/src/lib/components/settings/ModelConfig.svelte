@@ -320,6 +320,8 @@
 			models = { ...models, ...settings.models };
 			apiKeys = { ...apiKeys, ...settings.api_keys };
 			if (settings.pipeline) pipeline = { ...pipeline, ...settings.pipeline };
+			const rj = (settings as any).router_jev;
+			if (rj) routerJev = { ...routerJev, ...rj };
 			customProviders = providersResp.providers;
 			loaded = true;
 			// Infer agent-backend mode from the saved structured-role values.
@@ -351,6 +353,21 @@
 			console.error('Failed to fetch available models:', e);
 		} finally {
 			modelsLoading = false;
+		}
+	}
+
+	// Router fast path through Jev (engine llm/jev.py). Uses the OpenRouter key.
+	let routerJev = $state({ enabled: false, model: 'typesafe/jev-1.13', threshold: 0.7 });
+
+	async function saveRouterJev() {
+		routerJev.threshold = Math.min(0.99, Math.max(0.3, Number(routerJev.threshold) || 0.7));
+		saving = true;
+		try {
+			await engineApi.updateSettings({ router_jev: routerJev } as any);
+		} catch (e) {
+			console.error('Failed to save Jev router settings:', e);
+		} finally {
+			saving = false;
 		}
 	}
 
@@ -995,6 +1012,41 @@
 						{/if}
 					</div>
 				{/each}
+			</div>
+
+			<!-- Router fast path: Jev answers the closed classification questions; the Router model above only runs when Jev is unsure or the event needs research. -->
+			<div class="mt-4 rounded-lg border {$glassTheme ? 'border-white/10' : 'border-surface-700'} p-3">
+				<label class="flex items-center gap-2 text-laya-base text-surface-300">
+					<input
+						type="checkbox"
+						bind:checked={routerJev.enabled}
+						onchange={saveRouterJev}
+						disabled={!apiKeys.openrouter && !routerJev.enabled}
+					/>
+					Classify with Jev first
+					<span class="rounded bg-laya-gold/25 px-1 text-laya-micro font-semibold uppercase tracking-wide text-laya-amber">Beta</span>
+				</label>
+				<p class="mt-1 text-laya-micro text-surface-500">
+					{#if !apiKeys.openrouter}
+						Needs an OpenRouter API key (above).
+					{:else}
+						Jev ({routerJev.model}, via OpenRouter) picks category, persona and priority for about $0.00005 per event. The Router model only runs when Jev is unsure or the event needs research.
+					{/if}
+				</p>
+				{#if routerJev.enabled}
+					<label class="mt-2 flex items-center gap-2 text-laya-secondary text-surface-400">
+						Minimum confidence
+						<input
+							type="number"
+							min="0.3"
+							max="0.99"
+							step="0.05"
+							bind:value={routerJev.threshold}
+							onchange={saveRouterJev}
+							class="w-20 rounded-md border px-2 py-1 text-laya-base text-surface-100 {$glassTheme ? 'glass-input' : 'border-surface-600 bg-surface-700'}"
+						/>
+					</label>
+				{/if}
 			</div>
 		</div>
 

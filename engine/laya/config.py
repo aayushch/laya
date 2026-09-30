@@ -37,6 +37,8 @@ DEFAULT_SETTINGS = {
         "omni": "claude-sonnet-4-6",
         "local": "ollama/llama3",
     },
+    # Router fast path through Jev (llm/jev.py); falls back to models.router when unsure.
+    "router_jev": {"enabled": False, "model": "typesafe/jev-1.13", "threshold": 0.7},
     "coding_agent": "claude_code",
     "agent_paths": {
         "claude_code": "",

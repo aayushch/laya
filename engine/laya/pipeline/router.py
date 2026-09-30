@@ -3,6 +3,7 @@
 
 """ROUTER pipeline step — LLM classification, entity extraction, memory search."""
 
+import asyncio
 import json
 import uuid
 
@@ -66,6 +67,16 @@ async def _store_entities(event_id: str, router_output: RouterOutput) -> None:
     log.debug("entities_stored", count=len(router_output.entities), event_id=event_id)
 
 
+async def _persist_router_output(event_id: str, router_output: RouterOutput) -> None:
+    """Store the router output on the event row, then its entities."""
+    db = await get_db()
+    await db.execute(
+        "UPDATE events SET router_output = ?, processed = TRUE WHERE event_id = ?",
+        (router_output.model_dump_json(), event_id),
+    )
+    await db.commit()
+    await _store_entities(event_id, router_output)
+
 
 async def run_router(
     event: LayaEvent, actor_relationship: str, space_id: str | None = None
@@ -95,6 +106,25 @@ async def run_router(
     cls_rules = await query_classification_rules(space_id)
     cls_corrections = await query_classification_corrections(event.source.platform)
     feedback_section = format_feedback_section(feedback_patterns, cls_rules, cls_corrections)
+
+    # 1c. Jev fast path (opt-in, settings.router_jev): cheap closed-question classifier.
+    # None means unsure / needs research / failed, and we fall through to the LLM.
+    from laya.llm import jev
+
+    router_output = await jev.classify(event, actor_relationship, feedback_section, space_id)
+    if router_output is not None:
+        await _persist_router_output(event.event_id, router_output)
+        log.info(
+            "router_complete",
+            event_id=event.event_id,
+            backend="jev",
+            category=router_output.category.value,
+            persona=router_output.persona.value,
+            priority=router_output.priority.value,
+            confidence=router_output.confidence,
+            entity_count=len(router_output.entities),
+        )
+        return router_output
 
     # 2. Build prompt and call LLM
     messages = build_router_messages(
@@ -139,16 +169,8 @@ async def run_router(
     if not router_output.requires_research and router_output.research_plan:
         router_output.research_plan = []
 
-    # 4. Store router output in events table
-    db = await get_db()
-    await db.execute(
-        "UPDATE events SET router_output = ?, processed = TRUE WHERE event_id = ?",
-        (router_output.model_dump_json(), event.event_id),
-    )
-    await db.commit()
-
-    # 5. Store extracted entities
-    await _store_entities(event.event_id, router_output)
+    # 4-5. Store router output and extracted entities
+    await _persist_router_output(event.event_id, router_output)
 
     log.info(
         "router_complete",
@@ -208,6 +230,13 @@ async def run_batch_router(
         corrections.extend(await query_classification_corrections(plat))
     feedback_section = format_feedback_section([], cls_rules, corrections)
 
+    # Jev fast path: events Jev classifies confidently never reach the batch LLM.
+    jev_results = await _jev_batch(events_data, feedback_section)
+    if jev_results:
+        events_data = [it for it in events_data if it["event_id"] not in jev_results]
+        if not events_data:
+            return jev_results
+
     messages = build_batch_router_messages(events_data, feedback_context=feedback_section)
     schema = get_batch_router_json_schema(len(events_data))
 
@@ -266,8 +295,30 @@ async def run_batch_router(
 
     log.info(
         "batch_router_complete",
-        total_events=len(events_data),
-        classified=len(results),
+        total_events=len(events_data) + len(jev_results),
+        classified=len(results) + len(jev_results),
+        jev_classified=len(jev_results),
     )
 
-    return results
+    return {**jev_results, **results}
+
+
+async def _jev_batch(events_data: list[dict], feedback_section: str) -> dict[str, RouterOutput]:
+    """Run the Jev fast path over a batch, 8 at a time; returns the events it settled."""
+    from laya.llm import jev
+
+    if not jev.get_jev_config()["enabled"]:
+        return {}
+    sem = asyncio.Semaphore(8)
+
+    async def one(it: dict) -> tuple[str, RouterOutput | None]:
+        async with sem:
+            out = await jev.classify(
+                it["event"], it["actor_relationship"], feedback_section, it.get("space_id")
+            )
+        return it["event_id"], out
+
+    settled = {eid: out for eid, out in await asyncio.gather(*(one(it) for it in events_data)) if out}
+    for eid, out in settled.items():
+        await _persist_router_output(eid, out)
+    return settled
