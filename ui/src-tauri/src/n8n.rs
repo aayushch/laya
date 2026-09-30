@@ -94,7 +94,31 @@ fn which(name: &str) -> Option<PathBuf> {
     ::which::which(name).ok()
 }
 
-/// Find a Node.js 22+ installation, preferring Laya's managed install at
+/// Node.js majors n8n can run on. The floor is n8n 2.15's `engines`
+/// requirement. The ceiling exists because n8n's `isolated-vm` 7.x ships
+/// prebuilt binaries only for Node 22 (ABI 127) and Node 24 (ABI 137); on a
+/// newer Node npm compiles it from source, which fails against Node 26's V8
+/// (removed `PropertyCallbackInfo::This`, `Object::GetIsolate`, ...). The
+/// install then falls back to the non-sandboxed `stub_isolated_vm`. Capping
+/// here makes a machine whose only system Node is too new provision the
+/// managed Node instead. Raise it together with the pinned n8n version once
+/// that n8n's isolated-vm supports the newer major.
+pub(crate) const MIN_NODE_MAJOR: u32 = 22;
+pub(crate) const MAX_NODE_MAJOR: u32 = 24;
+
+/// Parse `node --version` output (e.g. `v22.12.0`) into `(major, minor)`,
+/// or `None` when it is malformed or outside
+/// `MIN_NODE_MAJOR..=MAX_NODE_MAJOR`.
+fn parse_supported_node_version(raw: &str) -> Option<(u32, u32)> {
+    let mut parts = raw.trim().strip_prefix('v')?.split('.');
+    let major: u32 = parts.next()?.parse().ok()?;
+    let minor: u32 = parts.next()?.parse().ok()?;
+    (MIN_NODE_MAJOR..=MAX_NODE_MAJOR)
+        .contains(&major)
+        .then_some((major, minor))
+}
+
+/// Find a supported Node.js installation, preferring Laya's managed install at
 /// `~/.laya/node/` (if present) over whatever the user has on `PATH`.
 ///
 /// The managed install is pinned to a known-good LTS, so picking it first
@@ -111,7 +135,7 @@ pub fn find_node() -> Result<(String, String), String> {
 }
 
 /// Probe a specific Node binary; returns its `node --version` output (e.g.
-/// `v22.12.0`) when it runs successfully and reports major >= 22.
+/// `v22.12.0`) when it runs successfully and reports a supported major.
 fn probe_node_version(path: &Path) -> Option<String> {
     let mut cmd = Command::new(path);
     no_window(&mut cmd);
@@ -124,23 +148,17 @@ fn probe_node_version(path: &Path) -> Option<String> {
         return None;
     }
     let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let ver_body = raw.strip_prefix('v')?;
-    let major: u32 = ver_body.split('.').next()?.parse().ok()?;
-    if major >= 22 {
-        Some(raw)
-    } else {
-        None
-    }
+    parse_supported_node_version(&raw).map(|_| raw)
 }
 
-/// Search the system for Node.js 22+, ignoring any managed install in
+/// Search the system for a supported Node.js, ignoring any managed install in
 /// `~/.laya/node/`.  Used by the runtime provisioner to decide whether a
 /// download is necessary; everything else should call `find_node()`.
 ///
 /// When multiple Node.js installations exist (e.g. distro `/usr/bin/node`
 /// v20 and user-installed `/usr/local/bin/node` v24), the old logic
 /// returned whichever came first in the candidate list. Now we probe
-/// all candidates and pick the newest one that meets the minimum version.
+/// all candidates and pick the newest one within the supported range.
 pub fn find_node_system() -> Result<(String, String), String> {
     let mut candidates: Vec<PathBuf> = vec![PathBuf::from("node")];
     if !cfg!(target_os = "windows") {
@@ -152,20 +170,18 @@ pub fn find_node_system() -> Result<(String, String), String> {
         if !candidates.iter().any(|c| c == &n_node) && n_node.exists() {
             candidates.push(n_node);
         }
-        // Also check nvm default if it exists
+        // Also check every nvm-installed version, not just the newest: the
+        // newest may be above MAX_NODE_MAJOR while an older one is usable.
         if let Some(home) = home_dir() {
             let nvm_node = home.join(".nvm/versions/node");
             if nvm_node.is_dir() {
                 if let Ok(entries) = std::fs::read_dir(&nvm_node) {
-                    let mut versions: Vec<PathBuf> = entries
-                        .filter_map(|e| e.ok())
-                        .map(|e| e.path())
-                        .filter(|p| p.join("bin/node").exists())
-                        .collect();
-                    versions.sort();
-                    if let Some(latest) = versions.last() {
-                        candidates.push(latest.join("bin/node"));
-                    }
+                    candidates.extend(
+                        entries
+                            .filter_map(|e| e.ok())
+                            .map(|e| e.path().join("bin/node"))
+                            .filter(|p| p.exists()),
+                    );
                 }
             }
         }
@@ -188,37 +204,32 @@ pub fn find_node_system() -> Result<(String, String), String> {
         if let Ok(output) = cmd.output() {
             if output.status.success() {
                 let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if let Some(ver) = version.strip_prefix('v') {
-                    let parts: Vec<&str> = ver.split('.').collect();
-                    if parts.len() >= 2 {
-                        let major: u32 = parts[0].parse().unwrap_or(0);
-                        let minor: u32 = parts[1].parse().unwrap_or(0);
-                        if major >= 22 {
-                            let abs_path = if candidate.is_absolute() && candidate.exists() {
-                                candidate.to_string_lossy().to_string()
-                            } else {
-                                which(&name)
-                                    .map(|p| p.to_string_lossy().to_string())
-                                    .unwrap_or_else(|| name.to_string())
-                            };
-                            // De-duplicate by resolved path
-                            if !found.iter().any(|(p, _, _, _)| p == &abs_path) {
-                                found.push((abs_path, version, major, minor));
-                            }
-                        }
+                if let Some((major, minor)) = parse_supported_node_version(&version) {
+                    let abs_path = if candidate.is_absolute() && candidate.exists() {
+                        candidate.to_string_lossy().to_string()
+                    } else {
+                        which(&name)
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or_else(|| name.to_string())
+                    };
+                    // De-duplicate by resolved path
+                    if !found.iter().any(|(p, _, _, _)| p == &abs_path) {
+                        found.push((abs_path, version, major, minor));
                     }
                 }
             }
         }
     }
 
-    // Pick the highest version
+    // Pick the highest supported version
     found.sort_by(|a, b| (a.2, a.3).cmp(&(b.2, b.3)));
     if let Some((path, version, _, _)) = found.pop() {
         return Ok((path, version));
     }
 
-    Err("Node.js 22+ not found. Please install Node.js LTS from https://nodejs.org".to_string())
+    Err(format!(
+        "Node.js {MIN_NODE_MAJOR}–{MAX_NODE_MAJOR} not found. Please install Node.js LTS from https://nodejs.org"
+    ))
 }
 
 /// Strip AppImage-injected environment variables before invoking system
@@ -679,9 +690,9 @@ pub fn startup_n8n() -> N8nStartResult {
 
     // 2. Node.js available?
     if find_node().is_err() {
-        return N8nStartResult::NodeNotFound(
-            "Node.js is not installed. Install Node.js 22+ from https://nodejs.org to enable n8n integrations.".to_string(),
-        );
+        return N8nStartResult::NodeNotFound(format!(
+            "No supported Node.js found. Install Node.js {MIN_NODE_MAJOR}–{MAX_NODE_MAJOR} (LTS) from https://nodejs.org to enable n8n integrations."
+        ));
     }
 
     // 3. n8n installed?
@@ -960,4 +971,36 @@ pub fn start_n8n() -> Result<String, String> {
 pub fn stop_n8n() -> Result<String, String> {
     shutdown_n8n();
     Ok("stopped".to_string())
+}
+
+// ── Tests ───────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn supported_node_versions_parse() {
+        assert_eq!(parse_supported_node_version("v22.22.3"), Some((22, 22)));
+        assert_eq!(parse_supported_node_version("v24.1.0\n"), Some((24, 1)));
+    }
+
+    #[test]
+    fn node_below_floor_is_rejected() {
+        assert_eq!(parse_supported_node_version("v20.18.1"), None);
+    }
+
+    #[test]
+    fn node_above_ceiling_is_rejected() {
+        // Node 26's V8 can't compile isolated-vm 7.x (no prebuilds past ABI 137).
+        assert_eq!(parse_supported_node_version("v25.0.0"), None);
+        assert_eq!(parse_supported_node_version("v26.4.0"), None);
+    }
+
+    #[test]
+    fn malformed_node_version_is_rejected() {
+        assert_eq!(parse_supported_node_version(""), None);
+        assert_eq!(parse_supported_node_version("22.1.0"), None);
+        assert_eq!(parse_supported_node_version("vabc.1.0"), None);
+    }
 }

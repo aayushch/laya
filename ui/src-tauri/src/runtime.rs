@@ -3,7 +3,7 @@
 
 //! Automatic provisioning of Python, Node.js, and uv runtimes into `~/.laya/`.
 //!
-//! On first launch, when the system lacks a Python 3.10+ or Node.js 22+
+//! On first launch, when the system lacks a Python 3.10+ or Node.js 22–24
 //! installation, this module downloads prebuilt binaries — python-build-
 //! standalone (Astral/indygreg) for Python, the official `nodejs.org`
 //! tarballs/zips for Node, and `uv` (Astral) as a fast pip replacement —
@@ -143,7 +143,7 @@ pub enum RuntimeProgress {
     Done(String),
 }
 
-/// Ensure Python (3.10+), Node (22+), and uv runtimes are available, either
+/// Ensure Python (3.10+), Node (22–24), and uv runtimes are available, either
 /// from the system or downloaded into `~/.laya/{python,node,uv}/`.
 ///
 /// Downloads run in parallel when multiple runtimes are needed.

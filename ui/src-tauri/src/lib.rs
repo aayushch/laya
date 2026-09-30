@@ -315,7 +315,16 @@ fn setup_environment(app: tauri::AppHandle) {
                 emit("preflight", "done", &format!("Python and Node.js {} ready", ver));
             }
             Err(e) => {
-                emit("preflight", "error", &format!("Node.js 22+ is required. {}", e));
+                emit(
+                    "preflight",
+                    "error",
+                    &format!(
+                        "Node.js {}–{} is required. {}",
+                        n8n::MIN_NODE_MAJOR,
+                        n8n::MAX_NODE_MAJOR,
+                        e
+                    ),
+                );
                 return;
             }
         };

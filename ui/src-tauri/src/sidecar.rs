@@ -139,7 +139,7 @@ pub struct EnvStatus {
     pub deps_installed: bool,
     /// Whether the engine source is available
     pub engine_source_found: bool,
-    /// Whether Node.js 22+ is available on the system
+    /// Whether a supported Node.js (see `n8n::MAX_NODE_MAJOR`) is available
     pub node_found: bool,
     /// Whether n8n is installed in ~/.laya/n8n_module/
     pub n8n_installed: bool,
