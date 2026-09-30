@@ -29,10 +29,16 @@ from laya.models.space import (
     SpaceResponse,
     SpaceUpdate,
 )
+from laya.pipeline.queue import release_held_events
 from laya.security.keychain import delete_space_api_key, get_space_api_key, store_space_api_key
 
 log = structlog.get_logger()
 router = APIRouter()
+
+# Per-space model overrides; changing one re-queues held events (#25).
+_MODEL_OVERRIDE_FIELDS = frozenset(
+    {"router_model", "stager_model", "chat_model", "trace_model", "omni_model"}
+)
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +128,7 @@ async def create_space(body: SpaceCreate) -> SpaceResponse:
 
 @router.put("/spaces/{space_id}")
 async def update_space(space_id: str, body: SpaceUpdate) -> dict:
-    """Update a space's properties."""
+    """Update a space's properties; re-queue held events if a model override changed."""
     db = await get_db()
 
     rows = await db.execute_fetchall(
@@ -136,9 +142,7 @@ async def update_space(space_id: str, body: SpaceUpdate) -> dict:
     # NULL, which is why switching a per-space model/agent override to "Use default"
     # (sent as null/empty) silently failed to save. Empty string is normalized to NULL
     # so "Use default" clears the override.
-    nullable_overrides = {
-        "router_model", "stager_model", "chat_model", "trace_model", "omni_model", "coding_agent",
-    }
+    nullable_overrides = _MODEL_OVERRIDE_FIELDS | {"coding_agent"}
     provided = body.model_fields_set
     updates: list[str] = []
     params: list = []
@@ -169,6 +173,8 @@ async def update_space(space_id: str, body: SpaceUpdate) -> dict:
         raise
 
     log.info("space_updated", space_id=space_id)
+    if provided & _MODEL_OVERRIDE_FIELDS:
+        await release_held_events()
     return {"status": "updated", "space_id": space_id}
 
 
@@ -300,7 +306,7 @@ async def set_space_paused(space_id: str, body: dict) -> dict:
 
 @router.put("/spaces/{space_id}/api-key")
 async def save_space_api_key(space_id: str, body: SpaceApiKeyRequest) -> dict:
-    """Save a space-specific API key to the OS keychain."""
+    """Save a space-specific API key to the OS keychain and re-queue held events."""
     db = await get_db()
     rows = await db.execute_fetchall("SELECT 1 FROM spaces WHERE space_id = ?", (space_id,))
     if not rows:
@@ -318,6 +324,7 @@ async def save_space_api_key(space_id: str, body: SpaceApiKeyRequest) -> dict:
     await db.commit()
 
     log.info("space_api_key_saved", space_id=space_id, provider=body.provider)
+    await release_held_events()
     return {"status": "saved", "provider": body.provider}
 
 

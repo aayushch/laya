@@ -543,9 +543,18 @@ Health check endpoint.
   "chromadb": "healthy",
   "ollama": "not_configured",
   "coding_agent": "available",
-  "uptime_seconds": 3600
+  "uptime_seconds": 3600,
+  "models": {
+    "unavailable": [
+      {"model": "gemini/gemini-2.0-flash", "role": "router", "space_id": "default",
+       "kind": "not_found", "reason": "...", "detected_at": "2026-09-30 10:00:00"}
+    ],
+    "held_events": 12
+  }
 }
 ```
+
+`models` lists models/keys a provider refused (`kind`: `not_found` 404, `auth` 401, `permission` 403) and how many events are held waiting on them; `null` if it can't be read.
 
 ### `POST /chat`
 
@@ -1180,6 +1189,12 @@ Pass `{"all": true}` to retry every dead event.
 
 **Response (200):** `{"retried": 2}`
 
+### `POST /events/held/retry`
+
+Re-queue events held (`processing_status = 'held'`) because a provider refused their model or API key, and forget the recorded refusals. Held events are also released automatically when a model, API key, custom provider or space model override changes, and on engine startup.
+
+**Response (200):** `{"released": 12}`
+
 ### `GET /audit-log/export`
 
 Export audit-log entries as JSON, honoring the same `step` / `success` / `search` filters as the list view plus an optional `days` window (default `0` = all time). Unpaginated.
@@ -1649,6 +1664,14 @@ The WebSocket connection is established when the Tauri app launches and maintain
     "ingestion_errors": 1,
     "kind": "dead_event"
   }
+}
+```
+
+**`model_availability`** -- A provider refused (or stopped refusing) a model/key, or held events changed. Same payload as `GET /health`'s `models` field.
+```json
+{
+  "type": "model_availability",
+  "payload": {"unavailable": [], "held_events": 0}
 }
 ```
 

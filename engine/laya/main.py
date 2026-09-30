@@ -59,7 +59,13 @@ from laya.db.migrate import run_migrations
 from laya.db.sqlite import connect, disconnect
 from laya.logging_setup import resolve_log_level, setup_logging
 from laya.pipeline.omni import start_omni_processor, stop_omni_processor
-from laya.pipeline.queue import recover_stalled_cards, recover_stalled_events, start_consumer, stop_consumer
+from laya.pipeline.queue import (
+    recover_stalled_cards,
+    recover_stalled_events,
+    release_held_events,
+    start_consumer,
+    stop_consumer,
+)
 from laya.scheduler import start_scheduler, stop_scheduler
 from laya.security.keychain import load_all_keys_to_env
 
@@ -344,6 +350,8 @@ async def lifespan(app: FastAPI):
     # Recover events and cards orphaned by previous crash/shutdown, then start consumer
     await recover_stalled_events()
     await recover_stalled_cards()
+    # Restart doubles as "Try again" for fixes made outside Laya, e.g. `ollama pull` (#25).
+    await release_held_events()
     # Agent sessions never survive a restart (subprocesses die with the
     # engine, tracking dict is in-memory) — mark leftover rows as failed
     from laya.agents.session_manager import recover_orphaned_sessions

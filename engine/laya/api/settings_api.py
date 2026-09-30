@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from laya.config import get_n8n_config, load_repos, load_settings, save_repos, save_settings, get_all_custom_providers
 from laya.http_client import get_client
 from laya.integrations.n8n_bootstrap import ensure_n8n_ready
+from laya.pipeline.queue import release_held_events
 from laya.security.keychain import delete_api_key, get_api_key, has_api_key, store_api_key
 
 log = structlog.get_logger()
@@ -194,8 +195,9 @@ async def get_settings() -> dict:
 
 @router.put("/settings")
 async def update_settings(body: dict) -> dict:
-    """Update settings with deep merge."""
+    """Update settings with deep merge; re-queue held events if the models changed."""
     current = load_settings()
+    models_before = current.get("models")
     for key, value in body.items():
         if isinstance(value, dict) and key in current and isinstance(current[key], dict):
             current[key] = {**current[key], **value}
@@ -224,6 +226,8 @@ async def update_settings(body: dict) -> dict:
 
     save_settings(current)
     log.info("settings_updated")
+    if current.get("models") != models_before:
+        await release_held_events()
     return {"status": "updated"}
 
 
@@ -252,10 +256,11 @@ class CustomProviderUpdate(BaseModel):
 
 @router.put("/settings/api-key")
 async def set_api_key(req: ApiKeyRequest) -> dict:
-    """Store an API key in the OS keychain."""
+    """Store an API key in the OS keychain and re-queue held events."""
     success = store_api_key(req.provider, req.api_key)
     if success:
         _invalidate_model_cache(req.provider)
+        await release_held_events()
     return {"status": "stored" if success else "failed", "provider": req.provider}
 
 
@@ -407,7 +412,7 @@ async def add_custom_provider(body: CustomProviderCreate) -> dict:
 
 @router.put("/settings/custom-providers/{provider_id}")
 async def update_custom_provider(provider_id: str, body: CustomProviderUpdate) -> dict:
-    """Update a custom model provider."""
+    """Update a custom model provider and re-queue held events."""
     settings = load_settings()
     providers = settings.get("custom_providers", [])
 
@@ -446,6 +451,7 @@ async def update_custom_provider(provider_id: str, body: CustomProviderUpdate) -
     invalidate_discovery_cache(provider_id)
 
     log.info("custom_provider_updated", provider_id=provider_id)
+    await release_held_events()
     return {"status": "updated", "provider": target}
 
 

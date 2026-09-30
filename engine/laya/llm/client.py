@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 from laya.config import load_settings
 from laya.db.sqlite import get_db
+from laya.llm import model_availability
 
 log = structlog.get_logger()
 
@@ -240,6 +241,16 @@ async def _get_space_model(role: str, space_id: str) -> str | None:
     if rows and rows[0][f"{role}_model"]:
         return rows[0][f"{role}_model"]
     return None
+
+
+async def _resolve_model(role: str, space_id: str | None) -> str:
+    """Return the configured model id for ``role`` (space override, else global setting)."""
+    model = _get_model_for_role(role)
+    if space_id:
+        space_model = await _get_space_model(role, space_id)
+        if space_model:
+            model = _add_provider_prefix(space_model)
+    return model
 
 
 async def _get_space_api_key(provider: str, space_id: str) -> str | None:
@@ -741,15 +752,13 @@ async def llm_call(
 
     Returns:
         LLMResponse with content, parsed JSON (if schema), and usage info.
+
+    Raises:
+        ModelUnavailableError: The provider refused this model or key (#25).
     """
     from litellm import acompletion
 
-    # Resolve model: space override → global setting
-    model = _get_model_for_role(role)
-    if space_id:
-        space_model = await _get_space_model(role, space_id)
-        if space_model:
-            model = _add_provider_prefix(space_model)
+    model = await _resolve_model(role, space_id)
 
     # Agent inference backend: a resolved model of `agent/<id>/<model_string>` means the
     # user picked an installed CLI agent as the LLM (no API key / no local VRAM). Dispatch
@@ -847,6 +856,12 @@ async def llm_call(
                 error=str(e),
             )
             raise
+
+    # Skip the call for a model the provider already refused (#25).
+    if unavailable := await model_availability.known_unavailable(model, role, space_id or ""):
+        raise unavailable
+    # _prepare_call_kwargs rewrites custom-provider ids; record the configured one.
+    configured_model = model
 
     # Build the shared acompletion kwargs. Model is already resolved above and
     # the agent backend was handled; everything else (space key, custom provider,
@@ -1138,6 +1153,10 @@ async def llm_call(
             success=False,
             error=str(e),
         )
+        if unavailable := await model_availability.record_unavailable(
+            e, configured_model, role, space_id or ""
+        ):
+            raise unavailable from e
         raise
 
 
@@ -1172,15 +1191,11 @@ async def llm_call_streaming(
     The caller is responsible for executing tools and re-calling.
 
     The final yield is always StreamEvent(type="done") with usage stats.
+    A refused model or key ends the stream with one error event (#25).
     """
     from litellm import acompletion
 
-    # Resolve model
-    model = _get_model_for_role(role)
-    if space_id:
-        space_model = await _get_space_model(role, space_id)
-        if space_model:
-            model = _add_provider_prefix(space_model)
+    model = await _resolve_model(role, space_id)
 
     # The agent inference backend can't drive a streaming tool-loop (chat / Coherence),
     # so those roles must stay on an API or local model. The Models UI keeps chat/trace as
@@ -1195,6 +1210,13 @@ async def llm_call_streaming(
         log.error("llm_stream_agent_unsupported", role=role, model=model)
         yield StreamEvent(type="error", content=msg, model=model)
         return
+
+    # Skip the call for a model the provider already refused (#25).
+    if unavailable := await model_availability.known_unavailable(model, role, space_id or ""):
+        yield StreamEvent(type="error", content=str(unavailable), model=model)
+        return
+    # _prepare_call_kwargs rewrites custom-provider ids; record the configured one.
+    configured_model = model
 
     # Shared prep — model already resolved above; agent backend rejected. This is
     # the same seam llm_call uses, so streaming now also gets the max_tokens clamp
@@ -1331,7 +1353,8 @@ async def llm_call_streaming(
     except Exception as e:
         elapsed_ms = int((time.monotonic() - start) * 1000)
         log.error("llm_stream_failed", role=role, model=model, error=str(e))
-        yield StreamEvent(type="error", content=str(e), model=model, latency_ms=elapsed_ms)
+        # Consumers stop at the error event, so record first (#25).
+        await model_availability.record_unavailable(e, configured_model, role, space_id or "")
         await log_to_audit(
             event_id=None,
             card_id=None,
@@ -1343,3 +1366,4 @@ async def llm_call_streaming(
             success=False,
             error=str(e),
         )
+        yield StreamEvent(type="error", content=str(e), model=model, latency_ms=elapsed_ms)

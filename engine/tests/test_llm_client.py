@@ -669,3 +669,144 @@ def test_prompt_caching_not_applied_to_gemini():
         assert _apply_prompt_caching(model, msgs) == msgs
     out = _apply_prompt_caching("anthropic/claude-sonnet-4", msgs)
     assert out[0]["content"][0]["cache_control"] == {"type": "ephemeral"}
+
+
+# --- Refused models / keys (#25) ---
+
+_GEMINI_SETTINGS = {"models": {"router": "gemini-2.0-flash", "chat": "gemini-2.0-flash"}}
+
+
+def _gemini_404():
+    import litellm
+
+    return litellm.NotFoundError(
+        message="This model models/gemini-2.0-flash is no longer available.",
+        model="gemini-2.0-flash",
+        llm_provider="gemini",
+    )
+
+
+async def _call_router(side_effect, settings=_GEMINI_SETTINGS):
+    """Run llm_call(role="router") against a mocked provider; return the mock."""
+    mock_ac = AsyncMock(side_effect=side_effect)
+    with patch("litellm.acompletion", mock_ac):
+        with patch("laya.llm.client.load_settings", return_value=settings):
+            with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                    await llm_call(
+                        role="router",
+                        messages=[{"role": "user", "content": "test"}],
+                        event_id="evt_refused",
+                        step="route",
+                        space_id="default",
+                    )
+    return mock_ac
+
+
+@pytest.mark.asyncio
+async def test_not_found_raises_model_unavailable_and_records(db):
+    """#25: a 404 raises ModelUnavailableError and records the model."""
+    from laya.llm.model_availability import ModelUnavailableError
+
+    with pytest.raises(ModelUnavailableError) as exc_info:
+        await _call_router(_gemini_404())
+
+    assert exc_info.value.kind == "not_found"
+    rows = await db.execute_fetchall("SELECT model, role, space_id FROM model_availability")
+    assert [dict(r) for r in rows] == [
+        {"model": "gemini/gemini-2.0-flash", "role": "router", "space_id": "default"}
+    ]
+    audit = await db.execute_fetchall("SELECT success FROM audit_log WHERE event_id = 'evt_refused'")
+    assert [r["success"] for r in audit] == [0]
+
+
+@pytest.mark.asyncio
+async def test_preflight_skips_provider_for_refused_model(db):
+    """A refused model is not called again."""
+    from laya.llm.model_availability import ModelUnavailableError
+
+    with pytest.raises(ModelUnavailableError):
+        await _call_router(_gemini_404())
+    with pytest.raises(ModelUnavailableError):
+        mock_ac = AsyncMock()
+        with patch("litellm.acompletion", mock_ac):
+            with patch("laya.llm.client.load_settings", return_value=_GEMINI_SETTINGS):
+                await llm_call(
+                    role="router",
+                    messages=[{"role": "user", "content": "test"}],
+                    event_id="evt_refused",
+                    step="route",
+                    space_id="default",
+                )
+    mock_ac.assert_not_called()
+    audit = await db.execute_fetchall("SELECT * FROM audit_log WHERE event_id = 'evt_refused'")
+    assert len(audit) == 1  # only the first, real call
+
+
+@pytest.mark.asyncio
+async def test_records_configured_id_not_rewritten_custom_id(db):
+    """A custom provider is recorded under its configured id."""
+    from laya.llm.model_availability import ModelUnavailableError
+
+    settings = {"models": {"router": "lmstudio-local/qwen3.5-9b"}}
+    with patch("laya.llm.client._get_custom_provider_meta", return_value=None):
+        with patch(
+            "laya.llm.client._resolve_custom_provider",
+            return_value=("openai/qwen3.5-9b", {"api_base": "http://localhost:1234/v1", "api_key": "x"}),
+        ):
+            with pytest.raises(ModelUnavailableError):
+                await _call_router(_gemini_404(), settings=settings)
+
+    rows = await db.execute_fetchall("SELECT model FROM model_availability")
+    assert [r["model"] for r in rows] == ["lmstudio-local/qwen3.5-9b"]
+
+
+@pytest.mark.asyncio
+async def test_bad_request_is_reraised_unchanged(db):
+    """A 400 is re-raised unchanged and not recorded."""
+    import litellm
+
+    bad = litellm.BadRequestError(message="prompt too long", model="m", llm_provider="gemini")
+    with pytest.raises(litellm.BadRequestError):
+        await _call_router(bad)
+    assert await db.execute_fetchall("SELECT * FROM model_availability") == []
+
+
+@pytest.mark.asyncio
+async def test_streaming_records_refusal_before_error_event(db):
+    """Streaming records the refusal before yielding the error."""
+    from laya.llm.client import llm_call_streaming
+
+    with patch("litellm.acompletion", AsyncMock(side_effect=_gemini_404())):
+        with patch("laya.llm.client.load_settings", return_value=_GEMINI_SETTINGS):
+            with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                async for ev in llm_call_streaming(
+                    role="chat", messages=[{"role": "user", "content": "hi"}], step="chat"
+                ):
+                    assert ev.type == "error"
+                    break  # consumers stop here, like chat.py does
+
+    rows = await db.execute_fetchall("SELECT model, role FROM model_availability")
+    assert [(r["model"], r["role"]) for r in rows] == [("gemini/gemini-2.0-flash", "chat")]
+    audit = await db.execute_fetchall("SELECT success FROM audit_log WHERE step = 'chat'")
+    assert [r["success"] for r in audit] == [0]
+
+
+@pytest.mark.asyncio
+async def test_streaming_preflight_yields_single_error(db):
+    """Streaming a refused model yields one error without calling the provider."""
+    from laya.llm.client import llm_call_streaming
+    from laya.llm.model_availability import record_unavailable
+
+    await record_unavailable(_gemini_404(), "gemini/gemini-2.0-flash", "chat", "")
+    mock_ac = AsyncMock()
+    with patch("litellm.acompletion", mock_ac):
+        with patch("laya.llm.client.load_settings", return_value=_GEMINI_SETTINGS):
+            events = [
+                ev async for ev in llm_call_streaming(
+                    role="chat", messages=[{"role": "user", "content": "hi"}], step="chat"
+                )
+            ]
+
+    assert [ev.type for ev in events] == ["error"]
+    mock_ac.assert_not_called()

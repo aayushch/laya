@@ -12,6 +12,8 @@
 	import { portal } from '$lib/actions/portal';
 	import { CODING_AGENTS } from '$lib/config';
 	import ModelSelect from './ModelSelect.svelte';
+	import { health } from '$lib/stores/health';
+	import { problemForStage } from '$lib/utils/modelAvailability';
 
 	let guideTooltip = $state<{ text: string; top: number; left: number } | null>(null);
 
@@ -592,7 +594,7 @@
 {:else}
 	<div class="space-y-8">
 		<!-- API Keys -->
-		<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
+		<div id="api-keys" class="{$glassTheme ? 'glass-section' : 'rounded-lg border border-surface-700 bg-surface-800'} p-5">
 			<h3 class="mb-4 text-laya-heading font-medium">API Keys</h3>
 			<p class="mb-4 text-laya-base text-surface-400">
 				Keys are stored securely in your OS keychain. They are never sent to the UI.
@@ -992,6 +994,12 @@
 								providers={availableModels}
 								onchange={handleModelChange(role.id)}
 							/>
+						{/if}
+						{#if problemForStage($health, role.id)}
+							{@const problem = problemForStage($health, role.id)}
+							<p class="col-start-3 text-laya-micro text-red-400" title={problem?.reason}>
+								{problem?.kind === 'auth' ? 'The provider rejected the API key for this model.' : problem?.kind === 'permission' ? "This API key isn't allowed to use this model." : 'The provider no longer serves this model.'} Pick another to resume.
+							</p>
 						{/if}
 					</div>
 				{/each}

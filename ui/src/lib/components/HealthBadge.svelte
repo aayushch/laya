@@ -4,13 +4,18 @@
 	import { health, healthError } from '$lib/stores/health';
 	import { wsStatus } from '$lib/stores/websocket';
 	import { vectorStoreState } from '$lib/utils/vectorStore';
+	import { modelProblems } from '$lib/utils/modelAvailability';
 
 	// Yellow = the engine is usable but degraded: live updates are disconnected,
-	// or the vector store (semantic search) is still starting or unavailable.
+	// the vector store (semantic search) is still starting or unavailable, or a
+	// provider refused a configured model/key (#25).
 	let statusColor = $derived.by(() => {
 		if ($healthError || !$health) return 'bg-red-500';
 		if ($health.engine === 'healthy' && $health.sqlite === 'healthy') {
-			const degraded = $wsStatus !== 'connected' || vectorStoreState($health) !== 'ready';
+			const degraded =
+				$wsStatus !== 'connected' ||
+				vectorStoreState($health) !== 'ready' ||
+				modelProblems($health).length > 0;
 			return degraded ? 'bg-yellow-500' : 'bg-green-500';
 		}
 		return 'bg-red-500';
