@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { writable } from 'svelte/store';
-import type { HealthResponse } from '$lib/api/types';
+import type { HealthResponse, ModelAvailability, WsMessage } from '$lib/api/types';
 import { getEngineUrl } from '$lib/config';
 import { vectorStoreState } from '$lib/utils/vectorStore';
 
@@ -62,6 +62,13 @@ export function startHealthPolling() {
 	fetchHealth(); // immediate first check
 	pollMs = FAST_POLL_MS;
 	pollInterval = setInterval(fetchHealth, pollMs);
+}
+
+/** Apply a `model_availability` WS push to the health store. */
+export function handleModelAvailabilityWs(msg: WsMessage): void {
+	const payload = msg.payload as unknown as ModelAvailability | undefined;
+	if (!Array.isArray(payload?.unavailable)) return;
+	health.update((h) => (h ? { ...h, models: payload } : h));
 }
 
 export function stopHealthPolling() {

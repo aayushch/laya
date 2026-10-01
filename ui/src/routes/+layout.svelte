@@ -7,7 +7,7 @@
 	import HealthBadge from '$lib/components/HealthBadge.svelte';
 	import ChatSidebar from '$lib/components/chat/ChatSidebar.svelte';
 	import { initWebSocket, closeWebSocket, lastMessage } from '$lib/stores/websocket';
-	import { startHealthPolling, stopHealthPolling, startupReady } from '$lib/stores/health';
+	import { startHealthPolling, stopHealthPolling, startupReady, handleModelAvailabilityWs } from '$lib/stores/health';
 	import StartupScreen from '$lib/components/StartupScreen.svelte';
 	import { needsSetup, setupComplete } from '$lib/stores/setup';
 	import { chatOpen, chatListOpen } from '$lib/stores/chat';
@@ -38,6 +38,7 @@
 	import RunAgentModal from '$lib/components/agent/RunAgentModal.svelte';
 	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
 	import VectorStoreBanner from '$lib/components/VectorStoreBanner.svelte';
+	import ModelAvailabilityBanner from '$lib/components/ModelAvailabilityBanner.svelte';
 	import Titlebar from '$lib/components/Titlebar.svelte';
 	import { startPeriodicCheck, stopPeriodicCheck } from '$lib/stores/updater';
 	import { onMount } from 'svelte';
@@ -277,6 +278,10 @@
 		// (the push carries one connection's status, not authoritative counts)
 		if (msg && msg.type === 'connection_status') {
 			loadIntegrationErrorSummary();
+		}
+		// A provider refused (or stopped refusing) a model/key — update the banner now
+		if (msg && msg.type === 'model_availability') {
+			handleModelAvailabilityWs(msg);
 		}
 	});
 
@@ -822,6 +827,9 @@
 				<a href="/settings?tab=models&section=agent-usage" class="ml-1 text-xs font-medium text-red-400 underline underline-offset-2 hover:text-red-300">Manage</a>
 			</div>
 		{/if}
+
+		<!-- Refused model / API key banner (#25) -->
+		<ModelAvailabilityBanner />
 
 		<!-- Vector store setup / unavailable banner -->
 		<VectorStoreBanner />

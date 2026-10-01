@@ -8,7 +8,9 @@ overflows the loaded context window and the call truncates/errors. These guards 
 a large backlog drain from re-paying that doomed cost every poll cycle.
 """
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 import laya.pipeline.queue as queue_mod
 from laya.pipeline.queue import (
@@ -60,3 +62,20 @@ def test_cloud_provider_not_local():
     with patch("laya.llm.client._get_model_for_role", return_value="anthropic/claude-haiku-4-5"):
         with patch("laya.llm.client._resolve_custom_provider", return_value=None):
             assert _router_is_local_provider() is False
+
+
+@pytest.mark.asyncio
+async def test_model_unavailable_does_not_trip_breaker(sample_event):
+    """#25: a refused model doesn't disable batch routing."""
+    from laya.llm.model_availability import ModelUnavailableError
+
+    _reset_breaker()
+    refusal = ModelUnavailableError("gemini/gemini-2.0-flash", "router", "not_found", "gone")
+    with patch.object(queue_mod, "_load_event", AsyncMock(return_value=sample_event)), \
+         patch("laya.pipeline.ingest.run_ingest", AsyncMock(return_value=("external", {}))), \
+         patch("laya.pipeline.space_resolution.resolve_space", AsyncMock(return_value="default")), \
+         patch("laya.pipeline.rules.run_rules", AsyncMock(return_value=(False, None))), \
+         patch("laya.pipeline.router.run_batch_router", AsyncMock(side_effect=refusal)):
+        await queue_mod._batch_route_events(["evt_a", "evt_b"])
+
+    assert _batch_routing_allowed() is True

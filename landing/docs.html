@@ -1009,7 +1009,7 @@ content.body         content.metadata.*</code></pre>
         <li><strong>CONTEXT LEARN</strong> &mdash; Extract context grouping rules from user link/unlink corrections (runs periodically)</li>
         <li><strong>OMNI</strong> &mdash; Append card to rolling cross-platform summary (debounced incremental update)</li>
       </ol>
-      <p>Every step is recorded in the <strong>Audit Log</strong> (Settings &rarr; Audit) with model used, token counts, latency, and success/failure status. Failed events retry with exponential backoff (up to 3 attempts); permanently failed events are visible in <strong>Settings &rarr; Audit Log</strong> and can be manually retried. The Audit view also surfaces ingestion errors and events dropped by your filter rules, and lets you export the audit log or the filtered-event list as JSON over a chosen time window.</p>
+      <p>Every step is recorded in the <strong>Audit Log</strong> (Settings &rarr; Audit) with model used, token counts, latency, and success/failure status. Failed events retry with exponential backoff (up to 3 attempts); permanently failed events are visible in <strong>Settings &rarr; Audit Log</strong> and can be manually retried. If a provider refuses the model or API key itself (retired model, revoked key), events are <strong>held</strong> instead of retried, a banner explains what broke, and they are processed automatically once you change the model or key. The Audit view also surfaces ingestion errors and events dropped by your filter rules, and lets you export the audit log or the filtered-event list as JSON over a chosen time window.</p>
 
       <h2 id="doc-event-schema">Event Schema</h2>
       <p>Events sent from n8n to the Laya Engine follow this schema:</p>

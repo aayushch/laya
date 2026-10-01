@@ -65,6 +65,7 @@ import type {
 	OmniResynthesisStatus,
 	DeadEventsResponse,
 	RetryDeadEventsResponse,
+	ReleaseHeldEventsResponse,
 	FilteredEventsResponse,
 	ExportEnvelope,
 	DayEventsResponse,
@@ -886,6 +887,10 @@ export const engineApi = {
 			method: 'POST',
 			body: JSON.stringify(eventIds ? { event_ids: eventIds } : { all: true })
 		}),
+
+	/** Re-queue events held for a refused model or key. */
+	retryHeldEvents: () =>
+		request<ReleaseHeldEventsResponse>('/events/held/retry', { method: 'POST' }),
 
 	// Filtered Events (informational — events dropped by filter rules)
 	getFilteredEvents: (params?: { limit?: number; offset?: number }) => {

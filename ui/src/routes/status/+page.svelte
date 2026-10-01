@@ -7,6 +7,7 @@
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import type { DashboardResponse, ThroughputResponse } from '$lib/api/types';
+	import { modelProblems } from '$lib/utils/modelAvailability';
 	import StatCard from '$lib/components/dashboard/StatCard.svelte';
 	import BarChart from '$lib/components/dashboard/BarChart.svelte';
 	import DonutChart from '$lib/components/dashboard/DonutChart.svelte';
@@ -185,7 +186,7 @@
 	<!-- System Status section -->
 	<section>
 		<h2 class="mb-4 text-lg font-semibold">System Status</h2>
-		<div class="grid grid-cols-2 gap-3 sm:grid-cols-5">
+		<div class="grid grid-cols-2 gap-3 sm:grid-cols-6">
 			<!-- Engine -->
 			<div class={cardClass}>
 				<div class="mb-1.5 text-[10px] uppercase tracking-wider text-surface-400">Engine</div>
@@ -227,6 +228,22 @@
 					<span class="text-sm text-red-400">Offline</span>
 				{:else}
 					<span class="text-sm {statusIcon($health.n8n)}">{statusLabel($health.n8n)}</span>
+				{/if}
+			</div>
+
+			<!-- AI models (provider refusals, #25) -->
+			<div class={cardClass}>
+				<div class="mb-1.5 text-[10px] uppercase tracking-wider text-surface-400">AI models</div>
+				{#if $healthError || !$health}
+					<span class="text-sm text-red-400">Offline</span>
+				{:else}
+					{@const problems = modelProblems($health)}
+					<span class="text-sm {statusIcon(problems.length ? 'unavailable' : 'healthy')}">
+						{problems.length ? `${problems.length} unavailable` : 'healthy'}
+					</span>
+					{#if $health.models?.held_events}
+						<div class="mt-1 text-[10px] text-surface-500">{$health.models.held_events} events waiting</div>
+					{/if}
 				{/if}
 			</div>
 

@@ -17,6 +17,28 @@ export interface HealthResponse {
 	n8n: string;
 	uptime_seconds: number;
 	embeddings?: EmbeddingInfo;
+	/** Null when the engine couldn't read it. */
+	models?: ModelAvailability | null;
+}
+
+/** Why a provider refused a model (404 / 401 / 403). */
+export type ModelRefusalKind = 'not_found' | 'auth' | 'permission';
+
+/** A provider refusal recorded by the engine. */
+export interface UnavailableModel {
+	model: string;
+	role: string;
+	/** '' when the call had no space. */
+	space_id: string;
+	kind: ModelRefusalKind;
+	reason: string;
+	detected_at: string;
+}
+
+/** `/health.models` and the `model_availability` WS payload. */
+export interface ModelAvailability {
+	unavailable: UnavailableModel[];
+	held_events: number;
 }
 
 /** WebSocket message from the engine */
@@ -37,6 +59,7 @@ export interface WsMessage {
 		| 'push_notification'
 		| 'audit_failure'
 		| 'connection_status'
+		| 'model_availability'
 		| (string & {});
 	event_id?: string;
 	card_id?: string;
@@ -864,6 +887,11 @@ export interface DeadEventsResponse {
 /** Response from retrying dead events */
 export interface RetryDeadEventsResponse {
 	retried: number;
+}
+
+/** Response from re-queuing events held for a refused model or key */
+export interface ReleaseHeldEventsResponse {
+	released: number;
 }
 
 /** Event dropped by a filter rule — informational, not a failure */

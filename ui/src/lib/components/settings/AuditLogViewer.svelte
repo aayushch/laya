@@ -15,7 +15,7 @@
 
 	// Ordered list of processing_status values for stable display order.
 	// Mirrors values set in engine/laya/pipeline/queue.py and api/events.py.
-	const EVENT_STATUSES = ['queued', 'processing', 'retrying', 'completed', 'filtered', 'dead'] as const;
+	const EVENT_STATUSES = ['queued', 'processing', 'retrying', 'held', 'completed', 'filtered', 'dead'] as const;
 
 	// ── Event counts state (polls /events/counts while mounted) ──
 	let eventCounts = $state<Record<string, number>>({});

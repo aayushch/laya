@@ -5,6 +5,7 @@
 
 Events flow: queued → processing → completed | failed
 Failed events retry with exponential backoff up to max_attempts.
+Events whose model or key the provider refused wait as 'held' until the user fixes it (#25).
 A background consumer loop polls the queue and dispatches work
 through a concurrency-limited semaphore.
 """
@@ -18,6 +19,8 @@ import structlog
 from laya.config import get_debounce_config, load_settings
 from laya.db.sqlite import get_db
 from laya.db.timeutil import db_now, db_ts
+from laya.llm import model_availability
+from laya.llm.model_availability import ModelUnavailableError
 from laya.models.event import LayaEvent
 
 log = structlog.get_logger()
@@ -221,6 +224,40 @@ async def _mark_failed(event_id: str, error: str) -> None:
             log.warning("audit_failure_broadcast_failed", event_id=event_id, error=str(e))
 
 
+async def _mark_held(event_id: str, error: str) -> None:
+    """Hold an event whose model or key was refused; refund the attempt, never dead-letter (#25)."""
+    db = await get_db()
+    await db.execute(
+        """UPDATE events
+           SET processing_status = 'held',
+               processing_attempts = MAX(processing_attempts - 1, 0),
+               last_error = ?,
+               next_retry_at = NULL
+           WHERE event_id = ?""",
+        (error, event_id),
+    )
+    await db.commit()
+    log.warning("event_held_model_unavailable", event_id=event_id, error=error)
+    await model_availability.broadcast_status()
+
+
+async def release_held_events() -> int:
+    """Clear recorded refusals and re-queue held events; return how many were re-queued."""
+    await model_availability.clear()
+    db = await get_db()
+    cursor = await db.execute(
+        """UPDATE events
+           SET processing_status = 'queued', next_retry_at = NULL
+           WHERE processing_status = 'held'"""
+    )
+    await db.commit()
+    released = cursor.rowcount
+    if released:
+        log.info("held_events_released", count=released)
+    await model_availability.broadcast_status()
+    return released
+
+
 # ── event processing ─────────────────────────────────────────────────────
 
 async def _load_event(event_id: str) -> LayaEvent | None:
@@ -255,7 +292,7 @@ async def _load_persisted_router_output(event_id: str):
 
 
 async def process_event(event_id: str) -> None:
-    """Run the full pipeline for a single event (with claim/complete/fail)."""
+    """Run the full pipeline for a single event (with claim/complete/fail/hold)."""
     from laya.api.websocket import manager
     from laya.models.classification import RouterOutput
     from laya.pipeline.ingest import run_ingest
@@ -371,8 +408,10 @@ async def process_event(event_id: str) -> None:
         # ensuring cancelled tasks don't orphan events in 'processing' state.
         error_msg = f"{type(e).__name__}: {e}"
         log.error("event_processing_failed", event_id=event_id, error=error_msg)
+        # A refused model/key fails every attempt until settings change (#25).
+        mark = _mark_held if isinstance(e, ModelUnavailableError) else _mark_failed
         try:
-            await _mark_failed(event_id, error_msg)
+            await mark(event_id, error_msg)
         except Exception:
             pass  # DB may be unavailable during shutdown
         if isinstance(e, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
@@ -787,6 +826,9 @@ async def _batch_route_events(event_ids: list[str]) -> None:
             _trip_batch_breaker(
                 "partial_batch_result", got=total_classified, expected=len(events_data)
             )
+    except ModelUnavailableError as e:
+        # Not a batch-size problem; don't trip the breaker (#25).
+        log.warning("batch_route_model_unavailable", model=e.model)
     except Exception as e:
         log.warning("batch_route_failed", error=str(e))
         _trip_batch_breaker("batch_route_error", error=str(e))

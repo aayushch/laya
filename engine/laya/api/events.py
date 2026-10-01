@@ -17,7 +17,7 @@ from laya.api.audit_api import utc_cutoff
 from laya.db.sqlite import get_db
 from laya.db.timeutil import db_ts
 from laya.models.event import EventResponse, LayaEvent
-from laya.pipeline.queue import enqueue_event
+from laya.pipeline.queue import enqueue_event, release_held_events
 
 log = structlog.get_logger()
 router = APIRouter()
@@ -32,6 +32,10 @@ class RetryDeadEventsRequest(BaseModel):
 
 class RetryDeadEventsResponse(BaseModel):
     retried: int
+
+
+class ReleaseHeldEventsResponse(BaseModel):
+    released: int
 
 
 @router.post("/events", response_model=EventResponse, status_code=202)
@@ -90,7 +94,7 @@ async def receive_event(event: LayaEvent) -> EventResponse:
                 await enqueue_event(event.event_id)
                 log.info("event_requeued_from_dead", event_id=event.event_id)
                 return EventResponse(event_id=event.event_id)
-            # Still queued/processing/retrying — no action needed
+            # Still queued/processing/retrying/held — no action needed
             log.info("event_already_in_queue", event_id=event.event_id, status=status)
             return EventResponse(event_id=event.event_id)
 
@@ -462,3 +466,9 @@ async def retry_dead_events(body: RetryDeadEventsRequest) -> RetryDeadEventsResp
         log.info("dead_events_retried", count=retried, bulk=body.all)
 
     return RetryDeadEventsResponse(retried=retried)
+
+
+@router.post("/events/held/retry", response_model=ReleaseHeldEventsResponse)
+async def retry_held_events() -> ReleaseHeldEventsResponse:
+    """Re-queue events held for a refused model or key."""
+    return ReleaseHeldEventsResponse(released=await release_held_events())
