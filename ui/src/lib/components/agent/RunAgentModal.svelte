@@ -3,7 +3,7 @@
 <script lang="ts">
 	import { agentDialog } from '$lib/stores/agentDialog';
 	import { engineApi } from '$lib/api/engine';
-	import { getEngineUrl, CODING_AGENTS } from '$lib/config';
+	import { CODING_AGENTS } from '$lib/config';
 	import { goto } from '$app/navigation';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { portal } from '$lib/actions/portal';
@@ -142,17 +142,7 @@
 		uploading = true;
 		error = null;
 		try {
-			const formData = new FormData();
-			formData.append('file', file);
-
-			const resp = await fetch('${getEngineUrl()}/upload-agent-file', {
-				method: 'POST',
-				body: formData
-			});
-			if (!resp.ok) {
-				throw new Error(`Upload failed: ${resp.status}`);
-			}
-			const result = await resp.json();
+			const result = await engineApi.uploadAgentFile(file);
 
 			const contentType: string = result.content_type || file.type || '';
 			const isImage = contentType.startsWith('image/');
@@ -182,15 +172,7 @@
 		uploading = true;
 		error = null;
 		try {
-			const resp = await fetch('${getEngineUrl()}/upload-agent-file-path', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ path })
-			});
-			if (!resp.ok) {
-				throw new Error(`Upload failed: ${resp.status}`);
-			}
-			const result = await resp.json();
+			const result = await engineApi.uploadAgentFilePath(path);
 			const contentType: string = result.content_type || '';
 			const isImage = contentType.startsWith('image/');
 			files = [
@@ -213,11 +195,7 @@
 	function deleteStagedFile(path: string) {
 		// Fire-and-forget — UI doesn't need to wait, and the 24h sweep is a
 		// backstop if this ever fails.
-		fetch('${getEngineUrl()}/delete-agent-staging-file', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ path })
-		}).catch(() => {
+		engineApi.deleteAgentStagingFile(path).catch(() => {
 			// Ignore — sweep will clean up eventually.
 		});
 	}

@@ -8,7 +8,14 @@ from pathlib import Path
 import keyring
 
 from laya import config
-from laya.security.keychain import delete_mcp_token, get_mcp_token, store_mcp_token
+from laya.security.keychain import (
+    delete_engine_token,
+    delete_mcp_token,
+    get_engine_token,
+    get_mcp_token,
+    store_engine_token,
+    store_mcp_token,
+)
 from tests.conftest import _REAL_HOME, _TEST_HOME
 
 
@@ -27,3 +34,10 @@ def test_mcp_token_roundtrip_stays_in_memory():
     assert get_mcp_token() == "lyat_isolation_check"
     delete_mcp_token()
     assert get_mcp_token() is None
+
+
+def test_engine_token_roundtrip_stays_in_memory():
+    store_engine_token("lyae_isolation_check")
+    assert get_engine_token() == "lyae_isolation_check"
+    delete_engine_token()
+    assert get_engine_token() is None

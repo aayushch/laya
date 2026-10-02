@@ -3,7 +3,7 @@
 
 import { writable } from 'svelte/store';
 import type { HealthResponse } from '$lib/api/types';
-import { getEngineUrl } from '$lib/config';
+import { getEngineUrl, waitForEngineToken } from '$lib/config';
 import { vectorStoreState } from '$lib/utils/vectorStore';
 
 const ENGINE_URL = getEngineUrl();
@@ -14,12 +14,13 @@ const SLOW_POLL_MS = 30000;
 export const health = writable<HealthResponse | null>(null);
 export const healthError = writable<boolean>(false);
 
-/** True once the engine reports healthy (engine + sqlite). Stays true once set. */
+/** True once the engine reports healthy (engine + sqlite) AND token is available. Stays true once set. */
 export const startupReady = writable<boolean>(false);
 
 let pollInterval: ReturnType<typeof setInterval> | null = null;
 let pollMs = FAST_POLL_MS;
 let startupMode = true;
+let engineReadyPromise: Promise<void> | null = null;
 
 function setPollRate(ms: number) {
 	if (!pollInterval || ms === pollMs) return;
@@ -28,7 +29,7 @@ function setPollRate(ms: number) {
 	pollInterval = setInterval(fetchHealth, ms);
 }
 
-async function fetchHealth() {
+export async function fetchHealth(): Promise<HealthResponse | null> {
 	try {
 		const resp = await fetch(`${ENGINE_URL}/health`);
 		if (resp.ok) {
@@ -36,10 +37,15 @@ async function fetchHealth() {
 			health.set(data);
 			healthError.set(false);
 
-			// Once engine + sqlite are healthy, mark startup as complete
+			// Once engine + sqlite are healthy, ensure token is ready before marking startup complete
 			if (startupMode && data.engine === 'healthy' && data.sqlite === 'healthy') {
-				startupReady.set(true);
-				startupMode = false;
+				try {
+					await waitForEngineToken();
+					startupReady.set(true);
+					startupMode = false;
+				} catch {
+					// Token not available yet; remain in startupMode and retry next poll
+				}
 			}
 
 			// Poll fast during startup and while the vector store is still
@@ -47,13 +53,32 @@ async function fetchHealth() {
 			// poll slowly.
 			const settling = startupMode || vectorStoreState(data) === 'starting';
 			setPollRate(settling ? FAST_POLL_MS : SLOW_POLL_MS);
+			return data;
 		} else {
 			healthError.set(true);
+			return null;
 		}
 	} catch {
 		health.set(null);
 		healthError.set(true);
+		return null;
 	}
+}
+
+/**
+ * Ensure engine is ready (token available + healthy).
+ * Single shared promise so callers do not race each other.
+ */
+export function ensureEngineReady(): Promise<void> {
+	if (engineReadyPromise) return engineReadyPromise;
+	engineReadyPromise = (async () => {
+		await waitForEngineToken();
+		await fetchHealth();
+	})().catch((err) => {
+		engineReadyPromise = null;
+		throw err;
+	});
+	return engineReadyPromise;
 }
 
 export function startHealthPolling() {

@@ -23,6 +23,96 @@ export function getEngineWsUrl(): string {
 	return getEngineUrl().replace(/^http/, 'ws') + '/ws';
 }
 
+/**
+ * Engine authentication token resolution order:
+ * 1. window.__LAYA_ENGINE_TOKEN__ (injected by Tauri shell at runtime)
+ * 2. window.__LAYA_CONFIG__?.token (injected config object)
+ * 3. import.meta.env.VITE_LAYA_ENGINE_TOKEN (browser-only Vite dev mode)
+ *    To use in browser dev mode:
+ *    Add VITE_LAYA_ENGINE_TOKEN=<token> to ui/.env.local (gitignored).
+ *    Never commit secrets. In production, tokens are injected by Tauri at runtime.
+ * 4. else ""
+ */
+let _fallbackEngineToken = '';
+
+export function getEngineToken(): string {
+	if (typeof window !== 'undefined') {
+		const win = window as unknown as {
+			__LAYA_ENGINE_TOKEN__?: string;
+			__LAYA_CONFIG__?: { token?: string };
+		};
+		if (win.__LAYA_ENGINE_TOKEN__) {
+			return win.__LAYA_ENGINE_TOKEN__;
+		}
+		if (win.__LAYA_CONFIG__?.token) {
+			return win.__LAYA_CONFIG__.token;
+		}
+	}
+	if (import.meta.env?.DEV && import.meta.env.VITE_LAYA_ENGINE_TOKEN) {
+		return import.meta.env.VITE_LAYA_ENGINE_TOKEN as string;
+	}
+	return _fallbackEngineToken;
+}
+
+export function setEngineToken(token: string | null): void {
+	_fallbackEngineToken = token ?? '';
+	if (typeof window !== 'undefined') {
+		const win = window as unknown as { __LAYA_ENGINE_TOKEN__?: string | null };
+		win.__LAYA_ENGINE_TOKEN__ = token ?? undefined;
+	}
+}
+
+export interface WaitForEngineTokenOptions {
+	intervalMs?: number;
+	timeoutMs?: number;
+}
+
+/**
+ * Resolves when engine authentication token is non-empty.
+ * Times out with an informative error if token is not available within timeoutMs.
+ */
+export async function waitForEngineToken(options?: WaitForEngineTokenOptions): Promise<string> {
+	const intervalMs = options?.intervalMs ?? 20;
+	const timeoutMs = options?.timeoutMs ?? 5000;
+
+	const token = getEngineToken();
+	if (token) return token;
+
+	// In Tauri, attempt to retrieve token directly via command if available
+	if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			const tauriToken = await invoke<string | null>('get_engine_token');
+			if (tauriToken) {
+				setEngineToken(tauriToken);
+				return tauriToken;
+			}
+		} catch {
+			// Tauri command unavailable or failed, fallback to polling
+		}
+	}
+
+	return new Promise((resolve, reject) => {
+		const startTime = Date.now();
+		const interval = setInterval(() => {
+			const current = getEngineToken();
+			if (current) {
+				clearInterval(interval);
+				resolve(current);
+				return;
+			}
+			if (Date.now() - startTime >= timeoutMs) {
+				clearInterval(interval);
+				reject(
+					new Error(
+						`Engine authentication token was not available within ${timeoutMs}ms. In browser dev mode, set VITE_LAYA_ENGINE_TOKEN in ui/.env.local.`
+					)
+				);
+			}
+		}, intervalMs);
+	});
+}
+
 export interface AgentOption {
 	value: string;
 	label: string;

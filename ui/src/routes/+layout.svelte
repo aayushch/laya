@@ -13,8 +13,8 @@
 	import { chatOpen, chatListOpen } from '$lib/stores/chat';
 	import { initChatStream } from '$lib/stores/chatStream';
 	import { theme } from '$lib/stores/theme';
-	import { getEngineUrl } from '$lib/config';
 	import { fontScale } from '$lib/stores/fontScale';
+	import { engineApi } from '$lib/api/engine';
 	import { systemFont } from '$lib/stores/systemFont';
 	import { accessibleColors } from '$lib/stores/accessibleColors';
 	import { reducedMotion } from '$lib/stores/reducedMotion';
@@ -224,8 +224,8 @@
 	$effect(() => {
 		if (!$startupReady || setupChecked || isSetupRoute) return;
 		setupChecked = true;
-		fetch(`${getEngineUrl()}/settings/setup-status`)
-			.then((resp) => resp.ok ? resp.json() : null)
+		engineApi
+			.getSetupStatus()
 			.then((data) => {
 				if (data && !data.setup_complete) goto('/setup');
 			})

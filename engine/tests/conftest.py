@@ -105,6 +105,20 @@ def _reset_http_client():
     hc._client = old
 
 
+@pytest.fixture(autouse=True)
+def _bypass_engine_auth_for_existing_tests(request):
+    """Bypass require_engine_auth for existing tests that do not test engine auth."""
+    if "test_engine_auth" in request.node.nodeid:
+        yield
+        return
+    from laya.main import app
+    from laya.security.engine_auth import require_engine_auth
+
+    app.dependency_overrides[require_engine_auth] = lambda: "test_token"
+    yield
+    app.dependency_overrides.pop(require_engine_auth, None)
+
+
 @pytest_asyncio.fixture
 async def db(tmp_path):
     """In-memory SQLite database with ALL migrations applied."""

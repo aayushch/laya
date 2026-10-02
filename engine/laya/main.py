@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 
 import structlog
 import uvicorn
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -61,7 +61,8 @@ from laya.logging_setup import resolve_log_level, setup_logging
 from laya.pipeline.omni import start_omni_processor, stop_omni_processor
 from laya.pipeline.queue import recover_stalled_cards, recover_stalled_events, start_consumer, stop_consumer
 from laya.scheduler import start_scheduler, stop_scheduler
-from laya.security.keychain import load_all_keys_to_env
+from laya.security.engine_auth import require_engine_auth, router as auth_router
+from laya.security.keychain import ensure_engine_token, load_all_keys_to_env
 
 log = structlog.get_logger()
 
@@ -254,6 +255,9 @@ async def lifespan(app: FastAPI):
 
     # Load API keys from OS keychain into environment
     load_all_keys_to_env()
+
+    # Ensure engine API token exists in OS keychain for REST auth
+    ensure_engine_token()
 
     # Ensure an MCP bearer token exists when auth_mode=bearer so the SSE
     # endpoint is immediately usable. Token only generated if missing.
@@ -469,31 +473,34 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # Register REST routers
-app.include_router(actions_router)
-app.include_router(audit_router)
-app.include_router(budget_router)
-app.include_router(cards_router)
-app.include_router(classification_router)
-app.include_router(connections_router)
-app.include_router(context_rules_router)
-app.include_router(egress_router)
-app.include_router(chat_router)
-app.include_router(dashboard_router)
-app.include_router(diagnostics_router)
-app.include_router(events_router)
-app.include_router(health_router)
-app.include_router(ingestion_errors_router)
-app.include_router(mcp_router)
-app.include_router(metadata_router)
-app.include_router(omni_router)
-app.include_router(team_router)
-app.include_router(processing_rules_router)
-app.include_router(rules_router)
-app.include_router(settings_router)
-app.include_router(spaces_router)
-app.include_router(tags_router)
-app.include_router(trace_router)
-app.include_router(workspace_router)
+auth_deps = [Depends(require_engine_auth)]
+
+app.include_router(actions_router, dependencies=auth_deps)
+app.include_router(audit_router, dependencies=auth_deps)
+app.include_router(auth_router, dependencies=auth_deps)
+app.include_router(budget_router, dependencies=auth_deps)
+app.include_router(cards_router, dependencies=auth_deps)
+app.include_router(classification_router, dependencies=auth_deps)
+app.include_router(connections_router, dependencies=auth_deps)
+app.include_router(context_rules_router, dependencies=auth_deps)
+app.include_router(egress_router, dependencies=auth_deps)
+app.include_router(chat_router, dependencies=auth_deps)
+app.include_router(dashboard_router, dependencies=auth_deps)
+app.include_router(diagnostics_router, dependencies=auth_deps)
+app.include_router(events_router, dependencies=auth_deps)
+app.include_router(health_router)  # Exempt: health check must be reachable anonymously
+app.include_router(ingestion_errors_router, dependencies=auth_deps)
+app.include_router(mcp_router, dependencies=auth_deps)
+app.include_router(metadata_router, dependencies=auth_deps)
+app.include_router(omni_router, dependencies=auth_deps)
+app.include_router(team_router, dependencies=auth_deps)
+app.include_router(processing_rules_router, dependencies=auth_deps)
+app.include_router(rules_router, dependencies=auth_deps)
+app.include_router(settings_router, dependencies=auth_deps)
+app.include_router(spaces_router, dependencies=auth_deps)
+app.include_router(tags_router, dependencies=auth_deps)
+app.include_router(trace_router, dependencies=auth_deps)
+app.include_router(workspace_router, dependencies=auth_deps)
 register_mcp_transport(app)
 
 

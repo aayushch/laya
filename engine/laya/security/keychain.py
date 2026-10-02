@@ -4,6 +4,7 @@
 """OS keychain integration for storing LLM API keys."""
 
 import os
+import secrets
 import time
 
 import structlog
@@ -216,3 +217,73 @@ def delete_mcp_token() -> bool:
         return True
     except Exception:
         return False
+
+
+# ---------------------------------------------------------------------------
+# Engine API token
+# ---------------------------------------------------------------------------
+
+ENGINE_TOKEN_KEY = "laya_engine_api_token"
+
+
+def store_engine_token(token: str) -> bool:
+    """Store the engine API bearer token in the OS keychain."""
+    try:
+        import keyring
+
+        keyring.set_password(SERVICE_NAME, ENGINE_TOKEN_KEY, token)
+        _cache_store(ENGINE_TOKEN_KEY, token)
+        log.info("engine_token_stored")
+        return True
+    except Exception as e:
+        log.error("engine_token_store_failed", error=str(e))
+        return False
+
+
+def get_engine_token() -> str | None:
+    """Retrieve the engine API bearer token from the OS keychain (TTL-cached)."""
+    hit, val = _cache_lookup(ENGINE_TOKEN_KEY)
+    if hit:
+        return val
+    try:
+        import keyring
+
+        val = keyring.get_password(SERVICE_NAME, ENGINE_TOKEN_KEY)
+        _cache_store(ENGINE_TOKEN_KEY, val)
+        return val
+    except Exception as e:
+        log.warning("engine_token_read_failed", error=str(e))
+        return None
+
+
+def delete_engine_token() -> bool:
+    """Remove the engine API bearer token from the OS keychain."""
+    try:
+        import keyring
+
+        keyring.delete_password(SERVICE_NAME, ENGINE_TOKEN_KEY)
+        _cache_drop(ENGINE_TOKEN_KEY)
+        log.info("engine_token_deleted")
+        return True
+    except Exception:
+        return False
+
+
+def rotate_engine_token() -> str:
+    """Rotate the engine API bearer token. Invalidates cache immediately."""
+    token = secrets.token_urlsafe(32)
+    _cache_drop(ENGINE_TOKEN_KEY)
+    store_engine_token(token)
+    log.info("engine_token_rotated")
+    return token
+
+
+def ensure_engine_token() -> str:
+    """Ensure an engine API token exists in keychain. Mint if missing."""
+    token = get_engine_token()
+    if not token:
+        token = secrets.token_urlsafe(32)
+        store_engine_token(token)
+        log.info("engine_token_minted")
+    return token
+
