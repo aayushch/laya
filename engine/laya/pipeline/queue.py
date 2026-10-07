@@ -18,6 +18,7 @@ import structlog
 from laya.config import get_debounce_config, load_settings
 from laya.db.sqlite import get_db
 from laya.db.timeutil import db_now, db_ts
+from laya.models.card import PROCESSING_PLACEHOLDER_SUMMARY
 from laya.models.event import LayaEvent
 
 log = structlog.get_logger()
@@ -440,10 +441,10 @@ async def _run_workers_pipeline(
         db = await get_db()
         await db.execute(
             """UPDATE action_cards SET
-               status='pending', header=?, summary='Researching\u2026',
+               status='pending', header=?, summary=?,
                failed_stage=NULL, updated_at=CURRENT_TIMESTAMP
                WHERE card_id=?""",
-            (event.subject.title, card_id),
+            (event.subject.title, PROCESSING_PLACEHOLDER_SUMMARY, card_id),
         )
         await db.commit()
         await manager.broadcast(
@@ -452,7 +453,7 @@ async def _run_workers_pipeline(
                 "card_id": card_id,
                 "payload": {
                     "header": event.subject.title,
-                    "summary": "Researching\u2026",
+                    "summary": PROCESSING_PLACEHOLDER_SUMMARY,
                     "status": "pending",
                 },
             }
@@ -479,7 +480,7 @@ async def _run_workers_pipeline(
                 router_output.persona.value,
                 router_output.category.value,
                 event.subject.title,
-                "Researching\u2026",
+                PROCESSING_PLACEHOLDER_SUMMARY,
                 "pending",
                 2,
                 False,
@@ -496,7 +497,7 @@ async def _run_workers_pipeline(
                 "card_id": card_id,
                 "payload": {
                     "header": event.subject.title,
-                    "summary": "Researching\u2026",
+                    "summary": PROCESSING_PLACEHOLDER_SUMMARY,
                     "priority": router_output.priority.value,
                     "persona": router_output.persona.value,
                     "category": router_output.category.value,

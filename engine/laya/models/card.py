@@ -10,6 +10,12 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+# Summary written to a card when it is created, before the persona worker and
+# stager have produced real content. The pipeline replaces it on emit; anything
+# that renders card summaries (for example the agent's CONTEXT.md) treats this
+# exact string as "still processing" rather than as content.
+PROCESSING_PLACEHOLDER_SUMMARY = "Researching\u2026"
+
 
 class StagedOutput(BaseModel):
     """Primary deliverable attached to an action card."""

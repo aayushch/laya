@@ -559,6 +559,7 @@ async def run_entity_agent(entity_id: str, body: RunEntityAgentRequest) -> dict:
     from laya.agents import session_manager
     from laya.agents.entity_context import (
         build_entity_agent_prompt,
+        build_entity_resume_prompt,
         get_entity_research_dir,
         write_entity_context_file,
     )
@@ -663,9 +664,8 @@ async def run_entity_agent(entity_id: str, body: RunEntityAgentRequest) -> dict:
                 {"type": "card_updated", "card_id": card_row["card_id"], "payload": payload}
             )
 
-        resume_text = body.prompt or "Continue working. Check CONTEXT.md for updated entity context."
         agent = await session_manager.resume_conversation(
-            existing["session_id"], resume_text, add_dirs=add_dirs,
+            existing["session_id"], build_entity_resume_prompt(body.prompt), add_dirs=add_dirs,
         )
 
         create_tracked_task(

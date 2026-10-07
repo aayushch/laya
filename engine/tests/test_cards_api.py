@@ -762,3 +762,56 @@ class TestGroupedPagination:
         assert data["total_groups"] == 3
         assert len(data["groups"]) == 3
         assert data["has_more"] is False  # 3 < default cap of 200
+
+
+@pytest.mark.asyncio
+class TestRunEntityAgentResume:
+    """POST /entity/{id}/run-agent resuming an existing workspace (issue #43)."""
+
+    ENTITY = "jira:ticket:RES-7"
+
+    async def _resume(self, db, body: dict) -> str:
+        """Call the endpoint against a completed prior session; return the resume text."""
+        from contextlib import ExitStack
+        from unittest.mock import MagicMock
+
+        await insert_test_card(db, "card_res", "evt_res", entity_id=self.ENTITY)
+        sm = "laya.agents.session_manager"
+        ec = "laya.agents.entity_context"
+        resume = AsyncMock(return_value=MagicMock())
+        with ExitStack() as stack:
+            p = stack.enter_context
+            p(patch("laya.config.load_settings", return_value={"coding_agent": "claude_code"}))
+            p(patch(f"{sm}.get_session_for_entity",
+                    new=AsyncMock(return_value={"session_id": "sess_old", "status": "completed"})))
+            p(patch(f"{sm}.has_unanswered_questions", new=AsyncMock(return_value=False)))
+            p(patch(f"{sm}.resume_conversation", new=resume))
+            p(patch(f"{sm}.start_session", new=AsyncMock()))
+            p(patch(f"{ec}.write_entity_context_file", new=AsyncMock()))
+            p(patch(f"{ec}.get_entity_research_dir", new=MagicMock(return_value="/tmp/research/ent")))
+            p(patch("laya.workers.engineer.resolve_repo_path", new=AsyncMock(return_value=(None, []))))
+            p(patch("laya.config.load_repos", new=MagicMock(return_value={"repos": []})))
+            p(patch("laya.api.cards_agent._stream_entity_agent", new=MagicMock()))
+            p(patch("laya.api.cards_agent.create_tracked_task", new=MagicMock()))
+
+            from laya.main import app
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.post(f"/entity/{self.ENTITY}/run-agent", json=body)
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["session_id"] == "sess_old"
+        resume.assert_awaited_once()
+        assert resume.await_args.args[0] == "sess_old"
+        return resume.await_args.args[1]
+
+    async def test_custom_prompt_keeps_context_reminder(self, db):
+        """A custom resume prompt is appended with the CONTEXT.md reminder, not sent alone."""
+        text = await self._resume(db, {"prompt": "Is this ticket a duplicate?"})
+        assert text.startswith("Is this ticket a duplicate?")
+        assert "CONTEXT.md" in text
+
+    async def test_no_prompt_uses_default_reminder(self, db):
+        text = await self._resume(db, {})
+        assert text.startswith("Continue working.")
+        assert "CONTEXT.md" in text

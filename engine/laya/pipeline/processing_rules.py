@@ -398,6 +398,7 @@ async def _exec_run_agent(
         try:
             from laya.agents.entity_context import (
                 build_entity_agent_prompt,
+                build_entity_resume_prompt,
                 get_entity_research_dir,
                 write_entity_context_file,
             )
@@ -459,9 +460,8 @@ async def _exec_run_agent(
             if existing:
                 # Resume the same session (reuses session_id, so the Workspace
                 # button keeps opening the workspace the user already had).
-                resume_text = prompt or "Continue working. Check CONTEXT.md for updated entity context."
                 agent = await session_manager.resume_conversation(
-                    existing["session_id"], resume_text, add_dirs=add_dirs,
+                    existing["session_id"], build_entity_resume_prompt(prompt), add_dirs=add_dirs,
                 )
                 session_id = existing["session_id"]
             else:

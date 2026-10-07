@@ -18,6 +18,7 @@ import structlog
 
 from laya.config import LAYA_HOME
 from laya.db.sqlite import get_db
+from laya.models.card import PROCESSING_PLACEHOLDER_SUMMARY
 
 log = structlog.get_logger()
 
@@ -123,7 +124,17 @@ async def build_entity_context_markdown(
         lines.append(f"### Card: {card_id} ({row['persona']} / {row['status']}) — {row['created_at'] or 'unknown'}")
         lines.append(f"**{row['header']}**")
         lines.append("")
-        if row["summary"]:
+        if row["summary"] == PROCESSING_PLACEHOLDER_SUMMARY:
+            # The card has not finished Laya's pipeline yet, so its summary and
+            # key points are not available. Say so explicitly rather than
+            # copying the placeholder, so the agent reads the source content
+            # below instead of treating a one-word summary as the whole story.
+            lines.append(
+                "(Laya is still processing this card; its summary and key points "
+                "are not available yet. Rely on the source content below.)"
+            )
+            lines.append("")
+        elif row["summary"]:
             lines.append(row["summary"])
             lines.append("")
 
@@ -251,3 +262,18 @@ def build_entity_agent_prompt(
         lines.append(user_prompt)
 
     return "\n".join(lines)
+
+
+def build_entity_resume_prompt(user_prompt: str | None = None) -> str:
+    """Build the message sent when an existing entity-agent session is resumed.
+
+    Every resume rewrites CONTEXT.md first, so the message always tells the
+    agent to re-read that file. A custom prompt is placed first and the
+    reminder is appended; the reminder is never dropped in favour of the
+    prompt, because the instruction to read CONTEXT.md from the session's
+    opening message may be out of the agent's window by the time it resumes.
+    """
+    reminder = "Re-read CONTEXT.md first: it has been refreshed with the current entity context."
+    if user_prompt and user_prompt.strip():
+        return f"{user_prompt.strip()}\n\n{reminder}"
+    return f"Continue working. {reminder}"
