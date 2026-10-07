@@ -184,7 +184,7 @@ Laya uses **cosine distance** in ChromaDB (range 0.0 to 2.0, but practically 0.0
 | 0.35–0.50 | Loosely related | Same category but different subjects |
 | 0.50+ | Unrelated | Different domains entirely |
 
-The embedding model is `nomic-ai/nomic-embed-text-v1.5` (768 dimensions).
+The default embedding model is `sentence-transformers/all-mpnet-base-v2` (768 dimensions). Installs that indexed with the earlier default, `nomic-ai/nomic-embed-text-v1.5`, keep it unless `embedding_model` is set in settings.json.
 
 ---
 

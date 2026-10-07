@@ -67,18 +67,32 @@ EMBEDDING_MODELS = {
 _active_model_config: dict | None = None
 
 
-def _get_configured_model_key() -> str:
-    """Read embedding model selection from settings.json, default to 'nomic'."""
+DEFAULT_MODEL_KEY = "mpnet"
+# Default before #22. Its pinned revision loads remote modeling code that calls
+# get_extended_attention_mask, which transformers 5.x removed, so every embed
+# call fails. mpnet needs no remote code.
+_LEGACY_DEFAULT_MODEL_KEY = "nomic"
+
+
+def _get_configured_model_key(has_existing_vectors: bool = False) -> str:
+    """Read embedding model selection from settings.json.
+
+    With no explicit setting, a store that already holds vectors keeps the
+    legacy default: those vectors were written by nomic, and mpnet has the same
+    768 dimensions, so switching would not error but would silently return
+    unrelated search results. Fresh (or empty) stores get DEFAULT_MODEL_KEY.
+    """
+    default = _LEGACY_DEFAULT_MODEL_KEY if has_existing_vectors else DEFAULT_MODEL_KEY
     try:
         from laya.config import load_settings
         settings = load_settings()
-        key = settings.get("embedding_model", "nomic")
+        key = settings.get("embedding_model", default)
         if key in EMBEDDING_MODELS:
             return key
-        log.warning("unknown_embedding_model", model=key, fallback="nomic")
+        log.warning("unknown_embedding_model", model=key, fallback=default)
     except Exception:
         pass
-    return "nomic"
+    return default
 
 
 def _has_sentence_transformers() -> bool:
@@ -122,7 +136,7 @@ def _get_embedding_model() -> Any:
     if _embedding_model is None:
         from sentence_transformers import SentenceTransformer
 
-        config = _active_model_config or EMBEDDING_MODELS["nomic"]
+        config = _active_model_config or EMBEDDING_MODELS[DEFAULT_MODEL_KEY]
         kwargs: dict[str, Any] = {}
         if config.get("trust_remote_code"):
             kwargs["trust_remote_code"] = True
@@ -133,7 +147,7 @@ def _get_embedding_model() -> Any:
     return _embedding_model
 
 
-def _choose_embedding_function() -> EmbeddingFunction[Documents] | None:
+def _choose_embedding_function(has_existing_vectors: bool = False) -> EmbeddingFunction[Documents] | None:
     """Select the best available embedding function.
 
     Reads model choice from settings.json ("embedding_model": "nomic"|"mpnet"|"minilm").
@@ -142,7 +156,7 @@ def _choose_embedding_function() -> EmbeddingFunction[Documents] | None:
     global _embedding_backend, _active_model_config
 
     if _has_sentence_transformers():
-        model_key = _get_configured_model_key()
+        model_key = _get_configured_model_key(has_existing_vectors)
         _active_model_config = EMBEDDING_MODELS[model_key]
         _embedding_backend = model_key
         log.info(
@@ -202,7 +216,14 @@ def connect_chromadb() -> Collection:
         settings=ChromaSettings(anonymized_telemetry=False),
     )
 
-    embedding_fn = _choose_embedding_function()
+    # Checked before choosing the model so an install that already indexed
+    # with the legacy nomic default keeps querying in the same vector space.
+    try:
+        has_existing_vectors = _client.get_collection(COLLECTION_NAME).count() > 0
+    except Exception:
+        has_existing_vectors = False
+
+    embedding_fn = _choose_embedding_function(has_existing_vectors)
 
     kwargs: dict[str, Any] = {
         "name": COLLECTION_NAME,
