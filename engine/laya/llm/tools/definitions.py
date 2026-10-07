@@ -598,6 +598,31 @@ def _write_tools() -> list[dict]:
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "retry_card",
+                "description": (
+                    "Retry processing for ONE card whose pipeline run failed permanently "
+                    "(its event is dead, e.g. after an LLM timeout). Re-queues the "
+                    "originating event so the card is regenerated in place. Use when the "
+                    "user asks to retry, re-run, or unstick a specific card. Takes exactly "
+                    "one card ID per call; there is no bulk form. To retry several cards, "
+                    "call it once per card. Retrying ALL failed events is only available "
+                    "from Settings -> Audit in the app."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "card_id": {
+                            "type": "string",
+                            "description": "A single card ID to retry (not a list).",
+                        },
+                    },
+                    "required": ["card_id"],
+                },
+            },
+        },
     ]
 
 

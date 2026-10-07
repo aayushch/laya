@@ -17,7 +17,7 @@ from laya.api.audit_api import utc_cutoff
 from laya.db.sqlite import get_db
 from laya.db.timeutil import db_ts
 from laya.models.event import EventResponse, LayaEvent
-from laya.pipeline.queue import enqueue_event
+from laya.pipeline.queue import enqueue_event, requeue_dead_events
 
 log = structlog.get_logger()
 router = APIRouter()
@@ -423,42 +423,10 @@ async def list_dead_events(limit: int = 25, offset: int = 0) -> dict:
 async def retry_dead_events(body: RetryDeadEventsRequest) -> RetryDeadEventsResponse:
     """Re-enqueue dead events for a full fresh retry cycle.
 
-    Accepts either specific event_ids or all=true for bulk retry.
-    Resets processing_attempts to 0 so the event gets 3 fresh automatic
-    retries from the queue consumer.
+    Accepts either specific event_ids or all=true for bulk retry. The bulk
+    form is deliberately only reachable from here (the Audit tab), never from
+    a chat/MCP tool: on a local-model setup a mass retry can starve live
+    ingestion, so a human should see the queue size before triggering it.
     """
-    db = await get_db()
-
-    if body.all:
-        cursor = await db.execute(
-            """UPDATE events
-               SET processing_status = 'queued',
-                   processing_attempts = 0,
-                   last_error = NULL,
-                   next_retry_at = NULL,
-                   manual_retries = manual_retries + 1
-               WHERE processing_status = 'dead'"""
-        )
-    elif body.event_ids:
-        placeholders = ",".join("?" for _ in body.event_ids)
-        cursor = await db.execute(
-            f"""UPDATE events
-                SET processing_status = 'queued',
-                    processing_attempts = 0,
-                    last_error = NULL,
-                    next_retry_at = NULL,
-                    manual_retries = manual_retries + 1
-                WHERE processing_status = 'dead'
-                  AND event_id IN ({placeholders})""",
-            tuple(body.event_ids),
-        )
-    else:
-        return RetryDeadEventsResponse(retried=0)
-
-    await db.commit()
-    retried = cursor.rowcount
-
-    if retried:
-        log.info("dead_events_retried", count=retried, bulk=body.all)
-
+    retried = await requeue_dead_events(body.event_ids, all_dead=body.all)
     return RetryDeadEventsResponse(retried=retried)

@@ -114,6 +114,46 @@ async def enqueue_event(event_id: str) -> None:
     await db.commit()
 
 
+async def requeue_dead_events(
+    event_ids: list[str] | None = None, *, all_dead: bool = False
+) -> int:
+    """Put dead events back on the queue for a fresh retry cycle.
+
+    Only rows whose processing_status is 'dead' are touched, so an event that
+    is queued, retrying, processing or already completed is left alone. The
+    attempt counter is reset to 0 so the consumer gives the event its full
+    automatic retry budget again, and manual_retries is bumped for the Audit
+    page. Pass ``all_dead=True`` to requeue every dead event (the Audit tab's
+    bulk action) or ``event_ids`` for specific ones. Returns how many rows
+    were requeued.
+    """
+    db = await get_db()
+    reset = """SET processing_status = 'queued',
+                   processing_attempts = 0,
+                   last_error = NULL,
+                   next_retry_at = NULL,
+                   manual_retries = manual_retries + 1"""
+    if all_dead:
+        cursor = await db.execute(
+            f"UPDATE events {reset} WHERE processing_status = 'dead'"
+        )
+    elif event_ids:
+        placeholders = ",".join("?" for _ in event_ids)
+        cursor = await db.execute(
+            f"""UPDATE events {reset}
+                WHERE processing_status = 'dead'
+                  AND event_id IN ({placeholders})""",
+            tuple(event_ids),
+        )
+    else:
+        return 0
+    await db.commit()
+    retried = cursor.rowcount
+    if retried:
+        log.info("dead_events_retried", count=retried, bulk=all_dead)
+    return retried
+
+
 async def _claim_event(event_id: str) -> bool:
     """Atomically claim an event for processing. Returns True if claimed."""
     db = await get_db()

@@ -50,6 +50,7 @@ def _register_tools() -> None:
         "mark_card_done": card_tools.mark_card_done,
         "archive_card": card_tools.archive_card,
         "reopen_card": card_tools.reopen_card,
+        "retry_card": card_tools.retry_card,
         # Settings tools
         "get_settings": settings_tools.get_settings,
         "update_theme": settings_tools.update_theme,

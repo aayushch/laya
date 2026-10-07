@@ -636,3 +636,104 @@ async def reopen_card(card_id: str) -> dict[str, Any]:
     """Reopen a dismissed/archived card back to pending."""
     # allow_restore: dismissed/archived → pending is a deliberate non-forward move.
     return await _update_card_status(card_id, "pending", allow_restore=True)
+
+
+# Event processing_status values that mean a retry is already underway, so a
+# second one would be a no-op at best and a double-run at worst.
+_EVENT_IN_FLIGHT = ("queued", "retrying", "processing")
+
+
+async def retry_card(card_id: str) -> dict[str, Any]:
+    """Re-run the pipeline for ONE card whose originating event is dead.
+
+    A dead event is one that exhausted its automatic retries (typically a
+    local-model timeout). Requeuing it re-runs the pipeline against the same
+    card_id, so the card is regenerated in place rather than duplicated.
+
+    This tool is single-card by contract: it takes exactly one
+    card id and has no bulk form. On local-model setups a mass retry can
+    starve live ingestion, so "retry everything" stays a human action in
+    Settings -> Audit. A caller that passes a list is rejected rather than
+    retrying its first element.
+    """
+    if not isinstance(card_id, str):
+        return {
+            "error": "retry_card takes exactly one card_id string; it cannot "
+                     "retry a list of cards. Call it once per card."
+        }
+    card_id = card_id.strip()
+    if not card_id or any(ch in card_id for ch in ", \t\n"):
+        return {
+            "error": "retry_card takes exactly one card_id; pass a single id "
+                     "with no separators."
+        }
+
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        """SELECT c.card_id, c.event_id, c.status AS card_status,
+                  e.processing_status, e.last_error
+           FROM action_cards c
+           LEFT JOIN events e ON e.event_id = c.event_id
+           WHERE c.card_id = ?""",
+        (card_id,),
+    )
+    if not rows:
+        return {"error": f"Card '{card_id}' not found"}
+
+    row = rows[0]
+    event_id = row["event_id"]
+    event_status = row["processing_status"]
+
+    if event_status is None:
+        return {"error": f"Card '{card_id}' has no stored event to re-run"}
+    if event_status in _EVENT_IN_FLIGHT:
+        return {
+            "error": f"Card '{card_id}' is already being processed (event is "
+                     f"'{event_status}'); nothing to retry yet.",
+            "card_id": card_id,
+            "event_status": event_status,
+        }
+    if event_status != "dead":
+        return {
+            "error": f"Card '{card_id}' has no failed processing to retry (event "
+                     f"is '{event_status}'). Use reopen_card to bring a dismissed, "
+                     "archived or failed card back instead.",
+            "card_id": card_id,
+            "card_status": row["card_status"],
+            "event_status": event_status,
+        }
+
+    from laya.pipeline.queue import requeue_dead_events
+    retried = await requeue_dead_events([event_id])
+    if not retried:
+        # The event stopped being dead between the read and the update.
+        return {
+            "error": f"Card '{card_id}' was already retried by someone else.",
+            "card_id": card_id,
+        }
+
+    # Same audit trail as the other chat-initiated card mutations; local import
+    # avoids an import cycle with the LLM client.
+    from laya.llm.client import log_to_audit
+
+    await log_to_audit(
+        event_id=event_id, card_id=card_id, step="lifecycle",
+        model="n/a", input_tokens=0, output_tokens=0, latency_ms=0,
+        success=True,
+        metadata={
+            "action": "retry",
+            "previous_status": row["card_status"],
+            "last_error": row["last_error"],
+            "source": "chat",
+        },
+    )
+
+    return {
+        "card_id": card_id,
+        "event_id": event_id,
+        "previous_status": row["card_status"],
+        "previous_error": row["last_error"],
+        "success": True,
+        "message": "Event re-queued; the card will be regenerated in place "
+                   "once the pipeline picks it up.",
+    }
