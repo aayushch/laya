@@ -1431,7 +1431,7 @@ class TestCurrentAttentionBlock:
         block = self._build({"sections": _four_sections()})
         assert "EMPTY" in block
         assert "A1–A6" in block
-        assert "decide whether any subject must now be added" in block
+        assert "give each a verdict" in block
 
     def test_current_items_are_listed_with_live_state(self):
         snapshot = {"sections": _four_sections(attention=[
@@ -1462,3 +1462,97 @@ class TestOmniSchema:
         src = get_omni_json_schema("compact", ["b", "a", "", "a"])["schema"]["properties"]["sections"]["items"]["properties"]["items"]["items"]["properties"]["source_cards"]
         assert src["items"] == {"type": "string", "enum": ["a", "b"]}
         assert src["minItems"] == 1
+
+
+class TestTriageContract:
+    """The model decides per subject in `triage`, written before the sections.
+    The pipeline records the verdicts and reports disagreements; it never acts
+    on them."""
+
+    def test_triage_is_the_first_property_and_required(self):
+        from laya.llm.prompts.omni import get_omni_json_schema
+        schema = get_omni_json_schema("compact")["schema"]
+        assert list(schema["properties"])[:2] == ["triage", "sections"]
+        assert schema["required"] == ["triage", "sections", "attention_exits"]
+        verdict = schema["properties"]["triage"]["items"]["properties"]["verdict"]
+        assert verdict["enum"] == ["attention", "recent", "period", "milestone", "drop"]
+
+    def test_user_turn_asks_for_triage_first_and_labels_priority_after_the_text(self):
+        from laya.llm.prompts.omni import build_omni_resynthesis_messages
+        msgs = build_omni_resynthesis_messages(
+            current_snapshot={"sections": _four_sections()},
+            new_cards=[{"card_id": "c1", "header": "Build failed: PR-788", "summary": "CI red",
+                        "priority": "CRITICAL", "source_platform": "gmail",
+                        "entity_id": "gmail:email_thread:x"}],
+            acted_cards=[], pinned_items=[], density="compact", space_id="default",
+            item_states=[], resolved_cards=[], prior_recent_items=[])
+        user = msgs[1]["content"]
+        rules = user[user.index("STRUCTURE RULES FOR THIS RUN"):]
+        assert rules.splitlines()[1].startswith("- `triage` first")
+        assert "- Build failed: PR-788 — CI red (priority: CRITICAL, platform: gmail, card_id: c1)" in user
+        assert "- [CRITICAL]" not in user
+        assert "in `triage`, walk every NEW CARD" in user
+        assert "## HOW TO WORK" in msgs[0]["content"]
+
+    def test_mismatch_detection_is_by_entity_overlap(self):
+        from laya.pipeline.omni import _triage_mismatches
+        sections = _four_sections(
+            recent=[_agg("2 build failures", ["c1"], ["gmail:email_thread:x"], priority="CRITICAL")],
+            period=[_agg("old stuff", ["c2"], ["jira:ticket:OLD-1"])],
+        )
+        triage = [
+            {"subject": "PR-788 build", "entity_ids": ["gmail:email_thread:x"], "verdict": "attention", "rule": "A3", "why": "your commit"},
+            {"subject": "OLD-1", "entity_ids": ["jira:ticket:OLD-1"], "verdict": "period", "rule": "none", "why": "history"},
+            {"subject": "newsletter", "entity_ids": ["gmail:email_thread:n"], "verdict": "drop", "rule": "none", "why": "noise"},
+            {"subject": "unplaced", "entity_ids": ["jira:ticket:GONE"], "verdict": "recent", "rule": "none", "why": "folded into catch-all"},
+        ]
+        mismatches = _triage_mismatches(triage, sections)
+        assert [m["subject"] for m in mismatches] == ["PR-788 build"]
+        assert mismatches[0]["placed_in"] == ["recent"]
+
+
+@pytest.mark.asyncio
+class TestTriageStorage:
+    async def test_triage_is_stored_with_the_snapshot_and_not_fed_forward(self, db):
+        from laya.pipeline import omni as omni_pipeline
+        omni_pipeline._latest_cache.pop("default", None)
+        now = datetime.now(timezone.utc)
+        base = now - timedelta(minutes=30)
+        for i in range(50):  # 2 folds
+            await insert_test_card(db, card_id=f"card_t{i:03d}", event_id=f"evt_t{i:03d}",
+                                   priority="LOW", entity_id=f"gmail:email_thread:t{i}",
+                                   space_id="default")
+            await db.execute("UPDATE action_cards SET created_at = ? WHERE card_id = ?",
+                             (_ts(base + timedelta(seconds=i)), f"card_t{i:03d}"))
+        await db.commit()
+
+        snapshots_seen: list = []
+        real_build = omni_pipeline.build_omni_resynthesis_messages
+
+        def spy_build(**kwargs):
+            snapshots_seen.append(kwargs.get("current_snapshot"))
+            return real_build(**kwargs)
+
+        triage = [{"subject": "digests", "entity_ids": ["gmail:email_thread:t49"],
+                   "verdict": "recent", "rule": "none", "why": "informational"},
+                  {"subject": "bad", "entity_ids": [], "verdict": "elsewhere", "rule": "", "why": ""}]
+
+        async def fake(**kwargs):
+            class R:
+                parsed = {"triage": triage,
+                          "sections": _four_sections(recent=[_agg("50 digests", ["card_t049"], ["gmail:email_thread:t49"], priority="LOW")]),
+                          "attention_exits": []}
+                truncated = False
+                output_tokens = 10
+                model = "test"
+            return R()
+
+        with patch.object(omni_pipeline, "build_omni_resynthesis_messages", new=spy_build), \
+             patch.object(omni_pipeline, "llm_call", new=fake):
+            assert await _run(db) is not None
+
+        assert len(snapshots_seen) == 2
+        assert "triage" not in (snapshots_seen[1] or {})
+        content = json.loads((await _latest_row(db))["content_json"])
+        assert content["triage"] == [{"subject": "digests", "entity_ids": ["gmail:email_thread:t49"],
+                                      "verdict": "recent", "rule": "none", "why": "informational"}]

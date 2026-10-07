@@ -564,7 +564,7 @@ async def run_entity_agent(entity_id: str, body: RunEntityAgentRequest) -> dict:
         write_entity_context_file,
     )
     from laya.config import load_repos, load_settings
-    from laya.workers.engineer import resolve_repo_path
+    from laya.workers.engineer import resolve_entity_repo_path
 
     entity_id = unquote(entity_id)
     db = await get_db()
@@ -613,14 +613,11 @@ async def run_entity_agent(entity_id: str, body: RunEntityAgentRequest) -> dict:
     await write_entity_context_file(entity_id, space_id)
     research_dir = get_entity_research_dir(entity_id)
 
-    # 5. Resolve repo
-    from laya.models.classification import Category, Persona, Priority, RouterOutput
-
-    dummy_router = RouterOutput(
-        persona=Persona.ENGINEER, priority=Priority.MEDIUM,
-        category=Category.CODE, confidence=0.8, entities=[],
-    )
-    repo_path, other_repos = await resolve_repo_path(dummy_router, space_id=space_id)
+    # 5. Resolve repo. The agent's cwd must be the repo the work is about
+    # (Claude Code reads its permission allowlist from the primary root, not
+    # from --add-dir paths), so the resolver reads the persisted classification
+    # and payload of every event in this entity group.
+    repo_path, other_repos = await resolve_entity_repo_path(entity_id, space_id=space_id)
 
     # 6. Determine cwd and add_dirs
     research_dir_str = str(research_dir)

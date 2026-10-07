@@ -669,3 +669,112 @@ def test_prompt_caching_not_applied_to_gemini():
         assert _apply_prompt_caching(model, msgs) == msgs
     out = _apply_prompt_caching("anthropic/claude-sonnet-4", msgs)
     assert out[0]["content"][0]["cache_control"] == {"type": "ephemeral"}
+
+
+# --- Gemini: no sampling parameters (issue #49) ---
+# Google deprecated temperature/top_p/top_k. Gemini 3.6 Flash+ ignore them and
+# upcoming models reject requests carrying them with 400 INVALID_ARGUMENT, so
+# Laya must not send temperature on any Gemini route — including aliases such
+# as gemini-flash-latest, whose target model Laya cannot know.
+
+
+async def _capture_cloud_kwargs(model: str, *, stream: bool = False) -> dict:
+    """Run llm_call (or llm_call_streaming) for a cloud ``model`` and return the
+    kwargs handed to litellm.acompletion."""
+    captured: dict = {}
+
+    async def _fake_stream():
+        class _D:
+            content = "hi"
+            tool_calls = None
+        class _C:
+            delta = _D()
+            finish_reason = "stop"
+        class _Chunk:
+            choices = [_C()]
+        yield _Chunk()
+
+    async def _mock_ac(**kwargs):
+        captured.update(kwargs)
+        return _fake_stream() if stream else _mock_acompletion_response()
+
+    role = "chat" if stream else "router"
+    with patch("litellm.acompletion", _mock_ac):
+        with patch("laya.llm.client.load_settings", return_value={"models": {role: model}}):
+            with patch("litellm.get_model_info", side_effect=Exception("unknown model")):
+                with patch("laya.pipeline.queue.get_model_timeout", return_value=120):
+                    with patch("laya.pipeline.queue.get_llm_retries", return_value=1):
+                        if stream:
+                            from laya.llm.client import llm_call_streaming
+
+                            async for _ in llm_call_streaming(
+                                role=role, messages=[{"role": "user", "content": "hi"}], step="chat"
+                            ):
+                                pass
+                        else:
+                            await llm_call(
+                                role=role,
+                                messages=[{"role": "user", "content": "hi"}],
+                                response_schema=_SCHEMA,
+                                step="route",
+                                temperature=0.0,
+                            )
+    return captured
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "model",
+    [
+        "gemini/gemini-flash-latest",
+        "gemini/gemini-pro-latest",
+        "gemini/gemini-2.5-flash",
+        "gemini/gemini-3-pro-preview",
+        "gemini/gemini-3.6-flash",
+        "vertex_ai/gemini-2.5-pro",
+        "openrouter/google/gemini-2.5-flash",
+    ],
+)
+async def test_gemini_requests_carry_no_temperature(db, model):
+    kwargs = await _capture_cloud_kwargs(model)
+    assert "temperature" not in kwargs
+    assert "top_p" not in kwargs and "top_k" not in kwargs
+    assert kwargs["model"] == model
+
+
+@pytest.mark.asyncio
+async def test_gemini_streaming_carries_no_temperature(db):
+    """llm_call_streaming shares _prepare_call_kwargs with llm_call, so the
+    Gemini rule must hold on the streaming path too."""
+    kwargs = await _capture_cloud_kwargs("gemini/gemini-flash-latest", stream=True)
+    assert kwargs["stream"] is True
+    assert "temperature" not in kwargs
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "model",
+    ["anthropic/claude-haiku-4-5", "openai/gpt-4o-mini", "openrouter/anthropic/claude-sonnet-4"],
+)
+async def test_non_gemini_requests_keep_caller_temperature(db, model):
+    kwargs = await _capture_cloud_kwargs(model)
+    assert kwargs["temperature"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_local_provider_keeps_caller_temperature(db):
+    """Custom/local providers are untouched by the Gemini rule."""
+    kwargs = await _capture_acompletion_kwargs(response_schema=_SCHEMA, custom_meta=None)
+    assert kwargs["temperature"] == 0.0
+
+
+def test_is_gemini_model_predicate():
+    from laya.llm.client import _is_gemini_model
+
+    assert _is_gemini_model("gemini/gemini-flash-latest")
+    assert _is_gemini_model("vertex_ai/gemini-3.6-flash")
+    assert _is_gemini_model("openrouter/google/gemini-2.5-pro")
+    assert not _is_gemini_model("anthropic/claude-haiku-4-5")
+    assert not _is_gemini_model("openrouter/openai/gpt-4o")
+    assert not _is_gemini_model("lmstudio-local/gemma-3-12b")
+    assert not _is_gemini_model("ollama/gemma3")

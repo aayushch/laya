@@ -39,26 +39,79 @@ async def _get_space_repos(space_id: str) -> list[str]:
         return []
 
 
-async def resolve_repo_path(
-    router_output: RouterOutput,
-    event: LayaEvent | None = None,
-    space_id: str | None = None,
+# Metadata keys the ingestion workflows use to name the repo an event belongs
+# to. GitHub writes "repo" as "owner/repo" (matches a repo's remote_id);
+# Bitbucket writes "bb_repository" as the bare slug.
+_REPO_METADATA_KEYS = ("repo", "bb_repository", "repository")
+
+
+def _repo_refs_from_event(event: LayaEvent | None) -> list[str]:
+    """Repo names the platform itself attached to the event's metadata."""
+    if event is None:
+        return []
+    refs = []
+    for key in _REPO_METADATA_KEYS:
+        val = event.content.metadata.get(key)
+        if isinstance(val, str) and val.strip():
+            refs.append(val)
+    return refs
+
+
+def _repo_refs_from_router(router_output: RouterOutput | None) -> list[str]:
+    """Repo names the router extracted as entities."""
+    if router_output is None:
+        return []
+    return [
+        e.value for e in router_output.entities
+        if e.entity_type in ("repo", "repository") and e.value
+    ]
+
+
+def _search_text_from_event(event: LayaEvent | None) -> str:
+    """Event title and body excerpt scanned for repo names (keyword step)."""
+    if event is None:
+        return ""
+    return f"{event.subject.title} {event.content.body[:500]}".lower()
+
+
+def _dedupe_refs(refs: list[str]) -> list[str]:
+    """Drop duplicate refs case-insensitively, keeping first occurrence order."""
+    seen: set[str] = set()
+    out = []
+    for ref in refs:
+        key = ref.lower().strip()
+        if key and key not in seen:
+            seen.add(key)
+            out.append(ref)
+    return out
+
+
+async def _match_repo(
+    repo_refs: list[str],
+    search_text: str,
+    space_id: str | None,
 ) -> tuple[str | None, list[str]]:
-    """Resolve the target repo path and additional directories.
+    """Pick the agent's primary repo from the registered repos.
+
+    Args:
+        repo_refs: Candidate repo names/slugs, strongest first (platform metadata,
+            then router entities).
+        search_text: Lower-cased free text (event titles/bodies) scanned for repo
+            names when no ref matches.
+        space_id: Narrows candidates to the space's assigned repos.
 
     Returns:
-        Tuple of (primary_repo_path, additional_dir_paths).
-        When repo resolution is confident (exact/entity/keyword match), additional dirs
-        are the remaining repos. When resolution falls back to the first repo, ALL repos
-        are included as additional dirs so the agent has full context.
+        Tuple of (primary_repo_path, additional_dir_paths). The additional dirs are
+        always the remaining candidate repos, so the agent keeps full context even
+        when resolution had to fall back.
 
     Matching strategy (first match wins):
     0. If space has repos assigned, narrow candidates to those repos.
-       If only one repo is assigned to the space, return it immediately.
-    1. Exact name match on entity value vs repo name
-    2. Substring match on entity value vs repo name or remote_id
-    3. Keyword match: scan event subject/body for repo names
-    4. Fallback: first repo in the (possibly narrowed) candidate list + all others as add_dirs
+       If only one candidate remains, return it immediately.
+    1. Exact match of a ref vs repo name
+    2. Substring match of a ref vs repo name or remote_id
+    3. Keyword match: scan search_text for repo names / remote_ids
+    4. Fallback: first repo in the (possibly narrowed) candidate list
     """
     repos_data = load_repos()
     repos = repos_data.get("repos", [])
@@ -87,34 +140,40 @@ async def resolve_repo_path(
     if len(repos) == 1:
         return repos[0]["path"], []
 
-    # 1 & 2. Entity-based matching (exact then substring) — confident resolution
-    repo_entities = [e for e in router_output.entities if e.entity_type in ("repo", "repository")]
-    for entity in repo_entities:
-        val = entity.value.lower().strip()
+    # 1 & 2. Ref-based matching (exact then substring) — confident resolution
+    for ref in repo_refs:
+        val = ref.lower().strip()
+        if not val:
+            continue
         # Exact name match first
         for repo in repos:
             if val == repo.get("name", "").lower():
                 path = repo["path"]
+                log.info("repo_resolved", method="ref_exact", ref=ref, primary=path)
                 return path, _other_paths(path)
         # Substring match on name or remote_id
         for repo in repos:
             repo_name = repo.get("name", "").lower()
             remote_id = repo.get("remote_id", "").lower()
-            if val and (val in repo_name or repo_name in val or val in remote_id or remote_id in val):
+            if (repo_name and (val in repo_name or repo_name in val)) or (
+                remote_id and (val in remote_id or remote_id in val)
+            ):
                 path = repo["path"]
+                log.info("repo_resolved", method="ref_substring", ref=ref, primary=path)
                 return path, _other_paths(path)
 
-    # 3. Keyword match: scan event text for repo names — confident resolution
-    if event:
-        search_text = f"{event.subject.title} {event.content.body[:500]}".lower()
+    # 3. Keyword match: scan free text for repo names — confident resolution
+    if search_text:
         best_repo = None
         best_score = 0
         for repo in repos:
             name = repo.get("name", "").lower()
+            remote_id = repo.get("remote_id", "").lower()
             if not name:
                 continue
-            if name in search_text:
+            if name in search_text or (remote_id and remote_id in search_text):
                 path = repo["path"]
+                log.info("repo_resolved", method="keyword", primary=path)
                 return path, _other_paths(path)
             parts = [p for p in name.replace("-", " ").replace("_", " ").split() if len(p) > 2]
             score = sum(1 for p in parts if p in search_text)
@@ -123,6 +182,7 @@ async def resolve_repo_path(
                 best_repo = repo
         if best_repo and best_score > 0:
             path = best_repo["path"]
+            log.info("repo_resolved", method="keyword_partial", primary=path, score=best_score)
             return path, _other_paths(path)
 
     # 4. Fallback: first repo + ALL remaining repos as additional dirs
@@ -130,6 +190,74 @@ async def resolve_repo_path(
     primary = repos[0]["path"]
     log.info("repo_resolution_fallback", primary=primary, add_dirs=len(all_repo_paths) - 1)
     return primary, _other_paths(primary)
+
+
+async def resolve_repo_path(
+    router_output: RouterOutput,
+    event: LayaEvent | None = None,
+    space_id: str | None = None,
+) -> tuple[str | None, list[str]]:
+    """Resolve the target repo for a single classified event.
+
+    Signals, strongest first: the repo named in the event's platform metadata,
+    then the router's repo entities, then a keyword scan of the event text.
+    See ``_match_repo`` for the matching order and the return contract.
+    """
+    repo_refs = _dedupe_refs(_repo_refs_from_event(event) + _repo_refs_from_router(router_output))
+    return await _match_repo(repo_refs, _search_text_from_event(event), space_id)
+
+
+async def resolve_entity_repo_path(
+    entity_id: str,
+    space_id: str | None = None,
+) -> tuple[str | None, list[str]]:
+    """Resolve the target repo for an entity-level agent run.
+
+    An entity group spans several cards, each with its own event. Every event's
+    persisted classification (``events.router_output``) and payload
+    (``events.raw_json``) contributes signals, newest card first, so a repo named
+    on any card in the group is found. Rows whose JSON is missing or unparsable
+    (a reclassify clears router_output until the router re-runs) are skipped.
+    See ``_match_repo`` for the matching order and the return contract.
+    """
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        """SELECT e.raw_json, e.router_output
+           FROM action_cards ac
+           JOIN events e ON e.event_id = ac.event_id
+           WHERE ac.entity_id = ?
+           ORDER BY ac.created_at DESC""",
+        (entity_id,),
+    )
+
+    repo_refs: list[str] = []
+    # The entity id itself ("platform:subject_type:subject_id") is scanned too, so
+    # a subject id that embeds the repo slug matches without any event payload.
+    text_parts: list[str] = [entity_id.lower()]
+    for row in rows:
+        event = None
+        if row["raw_json"]:
+            try:
+                event = LayaEvent.model_validate_json(row["raw_json"])
+            except Exception:
+                event = None
+        router_output = None
+        if row["router_output"]:
+            try:
+                router_output = RouterOutput.model_validate_json(row["router_output"])
+            except Exception:
+                router_output = None
+        repo_refs.extend(_repo_refs_from_event(event))
+        repo_refs.extend(_repo_refs_from_router(router_output))
+        text = _search_text_from_event(event)
+        if text:
+            text_parts.append(text)
+
+    repo_refs = _dedupe_refs(repo_refs)
+    log.debug(
+        "entity_repo_signals", entity_id=entity_id, events=len(rows), refs=repo_refs,
+    )
+    return await _match_repo(repo_refs, " ".join(text_parts), space_id)
 
 
 async def _gather_context(event: LayaEvent, router_output: RouterOutput) -> list[dict]:

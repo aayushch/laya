@@ -350,3 +350,129 @@ class TestResolveRepoPath:
         with patch("laya.workers.engineer.load_repos", return_value={"repos": []}):
             path, add_dirs = await resolve_repo_path(router_output)
         assert path is None
+
+
+# Two registered repos where the relevant one is deliberately SECOND, so a
+# resolver that only ever falls back to repos[0] is caught (issue #46).
+TWO_REPOS = {"repos": [
+    {"name": "coordinator-api", "path": "/tmp/coordinator-api", "platform": "github",
+     "remote_id": "org/coordinator-api"},
+    {"name": "monorepo-go", "path": "/tmp/monorepo-go", "platform": "github",
+     "remote_id": "org/monorepo-go"},
+]}
+
+
+def _event_json(title: str, body: str, metadata: dict | None = None, platform: str = "jira") -> str:
+    """Serialized LayaEvent as stored in events.raw_json."""
+    return json.dumps({
+        "event_id": "evt_x",
+        "timestamp": "2026-02-22T14:30:00Z",
+        "source": {"platform": platform, "raw_event_type": "issue_updated"},
+        "actor": {"name": "Sarah", "email": "sarah@company.com"},
+        "subject": {"type": "ticket", "id": "INV-1", "title": title},
+        "content": {"body": body, "attachments": [], "metadata": metadata or {}},
+    })
+
+
+def _router_json(entities: list[dict]) -> str:
+    """Serialized RouterOutput as stored in events.router_output."""
+    return json.dumps({**MOCK_ROUTER_RESPONSE, "entities": entities})
+
+
+async def _seed(db, card_id: str, event_id: str, entity_id: str, raw_json: str | None, router_output: str | None):
+    """Insert a card + event and overwrite the event's persisted JSON blobs."""
+    from tests.conftest import insert_test_card
+    await insert_test_card(db, card_id, event_id, entity_id=entity_id)
+    await db.execute(
+        "UPDATE events SET raw_json = ?, router_output = ? WHERE event_id = ?",
+        (raw_json if raw_json is not None else "{}", router_output, event_id),
+    )
+    await db.commit()
+
+
+class TestResolveEntityRepoPath:
+    """resolve_entity_repo_path reads the entity's persisted events (issue #46)."""
+
+    ENTITY = "jira:ticket:INV-1"
+
+    @pytest.fixture(autouse=True)
+    def two_repos(self):
+        with patch("laya.workers.engineer.load_repos", return_value=TWO_REPOS):
+            yield
+
+    @pytest.mark.asyncio
+    async def test_router_repo_entity_picks_named_repo(self, db):
+        from laya.workers.engineer import resolve_entity_repo_path
+
+        await _seed(db, "c1", "e1", self.ENTITY,
+                    _event_json("Invoice totals wrong", "Numbers are off."),
+                    _router_json([{"entity_type": "repo", "value": "monorepo-go", "platform": "github"}]))
+        path, add_dirs = await resolve_entity_repo_path(self.ENTITY)
+        assert path == "/tmp/monorepo-go"
+        assert add_dirs == ["/tmp/coordinator-api"]
+
+    @pytest.mark.asyncio
+    async def test_platform_metadata_repo_matches_remote_id(self, db):
+        from laya.workers.engineer import resolve_entity_repo_path
+
+        await _seed(db, "c1", "e1", self.ENTITY,
+                    _event_json("PR #12", "Fix rounding", metadata={"repo": "org/monorepo-go"}, platform="github"),
+                    None)
+        path, _ = await resolve_entity_repo_path(self.ENTITY)
+        assert path == "/tmp/monorepo-go"
+
+    @pytest.mark.asyncio
+    async def test_repo_named_only_in_body_matches_by_keyword(self, db):
+        from laya.workers.engineer import resolve_entity_repo_path
+
+        await _seed(db, "c1", "e1", self.ENTITY,
+                    _event_json("Invoice totals wrong", "invoice-service in monorepo-go computes tax twice."),
+                    _router_json([]))
+        path, _ = await resolve_entity_repo_path(self.ENTITY)
+        assert path == "/tmp/monorepo-go"
+
+    @pytest.mark.asyncio
+    async def test_signal_on_older_sibling_card_still_resolves(self, db):
+        from laya.workers.engineer import resolve_entity_repo_path
+
+        # Older card names the repo; the newest card is a terse follow-up.
+        await _seed(db, "c_old", "e_old", self.ENTITY,
+                    _event_json("Invoice totals wrong", "Bug is in monorepo-go."), _router_json([]))
+        await db.execute("UPDATE action_cards SET created_at = '2026-01-01 00:00:00' WHERE card_id = 'c_old'")
+        await db.commit()
+        await _seed(db, "c_new", "e_new", self.ENTITY,
+                    _event_json("Re: Invoice totals wrong", "Approved."), _router_json([]))
+        path, _ = await resolve_entity_repo_path(self.ENTITY)
+        assert path == "/tmp/monorepo-go"
+
+    @pytest.mark.asyncio
+    async def test_no_signals_falls_back_to_first_repo(self, db):
+        from laya.workers.engineer import resolve_entity_repo_path
+
+        # raw_json "{}" and NULL router_output must be tolerated, not raised.
+        await _seed(db, "c1", "e1", self.ENTITY, "{}", None)
+        path, add_dirs = await resolve_entity_repo_path(self.ENTITY)
+        assert path == "/tmp/coordinator-api"
+        assert add_dirs == ["/tmp/monorepo-go"]
+
+    @pytest.mark.asyncio
+    async def test_unknown_entity_falls_back_to_first_repo(self, db):
+        from laya.workers.engineer import resolve_entity_repo_path
+
+        path, _ = await resolve_entity_repo_path("jira:ticket:NOPE-1")
+        assert path == "/tmp/coordinator-api"
+
+
+class TestResolveRepoPathMetadata:
+    """resolve_repo_path (single-event path) also honors platform metadata."""
+
+    @pytest.mark.asyncio
+    async def test_event_metadata_repo_wins_over_fallback(self, db, sample_event):
+        from laya.workers.engineer import resolve_repo_path
+
+        router_output = RouterOutput(**MOCK_ROUTER_RESPONSE)
+        router_output.entities = []
+        sample_event.content.metadata["repo"] = "org/monorepo-go"
+        with patch("laya.workers.engineer.load_repos", return_value=TWO_REPOS):
+            path, _ = await resolve_repo_path(router_output, event=sample_event)
+        assert path == "/tmp/monorepo-go"

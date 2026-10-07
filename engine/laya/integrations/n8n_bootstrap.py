@@ -31,6 +31,11 @@ _ENV_PASSWORD = os.environ.get("LAYA_N8N_OWNER_PASSWORD")  # optional operator o
 _DEFAULT_FIRST_NAME = "Laya"
 _DEFAULT_LAST_NAME = "Admin"
 
+# Label of the public API key the bootstrap creates for the engine. n8n
+# enforces unique labels per user, so this is also how a stale key from an
+# earlier bootstrap is recognised and reclaimed.
+_API_KEY_LABEL = "laya-engine"
+
 # Where Laya's bundled n8n workflows live.
 # In repo: engine/../../n8n/workflows
 # In bundled app: engine/n8n_workflows (sibling to laya/ inside the engine resource)
@@ -178,7 +183,7 @@ async def _create_api_key(base_url: str, cookies: dict) -> str | None:
     try:
         resp = await get_client().post(
             f"{base_url}/rest/api-keys",
-            json={"label": "laya-engine", "scopes": scopes, "expiresAt": 4102444800},
+            json={"label": _API_KEY_LABEL, "scopes": scopes, "expiresAt": 4102444800},
             cookies=cookies,
             timeout=10.0,
         )
@@ -197,6 +202,59 @@ async def _create_api_key(base_url: str, cookies: dict) -> str | None:
     except Exception as e:
         log.error("n8n_api_key_create_error", error=str(e))
         return None
+
+
+async def _reclaim_api_key_label(base_url: str, cookies: dict) -> int:
+    """Delete every n8n API key that carries Laya's label. Returns the count deleted.
+
+    Called only after the stored key has been rejected by n8n, so a key still
+    registered under the label is one the engine can no longer use: its secret
+    is gone from the keychain (n8n shows a key's secret once, at creation).
+    Leaving it in place makes the next creation fail, because n8n rejects a
+    second key with the same label, and the bootstrap can never recover.
+
+    Best-effort: any failure is logged and returns 0 so the caller still
+    attempts creation, which then reports n8n's own error.
+    """
+    try:
+        resp = await get_client().get(
+            f"{base_url}/rest/api-keys",
+            cookies=cookies,
+            timeout=10.0,
+        )
+        if resp.status_code != 200:
+            log.warning("n8n_api_key_list_failed", status=resp.status_code)
+            return 0
+        body = resp.json()
+        keys = body.get("data", body) if isinstance(body, dict) else body
+        if not isinstance(keys, list):
+            return 0
+    except Exception as e:
+        log.warning("n8n_api_key_list_error", error=str(e))
+        return 0
+
+    deleted = 0
+    for key in keys:
+        if not isinstance(key, dict) or key.get("label") != _API_KEY_LABEL:
+            continue
+        key_id = key.get("id")
+        if not key_id:
+            continue
+        try:
+            resp = await get_client().delete(
+                f"{base_url}/rest/api-keys/{key_id}",
+                cookies=cookies,
+                timeout=10.0,
+            )
+            if resp.status_code == 200:
+                deleted += 1
+                log.info("n8n_stale_api_key_deleted", key_id=key_id)
+            else:
+                log.warning("n8n_stale_api_key_delete_failed",
+                            key_id=key_id, status=resp.status_code, body=resp.text[:300])
+        except Exception as e:
+            log.warning("n8n_stale_api_key_delete_error", key_id=key_id, error=str(e))
+    return deleted
 
 
 async def _test_existing_api_key(base_url: str) -> bool:
@@ -858,7 +916,10 @@ async def ensure_n8n_ready(*, _retries: int = 3, _backoff: float = 10.0) -> dict
                 "has_api_key": False,
             }
 
-    # Step 4: Create API key
+    # Step 4: Create API key. Step 2 established that the stored key (if any)
+    # no longer authenticates, so a key n8n still holds under Laya's label is
+    # unusable and must go first, or n8n rejects the new one as a duplicate.
+    await _reclaim_api_key_label(base_url, cookies)
     raw_key = await _create_api_key(base_url, cookies)
     if not raw_key:
         return {

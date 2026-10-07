@@ -78,6 +78,18 @@ rules.
 4. Pinned items that MUST survive compression
 5. Density constraints (max items per section, max words per item)
 
+## HOW TO WORK — decide first, then write
+
+Your output has a `triage` array BEFORE the sections. Fill it first. For every \
+subject you were given — each new card's subject (group cards that share an \
+entity_id), each current attention item, each prior recent aggregate — read its card \
+text and state line, pick the verdict (attention, recent, period, milestone or drop), \
+name the rule that decides it (A1–A6 for attention, E1–E7 for a prior attention item \
+that leaves, "none" otherwise) and cite the evidence in one clause. Only then write \
+the sections, and place each subject where its verdict says. A subject whose evidence \
+says the user authored it, is asked for something, or is blocking someone cannot have \
+the verdict `recent`: that is an attention subject by A1–A4.
+
 ## Section Types (produce exactly 4, in this order)
 
 ### attention
@@ -356,9 +368,9 @@ def build_omni_resynthesis_messages(
     else:
         attention_text += (
             "EMPTY — nothing is currently flagged as needing the user. That is not a "
-            "default to keep: walk every NEW CARD and every PRIOR RECENT AGGREGATE "
-            "against the admission rules A1–A6 and decide whether any subject must now "
-            "be added. Leave attention empty only if genuinely nothing needs the user.\n"
+            "default to keep: in `triage`, walk every NEW CARD and every PRIOR RECENT "
+            "AGGREGATE against the admission rules A1–A6 and give each a verdict. Leave "
+            "attention empty only if no subject's verdict is attention.\n"
         )
     attention_text += "[END CURRENT ATTENTION]\n"
 
@@ -393,10 +405,13 @@ def build_omni_resynthesis_messages(
             acted = " [USER ACTED]" if card.get("user_feedback") else ""
             tags_str = f" [tags: {card['tags']}]" if card.get("tags") else ""
             entity_str = f" [entity: {card['entity_id']}]" if card.get("entity_id") else ""
+            # Priority and platform trail the text as labelled fields: a leading
+            # "[CRITICAL]" token gets copied verbatim into the item text.
             cards_text += (
-                f"- [{card.get('priority', 'MEDIUM')}] [{card.get('source_platform', '?')}] "
-                f"{card.get('header', 'Untitled')} — {card.get('summary', '')}"
-                f" (card_id: {card.get('card_id', '?')}){entity_str}{acted}{tags_str}\n"
+                f"- {card.get('header', 'Untitled')} — {card.get('summary', '')}"
+                f" (priority: {card.get('priority', 'MEDIUM')}, "
+                f"platform: {card.get('source_platform', '?')}, "
+                f"card_id: {card.get('card_id', '?')}){entity_str}{acted}{tags_str}\n"
             )
     else:
         cards_text += "No new cards.\n"
@@ -455,7 +470,11 @@ def build_omni_resynthesis_messages(
     if prior_recent_items is not None:
         structure_text = (
             "\nSTRUCTURE RULES FOR THIS RUN:\n"
-            "- `attention` first: every still-open subject the user has to act on "
+            "- `triage` first: one entry per subject listed above (new cards grouped by "
+            "entity, current attention items, prior recent aggregates), each with its "
+            "verdict, the rule that decides it, and the evidence. The sections must "
+            "follow the verdicts.\n"
+            "- `attention` next: every still-open subject the user has to act on "
             "(ATTENTION RULES A1–A6), from the NEW CARDS and from the PRIOR RECENT "
             "AGGREGATES, grouped by theme. Priority informs this, it does not decide it.\n"
             "- Then `recent`, from the remaining NEW CARDS only. Prior recent aggregates "
@@ -616,7 +635,50 @@ def get_omni_json_schema(
         "strict": True,
         "schema": {
             "type": "object",
+            # Property order is the order a grammar-constrained decoder writes the
+            # keys, so `triage` comes first: the model commits its per-subject
+            # verdicts before it writes the sections those verdicts govern.
             "properties": {
+                "triage": {
+                    "type": "array",
+                    "description": (
+                        "One entry per subject you were given: each new card's subject "
+                        "(cards sharing an entity_id are one subject), each current "
+                        "attention item, each prior recent aggregate."
+                    ),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "subject": {
+                                "type": "string",
+                                "description": "One line naming the subject (ticket, PR, thread, person)",
+                            },
+                            "entity_ids": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "The subject's entity_ids",
+                            },
+                            "verdict": {
+                                "type": "string",
+                                "enum": ["attention", "recent", "period", "milestone", "drop"],
+                                "description": "Where this subject goes",
+                            },
+                            "rule": {
+                                "type": "string",
+                                "description": (
+                                    "The rule that decides the verdict: A1–A6 for attention, "
+                                    "E1–E7 for a prior attention item that leaves, none otherwise"
+                                ),
+                            },
+                            "why": {
+                                "type": "string",
+                                "description": "One clause citing the evidence from the card text or state line",
+                            },
+                        },
+                        "required": ["subject", "entity_ids", "verdict", "rule", "why"],
+                        "additionalProperties": False,
+                    },
+                },
                 "sections": {
                     "type": "array",
                     "items": section_schema,
@@ -653,7 +715,7 @@ def get_omni_json_schema(
                     },
                 },
             },
-            "required": ["sections", "attention_exits"],
+            "required": ["triage", "sections", "attention_exits"],
             "additionalProperties": False,
         },
     }

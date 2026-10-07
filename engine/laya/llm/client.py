@@ -300,6 +300,21 @@ def _add_provider_prefix(model_name: str) -> str:
     return model_name
 
 
+def _is_gemini_model(litellm_model: str) -> bool:
+    """True when a LiteLLM model string is served by Google's Gemini API.
+
+    Matches the Google AI Studio route (``gemini/...``), Vertex AI
+    (``vertex_ai/...``) and Gemini models relayed through OpenRouter
+    (``openrouter/google/gemini-...``), which forwards sampling parameters to
+    Google unchanged. Matching is by provider route, not by model-version
+    sniffing, so aliases such as ``gemini-flash-latest`` are covered.
+    """
+    provider, _, rest = litellm_model.partition("/")
+    if provider in ("gemini", "vertex_ai"):
+        return True
+    return provider == "openrouter" and rest.startswith("google/gemini")
+
+
 def _resolve_custom_provider(model: str) -> tuple[str, dict[str, Any]] | None:
     """Check if a model string references a custom provider.
 
@@ -604,11 +619,6 @@ async def _prepare_call_kwargs(
     if custom:
         model, custom_provider_extra = custom
 
-    # Gemini 3+ models degrade with temperature < 1.0 — force it to 1.0
-    effective_temperature = temperature
-    if model.split("/")[-1].startswith("gemini-3"):
-        effective_temperature = 1.0
-
     # Clamp max_tokens to what this model/server accepts so DEFAULT_MAX_TOKENS
     # never trips a 400 on strict providers and truncation-retry can't overflow
     # the output cap. None ⇒ unknown, so leave as-is (local servers self-clamp).
@@ -632,10 +642,19 @@ async def _prepare_call_kwargs(
     kwargs: dict[str, Any] = {
         "model": model,
         "messages": messages,
-        "temperature": effective_temperature,
         "max_tokens": max_tokens,
         "timeout": get_model_timeout(),
     }
+    # Gemini gets no sampling parameters. Google deprecated temperature/top_p/
+    # top_k: Gemini 3.6 Flash and later ignore them, and upcoming models reject
+    # any request that carries them with 400 INVALID_ARGUMENT — which would take
+    # down every stage (router, stager, chat, summaries) the moment a `-latest`
+    # alias moves to such a model. Every other provider still honours the
+    # caller's temperature. LiteLLM itself adds temperature=1.0 for model ids it
+    # classifies as Gemini 3+ (BerriAI/litellm#38663); that is outside our
+    # control and harmless on today's models, which ignore the value.
+    if not _is_gemini_model(model):
+        kwargs["temperature"] = temperature
     if stream:
         kwargs["stream"] = True
 

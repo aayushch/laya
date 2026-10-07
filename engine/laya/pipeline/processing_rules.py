@@ -404,8 +404,7 @@ async def _exec_run_agent(
             )
             from laya.agents import session_manager
             from laya.config import load_repos
-            from laya.workers.engineer import resolve_repo_path
-            from laya.models.classification import Category, Persona, Priority, RouterOutput as RO
+            from laya.workers.engineer import resolve_entity_repo_path
             from laya.api.cards_api import _stream_entity_agent
             from laya.tasks import create_task as create_tracked_task
 
@@ -440,8 +439,9 @@ async def _exec_run_agent(
             await write_entity_context_file(entity_id, space_id)
             research_dir_str = str(get_entity_research_dir(entity_id))
 
-            dummy_router = RO(persona=Persona.ENGINEER, priority=Priority.MEDIUM, category=Category.CODE, confidence=0.8, entities=[])
-            repo_path, other_repos = await resolve_repo_path(dummy_router, space_id=space_id)
+            # Resolve the repo from every event in the entity group (persisted
+            # classification + payload), mirroring cards_agent.run_entity_agent.
+            repo_path, other_repos = await resolve_entity_repo_path(entity_id, space_id=space_id)
 
             if repo_path:
                 cwd = repo_path

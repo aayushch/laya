@@ -928,7 +928,7 @@ async def agent_env(db):
         p(patch(f"{ec}.write_entity_context_file", new=AsyncMock()))
         p(patch(f"{ec}.get_entity_research_dir", new=MagicMock(return_value="/tmp/research/ent")))
         p(patch(f"{ec}.build_entity_agent_prompt", new=MagicMock(return_value="PROMPT")))
-        p(patch("laya.workers.engineer.resolve_repo_path", new=AsyncMock(return_value=(None, []))))
+        p(patch("laya.workers.engineer.resolve_entity_repo_path", new=AsyncMock(return_value=(None, []))))
         p(patch("laya.config.load_repos", new=MagicMock(return_value={"repos": []})))
         p(patch("laya.api.cards_api._stream_entity_agent", new=MagicMock()))
         p(patch("laya.tasks.create_task", new=MagicMock()))

@@ -777,6 +777,62 @@ def _is_echo(result_sections: list[dict], prior_sections: list[dict]) -> bool:
     )
 
 
+_TRIAGE_VERDICTS = {"attention", "recent", "period", "milestone", "drop"}
+
+
+def _valid_triage(raw) -> list[dict]:
+    """The model's `triage` entries, reduced to well-formed ones.
+
+    Triage is the model's written decision per subject — verdict, the rule it
+    applied, the evidence — produced before the sections. It is kept with the
+    snapshot so the user can see why a subject landed where it did. Nothing is
+    placed or moved because of it.
+    """
+    out: list[dict] = []
+    for entry in raw or []:
+        if not isinstance(entry, dict):
+            continue
+        verdict = str(entry.get("verdict") or "").strip().lower()
+        if verdict not in _TRIAGE_VERDICTS:
+            continue
+        out.append({
+            "subject": str(entry.get("subject") or "").strip(),
+            "entity_ids": [e for e in (entry.get("entity_ids") or []) if isinstance(e, str) and e],
+            "verdict": verdict,
+            "rule": str(entry.get("rule") or "none").strip(),
+            "why": str(entry.get("why") or "").strip(),
+        })
+    return out
+
+
+def _triage_mismatches(triage: list[dict], sections: list[dict]) -> list[dict]:
+    """Triage entries whose verdict disagrees with where the subject was placed.
+
+    Matched by entity overlap against the output items. A subject with verdict
+    `drop` that appears in a section, or one with verdict `attention` that
+    appears only in `recent`, is a mismatch. Logged for the user and for prompt
+    work; the sections are stored as the model wrote them.
+    """
+    placed: dict[str, set[str]] = {}
+    for section in sections or []:
+        for item in section.get("items", []) or []:
+            for eid in item.get("entity_ids") or []:
+                placed.setdefault(eid, set()).add(section.get("type") or "")
+    out: list[dict] = []
+    for entry in triage:
+        sections_seen: set[str] = set()
+        for eid in entry["entity_ids"]:
+            sections_seen |= placed.get(eid, set())
+        if entry["verdict"] == "drop":
+            ok = not sections_seen
+        else:
+            ok = entry["verdict"] in sections_seen or not sections_seen
+        if not ok:
+            out.append({"subject": entry["subject"], "verdict": entry["verdict"],
+                        "rule": entry["rule"], "placed_in": sorted(sections_seen)})
+    return out
+
+
 def _output_digest(sections: list[dict], new_card_ids: set[str]) -> list[dict]:
     """A compact, human-readable record of what the model returned.
 
@@ -1163,6 +1219,7 @@ async def _resynthesize_space(
         last_schema: dict = {}
         last_raw: str = ""
         exits_before_last: list[dict] = []
+        triage: list[dict] = []
         for idx, chunk in enumerate(chunks):
             first = idx == 0
             citable_ids.update(c["card_id"] for c in chunk)
@@ -1210,12 +1267,14 @@ async def _resynthesize_space(
             attention_exits.extend(
                 _valid_attention_exits(response.parsed.get("attention_exits"))
             )
+            triage = _valid_triage(response.parsed.get("triage"))
             last_messages, last_schema = messages, schema
             last_raw = json.dumps(response.parsed)
-            # Feed the fold forward WITHOUT the exits: a later chunk would read
-            # them as part of the snapshot and could echo them as new exits.
+            # Feed the fold forward WITHOUT the exits or the triage: a later chunk
+            # would read them as part of the snapshot and could echo them back.
             folded_snapshot = {
-                k: v for k, v in response.parsed.items() if k != "attention_exits"
+                k: v for k, v in response.parsed.items()
+                if k not in ("attention_exits", "triage")
             }
 
     except Exception as e:
@@ -1324,6 +1383,7 @@ async def _resynthesize_space(
                 attention_exits = exits_before_last + _valid_attention_exits(
                     repaired.parsed.get("attention_exits")
                 )
+                triage = _valid_triage(repaired.parsed.get("triage"))
                 covered = _new_cards_cited(result_sections, new_card_set)
             else:
                 repair_error = "malformed JSON" + (
@@ -1361,7 +1421,8 @@ async def _resynthesize_space(
                     f"snapshot kept; the cards will be offered again next run.",
             metadata={"new_cards": len(new_card_set), "echo": echo,
                       "repair_attempted": repair_attempted, "repair_error": repair_error,
-                      "output": _output_digest(result_sections, new_card_set)},
+                      "output": _output_digest(result_sections, new_card_set),
+                      "triage": triage},
         )
         gate.set()
         log.info("omni_resynthesis_gate_opened", space_id=space_id, reason="no_new_coverage")
@@ -1439,8 +1500,22 @@ async def _resynthesize_space(
     total_items_after = sum(len(s.get("items", [])) for s in result_sections)
     compression = 1.0 - (total_items_after / max(total_items_before, 1))
 
+    # The model's per-subject verdicts travel with the snapshot so the board can
+    # show why a line is where it is. A verdict that disagrees with the placement
+    # is logged; the sections stay as the model wrote them.
+    mismatches = _triage_mismatches(triage, result_sections)
+    verdict_counts: dict[str, int] = {}
+    for entry in triage:
+        verdict_counts[entry["verdict"]] = verdict_counts.get(entry["verdict"], 0) + 1
+    log.info("omni_resynthesis_triage", space_id=space_id, subjects=len(triage), **verdict_counts)
+    if mismatches:
+        log.warning(
+            "omni_resynthesis_triage_mismatch", space_id=space_id, mismatches=mismatches,
+        )
+
     content = {
         "sections": result_sections,
+        "triage": triage,
         "stats": {
             "events_processed": len(existing_card_ids) + len(new_cards),
             "cards_acted_on": cards_acted_count,
