@@ -40,7 +40,7 @@
 		'chat', 'chat_title',
 		'summarize', 'group_summary_initial', 'group_summary_rolling',
 		'trace', 'trace_filter', 'trace_summary',
-		'omni_resynthesis',
+		'omni_resynthesis', 'omni_resynthesis_outcome',
 		'execute', 'lifecycle', 'recovery',
 		'briefing',
 		'egress_draft', 'compose_polish', 'polish_draft',

@@ -237,6 +237,59 @@ class TestResynthesisSummary:
         summary = compute_resynthesis_change_summary(sections, sections, {}, TERMINAL)
         assert summary["counts"] == {"added": 0, "folded": 0, "resolved": 0}
 
+    def test_item_moving_up_the_chain_is_added_as_a_promotion(self):
+        """recent → attention is an arrival in attention: recorded under `added`
+        so the per-section tally nets to count-now − count-then."""
+        prior = _sections(recent=[_item("PR #7 opened", entities=["github:pr:7"], cards=["c1"])])
+        new = _sections(attention=[
+            _item("PR #7 awaiting your review", entities=["github:pr:7"], cards=["c1", "c2"],
+                  platforms=["github"])
+        ])
+        summary = compute_resynthesis_change_summary(prior, new, {}, TERMINAL)
+
+        assert summary["counts"] == {"added": 1, "folded": 0, "resolved": 0}
+        added = summary["added"][0]
+        assert added["section"] == "attention"
+        assert added["promoted_from"] == "recent"
+        assert added["text"] == "PR #7 awaiting your review"
+        assert added["source_count"] == 2
+        assert added["platforms"] == ["github"]
+        assert added["item_key"] == compute_item_key("attention", ["github:pr:7"])
+
+    def test_unknown_destination_section_is_not_a_promotion(self):
+        prior = _sections(recent=[_item("x", entities=["x:1"])])
+        new = _sections(bogus=[_item("x", entities=["x:1"])])
+        summary = compute_resynthesis_change_summary(prior, new, {}, TERMINAL)
+        assert summary["counts"] == {"added": 0, "folded": 0, "resolved": 0}
+
+    def test_promotion_then_drop_nets_to_nothing_when_merged(self):
+        """An item promoted into attention at v1 and compressed away at v2 must
+        not read as a net departure over the v0→v2 range."""
+        prior = _sections(recent=[_item("x", entities=["x:1"], cards=["c1"])])
+        promoted = _sections(attention=[_item("x!", entities=["x:1"], cards=["c1"])])
+        meta = {"c1": {"status": "ready"}}
+        v1 = compute_resynthesis_change_summary(prior, promoted, meta, TERMINAL)
+        v2 = compute_resynthesis_change_summary(promoted, _sections(recent=[]), meta, TERMINAL)
+        assert v1["counts"]["added"] == 1
+        assert v2["folded"][0]["from_section"] == "attention"
+
+        merged = merge_change_summaries([v1, v2])
+        assert _attention_headcount_delta(merged) == 0
+
+
+def _attention_headcount_delta(merged: dict) -> int:
+    """Mirror of the board's Attention Load delta: arrivals that were not at the
+    base minus departures of items that were."""
+    arrivals = sum(
+        1 for a in merged["added"] if a["section"] == "attention" and a["entered_in_range"]
+    )
+    departures = sum(
+        1 for r in merged["resolved"] if r["section"] == "attention" and not r["entered_in_range"]
+    ) + sum(
+        1 for f in merged["folded"] if f["from_section"] == "attention" and not f["entered_in_range"]
+    )
+    return arrivals - departures
+
     def test_one_prior_item_matches_only_one_new_item(self):
         """Two prior lines folding into one aggregate must not both claim it —
         the second falls through to the not-in-new branch."""
@@ -252,6 +305,30 @@ class TestResynthesisSummary:
         assert summary["counts"]["folded"] == 2
         destinations = sorted(str(f["to_section"]) for f in summary["folded"])
         assert destinations == ["None", "period"]
+
+    def test_declared_exit_reads_as_resolved_with_reason(self):
+        """A prior attention item the model exited is `resolved` with the exit's
+        reason, whether it vanished or was moved down into recent."""
+        prior = _sections(attention=[_item("Build failed on PR-748", entities=["bb:pr:748"], cards=["c1"])])
+        moved = _sections(recent=[_item("PR-748 green again", entities=["bb:pr:748"], cards=["c1", "c2"])])
+        meta = {"c1": {"status": "ready"}, "c2": {"status": "ready"}}
+        exits = [{"entity_ids": ["bb:pr:748"], "reason": "superseded", "note": "build passed"}]
+
+        for new in (moved, _sections(recent=[])):
+            summary = compute_resynthesis_change_summary(prior, new, meta, TERMINAL, None, exits)
+            assert summary["counts"]["folded"] == 0
+            assert summary["counts"]["resolved"] == 1
+            assert summary["resolved"][0]["reason"] == "superseded"
+            assert summary["resolved"][0]["note"] == "build passed"
+        # The moved-down line is consumed by the exit, not reported as newly added.
+        assert compute_resynthesis_change_summary(prior, moved, meta, TERMINAL, None, exits)["counts"]["added"] == 0
+
+    def test_exit_for_another_subject_does_not_apply(self):
+        prior = _sections(attention=[_item("x", entities=["x:1"], cards=["c1"])])
+        exits = [{"entity_ids": ["y:9"], "reason": "resolved", "note": ""}]
+        summary = compute_resynthesis_change_summary(
+            prior, _sections(recent=[]), {"c1": {"status": "ready"}}, TERMINAL, None, exits)
+        assert summary["counts"] == {"added": 0, "folded": 1, "resolved": 0}
 
     def test_missing_cards_do_not_count_as_resolved(self):
         """No card rows at all means unknown, not finished — otherwise a purged
@@ -287,6 +364,32 @@ class TestMerge:
         assert fold["to_section"] == "milestone"
         assert fold["from_text"] == "R"
         assert fold["to_text"] == "M"
+
+    def test_last_state_wins_so_a_dropped_then_readded_item_reads_as_added(self):
+        key = "abc123"
+        v1 = {"added": [], "resolved": [], "folded": [
+            {"item_key": key, "from_section": "attention", "to_section": None,
+             "from_text": "t", "to_text": None}]}
+        v2 = {"added": [{"item_key": key, "section": "attention", "text": "t"}],
+              "folded": [], "resolved": []}
+        merged = merge_change_summaries([v1, v2])
+        assert merged["counts"] == {"added": 1, "folded": 0, "resolved": 0}
+        # It existed at the base, so the headcount is unchanged.
+        assert merged["added"][0]["entered_in_range"] is False
+        assert _attention_headcount_delta(merged) == 0
+
+    def test_entered_in_range_marks_items_the_base_never_had(self):
+        key = "abc123"
+        v1 = {"added": [{"item_key": key, "section": "attention", "text": "t"}],
+              "folded": [], "resolved": []}
+        v2 = {"added": [], "folded": [
+            {"item_key": key, "from_section": "attention", "to_section": None,
+             "from_text": "t", "to_text": None}], "resolved": []}
+        merged = merge_change_summaries([v1, v2])
+        assert merged["folded"][0]["entered_in_range"] is True
+        assert _attention_headcount_delta(merged) == 0
+        # A plain departure of a base item still counts.
+        assert _attention_headcount_delta(merge_change_summaries([v2])) == -1
 
     def test_distinct_items_all_survive(self):
         v1 = {"added": [{"item_key": "a", "text": "1"}], "folded": [], "resolved": []}

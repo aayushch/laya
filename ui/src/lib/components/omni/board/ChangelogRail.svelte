@@ -60,6 +60,7 @@
 
 		for (const a of changes.added) {
 			const bits = [layerLabel(a.section)];
+			if (a.promoted_from) bits.push(`escalated from ${layerLabel(a.promoted_from)}`);
 			if (a.source_count) {
 				bits.push(`from ${a.source_count} ${a.source_count === 1 ? 'event' : 'events'}`);
 			}
@@ -97,11 +98,15 @@
 
 		for (const r of changes.resolved) {
 			const closed = hhmm(r.resolved_at);
+			const bits = [layerLabel(r.section)];
+			if (closed) bits.push(`closed ${closed}`);
+			if (r.reason && r.reason !== 'resolved') bits.push(r.reason.replace('_', ' '));
+			if (r.note) bits.push(r.note);
 			out.push({
 				kind: 'resolved',
 				glyph: '✓',
 				text: `"${r.text}" resolved`,
-				meta: closed ? `${layerLabel(r.section)} · closed ${closed}` : layerLabel(r.section),
+				meta: bits.join(' · '),
 				itemKey: r.item_key,
 				section: r.section,
 				// The write at r.version dropped the line; its last state is one back.

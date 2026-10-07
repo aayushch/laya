@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from typing import Any
 
 from laya.llm.prompts.overrides import get_prompt
@@ -68,22 +69,24 @@ like "6 other updates across Slack and email."
 
 ## You receive:
 1. The current Omni snapshot (may be empty if this is the first synthesis)
-2. New cards since the last synthesis (with metadata: platform, priority, user actions)
-3. Pinned items that MUST survive compression
-4. Density constraints (max items per section, max words per item)
+2. [CURRENT ATTENTION]: the attention list as it stands, item by item with each \
+item's live state — or an explicit statement that it is EMPTY. Either way you \
+decide what attention looks like after this run: re-evaluate every current item \
+against the exit rules, and every new card and prior aggregate against the admission \
+rules.
+3. New cards since the last synthesis (with metadata: platform, priority, user actions)
+4. Pinned items that MUST survive compression
+5. Density constraints (max items per section, max words per item)
 
 ## Section Types (produce exactly 4, in this order)
 
 ### attention
-Items that need the user's attention NOW. Aging PRs without review, unanswered emails \
-with questions directed at the user, stale blockers, overdue tasks. These MAY be \
-individual items because each is a specific actionable thing. But when multiple items \
-share a theme, aggregate them: "3 PRs awaiting your review (oldest: 5 days)."
-
-ONLY surface things that are still OPEN and still need action. A subject that has been \
-RESOLVED (PR merged, ticket closed, blocker cleared, card marked done/dismissed) or \
-DE-ESCALATED (no longer HIGH/CRITICAL) MUST NOT appear in attention — it no longer \
-needs attention. See the resolution rules below.
+What needs the user NOW. Every line here is an open obligation of the user's — not \
+news. Lines MAY be individual items because each is a specific actionable thing, but \
+when several share a theme, aggregate them: "3 PRs awaiting your review (oldest: 5 days)." \
+Build this section FIRST: walk the NEW CARDS and the PRIOR RECENT AGGREGATES and ask of \
+each subject whether the user has to act on it. The admission and exit rules are in \
+ATTENTION RULES below. `recent` is what happened that does NOT need the user.
 
 ### recent
 What happened in the last 24-48 hours. EVERY item MUST be an aggregate with counts. \
@@ -121,7 +124,11 @@ ticket PROJ-89 stalled (Jira)" is ONE cross-cutting item, not three.
 
 4. **Progressive compression.** Recent items from the previous snapshot should be folded \
 into period aggregates. Old period items should be folded into milestones or dropped. \
-Information flows: recent → period → milestone → gone.
+Information flows: recent → period → milestone → gone. The attention section is NOT \
+part of this chain: an attention item stays in attention, run after run, until its \
+subject is resolved or de-escalated (see ATTENTION RULES below). Never fold an \
+open attention item into recent or period just because time has passed, and never \
+drop it to make room.
 
 5. **Weight user actions.** Cards the user acted on (approved, dismissed with feedback) \
 are more important. Mention them explicitly within aggregates: "8 PRs merged (you \
@@ -160,7 +167,7 @@ entity_id of every contributing card (e.g., ["jira:ticket:PROJ-89", \
 entity_id. This is the stable identity Omni uses to drop a subject once it resolves \
 — an item with no entity_ids cannot be reconciled later.
 
-## RESOLUTION RULES — drop what's no longer open
+## ATTENTION RULES — what enters, what leaves
 
 You receive two extra inputs that tell you what has changed state since the prior \
 snapshot was written:
@@ -171,24 +178,80 @@ live among them.
 - [RESOLVED SINCE LAST SYNTHESIS]: subjects (by entity_id) that reached a terminal \
 state (done / dismissed / archived / merged / closed) since the last synthesis.
 
-Apply these rules:
+Work subject by subject. A subject is identified by its entity_id(s). A new card whose \
+entity_id matches a prior attention item is an UPDATE to that subject: decide what the \
+update means for it (admission, exit, or neither) before writing the section.
 
-R1. **Remove resolved subjects from attention.** If a subject is resolved, it does \
-NOT belong in attention. Drop it.
+### Admission — a subject ENTERS attention when it is still open and the USER has to act
 
-R2. **Recompute aggregates, don't freeze them.** If a resolved subject was part of an \
-aggregate ("3 PRs awaiting your review"), rebuild the aggregate WITHOUT it and \
-decrement the count ("2 PRs awaiting your review"). If every member of an aggregate \
-resolved, drop the whole item from attention.
+Attention is an obligation list, not a priority bucket: the feed already sorts cards \
+by priority. Priority is an INPUT to this judgement — HIGH/CRITICAL says the router \
+found it urgent, so look hard at it — but it is not the test. A CRITICAL incident the \
+user merely observes is recent news; a MEDIUM question addressed to the user is \
+attention. Admit a subject when any of these holds:
 
-R3. **De-escalation leaves attention too.** If a prior-snapshot item's highest live \
-priority has dropped below HIGH, it no longer belongs in attention — move it into \
-recent/period or drop it.
+A1. **Asked of the user.** The user is the reviewer, approver or assignee; the user is \
+addressed by name or asked a direct question; a decision, sign-off, RSVP or reply is \
+requested of the user.
+A2. **The user is the bottleneck.** Someone is waiting on the user: an unreviewed PR \
+assigned to them, an unanswered thread directed at them, a teammate blocked on them.
+A3. **Broken on the user's own subject.** A build, CI run, deploy or check failed on \
+the user's PR, branch or service; an incident, outage or security alert is in the \
+user's area and nobody else is named as handling it.
+A4. **Overdue or ageing.** A due date passed or is imminent, a reminder says overdue, \
+or a request to the user has gone unanswered long enough to say so ("oldest: 5 days").
+A5. **Escalation of a known subject.** A subject already in recent or period receives \
+a new card that adds a direct ask, names the user, or breaks something of theirs — it \
+moves UP into attention and out of the section it was in.
+A6. **Pinned.** A pinned item that is still open stays in attention as written.
 
-R4. **Reflect completion as progress, don't vanish silently.** Resolved work should \
-surface in recent or period as a positive aggregate ("3 blockers cleared this week, \
-incl. PR #412 merged and PROJ-89 closed") rather than disappearing without a trace. \
-Attention is for what's still open; recent/period record what got done."""
+The card summaries already carry the user's relationship to each subject (reviewer, \
+author, assignee, mentioned); read them for A1–A3 rather than guessing. When in doubt \
+between attention and recent, ask: if the user did nothing, would someone be waiting?
+
+### Exit — a subject LEAVES attention only for one of these reasons
+
+E1. **Resolved.** Its state line says ALL source subjects RESOLVED, or its entity_id is \
+in [RESOLVED SINCE LAST SYNTHESIS]: PR merged or declined, ticket closed, card marked \
+done or dismissed.
+E2. **Superseded on the same subject.** A newer card on the SAME entity shows the ask \
+was met: "build passed" after "build failed", "approved" or "review submitted" after \
+"review requested", a reply after a question, "assigned to X" after "assigned to you", \
+"rescheduled" or "cancelled" after a meeting request.
+E3. **Made obsolete by another subject.** A different subject closes this one \
+transitively: the PR was closed in favour of a replacement, the ticket was marked \
+duplicate of or merged into another, a release or hotfix shipped the fix, the incident \
+was declared over, the requester withdrew.
+E4. **Handed off.** Someone else took the review, the assignment or the on-call; the \
+user is no longer the party needed.
+E5. **User acted.** A [USER ACTED] card shows the user approved, replied, dismissed \
+with feedback, or otherwise handled it.
+E6. **Expired.** The moment passed and nothing can be done now: the meeting happened, \
+the deadline lapsed and the task was reassigned, the window closed.
+E7. **No longer an obligation.** On re-reading, none of A1–A6 holds any more — the \
+ask was informational after all, or the state line shows the priority fell to LOW.
+
+Several attention lines about the same subject merge into one line — that is \
+consolidation, not an exit.
+
+### What to do with an exit
+
+- Drop the subject from attention, or rebuild its aggregate without it and decrement \
+the count ("3 PRs awaiting your review" → "2 PRs awaiting your review"). If every \
+member of an aggregate left, drop the whole line.
+- Record EVERY exit in the top-level `attention_exits` array: the subject's \
+entity_ids, a reason code (resolved | superseded | obsolete | handed_off | user_acted \
+| expired | deprioritised) and a one-clause note citing the evidence ("build passed on \
+PR-748 at 09:12"). The changelog shows the user why each line left; a line that \
+disappears without an entry shows as "compressed away", which is wrong for an \
+obligation.
+- Reflect completion as progress, not silence: resolved and superseded work surfaces \
+in recent or period as a positive aggregate ("3 blockers cleared this week, incl. \
+PR #412 merged and PROJ-89 closed").
+
+Nothing else removes a subject from attention: not age alone, not the density cap, \
+not the compression chain. If attention is over the cap, keep the highest priorities \
+and fold the rest into ONE aggregate line — never drop them."""
 
 
 def _density_instructions(density: str) -> str:
@@ -216,6 +279,7 @@ def build_omni_resynthesis_messages(
     space_id: str = "default",
     item_states: list[dict[str, Any]] | None = None,
     resolved_cards: list[dict[str, Any]] | None = None,
+    prior_recent_items: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, str]]:
     """Build messages for a full Omni resynthesis.
 
@@ -224,13 +288,103 @@ def build_omni_resynthesis_messages(
         live_max_priority}.
     resolved_cards: subjects that reached a terminal state since the last synthesis.
         Each entry: {entity_id, header, status}.
+    prior_recent_items: when given (the FIRST fold of a run), the snapshot's
+        ``recent`` section is presented EMPTY and these items are listed in a
+        separate block: those the user still has to act on are attention
+        material, the rest period/milestone material. A small model handed a ``recent``
+        list that is already at the density cap tends to re-emit it verbatim and
+        discard the new cards, so the structure of the input makes "rebuild
+        recent from the new cards" the only shape that fits the schema. Later
+        folds of the same run pass ``None`` — their ``recent`` was built from
+        this run's own cards and must be merged into, not stripped.
     """
 
-    # Current snapshot
+    # Current snapshot. The caller's dict is left untouched: the pipeline computes
+    # its stats and prune hints from the same object after this call.
     if current_snapshot:
-        snapshot_text = f"\n[CURRENT OMNI SNAPSHOT]\n{json.dumps(current_snapshot, indent=2)}\n[END CURRENT SNAPSHOT]"
+        shown = current_snapshot
+        if prior_recent_items is not None:
+            shown = {
+                **current_snapshot,
+                "sections": [
+                    {**s, "items": []} if s.get("type") == "recent" else s
+                    for s in current_snapshot.get("sections", [])
+                ],
+            }
+        snapshot_text = f"\n[CURRENT OMNI SNAPSHOT]\n{json.dumps(shown, indent=2)}\n[END CURRENT SNAPSHOT]"
     else:
         snapshot_text = "\n[CURRENT OMNI SNAPSHOT]\nEmpty — this is the first synthesis.\n[END CURRENT SNAPSHOT]"
+
+    # The attention list, stated explicitly. The snapshot JSON above carries the
+    # same items, but an empty section there is just `"items": []` inside a
+    # large object, and a model reads that as "nothing to do" rather than as
+    # "decide what belongs here". Each current item is paired with its live
+    # state so the exit decision and the item are read together.
+    state_by_text: dict[str, dict] = {
+        (st.get("text") or "")[:80]: st for st in (item_states or [])
+    }
+    attention_items = [
+        item
+        for s_ in (current_snapshot or {}).get("sections", [])
+        if s_.get("type") == "attention"
+        for item in s_.get("items", [])
+    ]
+    attention_text = "\n[CURRENT ATTENTION]\n"
+    if attention_items:
+        attention_text += (
+            f"{len(attention_items)} item(s) currently need the user. Re-evaluate each "
+            "against the exit rules E1–E7 using the new cards and its live state; keep "
+            "it unless an exit applies, and record every exit in attention_exits.\n"
+        )
+        for item in attention_items:
+            st = state_by_text.get((item.get("text") or "")[:80])
+            if st is None:
+                live = "live state unknown"
+            elif st.get("all_resolved"):
+                live = "ALL source subjects RESOLVED"
+            else:
+                live = f"highest live priority now {st.get('live_max_priority') or 'none'}"
+            attention_text += json.dumps({
+                "text": item.get("text", ""),
+                "priority": item.get("priority", "MEDIUM"),
+                "entity_ids": sorted({
+                    e for e in (item.get("entity_ids") or []) if e
+                } | ({item["entity_id"]} if item.get("entity_id") else set())),
+                "source_cards": list(item.get("source_cards") or []),
+                "live": live,
+            }) + "\n"
+    else:
+        attention_text += (
+            "EMPTY — nothing is currently flagged as needing the user. That is not a "
+            "default to keep: walk every NEW CARD and every PRIOR RECENT AGGREGATE "
+            "against the admission rules A1–A6 and decide whether any subject must now "
+            "be added. Leave attention empty only if genuinely nothing needs the user.\n"
+        )
+    attention_text += "[END CURRENT ATTENTION]\n"
+
+    # The previous run's recent aggregates. One compact JSON object per line so
+    # the model carries each aggregate's source_cards/entity_ids into whichever
+    # section it lands in — an aggregate without ids has no drill-down and
+    # cannot be reconciled when its subject resolves. (A `[PRIORITY] text` line
+    # format here ends up copied verbatim, bracket and all, into output text.)
+    prior_recent_text = ""
+    if prior_recent_items:
+        prior_recent_text = (
+            "\n[PRIOR RECENT AGGREGATES — last run's recent: promote to attention if "
+            "the user still has to act on it (ATTENTION RULES A1–A6), otherwise fold "
+            "into period/milestone; never copy into recent]\n"
+        )
+        for item in prior_recent_items:
+            prior_recent_text += json.dumps({
+                "text": item.get("text", ""),
+                "priority": item.get("priority", "MEDIUM"),
+                "platforms": list(item.get("platforms") or []),
+                "source_cards": list(item.get("source_cards") or []),
+                "entity_ids": sorted({
+                    e for e in (item.get("entity_ids") or []) if e
+                } | ({item["entity_id"]} if item.get("entity_id") else set())),
+            }) + "\n"
+        prior_recent_text += "[END PRIOR RECENT AGGREGATES]\n"
 
     # New cards since last resynthesis
     cards_text = "\n[NEW CARDS SINCE LAST SYNTHESIS]\n"
@@ -295,15 +449,35 @@ def build_omni_resynthesis_messages(
 
     density_text = _density_instructions(density)
 
+    # Structural rules repeated in the user turn so a custom system-prompt
+    # override (prompts/overrides.py) cannot drop them.
+    structure_text = ""
+    if prior_recent_items is not None:
+        structure_text = (
+            "\nSTRUCTURE RULES FOR THIS RUN:\n"
+            "- `attention` first: every still-open subject the user has to act on "
+            "(ATTENTION RULES A1–A6), from the NEW CARDS and from the PRIOR RECENT "
+            "AGGREGATES, grouped by theme. Priority informs this, it does not decide it.\n"
+            "- Then `recent`, from the remaining NEW CARDS only. Prior recent aggregates "
+            "that are not attention go to period/milestone, keeping their source_cards "
+            "and entity_ids.\n"
+            "- A prior attention item stays in `attention` unless an exit rule (E1–E7) "
+            "applies; record every exit in `attention_exits` with its reason and "
+            "evidence.\n"
+        )
+
     user_message = (
         f"Synthesize the Omni summary for space '{space_id}'.\n"
         f"{snapshot_text}\n"
+        f"{attention_text}"
+        f"{prior_recent_text}"
         f"{state_text}"
         f"{resolved_text}"
         f"{cards_text}"
         f"{acted_text}"
         f"{pins_text}"
-        f"{density_text}\n"
+        f"{density_text}"
+        f"{structure_text}\n"
         f"Produce the updated Omni sections JSON matching the required schema."
     )
 
@@ -313,15 +487,70 @@ def build_omni_resynthesis_messages(
     ]
 
 
-def get_omni_json_schema(density: str = "compact") -> dict[str, Any]:
+def build_omni_repair_messages(
+    messages: list[dict[str, str]],
+    assistant_json: str,
+    new_card_count: int,
+) -> list[dict[str, str]]:
+    """Extend a resynthesis conversation with one repair turn.
+
+    Used when the model's output cites none of the new cards: rather than
+    discarding a summary that may be right in substance, the model is shown its
+    own output and asked to finish the job — attach the card_ids each line
+    covers, or fold the cards it skipped. The decision stays with the model;
+    the pipeline only points out what is missing.
+    """
+    repair = (
+        f"Your output cites none of the {new_card_count} new cards listed in "
+        "[NEW CARDS SINCE LAST SYNTHESIS]. Every line's source_cards must name the "
+        "card_ids it summarises, and every new card must be accounted for by some "
+        "line (rule 2 — use a catch-all aggregate if nothing else fits). If what you "
+        "returned is last run's aggregates unchanged, that is not a synthesis: fold "
+        "the new cards in.\n\n"
+        "Re-issue the COMPLETE JSON — all four sections and attention_exits — "
+        "attaching card_ids to the lines that cover these cards and folding any card "
+        "you have not covered into an aggregate line. Keep everything else as it was."
+    )
+    return [
+        *messages,
+        {"role": "assistant", "content": assistant_json},
+        {"role": "user", "content": repair},
+    ]
+
+
+def get_omni_json_schema(
+    density: str = "compact",
+    valid_card_ids: Iterable[str] | None = None,
+) -> dict[str, Any]:
     """Return the JSON schema for Omni resynthesis output.
 
     The ``density`` preset is used to set a hard ``maxItems`` cap on each
     section's items array, so the LLM cannot return more items than the
     density allows even if it ignores the prompt instruction.
+
+    ``valid_card_ids`` — the cards the model was actually given this run (the
+    new cards plus those behind the prior snapshot's items). When provided,
+    every item's ``source_cards`` must name at least one of them and nothing
+    else: structured-output backends enforce this as a grammar, so the model
+    cannot emit an item with no drill-down or cite a card it never saw. Rule 7
+    of the prompt asks for this; the schema makes it unavoidable.
     """
     preset = DENSITY_PRESETS.get(density, DENSITY_PRESETS["compact"])
     max_items = preset["max_items_per_section"]
+
+    source_cards_schema: dict[str, Any] = {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "card_ids that contributed to this item",
+    }
+    ids = sorted({c for c in (valid_card_ids or []) if c})
+    if ids:
+        source_cards_schema["items"] = {"type": "string", "enum": ids}
+        source_cards_schema["minItems"] = 1
+        source_cards_schema["description"] = (
+            "card_ids that contributed to this item — at least one, and only "
+            "ids from the cards you were given"
+        )
 
     item_schema = {
         "type": "object",
@@ -330,11 +559,7 @@ def get_omni_json_schema(density: str = "compact") -> dict[str, Any]:
                 "type": "string",
                 "description": "Concise summary of this item",
             },
-            "source_cards": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "card_ids that contributed to this item",
-            },
+            "source_cards": source_cards_schema,
             "entity_ids": {
                 "type": "array",
                 "items": {"type": "string"},
@@ -397,8 +622,38 @@ def get_omni_json_schema(density: str = "compact") -> dict[str, Any]:
                     "items": section_schema,
                     "description": "Exactly 4 sections: attention, recent, period, milestone",
                 },
+                "attention_exits": {
+                    "type": "array",
+                    "description": (
+                        "Every subject that left attention this run, with why. "
+                        "Empty array when nothing left."
+                    ),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "entity_ids": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "entity_ids of the subject that left attention",
+                            },
+                            "reason": {
+                                "type": "string",
+                                "description": (
+                                    "resolved | superseded | obsolete | handed_off | "
+                                    "user_acted | expired | deprioritised"
+                                ),
+                            },
+                            "note": {
+                                "type": "string",
+                                "description": "One clause citing the evidence",
+                            },
+                        },
+                        "required": ["entity_ids", "reason", "note"],
+                        "additionalProperties": False,
+                    },
+                },
             },
-            "required": ["sections"],
+            "required": ["sections", "attention_exits"],
             "additionalProperties": False,
         },
     }

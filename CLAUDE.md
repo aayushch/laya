@@ -115,8 +115,25 @@ Supporting pipelines (triggered separately):
 - **Theme system**: CSS custom properties in `ui/src/app.css` with `--color-laya-*` brand tokens. Dark/light mode via `data-theme` attribute on `<html>`.
 - **Feed layout**: 3-column flex layout with round-robin card distribution (not CSS columns — intentional, see memory for rationale). `feed/+page.svelte` is decomposed (P7-7): the `card_updated` WS reducer → pure, unit-tested `lib/feed/cardUpdateReducer.ts`; the FLIP animation → `lib/utils/flip.ts` (`capturePositions`/`playFlip`); and the SummaryModal / FilterPopover / RecentDrawer panels → `lib/components/feed/`. Prefer extending those over re-growing the page.
 - **Feed view modes**: `card` | `list` | `timeline` (`lib/stores/feedView.ts`). The **timeline** ("Day Column") view renders the selected day on a clock-time axis: components in `lib/components/feed/timeline/`, pure geometry in `lib/timeline/` (`scale.ts` piecewise axis with collapsible quiet bands, `lanes.ts` packing, `threads.ts` CardGroup→thread mapping) and `lib/utils/threadAttention.ts` (escalation rules), all unit-tested. Its non-negotiable invariant: **a capsule is never moved off its true time to fit** — unplaceable threads go to the overflow strip. It reuses the same `CardGroup` payload and detail panel as the other views; only the raw event volume (heat rail, source-chip counts, meetings) comes from `GET /events/day`. Source-platform and time-of-day-brush filters live in the shared `feedFilters` store, so they apply in all three views.
+- **Omni's first rule — the model decides attention**: in `pipeline/omni.py` the code shapes the model's inputs (base snapshot, new cards incl. delta-chain cards, live state of prior items), validates its output (schema, empty/echo guards) and prunes attention items whose cards are ALL terminal. It never adds an item to attention, promotes one by priority, or restores one the model left out — the feed already sorts by priority; attention is the model's judgement of what the USER has to act on. If attention is wrong, fix `llm/prompts/omni.py` (ATTENTION RULES A1–A6 / E1–E7), not the pipeline.
 - **Comment workarounds and defensive fixes**: Any time a workaround, defensive fix, or non-obvious hack is applied, leave a comment in the code explaining *why* the fix exists and what breaks without it. Future readers (and Claude Code) should understand the reasoning without having to rediscover the problem.
 - **n8n workflow versions**: Every time a bundled workflow JSON in `n8n/workflows/` is modified, bump its `meta.laya_version` field. The engine's startup sync compares this version against deployed records and propagates updates to cloned workflow instances only when the version changes.
+
+## Code comments
+
+Code comments describe the present code: what it does and why, written for a first-time reader of the file. This applies to every comment in any language, file, or repository.
+
+Never write comments that describe development history, such as:
+- Previous approaches or rejected designs
+- What a refactor replaced or improved ("replaces X", "instead of the old Y")
+- Contrasts with code that no longer exists ("no longer re-triggers", "never on consume", "avoids the earlier bug")
+- Decisions or discussion from the session or review that produced the change
+
+Before finalizing a comment, check: would someone who has never seen an earlier version of this code, and wasn't part of the conversation that produced it, fully understand the comment from the current file alone? If not, rewrite it to state the purpose or invariant in present tense against the current code.
+
+Example: a counter that keeps queue consumption from triggering reactivity.
+- Bad: "Only show() writes it, so the effect fires exactly once per queued message and never on consume." ("never on consume" only makes sense against a discarded implementation where consuming was reactive.)
+- Good: "A reactive, monotonic count of queued messages; it decouples the message queue itself from reactivity."
 
 ## Ports
 

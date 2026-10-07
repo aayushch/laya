@@ -77,7 +77,14 @@
 <!-- Bands are stretched, not centred: each one steps in from the left and runs
      to the right edge, so the compression chain still reads top-down without
      the board paying for it in unused margin on both sides. -->
-<div class="flex min-w-0 flex-1 flex-col items-stretch overflow-y-auto px-4 pt-3 pb-3.5">
+<!-- Vertical gap between two bands. The same height is used for the empty
+     spacer and as the minimum height of a fold annotation row, so a band sits
+     at the same place whether or not something was folded out of the band
+     above it. It follows Text Size and density like every other Omni size. -->
+<div
+	class="flex min-w-0 flex-1 flex-col items-stretch overflow-y-auto px-4 pt-3 pb-3.5"
+	style="--om-funnel-gap: calc(14px * var(--om-scale) * var(--om-density));"
+>
 	<div class="mb-[9px] flex w-full items-center gap-[9px] self-stretch">
 		<span class="om-micro whitespace-nowrap">Compression funnel</span>
 		<span
@@ -157,13 +164,13 @@
 				     down between the two rather than floating loose in the gap. -->
 				<div
 					class="flex items-center gap-[7px] py-[5px] text-[calc(9.5px*var(--om-scale))]"
-					style="color: var(--om-text-meta); margin-left: {bands[i + 1].layer.indent};"
+					style="color: var(--om-text-meta); min-height: var(--om-funnel-gap); margin-left: {bands[i + 1].layer.indent};"
 				>
 					<span class="om-mono text-[calc(11px*var(--om-scale))]" aria-hidden="true">↓</span>
 					{note}
 				</div>
 			{:else}
-				<div class="h-2.5"></div>
+				<div style="height: var(--om-funnel-gap);"></div>
 			{/if}
 		{/if}
 	{/each}
@@ -172,7 +179,7 @@
 	{#if annotation('milestone')}
 		<div
 			class="flex items-center gap-[7px] py-[5px] text-[calc(9.5px*var(--om-scale))]"
-			style="color: var(--om-text-meta); margin-left: {LAYERS[LAYERS.length - 1].indent};"
+			style="color: var(--om-text-meta); min-height: var(--om-funnel-gap); margin-left: {LAYERS[LAYERS.length - 1].indent};"
 		>
 			<span class="om-mono text-[calc(11px*var(--om-scale))]" aria-hidden="true">↓</span>
 			{annotation('milestone')}

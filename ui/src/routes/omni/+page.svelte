@@ -24,6 +24,7 @@
 		clearResynthesizing
 	} from '$lib/stores/omniResynthesis';
 	import { lastSeenVersion, markVersionSeen } from '$lib/stores/omniView';
+	import { attentionDelta as computeAttentionDelta } from '$lib/omni/changes';
 	import OmniIdentityBar from '$lib/components/omni/board/OmniIdentityBar.svelte';
 	import InstrumentCluster from '$lib/components/omni/board/InstrumentCluster.svelte';
 	import TriageColumn from '$lib/components/omni/board/TriageColumn.svelte';
@@ -74,15 +75,7 @@
 	const newKeys = $derived(new Set((changes?.added ?? []).map((a) => a.item_key)));
 
 	// Attention delta vs. the comparison base, from the same recorded diff.
-	const attentionDelta = $derived.by(() => {
-		if (!changes) return null;
-		const added = changes.added.filter((a) => a.section === 'attention').length;
-		const gone =
-			changes.resolved.filter((r) => r.section === 'attention').length +
-			changes.folded.filter((f) => f.from_section === 'attention').length;
-		const delta = added - gone;
-		return delta === 0 ? null : delta;
-	});
+	const attentionDelta = $derived(computeAttentionDelta(changes));
 
 	let unsubWs: Unsubscriber;
 	let boardEl = $state<HTMLElement | null>(null);

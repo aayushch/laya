@@ -242,6 +242,7 @@ def compute_resynthesis_change_summary(
     card_meta: dict[str, dict],
     terminal_statuses: set[str],
     resolved_at_by_entity: dict[str, str] | None = None,
+    attention_exits: list[dict] | None = None,
 ) -> dict:
     """Change summary for a resynthesis (full base) write.
 
@@ -249,8 +250,16 @@ def compute_resynthesis_change_summary(
       - in new, not in prior                      → added
       - in prior, not in new, all cards terminal  → resolved
       - in prior section X, in new section Y > X  → folded
+      - in prior section X, in new section Y < X  → added (promoted_from=X)
       - in prior, not in new, not resolved        → folded with to_section=None
         (dropped by compression rather than by being finished)
+      - prior ATTENTION item whose subject has a declared exit → resolved, with
+        the exit's ``reason``/``note``, whether it vanished or was moved down the
+        chain (the move is the exit's consequence, not a fold worth reporting)
+
+    `attention_exits` are the model's validated exit declarations
+    (`{entity_ids, reason, note}`): the only record of a judgement the card
+    statuses cannot carry, such as a build that passed.
 
     `card_meta` is `{card_id: {status, ...}}` as returned by
     `pipeline.omni._fetch_card_meta`; `terminal_statuses` is passed in rather than
@@ -269,10 +278,36 @@ def compute_resynthesis_change_summary(
     resolved_at_by_entity = resolved_at_by_entity or {}
 
     matched_new: set[int] = set()
+    exits = attention_exits or []
 
     for prior_section, prior_item in prior:
         idx = _find_match(prior_item, new, matched_new)
         prior_key = item_key_of(prior_section, prior_item)
+
+        if prior_section == "attention":
+            probe = {"entity_ids": list(_entity_set(prior_item))}
+            declared = next(
+                (e for e in exits if subject_matches(probe, {"entity_ids": e.get("entity_ids") or []})),
+                None,
+            )
+            if declared is not None:
+                if idx is not None:
+                    matched_new.add(idx)
+                eids = sorted(_entity_set(prior_item))
+                resolved_at = next(
+                    (resolved_at_by_entity[e] for e in eids if resolved_at_by_entity.get(e)),
+                    None,
+                )
+                summary["resolved"].append({
+                    "item_key": prior_key,
+                    "section": prior_section,
+                    "text": prior_item.get("text", ""),
+                    "entity_ids": eids,
+                    "resolved_at": resolved_at,
+                    "reason": declared.get("reason") or "other",
+                    "note": declared.get("note") or "",
+                })
+                continue
 
         if idx is None:
             # Gone from the snapshot. Finished, or compressed away?
@@ -310,13 +345,29 @@ def compute_resynthesis_change_summary(
 
         matched_new.add(idx)
         new_section, new_item = new[idx]
-        if section_rank(new_section) > section_rank(prior_section):
+        new_rank = section_rank(new_section)
+        if new_rank > section_rank(prior_section):
             summary["folded"].append({
                 "item_key": item_key_of(new_section, new_item),
                 "from_section": prior_section,
                 "to_section": new_section,
                 "from_text": prior_item.get("text", ""),
                 "to_text": new_item.get("text", ""),
+            })
+        elif 0 <= new_rank < section_rank(prior_section):
+            # Promotion to an EARLIER section (typically recent → attention).
+            # Recorded as `added` under the destination section so a per-section
+            # tally (added − resolved − folded-from) equals count-now − count-then:
+            # without this entry an item that is promoted and later folded away
+            # within one comparison range would count −1 with no matching +1.
+            # `new_rank >= 0` excludes an unknown section type, whose rank is −1.
+            summary["added"].append({
+                "item_key": item_key_of(new_section, new_item),
+                "section": new_section,
+                "text": new_item.get("text", ""),
+                "source_count": len(new_item.get("source_cards") or []),
+                "platforms": list(new_item.get("platforms") or []),
+                "promoted_from": prior_section,
             })
 
     for idx, (new_section, new_item) in enumerate(new):
@@ -337,23 +388,28 @@ def compute_resynthesis_change_summary(
 # Merging across a version range
 # ---------------------------------------------------------------------------
 
-# Later state wins when the same item appears in more than one kind across the
-# range: an item added at v1220 and resolved at v1226 reads as resolved, not
-# both. Rank orders the kinds by finality.
-_KIND_RANK = {"added": 0, "folded": 1, "resolved": 2}
-
-
 def merge_change_summaries(summaries: list[dict]) -> dict:
     """Collapse per-version summaries (oldest → newest) into one range summary.
 
     The rail compares an arbitrary base version against the displayed one, which
-    can span many writes. Entries are keyed by item_key so a line that was added
-    and then folded within the range is reported once, in its final state.
+    can span many writes. Entries are keyed by item_key and each key is reported
+    once, in its LAST recorded state: a line added at v1220 and resolved at
+    v1226 reads as resolved; one compressed away at v1220 and re-added at v1226
+    reads as added, because that is where it is now. Two folds chain into one
+    (recent → period → milestone reads as recent → milestone).
+
+    Every merged entry also carries ``entered_in_range``: True when the first
+    thing recorded for that key inside the range was an ``added`` entry, i.e.
+    the item did not exist at the base version. A per-section headcount
+    (count-now − count-at-base) needs this: an item that arrived and left
+    inside the range nets to zero, and a departure entry alone would count it
+    as a loss the base never had.
     """
-    latest: dict[str, tuple[int, str, dict]] = {}
+    latest: dict[str, tuple[str, dict]] = {}
+    first_kind: dict[str, str] = {}
     order: list[str] = []
 
-    for version_index, summary in enumerate(summaries or []):
+    for summary in summaries or []:
         if not summary:
             continue
         for kind in ("added", "folded", "resolved"):
@@ -362,26 +418,22 @@ def merge_change_summaries(summaries: list[dict]) -> dict:
                 prev = latest.get(key)
                 if prev is None:
                     order.append(key)
-                    latest[key] = (version_index, kind, entry)
+                    first_kind[key] = kind
+                    latest[key] = (kind, entry)
                     continue
-                _prev_v, prev_kind, prev_entry = prev
-                # A later, more final kind supersedes. Same kind → keep the
-                # newest text (an aggregate's counts get rewritten as it grows).
-                if _KIND_RANK[kind] >= _KIND_RANK[prev_kind]:
-                    if kind == "folded" and prev_kind == "folded":
-                        # Chain two folds into one: recent → period → milestone
-                        # reads as recent → milestone.
-                        entry = {
-                            **entry,
-                            "from_section": prev_entry.get("from_section"),
-                            "from_text": prev_entry.get("from_text"),
-                        }
-                    latest[key] = (version_index, kind, entry)
+                prev_kind, prev_entry = prev
+                if kind == "folded" and prev_kind == "folded":
+                    entry = {
+                        **entry,
+                        "from_section": prev_entry.get("from_section"),
+                        "from_text": prev_entry.get("from_text"),
+                    }
+                latest[key] = (kind, entry)
 
     merged = empty_change_summary()
     for key in order:
-        _v, kind, entry = latest[key]
-        merged[kind].append(entry)
+        kind, entry = latest[key]
+        merged[kind].append({**entry, "entered_in_range": first_kind[key] == "added"})
     return _finalize(merged)
 
 
