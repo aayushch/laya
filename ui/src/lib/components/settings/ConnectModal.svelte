@@ -190,8 +190,15 @@
 		}
 	}
 
+	// Slack apps with PKCE enabled are public clients and need no secret, so the
+	// secret field is optional for Slack and required for every other provider.
+	const secretOptional = $derived(platform === 'slack');
+	const oauthSetupReady = $derived(
+		!!oauthClientId.trim() && (secretOptional || !!oauthClientSecret.trim())
+	);
+
 	async function handleOAuthSetup() {
-		if (!oauthClientId.trim() || !oauthClientSecret.trim()) return;
+		if (!oauthSetupReady) return;
 		submitting = true;
 		oauthError = null;
 		try {
@@ -324,7 +331,9 @@
 							/>
 						</div>
 						<div>
-							<label for="oauth-client-secret" class="mb-1 block text-laya-secondary font-medium text-surface-400">Client Secret</label>
+							<label for="oauth-client-secret" class="mb-1 block text-laya-secondary font-medium text-surface-400">
+								Client Secret{#if secretOptional} <span class="font-normal text-surface-500">(optional)</span>{/if}
+							</label>
 							<input
 								id="oauth-client-secret"
 								type="password"
@@ -332,6 +341,11 @@
 								placeholder="Your OAuth client secret"
 								class="w-full rounded-md border border-surface-600 bg-surface-700 px-3 py-2 text-laya-base text-surface-100 placeholder:text-surface-500"
 							/>
+							{#if secretOptional}
+								<p class="mt-1 text-laya-secondary text-surface-500">
+									Leave empty if your Slack app has PKCE enabled.
+								</p>
+							{/if}
 						</div>
 						{#if oauthError}
 							<div class="rounded-md border border-red-800/50 bg-red-900/20 px-3 py-2 text-laya-secondary text-red-300">
@@ -340,7 +354,7 @@
 						{/if}
 						<button
 							onclick={handleOAuthSetup}
-							disabled={submitting || !oauthClientId.trim() || !oauthClientSecret.trim()}
+							disabled={submitting || !oauthSetupReady}
 							class="w-full rounded-md bg-laya-orange px-4 py-2 text-laya-base font-medium text-white transition-colors hover:bg-laya-gold disabled:opacity-50"
 						>
 							{submitting ? 'Saving...' : 'Save & Continue'}

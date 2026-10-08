@@ -176,17 +176,17 @@ Laya only uses **user-token scopes** (`OAUTH_CONFIGS["slack"]["user_scopes"]` in
    marks the app a public client. After enabling, token exchange (`oauth.v2.access` or the
    newer `oauth.v2.user.access`, which Slack documents specifically for desktop clients)
    uses `code_verifier` instead of `client_secret`; `code_challenge_method` must be `S256`.
-3. **Redirect URL — open item to resolve at registration time**: Slack's distribution
-   checklist requires at least one **HTTPS** redirect URL. Verify whether Slack accepts
-   `http://localhost:…` for a PKCE public client. If not, two options (no broker needed in
-   either):
-   - **Custom URI scheme** (`laya://oauth/callback`) — supported with PKCE for user-token
-     scopes. Constraint: custom-scheme apps **always get rotating tokens**, with refresh
-     tokens expiring after **30 days idle** — the engine's background refresher must keep
-     them warm or the user re-authorizes monthly.
-   - **Static bounce page** on the landing site (HTTPS) that immediately forwards
-     `code`+`state` to `http://localhost:8420/...` via JS redirect. Pure static hosting, no
-     secrets server-side.
+   The engine sends the PKCE challenge on every Slack authorize request and treats the
+   client secret as optional for Slack (`OAUTH_PROVIDERS["slack"]["public_client"]`): leave
+   the secret empty in Settings for a PKCE-enabled app, or keep it for an app without PKCE.
+   A PKCE-enabled app that is sent no challenge fails at the authorize screen with
+   "Must use PKCE to redirect to a non-web URI" (issue #42).
+3. **Redirect URL — resolved: plain localhost.** Slack treats `http://localhost:…` as a
+   desktop redirect for PKCE-enabled apps and accepts it, so the engine's existing
+   `http://localhost:8420/egress/connections/oauth/callback` works unchanged. No custom
+   URI scheme (`laya://`) and no HTTPS bounce page are needed. Desktop redirects cannot
+   request bot scopes (Laya requests none) and only custom-scheme redirects force rotating
+   tokens, so with token rotation left off the user token does not expire.
 4. **Activate Public Distribution** (Manage Distribution): self-serve checklist (HTTPS
    redirect, granular scopes, no hardcoded secrets) → instant; any workspace can then
    install via OAuth. **No review of any kind is required for this.**
@@ -198,8 +198,8 @@ Laya only uses **user-token scopes** (`OAUTH_CONFIGS["slack"]["user_scopes"]` in
    "request approval" interstitial mid-OAuth. Surface this gracefully in support docs.
 
 ☐ Checklist: app created in Laya workspace → user scopes match engine → PKCE enabled →
-redirect question resolved (record which option) → public distribution activated → test
-install from a foreign workspace.
+localhost redirect registered → public distribution activated → test install from a
+foreign workspace.
 
 Sources: <https://docs.slack.dev/authentication/using-pkce/>,
 <https://docs.slack.dev/changelog/2026/03/30/pkce/> (PKCE GA),
@@ -373,7 +373,7 @@ via the (obfuscated) bundling step in the engineering plan.
 | Google (Gmail — `gmail.modify` only) | Auth code + PKCE, loopback | Installed (secret bundled, sanctioned) | ☐ | ☐ | `http://localhost:8420/...` | Non-rotating refresh token | ☐ verification / CASA in progress |
 | Google (Calendar — `calendar.events` only) | same app as Gmail | — | ☐ | ☐ | same | same | same |
 | Microsoft (Mail + Cal) | Auth code + PKCE, loopback | **Public — no secret** | ☐ | n/a | `http://localhost` (port ignored) | Non-rotating (MSAL-style) | ☐ Partner Center ☐ publisher domain ☐ verified badge |
-| Slack | Auth code + PKCE | **Public — no secret** (PKCE enabled, irreversible) | ☐ | n/a | ☐ resolve: localhost vs `laya://` vs bounce page | Rotating if custom scheme (30-day idle expiry) | n/a (public distribution activated: ☐) |
+| Slack | Auth code + PKCE | **Public — no secret** (PKCE enabled, irreversible) | ☐ | n/a | `http://localhost:8420/...` | Non-rotating unless token rotation enabled | n/a (public distribution activated: ☐) |
 | Jira | Auth code | Confidential — **embedded secret** | ☐ | ☐ | `http://localhost:8420/...` | Rotating; 90-day idle / 365-day absolute | sharing enabled: ☐ (Marketplace review deferred) |
 | Bitbucket | Auth code | Confidential — **embedded secret** | ☐ | ☐ | `http://localhost:8420/...` | Rotating; 3-month idle expiry | n/a |
 | GitHub | **Device flow** | Public GitHub App — no secret used | ☐ | n/a | n/a (device flow) | 8 h access / 6-month refresh, or expiration disabled: ☐ record choice | n/a |

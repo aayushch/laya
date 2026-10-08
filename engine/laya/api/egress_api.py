@@ -950,14 +950,18 @@ async def oauth_setup(body: dict) -> dict:
     Body: {"platform": "gmail", "client_id": "...", "client_secret": "..."}
     This must be done before starting an OAuth flow.
     """
-    from laya.egress.oauth import store_oauth_client
+    from laya.egress.oauth import OAUTH_PROVIDERS, store_oauth_client
 
     platform = body.get("platform")
     client_id = body.get("client_id")
-    client_secret = body.get("client_secret")
+    client_secret = (body.get("client_secret") or "").strip()
 
-    if not all([platform, client_id, client_secret]):
-        raise HTTPException(status_code=400, detail="Missing platform, client_id, or client_secret")
+    if not all([platform, client_id]):
+        raise HTTPException(status_code=400, detail="Missing platform or client_id")
+    # Public clients (PKCE-enabled Slack apps) may leave the secret empty.
+    provider = OAUTH_PROVIDERS.get(platform or "", {})
+    if not client_secret and not provider.get("public_client"):
+        raise HTTPException(status_code=400, detail="Missing client_secret")
 
     success = store_oauth_client(platform, client_id, client_secret)
     if not success:

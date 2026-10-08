@@ -108,6 +108,12 @@ OAUTH_PROVIDERS: dict[str, dict] = {
             "users:read",
         ],
         "n8n_type": "slackOAuth2Api",
+        # Slack apps that have PKCE enabled are public clients: the token
+        # endpoint authenticates them with the PKCE code_verifier and no
+        # client_secret. Apps without PKCE enabled still use a secret, so the
+        # secret is optional for this provider, and the user leaves it empty
+        # to run secretless.
+        "public_client": True,
     },
 }
 
@@ -132,7 +138,7 @@ def _get_oauth_client(platform: str) -> tuple[str, str] | None:
         raw = keyring.get_password(EGRESS_KEYCHAIN_SERVICE, f"oauth:{platform}:client")
         if raw:
             data = json.loads(raw)
-            return data.get("client_id"), data.get("client_secret")
+            return data.get("client_id"), data.get("client_secret") or ""
     except Exception:
         pass
     return None
@@ -226,8 +232,13 @@ def build_auth_url(
         params["scope"] = " ".join(provider["scopes"])
         params["access_type"] = "offline"    # Google: request refresh token
         params["prompt"] = "consent"         # Google: always show consent to get refresh token
-        params["code_challenge"] = code_challenge
-        params["code_challenge_method"] = "S256"
+
+    # The PKCE challenge goes on every provider's request. Slack in particular
+    # treats a localhost redirect as a "desktop" redirect once the app has PKCE
+    # enabled and refuses the authorize request without a challenge ("Must use
+    # PKCE to redirect to a non-web URI"); apps without PKCE ignore the params.
+    params["code_challenge"] = code_challenge
+    params["code_challenge_method"] = "S256"
 
     auth_url = f"{provider['auth_url']}?{urlencode(params)}"
 
@@ -272,9 +283,13 @@ async def handle_callback(
             "grant_type": "authorization_code",
             "code": code,
             "client_id": client_id,
-            "client_secret": client_secret,
             "redirect_uri": redirect_uri,
         }
+        # A public client (PKCE-enabled Slack app) with no stored secret proves
+        # possession with code_verifier alone. A stored secret is always sent,
+        # which keeps non-PKCE apps working.
+        if client_secret or not provider.get("public_client"):
+            token_request_data["client_secret"] = client_secret
         if code_verifier:
             token_request_data["code_verifier"] = code_verifier
 
@@ -460,20 +475,26 @@ async def refresh_access_token(connection_id: str, platform: str) -> bool:
     client_id = token_store.get("client_id")
     client_secret = token_store.get("client_secret")
 
-    if not all([refresh_token, client_id, client_secret]):
+    if not all([refresh_token, client_id]):
+        return False
+    # Public clients (PKCE-enabled Slack apps) refresh without a secret; every
+    # other provider needs one.
+    if not client_secret and not provider.get("public_client"):
         return False
 
     # Exchange refresh token
+    refresh_request_data = {
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "client_id": client_id,
+    }
+    if client_secret:
+        refresh_request_data["client_secret"] = client_secret
     try:
         async with httpx.AsyncClient() as http:
             resp = await http.post(
                 provider["token_url"],
-                data={
-                    "grant_type": "refresh_token",
-                    "refresh_token": refresh_token,
-                    "client_id": client_id,
-                    "client_secret": client_secret,
-                },
+                data=refresh_request_data,
                 timeout=15.0,
             )
 
@@ -558,7 +579,8 @@ async def _provision_oauth_to_n8n(
         # Base oAuth2Api schema requires serverUrl + additionalBody fields
         cred_data: dict = {
             "clientId": client_id,
-            "clientSecret": client_secret,
+            # Empty for secretless public clients; n8n only uses it on refresh.
+            "clientSecret": client_secret or "",
             "oauthTokenData": oauth_token_data,
             "serverUrl": "",
             "sendAdditionalBodyProperties": False,
