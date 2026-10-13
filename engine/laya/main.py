@@ -12,13 +12,13 @@ from contextlib import asynccontextmanager
 
 import structlog
 import uvicorn
-from fastapi import Depends, FastAPI, Request, WebSocket, WebSocketDisconnect, status
+from fastapi import Depends, FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 
-from laya.security.origin_guard import ALLOWED_ORIGINS, origin_is_allowed
+from laya.security.origin_guard import ALLOWED_ORIGINS, OriginGuardMiddleware
 
 from laya.agents import session_manager
 from laya.api.actions_api import router as actions_router
@@ -452,27 +452,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-@app.middleware("http")
-async def _reject_cross_site_origin(request: Request, call_next):
-    """Refuse a browser request whose Origin is not the app's own.
-
-    The MCP token routes already did this for themselves; doing it per-endpoint
-    left every other router open, and a route added tomorrow would inherit nothing.
-    Middleware cannot be forgotten (#13).
-
-    A missing Origin passes: n8n, curl and the external MCP clients are not
-    browsers. That leaves the same-user-process case, which needs the token half of
-    #13 — see `laya/security/origin_guard.py` for why that is a separate problem.
-    """
-    origin = request.headers.get("origin")
-    if not origin_is_allowed(origin):
-        log.warning("cross_site_request_blocked", origin=origin, path=request.url.path)
-        return JSONResponse(
-            {"detail": "cross-site origin not allowed"},
-            status_code=status.HTTP_403_FORBIDDEN,
-        )
-    return await call_next(request)
+# Refuse a browser request or websocket handshake whose Origin is not the app's
+# own. Added last so it is the outermost layer: it runs before routing, so every
+# route, including the auth-exempt ones and any websocket route, inherits it.
+# A missing Origin passes (n8n, curl and the MCP clients are not browsers); the
+# same-user-process case is what the engine token covers. See
+# `laya/security/origin_guard.py`.
+app.add_middleware(OriginGuardMiddleware)
 
 
 @app.exception_handler(RequestValidationError)
@@ -535,17 +521,11 @@ register_mcp_transport(app)
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket endpoint for real-time UI communication."""
-    # Checked here rather than in the middleware above: Starlette's http middleware
-    # never sees a WebSocket scope, and CORS does not apply to a handshake — so
-    # without this any page could subscribe to the card-update broadcast and send
-    # the app's own UI messages. Closing before `accept()` refuses the handshake;
-    # 1008 is "policy violation".
-    origin = websocket.headers.get("origin")
-    if not origin_is_allowed(origin):
-        log.warning("cross_site_websocket_blocked", origin=origin)
-        await websocket.close(code=1008)
-        return
+    """WebSocket endpoint for real-time UI communication.
+
+    Cross-site handshakes are refused by `OriginGuardMiddleware` before this
+    handler runs.
+    """
     await manager.connect(websocket)
     from laya.tasks import create_task as create_tracked_task
     try:

@@ -29,7 +29,6 @@ from starlette.routing import Mount
 from starlette.types import Receive, Scope, Send
 
 from laya.config import load_settings, save_settings
-from laya.security.origin_guard import origin_is_allowed
 from laya.mcp.http_server import (
     SSE_MESSAGES_PATH,
     build_mcp_server,
@@ -308,24 +307,13 @@ async def update_mcp_config(body: McpConfigUpdate) -> McpConfigResponse:
     return _build_config_response()
 
 
-# Origins the in-app UI / bundled webview legitimately calls from. A browser
-# cannot forge the Origin header, and non-browser callers (n8n, curl, the ASGI
-# test client) omit it — so an Origin that is present but not in this set is a
-# cross-site (CSRF) attempt against a state-changing token endpoint (review §6).
-# The set lives in `laya/security/origin_guard.py`, shared with the app-wide guard
-# in `main.py` and the CORS allowlist: it used to be three copies of one list.
-def _reject_cross_site(request: Request) -> None:
-    origin = request.headers.get("origin")
-    if not origin_is_allowed(origin):
-        log.warning("mcp_token_cross_site_blocked", origin=origin, path=str(request.url.path))
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "cross-site origin not allowed")
-
-
 @router.post("/mcp/token/refresh", response_model=TokenResponse)
-async def refresh_mcp_token(request: Request) -> TokenResponse:
-    """Rotate the bearer token. Old token is immediately invalid."""
-    # Guard against a body-less cross-site POST rotating the token (review §6).
-    _reject_cross_site(request)
+async def refresh_mcp_token() -> TokenResponse:
+    """Rotate the bearer token. Old token is immediately invalid.
+
+    A body-less cross-site POST cannot reach here: `OriginGuardMiddleware`
+    refuses foreign browser origins app-wide, and the engine bearer is required.
+    """
     token = _generate_token()
     store_mcp_token(token)
     log.info("mcp_token_rotated")
@@ -343,9 +331,8 @@ async def reveal_mcp_token() -> TokenResponse:
 
 
 @router.delete("/mcp/token")
-async def delete_token(request: Request) -> dict[str, str]:
+async def delete_token() -> dict[str, str]:
     """Remove the bearer token. If `auth_mode=bearer`, all MCP requests will
     return 401 until a new token is generated (e.g. via PUT /mcp/config)."""
-    _reject_cross_site(request)
     delete_mcp_token()
     return {"status": "deleted"}

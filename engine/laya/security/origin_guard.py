@@ -26,9 +26,22 @@ one of them:
 
 An absent ``Origin`` is deliberately *allowed*: it cannot be forged either, and
 treating it as hostile would break n8n, curl and the MCP clients. That case — a
-process running as the same user — is what the token work in #13 covers, and this
-guard does not pretend to close it.
+process running as the same user — is what the engine token covers
+(`security/engine_auth.py`, for REST routes and for the ``/ws`` handshake); this
+guard is only about browser identity.
+
+``OriginGuardMiddleware`` applies the rule to both doors from one place. It is a
+plain ASGI middleware rather than a Starlette ``@app.middleware("http")`` function
+because the latter never sees websocket scopes, which would force every websocket
+route to repeat the check by hand.
 """
+
+import structlog
+from starlette.datastructures import Headers
+from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
+
+log = structlog.get_logger()
 
 # The bundled webview is the app's own client, so it must keep working:
 # Windows Tauri v2 serves it from http(s)://tauri.localhost/, macOS and Linux use
@@ -45,3 +58,37 @@ ALLOWED_ORIGINS = frozenset({
 def origin_is_allowed(origin: str | None) -> bool:
     """True when a browser request may proceed. See the module docstring."""
     return not origin or origin in ALLOWED_ORIGINS
+
+
+class OriginGuardMiddleware:
+    """Refuse HTTP requests and WebSocket handshakes from a foreign browser origin.
+
+    Runs before routing, so every route (including the auth-exempt ones) and
+    every websocket route inherits the check. For HTTP the answer is a 403 JSON
+    body; for a websocket the close frame is sent before ``accept``, which the
+    server turns into a refused (403) handshake.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] in ("http", "websocket"):
+            origin = Headers(scope=scope).get("origin")
+            if not origin_is_allowed(origin):
+                log.warning(
+                    "cross_site_request_blocked",
+                    kind=scope["type"],
+                    origin=origin,
+                    path=scope.get("path"),
+                )
+                if scope["type"] == "http":
+                    response = JSONResponse(
+                        {"detail": "cross-site origin not allowed"}, status_code=403
+                    )
+                    await response(scope, receive, send)
+                else:
+                    # 1008 is "policy violation".
+                    await send({"type": "websocket.close", "code": 1008})
+                return
+        await self.app(scope, receive, send)

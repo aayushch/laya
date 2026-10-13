@@ -17,14 +17,14 @@ two separate doors follow from it:
   `ws://127.0.0.1:{port}/ws` and receive every card-update broadcast, and send the
   same UI messages the app sends — approve/deny and chat included.
 
-`engine/laya/api/mcp_api.py` already rejects a cross-site `Origin` on the token
-routes (`_reject_cross_site`). These tests pin the same rule for the rest of the
-app, which is the half of #13 that does not need a new trust boundary: a browser
-cannot forge `Origin`, and non-browser callers (n8n, curl, the MCP clients) omit
-it, so "present and unknown" means cross-site.
+One rule covers both doors: `OriginGuardMiddleware` in
+`laya/security/origin_guard.py` runs before routing for HTTP and websocket scopes
+alike, so no route carries its own copy. A browser cannot forge `Origin`, and
+non-browser callers (n8n, curl, the MCP clients) omit it, so "present and unknown"
+means cross-site.
 
-What this does NOT do is stop a local process running as the user; that needs the
-token half of #13 and is deliberately not attempted here.
+What this does NOT do is stop a local process running as the user; that is the
+engine token's job (`tests/test_engine_auth.py`, `tests/test_ws_auth.py`).
 """
 
 import pytest
@@ -88,6 +88,17 @@ class TestCrossSiteHttp:
         resp = await self._post("/prompts/reload")
         assert resp.status_code == 200, resp.text
 
+    async def test_the_mcp_token_routes_are_covered_by_the_same_guard(self):
+        """The token-mutating MCP routes used to carry their own copy of the check.
+        The middleware refuses them before the handler, with nothing per-route."""
+        from laya.main import app
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test",
+                               headers={"origin": HOSTILE}) as client:
+            assert (await client.get("/mcp/token/reveal")).status_code == 403
+            assert (await client.post("/mcp/token/refresh")).status_code == 403
+            assert (await client.delete("/mcp/token")).status_code == 403
+
 
 class TestCrossSiteWebSocket:
     """WebSockets bypass CORS entirely, so the handshake needs its own check.
@@ -114,6 +125,28 @@ class TestCrossSiteWebSocket:
     def test_the_apps_own_websocket_origin_is_allowed(self):
         with self._connect("tauri://localhost") as ws:
             assert ws is not None  # the handshake completed
+
+    def test_a_websocket_route_inherits_the_guard_with_no_code_of_its_own(self):
+        """The check lives in the middleware, not in `/ws`: a throwaway app with a
+        websocket route that does nothing but accept is still refused cross-site."""
+        from fastapi import FastAPI, WebSocket
+        from starlette.websockets import WebSocketDisconnect
+
+        from laya.security.origin_guard import OriginGuardMiddleware
+
+        other = FastAPI()
+        other.add_middleware(OriginGuardMiddleware)
+
+        @other.websocket("/other")
+        async def _other(websocket: WebSocket):
+            await websocket.accept()
+            await websocket.send_text("hello")
+
+        with pytest.raises(WebSocketDisconnect):
+            with TestClient(other).websocket_connect("/other", headers={"origin": HOSTILE}):
+                pass
+        with TestClient(other).websocket_connect("/other", headers={"origin": "tauri://localhost"}) as ws:
+            assert ws.receive_text() == "hello"
 
 
 class TestThePredicate:
