@@ -63,7 +63,12 @@ from laya.logging_setup import resolve_log_level, setup_logging
 from laya.pipeline.omni import start_omni_processor, stop_omni_processor
 from laya.pipeline.queue import recover_stalled_cards, recover_stalled_events, start_consumer, stop_consumer
 from laya.scheduler import start_scheduler, stop_scheduler
-from laya.security.engine_auth import require_engine_auth
+from laya.security.engine_auth import (
+    WS_SUBPROTOCOL,
+    offered_subprotocols,
+    require_engine_auth,
+    require_ws_engine_auth,
+)
 from laya.security.keychain import ensure_engine_token, ensure_n8n_token, load_all_keys_to_env
 
 log = structlog.get_logger()
@@ -519,14 +524,19 @@ app.include_router(workspace_router, dependencies=auth_deps)
 register_mcp_transport(app)
 
 
-@app.websocket("/ws")
+@app.websocket("/ws", dependencies=[Depends(require_ws_engine_auth)])
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time UI communication.
 
-    Cross-site handshakes are refused by `OriginGuardMiddleware` before this
-    handler runs.
+    Cross-site handshakes are refused by `OriginGuardMiddleware`, and ones
+    without the app token by `require_ws_engine_auth`, before this handler
+    runs; a socket that gets here is authenticated.
     """
-    await manager.connect(websocket)
+    # Echo the protocol name back when the client offered it: a browser drops
+    # the connection unless the server selects one of its offered subprotocols.
+    # The test suite bypasses the auth dependency and connects without one.
+    offered = offered_subprotocols(websocket)
+    await manager.connect(websocket, subprotocol=WS_SUBPROTOCOL if WS_SUBPROTOCOL in offered else None)
     from laya.tasks import create_task as create_tracked_task
     try:
         while True:

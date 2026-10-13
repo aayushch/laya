@@ -19,8 +19,9 @@ class ConnectionManager:
     def __init__(self) -> None:
         self.active_connections: list[WebSocket] = []
 
-    async def connect(self, websocket: WebSocket) -> None:
-        await websocket.accept()
+    async def connect(self, websocket: WebSocket, subprotocol: str | None = None) -> None:
+        """Accept the socket (echoing `subprotocol` if given) and add it to the pool."""
+        await websocket.accept(subprotocol=subprotocol)
         self.active_connections.append(websocket)
         log.info("ws_client_connected", total=len(self.active_connections))
 

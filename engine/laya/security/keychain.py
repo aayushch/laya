@@ -235,6 +235,26 @@ ENGINE_TOKEN_ENV = "LAYA_ENGINE_TOKEN"
 # keychain. While set, the keychain is not consulted for the engine token.
 _process_engine_token: str | None = None
 
+# Characters allowed in an HTTP header token (RFC 7230 `tchar`). The webview
+# presents the engine token inside `Sec-WebSocket-Protocol`, so a token with
+# any other character can authenticate REST calls but never the `/ws`
+# handshake. Tokens the shell or this module mint (hex, base64url) always pass.
+_HEADER_TOKEN_CHARS = frozenset(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&'*+-.^_`|~"
+)
+
+
+def _warn_if_not_header_safe(token: str) -> None:
+    if any(ch not in _HEADER_TOKEN_CHARS for ch in token):
+        log.warning(
+            "engine_token_not_header_safe",
+            hint=(
+                "The engine token contains characters not allowed in an HTTP header "
+                "token, so the UI cannot present it on the WebSocket handshake and live "
+                f"updates will not connect. Use only letters, digits and -._~ in {ENGINE_TOKEN_ENV}."
+            ),
+        )
+
 
 def store_engine_token(token: str) -> bool:
     """Store the engine API bearer token in the OS keychain."""
@@ -302,6 +322,7 @@ def ensure_engine_token() -> str:
     env_token = os.environ.pop(ENGINE_TOKEN_ENV, "").strip()
     if env_token:
         _process_engine_token = env_token
+        _warn_if_not_header_safe(env_token)
         log.info("engine_token_ready", source="env")
         return env_token
 
@@ -310,6 +331,7 @@ def ensure_engine_token() -> str:
 
     token = get_engine_token()
     if token:
+        _warn_if_not_header_safe(token)
         log.info("engine_token_ready", source="keychain")
         return token
 

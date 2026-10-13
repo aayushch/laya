@@ -107,16 +107,18 @@ def _reset_http_client():
 
 @pytest.fixture(autouse=True)
 def _bypass_engine_auth_for_existing_tests(request):
-    """Bypass require_engine_auth for existing tests that do not test engine auth."""
-    if "test_engine_auth" in request.node.nodeid or "test_n8n_auth" in request.node.nodeid:
+    """Bypass the REST and `/ws` auth dependencies for tests that do not test them."""
+    if any(name in request.node.nodeid for name in ("test_engine_auth", "test_n8n_auth", "test_ws_auth")):
         yield
         return
     from laya.main import app
-    from laya.security.engine_auth import require_engine_auth
+    from laya.security.engine_auth import require_engine_auth, require_ws_engine_auth
 
     app.dependency_overrides[require_engine_auth] = lambda: "test_token"
+    app.dependency_overrides[require_ws_engine_auth] = lambda: None
     yield
     app.dependency_overrides.pop(require_engine_auth, None)
+    app.dependency_overrides.pop(require_ws_engine_auth, None)
 
 
 @pytest_asyncio.fixture
