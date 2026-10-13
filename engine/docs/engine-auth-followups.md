@@ -29,6 +29,20 @@ The Origin guard narrows both gaps to non-browser callers only. It does not clos
 
 ## Issue 1: Authenticate `/ws`, and move the Origin guard to a pure ASGI middleware
 
+**Status: implemented as issue #45 (2026-10-13).** Part A landed as designed
+(`OriginGuardMiddleware` in `laya/security/origin_guard.py`; the per-route copies in
+`websocket_endpoint` and `mcp_api.py` are gone). Part B changed transport: instead of a
+first-frame auth message, the webview offers the app token as a `Sec-WebSocket-Protocol`
+entry next to the protocol name `laya.engine.v1`, and `require_ws_engine_auth` (a FastAPI
+dependency on the `/ws` route, sharing `token_matches` with the REST bearer check) refuses the
+handshake before `accept()`. The reason the doc gave for avoiding the header, that the token's
+character set might not satisfy the header-token grammar, does not hold: the shell mints hex and
+the keychain fallback mints base64url, both valid, and `ensure_engine_token` warns if an
+operator-supplied token is not. Checking before accept means no half-open unauthenticated
+socket, no new message type, no UI "authenticating" state and no server-side deadline, and a
+refusal is a 403 handshake exactly like the Origin guard's. The text below is the original
+proposal.
+
 ### Problem
 
 `websocket_endpoint` in `laya/main.py` calls `manager.connect(websocket)`, which accepts the

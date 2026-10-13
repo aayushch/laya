@@ -18,7 +18,7 @@ tracking that enforcement depends on.
 | Credential | Protects | Caller | Holder |
 |---|---|---|---|
 | MCP bearer token | `/mcp` SSE endpoint | external agents | keychain |
-| App token (PR #40) | every REST route | Tauri webview, tray | shell, per launch |
+| App token (PR #40, #45) | every REST route and the `/ws` handshake | Tauri webview, tray | shell, per launch |
 | **n8n token (this doc)** | the four n8n routes only | bundled workflows | shell, per launch |
 
 The n8n token is a different secret from the app token on purpose. Workflow expressions can
