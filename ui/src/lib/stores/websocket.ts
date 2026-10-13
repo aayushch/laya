@@ -3,7 +3,7 @@
 
 import { writable } from 'svelte/store';
 import type { WsMessage } from '$lib/api/types';
-import { getEngineWsUrl } from '$lib/config';
+import { getEngineToken, getEngineWsUrl } from '$lib/config';
 
 export type WsStatus = 'connecting' | 'connected' | 'disconnected';
 
@@ -11,6 +11,20 @@ export const wsStatus = writable<WsStatus>('disconnected');
 export const lastMessage = writable<WsMessage | null>(null);
 
 const ENGINE_WS_URL = getEngineWsUrl();
+
+/** Protocol name the engine echoes back on accept; must match the engine's WS_SUBPROTOCOL. */
+export const ENGINE_WS_PROTOCOL = 'laya.engine.v1';
+
+/**
+ * The subprotocol list that carries the engine token on the handshake.
+ * A browser cannot set an Authorization header on a WebSocket, so the token
+ * travels as a Sec-WebSocket-Protocol entry next to the protocol name; the
+ * engine checks it before accepting the socket.
+ */
+export function engineWsProtocols(token: string): string[] {
+	return [ENGINE_WS_PROTOCOL, token];
+}
+
 let socket: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectDelay = 1000;
@@ -42,7 +56,21 @@ function connect() {
 	}
 
 	wsStatus.set('connecting');
-	socket = new WebSocket(ENGINE_WS_URL);
+
+	// Without a token the handshake would be refused, so wait for one instead of
+	// opening a socket. The health store resolves the token on startup
+	// (waitForEngineToken -> setEngineToken); the next backoff tick picks it up.
+	const token = getEngineToken();
+	if (!token) {
+		scheduleReconnect();
+		return;
+	}
+
+	// The engine authenticates the handshake, so a socket that reaches onopen is
+	// authenticated and every readyState === OPEN check in this file stays valid.
+	// A refused handshake surfaces as an ordinary close and goes through the
+	// capped reconnect backoff below.
+	socket = new WebSocket(ENGINE_WS_URL, engineWsProtocols(token));
 
 	socket.onopen = () => {
 		wsStatus.set('connected');
