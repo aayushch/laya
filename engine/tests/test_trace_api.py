@@ -243,3 +243,64 @@ class TestTraceRerun:
         ]
         assert len(completes) == 1
         assert completes[0]["trace_id"] == "trace_ws" == response.trace_id
+
+
+@pytest.mark.asyncio
+class TestTraceDocuments:
+    """Corpus documents ride on trace clusters and round-trip through the DB."""
+
+    async def test_semantic_search_filters_cards_and_drops_hits_without_card_id(self, db):
+        from laya.pipeline.trace import _semantic_search
+
+        hits = [
+            {"id": "card_1", "document": "x", "metadata": {"card_id": "card_1", "entity_id": "e1"}, "distance": 0.1},
+            {"id": "doc_1_chunk_0", "document": "y", "metadata": {"document_id": "doc_1"}, "distance": 0.1},
+        ]
+        with patch("laya.pipeline.trace.memory_search", new_callable=AsyncMock, return_value=hits) as ms:
+            out = await _semantic_search("q", "default", n=5)
+        assert [o["card_id"] for o in out] == ["card_1"]
+        assert ms.await_args.kwargs["where"]["$and"][0] == {"content_type": {"$nin": ["document_chunk", "document_summary"]}}
+
+    async def test_cluster_documents_and_round_trip(self, db):
+        from laya.api.cards_common import _row_to_card
+        from laya.api.cards_api import CARD_SELECT_COLUMNS
+        from laya.api.trace_api import _reconstruct_trace
+        from laya.documents import store
+        from laya.models.trace import TraceDocumentRef, TraceEntity
+        from laya.pipeline.trace import _build_clusters, _document_links_for
+        from laya.models.trace import TraceRequest
+        from tests.conftest import insert_test_card, insert_test_document
+
+        await insert_test_card(db, card_id="card_a", event_id="evt_a", entity_id="jira:ticket:PAY-1", space_id="default")
+        await insert_test_document(db, document_id="doc_a", title="PRD")
+        await store.replace_links("doc_a", [{"entity_id": "jira:ticket:PAY-1", "link_method": "identifier", "confidence": 1.0, "matched_text": "PAY-1", "first_page": 2}])
+        await insert_test_document(db, document_id="doc_loose", title="Loose")
+        await store.replace_links("doc_loose", [{"entity_id": "jira:ticket:OTHER-9", "link_method": "identifier", "confidence": 1.0, "matched_text": "OTHER-9"}])
+
+        rows = await db.execute_fetchall(
+            f"SELECT {CARD_SELECT_COLUMNS} FROM action_cards c LEFT JOIN events e ON c.event_id = e.event_id "
+            "LEFT JOIN spaces s ON c.space_id = s.space_id WHERE c.card_id = 'card_a'"
+        )
+        cards = [_row_to_card(rows[0])]
+        request = TraceRequest(query="trace OTHER-9", space_id="default")
+        doc_links = await _document_links_for(request, cards, [])
+        assert [d.document_id for d in doc_links["jira:ticket:PAY-1"]] == ["doc_a"]
+        assert [d.document_id for d in doc_links[""]] == ["doc_loose"]
+
+        entity_map = {"jira:ticket:PAY-1": TraceEntity(entity_id="jira:ticket:PAY-1", title="PAY-1", platform="jira")}
+        clusters = _build_clusters(cards, entity_map, [], doc_links)
+        assert len(clusters) == 1
+        assert [d.document_id for d in clusters[0].documents] == ["doc_a"]
+        assert clusters[0].documents[0].first_page == 2
+
+        resp = TraceResponse(
+            trace_id="trace_docs", query=request.query, clusters=clusters,
+            search_metadata=SearchMetadata(), created_at="2026-07-16 12:00:00", space_id="default",
+            documents=doc_links[""],
+        )
+        await _save_trace(resp)
+        row = (await db.execute_fetchall("SELECT * FROM traces WHERE trace_id = 'trace_docs'"))[0]
+        rebuilt = await _reconstruct_trace(db, row)
+        assert [d.document_id for d in rebuilt.clusters[0].documents] == ["doc_a"]
+        assert isinstance(rebuilt.clusters[0].documents[0], TraceDocumentRef)
+        assert [d.document_id for d in rebuilt.documents] == ["doc_loose"]

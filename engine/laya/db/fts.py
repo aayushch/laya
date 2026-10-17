@@ -5,7 +5,7 @@
 
 The lexical half of Laya's hybrid retrieval (chat, the card-search tool, trace)
 used SQL ``LIKE`` with recency ordering — no term-frequency ranking at all. This
-module adds FTS5 virtual tables (``cards_fts``, ``events_fts``) kept in sync with
+module adds FTS5 virtual tables (``cards_fts``, ``events_fts``, ``documents_fts``) kept in sync with
 their base tables via triggers, queried with the ``bm25()`` ranker. Callers query
 FTS when it is available and fall back to ``LIKE`` otherwise (e.g. an exotic SQLite
 build compiled without the fts5 module), so retrieval never hard-fails.
@@ -146,6 +146,44 @@ CREATE TRIGGER IF NOT EXISTS events_fts_au AFTER UPDATE ON events BEGIN
     INSERT INTO events_fts(event_id, subject_title, content_body)
     VALUES (new.event_id, COALESCE(new.subject_title, ''), COALESCE(new.content_body, ''));
 END;
+
+-- Corpus document chunks (laya/documents/). One row per chunk; the document
+-- title is denormalised into every chunk row so a title match ranks the
+-- whole document's chunks. bm25() weights are passed by the caller
+-- (title 3, heading 2, text 1 in documents/search.py).
+CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
+    chunk_id UNINDEXED,
+    document_id UNINDEXED,
+    title,
+    heading,
+    text,
+    tokenize = 'porter unicode61'
+);
+
+CREATE TRIGGER IF NOT EXISTS document_chunks_fts_ai AFTER INSERT ON document_chunks BEGIN
+    INSERT INTO documents_fts(chunk_id, document_id, title, heading, text)
+    VALUES (new.chunk_id, new.document_id,
+            COALESCE((SELECT title FROM documents WHERE document_id = new.document_id), ''),
+            COALESCE(new.heading, ''), new.text);
+END;
+
+CREATE TRIGGER IF NOT EXISTS document_chunks_fts_ad AFTER DELETE ON document_chunks BEGIN
+    DELETE FROM documents_fts WHERE chunk_id = old.chunk_id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS document_chunks_fts_au
+AFTER UPDATE OF text, heading ON document_chunks BEGIN
+    DELETE FROM documents_fts WHERE chunk_id = old.chunk_id;
+    INSERT INTO documents_fts(chunk_id, document_id, title, heading, text)
+    VALUES (new.chunk_id, new.document_id,
+            COALESCE((SELECT title FROM documents WHERE document_id = new.document_id), ''),
+            COALESCE(new.heading, ''), new.text);
+END;
+
+-- A title rename re-syncs every chunk row of that document.
+CREATE TRIGGER IF NOT EXISTS documents_fts_title_au AFTER UPDATE OF title ON documents BEGIN
+    UPDATE documents_fts SET title = new.title WHERE document_id = new.document_id;
+END;
 """
 
 
@@ -177,6 +215,14 @@ async def ensure_fts_tables(db) -> None:
                 """INSERT INTO events_fts(event_id, subject_title, content_body)
                    SELECT event_id, COALESCE(subject_title, ''), COALESCE(content_body, '')
                    FROM events"""
+            )
+        doc_rows = await db.execute_fetchall("SELECT COUNT(*) AS c FROM documents_fts")
+        if doc_rows and doc_rows[0]["c"] == 0:
+            await db.execute(
+                """INSERT INTO documents_fts(chunk_id, document_id, title, heading, text)
+                   SELECT c.chunk_id, c.document_id, COALESCE(d.title, ''),
+                          COALESCE(c.heading, ''), c.text
+                   FROM document_chunks c JOIN documents d ON d.document_id = c.document_id"""
             )
         await db.commit()
         _FTS_READY = True

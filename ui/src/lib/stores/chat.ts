@@ -42,3 +42,22 @@ export const chatCardContext = writable<string | null>(null);
 
 /** Card IDs for conversation anchoring (used with card-context chats) */
 export const chatCardIds = writable<string[] | null>(null);
+
+/** Corpus document IDs attached to the active conversation (null = none). Mirrors
+ *  chatCardIds: sent with every message so the engine focuses retrieval on them,
+ *  and seeded from Conversation.document_ids when a conversation is opened. */
+export const chatDocumentIds = writable<string[] | null>(null);
+
+/**
+ * Start a new conversation focused on the given Corpus documents and open the
+ * chat on it. Clears any card anchoring so the two focus modes never mix.
+ */
+export function askAboutDocuments(documentIds: string[]): void {
+	chatCardContext.set(null);
+	chatCardIds.set(null);
+	chatDocumentIds.set(documentIds.length > 0 ? [...documentIds] : null);
+	activeConversationId.set(null);
+	chatMessages.set([]);
+	chatListOpen.set(false);
+	chatOpen.set(true);
+}

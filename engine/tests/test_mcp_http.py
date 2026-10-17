@@ -266,3 +266,10 @@ class TestStartupToken:
         delete_mcp_token()
         ensure_startup_token()
         assert get_mcp_token() is None
+
+
+class TestDocumentToolScope:
+    def test_document_tools_are_read_scope(self):
+        assert scope_of("search_documents") == "read"
+        assert scope_of("read_document") == "read"
+        assert scope_of("list_documents") == "read"

@@ -470,6 +470,10 @@ click==8.3.1 \
     #   litellm
     #   typer
     #   uvicorn
+cobble==0.1.4 \
+    --hash=sha256:36c91b1655e599fd428e2b95fdd5f0da1ca2e9f1abb0bc871dec21a0e78a2b44 \
+    --hash=sha256:de38be1539992c8a06e569630717c485a5f91be2192c461ea2b220607dfa78aa
+    # via mammoth
 colorama==0.4.6 ; (python_full_version < '3.11' and os_name == 'nt') or (python_full_version >= '3.14' and os_name == 'nt') or (os_name != 'nt' and sys_platform == 'win32') or (os_name == 'nt' and sys_platform != 'darwin') \
     --hash=sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44 \
     --hash=sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6
@@ -1115,6 +1119,10 @@ kubernetes==35.0.0 \
 litellm==1.81.14 \
     --hash=sha256:445efb92ae359e8f40ee984753c5ae752535eb18a2aeef00d3089922de5676b7 \
     --hash=sha256:6394e61bbdef7121e5e3800349f6b01e9369e7cf611e034f1832750c481abfed
+    # via -r requirements.txt
+mammoth==1.13.0 \
+    --hash=sha256:b359bee7bc00caba47dacc64286928133dd947917bab852eea01d0c8d8997296 \
+    --hash=sha256:dd7629fa9d0a5e82207b3f481a9dcb8308fb43f6206258e062f11121efba9991
     # via -r requirements.txt
 markdown-it-py==4.0.0 \
     --hash=sha256:87327c59b172c5011896038353a81343b6754500a08cd7a4973bb48c6d578147 \
@@ -2353,6 +2361,10 @@ pyjwt==2.12.1 \
     --hash=sha256:28ca37c070cad8ba8cd9790cd940535d40274d22f80ab87f3ac6a713e6e8454c \
     --hash=sha256:c74a7a2adf861c04d002db713dd85f84beb242228e671280bf709d765b03672b
     # via mcp
+pypdf==6.21.1 \
+    --hash=sha256:2d62c383acd6e0dff0a96322ba8b1135229343b084d73c6f6cfd947fd291afcb \
+    --hash=sha256:553e2d42f5bb3bb2a785a7d3de8ef90bb7df74b5413eff5a7b4388007ea9254b
+    # via -r requirements.txt
 pypika==0.51.1 \
     --hash=sha256:77985b4d7ce71b9905255bf12468cf598349e98837c037541cfc240e528aec46 \
     --hash=sha256:c30c7c1048fbf056fd3920c5a2b88b0c29dd190a9b2bee971fd17e4abe4d0ebe
@@ -2975,6 +2987,7 @@ typing-extensions==4.15.0 \
     #   pydantic
     #   pydantic-core
     #   pyjwt
+    #   pypdf
     #   pypika
     #   referencing
     #   starlette

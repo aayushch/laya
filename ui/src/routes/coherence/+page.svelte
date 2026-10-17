@@ -1,6 +1,7 @@
 <!-- Copyright 2026 Aayush Chawla -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { engineApi } from '$lib/api/engine';
 	import { lastMessage } from '$lib/stores/websocket';
 	import {
@@ -819,6 +820,24 @@
 						{/if}
 					</div>
 				</div>
+
+				<!-- Corpus documents matched by identifier that no cluster shares -->
+				{#if trace.documents && trace.documents.length > 0}
+					<div class="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-laya-secondary">
+						<span class="text-surface-600">documents:</span>
+						{#each trace.documents as doc (doc.document_id)}
+							<a
+								href="/corpus?doc={encodeURIComponent(doc.document_id)}{doc.first_page ? `&page=${doc.first_page}` : ''}"
+								onclick={(e) => { e.preventDefault(); goto(`/corpus?doc=${encodeURIComponent(doc.document_id)}${doc.first_page ? `&page=${doc.first_page}` : ''}`); }}
+								class="inline-flex items-center gap-1 rounded border border-surface-600/50 bg-surface-700/40 px-1.5 text-laya-micro text-surface-300 hover:border-laya-orange/50 hover:text-laya-orange transition-colors"
+								title="{doc.title}{doc.first_page ? ` (p.${doc.first_page})` : ''}"
+							>
+								<svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6M7 4h7l5 5v11a1 1 0 01-1 1H7a1 1 0 01-1-1V5a1 1 0 011-1z" /></svg>
+								<span class="max-w-[220px] truncate">{doc.title}</span>
+							</a>
+						{/each}
+					</div>
+				{/if}
 
 				<!-- Cluster nodes -->
 				<div class="relative">

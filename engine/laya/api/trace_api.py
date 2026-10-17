@@ -26,6 +26,7 @@ from laya.models.trace import (
     TraceRequest,
     TraceResponse,
     TraceStatusSummary,
+    TraceDocumentRef,
 )
 from laya.pipeline.trace import (
     run_trace,
@@ -445,6 +446,7 @@ async def _reconstruct_trace(db, row) -> TraceResponse:
             chapters=cluster_chapters,
             timeline=cluster_timeline,
             status_summary=summary,
+            documents=_document_refs(cdata.get("documents")),
         ))
 
     # Fallback: if no clusters reconstructed, put all cards in one
@@ -477,6 +479,13 @@ async def _reconstruct_trace(db, row) -> TraceResponse:
             ),
         ))
 
+    loose_docs_raw: list[dict] = []
+    if "documents" in row.keys() and row["documents"]:
+        try:
+            loose_docs_raw = json.loads(row["documents"])
+        except json.JSONDecodeError:
+            loose_docs_raw = []
+
     return TraceResponse(
         trace_id=row["trace_id"],
         query=row["query"],
@@ -485,7 +494,19 @@ async def _reconstruct_trace(db, row) -> TraceResponse:
         created_at=row["created_at"],
         summary=row["summary"] if "summary" in row.keys() else None,
         space_id=row["space_id"] if "space_id" in row.keys() else None,
+        documents=_document_refs(loose_docs_raw),
     )
+
+
+def _document_refs(raw) -> list[TraceDocumentRef]:
+    """Hydrate saved document refs; malformed entries are skipped."""
+    out: list[TraceDocumentRef] = []
+    for d in raw or []:
+        try:
+            out.append(TraceDocumentRef(**d))
+        except Exception:
+            continue
+    return out
 
 
 def _card_in_cluster(card: CardResponse, primary: TraceEntity, linked: list[TraceEntity]) -> bool:

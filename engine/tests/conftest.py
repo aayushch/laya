@@ -517,3 +517,49 @@ async def insert_test_card(db, card_id="card_test", event_id="evt_test",
          entity_id or f"jira:ticket:BUG-1234", space_id),
     )
     await db.commit()
+
+
+# --- Corpus document fixtures ---
+
+async def insert_test_document(db, document_id="doc_test", space_id="default",
+                               title="Test Document", chunks=None, status="ready",
+                               file_type="pdf", storage_mode="reference",
+                               source_path=None, sha256=None, summary=None,
+                               page_count=None, embedding_model=None):
+    """Insert a documents row with optional chunk rows (FTS triggers fire)."""
+    from laya.db.timeutil import db_now
+    now = db_now()
+    chunks = chunks if chunks is not None else [
+        {"text": "Chunk one about the payment service.", "page_start": 1, "page_end": 1, "heading": None},
+    ]
+    await db.execute(
+        """INSERT INTO documents
+           (document_id, space_id, title, original_filename, file_type, storage_mode,
+            source_path, source_mtime, stored_path, sha256, size_bytes, page_count, chunk_count,
+            char_count, status, summary, embedding_model, created_at, updated_at, indexed_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (document_id, space_id, title, f"{title}.{file_type}", file_type, storage_mode,
+         source_path, None, None, sha256 or f"sha_{document_id}", 1234, page_count, len(chunks),
+         sum(len(c["text"]) for c in chunks), status, summary, embedding_model, now, now,
+         now if status == "ready" else None),
+    )
+    for i, c in enumerate(chunks):
+        await db.execute(
+            """INSERT INTO document_chunks
+               (chunk_id, document_id, chunk_index, text, page_start, page_end, heading, char_count)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (f"{document_id}_chunk_{i}", document_id, i, c["text"], c.get("page_start"),
+             c.get("page_end"), c.get("heading"), len(c["text"])),
+        )
+    await db.commit()
+
+
+@pytest.fixture
+def mock_document_vectors():
+    """Patch the Chroma writes the document ingest makes so tests need no store."""
+    with patch("laya.documents.ingest.embed_batch", new_callable=AsyncMock, return_value=0) as eb, \
+         patch("laya.documents.ingest.delete_where", new_callable=AsyncMock) as dw, \
+         patch("laya.documents.ingest.embed_document", new_callable=AsyncMock) as ed, \
+         patch("laya.documents.ingest.get_embedding_info", return_value={"backend": "mpnet"}), \
+         patch("laya.documents.search.memory_search", new_callable=AsyncMock, return_value=[]):
+        yield {"embed_batch": eb, "delete_where": dw, "embed_document": ed}

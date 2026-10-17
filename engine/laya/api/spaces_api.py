@@ -201,11 +201,31 @@ async def delete_space(space_id: str) -> dict:
         await db.execute(
             "UPDATE events SET space_id = 'default' WHERE space_id = ?", (space_id,)
         )
+        # Move Corpus documents to default (their vectors are patched below)
+        moved_docs = await db.execute_fetchall(
+            "SELECT document_id FROM documents WHERE space_id = ?", (space_id,)
+        )
+        await db.execute(
+            "UPDATE documents SET space_id = 'default' WHERE space_id = ?", (space_id,)
+        )
         # Delete space API keys and repo assignments
         await db.execute("DELETE FROM space_api_keys WHERE space_id = ?", (space_id,))
         await db.execute("DELETE FROM space_repos WHERE space_id = ?", (space_id,))
         # Delete the space
         await db.execute("DELETE FROM spaces WHERE space_id = ?", (space_id,))
+
+    # Keep the moved documents' vector metadata in step so space-scoped
+    # retrieval finds them under default. Best effort, outside the write lock.
+    if moved_docs:
+        import asyncio
+        from laya.db.chromadb_store import update_document_metadata
+        for r in moved_docs:
+            try:
+                await asyncio.wait_for(
+                    update_document_metadata(r["document_id"], {"space_id": "default"}), timeout=5.0,
+                )
+            except Exception as e:
+                log.warning("document_space_vector_patch_failed", document_id=r["document_id"], error=str(e))
 
     log.info("space_deleted", space_id=space_id)
     return {"status": "deleted", "space_id": space_id}

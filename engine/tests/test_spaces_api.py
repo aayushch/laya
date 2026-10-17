@@ -130,3 +130,22 @@ class TestN8nClientTransportWrapping:
                 await n8n_client.activate_workflow("wf_1", active=True)
 
         assert ei.value.status_code == 409
+
+
+@pytest.mark.asyncio
+class TestDeleteSpaceDocuments:
+    async def test_documents_move_to_default_and_vectors_patched(self, db):
+        from laya.main import app
+        from tests.conftest import insert_test_document
+
+        await db.execute("INSERT INTO spaces (space_id, name) VALUES (?, ?)", ("sp_docs", "Docs Space"))
+        await db.commit()
+        await insert_test_document(db, document_id="doc_mv", space_id="sp_docs")
+        with patch("laya.db.chromadb_store.update_document_metadata", new_callable=AsyncMock) as upd:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.delete("/spaces/sp_docs")
+        assert resp.status_code == 200
+        rows = await db.execute_fetchall("SELECT space_id FROM documents WHERE document_id = 'doc_mv'")
+        assert rows[0]["space_id"] == "default"
+        upd.assert_awaited_once_with("doc_mv", {"space_id": "default"})

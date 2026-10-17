@@ -1,0 +1,60 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 248 >>
+stream
+BT
+/F1 12 Tf
+72 720 Td
+14 TL
+(Quarterly Roadmap) Tj T*
+(This document describes the Q3 roadmap for the payments team.) Tj T*
+(Ticket PAY-42 tracks the checkout redesign and PR #540 implements it.) Tj T*
+(The migration deadline is 2026-09-30.) Tj
+ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 226 >>
+stream
+BT
+/F1 12 Tf
+72 720 Td
+14 TL
+(Risks and open questions) Tj T*
+(The fraud model retraining depends on ticket PAY-77.) Tj T*
+(Sarah owns the rollout plan and reports weekly.) Tj T*
+(Appendix: glossary of terms used above.) Tj
+ET
+endstream
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000127 00000 n 
+0000000197 00000 n 
+0000000323 00000 n 
+0000000622 00000 n 
+0000000748 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+1025
+%%EOF

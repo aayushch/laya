@@ -55,6 +55,19 @@ class TraceStatusSummary(BaseModel):
     pending_actions: int
 
 
+class TraceDocumentRef(BaseModel):
+    """A Corpus document linked to an entity in the trace."""
+
+    document_id: str
+    title: str
+    file_type: str
+    page_count: int | None = None
+    link_method: str
+    confidence: float
+    entity_ids: list[str] = Field(default_factory=list)
+    first_page: int | None = None
+
+
 class TraceCluster(BaseModel):
     """A group of related entities and their cards forming one trace result."""
 
@@ -65,6 +78,7 @@ class TraceCluster(BaseModel):
     chapters: list[TraceChapter] = Field(default_factory=list)
     timeline: list[CardResponse] = Field(default_factory=list)
     status_summary: TraceStatusSummary
+    documents: list[TraceDocumentRef] = Field(default_factory=list)
 
 
 class SearchMetadata(BaseModel):
@@ -95,6 +109,8 @@ class TraceResponse(BaseModel):
     created_at: str
     summary: str | None = None
     space_id: str | None = None
+    # Documents matched by identifier only (no card in any cluster shares their entity).
+    documents: list[TraceDocumentRef] = Field(default_factory=list)
 
 
 class TraceListItem(BaseModel):

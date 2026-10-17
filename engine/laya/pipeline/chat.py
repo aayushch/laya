@@ -15,10 +15,12 @@ from typing import Any
 
 import structlog
 
-from laya.db.chromadb_store import memory_search
+from laya.db.chromadb_store import CARD_CONTENT_FILTER, and_where, memory_search
 from laya.db.sqlite import get_db
 from laya.retrieval import extract_keywords, fts_or_like, reciprocal_rank_fusion
 from laya.db.timeutil import db_now
+from laya.documents import search as document_search
+from laya.documents import store as document_store
 from laya.llm.client import llm_call, llm_call_streaming, StreamEvent
 from laya.llm.prompts.chat import build_chat_messages, build_title_generation_messages
 from laya.llm.tools.definitions import select_chat_tools
@@ -31,6 +33,16 @@ log = structlog.get_logger()
 # Pattern to extract card and event references from LLM output
 CARD_REF_PATTERN = re.compile(r"\[card:([^\]]+)\]")
 EVENT_REF_PATTERN = re.compile(r"\[event:([^\]]+)\]")
+# [doc:ID], [doc:ID p.3], [doc:ID page 3], [doc:ID p.3-5]: the id is the first
+# group; the optional page suffix is matched but not captured.
+DOC_REF_PATTERN = re.compile(
+    r"\[doc:([A-Za-z0-9_\-]+)(?:\s+p(?:age|\.)?\s*\d+(?:\s*[-\u2013]\s*\d+)?)?\]"
+)
+
+
+def referenced_document_ids(content: str) -> list[str]:
+    """Distinct document ids cited in a reply, in order of first mention."""
+    return list(dict.fromkeys(DOC_REF_PATTERN.findall(content or "")))
 
 MAX_TOOL_ITERATIONS = 20
 
@@ -74,6 +86,7 @@ async def _ensure_conversation(
     conversation_id: str | None,
     space_id: str | None,
     card_ids: list[str] | None = None,
+    document_ids: list[str] | None = None,
 ) -> str:
     """Return a valid conversation_id, creating one seeded with "New Chat" if needed.
 
@@ -93,12 +106,71 @@ async def _ensure_conversation(
     canonical = canonical_card_ids(card_ids)
     await db.execute(
         """INSERT INTO chat_conversations
-           (conversation_id, title, space_id, created_at, updated_at, card_ids)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (conv_id, "New Chat", space_id, now, now, canonical),
+           (conversation_id, title, space_id, created_at, updated_at, card_ids, document_ids)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (conv_id, "New Chat", space_id, now, now, canonical,
+         document_store.canonical_document_ids(document_ids)),
     )
     await db.commit()
     return conv_id
+
+
+async def _resolve_document_ids(
+    db, conversation_id: str, requested: list[str] | None
+) -> list[str]:
+    """The Corpus documents attached to a conversation for this turn.
+
+    A request that carries ``document_ids`` (even an empty list) replaces the
+    stored attachment; otherwise the stored attachment is used. Ids of
+    documents that no longer exist are dropped so a deleted document cannot
+    keep a conversation pinned to nothing.
+    """
+    if requested is not None:
+        await db.execute(
+            "UPDATE chat_conversations SET document_ids = ? WHERE conversation_id = ?",
+            (document_store.canonical_document_ids(requested), conversation_id),
+        )
+        await db.commit()
+        ids = [d for d in dict.fromkeys(requested) if d]
+    else:
+        rows = await db.execute_fetchall(
+            "SELECT document_ids FROM chat_conversations WHERE conversation_id = ?",
+            (conversation_id,),
+        )
+        ids = document_store.parse_document_ids(rows[0]["document_ids"]) if rows else []
+    if not ids:
+        return []
+    existing = await document_store.get_documents(ids)
+    return [d["document_id"] for d in existing]
+
+
+_DOCUMENT_CONTEXT_MAX_DOCS = 5
+_DOCUMENT_CONTEXT_MAX_CHARS = 3000
+_DOCUMENT_SUMMARY_PREVIEW_CHARS = 600
+
+
+async def _build_document_context(document_ids: list[str]) -> str | None:
+    """The "Attached Documents" system block: one line per attached document
+    with its id, title, type, page count and a summary preview."""
+    if not document_ids:
+        return None
+    rows = await document_store.get_documents(document_ids[:_DOCUMENT_CONTEXT_MAX_DOCS])
+    lines: list[str] = []
+    used = 0
+    for r in rows:
+        pages = f", {r['page_count']} pages" if r.get("page_count") else ""
+        summary = (r.get("summary") or "").strip()
+        preview = summary[:_DOCUMENT_SUMMARY_PREVIEW_CHARS].replace("\n", " ") if summary else "summary pending"
+        if summary and len(summary) > _DOCUMENT_SUMMARY_PREVIEW_CHARS:
+            preview += "..."
+        line = f"- [doc:{r['document_id']}] \"{r['title']}\" ({r['file_type'].upper()}{pages}): {preview}"
+        if used + len(line) > _DOCUMENT_CONTEXT_MAX_CHARS and lines:
+            break
+        lines.append(line)
+        used += len(line)
+    if len(document_ids) > len(lines):
+        lines.append(f"- ...and {len(document_ids) - len(lines)} more attached document(s); use list_documents.")
+    return "\n".join(lines) if lines else None
 
 
 # Reasoning models (Qwen 3, DeepSeek-R1, etc.) sometimes leak a preamble header
@@ -263,6 +335,7 @@ async def process_chat_message(
     conversation_id: str | None = None,
     card_context: str | None = None,
     card_ids: list[str] | None = None,
+    document_ids: list[str] | None = None,
 ) -> ChatResponse:
     """Process a user chat message through the enhanced pipeline.
 
@@ -276,8 +349,9 @@ async def process_chat_message(
     """
     db = await get_db()
     conversation_id = await _ensure_conversation(
-        db, user_message, conversation_id, space_id, card_ids=card_ids,
+        db, user_message, conversation_id, space_id, card_ids=card_ids, document_ids=document_ids,
     )
+    attached_docs = await _resolve_document_ids(db, conversation_id, document_ids)
 
     # Kick off title generation in parallel for first-message conversations so
     # it doesn't delay the reply. Runs against the cheap router model and
@@ -292,10 +366,10 @@ async def process_chat_message(
     # already has what the LLM needs) OR when the previous assistant turn used tools
     # (the conversation is already fetching on demand — ambient retrieval is
     # redundant and the model re-fetches via tools anyway) — review §3 — P6-14.
-    if card_context or await _prev_turn_used_tools(conversation_id):
-        context = {"context_text": "", "result_count": 0, "signals_used": []}
-    else:
-        context = await _retrieve_context(user_message, space_id=space_id)
+    # An attached document is a stated focus and always retrieves.
+    context = await _retrieve_for_turn(
+        user_message, space_id, conversation_id, card_context, attached_docs,
+    )
 
     # Load recent chat history (scoped to conversation). timestamp has only
     # 1-second resolution, so a user+assistant pair written in the same second
@@ -315,17 +389,20 @@ async def process_chat_message(
     # Generate response with tool loop
     from laya.config import get_self_user
     user_identity = get_self_user()
+    has_documents = bool(attached_docs) or await document_store.space_has_ready_documents(space_id)
     messages = build_chat_messages(
         user_message,
         chat_history,
         context_text=context["context_text"],
         user_identity=user_identity,
         card_context=card_context,
+        document_context=await _build_document_context(attached_docs),
+        has_documents=has_documents,
     )
 
     # Intent-gated toolset: read + card-write always; settings/rules/egress only
     # when the turn signals it — ~8.4K → ~2.8K tokens on an ordinary turn (P6-8).
-    tools = select_chat_tools(user_message, chat_history)
+    tools = select_chat_tools(user_message, chat_history, has_documents=has_documents)
     tool_calls_log: list[dict] = []
     total_input_tokens = 0
     total_output_tokens = 0
@@ -387,9 +464,10 @@ async def process_chat_message(
         total_output_tokens = 0
         total_latency_ms = 0
 
-    # Extract card and event references
+    # Extract card, event and document references
     referenced_cards = CARD_REF_PATTERN.findall(assistant_content)
     referenced_events = EVENT_REF_PATTERN.findall(assistant_content)
+    referenced_documents = referenced_document_ids(assistant_content)
 
     # Store user message
     user_msg_id = f"msg_{uuid.uuid4().hex[:12]}"
@@ -407,9 +485,9 @@ async def process_chat_message(
     await db.execute(
         """INSERT INTO chat_messages
            (message_id, timestamp, role, content, referenced_cards,
-            referenced_events, context_used, model_used, input_tokens,
+            referenced_events, referenced_documents, context_used, model_used, input_tokens,
             output_tokens, latency_ms, tool_calls_json, space_id, conversation_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             assistant_msg_id,
             assistant_ts,
@@ -417,6 +495,7 @@ async def process_chat_message(
             assistant_content,
             json.dumps(referenced_cards) if referenced_cards else None,
             json.dumps(referenced_events) if referenced_events else None,
+            json.dumps(referenced_documents) if referenced_documents else None,
             json.dumps({
                 "result_count": context["result_count"],
                 "signals_used": context["signals_used"],
@@ -451,6 +530,7 @@ async def process_chat_message(
         content=assistant_content,
         referenced_cards=referenced_cards,
         referenced_events=referenced_events,
+        referenced_documents=referenced_documents,
         conversation_id=conversation_id,
     )
 
@@ -458,6 +538,7 @@ async def process_chat_message(
         message=assistant_message,
         referenced_cards=referenced_cards,
         referenced_events=referenced_events,
+        referenced_documents=referenced_documents,
     )
 
 
@@ -531,6 +612,7 @@ async def process_chat_message_streaming(
     conversation_id: str | None = None,
     card_context: str | None = None,
     card_ids: list[str] | None = None,
+    document_ids: list[str] | None = None,
 ):
     """Streaming version of process_chat_message.
 
@@ -544,8 +626,9 @@ async def process_chat_message_streaming(
     """
     db = await get_db()
     conversation_id = await _ensure_conversation(
-        db, user_message, conversation_id, space_id, card_ids=card_ids,
+        db, user_message, conversation_id, space_id, card_ids=card_ids, document_ids=document_ids,
     )
+    attached_docs = await _resolve_document_ids(db, conversation_id, document_ids)
 
     if await _should_generate_title(db, conversation_id):
         create_task(
@@ -554,11 +637,11 @@ async def process_chat_message_streaming(
         )
 
     # Skip broad retrieval for card_context OR when the previous assistant turn
-    # used tools (fetch-on-demand mode) — review §3 — P6-14.
-    if card_context or await _prev_turn_used_tools(conversation_id):
-        context = {"context_text": "", "result_count": 0, "signals_used": []}
-    else:
-        context = await _retrieve_context(user_message, space_id=space_id)
+    # used tools (fetch-on-demand mode) — review §3 — P6-14. An attached
+    # document is a stated focus and always retrieves.
+    context = await _retrieve_for_turn(
+        user_message, space_id, conversation_id, card_context, attached_docs,
+    )
 
     # Chat history (scoped to conversation). rowid DESC is the insertion-order
     # tiebreaker for same-second user+assistant pairs — the timestamp column
@@ -576,17 +659,20 @@ async def process_chat_message_streaming(
 
     from laya.config import get_self_user
     user_identity = get_self_user()
+    has_documents = bool(attached_docs) or await document_store.space_has_ready_documents(space_id)
     messages = build_chat_messages(
         user_message,
         chat_history,
         context_text=context["context_text"],
         user_identity=user_identity,
         card_context=card_context,
+        document_context=await _build_document_context(attached_docs),
+        has_documents=has_documents,
     )
 
     # Intent-gated toolset: read + card-write always; settings/rules/egress only
     # when the turn signals it — ~8.4K → ~2.8K tokens on an ordinary turn (P6-8).
-    tools = select_chat_tools(user_message, chat_history)
+    tools = select_chat_tools(user_message, chat_history, has_documents=has_documents)
     tool_calls_log: list[dict] = []
     total_input_tokens = 0
     total_output_tokens = 0
@@ -719,13 +805,14 @@ async def process_chat_message_streaming(
         # Extract references
         referenced_cards = CARD_REF_PATTERN.findall(full_content)
         referenced_events = EVENT_REF_PATTERN.findall(full_content)
+        referenced_documents = referenced_document_ids(full_content)
 
         # Finalize the pre-inserted assistant row
         assistant_ts = db_now()
         await db.execute(
             """UPDATE chat_messages
                SET timestamp = ?, content = ?, referenced_cards = ?,
-                   referenced_events = ?, model_used = ?, input_tokens = ?,
+                   referenced_events = ?, referenced_documents = ?, model_used = ?, input_tokens = ?,
                    output_tokens = ?, latency_ms = ?, tool_calls_json = ?
                WHERE message_id = ?""",
             (
@@ -733,6 +820,7 @@ async def process_chat_message_streaming(
                 full_content,
                 json.dumps(referenced_cards) if referenced_cards else None,
                 json.dumps(referenced_events) if referenced_events else None,
+                json.dumps(referenced_documents) if referenced_documents else None,
                 model_used,
                 total_input_tokens,
                 total_output_tokens,
@@ -768,6 +856,7 @@ async def process_chat_message_streaming(
             "content": full_content,
             "referenced_cards": referenced_cards,
             "referenced_events": referenced_events,
+            "referenced_documents": referenced_documents,
             "conversation_id": conversation_id,
         },
     }
@@ -797,15 +886,48 @@ async def _prev_turn_used_tools(conversation_id: str | None) -> bool:
     return bool(rows and rows[0]["tool_calls_json"])
 
 
+_EMPTY_CONTEXT: dict[str, Any] = {"context_text": "", "result_count": 0, "signals_used": []}
+
+# Retrieval sizing with documents attached: more of the budget goes to the
+# user's stated focus, so both grow.
+_CONTEXT_ITEMS = 12
+_CONTEXT_ITEMS_WITH_DOCS = 16
+_TOKEN_BUDGET = 2000
+_TOKEN_BUDGET_WITH_DOCS = 3500
+
+
+async def _retrieve_for_turn(
+    user_message: str,
+    space_id: str | None,
+    conversation_id: str,
+    card_context: str | None,
+    document_ids: list[str],
+) -> dict[str, Any]:
+    """Ambient retrieval for one turn, honouring the skip heuristics unless a
+    document is attached (an explicit attachment always retrieves)."""
+    skip_ambient = bool(card_context) or await _prev_turn_used_tools(conversation_id)
+    if skip_ambient and not document_ids:
+        return dict(_EMPTY_CONTEXT)
+    return await _retrieve_context(
+        user_message,
+        space_id=space_id,
+        document_ids=document_ids or None,
+        token_budget=_TOKEN_BUDGET_WITH_DOCS if document_ids else _TOKEN_BUDGET,
+    )
+
+
 async def _retrieve_context(
     user_message: str,
     space_id: str | None = None,
-    token_budget: int = 2000,
+    token_budget: int = _TOKEN_BUDGET,
+    document_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """Multi-signal retrieval with Reciprocal Rank Fusion.
 
-    Runs semantic search, card keyword search, event keyword search,
-    and entity search in parallel, then fuses results using RRF.
+    Runs semantic search, card keyword search, event keyword search, entity
+    search and the two document chunk searches in parallel, then fuses the
+    results using RRF. ``document_ids`` restricts the document signals to the
+    attached documents.
     """
     # Run all retrievers in parallel
     results = await asyncio.gather(
@@ -813,6 +935,8 @@ async def _retrieve_context(
         _card_keyword_search(user_message, space_id, n=10),
         _event_keyword_search(user_message, space_id, n=10),
         _entity_search(user_message, n=5),
+        _document_vector_search(user_message, space_id, n=10, document_ids=document_ids),
+        _document_keyword_search(user_message, space_id, n=10, document_ids=document_ids),
         return_exceptions=True,
     )
 
@@ -837,19 +961,39 @@ async def _retrieve_context(
             deduped.append(item)
 
     # Pack into context string within token budget
-    context_text = _pack_context(deduped[:12], token_budget)
+    cut = _CONTEXT_ITEMS_WITH_DOCS if document_ids else _CONTEXT_ITEMS
+    context_text = _pack_context(deduped[:cut], token_budget)
 
     return {
         "context_text": context_text,
         "result_count": len(deduped),
         "signals_used": len(ranked_lists),
-        "items": deduped[:12],
+        "items": deduped[:cut],
     }
 
 
+async def _document_vector_search(
+    query: str, space_id: str | None, n: int, document_ids: list[str] | None = None,
+) -> list[dict]:
+    """Vector hits on Corpus document chunks and summaries."""
+    return await document_search.vector_chunk_search(query, space_id, n=n, document_ids=document_ids)
+
+
+async def _document_keyword_search(
+    query: str, space_id: str | None, n: int, document_ids: list[str] | None = None,
+) -> list[dict]:
+    """BM25 (or LIKE) hits on Corpus document chunks."""
+    return await document_search.keyword_chunk_search(query, space_id, n=n, document_ids=document_ids)
+
+
 async def _semantic_search(query: str, space_id: str | None, n: int) -> list[dict]:
-    """ChromaDB semantic search."""
-    where = {"space_id": space_id} if space_id else None
+    """ChromaDB semantic search over card vectors.
+
+    Document vectors share the collection and are retrieved by
+    ``_document_vector_search``; the card filter keeps them out of this signal
+    so a chunk hit is never mistaken for a card.
+    """
+    where = and_where(CARD_CONTENT_FILTER, {"space_id": space_id} if space_id else None)
     results = await memory_search(query, n_results=n, where=where, max_distance=0.60)
     return [
         {
@@ -1121,6 +1265,20 @@ def _format_context_item(item: dict) -> str:
     elif itype == "entity":
         etype = meta.get("entity_type", "?")
         return f"[Entity:{etype}] {text}"
+    elif itype == "document":
+        doc_id = item.get("document_id") or meta.get("document_id") or item.get("id", "?")
+        title = meta.get("title", "")
+        if meta.get("is_summary"):
+            return f'[Doc {doc_id} "{title}" summary] {text}'
+        p0, p1 = meta.get("page_start"), meta.get("page_end")
+        if p0 and (not p1 or p1 == p0):
+            page = f" p.{p0}"
+        elif p0:
+            page = f" pp.{p0}-{p1}"
+        else:
+            page = ""
+        head = f" §{meta['heading']}" if meta.get("heading") else ""
+        return f'[Doc {doc_id} "{title}"{page}{head}] {text}'
     else:
         platform = meta.get("source_platform", "")
         prefix = f"[{platform}] " if platform else ""

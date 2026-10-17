@@ -32,6 +32,7 @@ from laya.api.egress_api import router as egress_router
 from laya.api.chat_api import router as chat_router
 from laya.api.dashboard_api import router as dashboard_router
 from laya.api.diagnostics_api import router as diagnostics_router
+from laya.api.documents_api import router as documents_router
 from laya.api.events import router as events_router
 from laya.api.ingestion_errors import router as ingestion_errors_router
 from laya.api.mcp_api import (
@@ -365,6 +366,13 @@ async def lifespan(app: FastAPI):
     # Recover events and cards orphaned by previous crash/shutdown, then start consumer
     await recover_stalled_events()
     await recover_stalled_cards()
+    # Corpus documents left mid-ingest (parsing/embedding/...) are re-queued;
+    # their task died with the previous process.
+    from laya.documents import recover_stalled_documents
+    try:
+        await recover_stalled_documents()
+    except Exception as e:
+        log.warning("document_recovery_failed", error=str(e))
     # Agent sessions never survive a restart (subprocesses die with the
     # engine, tracking dict is in-memory) — mark leftover rows as failed
     from laya.agents.session_manager import recover_orphaned_sessions
@@ -507,6 +515,7 @@ app.include_router(egress_router, dependencies=auth_deps)
 app.include_router(chat_router, dependencies=auth_deps)
 app.include_router(dashboard_router, dependencies=auth_deps)
 app.include_router(diagnostics_router, dependencies=auth_deps)
+app.include_router(documents_router, dependencies=auth_deps)
 app.include_router(events_router, dependencies=auth_deps)
 app.include_router(health_router)  # Exempt: health check must be reachable anonymously
 app.include_router(ingestion_errors_router, dependencies=auth_deps)

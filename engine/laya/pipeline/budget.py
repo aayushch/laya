@@ -42,6 +42,8 @@ STEP_TO_FEATURE: dict[str, str] = {
     "trace_summary": "Coherence",
     "omni_resynthesis": "Omni",
     "chat": "Chat",
+    "document_summary_map": "Corpus",
+    "document_summary_reduce": "Corpus",
     "briefing": "Briefing",
     "egress_draft": "Egress",
     "execute": "Egress",

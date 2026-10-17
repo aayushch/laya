@@ -530,3 +530,155 @@ class TestStreamingPersistence:
         # The user message still survives the cancellation
         user_rows = await self._rows(db, conv_id, "user")
         assert len(user_rows) == 1
+
+
+@pytest.mark.asyncio
+class TestChatDocuments:
+    """Corpus documents in chat: citations, attachments, retrieval and prompt gating."""
+
+    def _doc_hit(self):
+        return {
+            "id": "doc_a_chunk_0", "document": "The deadline is 2026-09-30.",
+            "metadata": {"content_type": "document_chunk", "document_id": "doc_a", "title": "Roadmap",
+                         "page_start": 3, "page_end": 3, "heading": "Dates", "chunk_index": 0},
+            "distance": 0.2,
+        }
+
+    async def test_citations_persisted_rest(self, db):
+        from tests.conftest import insert_test_document
+
+        await insert_test_document(db, document_id="doc_a", title="Roadmap")
+        reply = "Per [doc:doc_a p.3] and [doc:doc_a] the date is fixed; see [card:card_1]."
+        with patch("laya.pipeline.chat.llm_call", new_callable=AsyncMock, return_value=_mock_llm_response(reply)), \
+             patch("laya.pipeline.chat.memory_search", new_callable=AsyncMock, return_value=[]), \
+             patch("laya.documents.search.memory_search", new_callable=AsyncMock, return_value=[]), \
+             patch("laya.pipeline.chat._should_generate_title", new_callable=AsyncMock, return_value=False):
+            async with AsyncClient(transport=ASGITransport(app=__import__("laya.main").main.app), base_url="http://test") as c:
+                resp = await c.post("/chat", json={"message": "when is the deadline?"})
+        body = resp.json()
+        assert body["referenced_documents"] == ["doc_a"]
+        assert body["message"]["referenced_documents"] == ["doc_a"]
+        rows = await db.execute_fetchall("SELECT referenced_documents FROM chat_messages WHERE role = 'assistant'")
+        assert json.loads(rows[0]["referenced_documents"]) == ["doc_a"]
+        async with AsyncClient(transport=ASGITransport(app=__import__("laya.main").main.app), base_url="http://test") as c:
+            history = (await c.get("/chat/history")).json()
+        assert history[0]["referenced_documents"] == ["doc_a"]
+
+    async def test_citations_persisted_streaming(self, db):
+        from laya.llm.client import StreamEvent
+        from laya.pipeline.chat import process_chat_message_streaming
+
+        async def fake_stream(**kwargs):
+            yield StreamEvent(type="chunk", content="See [doc:doc_z page 2].")
+            yield StreamEvent(type="done", model="m")
+
+        conv_id = await _create_conversation(db, "conv_doc_stream")
+        events = []
+        with patch("laya.pipeline.chat.llm_call_streaming", new=fake_stream), \
+             patch("laya.pipeline.chat.memory_search", new_callable=AsyncMock, return_value=[]), \
+             patch("laya.documents.search.memory_search", new_callable=AsyncMock, return_value=[]):
+            async for ev in process_chat_message_streaming("hi", conversation_id=conv_id):
+                events.append(ev)
+        assert events[-1]["message"]["referenced_documents"] == ["doc_z"]
+        rows = await db.execute_fetchall("SELECT referenced_documents FROM chat_messages WHERE role = 'assistant'")
+        assert json.loads(rows[0]["referenced_documents"]) == ["doc_z"]
+
+    async def test_attachment_round_trip_and_forced_retrieval(self, db):
+        """document_ids on the request are stored on the conversation, a deleted id
+        is dropped, and an attachment retrieves even when the previous turn used tools."""
+        from laya.pipeline import chat as chat_mod
+        from tests.conftest import insert_test_document
+
+        await insert_test_document(db, document_id="doc_a", title="Roadmap", summary="Plan summary")
+        conv_id = await _create_conversation(db, "conv_attach")
+        # Previous assistant turn used tools: ambient retrieval would be skipped.
+        await db.execute(
+            "INSERT INTO chat_messages (message_id, timestamp, role, content, conversation_id, tool_calls_json) "
+            "VALUES ('m0', '2026-01-01 00:00:00', 'assistant', 'x', ?, '[{\"name\": \"search_cards\"}]')",
+            (conv_id,),
+        )
+        await db.commit()
+        captured = {}
+
+        async def fake_retrieve(message, space_id=None, token_budget=2000, document_ids=None):
+            captured["document_ids"] = document_ids
+            captured["budget"] = token_budget
+            return {"context_text": "", "result_count": 0, "signals_used": []}
+
+        with patch("laya.pipeline.chat.llm_call", new_callable=AsyncMock, return_value=_mock_llm_response("ok")), \
+             patch("laya.pipeline.chat._retrieve_context", side_effect=fake_retrieve), \
+             patch("laya.pipeline.chat.build_chat_messages", wraps=chat_mod.build_chat_messages) as build, \
+             patch("laya.pipeline.chat._should_generate_title", new_callable=AsyncMock, return_value=False):
+            await chat_mod.process_chat_message("summarise", conversation_id=conv_id, document_ids=["doc_a", "doc_gone"])
+        assert captured["document_ids"] == ["doc_a"]
+        assert captured["budget"] == 3500
+        kwargs = build.call_args.kwargs
+        assert kwargs["has_documents"] is True
+        assert "[doc:doc_a]" in kwargs["document_context"] and "Plan summary" in kwargs["document_context"]
+        rows = await db.execute_fetchall("SELECT document_ids FROM chat_conversations WHERE conversation_id = ?", (conv_id,))
+        assert json.loads(rows[0]["document_ids"]) == ["doc_a", "doc_gone"]
+
+        # Second turn without document_ids keeps the stored attachment and still retrieves.
+        captured.clear()
+        with patch("laya.pipeline.chat.llm_call", new_callable=AsyncMock, return_value=_mock_llm_response("ok")), \
+             patch("laya.pipeline.chat._retrieve_context", side_effect=fake_retrieve), \
+             patch("laya.pipeline.chat._should_generate_title", new_callable=AsyncMock, return_value=False):
+            await chat_mod.process_chat_message("more", conversation_id=conv_id)
+        assert captured["document_ids"] == ["doc_a"]
+
+    async def test_no_documents_skips_prompt_block(self, db):
+        from laya.pipeline import chat as chat_mod
+
+        with patch("laya.pipeline.chat.llm_call", new_callable=AsyncMock, return_value=_mock_llm_response("ok")) as llm, \
+             patch("laya.pipeline.chat.memory_search", new_callable=AsyncMock, return_value=[]), \
+             patch("laya.documents.search.memory_search", new_callable=AsyncMock, return_value=[]), \
+             patch("laya.pipeline.chat.build_chat_messages", wraps=chat_mod.build_chat_messages) as build, \
+             patch("laya.pipeline.chat._should_generate_title", new_callable=AsyncMock, return_value=False):
+            await chat_mod.process_chat_message("hello")
+        assert build.call_args.kwargs["has_documents"] is False
+        system = llm.await_args.kwargs["messages"][0]["content"]
+        assert "Corpus Documents" not in system
+
+    async def test_retrieval_includes_document_signals(self, db):
+        from laya.pipeline.chat import _retrieve_context
+
+        with patch("laya.pipeline.chat.memory_search", new_callable=AsyncMock, return_value=[]) as card_ms, \
+             patch("laya.documents.search.memory_search", new_callable=AsyncMock, return_value=[self._doc_hit()]):
+            ctx = await _retrieve_context("deadline", space_id="default", document_ids=["doc_a"])
+        assert '[Doc doc_a "Roadmap" p.3 §Dates] The deadline is 2026-09-30.' in ctx["context_text"]
+        assert ctx["signals_used"] == 6
+        # Card search is filtered to card vectors.
+        assert card_ms.await_args.kwargs["where"] == {"$and": [
+            {"content_type": {"$nin": ["document_chunk", "document_summary"]}}, {"space_id": "default"},
+        ]}
+
+    async def test_format_context_item_document_branches(self):
+        from laya.pipeline.chat import _format_context_item
+
+        base = {"type": "document", "document_id": "doc_1", "text": "T"}
+        assert _format_context_item({**base, "metadata": {"title": "A", "page_start": 2, "page_end": 2}}) == '[Doc doc_1 "A" p.2] T'
+        assert _format_context_item({**base, "metadata": {"title": "A", "page_start": 2, "page_end": 4, "heading": "H"}}) == '[Doc doc_1 "A" pp.2-4 §H] T'
+        assert _format_context_item({**base, "metadata": {"title": "A", "is_summary": True}}) == '[Doc doc_1 "A" summary] T'
+        assert _format_context_item({**base, "metadata": {"title": "A"}}) == '[Doc doc_1 "A"] T'
+
+    async def test_conversation_documents_endpoint_and_listing(self, db):
+        from laya.main import app
+        from tests.conftest import insert_test_document
+
+        await insert_test_document(db, document_id="doc_a")
+        conv_id = await _create_conversation(db, "conv_docs")
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.put(f"/chat/conversations/{conv_id}/documents", json={"document_ids": ["doc_a", "doc_missing"]})
+            assert resp.status_code == 200
+            assert resp.json()["document_ids"] == ["doc_a"]
+            listing = (await c.get("/chat/conversations")).json()
+            assert listing[0]["document_ids"] == ["doc_a"]
+            assert (await c.put("/chat/conversations/conv_nope/documents", json={"document_ids": []})).status_code == 404
+
+
+
+def test_doc_ref_pattern():
+    from laya.pipeline.chat import referenced_document_ids
+
+    text = "[doc:doc_1] [doc:doc_2 p.3] [doc:doc_3 page 4] [doc:doc_4 p.5-7] [doc:doc_1 p.9] [doc:bad id]"
+    assert referenced_document_ids(text) == ["doc_1", "doc_2", "doc_3", "doc_4"]

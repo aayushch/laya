@@ -7,6 +7,7 @@
 	import DOMPurify from 'dompurify';
 	import { goto } from '$app/navigation';
 	import { pendingCardId } from '$lib/stores/chat';
+	import { documentById } from '$lib/stores/documents';
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { portal } from '$lib/actions/portal';
@@ -91,6 +92,17 @@
 		return `<button data-card-link="${id}" aria-label="Open card ${id}" class="inline-flex items-center align-text-bottom text-laya-orange hover:text-laya-peach cursor-pointer">${CARD_ICON}</button>`;
 	}
 
+	// Corpus document citation glyph; the page (when cited) is kept on the
+	// button so the click opens the document at that page.
+	const DOC_ICON =
+		'<svg class="inline-block h-3.5 w-3.5 align-text-bottom" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6M7 4h7l5 5v11a1 1 0 01-1 1H7a1 1 0 01-1-1V5a1 1 0 011-1z"/></svg>';
+
+	function docButton(id: string, page: string | undefined): string {
+		const pageAttr = page ? ` data-doc-page="${page}"` : '';
+		const label = page ? `p.${page}` : '';
+		return `<button data-doc-link="${id}"${pageAttr} aria-label="Open document ${id}${page ? ' page ' + page : ''}" class="inline-flex items-center gap-0.5 align-text-bottom text-laya-orange hover:text-laya-peach cursor-pointer">${DOC_ICON}${label ? `<span class="text-[10px]">${label}</span>` : ''}</button>`;
+	}
+
 	// Linkify card references. We match two forms in a single pass: the explicit
 	// [card:ID] marker the prompt asks for, AND bare card_<hex> ids — the LLM often
 	// emits the bare id (e.g. in a bold list) instead of wrapping it, so without
@@ -103,6 +115,12 @@
 		return text
 			.replace(/\[card:([^\]]+)\]|\bcard_[0-9a-f]{12}\b/g, (full, bracketId) =>
 				cardButton(bracketId ?? full)
+			)
+			// [doc:ID], [doc:ID p.3], [doc:ID page 3], [doc:ID p.3-5]: the same
+			// shapes the engine's DOC_REF_PATTERN extracts into referenced_documents.
+			.replace(
+				/\[doc:([A-Za-z0-9_\-]+)(?:\s+p(?:age|\.)?\s*(\d+)(?:\s*[-\u2013]\s*\d+)?)?\]/g,
+				(_full, id: string, page?: string) => docButton(id, page)
 			)
 			.replace(
 				/\[event:([^\]]+)\]/g,
@@ -123,6 +141,26 @@
 
 	async function handleClick(e: MouseEvent | KeyboardEvent) {
 		if (e instanceof KeyboardEvent && e.key !== 'Enter') return;
+		const docTarget = (e.target as HTMLElement).closest('[data-doc-link]') as HTMLElement | null;
+		if (docTarget) {
+			e.preventDefault();
+			const docId = docTarget.dataset.docLink;
+			if (!docId) return;
+			try {
+				await engineApi.getDocument(docId);
+			} catch {
+				flashUntil = Date.now() + 2000;
+				hoverCardId = null;
+				showTooltip(docTarget, 'Document not found');
+				setTimeout(() => {
+					if (Date.now() >= flashUntil) hideTooltip();
+				}, 2000);
+				return;
+			}
+			const pageNum = docTarget.dataset.docPage;
+			goto(`/corpus?doc=${encodeURIComponent(docId)}${pageNum ? `&page=${pageNum}` : ''}`);
+			return;
+		}
 		const target = (e.target as HTMLElement).closest('[data-card-link]') as HTMLElement | null;
 		if (!target) return;
 		const cardId = target.dataset.cardLink;
@@ -150,12 +188,13 @@
 	// delegation on the message container because the links are injected as raw HTML.
 	function handleHover(e: PointerEvent) {
 		if (Date.now() < flashUntil) return;
-		const link = (e.target as HTMLElement).closest?.('[data-card-link]') as HTMLElement | null;
+		const link = (e.target as HTMLElement).closest?.('[data-card-link], [data-doc-link]') as HTMLElement | null;
 		if (link) {
-			const id = link.dataset.cardLink;
+			const id = link.dataset.cardLink ?? link.dataset.docLink;
 			if (id && hoverCardId !== id) {
 				hoverCardId = id;
-				showTooltip(link, id);
+				const title = link.dataset.docLink ? documentById(id)?.title : undefined;
+				showTooltip(link, title ?? id);
 			}
 		} else if (hoverCardId) {
 			hoverCardId = null;

@@ -177,6 +177,7 @@ async def _handle_chat_message(msg: dict) -> None:
     conversation_id = payload.get("conversation_id")
     card_context = payload.get("card_context")
     card_ids = payload.get("card_ids")
+    document_ids = payload.get("document_ids")
 
     if not message.strip():
         log.warning("ws_chat_empty_message")
@@ -192,6 +193,7 @@ async def _handle_chat_message(msg: dict) -> None:
             conversation_id=conversation_id,
             card_context=card_context,
             card_ids=card_ids,
+            document_ids=document_ids,
         ):
             await manager.broadcast(event)
 
@@ -209,6 +211,7 @@ async def _handle_chat_message(msg: dict) -> None:
                 "content": "I'm sorry, I encountered an error. Please try again.",
                 "referenced_cards": [],
                 "referenced_events": [],
+                "referenced_documents": [],
             },
         })
 

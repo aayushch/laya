@@ -3,6 +3,7 @@
 <script lang="ts">
 	import { agentDialog } from '$lib/stores/agentDialog';
 	import { engineApi } from '$lib/api/engine';
+	import { subscribeFileDrop } from '$lib/utils/fileDrop';
 	import { CODING_AGENTS } from '$lib/config';
 	import { goto } from '$app/navigation';
 	import { glassTheme } from '$lib/stores/glassTheme';
@@ -228,75 +229,35 @@
 		return filename.slice(i + 1).toUpperCase().slice(0, 4);
 	}
 
+	// Window-level drop while the modal is open, via the shared subscription
+	// (HTML5 events in a browser, Tauri's native event on macOS where the
+	// WKWebView does not deliver OS file drops to the DOM). The root layout's
+	// "Add to Corpus" drop pauses itself while this modal is open.
+	$effect(() => {
+		if (!$agentDialog.isOpen) return;
+		return subscribeFileDrop({
+			onOver: () => (dragOver = true),
+			onLeave: () => (dragOver = false),
+			onFiles: (files) => { for (const f of files) uploadFile(f); },
+			onPaths: (paths) => { for (const path of paths) uploadFileByPath(path); }
+		});
+	});
+
+	// The textarea's own handlers only stop the event from reaching other
+	// element-level listeners; the window subscription above does the upload.
 	function handleDrop(e: DragEvent) {
 		e.preventDefault();
-		e.stopPropagation();
-		dragOver = false;
-		const dropped = e.dataTransfer?.files;
-		if (dropped && dropped.length > 0) {
-			for (const f of dropped) {
-				uploadFile(f);
-			}
-		}
 	}
 
 	function handleDragOver(e: DragEvent) {
 		e.preventDefault();
-		e.stopPropagation();
 		if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
 		dragOver = true;
 	}
 
 	function handleDragLeave(e: DragEvent) {
-		// Only clear when leaving the window, not when moving between child elements
 		if (e.relatedTarget === null) dragOver = false;
 	}
-
-	// Window-level drag/drop listener while the modal is open — handles the
-	// browser/Vite-dev path. In Tauri on macOS, these HTML5 events don't fire
-	// for OS file drops, so we also subscribe to Tauri's native event below.
-	$effect(() => {
-		if (!$agentDialog.isOpen) return;
-		window.addEventListener('dragover', handleDragOver);
-		window.addEventListener('drop', handleDrop);
-		window.addEventListener('dragleave', handleDragLeave);
-		return () => {
-			window.removeEventListener('dragover', handleDragOver);
-			window.removeEventListener('drop', handleDrop);
-			window.removeEventListener('dragleave', handleDragLeave);
-		};
-	});
-
-	// Tauri native drag-drop — required for file drops on macOS WKWebView.
-	$effect(() => {
-		if (!$agentDialog.isOpen) return;
-		let unlisten: (() => void) | undefined;
-		(async () => {
-			try {
-				const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-				const w = getCurrentWebviewWindow();
-				unlisten = await w.onDragDropEvent((event) => {
-					const p = event.payload;
-					if (p.type === 'enter' || p.type === 'over') {
-						dragOver = true;
-					} else if (p.type === 'drop') {
-						dragOver = false;
-						for (const path of p.paths) {
-							uploadFileByPath(path);
-						}
-					} else {
-						dragOver = false;
-					}
-				});
-			} catch {
-				// Not running inside Tauri (e.g. Vite dev in a browser) — fine,
-				// HTML5 drop handlers above cover that case.
-			}
-		})();
-		return () => {
-			unlisten?.();
-		};
-	});
 
 	function handlePaste(e: ClipboardEvent) {
 		const items = e.clipboardData?.items;

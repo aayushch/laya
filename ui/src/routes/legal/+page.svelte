@@ -84,8 +84,15 @@
 					<li>Page or document titles, content, and metadata from your configured knowledge bases (such as Notion, Confluence, and others)</li>
 					<li>Your team member names, roles, and relationships as configured in Settings</li>
 					<li>Any prompts, files, or context you submit through Laya's chat or workspace interfaces</li>
+					<li>Text extracted from documents you add to the Corpus (PDF, DOCX, Markdown, text, CSV, JSON, HTML), which is sent to the configured LLM and embedding providers the same way event content is</li>
 					<li>Any additional data surfaced by custom workflows you build or modify in the bundled n8n automation engine</li>
 				</ul>
+				<p class="mt-3 text-surface-400">
+					Files you share with the Corpus by dropping them on the window or choosing them with the
+					file picker are read in place and never copied or modified; the extracted text and its
+					vectors are stored under <code>~/.laya/data</code>. Only files uploaded through a browser
+					keep a copy under <code>~/.laya/data/documents</code>.
+				</p>
 				<p class="mt-3 text-surface-400">
 					The list above is illustrative and not exhaustive. The exact fields sent to an LLM
 					provider on any given request are determined by the prompts and pipeline of the

@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from laya.db.sqlite import get_db
 from laya.db.timeutil import db_now
+from laya.documents import store as document_store
 from laya.models.chat import (
     ChatMessage,
     ChatRequest,
@@ -21,6 +22,7 @@ from laya.models.chat import (
     Conversation,
     CreateConversationRequest,
 )
+from laya.models.document import ConversationDocumentsRequest
 from laya.pipeline.chat import canonical_card_ids, process_chat_message
 
 log = structlog.get_logger()
@@ -45,6 +47,7 @@ async def send_chat_message(body: ChatRequest) -> ChatResponse:
             conversation_id=body.conversation_id,
             card_context=body.card_context,
             card_ids=body.card_ids,
+            document_ids=body.document_ids,
         )
         return response
     except Exception as e:
@@ -78,7 +81,7 @@ async def get_chat_history(
     # the same second, so without it a mid-stream reload could swap their order.
     rows = await db.execute_fetchall(
         f"""SELECT message_id, timestamp, role, content,
-                   referenced_cards, referenced_events, conversation_id
+                   referenced_cards, referenced_events, referenced_documents, conversation_id
             FROM chat_messages
             {where}
             ORDER BY timestamp DESC, rowid DESC
@@ -90,6 +93,7 @@ async def get_chat_history(
     for row in rows:
         ref_cards = json.loads(row["referenced_cards"]) if row["referenced_cards"] else []
         ref_events = json.loads(row["referenced_events"]) if row["referenced_events"] else []
+        ref_docs = json.loads(row["referenced_documents"]) if row["referenced_documents"] else []
         messages.append(
             ChatMessage(
                 message_id=row["message_id"],
@@ -98,6 +102,7 @@ async def get_chat_history(
                 content=row["content"],
                 referenced_cards=ref_cards,
                 referenced_events=ref_events,
+                referenced_documents=ref_docs,
                 conversation_id=row["conversation_id"],
             )
         )
@@ -115,7 +120,7 @@ async def list_conversations(limit: int = 50) -> list[Conversation]:
     """List all conversations ordered by most recently updated."""
     db = await get_db()
     rows = await db.execute_fetchall(
-        """SELECT c.conversation_id, c.title, c.space_id, c.created_at, c.updated_at,
+        """SELECT c.conversation_id, c.title, c.space_id, c.created_at, c.updated_at, c.document_ids,
                   (SELECT content FROM chat_messages m
                    WHERE m.conversation_id = c.conversation_id
                    ORDER BY m.timestamp DESC LIMIT 1) AS last_content,
@@ -136,6 +141,7 @@ async def list_conversations(limit: int = 50) -> list[Conversation]:
             updated_at=row["updated_at"] or "",
             preview=(row["last_content"] or "")[:100],
             message_count=row["message_count"] or 0,
+            document_ids=document_store.parse_document_ids(row["document_ids"]),
         )
         for row in rows
     ]
@@ -180,7 +186,7 @@ async def get_conversation_by_cards(
 
     db = await get_db()
     rows = await db.execute_fetchall(
-        """SELECT c.conversation_id, c.title, c.space_id, c.created_at, c.updated_at,
+        """SELECT c.conversation_id, c.title, c.space_id, c.created_at, c.updated_at, c.document_ids,
                   (SELECT content FROM chat_messages m
                    WHERE m.conversation_id = c.conversation_id
                    ORDER BY m.timestamp DESC LIMIT 1) AS last_content,
@@ -204,6 +210,41 @@ async def get_conversation_by_cards(
         updated_at=row["updated_at"] or "",
         preview=(row["last_content"] or "")[:100],
         message_count=row["message_count"] or 0,
+        document_ids=document_store.parse_document_ids(row["document_ids"]),
+    )
+
+
+@router.put("/chat/conversations/{conversation_id}/documents")
+async def set_conversation_documents(
+    conversation_id: str, body: ConversationDocumentsRequest
+) -> Conversation:
+    """Replace the Corpus documents attached to a conversation. Unknown ids are dropped."""
+    db = await get_db()
+    existing = await document_store.get_documents(body.document_ids)
+    ids = [d["document_id"] for d in existing]
+    result = await db.execute(
+        "UPDATE chat_conversations SET document_ids = ? WHERE conversation_id = ?",
+        (document_store.canonical_document_ids(ids), conversation_id),
+    )
+    await db.commit()
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    rows = await db.execute_fetchall(
+        """SELECT c.conversation_id, c.title, c.space_id, c.created_at, c.updated_at, c.document_ids,
+                  (SELECT COUNT(*) FROM chat_messages m
+                   WHERE m.conversation_id = c.conversation_id) AS message_count
+           FROM chat_conversations c WHERE c.conversation_id = ?""",
+        (conversation_id,),
+    )
+    row = rows[0]
+    return Conversation(
+        conversation_id=row["conversation_id"],
+        title=row["title"],
+        space_id=row["space_id"],
+        created_at=row["created_at"] or "",
+        updated_at=row["updated_at"] or "",
+        message_count=row["message_count"] or 0,
+        document_ids=document_store.parse_document_ids(row["document_ids"]),
     )
 
 
@@ -220,7 +261,7 @@ async def get_conversation_messages(
     if before:
         rows = await db.execute_fetchall(
             """SELECT message_id, timestamp, role, content,
-                      referenced_cards, referenced_events, conversation_id
+                      referenced_cards, referenced_events, referenced_documents, conversation_id
                FROM chat_messages
                WHERE conversation_id = ? AND timestamp < ?
                ORDER BY timestamp DESC, rowid DESC
@@ -230,7 +271,7 @@ async def get_conversation_messages(
     else:
         rows = await db.execute_fetchall(
             """SELECT message_id, timestamp, role, content,
-                      referenced_cards, referenced_events, conversation_id
+                      referenced_cards, referenced_events, referenced_documents, conversation_id
                FROM chat_messages
                WHERE conversation_id = ?
                ORDER BY timestamp DESC, rowid DESC
@@ -242,6 +283,7 @@ async def get_conversation_messages(
     for row in rows:
         ref_cards = json.loads(row["referenced_cards"]) if row["referenced_cards"] else []
         ref_events = json.loads(row["referenced_events"]) if row["referenced_events"] else []
+        ref_docs = json.loads(row["referenced_documents"]) if row["referenced_documents"] else []
         messages.append(
             ChatMessage(
                 message_id=row["message_id"],
@@ -250,6 +292,7 @@ async def get_conversation_messages(
                 content=row["content"],
                 referenced_cards=ref_cards,
                 referenced_events=ref_events,
+                referenced_documents=ref_docs,
                 conversation_id=row["conversation_id"],
             )
         )

@@ -154,12 +154,23 @@ runaway execution.
 - Confirm the rule details with the user before creating."""
 
 
+CHAT_DOCUMENTS_BLOCK = """\
+## Corpus Documents
+The user's Corpus holds documents they shared (PDF, DOCX, Markdown, text, CSV, JSON, \
+HTML) indexed by page. Retrieved context may include [Doc ID "Title" p.N] excerpts. \
+Use list_documents to see what exists, search_documents to find passages and \
+read_document to read a page or chunk range. When you cite a document, write \
+[doc:DOCUMENT_ID] or [doc:DOCUMENT_ID p.N] so the app can link it."""
+
+
 def build_chat_messages(
     user_message: str,
     chat_history: list[dict[str, str]],
     context_text: str = "",
     user_identity: dict[str, str] | None = None,
     card_context: str | None = None,
+    document_context: str | None = None,
+    has_documents: bool = False,
 ) -> list[dict[str, str]]:
     """Build the messages array for the Chat LLM call.
 
@@ -169,8 +180,25 @@ def build_chat_messages(
         context_text: Pre-packed context string from hybrid retrieval.
         user_identity: Optional dict with 'name' and 'email' of the Laya user.
         card_context: Optional card context injected as system prompt (used by Omni card view).
+        document_context: Optional "Attached Documents" block (one line per attached
+            Corpus document) injected as a system block.
+        has_documents: True when the space holds a ready Corpus document or one is
+            attached; gates the Corpus instructions so turns without documents pay
+            no tokens for them.
     """
     system_content = get_prompt("chat", CHAT_SYSTEM_PROMPT)
+
+    if has_documents:
+        system_content += "\n\n" + get_prompt("chat_documents", CHAT_DOCUMENTS_BLOCK)
+
+    if document_context:
+        system_content += (
+            f"\n\n## Attached Documents\n"
+            f"The user attached these Corpus documents to this conversation and is asking "
+            f"about them. Prefer their content; use read_document for passages the "
+            f"retrieved context does not include. The user does NOT see this block.\n\n"
+            f"{document_context}"
+        )
 
     # Inject card context into system prompt so the LLM has full awareness
     # of the card being discussed without the user needing to re-state it.

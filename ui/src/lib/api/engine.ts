@@ -16,6 +16,9 @@ import type {
 	ChatMessage,
 	ChatResponse,
 	Conversation,
+	CorpusDocument,
+	DocumentListResponse,
+	DocumentChunksResponse,
 	AuditLogResponse,
 	N8nTestResult,
 	PlatformsResponse,
@@ -595,16 +598,74 @@ export const engineApi = {
 		const qs = params.toString();
 		return request<ChatMessage[]>(`/chat/history${qs ? '?' + qs : ''}`);
 	},
-	sendChat: (message: string, conversationId?: string, cardContext?: string, cardIds?: string[]) =>
+	sendChat: (message: string, conversationId?: string, cardContext?: string, cardIds?: string[], documentIds?: string[]) =>
 		request<ChatResponse>('/chat', {
 			method: 'POST',
 			body: JSON.stringify({
 				message,
 				conversation_id: conversationId ?? null,
 				...(cardContext ? { card_context: cardContext } : {}),
-				...(cardIds && cardIds.length > 0 ? { card_ids: cardIds } : {})
+				...(cardIds && cardIds.length > 0 ? { card_ids: cardIds } : {}),
+				...(documentIds ? { document_ids: documentIds } : {})
 			})
 		}),
+	setConversationDocuments: (conversationId: string, documentIds: string[]) =>
+		request<Conversation>(`/chat/conversations/${conversationId}/documents`, {
+			method: 'PUT',
+			body: JSON.stringify({ document_ids: documentIds })
+		}),
+
+	// Corpus documents
+	uploadDocument: (file: File, spaceId: string, title?: string) => {
+		const formData = new FormData();
+		formData.append('file', file);
+		formData.append('space_id', spaceId);
+		if (title) formData.append('title', title);
+		return request<CorpusDocument>('/documents', { method: 'POST', body: formData });
+	},
+	uploadDocumentPath: (path: string, spaceId: string, title?: string) =>
+		request<CorpusDocument>('/documents/from-path', {
+			method: 'POST',
+			body: JSON.stringify({ path, space_id: spaceId, ...(title ? { title } : {}) })
+		}),
+	listDocuments: (params?: { space_id?: string; status?: string; q?: string; limit?: number; offset?: number }) => {
+		const sp = new URLSearchParams();
+		if (params?.space_id) sp.set('space_id', params.space_id);
+		if (params?.status) sp.set('status', params.status);
+		if (params?.q) sp.set('q', params.q);
+		if (params?.limit !== undefined) sp.set('limit', String(params.limit));
+		if (params?.offset !== undefined) sp.set('offset', String(params.offset));
+		const qs = sp.toString();
+		return request<DocumentListResponse>(`/documents${qs ? '?' + qs : ''}`);
+	},
+	getDocument: (documentId: string) => request<CorpusDocument>(`/documents/${documentId}`),
+	getDocumentChunks: (documentId: string, params?: { page_from?: number; page_to?: number; offset?: number; limit?: number }) => {
+		const sp = new URLSearchParams();
+		if (params?.page_from !== undefined) sp.set('page_from', String(params.page_from));
+		if (params?.page_to !== undefined) sp.set('page_to', String(params.page_to));
+		if (params?.offset !== undefined) sp.set('offset', String(params.offset));
+		if (params?.limit !== undefined) sp.set('limit', String(params.limit));
+		const qs = sp.toString();
+		return request<DocumentChunksResponse>(`/documents/${documentId}/chunks${qs ? '?' + qs : ''}`);
+	},
+	getDocumentRelated: (documentId: string) =>
+		request<{ entities: Array<{ entity_id: string; link_method: string; confidence: number; card_count: number }>; cards: ActionCard[] }>(
+			`/documents/${documentId}/related`
+		),
+	renameDocument: (documentId: string, title: string) =>
+		request<CorpusDocument>(`/documents/${documentId}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
+	deleteDocument: (documentId: string) =>
+		request<{ status: string; document_id: string }>(`/documents/${documentId}`, { method: 'DELETE' }),
+	reprocessDocument: (documentId: string, stage: 'all' | 'embed' | 'summarize' | 'link' = 'all') =>
+		request<CorpusDocument>(`/documents/${documentId}/reprocess?stage=${stage}`, { method: 'POST' }),
+	resyncDocument: (documentId: string) =>
+		request<{ status: 'unchanged' | 'queued'; document: CorpusDocument }>(`/documents/${documentId}/resync`, { method: 'POST' }),
+	relocateDocument: (documentId: string, path: string) =>
+		request<CorpusDocument>(`/documents/${documentId}/relocate`, { method: 'POST', body: JSON.stringify({ path }) }),
+	getRelatedDocuments: (cardId: string) => request<CorpusDocument[]>(`/cards/${cardId}/related-documents`),
+	getDocumentsByEntity: (entityId: string) =>
+		request<CorpusDocument[]>(`/documents/by-entity?entity_id=${encodeURIComponent(entityId)}`),
+	getSupportedDocumentTypes: () => request<{ extensions: string[]; max_file_mb: number }>('/documents/supported-types'),
 
 	// Chat Conversations
 	getConversations: (limit?: number) => {

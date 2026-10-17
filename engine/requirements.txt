@@ -40,6 +40,10 @@ chromadb>=1.5.4,<2
 onnxruntime>=1.18.0,<1.24 ; python_full_version < '3.11' or (sys_platform == 'darwin' and python_full_version < '3.14')
 onnxruntime>=1.18.0,<2 ; python_full_version >= '3.11' and (sys_platform != 'darwin' or python_full_version >= '3.14')
 
+# Documents (Corpus parsers). Pure Python; every pin has an upper bound.
+pypdf>=6.0.0,<7      # per-page text; AES-encrypted PDFs use cryptography, already in the lock
+mammoth>=1.9.0,<2    # DOCX -> Markdown; python-docx would pull lxml, a native wheel not in the lock
+
 # Structured logging
 structlog>=25.5.0
 

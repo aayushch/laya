@@ -405,6 +405,31 @@
 					</div>
 				{/if}
 
+				<!-- Corpus documents linked to this cluster's entities -->
+				{#if cluster.documents && cluster.documents.length > 0}
+					<div class="relative pl-5 min-h-[22px] flex items-center py-0.5">
+						<div class="absolute left-0 top-0 h-[13px] w-px bg-surface-700/40"></div>
+						<div class="absolute left-0 top-[13px] w-[13px] h-px bg-surface-700/40"></div>
+						<div class="absolute left-[10px] top-[10px] w-1.5 h-1.5 rounded-full bg-surface-600"></div>
+						<div class="absolute left-0 top-[13px] bottom-0 w-px bg-surface-700/40"></div>
+						<div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-laya-secondary">
+							<span class="text-surface-600">documents:</span>
+							{#each cluster.documents as doc (doc.document_id)}
+								<a
+									href="/corpus?doc={encodeURIComponent(doc.document_id)}{doc.first_page ? `&page=${doc.first_page}` : ''}"
+									onclick={(e) => { e.preventDefault(); goto(`/corpus?doc=${encodeURIComponent(doc.document_id)}${doc.first_page ? `&page=${doc.first_page}` : ''}`); }}
+									onmouseenter={(e) => showTooltip(e, `${doc.title} (${doc.link_method}${doc.first_page ? `, p.${doc.first_page}` : ''})`)}
+									onmouseleave={hideTooltip}
+									class="inline-flex items-center gap-1 rounded border border-surface-600/50 bg-surface-700/40 px-1.5 text-laya-micro text-surface-300 hover:border-laya-orange/50 hover:text-laya-orange transition-colors"
+								>
+									<svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6M7 4h7l5 5v11a1 1 0 01-1 1H7a1 1 0 01-1-1V5a1 1 0 011-1z" /></svg>
+									<span class="max-w-[220px] truncate">{doc.title}</span>
+								</a>
+							{/each}
+						</div>
+					</div>
+				{/if}
+
 				<!-- Expand/collapse all control -->
 				{#if cluster.timeline.length > 1}
 					<div class="relative pl-5 h-[22px] flex items-center justify-end pr-2">

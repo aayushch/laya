@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -23,8 +22,8 @@ import structlog
 from laya.api.cards_api import CARD_SELECT_COLUMNS, _row_to_card
 from laya.pipeline.queue import _get_semaphore
 from laya.api.websocket import manager
-from laya.db.chromadb_store import memory_search
-from laya.retrieval import extract_keywords, fts_or_like, reciprocal_rank_fusion
+from laya.db.chromadb_store import CARD_CONTENT_FILTER, and_where, memory_search
+from laya.retrieval import IDENTIFIER_RE, extract_keywords, fts_or_like, reciprocal_rank_fusion
 from laya.db.sqlite import get_db
 from laya.db.timeutil import db_now
 from laya.config import get_self_user
@@ -43,6 +42,7 @@ from laya.llm.prompts.trace_filter import (
     build_relevance_filter_messages,
 )
 from laya.models.card import CardResponse
+from laya.documents import store as document_store
 from laya.models.trace import (
     SearchMetadata,
     TraceChapter,
@@ -51,6 +51,7 @@ from laya.models.trace import (
     TraceRequest,
     TraceResponse,
     TraceStatusSummary,
+    TraceDocumentRef,
 )
 
 log = structlog.get_logger()
@@ -115,11 +116,9 @@ async def _cancellable(coro, trace_id: str):
 
     return task.result()
 
-# Regex to detect identifier patterns like "PR 540", "PR-540", "PR#540",
-# LAYA"-986", "BUG-123", "ISSUE 42", etc.
-_IDENTIFIER_RE = re.compile(
-    r"([A-Za-z]{1,10})[\s\-#]?(\d{1,6})",
-)
+# Identifier patterns like "PR 540", "PR-540", "LAYA-986"; shared with the
+# document linker's query-side matching.
+_IDENTIFIER_RE = IDENTIFIER_RE
 
 # ---------------------------------------------------------------------------
 # Pre-retrieval feedback & post-retrieval relevance filter
@@ -478,13 +477,20 @@ async def _run_trace_inner(
                     surviving_eids.add(c.entity_id)
         all_cards = [c for c in all_cards if c.entity_id in surviving_eids]
 
+    # Corpus documents linked to the entities in play. Looked up here, before
+    # the executor, so _build_clusters needs no DB access.
+    doc_links = await _document_links_for(request, all_cards, seeds)
+
     # Phase 3 — Clustering (before capping, so small clusters aren't eliminated)
     await _progress("Building clusters", 6, total_steps)
     # Clustering is CPU-bound (union-find + chapter detection) — run in
     # executor so the event loop stays responsive for other API requests.
     clusters = await loop.run_in_executor(
-        None, _build_clusters, all_cards, entity_map, seeds
+        None, _build_clusters, all_cards, entity_map, seeds, doc_links
     )
+    # Documents matched by identifier whose entity sits in no cluster.
+    clustered_doc_ids = {d.document_id for c in clusters for d in c.documents}
+    loose_documents = [d for d in doc_links.get("", []) if d.document_id not in clustered_doc_ids]
 
     # Cap cards per cluster to keep results manageable without dropping
     # entire clusters. Distribute max_results proportionally.
@@ -505,6 +511,7 @@ async def _run_trace_inner(
         search_metadata=meta,
         created_at=now,
         space_id=request.space_id,
+        documents=loose_documents,
     )
 
     # Persist trace to DB
@@ -596,9 +603,15 @@ async def _identifier_search(query: str, space_id: str | None, n: int) -> list[d
 
 
 async def _semantic_search(query: str, space_id: str | None, n: int) -> list[dict]:
-    """ChromaDB semantic search on card embeddings."""
-    where = {"space_id": space_id} if space_id else None
+    """ChromaDB semantic search on card embeddings.
+
+    Document vectors live in the same collection; the card filter excludes
+    them and any hit that still lacks a card_id is dropped, because every
+    downstream step keys on card_id.
+    """
+    where = and_where(CARD_CONTENT_FILTER, {"space_id": space_id} if space_id else None)
     results = await memory_search(query, n_results=n, where=where, max_distance=0.65)
+    results = [r for r in results if r["metadata"].get("card_id")]
     return [
         {
             "id": r["metadata"].get("card_id", r["id"]),
@@ -1051,12 +1064,52 @@ _CHAPTER_LABELS = {
 from laya.egress.registry import get_chapter_default as _get_chapter_default
 
 
+async def _document_links_for(
+    request: TraceRequest, all_cards: list[CardResponse], seeds: list[dict]
+) -> dict[str, list[TraceDocumentRef]]:
+    """entity_id -> Corpus documents linked to it, for every entity the trace
+    touches. Under the empty key: documents whose links were made from an
+    identifier in the query, so "trace PR-540" surfaces the PRD that mentions
+    PR-540 even when no card does. Never raises."""
+    try:
+        entity_ids = {c.entity_id for c in all_cards if c.entity_id}
+        entity_ids |= {s["entity_id"] for s in seeds if s.get("entity_id")}
+        links = await document_store.documents_for_entities(entity_ids, request.space_id)
+        out: dict[str, list[TraceDocumentRef]] = {}
+        for eid, docs in links.items():
+            out[eid] = [_doc_ref(d, [eid]) for d in docs]
+        idents = [f"{p.upper()}-{n}" for p, n in _IDENTIFIER_RE.findall(request.query)]
+        if idents:
+            loose = await document_store.documents_matching_identifiers(idents, request.space_id)
+            out[""] = [_doc_ref(d, [d["entity_id"]]) for d in loose]
+        return out
+    except Exception as e:
+        log.warning("trace_document_links_failed", error=str(e))
+        return {}
+
+
+def _doc_ref(d: dict, entity_ids: list[str]) -> TraceDocumentRef:
+    return TraceDocumentRef(
+        document_id=d["document_id"],
+        title=d["title"],
+        file_type=d["file_type"],
+        page_count=d.get("page_count"),
+        link_method=d["link_method"],
+        confidence=float(d["confidence"]),
+        entity_ids=entity_ids,
+        first_page=d.get("first_page"),
+    )
+
+
 def _build_clusters(
     all_cards: list[CardResponse],
     entity_map: dict[str, TraceEntity],
     seeds: list[dict],
+    doc_links: dict[str, list[TraceDocumentRef]] | None = None,
 ) -> list[TraceCluster]:
-    """Group cards into clusters by connected entity_ids."""
+    """Group cards into clusters by connected entity_ids. ``doc_links`` is the
+    precomputed entity_id -> documents map (no DB access here: this runs in an
+    executor)."""
     if not all_cards:
         return []
 
@@ -1151,6 +1204,18 @@ def _build_clusters(
             pending_actions=pending,
         )
 
+        cluster_docs: list[TraceDocumentRef] = []
+        if doc_links:
+            seen_docs: dict[str, TraceDocumentRef] = {}
+            for eid in [primary.entity_id, *(e.entity_id for e in linked)]:
+                for d in doc_links.get(eid, []):
+                    ref = seen_docs.get(d.document_id)
+                    if ref is None:
+                        seen_docs[d.document_id] = d.model_copy(update={"entity_ids": list(d.entity_ids)})
+                    elif eid not in ref.entity_ids:
+                        ref.entity_ids.append(eid)
+            cluster_docs = list(seen_docs.values())
+
         clusters.append(TraceCluster(
             cluster_id=f"cluster_{uuid.uuid4().hex[:8]}",
             primary_entity=primary,
@@ -1158,6 +1223,7 @@ def _build_clusters(
             chapters=chapters,
             timeline=cards,
             status_summary=status_summary,
+            documents=cluster_docs,
         ))
 
     # Sort clusters: largest first
@@ -1262,6 +1328,7 @@ async def _save_trace(response: TraceResponse) -> None:
             "primary_entity": cluster.primary_entity.model_dump(),
             "linked_entities": [e.model_dump() for e in cluster.linked_entities],
             "status_summary": cluster.status_summary.model_dump(),
+            "documents": [d.model_dump() for d in cluster.documents],
         })
 
     # Upsert (not a plain INSERT) so a rerun — which reuses the existing trace_id
@@ -1278,8 +1345,8 @@ async def _save_trace(response: TraceResponse) -> None:
     #     render a summary narrating cards that are no longer in the trace).
     await db.execute(
         """INSERT INTO traces (trace_id, query, created_at, updated_at, chapters,
-                               cluster_data, card_ids, search_metadata, space_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                               cluster_data, card_ids, search_metadata, space_id, documents)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(trace_id) DO UPDATE SET
                query           = excluded.query,
                updated_at      = excluded.updated_at,
@@ -1288,6 +1355,7 @@ async def _save_trace(response: TraceResponse) -> None:
                card_ids        = excluded.card_ids,
                search_metadata = excluded.search_metadata,
                space_id        = excluded.space_id,
+               documents       = excluded.documents,
                narrative       = NULL,
                summary         = NULL""",
         (
@@ -1300,6 +1368,7 @@ async def _save_trace(response: TraceResponse) -> None:
             json.dumps(card_ids),
             response.search_metadata.model_dump_json(),
             response.space_id,
+            json.dumps([d.model_dump() for d in response.documents]),
         ),
     )
     await db.commit()

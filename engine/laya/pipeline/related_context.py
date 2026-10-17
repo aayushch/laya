@@ -19,7 +19,7 @@ from collections import OrderedDict
 
 import structlog
 
-from laya.db.chromadb_store import memory_search
+from laya.db.chromadb_store import CARD_CONTENT_FILTER, memory_search
 from laya.models.event import LayaEvent
 
 log = structlog.get_logger()
@@ -52,7 +52,9 @@ async def query_related_context(event: LayaEvent, n_results: int = 3) -> list[di
 
     query = f"{event.subject.title} {event.content.body[:300]}"
     try:
-        results = await memory_search(query, n_results=_MAX_N)
+        # Card vectors only: the stager context describes past events, not
+        # Corpus document chunks that share the collection.
+        results = await memory_search(query, n_results=_MAX_N, where=CARD_CONTENT_FILTER)
     except Exception as e:
         log.warning("related_context_search_skipped", error=str(e), event_id=key)
         results = []

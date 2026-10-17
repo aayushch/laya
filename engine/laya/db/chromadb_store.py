@@ -22,6 +22,30 @@ log = structlog.get_logger()
 CHROMADB_DIR = LAYA_DATA_DIR / "chromadb"
 COLLECTION_NAME = "laya_memory"
 
+# content_type values written for Corpus documents (laya/documents/). Every
+# other vector in the collection is a card summary written by pipeline/emit.py.
+DOCUMENT_CONTENT_TYPES = ("document_chunk", "document_summary")
+
+# Where-clause that keeps a query on card vectors only. Uses $nin instead of
+# content_type == "card_summary" because card vectors written before the key
+# existed have no content_type at all and must still match.
+CARD_CONTENT_FILTER: dict[str, Any] = {"content_type": {"$nin": list(DOCUMENT_CONTENT_TYPES)}}
+
+
+def and_where(*parts: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Combine Chroma where-clauses with AND.
+
+    Chroma accepts a single top-level key per clause and needs an explicit
+    ``{"$and": [...]}`` for more than one condition. None parts are skipped;
+    with no parts left the result is None (no filter).
+    """
+    clauses = [p for p in parts if p]
+    if not clauses:
+        return None
+    if len(clauses) == 1:
+        return clauses[0]
+    return {"$and": clauses}
+
 # Module-level singletons (same pattern as sqlite.py)
 _client: chromadb.ClientAPI | None = None
 _collection: Collection | None = None
@@ -387,6 +411,62 @@ async def delete_document(doc_id: str) -> None:
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, partial(collection.delete, ids=[doc_id]))
     log.debug("document_deleted", doc_id=doc_id)
+
+
+async def embed_batch(
+    ids: list[str],
+    texts: list[str],
+    metadatas: list[dict[str, Any]],
+    *,
+    batch_size: int = 32,
+    on_batch: Any = None,
+) -> int:
+    """Upsert many vectors in slices and return the number written.
+
+    Each slice is one ``collection.upsert`` call (one model encode for the
+    whole slice) run in the executor. Between slices the coroutine yields to
+    the event loop so a card emit waiting on ``_encode_lock`` is served between
+    slices rather than after the whole document. ``on_batch(done, total)`` is
+    awaited after every slice so callers can report progress.
+    """
+    if not ids:
+        return 0
+    if not (len(ids) == len(texts) == len(metadatas)):
+        raise ValueError("embed_batch: ids, texts and metadatas must have equal length")
+    collection = await wait_for_collection()
+    loop = asyncio.get_event_loop()
+    total = len(ids)
+    done = 0
+    step = max(1, batch_size)
+    for start in range(0, total, step):
+        end = min(start + step, total)
+        await loop.run_in_executor(
+            None,
+            partial(
+                collection.upsert,
+                ids=ids[start:end],
+                documents=texts[start:end],
+                metadatas=metadatas[start:end],
+            ),
+        )
+        done = end
+        if on_batch is not None:
+            await on_batch(done, total)
+        await asyncio.sleep(0)
+    log.debug("batch_embedded", count=total)
+    return total
+
+
+async def delete_where(where: dict[str, Any]) -> None:
+    """Delete every vector whose metadata matches ``where``.
+
+    ``delete_where({"document_id": id})`` removes a document's summary vector
+    and all of its chunks in one call.
+    """
+    collection = await wait_for_collection()
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, partial(collection.delete, where=where))
+    log.debug("documents_deleted_where", where=where)
 
 
 async def update_document_metadata(doc_id: str, patch: dict[str, Any]) -> None:

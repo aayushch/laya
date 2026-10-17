@@ -23,7 +23,7 @@ from functools import partial
 import structlog
 
 from laya.config import load_settings
-from laya.db.chromadb_store import get_collection, memory_search
+from laya.db.chromadb_store import CARD_CONTENT_FILTER, get_collection, memory_search
 from laya.db.sqlite import get_db
 from laya.pipeline.context_presets import (
     _entity_refs_overlap,
@@ -85,7 +85,9 @@ async def resolve_context_group(
 
     # Search ChromaDB for semantically similar cards
     # Filter by space, time window, and platform constraints
-    and_conditions: list[dict] = [{"timestamp": {"$gte": cutoff}}]
+    # Card vectors only; Corpus document chunks share the collection and have
+    # no card_id to hydrate.
+    and_conditions: list[dict] = [CARD_CONTENT_FILTER, {"timestamp": {"$gte": cutoff}}]
     if space_id:
         and_conditions.append({"space_id": space_id})
     if not cross_platform:

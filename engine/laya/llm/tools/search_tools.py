@@ -43,15 +43,26 @@ async def semantic_search(
     results = await memory_search(query, n_results=min(n_results, SEMANTIC_SEARCH_MAX), where=where)
 
     return {
-        "results": [
-            {
-                "id": r["id"],
-                "content": r["document"][:500],
-                "content_type": r["metadata"].get("content_type", "unknown"),
-                "source_platform": r["metadata"].get("source_platform", ""),
-                "distance": r.get("distance"),
-            }
-            for r in results
-        ],
+        "results": [_format_hit(r) for r in results],
         "count": len(results),
     }
+
+
+def _format_hit(r: dict[str, Any]) -> dict[str, Any]:
+    """One hit; Corpus document vectors also carry their document fields so the
+    model can cite them as [doc:ID p.N]."""
+    meta = r["metadata"]
+    hit: dict[str, Any] = {
+        "id": r["id"],
+        "content": r["document"][:500],
+        "content_type": meta.get("content_type", "unknown"),
+        "source_platform": meta.get("source_platform", ""),
+        "distance": r.get("distance"),
+    }
+    if meta.get("document_id"):
+        hit["document_id"] = meta["document_id"]
+        hit["title"] = meta.get("title", "")
+        if meta.get("page_start"):
+            hit["page_start"] = meta.get("page_start")
+            hit["page_end"] = meta.get("page_end")
+    return hit

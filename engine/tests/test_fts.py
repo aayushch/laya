@@ -129,3 +129,44 @@ class TestFtsToolAndTrace:
 
         results = await _event_keyword_search("PaymentService", None, 10)
         assert any(r["card_id"] == "card_t" for r in results)
+
+
+@pytest.mark.asyncio
+class TestFtsDocuments:
+    """documents_fts is kept in sync by triggers on document_chunks and documents."""
+
+    async def test_insert_delete_and_title_rename(self, db):
+        from tests.conftest import insert_test_document
+
+        await insert_test_document(
+            db, document_id="doc_f", title="Payment Roadmap",
+            chunks=[{"text": "Checkout redesign plan", "page_start": 1, "page_end": 1, "heading": "Plan"}],
+        )
+        rows = await db.execute_fetchall("SELECT title, heading, text FROM documents_fts WHERE document_id = 'doc_f'")
+        assert [dict(r) for r in rows] == [{"title": "Payment Roadmap", "heading": "Plan", "text": "Checkout redesign plan"}]
+
+        await db.execute("UPDATE documents SET title = 'Renamed' WHERE document_id = 'doc_f'")
+        await db.commit()
+        rows = await db.execute_fetchall("SELECT title FROM documents_fts WHERE document_id = 'doc_f'")
+        assert rows[0]["title"] == "Renamed"
+
+        await db.execute("DELETE FROM document_chunks WHERE document_id = 'doc_f'")
+        await db.commit()
+        rows = await db.execute_fetchall("SELECT COUNT(*) AS c FROM documents_fts WHERE document_id = 'doc_f'")
+        assert rows[0]["c"] == 0
+
+    async def test_bm25_title_match_and_like_parity(self, db):
+        from unittest.mock import AsyncMock, patch
+
+        from laya.documents.search import keyword_chunk_search
+        from tests.conftest import insert_test_document
+
+        await insert_test_document(db, document_id="doc_t", title="Fraud Model Notes",
+                                   chunks=[{"text": "Retraining schedule for the detector", "page_start": 1, "page_end": 1}])
+        await insert_test_document(db, document_id="doc_u", title="Unrelated",
+                                   chunks=[{"text": "Lunch menu", "page_start": 1, "page_end": 1}])
+        fts_hits = await keyword_chunk_search("fraud model", None, n=10)
+        assert [h["document_id"] for h in fts_hits] == ["doc_t"]
+        with patch("laya.retrieval.fts_ready", return_value=False):
+            like_hits = await keyword_chunk_search("fraud model", None, n=10)
+        assert [h["document_id"] for h in like_hits] == ["doc_t"]

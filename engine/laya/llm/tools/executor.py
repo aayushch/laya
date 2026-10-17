@@ -16,7 +16,16 @@ from laya.egress.tool_handlers import (
     handle_open_compose,
 )
 from laya.egress.tools import PREVIEWABLE_EGRESS_TOOLS
-from laya.llm.tools import card_tools, entity_tools, event_tools, rules_tools, search_tools, settings_tools, summary_tools
+from laya.llm.tools import (
+    card_tools,
+    document_tools,
+    entity_tools,
+    event_tools,
+    rules_tools,
+    search_tools,
+    settings_tools,
+    summary_tools,
+)
 
 log = structlog.get_logger()
 
@@ -45,6 +54,10 @@ def _register_tools() -> None:
         "semantic_search": search_tools.semantic_search,
         "get_daily_summary": summary_tools.get_daily_summary,
         "get_omni_summary": summary_tools.get_omni_summary,
+        # Corpus document tools (read-only)
+        "list_documents": document_tools.list_documents,
+        "search_documents": document_tools.search_documents,
+        "read_document": document_tools.read_document,
         # Write tools
         "dismiss_card": card_tools.dismiss_card,
         "mark_card_done": card_tools.mark_card_done,

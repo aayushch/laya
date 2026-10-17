@@ -36,6 +36,11 @@
 	import { recentDrawerOpen } from '$lib/stores/recentCards';
 	import { triggerSearchFocus } from '$lib/stores/searchFocus';
 	import RunAgentModal from '$lib/components/agent/RunAgentModal.svelte';
+	import AddDocumentSheet from '$lib/components/corpus/AddDocumentSheet.svelte';
+	import { initDocumentsStore, loadDocuments } from '$lib/stores/documents';
+	import { corpusSheet, openCorpusSheetWithFiles, openCorpusSheetWithPaths } from '$lib/stores/corpusSheet';
+	import { subscribeFileDrop } from '$lib/utils/fileDrop';
+	import { attachDroppedToChat } from '$lib/documents/chatAttach';
 	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
 	import VectorStoreBanner from '$lib/components/VectorStoreBanner.svelte';
 	import Titlebar from '$lib/components/Titlebar.svelte';
@@ -57,6 +62,28 @@
 	}
 
 	const isToday = $derived($feedDate === localToday());
+
+	// App-wide "Add to Corpus" drop. The Run Agent modal keeps its own drop
+	// handling while open, so the global subscription is paused then. A drop
+	// while the chat is open on a conversation attaches the file to that
+	// conversation; anywhere else it opens the add sheet.
+	let corpusDragOver = $state(false);
+	$effect(() => {
+		if ($agentDialog.isOpen) return;
+		const unsubscribe = subscribeFileDrop({
+			onOver: () => (corpusDragOver = true),
+			onLeave: () => (corpusDragOver = false),
+			onFiles: (files) => {
+				if ($chatOpen && !$chatListOpen) attachDroppedToChat({ files });
+				else openCorpusSheetWithFiles(files);
+			},
+			onPaths: (paths) => {
+				if ($chatOpen && !$chatListOpen) attachDroppedToChat({ paths });
+				else openCorpusSheetWithPaths(paths);
+			}
+		});
+		return unsubscribe;
+	});
 	const anyModalOpen = $derived($compose.isOpen || $agentDialog.isOpen || $summaryModalOpen);
 
 	let { children } = $props();
@@ -318,6 +345,9 @@
 		// Chat stream events are consumed at app level (not inside ChatSidebar)
 		// so a running chat keeps updating the stores while the sidebar is closed.
 		initChatStream();
+		// Corpus document progress is consumed at app level for the same reason.
+		initDocumentsStore();
+		loadDocuments();
 
 		// Selectively disable Tauri's default context menu to hide browser nav
 		// (Back/Forward/Reload/Inspect Element), but allow it on text-interactive
@@ -567,6 +597,13 @@
 									? 'bg-laya-orange/10 text-laya-orange'
 									: 'text-surface-400 hover:text-surface-200 hover:bg-surface-700'}"
 						>Coherence<sup class="text-[7px] ml-0.5 opacity-60 tracking-wider">BETA</sup></a>
+						<a
+							href="/corpus"
+							class="whitespace-nowrap px-4 py-1.5 text-xs font-medium transition-colors
+								{page.url.pathname.startsWith('/corpus')
+									? 'bg-laya-orange/10 text-laya-orange'
+									: 'text-surface-400 hover:text-surface-200 hover:bg-surface-700'}"
+						>Corpus</a>
 					</nav>
 				{/if}
 			</div>
@@ -594,6 +631,13 @@
 							? 'bg-laya-orange/10 text-laya-orange'
 							: 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'}"
 				>Coherence<sup class="text-[7px] ml-0.5 opacity-60 tracking-wider">BETA</sup></a>
+				<a
+					href="/corpus"
+					class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors
+						{page.url.pathname.startsWith('/corpus')
+							? 'bg-laya-orange/10 text-laya-orange'
+							: 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'}"
+				>Corpus</a>
 			</nav>
 		{/if}
 	{/snippet}
@@ -911,6 +955,16 @@
 	<ChatSidebar />
 	<ComposeModal />
 	<RunAgentModal />
+	<AddDocumentSheet />
+
+	{#if corpusDragOver && !$agentDialog.isOpen && !$corpusSheet.open}
+		<div class="pointer-events-none fixed inset-0 z-[55] flex items-center justify-center bg-laya-orange/10 backdrop-blur-[1px]" style="top: var(--header-h, 38px);">
+			<div class="flex items-center gap-2 rounded-xl border border-laya-orange/40 bg-surface-900/90 px-5 py-3 text-laya-base text-laya-orange shadow-xl">
+				<svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6M7 4h7l5 5v11a1 1 0 01-1 1H7a1 1 0 01-1-1V5a1 1 0 011-1z" /></svg>
+				{$chatOpen && !$chatListOpen ? 'Drop to attach to this chat' : 'Drop to add to Corpus'}
+			</div>
+		</div>
+	{/if}
 
 	{#if toasts.length > 0}
 		<div class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">

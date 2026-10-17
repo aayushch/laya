@@ -25,6 +25,9 @@ ENGINE_HOST = os.environ.get("LAYA_ENGINE_HOST", "127.0.0.1")
 ENGINE_PORT = int(os.environ.get("LAYA_ENGINE_PORT", "8420"))
 N8N_URL = "http://127.0.0.1:45678"
 DB_PATH = LAYA_DATA_DIR / "laya.db"
+# Engine-owned copies of Corpus documents that arrived as multipart uploads.
+# Documents shared by path are read in place and never land here.
+DOCUMENTS_DIR = LAYA_DATA_DIR / "documents"
 MIGRATIONS_DIR = Path(__file__).parent / "db" / "migrations"
 
 # Default settings
@@ -143,6 +146,15 @@ DEFAULT_SETTINGS = {
     "group_summaries": {
         "enabled": True,
     },
+    # Corpus documents (laya/documents/). max_file_mb caps uploads and shared
+    # paths; the summary_* keys bound the map-reduce summary at ingest; the
+    # embed batch size is the number of chunks encoded per executor call.
+    "documents": {
+        "max_file_mb": 50,
+        "summary_window_chars": 12000,
+        "summary_max_windows": 24,
+        "embed_batch_size": 32,
+    },
     "smart_grouping": {
         "context_association": True,
         "smart_display": True,
@@ -233,6 +245,7 @@ def ensure_directories() -> None:
     LAYA_HOME.mkdir(exist_ok=True)
     LAYA_DATA_DIR.mkdir(exist_ok=True)
     LAYA_LOG_DIR.mkdir(exist_ok=True)
+    DOCUMENTS_DIR.mkdir(exist_ok=True)
 
 
 # mtime-keyed cache. load_settings() is called ~10× per pipeline event plus per

@@ -269,6 +269,7 @@ def _get_model_for_role(role: str) -> str:
     """
     _ROLE_FALLBACKS = {
         "group_summary": "router",
+        "document_summary": "stager",
     }
 
     settings = load_settings()

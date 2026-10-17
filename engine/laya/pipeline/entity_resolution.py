@@ -8,7 +8,7 @@ import uuid
 
 import structlog
 
-from laya.db.chromadb_store import memory_search
+from laya.db.chromadb_store import CARD_CONTENT_FILTER, memory_search
 from laya.db.sqlite import get_db
 from laya.llm.client import DEFAULT_MAX_TOKENS, llm_call
 
@@ -45,7 +45,9 @@ async def resolve_semantic_entities(
 
     for entity_name in entities:
         try:
-            results = await memory_search(entity_name, n_results=5)
+            # Card vectors only: entity_refs on a document chunk are links the
+            # document mentions, not evidence of a cross-platform entity.
+            results = await memory_search(entity_name, n_results=5, where=CARD_CONTENT_FILTER)
 
             for result in results:
                 distance = result.get("distance", 1.0)

@@ -15,6 +15,7 @@ class ChatMessage(BaseModel):
     content: str
     referenced_cards: list[str] = Field(default_factory=list)
     referenced_events: list[str] = Field(default_factory=list)
+    referenced_documents: list[str] = Field(default_factory=list)
     conversation_id: str | None = None
 
 
@@ -27,12 +28,16 @@ class ChatRequest(BaseModel):
     # the client passes the card IDs so the conversation can be tagged and
     # re-opened when the user returns to the same view.
     card_ids: list[str] | None = None
+    # Corpus documents to focus retrieval on. None leaves the conversation's
+    # stored attachments untouched; a list (even empty) replaces them.
+    document_ids: list[str] | None = None
 
 
 class ChatResponse(BaseModel):
     message: ChatMessage
     referenced_cards: list[str] = Field(default_factory=list)
     referenced_events: list[str] = Field(default_factory=list)
+    referenced_documents: list[str] = Field(default_factory=list)
 
 
 class Conversation(BaseModel):
@@ -43,6 +48,7 @@ class Conversation(BaseModel):
     updated_at: str
     preview: str = ""
     message_count: int = 0
+    document_ids: list[str] = Field(default_factory=list)
 
 
 class CreateConversationRequest(BaseModel):

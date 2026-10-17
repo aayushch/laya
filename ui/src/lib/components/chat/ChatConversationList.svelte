@@ -8,7 +8,8 @@
 		chatListOpen,
 		chatMessages,
 		chatOpen,
-		chatExpanded
+		chatExpanded,
+		chatDocumentIds
 	} from '$lib/stores/chat';
 	import { applyLoadedMessages } from '$lib/stores/chatStream';
 	import type { Conversation } from '$lib/api/types';
@@ -49,6 +50,9 @@
 		// Don't navigate away while the user is renaming this row
 		if (editingId === conv.conversation_id) return;
 		activeConversationId.set(conv.conversation_id);
+		// Seed the attachment chips from the conversation; null when it has none
+		// so the engine keeps whatever is stored.
+		chatDocumentIds.set(conv.document_ids && conv.document_ids.length > 0 ? [...conv.document_ids] : null);
 		chatListOpen.set(false);
 		// Load messages for this conversation. Merge-aware: a reply may still be
 		// streaming into this conversation (its DB row lags the live content),
@@ -112,11 +116,13 @@
 			const conv = await engineApi.createConversation();
 			conversations.update((list) => [conv, ...list]);
 			activeConversationId.set(conv.conversation_id);
+			chatDocumentIds.set(null);
 			chatMessages.set([]);
 			chatListOpen.set(false);
 		} catch {
 			// fallback: just open empty chat with no conversation (will auto-create on first message)
 			activeConversationId.set(null);
+			chatDocumentIds.set(null);
 			chatMessages.set([]);
 			chatListOpen.set(false);
 		}
@@ -297,7 +303,15 @@
 						{#if conv.preview}
 							<p class="mt-0.5 truncate text-laya-secondary text-surface-500">{conv.preview}</p>
 						{/if}
-						<span class="mt-0.5 text-laya-micro text-surface-600">{conv.message_count} message{conv.message_count === 1 ? '' : 's'}</span>
+						<span class="mt-0.5 flex items-center gap-2 text-laya-micro text-surface-600">
+							<span>{conv.message_count} message{conv.message_count === 1 ? '' : 's'}</span>
+							{#if conv.document_ids && conv.document_ids.length > 0}
+								<span class="inline-flex items-center gap-0.5 rounded-full border border-surface-600/60 px-1.5 text-surface-500" title="{conv.document_ids.length} attached document{conv.document_ids.length === 1 ? '' : 's'}">
+									<svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+									{conv.document_ids.length}
+								</span>
+							{/if}
+						</span>
 					</div>
 				{/each}
 			</div>

@@ -141,3 +141,32 @@ class TestRuleVocabularyMovedToOptions:
         just_fields = await get_rule_options(category="fields")
         assert just_fields["fields"]["processing"] == _PROCESSING_FIELDS
         assert "platforms" not in just_fields  # scoped, not the whole catalog
+
+
+class TestDocumentGroup:
+    """Corpus document tools ship on has_documents or a document keyword only."""
+
+    DOCS = {"list_documents", "search_documents", "read_document"}
+
+    def test_plain_turn_excludes_documents(self):
+        got = _names(select_tool_definitions("what happened with the payment cards today?"))
+        assert not (got & self.DOCS)
+
+    def test_has_documents_includes_group(self):
+        got = _names(select_tool_definitions("what happened today?", has_documents=True))
+        assert self.DOCS <= got
+
+    def test_document_keyword_includes_group(self):
+        got = _names(select_tool_definitions("what does the attached pdf say about Q3?"))
+        assert self.DOCS <= got
+
+    def test_select_chat_tools_passes_flag(self):
+        got = _names(select_chat_tools("hi", [], has_documents=True))
+        assert self.DOCS <= got
+
+    def test_read_tool_names_include_documents(self):
+        from laya.llm.tools.definitions import read_tool_names, write_tool_names
+
+        assert self.DOCS <= read_tool_names()
+        assert not (self.DOCS & write_tool_names())
+        assert self.DOCS <= _names(get_all_tool_definitions())

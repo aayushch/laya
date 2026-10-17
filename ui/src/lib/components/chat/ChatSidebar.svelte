@@ -15,8 +15,14 @@
 		chatListOpen,
 		chatExpanded,
 		chatCardContext,
-		chatCardIds
+		chatCardIds,
+		chatDocumentIds
 	} from '$lib/stores/chat';
+	import { documents, readyDocuments, loadDocuments } from '$lib/stores/documents';
+	import { attachDocumentIds, attachDroppedToChat, detachDocumentId } from '$lib/documents/chatAttach';
+	import { statusLabel } from '$lib/documents/documentUpdateReducer';
+	import { pickFilePaths } from '$lib/utils/fileDrop';
+	import { goto } from '$app/navigation';
 	import { applyLoadedMessages } from '$lib/stores/chatStream';
 	import { wsStatus, sendMessage } from '$lib/stores/websocket';
 	import { engineApi } from '$lib/api/engine';
@@ -35,6 +41,59 @@
 	let renaming = $state(false);
 	let renameValue = $state('');
 	let renameInputEl = $state<HTMLInputElement | undefined>();
+
+	// Corpus attachments: the paperclip popover lists ready documents to attach;
+	// chips above the textarea show what is attached to this conversation.
+	let attachOpen = $state(false);
+	let attachFilter = $state('');
+	let attachBusy = $state(false);
+	let attachFileInput: HTMLInputElement | null = $state(null);
+	const attachedIds = $derived($chatDocumentIds ?? []);
+	const attachedDocs = $derived(
+		attachedIds.map((id) => $documents.find((d) => d.document_id === id) ?? null)
+	);
+	const attachCandidates = $derived(
+		$readyDocuments.filter((d) => {
+			const q = attachFilter.trim().toLowerCase();
+			return !q || d.title.toLowerCase().includes(q) || d.original_filename.toLowerCase().includes(q);
+		})
+	);
+
+	function toggleAttach(id: string) {
+		if (attachedIds.includes(id)) detachDocumentId(id);
+		else attachDocumentIds([id]);
+	}
+
+	async function addFileToChat() {
+		attachBusy = true;
+		try {
+			const paths = await pickFilePaths([]);
+			if (paths) {
+				await attachDroppedToChat({ paths });
+				return;
+			}
+			attachFileInput?.click();
+		} finally {
+			attachBusy = false;
+		}
+	}
+
+	async function handleAttachFilePicked(e: Event) {
+		const target = e.target as HTMLInputElement;
+		const files = target.files ? Array.from(target.files) : [];
+		target.value = '';
+		if (files.length === 0) return;
+		attachBusy = true;
+		try {
+			await attachDroppedToChat({ files });
+		} finally {
+			attachBusy = false;
+		}
+	}
+
+	$effect(() => {
+		if (attachOpen && $documents.length === 0) loadDocuments();
+	});
 
 	// Auto-scroll follows new content only while the user is pinned to the
 	// bottom. If they scroll up to read earlier content (e.g. during streaming),
@@ -118,6 +177,7 @@
 	});
 
 	const inCardMode = $derived(!!$chatCardIds && $chatCardIds.length > 0);
+	const inDocMode = $derived(attachedIds.length > 0);
 
 	// When card context is set and drawer opens, restore or start a card-anchored conversation
 	$effect(() => {
@@ -202,6 +262,7 @@
 			content: text,
 			referenced_cards: [],
 			referenced_events: [],
+			referenced_documents: [],
 			conversation_id: convId ?? undefined
 		};
 		chatMessages.update((msgs) => [...msgs, userMsg]);
@@ -221,7 +282,10 @@
 					message: text,
 					conversation_id: convId,
 					...(get(chatCardContext) ? { card_context: get(chatCardContext) } : {}),
-					...(get(chatCardIds)?.length ? { card_ids: get(chatCardIds) } : {})
+					...(get(chatCardIds)?.length ? { card_ids: get(chatCardIds) } : {}),
+					// null = keep the conversation's stored attachments; a list (even
+					// empty, after the last chip was removed) replaces them.
+					...(get(chatDocumentIds) !== null ? { document_ids: get(chatDocumentIds) } : {})
 				}
 			});
 		} else {
@@ -230,7 +294,8 @@
 					text,
 					convId ?? undefined,
 					get(chatCardContext) ?? undefined,
-					get(chatCardIds) ?? undefined
+					get(chatCardIds) ?? undefined,
+					get(chatDocumentIds) ?? undefined
 				);
 				chatMessages.update((msgs) => [...msgs, resp.message]);
 				// Track auto-created conversation
@@ -244,7 +309,8 @@
 					role: 'assistant',
 					content: 'Failed to send message. Please try again.',
 					referenced_cards: [],
-					referenced_events: []
+					referenced_events: [],
+					referenced_documents: []
 				};
 				chatMessages.update((msgs) => [...msgs, errMsg]);
 			} finally {
@@ -263,6 +329,8 @@
 	function goBackToList() {
 		chatCardContext.set(null);
 		chatCardIds.set(null);
+		chatDocumentIds.set(null);
+		attachOpen = false;
 		chatListOpen.set(true);
 	}
 
@@ -270,6 +338,8 @@
 		chatOpen.set(false);
 		chatCardContext.set(null);
 		chatCardIds.set(null);
+		chatDocumentIds.set(null);
+		attachOpen = false;
 	}
 
 	function clearChat() {
@@ -401,6 +471,10 @@
 						<h3 class="truncate text-laya-base font-semibold">
 							{$chatCardIds?.length === 1 ? 'Chat about this card' : `Chat about ${$chatCardIds?.length} cards`}
 						</h3>
+					{:else if inDocMode && !$activeConversationId}
+						<h3 class="truncate text-laya-base font-semibold">
+							{attachedIds.length === 1 ? 'Chat about this document' : `Chat about ${attachedIds.length} documents`}
+						</h3>
 					{:else if renaming}
 						<input
 							bind:this={renameInputEl}
@@ -492,6 +566,8 @@
 					<p class="text-center text-laya-base text-surface-500">
 						{#if inCardMode}
 							Ask anything about {$chatCardIds?.length === 1 ? 'this card' : `these ${$chatCardIds?.length} cards`}. Laya has full context of their intelligence, outputs, and metadata.
+						{:else if inDocMode}
+							Ask anything about {attachedIds.length === 1 ? 'this document' : `these ${attachedIds.length} documents`}. Laya reads them page by page and cites what it finds.
 						{:else}
 							Ask Laya about your events, cards, or recent activity.
 						{/if}
@@ -528,6 +604,24 @@
 
 			<!-- Input -->
 			<div class="border-t {$glassTheme ? 'border-white/[0.06]' : 'border-surface-700'} p-4">
+				{#if attachedIds.length > 0}
+					<!-- Attached Corpus documents -->
+					<div class="mb-2 flex flex-wrap gap-1.5">
+						{#each attachedIds as id, i (id)}
+							{@const doc = attachedDocs[i]}
+							<span class="inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-laya-micro {$glassTheme ? 'border-white/[0.08] bg-white/[0.05]' : 'border-surface-600 bg-surface-800'} text-surface-300">
+								<svg class="h-3 w-3 shrink-0 text-surface-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6M7 4h7l5 5v11a1 1 0 01-1 1H7a1 1 0 01-1-1V5a1 1 0 011-1z" /></svg>
+								<button onclick={() => goto(`/corpus?doc=${encodeURIComponent(id)}`)} class="truncate hover:text-laya-orange" title={doc?.title ?? id}>{doc?.title ?? id}</button>
+								{#if doc && doc.status !== 'ready'}
+									<span class="shrink-0 {doc.status === 'failed' ? 'text-red-400' : 'text-laya-orange'}">{statusLabel(doc.status)}</span>
+								{/if}
+								<button onclick={() => detachDocumentId(id)} aria-label="Remove attachment" class="shrink-0 rounded text-surface-500 hover:text-red-400">
+									<svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+								</button>
+							</span>
+						{/each}
+					</div>
+				{/if}
 				<div class="relative">
 					<textarea
 						bind:this={textareaEl}
@@ -538,6 +632,16 @@
 						style="min-height: 4.5rem; overflow-y: auto;"
 						class="w-full resize-none rounded-lg py-2 pl-3 pr-10 text-laya-base text-surface-200 placeholder-surface-500 focus:outline-none {$glassTheme ? 'glass-input' : 'border border-surface-500 bg-surface-800 focus:border-laya-orange/50'}"
 					></textarea>
+					<!-- Attach a Corpus document (disabled, never hidden, while a reply is in flight) -->
+					<button
+						onclick={() => (attachOpen = !attachOpen)}
+						disabled={chatBusy || inCardMode}
+						aria-label="Attach documents"
+						title={inCardMode ? 'Not available in a card chat' : 'Attach documents'}
+						class="absolute bottom-2 right-9 rounded-md p-1 transition-colors disabled:opacity-30 {attachedIds.length > 0 || attachOpen ? 'text-laya-orange' : 'text-surface-500 hover:text-surface-300'}"
+					>
+						<svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+					</button>
 					<button
 						onclick={send}
 						disabled={!input.trim() || chatBusy}
@@ -549,7 +653,45 @@
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7" />
 						</svg>
 					</button>
+
+					{#if attachOpen}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div class="fixed inset-0 z-40" onclick={() => (attachOpen = false)} onkeydown={() => {}}></div>
+						<div class="absolute bottom-full right-0 z-50 mb-2 flex max-h-72 w-80 flex-col rounded-lg shadow-xl {$glassTheme ? 'glass-section' : 'border border-surface-600 bg-surface-800'}">
+							<div class="flex items-center gap-2 border-b px-3 py-2 {$glassTheme ? 'border-white/[0.06]' : 'border-surface-700'}">
+								<input
+									bind:value={attachFilter}
+									placeholder="Filter documents"
+									class="min-w-0 flex-1 bg-transparent text-laya-secondary text-surface-200 placeholder-surface-500 focus:outline-none"
+								/>
+								<button onclick={addFileToChat} disabled={attachBusy} class="shrink-0 text-laya-micro text-laya-orange hover:text-laya-gold disabled:opacity-50">Add file</button>
+							</div>
+							<div class="flex-1 overflow-auto p-1">
+								{#if attachCandidates.length === 0}
+									<p class="px-2 py-3 text-center text-laya-micro text-surface-500">
+										{$readyDocuments.length === 0 ? 'No documents yet. Drop a file here or press Add file.' : 'No matches'}
+									</p>
+								{:else}
+									{#each attachCandidates as d (d.document_id)}
+										<button
+											onclick={() => toggleAttach(d.document_id)}
+											class="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-laya-secondary transition-colors {$glassTheme ? 'glass-hover' : 'hover:bg-surface-700'}"
+										>
+											<span class="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border {attachedIds.includes(d.document_id) ? 'border-laya-orange bg-laya-orange/20' : 'border-surface-600'}">
+												{#if attachedIds.includes(d.document_id)}
+													<svg class="h-2.5 w-2.5 text-laya-orange" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+												{/if}
+											</span>
+											<span class="min-w-0 flex-1 truncate text-surface-200">{d.title}</span>
+											<span class="shrink-0 text-[9px] font-semibold uppercase text-surface-500">{d.file_type}</span>
+										</button>
+									{/each}
+								{/if}
+							</div>
+						</div>
+					{/if}
 				</div>
+				<input bind:this={attachFileInput} type="file" multiple class="hidden" onchange={handleAttachFilePicked} />
 			</div>
 		{/if}
 	</div>

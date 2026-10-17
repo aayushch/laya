@@ -16,6 +16,7 @@ no dependency back on the pipeline.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Awaitable, Callable
 
 import structlog
@@ -38,6 +39,13 @@ STOPWORDS: frozenset[str] = frozenset({
     "with", "about", "from", "up", "out", "into", "over", "after",
     "all", "any", "some", "just", "also", "than", "very", "too",
 })
+
+
+# Identifier shapes in a short user query: "PR 540", "PR-540", "PR#540",
+# "LAYA-986", "ISSUE 42". Loose on purpose (it also matches "Figure 3"), which
+# is fine for a query but not for running document text; documents use the
+# stricter laya.documents.linking.DOC_IDENTIFIER_RE.
+IDENTIFIER_RE = re.compile(r"([A-Za-z]{1,10})[\s\-#]?(\d{1,6})")
 
 
 def extract_keywords(

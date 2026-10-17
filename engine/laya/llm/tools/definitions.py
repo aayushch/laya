@@ -16,6 +16,7 @@ def get_all_tool_definitions() -> list[dict]:
     """
     return [
         *_read_tools(),
+        *_document_tools(),
         *_write_tools(),
         *_settings_read_tools(),
         *_settings_write_tools(),
@@ -55,14 +56,26 @@ _EGRESS_HINTS = (
 )
 
 
+# Corpus document tools ship when the space holds documents (has_documents)
+# or the turn talks about one.
+_DOCUMENT_HINTS = (
+    "document", "doc ", "docs", "pdf", "docx", "file", "spec", "report", "library", "corpus",
+    "attached", "attachment", "page ", "pages", "read the", "contract", "proposal",
+    "whitepaper", "paper", "manual", "handbook", "policy", "prd", "rfc", "design doc",
+    "slide", "spreadsheet", "csv",
+)
+
+
 def _hits(text: str, hints: tuple[str, ...]) -> bool:
     return any(h in text for h in hints)
 
 
-def select_tool_definitions(text: str) -> list[dict]:
+def select_tool_definitions(text: str, *, has_documents: bool = False) -> list[dict]:
     """Chat toolset gated by a cheap keyword intent check over ``text`` (P6-8)."""
     t = (text or "").lower()
     defs = [*_read_tools(), *_write_tools()]
+    if has_documents or _hits(t, _DOCUMENT_HINTS):
+        defs += _document_tools()
     if _hits(t, _SETTINGS_HINTS):
         defs += [*_settings_read_tools(), *_settings_write_tools()]
     if _hits(t, _RULES_HINTS):
@@ -72,7 +85,9 @@ def select_tool_definitions(text: str) -> list[dict]:
     return defs
 
 
-def select_chat_tools(user_message: str, chat_history: list[dict] | None = None) -> list[dict]:
+def select_chat_tools(
+    user_message: str, chat_history: list[dict] | None = None, *, has_documents: bool = False,
+) -> list[dict]:
     """Gate the chat toolset on the current message + recent USER turns.
 
     Recent user turns are included so a multi-turn flow ("create a rule" → the
@@ -85,7 +100,7 @@ def select_chat_tools(user_message: str, chat_history: list[dict] | None = None)
         for m in (chat_history or [])
         if m.get("role") == "user"
     )
-    return select_tool_definitions(f"{user_message or ''} {recent_user}")
+    return select_tool_definitions(f"{user_message or ''} {recent_user}", has_documents=has_documents)
 
 
 # Public helpers that derive tool-name sets dynamically from the group functions
@@ -99,7 +114,12 @@ def _names_of(defs: list[dict]) -> set[str]:
 def read_tool_names() -> set[str]:
     """Names of read-only data tools (search/fetch cards, events, entities) and
     the read-only settings/rules introspection tools."""
-    return _names_of(_read_tools()) | _names_of(_settings_read_tools()) | _names_of(_rules_read_tools())
+    return (
+        _names_of(_read_tools())
+        | _names_of(_document_tools())
+        | _names_of(_settings_read_tools())
+        | _names_of(_rules_read_tools())
+    )
 
 
 def write_tool_names() -> set[str]:
@@ -522,6 +542,86 @@ def _read_tools() -> list[dict]:
                     "type": "object",
                     "properties": {},
                     "required": [],
+                },
+            },
+        },
+    ]
+
+
+def _document_tools() -> list[dict]:
+    """Read-only Corpus document tools (list, search, read)."""
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": "list_documents",
+                "description": (
+                    "List the documents in the user's Corpus (files they shared: PDF, DOCX, "
+                    "Markdown, text, CSV, JSON, HTML). Returns id, title, type, page count and a "
+                    "summary preview per document. Use search_documents to find passages and "
+                    "read_document to read one."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "status": {
+                            "type": "string",
+                            "description": "Filter by status; 'ready' (default) lists indexed documents.",
+                        },
+                        "limit": {"type": "integer", "description": "Max documents (default 50, max 200)."},
+                        "offset": {"type": "integer", "description": "Pagination offset."},
+                    },
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "search_documents",
+                "description": (
+                    "Search inside the user's Corpus documents for passages matching a query "
+                    "(semantic and keyword). Each result carries document_id, title, page range, "
+                    "heading and the passage text. Cite results as [doc:DOCUMENT_ID p.N]."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "What to look for."},
+                        "document_id": {
+                            "type": "string",
+                            "description": "Restrict the search to one document.",
+                        },
+                        "limit": {"type": "integer", "description": "Max passages (default 10, max 50)."},
+                    },
+                    "required": ["query"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "read_document",
+                "description": (
+                    "Read a Corpus document's text. With no range, returns its summary and the "
+                    "first chunks; pass page_from/page_to to read a page range or "
+                    "chunk_from/chunk_to to read by chunk index. Check has_more and "
+                    "next_chunk_index to continue. Cite as [doc:DOCUMENT_ID p.N]."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "document_id": {"type": "string", "description": "The document id (doc_...)."},
+                        "page_from": {"type": "integer", "description": "First page to read (1-based)."},
+                        "page_to": {"type": "integer", "description": "Last page to read (inclusive)."},
+                        "chunk_from": {"type": "integer", "description": "First chunk index (0-based)."},
+                        "chunk_to": {"type": "integer", "description": "Last chunk index (inclusive)."},
+                        "max_chars": {
+                            "type": "integer",
+                            "description": "Cap on returned text (default 10000, max 12000).",
+                        },
+                    },
+                    "required": ["document_id"],
                 },
             },
         },

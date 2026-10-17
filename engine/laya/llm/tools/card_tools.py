@@ -41,10 +41,11 @@ async def _search_semantic(
     date_to_ts: float | None = None,
 ) -> tuple[list[Any], int, bool]:
     """ChromaDB semantic search → SQLite hydration.  Returns (rows, total, has_more)."""
-    from laya.db.chromadb_store import memory_search
+    from laya.db.chromadb_store import CARD_CONTENT_FILTER, memory_search
 
-    # Build ChromaDB where filter from metadata-available params
-    chroma_filters: list[dict[str, Any]] = []
+    # Build ChromaDB where filter from metadata-available params. Card vectors
+    # only: Corpus document chunks share the collection and have no card row.
+    chroma_filters: list[dict[str, Any]] = [CARD_CONTENT_FILTER]
     if space_id:
         chroma_filters.append({"space_id": space_id})
     if priority:

@@ -1,7 +1,7 @@
 <!-- Copyright 2026 Aayush Chawla -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
-	import type { ActionCard, CardEgressContext, CardEgressAction, Tag, TagAssignment } from '$lib/api/types';
+	import type { ActionCard, CardEgressContext, CardEgressAction, CorpusDocument, Tag, TagAssignment } from '$lib/api/types';
 	import { engineApi } from '$lib/api/engine';
 	import { goto } from '$app/navigation';
 	import { untrack } from 'svelte';
@@ -63,6 +63,17 @@
 	let emailTruncated = $state(false);
 	let relatedCount = $state<number | null>(null);
 	let loadingRelated = $state(false);
+	// Corpus documents linked to this card's entity (hidden when empty).
+	let relatedDocuments = $state<CorpusDocument[]>([]);
+	$effect(() => {
+		const cardId = card.card_id;
+		const entityId = card.entity_id;
+		relatedDocuments = [];
+		if (!entityId) return;
+		engineApi.getRelatedDocuments(cardId).then((docs) => {
+			if (card.card_id === cardId) relatedDocuments = docs;
+		}).catch(() => {});
+	});
 	let overflowMenuOpen = $state(false);
 	let overflowBtnEl: HTMLElement | undefined = $state();
 	let overflowMenuEl: HTMLElement | undefined = $state();
@@ -1028,6 +1039,28 @@
 				{#if executeError}
 					<p class="mt-2 text-laya-secondary text-red-400">{executeError}</p>
 				{/if}
+			</div>
+		{/if}
+
+		<!-- Related Corpus documents -->
+		{#if relatedDocuments.length > 0}
+			<div class="mt-4 border-t pt-3 {$glassTheme ? 'border-surface-700/40' : 'border-surface-700'}">
+				<h3 class="mb-2 text-laya-secondary font-semibold uppercase tracking-wider text-surface-400">Related documents</h3>
+				<ul class="space-y-1">
+					{#each relatedDocuments as doc (doc.document_id)}
+						<li>
+							<button
+								onclick={() => goto(`/corpus?doc=${encodeURIComponent(doc.document_id)}${doc.first_page ? `&page=${doc.first_page}` : ''}`)}
+								class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-laya-secondary text-surface-300 transition-colors hover:bg-surface-700/50 hover:text-laya-orange"
+							>
+								<svg class="h-3.5 w-3.5 shrink-0 text-surface-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6M7 4h7l5 5v11a1 1 0 01-1 1H7a1 1 0 01-1-1V5a1 1 0 011-1z" /></svg>
+								<span class="min-w-0 flex-1 truncate">{doc.title}</span>
+								<span class="shrink-0 text-[9px] font-semibold uppercase text-surface-500">{doc.file_type}</span>
+								{#if doc.first_page}<span class="shrink-0 text-laya-micro text-surface-500">p.{doc.first_page}</span>{/if}
+							</button>
+						</li>
+					{/each}
+				</ul>
 			</div>
 		{/if}
 

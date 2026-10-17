@@ -27,6 +27,7 @@ export interface WsMessage {
 		| 'group_carried_forward' | 'group_summary_updated'
 		| 'context_group_merged' | 'context_group_unlinked'
 		| 'summary_updated'
+		| 'document_updated' | 'document_deleted'
 		| 'budget_status'
 		| 'agent_budget_status'
 		| 'omni_updated'
@@ -794,6 +795,8 @@ export interface ChatMessage {
 	content: string;
 	referenced_cards: string[];
 	referenced_events: string[];
+	/** Corpus documents the reply cites as [doc:ID]; absent on older rows. */
+	referenced_documents?: string[];
 	conversation_id?: string;
 }
 
@@ -802,6 +805,7 @@ export interface ChatResponse {
 	message: ChatMessage;
 	referenced_cards: string[];
 	referenced_events: string[];
+	referenced_documents?: string[];
 }
 
 /** Chat conversation */
@@ -813,6 +817,88 @@ export interface Conversation {
 	updated_at: string;
 	preview: string;
 	message_count: number;
+	/** Corpus documents attached to the conversation (focus for retrieval). */
+	document_ids?: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Corpus documents
+// ---------------------------------------------------------------------------
+
+export type DocumentStatus =
+	| 'queued' | 'parsing' | 'chunking' | 'embedding' | 'linking' | 'summarizing' | 'ready' | 'failed';
+
+/** Where the engine reads a document from. */
+export type DocumentSourceState = 'copy' | 'ok' | 'changed' | 'missing';
+
+export interface DocumentEntityLink {
+	entity_id: string;
+	link_method: 'identifier' | 'entity_ref' | 'mention' | string;
+	confidence: number;
+	mention_count: number;
+	first_page: number | null;
+	matched_text: string | null;
+	card_count: number;
+}
+
+/** A Corpus document (engine DocumentResponse). */
+export interface CorpusDocument {
+	document_id: string;
+	space_id: string;
+	title: string;
+	original_filename: string;
+	file_type: string;
+	mime_type: string | null;
+	size_bytes: number;
+	page_count: number | null;
+	chunk_count: number;
+	char_count: number;
+	storage_mode: 'reference' | 'copy';
+	source_path: string | null;
+	source_state: DocumentSourceState;
+	status: DocumentStatus;
+	error: string | null;
+	error_code: string | null;
+	summary: string | null;
+	summary_model: string | null;
+	embedding_model: string | null;
+	needs_reembed: boolean;
+	created_at: string;
+	updated_at: string;
+	indexed_at: string | null;
+	entity_links: DocumentEntityLink[];
+	/** Present only on by-entity / related-documents responses. */
+	link_method?: string;
+	confidence?: number;
+	first_page?: number | null;
+}
+
+export interface DocumentChunk {
+	chunk_id: string;
+	document_id: string;
+	chunk_index: number;
+	text: string;
+	page_start: number | null;
+	page_end: number | null;
+	heading: string | null;
+	char_count: number;
+}
+
+export interface DocumentListResponse {
+	documents: CorpusDocument[];
+	total: number;
+}
+
+export interface DocumentChunksResponse {
+	chunks: DocumentChunk[];
+	total: number;
+}
+
+/** Progress payload carried by the document_updated WebSocket message. */
+export interface DocumentProgress {
+	stage: string;
+	done?: number;
+	total?: number;
 }
 
 /** Audit log entry */
@@ -1247,6 +1333,18 @@ export interface TraceStatusSummary {
 	pending_actions: number;
 }
 
+/** A Corpus document linked to an entity in a trace. */
+export interface TraceDocumentRef {
+	document_id: string;
+	title: string;
+	file_type: string;
+	page_count: number | null;
+	link_method: string;
+	confidence: number;
+	entity_ids: string[];
+	first_page: number | null;
+}
+
 export interface TraceCluster {
 	cluster_id: string;
 	primary_entity: TraceEntity;
@@ -1255,6 +1353,7 @@ export interface TraceCluster {
 	chapters: TraceChapter[];
 	timeline: ActionCard[];
 	status_summary: TraceStatusSummary;
+	documents?: TraceDocumentRef[];
 }
 
 export interface TraceSearchMetadata {
@@ -1276,6 +1375,8 @@ export interface TraceResponse {
 	search_metadata: TraceSearchMetadata;
 	created_at: string;
 	summary?: string | null;
+	/** Documents matched by identifier only (no cluster shares their entity). */
+	documents?: TraceDocumentRef[];
 }
 
 export interface TraceListItem {
