@@ -767,8 +767,32 @@ pub(crate) fn kill_process_on_port(port: u16, identity: &str) {
     }
 }
 
+/// WebKitGTK's DMA-BUF renderer appears to leak compositor backing stores on
+/// pages with nested `backdrop-filter` layers (the glass theme over the
+/// timeline view): on WebKitGTK 2.54 / Mesa radeonsi / Wayland the web
+/// process climbed to ~28 GB every ~90 s, was purged by WebKit's
+/// memory-pressure handler, and on 2026-10-14 lost that race and was
+/// OOM-killed at 41 GB, freezing the desktop. With the DMA-BUF renderer off
+/// (shared-memory buffer upload instead, GPU rasterization kept) the same
+/// page holds at ~100 MB. Measured alone; forcing CPU rasterization
+/// (`WEBKIT_SKIA_ENABLE_CPU_RENDERING`) also works but is not needed.
+///
+/// Must run before the first webview is created — WebKit reads it when it
+/// spawns the web process. An existing value is respected so a user can
+/// still try the DMA-BUF path by exporting their own.
+#[cfg(target_os = "linux")]
+fn apply_webkit_rendering_workarounds() {
+    const KEY: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
+    if std::env::var_os(KEY).is_none() {
+        std::env::set_var(KEY, "1");
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    apply_webkit_rendering_workarounds();
+
     tauri::Builder::default()
         // Registered as an init script so the token is in place before any
         // page script runs, on first load and on every reload.
