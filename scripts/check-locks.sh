@@ -8,6 +8,9 @@
 # This resolves each lock against every target with the same flags the app
 # uses and reports the combinations that cannot be satisfied.
 #
+# This includes litellm's abi3 wheels (1.96.2+); with wheel-only installs, a
+# missing wheel means failed setup, since no sdist/Rust build is attempted.
+#
 # Usage:
 #   ./scripts/check-locks.sh            # full matrix
 #   ./scripts/check-locks.sh -v         # also print uv's error for each failure

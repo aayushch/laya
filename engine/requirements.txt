@@ -24,7 +24,7 @@ aiohttp>=3.13.5
 aiosmtplib>=5.1.0
 
 # LLM
-litellm>=1.81.14,<2
+litellm>=1.104.0,<2
 openai>=2.21.0,<3
 tiktoken>=0.12.0
 mcp>=1.0.0,<2
