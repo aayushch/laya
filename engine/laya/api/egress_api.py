@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import html
+
 import structlog
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -915,7 +917,7 @@ async def oauth_callback(code: str, state: str):
     result = await handle_callback(code, state, redirect_uri)
 
     if "error" in result:
-        error_msg = result['error'].replace("'", "\\'").replace('"', '&quot;')
+        error_msg = html.escape(str(result["error"]))
         return HTMLResponse(f"""<!DOCTYPE html><html><head><title>Connection Failed</title></head>
 <body style="background:#1a1a1a;color:#eee;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
 <div style="text-align:center;max-width:400px">
@@ -931,7 +933,7 @@ if (window.opener) setTimeout(() => window.close(), 4000);
 
     error_message = result.get("error_message")
     if error_message:
-        safe_msg = error_message.replace("'", "\\'").replace('"', '&quot;')
+        safe_msg = html.escape(str(error_message))
         return HTMLResponse(f"""<!DOCTYPE html><html><head><title>Connected with issues</title></head>
 <body style="background:#1a1a1a;color:#eee;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
 <div style="text-align:center;max-width:480px">
