@@ -12,6 +12,13 @@ from pathlib import Path
 import structlog
 
 from laya.config import LAYA_LOG_DIR, ensure_directories, load_settings
+from laya.security.permissions import (
+    DIR_MODE,
+    FILE_MODE,
+    is_symlink,
+    secure_directory,
+    secure_file,
+)
 
 # 10 MB per log file, keep 5 rotated backups (~60 MB max disk usage)
 LOG_MAX_BYTES = 10 * 1024 * 1024
@@ -57,19 +64,59 @@ def resolve_log_level() -> str:
     return _DEFAULT_LEVEL
 
 
+class PrivateRotatingFileHandler(RotatingFileHandler):
+    """RotatingFileHandler that creates log files and rotated backups with 0600 permissions."""
+
+    def _open(self):
+        if sys.platform == "win32":
+            return super()._open()
+
+        log_path = Path(self.baseFilename)
+        secure_directory(log_path.parent, DIR_MODE)
+        if is_symlink(log_path):
+            raise PermissionError(f"Log file path is a symbolic link: {log_path}")
+
+        flags = os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+        if "a" in self.mode:
+            flags |= os.O_APPEND | os.O_RDWR
+        elif "w" in self.mode:
+            flags |= os.O_TRUNC | os.O_WRONLY
+        else:
+            flags |= os.O_RDWR
+
+        fd = os.open(self.baseFilename, flags, FILE_MODE)
+        try:
+            os.fchmod(fd, FILE_MODE)
+        except OSError:
+            pass
+        return open(fd, self.mode, encoding=self.encoding, errors=self.errors)
+
+    def rotate(self, source: str, dest: str) -> None:
+        super().rotate(source, dest)
+        if sys.platform != "win32":
+            dest_path = Path(dest)
+            if dest_path.exists() and not is_symlink(dest_path):
+                secure_file(dest_path, FILE_MODE)
+
+
 def setup_logging(log_level: str | None = None) -> None:
     """Configure structlog with console and rotating file output.
 
     ``log_level`` defaults to :func:`resolve_log_level` (env var → settings → INFO).
     """
     ensure_directories()
+    if sys.platform != "win32" and LAYA_LOG_DIR.exists() and not is_symlink(LAYA_LOG_DIR):
+        secure_directory(LAYA_LOG_DIR, DIR_MODE)
+        for entry in LAYA_LOG_DIR.glob("engine.log*"):
+            if not is_symlink(entry):
+                secure_file(entry, FILE_MODE)
 
     level = _coerce_level(log_level if log_level is not None else resolve_log_level())
 
     log_file = LAYA_LOG_DIR / "engine.log"
 
     # Rotating file handler: auto-rotates when file exceeds LOG_MAX_BYTES
-    file_handler = RotatingFileHandler(
+    file_handler = PrivateRotatingFileHandler(
         log_file,
         maxBytes=LOG_MAX_BYTES,
         backupCount=LOG_BACKUP_COUNT,

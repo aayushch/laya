@@ -16,6 +16,7 @@ from chromadb import Collection, Documents, Embeddings, EmbeddingFunction
 from chromadb.config import Settings as ChromaSettings
 
 from laya.config import LAYA_DATA_DIR
+from laya.security.permissions import secure_directory
 
 log = structlog.get_logger()
 
@@ -230,7 +231,7 @@ def connect_chromadb() -> Collection:
     """Initialize ChromaDB persistent client and return the collection."""
     global _client, _collection
 
-    CHROMADB_DIR.mkdir(parents=True, exist_ok=True)
+    secure_directory(CHROMADB_DIR)
     # Pass anonymized_telemetry=False defensively even though
     # _telemetry_suppression.py already sets ANONYMIZED_TELEMETRY=False in the
     # env at import time. This survives future chromadb releases that might

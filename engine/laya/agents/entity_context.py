@@ -19,6 +19,7 @@ import structlog
 from laya.config import LAYA_HOME
 from laya.db.sqlite import get_db
 from laya.models.card import PROCESSING_PLACEHOLDER_SUMMARY
+from laya.security.permissions import atomic_write_private, secure_directory
 
 log = structlog.get_logger()
 
@@ -33,7 +34,7 @@ def sanitize_entity_id(entity_id: str) -> str:
 def get_entity_research_dir(entity_id: str) -> Path:
     """Return the research directory for an entity, creating it if needed."""
     dir_path = LAYA_HOME / "tmp" / "research" / sanitize_entity_id(entity_id)
-    dir_path.mkdir(parents=True, exist_ok=True)
+    secure_directory(dir_path)
     return dir_path
 
 
@@ -194,7 +195,7 @@ async def write_entity_context_file(
     research_dir = get_entity_research_dir(entity_id)
     content = await build_entity_context_markdown(entity_id, space_id)
     context_path = research_dir / "CONTEXT.md"
-    context_path.write_text(content, encoding="utf-8")
+    atomic_write_private(context_path, content, encoding="utf-8")
     log.info("entity_context_written", entity_id=entity_id, path=str(context_path))
     return context_path
 
