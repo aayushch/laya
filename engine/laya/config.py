@@ -11,6 +11,14 @@ import subprocess
 from pathlib import Path
 from typing import Callable, Iterator
 
+from laya.security.permissions import (
+    DIR_MODE,
+    FILE_MODE,
+    secure_directory,
+    secure_file,
+    write_private_json,
+)
+
 # Laya data directory
 LAYA_HOME = Path.home() / ".laya"
 LAYA_DATA_DIR = LAYA_HOME / "data"
@@ -243,11 +251,11 @@ def get_debounce_config() -> dict:
 
 
 def ensure_directories() -> None:
-    """Create ~/.laya/ directory structure if it doesn't exist."""
-    LAYA_HOME.mkdir(exist_ok=True)
-    LAYA_DATA_DIR.mkdir(exist_ok=True)
-    LAYA_LOG_DIR.mkdir(exist_ok=True)
-    DOCUMENTS_DIR.mkdir(exist_ok=True)
+    """Create ~/.laya/ directory structure with restricted permissions (0700)."""
+    secure_directory(LAYA_HOME, DIR_MODE)
+    secure_directory(LAYA_DATA_DIR, DIR_MODE)
+    secure_directory(LAYA_LOG_DIR, DIR_MODE)
+    secure_directory(DOCUMENTS_DIR, DIR_MODE)
 
 
 # mtime-keyed cache. load_settings() is called ~10× per pipeline event plus per
@@ -275,6 +283,7 @@ def load_settings() -> dict:
         return copy.deepcopy(_settings_cache)
 
     if mtime:
+        secure_file(LAYA_CONFIG_FILE, FILE_MODE)
         with open(LAYA_CONFIG_FILE, encoding="utf-8") as f:
             user_settings = json.load(f)
         # Merge user settings over defaults (two-level deep merge so that
@@ -304,8 +313,7 @@ def save_settings(settings: dict) -> None:
     """Persist settings to ~/.laya/settings.json."""
     global _settings_cache, _settings_cache_mtime
     ensure_directories()
-    with open(LAYA_CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(settings, f, indent=2)
+    write_private_json(LAYA_CONFIG_FILE, settings)
     # Invalidate the cache so the next load reflects what we just wrote.
     _settings_cache = None
     _settings_cache_mtime = None
@@ -333,6 +341,8 @@ def load_team() -> dict:
     ensure_directories()
     if not LAYA_TEAM_FILE.exists():
         save_team(DEFAULT_TEAM)
+    else:
+        secure_file(LAYA_TEAM_FILE, FILE_MODE)
     with open(LAYA_TEAM_FILE, encoding="utf-8") as f:
         return json.load(f)
 
@@ -340,8 +350,7 @@ def load_team() -> dict:
 def save_team(team: dict) -> None:
     """Persist team config to ~/.laya/team.json."""
     ensure_directories()
-    with open(LAYA_TEAM_FILE, "w", encoding="utf-8") as f:
-        json.dump(team, f, indent=2)
+    write_private_json(LAYA_TEAM_FILE, team)
 
 
 def get_self_user() -> dict | None:
@@ -369,6 +378,8 @@ def load_rules() -> dict:
     ensure_directories()
     if not LAYA_RULES_FILE.exists():
         save_rules(DEFAULT_RULES)
+    else:
+        secure_file(LAYA_RULES_FILE, FILE_MODE)
     with open(LAYA_RULES_FILE, encoding="utf-8") as f:
         return json.load(f)
 
@@ -376,8 +387,7 @@ def load_rules() -> dict:
 def save_rules(rules: dict) -> None:
     """Persist rules config to ~/.laya/rules.json."""
     ensure_directories()
-    with open(LAYA_RULES_FILE, "w", encoding="utf-8") as f:
-        json.dump(rules, f, indent=2)
+    write_private_json(LAYA_RULES_FILE, rules)
 
 
 def load_repos() -> dict:
@@ -385,6 +395,8 @@ def load_repos() -> dict:
     ensure_directories()
     if not LAYA_REPOS_FILE.exists():
         save_repos(DEFAULT_REPOS)
+    else:
+        secure_file(LAYA_REPOS_FILE, FILE_MODE)
     with open(LAYA_REPOS_FILE, encoding="utf-8") as f:
         return json.load(f)
 
@@ -392,8 +404,7 @@ def load_repos() -> dict:
 def save_repos(repos: dict) -> None:
     """Persist repos config to ~/.laya/repos.json."""
     ensure_directories()
-    with open(LAYA_REPOS_FILE, "w", encoding="utf-8") as f:
-        json.dump(repos, f, indent=2)
+    write_private_json(LAYA_REPOS_FILE, repos)
 
 
 def get_all_custom_providers() -> list[dict]:

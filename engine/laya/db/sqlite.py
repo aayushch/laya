@@ -4,12 +4,21 @@
 """Async SQLite connection management via aiosqlite."""
 
 import asyncio
+import os
+import sys
 from contextlib import asynccontextmanager
 
 import aiosqlite
 import structlog
 
 from laya.config import DB_PATH, ensure_directories
+from laya.security.permissions import (
+    FILE_MODE,
+    is_symlink,
+    secure_directory,
+    secure_file,
+    secure_sqlite_files,
+)
 
 log = structlog.get_logger()
 
@@ -71,11 +80,23 @@ async def connect() -> aiosqlite.Connection:
     """Open the SQLite connection and enable WAL mode."""
     global _db
     ensure_directories()
+    secure_directory(DB_PATH.parent)
+    if sys.platform != "win32":
+        if not DB_PATH.exists():
+            fd = os.open(str(DB_PATH), os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), FILE_MODE)
+            try:
+                os.fchmod(fd, FILE_MODE)
+            finally:
+                os.close(fd)
+        elif not is_symlink(DB_PATH):
+            secure_file(DB_PATH, FILE_MODE)
+
     _db = await aiosqlite.connect(str(DB_PATH))
     _db.row_factory = aiosqlite.Row
     await _db.execute("PRAGMA journal_mode=WAL")
     await _db.execute("PRAGMA foreign_keys=ON")
     await _db.execute("PRAGMA busy_timeout=5000")
+    secure_sqlite_files(DB_PATH)
     log.info("sqlite_connected", path=str(DB_PATH))
     return _db
 
@@ -86,6 +107,7 @@ async def disconnect() -> None:
     if _db is not None:
         await _db.close()
         _db = None
+        secure_sqlite_files(DB_PATH)
         log.info("sqlite_disconnected")
 
 

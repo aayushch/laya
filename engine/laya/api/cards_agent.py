@@ -343,11 +343,14 @@ async def upload_agent_file(file: UploadFile = File(...)) -> dict:
         ext = "bin"
 
     import uuid as _uuid
+    from laya.security.permissions import atomic_write_private, secure_directory
+
+    secure_directory(staging_dir)
     filename = f"{_uuid.uuid4().hex[:12]}.{ext}"
     filepath = staging_dir / filename
 
     content = await file.read()
-    filepath.write_bytes(content)
+    atomic_write_private(filepath, content)
 
     log.info("agent_file_uploaded", path=str(filepath), size=len(content), content_type=file.content_type)
     return {
