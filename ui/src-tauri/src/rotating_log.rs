@@ -17,6 +17,9 @@ use std::process::Child;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
+
 /// A size-capped log writer. When a write would push the current file past
 /// `max_bytes`, the file is rotated (`name` → `name.1` → `name.2` … keeping at
 /// most `backups` old files) and a fresh file is opened.
@@ -33,11 +36,11 @@ impl RotatingWriter {
     pub fn open(dir: &Path, base: &str, max_bytes: u64, backups: usize) -> io::Result<Self> {
         // Truncate on open so each launch starts with a fresh primary log (matches
         // the previous File::create behavior); rotation then bounds in-session growth.
-        let file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(dir.join(base))?;
+        let mut opts = OpenOptions::new();
+        opts.create(true).write(true).truncate(true);
+        #[cfg(unix)]
+        opts.mode(0o600);
+        let file = opts.open(dir.join(base))?;
         Ok(Self {
             dir: dir.to_path_buf(),
             base: base.to_string(),
@@ -65,11 +68,11 @@ impl RotatingWriter {
                 self.dir.join(format!("{}.1", self.base)),
             );
         }
-        self.file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(self.dir.join(&self.base))?;
+        let mut opts = OpenOptions::new();
+        opts.create(true).write(true).truncate(true);
+        #[cfg(unix)]
+        opts.mode(0o600);
+        self.file = opts.open(self.dir.join(&self.base))?;
         self.written = 0;
         Ok(())
     }
@@ -139,6 +142,51 @@ fn spawn_copy<R: Read + Send + 'static>(mut src: R, writer: Arc<Mutex<RotatingWr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    fn file_mode(path: &std::path::Path) -> u32 {
+        use std::os::unix::fs::MetadataExt;
+        path.metadata().unwrap().mode() & 0o777
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn open_creates_log_with_0600() {
+        let dir = std::env::temp_dir().join(format!("laya_rotlog_perm_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let base = "perm.log";
+
+        // Under umask 000 a plain File::create gives 0666; we must get 0600.
+        let old_mask = unsafe { libc::umask(0o000) };
+        let _w = RotatingWriter::open(&dir, base, 1024, 2).unwrap();
+        unsafe { libc::umask(old_mask) };
+
+        assert_eq!(file_mode(&dir.join(base)), 0o600);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn rotated_files_have_0600() {
+        let dir = std::env::temp_dir().join(format!("laya_rotlog_rperm_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let base = "rot.log";
+
+        let old_mask = unsafe { libc::umask(0o000) };
+        let mut w = RotatingWriter::open(&dir, base, 50, 2).unwrap();
+        // Force rotation
+        w.write_all(&[b'x'; 60]).unwrap();
+        w.write_all(&[b'y'; 60]).unwrap();
+        unsafe { libc::umask(old_mask) };
+
+        // Both primary and the rotated backup must be 0600
+        assert_eq!(file_mode(&dir.join(base)), 0o600);
+        let bak = dir.join(format!("{base}.1"));
+        if bak.exists() {
+            assert_eq!(file_mode(&bak), 0o600);
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn rotates_and_bounds_backups() {

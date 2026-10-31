@@ -343,10 +343,10 @@ pub fn install_n8n<F: FnMut(&str)>(mut on_line: F) -> Result<(), String> {
     let npm = find_npm()?;
 
     let module_dir = n8n_module_dir();
-    std::fs::create_dir_all(&module_dir)
+    crate::fs_private::mkdir_private(&module_dir)
         .map_err(|e| format!("Failed to create {}: {e}", module_dir.display()))?;
 
-    std::fs::create_dir_all(n8n_data_dir())
+    crate::fs_private::mkdir_private(&n8n_data_dir())
         .map_err(|e| format!("Failed to create n8n data directory: {e}"))?;
 
     // Start a fresh install log for this setup run. run_npm_install and
@@ -354,8 +354,8 @@ pub fn install_n8n<F: FnMut(&str)>(mut on_line: F) -> Result<(), String> {
     // clean while both install attempts (1 = native, 2 = --ignore-scripts) are
     // preserved within the run for debugging.
     let log_dir = laya_home().join("logs");
-    std::fs::create_dir_all(&log_dir).ok();
-    let _ = std::fs::File::create(n8n_install_log_path());
+    crate::fs_private::mkdir_private(&log_dir).ok();
+    let _ = crate::fs_private::create_file_private(&n8n_install_log_path());
 
     let path = augmented_path();
 
@@ -504,9 +504,7 @@ fn rebuild_native_addon<F: FnMut(&str)>(
     match cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output() {
         Ok(output) => {
             // Append the rebuild output to the install log to complete the trace.
-            if let Ok(mut f) = std::fs::OpenOptions::new()
-                .create(true).append(true).open(n8n_install_log_path())
-            {
+            if let Ok(mut f) = crate::fs_private::append_file_private(&n8n_install_log_path()) {
                 let _ = writeln!(f, "\n=== npm rebuild {} ===", package);
                 let _ = f.write_all(&output.stdout);
                 let _ = f.write_all(&output.stderr);
@@ -597,11 +595,7 @@ fn run_npm_install<F: FnMut(&str)>(
 
     // Tee npm's streamed output to the install log (append: install_n8n may
     // call this twice — native attempt then --ignore-scripts fallback).
-    let mut log = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(n8n_install_log_path())
-        .ok();
+    let mut log = crate::fs_private::append_file_private(&n8n_install_log_path()).ok();
     let mut output_lines: Vec<String> = Vec::new();
     for line in rx {
         on_line(&line);
@@ -709,11 +703,11 @@ fn spawn_n8n() -> Result<Child, String> {
     let bin = n8n_bin();
     let data_dir = n8n_data_dir();
 
-    std::fs::create_dir_all(&data_dir)
+    crate::fs_private::mkdir_private(&data_dir)
         .map_err(|e| format!("Failed to create n8n data dir: {e}"))?;
 
     let log_dir = laya_home().join("logs");
-    std::fs::create_dir_all(&log_dir).ok();
+    crate::fs_private::mkdir_private(&log_dir).ok();
 
     // The n8n binary is a shell script with `#!/usr/bin/env node`.
     // macOS .app bundles have a minimal PATH, so we must ensure the
@@ -772,10 +766,14 @@ fn spawn_n8n() -> Result<Child, String> {
         .stderr(Stdio::piped());
 
     // Create a new process group so we can kill all n8n children on shutdown.
+    // Also set umask 0o077 in the child so n8n creates its database, encryption
+    // key, and credential files with at most 0700/0600 (owner-only) permissions.
+    // The parent process umask is unchanged.
     #[cfg(unix)]
     unsafe {
         use std::os::unix::process::CommandExt;
         cmd.pre_exec(|| {
+            libc::umask(0o077);
             libc::setpgid(0, 0);
             Ok(())
         });

@@ -15,6 +15,7 @@ from unittest.mock import patch
 import aiosqlite
 import pytest
 
+from laya.security.permissions import _assert_no_symlink_in_path
 from laya.config import (
     DEFAULT_REPOS,
     DEFAULT_RULES,
@@ -192,20 +193,31 @@ class TestFilesystemPermissions:
             try:
                 assert get_mode(isolated_env["db_path"]) == FILE_MODE
 
-                # Execute write transaction to trigger WAL/SHM creation
-                await db.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, val TEXT)")
-                await db.execute("INSERT INTO test_table (val) VALUES ('secure_data')")
+                # Create table and commit so the schema is checkpointed
+                await db.execute(
+                    "CREATE TABLE IF NOT EXISTS test_table "
+                    "(id INTEGER PRIMARY KEY, val TEXT)"
+                )
                 await db.commit()
+
+                # Insert without committing: keeps the write in the WAL so both
+                # WAL and SHM files exist while we check them.
+                await db.execute("INSERT INTO test_table (val) VALUES ('secure_data')")
 
                 wal_file = isolated_env["db_path"].with_name("laya.db-wal")
                 shm_file = isolated_env["db_path"].with_name("laya.db-shm")
 
-                if wal_file.exists():
-                    assert get_mode(wal_file) == FILE_MODE
-                if shm_file.exists():
-                    assert get_mode(shm_file) == FILE_MODE
+                # Tighten permissions on sidecars that now exist
+                secure_sqlite_files(isolated_env["db_path"])
 
-                # Verify reads work
+                assert wal_file.exists(), "WAL file must exist while an uncommitted write is active"
+                assert shm_file.exists(), "SHM file must exist while WAL is active"
+                assert get_mode(wal_file) == FILE_MODE
+                assert get_mode(shm_file) == FILE_MODE
+
+                await db.commit()
+
+                # Verify data integrity
                 async with db.execute("SELECT val FROM test_table WHERE id = 1") as cursor:
                     row = await cursor.fetchone()
                     assert row[0] == "secure_data"
@@ -360,3 +372,141 @@ class TestFilesystemPermissions:
         # External directory and file must remain untouched
         assert get_mode(external_dir) == 0o755
         assert get_mode(external_file) == 0o644
+
+    # -----------------------------------------------------------------------
+    # Symlink-traversal tests (Issue #61 review)
+    # -----------------------------------------------------------------------
+
+    def test_m_symlinked_laya_home_raises(self, tmp_path):
+        """Test M: secure_directory must raise PermissionError when the target is a symlink."""
+        real_home = tmp_path / "real_laya"
+        real_home.mkdir()
+        sym_home = tmp_path / "sym_laya"
+        os.symlink(real_home, sym_home)
+
+        with pytest.raises(PermissionError, match="Symlink detected"):
+            secure_directory(sym_home)
+
+        # The real target behind the symlink must be unchanged
+        assert get_mode(real_home) == get_mode(real_home)  # not modified
+
+    def test_n_symlinked_managed_parent_raises(self, tmp_path):
+        """Test N: secure_directory raises when an ancestor directory is a symlink."""
+        real_home = tmp_path / "real_home"
+        real_home.mkdir()
+        sym_home = tmp_path / "sym_home"
+        os.symlink(real_home, sym_home)
+
+        # data_dir's parent is a symlink — must be rejected
+        data_dir = sym_home / "data"
+        with pytest.raises(PermissionError, match="Symlink detected"):
+            secure_directory(data_dir)
+
+        # Nothing should have been created inside the real target
+        assert not (real_home / "data").exists()
+
+    def test_n2_assert_no_symlink_helper(self, tmp_path):
+        """Test N2: _assert_no_symlink_in_path raises for a symlink and its descendants."""
+        real_dir = tmp_path / "real"
+        real_dir.mkdir()
+        sym = tmp_path / "sym"
+        os.symlink(real_dir, sym)
+
+        with pytest.raises(PermissionError):
+            _assert_no_symlink_in_path(sym, boundary=tmp_path)
+
+        child = sym / "child"
+        with pytest.raises(PermissionError):
+            _assert_no_symlink_in_path(child, boundary=tmp_path)
+
+        # A real path under tmp_path must NOT raise
+        real_child = real_dir / "subdir"
+        _assert_no_symlink_in_path(real_child, boundary=tmp_path)  # no exception
+
+    def test_o_directory_mode_at_creation_time(self, tmp_path):
+        """Test O: os.mkdir must receive mode 0700, not a permissive default."""
+        new_dir = tmp_path / "private_dir"
+        mkdir_modes: list[int] = []
+        original_mkdir = os.mkdir
+
+        def spy_mkdir(path, mode=0o777, *, dir_fd=None):
+            mkdir_modes.append(mode)
+            if dir_fd is not None:
+                original_mkdir(path, mode, dir_fd=dir_fd)
+            else:
+                original_mkdir(path, mode)
+
+        # Under umask 0o000 a call to mkdir(path, 0o777) produces 0o777;
+        # our code must pass 0o700 so the mode is correct from the start.
+        with umask_context(0o000), patch("os.mkdir", spy_mkdir):
+            secure_directory(new_dir)
+
+        assert mkdir_modes, "os.mkdir must have been called"
+        assert all(m == DIR_MODE for m in mkdir_modes), (
+            f"mkdir was called with modes {[oct(m) for m in mkdir_modes]}, "
+            f"expected {oct(DIR_MODE)}"
+        )
+        # Final mode on disk must also be correct
+        assert get_mode(new_dir) == DIR_MODE
+
+    @pytest.mark.asyncio
+    async def test_p_sqlite_symlink_rejection(self, isolated_env, tmp_path):
+        """Test P: Database init must fail when DB_PATH is a symlink; external DB unchanged."""
+        # Create an external database with identifiable content
+        external_db = tmp_path / "external.db"
+        ext_conn = await aiosqlite.connect(str(external_db))
+        await ext_conn.execute("CREATE TABLE secret (val TEXT)")
+        await ext_conn.execute("INSERT INTO secret VALUES ('external_data')")
+        await ext_conn.commit()
+        await ext_conn.close()
+
+        # Place a symlink at DB_PATH pointing to the external database
+        isolated_env["data_dir"].mkdir(parents=True, exist_ok=True)
+        db_symlink = isolated_env["db_path"]
+        os.symlink(external_db, db_symlink)
+
+        with patch("laya.db.sqlite.DB_PATH", db_symlink):
+            with pytest.raises(PermissionError, match="symbolic link"):
+                await sqlite_connect()
+
+        # External database must be completely unmodified
+        check_conn = await aiosqlite.connect(str(external_db))
+        async with check_conn.execute("SELECT val FROM secret") as cur:
+            row = await cur.fetchone()
+            assert row is not None and row[0] == "external_data"
+        await check_conn.close()
+
+    def test_q_chromadb_permissions_after_init(self, tmp_path):
+        """Test Q: All ChromaDB files must have 0700/0600 after initialization."""
+        import chromadb
+        from chromadb.config import Settings as ChromaSettings
+        from laya.db.chromadb_store import _secure_chromadb_tree
+
+        chroma_dir = tmp_path / "chromadb"
+        chroma_dir.mkdir(mode=0o700)
+
+        # Initialize ChromaDB under a permissive umask so it creates files at 0644/0755
+        with umask_context(0o000):
+            client = chromadb.PersistentClient(
+                path=str(chroma_dir),
+                settings=ChromaSettings(anonymized_telemetry=False),
+            )
+            coll = client.get_or_create_collection(
+                "test_collection",
+                metadata={"hnsw:space": "cosine"},
+            )
+            # Perform an actual write to ensure data files are created
+            coll.add(documents=["test document"], ids=["doc1"])
+
+        # Now enforce permissions as connect_chromadb() does
+        _secure_chromadb_tree(chroma_dir)
+
+        # All directories must be 0700, all files must be 0600
+        for dirpath, dirnames, filenames in os.walk(chroma_dir, followlinks=False):
+            dp = Path(dirpath)
+            if not os.path.islink(dp):
+                assert get_mode(dp) == DIR_MODE, f"Directory {dp} has wrong mode"
+            for fname in filenames:
+                fp = dp / fname
+                if not os.path.islink(fp):
+                    assert get_mode(fp) == FILE_MODE, f"File {fp} has wrong mode"

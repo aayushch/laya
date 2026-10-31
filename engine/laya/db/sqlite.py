@@ -82,13 +82,17 @@ async def connect() -> aiosqlite.Connection:
     ensure_directories()
     secure_directory(DB_PATH.parent)
     if sys.platform != "win32":
+        if is_symlink(DB_PATH):
+            raise PermissionError(
+                f"Database path is a symbolic link, refusing to connect: {DB_PATH}"
+            )
         if not DB_PATH.exists():
             fd = os.open(str(DB_PATH), os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), FILE_MODE)
             try:
                 os.fchmod(fd, FILE_MODE)
             finally:
                 os.close(fd)
-        elif not is_symlink(DB_PATH):
+        else:
             secure_file(DB_PATH, FILE_MODE)
 
     _db = await aiosqlite.connect(str(DB_PATH))
