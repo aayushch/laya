@@ -3,6 +3,7 @@
 
 """Centralized filesystem permission policy and enforcement."""
 
+import errno as _errno
 import json
 import os
 import stat
@@ -20,6 +21,13 @@ log = structlog.get_logger()
 DIR_MODE = 0o700
 FILE_MODE = 0o600
 
+# Evaluated at import time so test patches on os.mkdir do not affect this.
+_DIR_FD_SUPPORTED: bool = (
+    sys.platform != "win32"
+    and os.mkdir in os.supports_dir_fd
+    and os.open in os.supports_dir_fd
+)
+
 
 def is_symlink(path: Path | str) -> bool:
     """Return True if path is a symbolic link."""
@@ -29,6 +37,95 @@ def is_symlink(path: Path | str) -> bool:
         return False
 
 
+def _assert_no_symlink_in_path(p: Path, boundary: Path | None = None) -> None:
+    """Raise PermissionError if p or any ancestor up to boundary is a symlink.
+
+    Boundary defaults to the user's home directory so that system-level
+    symlinks above it (e.g. /var -> /private/var on macOS) are not flagged.
+    """
+    limit = Path(os.path.abspath(boundary)) if boundary else Path.home()
+    cur = Path(os.path.abspath(p))
+    while True:
+        if os.path.islink(cur):
+            raise PermissionError(f"Symlink detected in managed path: {cur}")
+        if cur == limit:
+            break
+        parent = cur.parent
+        if parent == cur:  # filesystem root
+            break
+        cur = parent
+
+
+def _mkdir_private(p: Path, mode: int = DIR_MODE) -> None:
+    """Create p and all missing parents with restricted permissions.
+
+    On POSIX systems that support dir_fd, traverses the full absolute path
+    using descriptor-relative os.open(O_NOFOLLOW|O_DIRECTORY) + os.mkdir
+    at each step so that a symlink inserted between validation and creation
+    raises ELOOP rather than being silently followed.  fchmod via the
+    open descriptor bypasses umask.
+
+    Raises PermissionError if any path component is a symlink (ELOOP/ENOTDIR).
+    """
+    if sys.platform == "win32":
+        # Windows lacks O_NOFOLLOW and dir_fd; individual os.mkdir calls.
+        to_create: list[Path] = []
+        cur = Path(os.path.abspath(p))
+        while not cur.exists() and not os.path.islink(cur):
+            to_create.append(cur)
+            parent = cur.parent
+            if parent == cur:
+                break
+            cur = parent
+        for d in reversed(to_create):
+            os.mkdir(str(d), mode)
+        return
+
+    O_DIR = getattr(os, "O_DIRECTORY", 0)
+    O_NF = getattr(os, "O_NOFOLLOW", 0)
+
+    if not _DIR_FD_SUPPORTED:
+        raise PermissionError(
+            "Platform does not support dir_fd operations required for "
+            "TOCTOU-safe managed directory creation"
+        )
+
+    target = Path(os.path.abspath(p))
+    parts = list(target.parts)  # ['/', 'home', 'user', '.laya', 'data', ...]
+
+    # Open filesystem root — always a real directory, no symlink risk.
+    fd = os.open(parts[0], os.O_RDONLY | O_DIR)
+    for part in parts[1:]:
+        new_fd: int | None = None
+        try:
+            try:
+                new_fd = os.open(part, os.O_RDONLY | O_DIR | O_NF, dir_fd=fd)
+            except FileNotFoundError:
+                try:
+                    os.mkdir(part, mode, dir_fd=fd)
+                except FileExistsError:
+                    pass  # created concurrently
+                new_fd = os.open(part, os.O_RDONLY | O_DIR | O_NF, dir_fd=fd)
+                os.fchmod(new_fd, mode)
+            except OSError as exc:
+                if exc.errno in (_errno.ELOOP, _errno.ENOTDIR):
+                    raise PermissionError(
+                        f"Symlink or non-directory at managed path component: {part}"
+                    ) from exc
+                raise
+        except BaseException:
+            if new_fd is not None:
+                try:
+                    os.close(new_fd)
+                except OSError:
+                    pass
+            os.close(fd)
+            raise
+        os.close(fd)
+        fd = new_fd  # type: ignore[assignment]
+    os.close(fd)
+
+
 def secure_directory(
     path: Path | str,
     mode: int = DIR_MODE,
@@ -36,25 +133,32 @@ def secure_directory(
 ) -> Path:
     """Ensure directory exists with restricted permissions (0700).
 
-    Does not follow symbolic links. If the directory already exists, its mode
-    is tightened to the specified mode. If the directory is within laya_home,
-    intermediate parent directories down from laya_home are also secured.
+    Raises PermissionError if path or any of its ancestors is a symlink.
+    Creates missing directories one component at a time using the requested
+    mode so that no intermediate directory is ever created with permissive
+    defaults. If the directory is within laya_home, intermediate parent
+    directories down from laya_home are also tightened.
     """
     p = Path(path)
-    if is_symlink(p):
-        log.warning("symlink_directory_skipped", path=str(p))
-        return p
+    _assert_no_symlink_in_path(p)  # raises PermissionError on symlink in ancestry
 
     if not p.exists():
-        p.mkdir(parents=True, exist_ok=True)
+        _mkdir_private(p, mode)
 
     if sys.platform != "win32":
+        O_DIR = getattr(os, "O_DIRECTORY", 0)
+        O_NF = getattr(os, "O_NOFOLLOW", 0)
         try:
-            st = os.lstat(p)
-            if stat.S_ISDIR(st.st_mode):
-                current_mode = stat.S_IMODE(st.st_mode)
-                if current_mode != mode:
-                    os.chmod(p, mode)
+            # Open with O_NOFOLLOW so a symlink placed between the check above
+            # and the chmod below raises ELOOP rather than being followed.
+            dfd = os.open(str(p), os.O_RDONLY | O_DIR | O_NF)
+            try:
+                st = os.fstat(dfd)
+                if stat.S_ISDIR(st.st_mode):
+                    if stat.S_IMODE(st.st_mode) != mode:
+                        os.fchmod(dfd, mode)
+            finally:
+                os.close(dfd)
         except OSError as e:
             log.warning("secure_directory_failed", path=str(p), error=str(e))
             raise
@@ -73,12 +177,12 @@ def secure_directory(
             if home == p_abs or home in p_abs.parents:
                 cur = p_abs.parent
                 while cur != home and home in cur.parents:
-                    if not is_symlink(cur) and cur.is_dir() and sys.platform != "win32":
+                    if cur.is_dir() and sys.platform != "win32":
                         st = os.lstat(cur)
                         if stat.S_ISDIR(st.st_mode) and stat.S_IMODE(st.st_mode) != mode:
                             os.chmod(cur, mode)
                     cur = cur.parent
-                if cur == home and not is_symlink(cur) and cur.is_dir() and sys.platform != "win32":
+                if cur == home and cur.is_dir() and sys.platform != "win32":
                     st = os.lstat(cur)
                     if stat.S_ISDIR(st.st_mode) and stat.S_IMODE(st.st_mode) != mode:
                         os.chmod(cur, mode)

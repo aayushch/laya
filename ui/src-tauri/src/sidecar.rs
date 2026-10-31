@@ -470,7 +470,7 @@ pub fn create_venv(python: &PathBuf) -> Result<(), String> {
     let venv = venv_dir();
     log::info!("Creating venv at {} using {}", venv.display(), python.display());
 
-    std::fs::create_dir_all(laya_home())
+    crate::fs_private::mkdir_private(&laya_home())
         .map_err(|e| format!("Failed to create ~/.laya: {e}"))?;
 
     // We only get here when the venv is missing or unusable (see
@@ -725,7 +725,7 @@ fn uv_pip_install<F: FnMut(&str)>(
     }
 
     let log_dir = laya_home().join("logs");
-    std::fs::create_dir_all(&log_dir).ok();
+    crate::fs_private::mkdir_private(&log_dir).ok();
     let log_path = log_dir.join(log_name);
 
     log::info!("Installing from {} via uv (log: {})", req.display(), log_path.display());
@@ -753,7 +753,7 @@ fn legacy_pip_install<F: FnMut(&str)>(
     }
 
     let log_dir = laya_home().join("logs");
-    std::fs::create_dir_all(&log_dir).ok();
+    crate::fs_private::mkdir_private(&log_dir).ok();
     let log_path = log_dir.join(log_name);
 
     log::info!("Installing from {} via pip (log: {})", req.display(), log_path.display());
@@ -781,7 +781,7 @@ fn run_install_cmd<F: FnMut(&str)>(
     // Tee streamed output to the log file. uv (unlike pip) has no --log flag,
     // so without this the log file would never be written; the legacy pip path
     // no longer passes --log either, so this is the single writer for both.
-    let mut log = std::fs::File::create(log_path).ok();
+    let mut log = crate::fs_private::create_file_private(log_path).ok();
     let mut output_lines: Vec<String> = Vec::new();
 
     if let Some(stdout) = child.stdout.take() {
@@ -958,7 +958,7 @@ fn spawn_prod_engine() -> Result<Child, String> {
     );
 
     let log_dir = laya_home().join("logs");
-    std::fs::create_dir_all(&log_dir)
+    crate::fs_private::mkdir_private(&log_dir)
         .map_err(|e| format!("Failed to create log dir: {e}"))?;
 
     let mut cmd = Command::new(&python);

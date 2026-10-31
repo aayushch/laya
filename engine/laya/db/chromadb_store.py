@@ -6,8 +6,11 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import sys
 import threading
 from functools import partial
+from pathlib import Path
 from typing import Any
 
 import chromadb
@@ -16,7 +19,7 @@ from chromadb import Collection, Documents, Embeddings, EmbeddingFunction
 from chromadb.config import Settings as ChromaSettings
 
 from laya.config import LAYA_DATA_DIR
-from laya.security.permissions import secure_directory
+from laya.security.permissions import DIR_MODE, FILE_MODE, is_symlink, secure_directory
 
 log = structlog.get_logger()
 
@@ -227,6 +230,30 @@ def get_embedding_info() -> dict[str, str]:
     }
 
 
+def _secure_chromadb_tree(root: Path) -> None:
+    """Enforce 0700/0600 on all ChromaDB files and directories after initialization.
+
+    Called after ChromaDB creates its files so that newly created descendants
+    have restricted permissions regardless of the process umask.
+    """
+    if sys.platform == "win32" or not root.exists():
+        return
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        dp = Path(dirpath)
+        if not is_symlink(dp):
+            try:
+                os.chmod(dp, DIR_MODE)
+            except OSError as e:
+                log.warning("chromadb_dir_chmod_failed", path=str(dp), error=str(e))
+        for fname in filenames:
+            fp = dp / fname
+            if not is_symlink(fp):
+                try:
+                    os.chmod(fp, FILE_MODE)
+                except OSError as e:
+                    log.warning("chromadb_file_chmod_failed", path=str(fp), error=str(e))
+
+
 def connect_chromadb() -> Collection:
     """Initialize ChromaDB persistent client and return the collection."""
     global _client, _collection
@@ -263,6 +290,11 @@ def connect_chromadb() -> Collection:
         kwargs["embedding_function"] = embedding_fn
 
     _collection = _client.get_or_create_collection(**kwargs)
+
+    # Enforce permissions on all files ChromaDB created during initialization.
+    # Done here (not just in the one-time migration marker) so every startup
+    # tightens files written since the last run.
+    _secure_chromadb_tree(CHROMADB_DIR)
 
     log.info("chromadb_connected", path=str(CHROMADB_DIR), collection=COLLECTION_NAME)
     return _collection
