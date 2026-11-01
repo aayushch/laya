@@ -385,10 +385,10 @@ class TestFilesystemPermissions:
         os.symlink(real_home, sym_home)
 
         with pytest.raises(PermissionError, match="Symlink detected"):
-            secure_directory(sym_home)
+            secure_directory(sym_home, boundary=tmp_path)
 
         # The real target behind the symlink must be unchanged
-        assert get_mode(real_home) == get_mode(real_home)  # not modified
+        assert real_home.exists()
 
     def test_n_symlinked_managed_parent_raises(self, tmp_path):
         """Test N: secure_directory raises when an ancestor directory is a symlink."""
@@ -400,7 +400,7 @@ class TestFilesystemPermissions:
         # data_dir's parent is a symlink — must be rejected
         data_dir = sym_home / "data"
         with pytest.raises(PermissionError, match="Symlink detected"):
-            secure_directory(data_dir)
+            secure_directory(data_dir, boundary=tmp_path)
 
         # Nothing should have been created inside the real target
         assert not (real_home / "data").exists()
@@ -510,3 +510,84 @@ class TestFilesystemPermissions:
                 fp = dp / fname
                 if not os.path.islink(fp):
                     assert get_mode(fp) == FILE_MODE, f"File {fp} has wrong mode"
+
+    # -----------------------------------------------------------------------
+    # macOS /var boundary regression tests (Issue #65 CI fix)
+    # -----------------------------------------------------------------------
+
+    def test_r_temp_dir_outside_home_boundary_accepted(self, tmp_path):
+        """Test R: A real directory outside the home boundary must not be rejected.
+
+        On macOS, pytest temp dirs live under /var/folders/... which contains
+        a system-managed /var -> /private/var symlink.  Passing the temp root
+        as the explicit boundary must allow secure_directory to succeed.
+        """
+        laya_tmp = tmp_path / "laya_data"
+        # Must not raise even though tmp_path may be outside Path.home()
+        result = secure_directory(laya_tmp, boundary=tmp_path)
+        assert result == laya_tmp
+        assert laya_tmp.is_dir()
+        assert get_mode(laya_tmp) == DIR_MODE
+
+    def test_s_symlink_below_temp_boundary_rejected(self, tmp_path):
+        """Test S: A symlink inside the temp boundary is still rejected."""
+        real_dir = tmp_path / "real"
+        real_dir.mkdir()
+        sym = tmp_path / "sym"
+        os.symlink(real_dir, sym)
+
+        # Symlink as the direct target
+        with pytest.raises(PermissionError, match="Symlink detected"):
+            secure_directory(sym, boundary=tmp_path)
+
+        # Symlink as an ancestor of the target
+        child = sym / "child"
+        with pytest.raises(PermissionError, match="Symlink detected"):
+            secure_directory(child, boundary=tmp_path)
+
+    def test_t_symlinked_laya_home_still_rejected(self, tmp_path):
+        """Test T: Symlinked LAYA_HOME is always rejected regardless of boundary."""
+        real_home = tmp_path / "real_home"
+        real_home.mkdir()
+        sym_home = tmp_path / "sym_home"
+        os.symlink(real_home, sym_home)
+
+        with pytest.raises(PermissionError, match="Symlink detected"):
+            secure_directory(sym_home, boundary=tmp_path)
+
+    def test_u_symlinked_managed_ancestor_still_rejected(self, tmp_path):
+        """Test U: A symlink in any managed ancestor is rejected."""
+        real_dir = tmp_path / "real"
+        real_dir.mkdir()
+        sym_dir = tmp_path / "sym"
+        os.symlink(real_dir, sym_dir)
+
+        with pytest.raises(PermissionError, match="Symlink detected"):
+            secure_directory(sym_dir / "sub" / "dir", boundary=tmp_path)
+
+    def test_v_assert_no_symlink_canonicalizes_boundary(self, tmp_path):
+        """Test V: _assert_no_symlink_in_path accepts a real path whose boundary
+        resolves through an OS symlink (simulates macOS /var -> /private/var).
+        """
+        # Create a symlink that acts like the macOS /var -> /private/var alias.
+        real_root = tmp_path / "private"
+        real_root.mkdir()
+        alias = tmp_path / "var_alias"
+        os.symlink(real_root, alias)
+
+        # A real directory inside the alias-resolved space must be accepted
+        # when the boundary is set to alias (canonical resolution will resolve
+        # alias to real_root, then check descendants of real_root).
+        real_child = real_root / "folders" / "work"
+        real_child.mkdir(parents=True)
+
+        # The child accessed via the alias path is outside the resolved boundary
+        # (alias itself), but real_child directly is inside: check that a real
+        # descendant of the canonicalized boundary is accepted.
+        _assert_no_symlink_in_path(real_child, boundary=alias)  # must not raise
+
+        # But a symlink inside that space must still be rejected.
+        sym_inside = real_root / "sym_inside"
+        os.symlink(real_root / "folders", sym_inside)
+        with pytest.raises(PermissionError, match="Symlink detected"):
+            _assert_no_symlink_in_path(sym_inside, boundary=alias)
