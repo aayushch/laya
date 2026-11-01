@@ -38,17 +38,27 @@ def is_symlink(path: Path | str) -> bool:
 
 
 def _assert_no_symlink_in_path(p: Path, boundary: Path | None = None) -> None:
-    """Raise PermissionError if p or any ancestor up to boundary is a symlink.
+    """Raise PermissionError if p or any ancestor down to boundary is a symlink.
 
-    Boundary defaults to the user's home directory so that system-level
-    symlinks above it (e.g. /var -> /private/var on macOS) are not flagged.
+    The boundary is canonicalized with realpath so that OS-level symlinks above
+    it (e.g. macOS /var -> /private/var) are not flagged.  Only components at
+    or below the resolved boundary are inspected.  If p is not under the
+    boundary, only p itself is checked (not its OS-managed ancestors).
     """
-    limit = Path(os.path.abspath(boundary)) if boundary else Path.home()
+    # Canonicalize the trusted boundary; never resolve p (that defeats detection).
+    limit = Path(os.path.realpath(boundary if boundary is not None else Path.home()))
     cur = Path(os.path.abspath(p))
+    try:
+        cur.relative_to(limit)
+        under_boundary = True
+    except ValueError:
+        under_boundary = False
+
     while True:
         if os.path.islink(cur):
             raise PermissionError(f"Symlink detected in managed path: {cur}")
-        if cur == limit:
+        # Stop at boundary, or immediately when p is outside it (only p checked).
+        if cur == limit or not under_boundary:
             break
         parent = cur.parent
         if parent == cur:  # filesystem root
@@ -56,16 +66,18 @@ def _assert_no_symlink_in_path(p: Path, boundary: Path | None = None) -> None:
         cur = parent
 
 
-def _mkdir_private(p: Path, mode: int = DIR_MODE) -> None:
+def _mkdir_private(p: Path, mode: int = DIR_MODE, boundary: Path | None = None) -> None:
     """Create p and all missing parents with restricted permissions.
 
-    On POSIX systems that support dir_fd, traverses the full absolute path
-    using descriptor-relative os.open(O_NOFOLLOW|O_DIRECTORY) + os.mkdir
-    at each step so that a symlink inserted between validation and creation
-    raises ELOOP rather than being silently followed.  fchmod via the
-    open descriptor bypasses umask.
+    On POSIX systems that support dir_fd, components at or below the trusted
+    boundary are traversed with descriptor-relative os.open(O_NOFOLLOW|O_DIRECTORY)
+    so that a symlink inserted mid-traversal raises ELOOP instead of being
+    followed.  Components above the boundary (OS-managed, e.g. /var on macOS)
+    are opened with symlink-following so that legitimate OS aliases are not
+    rejected.  fchmod via the open descriptor bypasses umask.
 
-    Raises PermissionError if any path component is a symlink (ELOOP/ENOTDIR).
+    Raises PermissionError if any path component at or below the boundary is a
+    symlink (ELOOP/ENOTDIR).
     """
     if sys.platform == "win32":
         # Windows lacks O_NOFOLLOW and dir_fd; individual os.mkdir calls.
@@ -90,25 +102,38 @@ def _mkdir_private(p: Path, mode: int = DIR_MODE) -> None:
             "TOCTOU-safe managed directory creation"
         )
 
+    # Canonicalize the trusted boundary; resolve OS-level aliases above it.
+    limit = Path(os.path.realpath(boundary if boundary is not None else Path.home()))
     target = Path(os.path.abspath(p))
-    parts = list(target.parts)  # ['/', 'home', 'user', '.laya', 'data', ...]
+    parts = list(target.parts)  # e.g. ['/', 'home', 'user', '.laya', 'data']
 
-    # Open filesystem root — always a real directory, no symlink risk.
+    # above_count: number of parts (including '/') that are AT or ABOVE the boundary.
+    # Components with index < above_count get symlink-following opens; at/below get O_NOFOLLOW.
+    try:
+        target.relative_to(limit)
+        above_count = len(limit.parts)  # boundary parts are the "above" prefix
+    except ValueError:
+        # target is outside the trusted boundary — follow symlinks for all components.
+        above_count = len(parts)
+
+    # Open filesystem root — always a real directory.
     fd = os.open(parts[0], os.O_RDONLY | O_DIR)
-    for part in parts[1:]:
+    for idx, part in enumerate(parts[1:], start=1):
         new_fd: int | None = None
+        use_nofollow = idx >= above_count
+        open_flags = os.O_RDONLY | O_DIR | (O_NF if use_nofollow else 0)
         try:
             try:
-                new_fd = os.open(part, os.O_RDONLY | O_DIR | O_NF, dir_fd=fd)
+                new_fd = os.open(part, open_flags, dir_fd=fd)
             except FileNotFoundError:
                 try:
                     os.mkdir(part, mode, dir_fd=fd)
                 except FileExistsError:
                     pass  # created concurrently
-                new_fd = os.open(part, os.O_RDONLY | O_DIR | O_NF, dir_fd=fd)
+                new_fd = os.open(part, open_flags, dir_fd=fd)
                 os.fchmod(new_fd, mode)
             except OSError as exc:
-                if exc.errno in (_errno.ELOOP, _errno.ENOTDIR):
+                if use_nofollow and exc.errno in (_errno.ELOOP, _errno.ENOTDIR):
                     raise PermissionError(
                         f"Symlink or non-directory at managed path component: {part}"
                     ) from exc
@@ -130,20 +155,35 @@ def secure_directory(
     path: Path | str,
     mode: int = DIR_MODE,
     laya_home: Path | None = None,
+    boundary: Path | None = None,
 ) -> Path:
     """Ensure directory exists with restricted permissions (0700).
 
-    Raises PermissionError if path or any of its ancestors is a symlink.
-    Creates missing directories one component at a time using the requested
-    mode so that no intermediate directory is ever created with permissive
-    defaults. If the directory is within laya_home, intermediate parent
-    directories down from laya_home are also tightened.
+    Raises PermissionError if path or any of its ancestors at or below the
+    trusted boundary is a symlink.  Creates missing directories one component
+    at a time using the requested mode so that no intermediate directory is
+    ever created with permissive defaults.
+
+    boundary: explicit trusted-root for symlink validation; if omitted, laya_home
+    is used when supplied, otherwise it defaults to the resolved user home dir.
+    Callers that create directories under a temporary test root should pass that
+    root as boundary so OS-level symlinks above it (e.g. macOS /var) are skipped.
     """
     p = Path(path)
-    _assert_no_symlink_in_path(p)  # raises PermissionError on symlink in ancestry
+
+    # Resolve laya_home early so it can serve as the symlink-check boundary.
+    if laya_home is None:
+        try:
+            from laya.config import LAYA_HOME
+            laya_home = LAYA_HOME
+        except Exception:
+            pass
+
+    effective_boundary = boundary if boundary is not None else laya_home
+    _assert_no_symlink_in_path(p, boundary=effective_boundary)  # raises on symlink below boundary
 
     if not p.exists():
-        _mkdir_private(p, mode)
+        _mkdir_private(p, mode, boundary=effective_boundary)
 
     if sys.platform != "win32":
         O_DIR = getattr(os, "O_DIRECTORY", 0)
@@ -162,13 +202,6 @@ def secure_directory(
         except OSError as e:
             log.warning("secure_directory_failed", path=str(p), error=str(e))
             raise
-
-    if laya_home is None:
-        try:
-            from laya.config import LAYA_HOME
-            laya_home = LAYA_HOME
-        except Exception:
-            laya_home = None
 
     if laya_home is not None:
         try:
