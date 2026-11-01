@@ -447,3 +447,30 @@ class TestReauthorizeInPlace:
         assert result["status"] == "connected"
         provision.assert_called_once()
         assert rows[0]["n8n_credential_id"] == "cred_new"
+
+
+class TestOAuthCallbackHtmlEscaping:
+    @pytest.mark.asyncio
+    async def test_error_message_is_html_escaped(self):
+        from laya.api.egress_api import oauth_callback
+
+        payload = "<img src=x onerror=alert(1)>"
+        with patch("laya.egress.oauth.handle_callback", AsyncMock(return_value={"error": payload})):
+            response = await oauth_callback("code", "state")
+            body = response.body.decode("utf-8")
+
+            assert payload not in body
+            assert "&lt;img src=x onerror=alert(1)&gt;" in body
+
+    @pytest.mark.asyncio
+    async def test_warning_error_message_is_html_escaped(self):
+        from laya.api.egress_api import oauth_callback
+
+        payload = '<script>alert("xss")</script>'
+        with patch("laya.egress.oauth.handle_callback", AsyncMock(return_value={"error_message": payload})):
+            response = await oauth_callback("code", "state")
+            body = response.body.decode("utf-8")
+
+            assert payload not in body
+            assert "&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;" in body
+

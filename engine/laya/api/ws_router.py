@@ -212,6 +212,7 @@ async def _handle_chat_message(msg: dict) -> None:
                 "referenced_cards": [],
                 "referenced_events": [],
                 "referenced_documents": [],
+                "tool_calls": [],
             },
         })
 

@@ -82,6 +82,11 @@ class DocumentRelocateRequest(BaseModel):
     path: str
 
 
+class DocumentMoveRequest(BaseModel):
+    space_id: str = Field(min_length=1)
+    dry_run: bool = False
+
+
 class SupportedTypesResponse(BaseModel):
     extensions: list[str]
     max_file_mb: int

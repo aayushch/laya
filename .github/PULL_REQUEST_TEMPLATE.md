@@ -55,3 +55,4 @@
 - [ ] All async code uses `await` properly (no fire-and-forget)
 - [ ] New migrations use the next sequential number
 - [ ] I've tested on both dark and light themes (if UI change)
+- [ ] I have read and understood every change in this PR myself, including anything an AI tool generated (see "Your responsibility for what you submit" in CONTRIBUTING.md)

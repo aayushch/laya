@@ -255,13 +255,19 @@ def _single_classification_schema() -> dict[str, Any]:
                 "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
             },
             "confidence": {"type": "number"},
+            # The caps bound a degenerate repetition loop. On local runtimes that decode
+            # under a schema grammar (LMStudio), an uncapped array or string lets a model
+            # stuck repeating one item keep going until max_tokens or the request timeout.
+            # The caps force the grammar to close the value instead. Real events
+            # rarely exceed 20 entities, and the model lists the important ones first.
             "entities": {
                 "type": "array",
+                "maxItems": 25,
                 "items": {
                     "type": "object",
                     "properties": {
                         "entity_type": {"type": "string"},
-                        "value": {"type": "string"},
+                        "value": {"type": "string", "maxLength": 1024},
                         "platform": {"anyOf": [{"type": "string"}, {"type": "null"}]},
                     },
                     "required": ["entity_type", "value", "platform"],

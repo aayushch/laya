@@ -3,7 +3,11 @@
 
 """Golden-prompt tests for the platform-gated router system prompt (review §3 — P6-9)."""
 
-from laya.llm.prompts.router import build_router_system_prompt
+from laya.llm.prompts.router import (
+    build_router_system_prompt,
+    get_batch_router_json_schema,
+    get_router_json_schema,
+)
 
 UNIVERSAL = [
     "You are the Router for Laya",
@@ -51,3 +55,15 @@ class TestGating:
 class TestReduction:
     def test_gmail_smaller_than_jira(self):
         assert len(build_router_system_prompt("gmail")) < len(build_router_system_prompt("jira"))
+
+
+class TestEntityCaps:
+    """The entity caps stop a model stuck in a repetition loop under a schema grammar."""
+
+    def test_single_and_batch_schemas_cap_entities(self):
+        single = get_router_json_schema()["schema"]["properties"]["entities"]
+        batch = get_batch_router_json_schema(3)["schema"]["properties"]["classifications"][
+            "items"]["properties"]["entities"]
+        for entities in (single, batch):
+            assert entities["maxItems"] == 25
+            assert entities["items"]["properties"]["value"]["maxLength"] == 1024

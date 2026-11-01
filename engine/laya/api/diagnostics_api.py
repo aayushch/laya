@@ -6,7 +6,6 @@
 import io
 import json
 import platform
-import re
 import zipfile
 from pathlib import Path
 
@@ -23,30 +22,13 @@ from laya.config import (
     MIGRATIONS_DIR,
 )
 from laya.db.sqlite import get_db
+from laya.security.redact import redact_secrets
 
 log = structlog.get_logger()
 router = APIRouter()
 
-# Pattern to redact API keys / secrets in config JSON
-_SECRET_PATTERN = re.compile(
-    r"(key|token|secret|password|api_key|apikey)",
-    re.IGNORECASE,
-)
-
 # Fields containing personal data that should be stripped from team.json
 _PERSONAL_FIELDS = {"name", "email"}
-
-
-def _redact_secrets(obj: dict | list | str | int | float | bool | None) -> dict | list | str | int | float | bool | None:
-    """Recursively redact values whose keys look like secrets."""
-    if isinstance(obj, dict):
-        return {
-            k: "***REDACTED***" if isinstance(v, str) and _SECRET_PATTERN.search(k) else _redact_secrets(v)
-            for k, v in obj.items()
-        }
-    if isinstance(obj, list):
-        return [_redact_secrets(item) for item in obj]
-    return obj
 
 
 def _anonymize_team(data: dict | list | None) -> dict | list | None:
@@ -205,7 +187,7 @@ async def export_diagnostics():
         ]:
             data = _read_config_file(path)
             if data is not None:
-                redacted = _redact_secrets(data)
+                redacted = redact_secrets(data)
                 zf.writestr(f"config/{name}", json.dumps(redacted, indent=2))
 
         # Team config — anonymized (no names/emails)

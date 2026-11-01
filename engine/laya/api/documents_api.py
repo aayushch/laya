@@ -24,6 +24,7 @@ from laya.models.document import (
     DocumentChunksResponse,
     DocumentFromPathRequest,
     DocumentListResponse,
+    DocumentMoveRequest,
     DocumentRelocateRequest,
     DocumentRenameRequest,
     DocumentResponse,
@@ -256,6 +257,24 @@ async def relocate_document(document_id: str, body: DocumentRelocateRequest) -> 
     except ingest.DocumentError as e:
         _raise(e)
     return _response(row)
+
+
+@router.post("/documents/{document_id}/move")
+async def move_document(document_id: str, body: DocumentMoveRequest) -> dict[str, Any]:
+    """Move a document to another space, or with ``dry_run`` describe the move.
+
+    Both forms return ``notes``, the plain-language list of what happens to the
+    document's links, chats and search visibility. A document that is still
+    processing cannot be moved (409 ``processing``).
+    """
+    try:
+        if body.dry_run:
+            return await ingest.move_preview(document_id, body.space_id)
+        result = await ingest.move(document_id, body.space_id)
+    except ingest.DocumentError as e:
+        _raise(e)
+    row = result.pop("document")
+    return {**result, "document": _response(row, await store.links_for_document(document_id)) if row else None}
 
 
 @router.delete("/documents/{document_id}")

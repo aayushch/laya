@@ -8,12 +8,13 @@
 	import { goto } from '$app/navigation';
 	import { tick } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
-	import type { CorpusDocument, DocumentChunk } from '$lib/api/types';
+	import type { CorpusDocument, DocumentChunk, DocumentMoveResult } from '$lib/api/types';
 	import { documents, documentProgress, refreshDocument, removeDocument } from '$lib/stores/documents';
 	import { askAboutDocuments, pendingCardId } from '$lib/stores/chat';
 	import { errorLabel, statusLabel } from '$lib/documents/documentUpdateReducer';
 	import MarkdownRender from '$lib/components/MarkdownRender.svelte';
 	import { glassTheme } from '$lib/stores/glassTheme';
+	import { spaces, loadSpaces } from '$lib/stores/spaces';
 
 	let { documentId, page = null }: { documentId: string; page?: number | null } = $props();
 
@@ -29,8 +30,32 @@
 	let highlightedChunk = $state<string | null>(null);
 	let container: HTMLDivElement | undefined = $state();
 
+	// Move to another space: pick a space, read the engine's dry-run notes in a
+	// confirm dialog, then move. `moveError` holds a refusal (still processing,
+	// duplicate in the target space) and disables the confirm button.
+	let moveMenuOpen = $state(false);
+	let moveMenuEl = $state<HTMLDivElement | undefined>();
+	let moveTarget = $state<{ space_id: string; name: string } | null>(null);
+	let movePreview = $state<DocumentMoveResult | null>(null);
+	let moveError = $state<string | null>(null);
+	let moving = $state(false);
+
 	// The store copy carries live status; the fetched copy carries links.
 	const live = $derived($documents.find((d) => d.document_id === documentId) ?? doc);
+
+	const otherSpaces = $derived($spaces.filter((s) => s.space_id !== live?.space_id));
+	const processing = $derived(!!live && live.status !== 'ready' && live.status !== 'failed');
+
+	$effect(() => { loadSpaces(); });
+
+	$effect(() => {
+		if (!moveMenuOpen) return;
+		function handleClick(e: MouseEvent) {
+			if (!moveMenuEl?.contains(e.target as Node)) moveMenuOpen = false;
+		}
+		document.addEventListener('click', handleClick, true);
+		return () => document.removeEventListener('click', handleClick, true);
+	});
 
 	async function load() {
 		loading = true;
@@ -144,6 +169,52 @@
 		}
 	}
 
+	/** The engine sends refusals as `{message, error_code}`; the client turns that into JSON text. */
+	function engineMessage(e: unknown, fallback: string): string {
+		const raw = e instanceof Error ? e.message : '';
+		try {
+			const parsed = JSON.parse(raw);
+			if (parsed && typeof parsed.message === 'string') return parsed.message;
+		} catch {
+			// Not JSON: a plain error string.
+		}
+		return raw || fallback;
+	}
+
+	async function pickMoveSpace(spaceId: string, name: string) {
+		moveMenuOpen = false;
+		moveTarget = { space_id: spaceId, name };
+		movePreview = null;
+		moveError = null;
+		try {
+			movePreview = await engineApi.moveDocument(documentId, { space_id: spaceId, dry_run: true });
+		} catch (e) {
+			moveError = engineMessage(e, 'Could not check this move');
+		}
+	}
+
+	function closeMove() {
+		if (moving) return;
+		moveTarget = null;
+		movePreview = null;
+		moveError = null;
+	}
+
+	async function confirmMove() {
+		if (!moveTarget || !movePreview) return;
+		moving = true;
+		try {
+			await engineApi.moveDocument(documentId, { space_id: moveTarget.space_id });
+			moving = false;
+			closeMove();
+			await refreshDocument(documentId);
+			await load();
+		} catch (e) {
+			moveError = engineMessage(e, 'Move failed');
+			moving = false;
+		}
+	}
+
 	function openCards(entityId: string) {
 		// The feed's related-cards filter is keyed by entity; the simplest path
 		// is the first card of that entity via the document's related endpoint.
@@ -215,6 +286,34 @@
 		<button onclick={() => reprocess('all')} disabled={busy || !live || live.source_state === 'missing' || (live.status !== 'ready' && live.status !== 'failed')} class={btn}>Reprocess</button>
 		<button onclick={() => reprocess('summarize')} disabled={busy || live?.status !== 'ready'} class={btn}>Re-summarise</button>
 		<button onclick={resync} disabled={busy || !live || live.storage_mode !== 'reference' || live.source_state === 'missing'} class={btn}>Re-sync</button>
+		<div class="relative" bind:this={moveMenuEl}>
+			<button
+				onclick={() => (moveMenuOpen = !moveMenuOpen)}
+				disabled={busy || !live || processing || otherSpaces.length === 0}
+				title={processing ? 'Available once processing finishes' : otherSpaces.length === 0 ? 'No other spaces' : 'Move to another space'}
+				class={btn}
+			>
+				Move
+			</button>
+			{#if moveMenuOpen}
+				<div
+					class="absolute left-0 top-full z-30 mt-1 w-48 rounded-lg border p-1 {$glassTheme ? 'glass-menu' : 'border-surface-600 bg-surface-900 shadow-xl shadow-black/50'}"
+					role="menu"
+				>
+					<div class="px-2.5 py-1 text-laya-micro font-medium uppercase tracking-wide text-surface-500">Move to space</div>
+					{#each otherSpaces as space (space.space_id)}
+						<button
+							class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-laya-secondary text-surface-300 transition-colors hover:bg-surface-700 hover:text-surface-200"
+							role="menuitem"
+							onclick={() => pickMoveSpace(space.space_id, space.name)}
+						>
+							<span class="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style="background-color: {space.color}"></span>
+							<span class="truncate">{space.name}</span>
+						</button>
+					{/each}
+				</div>
+			{/if}
+		</div>
 		{#if live?.needs_reembed}
 			<button onclick={() => reprocess('embed')} disabled={busy} class="{btn} !text-amber-400">Re-embed</button>
 		{/if}
@@ -282,3 +381,46 @@
 		</section>
 	{/if}
 </div>
+
+{#if moveTarget}
+	<div
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+		role="dialog"
+		aria-label="Confirm move to space"
+		tabindex="-1"
+		onclick={(e) => { if (e.target === e.currentTarget) closeMove(); }}
+		onkeydown={(e) => { if (e.key === 'Escape') closeMove(); }}
+	>
+		<div class="mx-4 w-full max-w-lg rounded-xl border border-surface-700 bg-surface-800 p-5 shadow-2xl">
+			<h4 class="text-laya-base font-semibold text-surface-50">Move to “{movePreview?.space_name ?? moveTarget.name}”?</h4>
+			{#if moveError}
+				<p class="mt-2 text-laya-secondary text-red-400">{moveError}</p>
+			{:else if !movePreview}
+				<p class="mt-2 text-laya-secondary text-surface-400">Checking what this move affects...</p>
+			{:else}
+				<p class="mt-2 text-laya-secondary text-surface-400">What happens to this document:</p>
+				<ul class="mt-1.5 list-disc space-y-1 pl-5 text-laya-secondary leading-relaxed text-surface-300">
+					{#each movePreview.notes as note, i (i)}
+						<li>{note}</li>
+					{/each}
+				</ul>
+			{/if}
+			<div class="mt-4 flex justify-end gap-2">
+				<button
+					class="rounded-md px-3 py-1.5 text-laya-secondary text-surface-400 transition-colors hover:text-surface-200 disabled:opacity-50"
+					onclick={closeMove}
+					disabled={moving}
+				>
+					Cancel
+				</button>
+				<button
+					class="rounded-md bg-laya-orange/20 px-3 py-1.5 text-laya-secondary font-medium text-laya-orange transition-colors hover:bg-laya-orange/30 disabled:opacity-50"
+					onclick={confirmMove}
+					disabled={moving || !movePreview || !!moveError}
+				>
+					{moving ? 'Moving...' : 'Move'}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}

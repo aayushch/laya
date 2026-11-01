@@ -310,7 +310,7 @@ class TestTitleGenerationBackground:
         return rows[0]["title"]
 
     async def test_truncated_reasoning_does_not_overwrite_title(self, db):
-        """If both attempts come back finish_reason='length', leave 'New Chat' in place.
+        """If the call comes back finish_reason='length', leave 'New Chat' in place.
 
         This is the bug: a Qwen-3/LM-Studio setup was returning reasoning text
         (starting with 'Thinking Process:') whenever the token budget was
@@ -319,32 +319,25 @@ class TestTitleGenerationBackground:
         from laya.pipeline.chat import _generate_title_background
 
         conv_id = await self._make_convo(db)
-        # Both calls (2048 and 4096 budget) truncate.
-        truncated = _title_llm_response("", finish_reason="length")
-        mock = AsyncMock(side_effect=[truncated, truncated])
+        mock = AsyncMock(return_value=_title_llm_response("", finish_reason="length"))
         with patch("laya.pipeline.chat.llm_call", mock):
             await _generate_title_background(conv_id, "help me triage", None)
 
         assert await self._get_title(db, conv_id) == "New Chat"
-        assert mock.await_count == 2
-        # First attempt uses 8192; retry escalates to 16384.
-        assert mock.await_args_list[0].kwargs["max_tokens"] == 8192
-        assert mock.await_args_list[1].kwargs["max_tokens"] == 16384
+        assert mock.await_count == 1
 
-    async def test_retry_succeeds_and_title_is_saved(self, db):
-        """If the first call truncates but the retry returns a clean title, persist it."""
+    async def test_title_uses_default_output_limit(self, db):
+        """The title call passes no max_tokens, so llm_call applies DEFAULT_MAX_TOKENS."""
         from laya.pipeline.chat import _generate_title_background
 
         conv_id = await self._make_convo(db, "conv_title02")
-        mock = AsyncMock(side_effect=[
-            _title_llm_response("", finish_reason="length"),
-            _title_llm_response("Triage Overdue Jira", finish_reason="stop"),
-        ])
+        mock = AsyncMock(return_value=_title_llm_response("Triage Overdue Jira", finish_reason="stop"))
         with patch("laya.pipeline.chat.llm_call", mock):
             await _generate_title_background(conv_id, "help me triage", None)
 
         assert await self._get_title(db, conv_id) == "Triage Overdue Jira"
-        assert mock.await_count == 2
+        assert mock.await_count == 1
+        assert "max_tokens" not in mock.await_args.kwargs
 
     async def test_reasoning_preamble_in_content_is_not_saved(self, db):
         """If the sanitizer sees a reasoning header, drop it rather than persist.
@@ -682,3 +675,108 @@ def test_doc_ref_pattern():
 
     text = "[doc:doc_1] [doc:doc_2 p.3] [doc:doc_3 page 4] [doc:doc_4 p.5-7] [doc:doc_1 p.9] [doc:bad id]"
     assert referenced_document_ids(text) == ["doc_1", "doc_2", "doc_3", "doc_4"]
+
+
+@pytest.mark.asyncio
+class TestToolCallReferences:
+    """Assistant messages carry the names of the tools used to produce them (#6),
+    live on the done event and again when the conversation is reloaded."""
+
+    async def test_streaming_done_event_and_history_list_tools(self, db):
+        from laya.llm.client import StreamEvent, ToolCall
+        from laya.pipeline.chat import process_chat_message_streaming
+
+        conv_id = await _create_conversation(db, "conv_tools_stream")
+        rounds = []
+
+        async def fake_stream(**kwargs):
+            rounds.append(1)
+            if len(rounds) == 1:
+                call = ToolCall(id="t1", name="search_cards", arguments={"query": "blocked"})
+                yield StreamEvent(
+                    type="tool_calls", tool_calls=[call],
+                    raw_message_dict={"role": "assistant", "content": "", "tool_calls": []},
+                )
+                yield StreamEvent(type="done", model="test-model")
+            else:
+                yield StreamEvent(type="chunk", content="Two cards are blocked.")
+                yield StreamEvent(type="done", model="test-model")
+
+        events = []
+        with patch("laya.pipeline.chat.llm_call_streaming", new=fake_stream), \
+             patch("laya.pipeline.chat.execute_tool", new_callable=AsyncMock, return_value="[]"), \
+             patch("laya.pipeline.chat.memory_search", new_callable=AsyncMock, return_value=[]):
+            async for ev in process_chat_message_streaming("what is blocked?", conversation_id=conv_id):
+                events.append(ev)
+
+        done = events[-1]
+        assert done["type"] == "chat_stream_done"
+        assert done["message"]["tool_calls"] == ["search_cards"]
+
+        from laya.main import app
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            msgs = (await client.get(f"/chat/conversations/{conv_id}/messages")).json()
+        assistant = [m for m in msgs if m["role"] == "assistant"]
+        assert assistant[0]["tool_calls"] == ["search_cards"]
+
+    async def test_non_streaming_response_lists_tools(self, db):
+        from laya.llm.client import ToolCall
+
+        with_tool = _mock_llm_response("")
+        with_tool.tool_calls = [ToolCall(id="t1", name="get_event", arguments={"event_id": "e1"})]
+        with_tool.raw_message_dict = {"role": "assistant", "content": "", "tool_calls": []}
+        final = _mock_llm_response("The event was a deploy.")
+        chat_replies = [with_tool, final]
+
+        async def fake_llm_call(**kwargs):
+            # A new conversation also makes a title-generation call; only the
+            # chat step walks through the tool round.
+            if kwargs.get("step") == "chat":
+                return chat_replies.pop(0)
+            return _mock_llm_response("Deploy question")
+
+        with patch("laya.pipeline.chat.llm_call", new=fake_llm_call), \
+             patch("laya.pipeline.chat.execute_tool", new_callable=AsyncMock, return_value="{}"), \
+             patch("laya.pipeline.chat.memory_search", new_callable=AsyncMock, return_value=[]):
+            from laya.main import app
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.post("/chat", json={"message": "what happened?"})
+
+        assert resp.status_code == 200
+        assert resp.json()["message"]["tool_calls"] == ["get_event"]
+
+    async def test_messages_without_tools_have_an_empty_list(self, db):
+        with patch("laya.pipeline.chat.llm_call", new_callable=AsyncMock,
+                   return_value=_mock_llm_response("Plain answer.")), \
+             patch("laya.pipeline.chat.memory_search", new_callable=AsyncMock, return_value=[]):
+            from laya.main import app
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.post("/chat", json={"message": "hi"})
+        assert resp.json()["message"]["tool_calls"] == []
+
+    async def test_history_parses_the_stored_tool_log(self, db):
+        conv_id = await _create_conversation(db, "conv_tools_hist")
+        logs = {
+            "m_two_tools": json.dumps([
+                {"name": "search_cards", "arguments": {}, "result_preview": "..."},
+                {"name": "get_event", "arguments": {"event_id": "e1"}, "result_preview": "..."},
+            ]),
+            "m_none": None,
+            "m_malformed": "{not json",
+            "m_not_a_list": json.dumps({"name": "search_cards"}),
+        }
+        for mid, tools_json in logs.items():
+            await db.execute(
+                """INSERT INTO chat_messages (message_id, timestamp, role, content,
+                       conversation_id, tool_calls_json)
+                   VALUES (?, datetime('now'), 'assistant', 'x', ?, ?)""",
+                (mid, conv_id, tools_json),
+            )
+        await db.commit()
+
+        from laya.main import app
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            for url in ("/chat/history", f"/chat/conversations/{conv_id}/messages"):
+                by_id = {m["message_id"]: m["tool_calls"] for m in (await client.get(url)).json()}
+                assert by_id["m_two_tools"] == ["search_cards", "get_event"], url
+                assert by_id["m_none"] == [] and by_id["m_malformed"] == [] and by_id["m_not_a_list"] == [], url

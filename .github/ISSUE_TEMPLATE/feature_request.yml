@@ -9,6 +9,10 @@ body:
         Thanks for suggesting an improvement! Please describe what you'd like
         to see and why it would be useful.
 
+        If an AI tool helped you write this, read it and check it against the actual
+        behaviour before submitting. You are responsible for what you post here
+        (see CONTRIBUTING.md).
+
   - type: textarea
     id: problem
     attributes:

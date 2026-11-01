@@ -17,6 +17,7 @@ import type {
 	ChatResponse,
 	Conversation,
 	CorpusDocument,
+	DocumentMoveResult,
 	DocumentListResponse,
 	DocumentChunksResponse,
 	AuditLogResponse,
@@ -662,6 +663,10 @@ export const engineApi = {
 		request<{ status: 'unchanged' | 'queued'; document: CorpusDocument }>(`/documents/${documentId}/resync`, { method: 'POST' }),
 	relocateDocument: (documentId: string, path: string) =>
 		request<CorpusDocument>(`/documents/${documentId}/relocate`, { method: 'POST', body: JSON.stringify({ path }) }),
+	// Move a document to another space. dry_run=true returns the notes describing
+	// the move without changing anything; 409 `processing` while it is being indexed.
+	moveDocument: (documentId: string, data: { space_id: string; dry_run?: boolean }) =>
+		request<DocumentMoveResult>(`/documents/${documentId}/move`, { method: 'POST', body: JSON.stringify(data) }),
 	getRelatedDocuments: (cardId: string) => request<CorpusDocument[]>(`/cards/${cardId}/related-documents`),
 	getDocumentsByEntity: (entityId: string) =>
 		request<CorpusDocument[]>(`/documents/by-entity?entity_id=${encodeURIComponent(entityId)}`),

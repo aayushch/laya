@@ -566,7 +566,7 @@
 			<div data-titlebar-nav-menu class="relative">
 				<button
 					onclick={() => (navMenuOpen = !navMenuOpen)}
-					class="rounded-md p-1 text-surface-400 transition-colors hover:text-surface-200 hover:bg-surface-800"
+					class="rounded-md p-1 text-surface-400 transition-colors hover:text-surface-200 titlebar-hover"
 					aria-label="Navigation menu"
 				>
 					<svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -616,28 +616,28 @@
 					class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors
 						{isFeedRoute
 							? 'bg-laya-orange/10 text-laya-orange'
-							: 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'}"
+							: 'text-surface-400 hover:text-surface-200 titlebar-hover'}"
 				>Pulse</a>
 				<a
 					href="/omni"
 					class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors
 						{page.url.pathname.startsWith('/omni')
 							? 'bg-laya-orange/10 text-laya-orange'
-							: 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'}"
+							: 'text-surface-400 hover:text-surface-200 titlebar-hover'}"
 				>Omni</a>
 				<a
 					href="/coherence"
 					class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors
 						{page.url.pathname.startsWith('/coherence')
 							? 'bg-laya-orange/10 text-laya-orange'
-							: 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'}"
+							: 'text-surface-400 hover:text-surface-200 titlebar-hover'}"
 				>Coherence</a>
 				<a
 					href="/corpus"
 					class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors
 						{page.url.pathname.startsWith('/corpus')
 							? 'bg-laya-orange/10 text-laya-orange'
-							: 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'}"
+							: 'text-surface-400 hover:text-surface-200 titlebar-hover'}"
 				>Corpus</a>
 			</nav>
 		{/if}
@@ -649,7 +649,7 @@
 				<div class="relative">
 					<button
 						onclick={() => (dateMenuOpen = !dateMenuOpen)}
-						class="rounded-md p-1 text-surface-400 transition-colors hover:text-surface-200 hover:bg-surface-800"
+						class="rounded-md p-1 text-surface-400 transition-colors hover:text-surface-200 titlebar-hover"
 						aria-label="Date navigation"
 						title={formatDateLabel($feedDate)}
 					>
@@ -746,7 +746,7 @@
 			{:else}
 				<div data-titlebar-center class="flex items-center gap-1">
 					<button
-						class="rounded-md p-1.5 text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-200 disabled:opacity-30 disabled:hover:bg-transparent"
+						class="rounded-md p-1.5 text-surface-400 transition-colors titlebar-hover hover:text-surface-200 disabled:opacity-30"
 						disabled={!$feedPrevDate}
 						onclick={() => { if ($feedPrevDate) $feedDate = $feedPrevDate; }}
 						title="Previous day"
@@ -770,7 +770,7 @@
 						</button>
 					{/if}
 					<button
-						class="rounded-md p-1.5 text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-200 disabled:opacity-30 disabled:hover:bg-transparent"
+						class="rounded-md p-1.5 text-surface-400 transition-colors titlebar-hover hover:text-surface-200 disabled:opacity-30"
 						disabled={!$feedNextDate}
 						onclick={() => { if ($feedNextDate) $feedDate = $feedNextDate; }}
 						title="Next day"
@@ -794,10 +794,10 @@
 						chatOpen.set(true);
 					}
 				}}
-				class="rounded-lg p-1.5 transition-colors hover:bg-surface-800
+				class="rounded-lg p-1.5 transition-colors
 					{$chatOpen
 						? 'bg-laya-orange/10 text-laya-orange'
-						: 'text-surface-400 hover:text-laya-orange'}"
+						: 'text-surface-400 hover:text-laya-orange titlebar-hover'}"
 				aria-label="Chat with Laya"
 			>
 				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -811,7 +811,7 @@
 		<div class="group/tip relative">
 			<a
 				href="/settings"
-				class="block rounded-lg p-1.5 transition-colors hover:bg-surface-800
+				class="block rounded-lg p-1.5 transition-colors titlebar-hover
 					{page.url.pathname.startsWith('/settings')
 						? 'text-laya-orange'
 						: 'text-surface-400 hover:text-laya-orange'}"
@@ -832,7 +832,7 @@
 
 		<!-- Health badge -->
 		<div class="group/tip relative">
-			<a href="/status" class="block rounded-lg px-1.5 py-1 transition-colors hover:bg-surface-800" aria-label="System status">
+			<a href="/status" class="block rounded-lg px-1.5 py-1 transition-colors titlebar-hover" aria-label="System status">
 				<HealthBadge />
 			</a>
 			<span class="pointer-events-none absolute right-0 top-full z-50 mt-1.5 whitespace-nowrap rounded-md border border-transparent glass-tooltip px-2 py-1 text-[10px] font-medium opacity-0 transition-opacity duration-75 group-hover/tip:opacity-100">Status</span>

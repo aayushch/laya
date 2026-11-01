@@ -154,7 +154,7 @@ The fastest way to try Laya is a prebuilt release — no toolchains required.
 
 > **macOS:** release builds are signed, so they open normally — just double-click to launch.
 
-Want to build from source, hack on the engine, or contribute? Follow the **Development** setup below.
+Want to build from source, hack on the engine, or contribute? Follow the **Development** setup below and read the [contributing guide](.github/CONTRIBUTING.md) before opening an issue or PR.
 
 ## Development
 
@@ -203,6 +203,35 @@ Tauri v2 requires system libraries for GTK, WebKit, and app-indicator support:
 ```bash
 sudo apt install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 ```
+
+### Setup
+
+```bash
+scripts/setup-dev.sh
+```
+
+This script does the following:
+
+1. Checks that `python3`, `node`, `npm`, and `cargo` are available
+2. Creates a Python virtual environment at `engine/.venv/` and installs dependencies from `engine/requirements.txt`
+3. Installs npm packages for the UI (`ui/node_modules/`)
+4. Installs n8n as a local npm package into `~/.laya/n8n_module/`
+5. Creates data directories at `~/.laya/data/` and `~/.laya/logs/`
+
+### Running Locally
+
+```bash
+scripts/dev.sh
+```
+
+This starts two processes:
+
+1. **Python engine** -- `python -m laya.main` (with hot reload) at http://127.0.0.1:8420
+2. **Tauri dev server** -- `npx @tauri-apps/cli dev` which starts Vite at http://localhost:5173 and opens the Tauri window
+
+n8n is managed automatically by the Tauri app -- it starts on launch (port 45678) and stops on quit.
+
+> **Note:** If the engine fails with "Address already in use", a stale engine process may be holding port 8420. The engine will attempt to kill it automatically on startup.
 
 ### Troubleshooting
 
@@ -328,35 +357,6 @@ cd ui/src-tauri && cargo tree -i openssl-sys
 and fix the offending dependency's features. As a stop-gap, `sudo apt install libssl-dev` lets the build link as-is.
 
 </details>
-
-### Setup
-
-```bash
-scripts/setup-dev.sh
-```
-
-This script does the following:
-
-1. Checks that `python3`, `node`, `npm`, and `cargo` are available
-2. Creates a Python virtual environment at `engine/.venv/` and installs dependencies from `engine/requirements.txt`
-3. Installs npm packages for the UI (`ui/node_modules/`)
-4. Installs n8n as a local npm package into `~/.laya/n8n_module/`
-5. Creates data directories at `~/.laya/data/` and `~/.laya/logs/`
-
-### Running Locally
-
-```bash
-scripts/dev.sh
-```
-
-This starts two processes:
-
-1. **Python engine** -- `python -m laya.main` (with hot reload) at http://127.0.0.1:8420
-2. **Tauri dev server** -- `npx @tauri-apps/cli dev` which starts Vite at http://localhost:5173 and opens the Tauri window
-
-n8n is managed automatically by the Tauri app -- it starts on launch (port 45678) and stops on quit.
-
-> **Note:** If the engine fails with "Address already in use", a stale engine process may be holding port 8420. The engine will attempt to kill it automatically on startup.
 
 ### Engine API authentication
 

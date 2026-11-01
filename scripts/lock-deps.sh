@@ -13,6 +13,12 @@
 #   ./scripts/lock-deps.sh --upgrade-package litellm    # move one package forward
 #   ./scripts/lock-deps.sh --upgrade                    # move everything forward
 #
+# Note: since 1.96.2 litellm ships compiled cp310-abi3 wheels (Rust extension)
+# and its sdist needs maturin and a Rust toolchain. Installs here are wheel-only
+# (--no-build here, --only-binary :all: in the app's sidecar), so no sdist or
+# Rust build is ever attempted; a platform without a matching wheel fails to
+# install, including in the ranges fallback.
+#
 # After any change, run scripts/check-locks.sh and the engine test suite.
 
 set -euo pipefail

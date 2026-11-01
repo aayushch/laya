@@ -11,6 +11,7 @@
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { portal } from '$lib/actions/portal';
+	import { toolLabels } from '$lib/utils/toolLabels';
 
 	let { message, streaming = false }: { message: ChatMessage; streaming?: boolean } = $props();
 
@@ -247,6 +248,18 @@
 						{parsed.thinking}
 					</div>
 				</details>
+			{/if}
+
+			<!-- Tools the assistant used for this reply (names only, not their results) -->
+			{#if toolLabels(message.tool_calls).length}
+				<div class="mb-1.5 flex flex-wrap items-center gap-1.5 text-laya-micro text-surface-500" aria-label="Tools used">
+					<svg class="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z" />
+					</svg>
+					{#each toolLabels(message.tool_calls) as label (label)}
+						<span class="rounded {$glassTheme ? 'bg-white/[0.06]' : 'bg-surface-600/50'} px-1.5 py-0.5">{label}</span>
+					{/each}
+				</div>
 			{/if}
 
 			<!-- Main response -->

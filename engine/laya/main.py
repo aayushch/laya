@@ -72,6 +72,7 @@ from laya.security.engine_auth import (
     require_ws_engine_auth,
 )
 from laya.security.keychain import ensure_engine_token, ensure_n8n_token, load_all_keys_to_env
+from laya.security.redact import sanitize_validation_errors
 
 log = structlog.get_logger()
 
@@ -479,19 +480,25 @@ app.add_middleware(OriginGuardMiddleware)
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    """Log full request body on validation failure to help debug n8n payload issues."""
-    try:
-        body = await request.body()
-        body_text = body.decode("utf-8", errors="replace")
-    except Exception:
-        body_text = "<unreadable>"
-    log.warning(
-        "request_validation_failed",
-        path=str(request.url.path),
-        errors=exc.errors(),
-        body=body_text[:2000],
-    )
-    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+    """Log a 422 as structured metadata without the request body or raw inputs.
+
+    Several routes accept credentials in JSON (API keys, custom providers,
+    connection secrets). The raw body, and Pydantic's error ``input`` when it
+    echoes those fields, must not be written to engine.log. Path, method, and
+    field-level loc/type/msg are enough to debug n8n payload mismatches.
+    """
+    errors = exc.errors()
+    fields: dict[str, object] = {
+        "path": str(request.url.path),
+        "method": request.method,
+        "status_code": 422,
+        "errors": sanitize_validation_errors(errors),
+    }
+    request_id = request.headers.get("x-request-id")
+    if request_id:
+        fields["request_id"] = request_id
+    log.warning("request_validation_failed", **fields)
+    return JSONResponse(status_code=422, content={"detail": errors})
 
 
 @app.exception_handler(Exception)

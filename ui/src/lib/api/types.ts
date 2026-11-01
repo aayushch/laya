@@ -798,6 +798,8 @@ export interface ChatMessage {
 	/** Corpus documents the reply cites as [doc:ID]; absent on older rows. */
 	referenced_documents?: string[];
 	conversation_id?: string;
+	/** Names of the tools the assistant called for this reply, in call order; absent on older rows. */
+	tool_calls?: string[];
 }
 
 /** Chat response from POST /chat */
@@ -842,6 +844,23 @@ export interface DocumentEntityLink {
 }
 
 /** A Corpus document (engine DocumentResponse). */
+/** POST /documents/{id}/move response. `notes` lists, in plain language, what
+ *  the move does to the document's links, chats and search visibility. */
+export interface DocumentMoveResult {
+	document_id: string;
+	from_space_id: string;
+	from_space_name: string;
+	space_id: string;
+	space_name: string;
+	links_kept: string[];
+	links_removed: string[];
+	links_added: string[];
+	attached_chat_count: number;
+	notes: string[];
+	/** Present on a real move, absent on a dry run. */
+	document?: CorpusDocument;
+}
+
 export interface CorpusDocument {
 	document_id: string;
 	space_id: string;

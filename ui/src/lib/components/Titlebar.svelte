@@ -7,7 +7,17 @@
 
 	let { nav, center, right, controlsDisabled = false }: { nav?: Snippet; center?: Snippet; right?: Snippet; controlsDisabled?: boolean } = $props();
 
-	let currentPlatform = $state('');
+	// Read synchronously so the macOS bar is transparent from the first paint.
+	// Outside Tauri (dev browser) the OS plugin is absent and platform() throws.
+	function detectPlatform(): string {
+		try {
+			return platform();
+		} catch {
+			return '';
+		}
+	}
+
+	let currentPlatform = $state(detectPlatform());
 	let appWindow: { minimize: () => void; toggleMaximize: () => void; close: () => void; startDragging: () => void } | null = $state(null);
 
 	onMount(async () => {
@@ -36,11 +46,13 @@
 </script>
 
 <!-- Fixed titlebar: drag region + browser nav + center content + right content + window controls.
-     On macOS the native title bar sits above the webview in the same surface colour and holds the traffic lights. -->
-<div class="fixed top-0 left-0 right-0 z-[9999] flex h-[38px] select-none items-center bg-surface-900 pl-3">
+     On macOS the native title bar above the webview holds the traffic lights, and this bar is
+     transparent so the app background (solid surface or glass gradient) runs up to it.
+     Windows / Linux keep a solid surface bar, since it is the window's only title bar. -->
+<div class="fixed top-0 left-0 right-0 z-[9999] flex h-[38px] select-none items-center {currentPlatform === 'macos' ? 'bg-transparent' : 'bg-surface-900'} pl-3">
 	<!-- Browser navigation controls (back / forward / reload) -->
 	<div class="flex items-center gap-1 pr-2">
-		<div class="flex items-center rounded-lg bg-surface-800 border border-surface-700">
+		<div class="flex items-center rounded-lg titlebar-chip">
 			<button
 				class="px-1.5 py-1 text-surface-400 transition-colors hover:text-surface-200"
 				onclick={() => history.back()}
@@ -50,7 +62,7 @@
 					<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
 				</svg>
 			</button>
-			<span class="h-3.5 w-px bg-surface-700"></span>
+			<span class="h-3.5 w-px bg-surface-700/60"></span>
 			<button
 				class="px-1.5 py-1 text-surface-400 transition-colors hover:text-surface-200"
 				onclick={() => history.forward()}
@@ -62,7 +74,7 @@
 			</button>
 		</div>
 		<button
-			class="rounded-lg bg-surface-800 border border-surface-700 px-1.5 py-1 text-surface-400 transition-colors hover:text-surface-200"
+			class="rounded-lg titlebar-chip px-1.5 py-1 text-surface-400 transition-colors hover:text-surface-200"
 			onclick={() => location.reload()}
 			title="Reload"
 		>

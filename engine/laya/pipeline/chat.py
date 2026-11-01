@@ -255,12 +255,11 @@ async def _generate_title_background(
     Runs fire-and-forget so it never blocks the user's chat response. All
     failures are swallowed so a flaky router model cannot break chat.
 
-    The token budget here has to accommodate thinking/reasoning models
-    (Qwen 3, DeepSeek-R1, etc.) whose reasoning phase can be thousands of
-    tokens before the final 2-6 word title is emitted. We try 2048 first and
-    retry once at 4096 if the response was truncated; if it's *still*
-    truncated we bail out and leave the conversation as "New Chat" rather
-    than persist whatever reasoning text leaked through.
+    The call uses the app-wide output limit (``DEFAULT_MAX_TOKENS``) because
+    thinking/reasoning models (Qwen 3, DeepSeek-R1, etc.) can spend thousands
+    of tokens reasoning before the 2-6 word title. If the response is still
+    truncated, the conversation stays "New Chat" rather than persisting
+    whatever reasoning text leaked through.
     """
     try:
         messages = build_title_generation_messages(user_message)
@@ -269,18 +268,8 @@ async def _generate_title_background(
             messages=messages,
             step="chat_title",
             temperature=0.3,
-            max_tokens=8192,
             space_id=space_id,
         )
-        if response.finish_reason == "length":
-            response = await llm_call(
-                role="router",
-                messages=messages,
-                step="chat_title",
-                temperature=0.3,
-                max_tokens=16384,
-                space_id=space_id,
-            )
         if response.finish_reason == "length":
             log.info(
                 "chat_title_generation_truncated",
@@ -415,7 +404,6 @@ async def process_chat_message(
                 messages=messages,
                 step="chat",
                 temperature=0.3,
-                max_tokens=65536,
                 space_id=space_id,
                 tools=tools if iteration < MAX_TOOL_ITERATIONS else None,
             )
@@ -532,6 +520,7 @@ async def process_chat_message(
         referenced_events=referenced_events,
         referenced_documents=referenced_documents,
         conversation_id=conversation_id,
+        tool_calls=[t["name"] for t in tool_calls_log],
     )
 
     return ChatResponse(
@@ -733,7 +722,6 @@ async def process_chat_message_streaming(
                     messages=messages,
                     step="chat",
                     temperature=0.3,
-                    max_tokens=65536,
                     space_id=space_id,
                     tools=use_tools,
                 ):
@@ -858,6 +846,7 @@ async def process_chat_message_streaming(
             "referenced_events": referenced_events,
             "referenced_documents": referenced_documents,
             "conversation_id": conversation_id,
+            "tool_calls": [t["name"] for t in tool_calls_log],
         },
     }
 

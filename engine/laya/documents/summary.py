@@ -127,7 +127,6 @@ async def summarize_document(
                 response_schema=get_document_map_schema(),
                 step="document_summary_map",
                 temperature=0.2,
-                max_tokens=1024,
                 space_id=space_id,
             )
         parsed = response.parsed or {}
@@ -178,7 +177,6 @@ async def _reduce(
         response_schema=get_document_reduce_schema(),
         step="document_summary_reduce",
         temperature=0.2,
-        max_tokens=2048,
         space_id=space_id,
     )
     parsed = response.parsed or {}

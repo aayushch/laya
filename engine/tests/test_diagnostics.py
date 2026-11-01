@@ -83,7 +83,11 @@ class TestDiagnosticsExport:
         from laya.main import app
 
         # Create a fake config file with a secret
-        fake_settings = {"models": {"router": "claude-haiku-4-5-20251001"}, "api_key": "sk-secret-12345"}
+        fake_settings = {
+            "models": {"router": "claude-haiku-4-5-20251001"},
+            "api_key": "sk-secret-12345",
+            "credentials": {"token": "abc", "email": "a@b.c"},
+        }
         config_file = tmp_path / "settings.json"
         config_file.write_text(json.dumps(fake_settings))
 
@@ -95,4 +99,5 @@ class TestDiagnosticsExport:
         zf = zipfile.ZipFile(io.BytesIO(resp.content))
         settings = json.loads(zf.read("config/settings.json"))
         assert settings["api_key"] == "***REDACTED***"
+        assert settings["credentials"] == "***REDACTED***"
         assert settings["models"]["router"] == "claude-haiku-4-5-20251001"

@@ -81,7 +81,8 @@ async def get_chat_history(
     # the same second, so without it a mid-stream reload could swap their order.
     rows = await db.execute_fetchall(
         f"""SELECT message_id, timestamp, role, content,
-                   referenced_cards, referenced_events, referenced_documents, conversation_id
+                   referenced_cards, referenced_events, referenced_documents, conversation_id,
+                   tool_calls_json
             FROM chat_messages
             {where}
             ORDER BY timestamp DESC, rowid DESC
@@ -104,10 +105,24 @@ async def get_chat_history(
                 referenced_events=ref_events,
                 referenced_documents=ref_docs,
                 conversation_id=row["conversation_id"],
+                tool_calls=_tool_names(row["tool_calls_json"]),
             )
         )
 
     return messages
+
+
+def _tool_names(tool_calls_json: str | None) -> list[str]:
+    """Tool names from a stored `tool_calls_json` log ([{name, arguments, result_preview}, ...])."""
+    if not tool_calls_json:
+        return []
+    try:
+        entries = json.loads(tool_calls_json)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(entries, list):
+        return []
+    return [e["name"] for e in entries if isinstance(e, dict) and isinstance(e.get("name"), str)]
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +276,8 @@ async def get_conversation_messages(
     if before:
         rows = await db.execute_fetchall(
             """SELECT message_id, timestamp, role, content,
-                      referenced_cards, referenced_events, referenced_documents, conversation_id
+                      referenced_cards, referenced_events, referenced_documents, conversation_id,
+                      tool_calls_json
                FROM chat_messages
                WHERE conversation_id = ? AND timestamp < ?
                ORDER BY timestamp DESC, rowid DESC
@@ -271,7 +287,8 @@ async def get_conversation_messages(
     else:
         rows = await db.execute_fetchall(
             """SELECT message_id, timestamp, role, content,
-                      referenced_cards, referenced_events, referenced_documents, conversation_id
+                      referenced_cards, referenced_events, referenced_documents, conversation_id,
+                      tool_calls_json
                FROM chat_messages
                WHERE conversation_id = ?
                ORDER BY timestamp DESC, rowid DESC
@@ -294,6 +311,7 @@ async def get_conversation_messages(
                 referenced_events=ref_events,
                 referenced_documents=ref_docs,
                 conversation_id=row["conversation_id"],
+                tool_calls=_tool_names(row["tool_calls_json"]),
             )
         )
 

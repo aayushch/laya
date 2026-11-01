@@ -181,19 +181,19 @@ pub fn ensure_runtimes<F: FnMut(RuntimeProgress)>(mut on_progress: F) -> Result<
     if python_needed {
         let tx = tx.clone();
         handles.push(std::thread::spawn(move || {
-            provision_python(&mut |p| { let _ = tx.send(p); })
+            provision_python(&mut |p| { let _ = tx.send(label_download("Python", p)); })
         }));
     }
     if node_needed {
         let tx = tx.clone();
         handles.push(std::thread::spawn(move || {
-            provision_node(&mut |p| { let _ = tx.send(p); })
+            provision_node(&mut |p| { let _ = tx.send(label_download("Node", p)); })
         }));
     }
     if uv_needed {
         let tx = tx.clone();
         handles.push(std::thread::spawn(move || {
-            provision_uv(&mut |p| { let _ = tx.send(p); })
+            provision_uv(&mut |p| { let _ = tx.send(label_download("uv", p)); })
         }));
     }
 
@@ -218,6 +218,24 @@ pub fn ensure_runtimes<F: FnMut(RuntimeProgress)>(mut on_progress: F) -> Result<
     }
 
     Ok(())
+}
+
+/// Turns a download's byte count into a phase message that names the
+/// runtime ("Python: 15 / 28 MB").  The runtimes download in parallel and
+/// share one progress line in the UI, so each message has to say which
+/// download it belongs to; otherwise the interleaved counters read as one
+/// serial download whose size jumps backward.  Other events pass through.
+fn label_download(label: &str, progress: RuntimeProgress) -> RuntimeProgress {
+    match progress {
+        RuntimeProgress::Bytes { downloaded, total } => {
+            let mb = downloaded / 1_048_576;
+            RuntimeProgress::Phase(match total {
+                Some(t) if t > 0 => format!("{label}: {mb} / {} MB", t / 1_048_576),
+                _ => format!("{label}: {mb} MB"),
+            })
+        }
+        other => other,
+    }
 }
 
 // ── Version marker checks ───────────────────────────────────────────────
@@ -801,5 +819,36 @@ mod tests {
     #[test]
     fn hex_lower_emits_lowercase_hex() {
         assert_eq!(hex_lower(&[0xab, 0xcd, 0x01, 0xff]), "abcd01ff");
+    }
+
+    fn phase_text(p: RuntimeProgress) -> Option<String> {
+        match p {
+            RuntimeProgress::Phase(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn label_download_names_the_runtime_with_total() {
+        let p = RuntimeProgress::Bytes { downloaded: 15 * 1_048_576, total: Some(28 * 1_048_576) };
+        assert_eq!(phase_text(label_download("Python", p)).as_deref(), Some("Python: 15 / 28 MB"));
+    }
+
+    #[test]
+    fn label_download_without_known_total() {
+        let unknown = RuntimeProgress::Bytes { downloaded: 5 * 1_048_576, total: None };
+        assert_eq!(phase_text(label_download("Node", unknown)).as_deref(), Some("Node: 5 MB"));
+        let zero = RuntimeProgress::Bytes { downloaded: 3 * 1_048_576, total: Some(0) };
+        assert_eq!(phase_text(label_download("uv", zero)).as_deref(), Some("uv: 3 MB"));
+    }
+
+    #[test]
+    fn label_download_passes_other_events_through() {
+        let phase = label_download("Python", RuntimeProgress::Phase("Extracting Python".into()));
+        assert_eq!(phase_text(phase).as_deref(), Some("Extracting Python"));
+        match label_download("Python", RuntimeProgress::Done("Python ready".into())) {
+            RuntimeProgress::Done(s) => assert_eq!(s, "Python ready"),
+            _ => panic!("Done must pass through unchanged"),
+        }
     }
 }

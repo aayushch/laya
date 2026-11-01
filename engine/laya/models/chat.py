@@ -17,6 +17,9 @@ class ChatMessage(BaseModel):
     referenced_events: list[str] = Field(default_factory=list)
     referenced_documents: list[str] = Field(default_factory=list)
     conversation_id: str | None = None
+    # Names of the tools the assistant called while producing this message, in
+    # call order. Names only: arguments and results stay out of the transcript.
+    tool_calls: list[str] = Field(default_factory=list)
 
 
 class ChatRequest(BaseModel):

@@ -20,6 +20,7 @@ import asyncio
 import hashlib
 import mimetypes
 import os
+import sqlite3
 import time
 import uuid
 from pathlib import Path
@@ -41,7 +42,9 @@ from laya.db.chromadb_store import (
     embed_batch,
     embed_document,
     get_embedding_info,
+    update_document_metadata,
 )
+from laya.db.sqlite import get_db
 from laya.db.timeutil import db_now
 from laya.documents import store
 from laya.documents.chunking import chunk_units
@@ -572,6 +575,7 @@ async def reprocess(document_id: str, stage: str = "all") -> dict[str, Any]:
     row = await store.get_document(document_id)
     if not row:
         raise DocumentError(404, "Document not found", "not_found")
+    _ensure_not_moving(document_id)
     stages = stages_for(stage)
     if "parse" in stages:
         try:
@@ -591,6 +595,7 @@ async def resync(document_id: str) -> dict[str, Any]:
     row = await store.get_document(document_id)
     if not row:
         raise DocumentError(404, "Document not found", "not_found")
+    _ensure_not_moving(document_id)
     try:
         path = store.readable_path(row)
     except store.SourceMissing as e:
@@ -636,6 +641,178 @@ async def relocate(document_id: str, path: str) -> dict[str, Any]:
     updated = await store.get_document(document_id)
     await _broadcast(updated)
     return updated
+
+
+# ---------------------------------------------------------------------------
+# Move to another space
+# ---------------------------------------------------------------------------
+
+# Documents whose move is in progress. Reprocess and re-sync refuse them so an
+# ingest run cannot start against the half-moved row.
+_moving: set[str] = set()
+
+_MOVE_NAMES_SHOWN = 5
+
+
+def _ensure_not_moving(document_id: str) -> None:
+    if document_id in _moving:
+        raise DocumentError(409, "The document is being moved to another space", "moving")
+
+
+def _names(links: list[dict[str, Any]]) -> str:
+    """A short readable list of linked work items, e.g. "PAY-1, PAY-2 and 3 more"."""
+    labels = [l.get("matched_text") or l["entity_id"] for l in links]
+    shown = ", ".join(labels[:_MOVE_NAMES_SHOWN])
+    extra = len(labels) - _MOVE_NAMES_SHOWN
+    return f"{shown} and {extra} more" if extra > 0 else shown
+
+
+async def _plan_move(document_id: str, target_space_id: str) -> dict[str, Any]:
+    """Everything a move would change, computed without writing anything.
+
+    Entity links are re-resolved against the target space's cards with the
+    same resolver ingest uses; the result is compared with the current links.
+    Raises ``DocumentError`` when the move is not allowed.
+    """
+    row = await store.get_document(document_id)
+    if not row:
+        raise DocumentError(404, "Document not found", "not_found")
+    db = await get_db()
+    space_rows = await db.execute_fetchall("SELECT name FROM spaces WHERE space_id = ?", (target_space_id,))
+    if not space_rows:
+        raise DocumentError(404, "Target space not found", "space_not_found")
+    if row["space_id"] == target_space_id:
+        raise DocumentError(400, "The document is already in this space", "same_space")
+    if row["status"] not in store.TERMINAL_STATUSES or document_id in _running or document_id in _moving:
+        raise DocumentError(
+            409, "The document is still being processed; move it once processing finishes", "processing",
+        )
+    other = await store.find_by_hash(target_space_id, row["sha256"])
+    if other:
+        raise DocumentError(
+            409, "The target space already has a document with this content", "duplicate", document_id=other,
+        )
+
+    chunk_rows = await store.get_chunks(document_id)
+    units = [TextUnit(text=c["text"], page=c["page_start"], heading=c["heading"]) for c in chunk_rows]
+    new_links = await resolve_entity_links(target_space_id, units, extract_identifiers(units)) if units else []
+    old_links = await store.links_for_document(document_id)
+    old_ids = {l["entity_id"] for l in old_links}
+    new_ids = {l["entity_id"] for l in new_links}
+
+    from_rows = await db.execute_fetchall("SELECT name FROM spaces WHERE space_id = ?", (row["space_id"],))
+    return {
+        "row": row,
+        "from_space_name": from_rows[0]["name"] if from_rows else row["space_id"],
+        "to_space_name": space_rows[0]["name"],
+        "new_links": new_links,
+        "kept": [l for l in new_links if l["entity_id"] in old_ids],
+        "removed": [l for l in old_links if l["entity_id"] not in new_ids],
+        "added": [l for l in new_links if l["entity_id"] not in old_ids],
+        "chats": await store.conversations_with_document(document_id),
+    }
+
+
+def _move_notes(plan: dict[str, Any], target_space_id: str) -> list[str]:
+    """Plain-language list of what the move does, shown before the user confirms."""
+    src, dst = plan["from_space_name"], plan["to_space_name"]
+    passages = f"its {plan['row']['chunk_count']} indexed passages"
+    contents = f"{passages} and its summary" if plan["row"].get("summary") else passages
+    notes = [
+        f"The document, {contents} move from “{src}” to “{dst}” as they are; "
+        f"nothing is re-parsed, re-embedded or re-summarised.",
+        f"Chats and traces scoped to “{src}” stop finding it and those scoped to “{dst}” start finding it; "
+        f"chats not tied to a space find it either way.",
+    ]
+    kept, removed, added = plan["kept"], plan["removed"], plan["added"]
+    if not (kept or removed or added):
+        notes.append("It links to no work items in either space.")
+    else:
+        if removed:
+            notes.append(
+                f"{len(removed)} linked work item{'s' if len(removed) != 1 else ''} in “{src}” will be "
+                f"unlinked because {'they are' if len(removed) != 1 else 'it is'} not in “{dst}”: {_names(removed)}."
+            )
+        if kept:
+            notes.append(f"{len(kept)} linked work item{'s' if len(kept) != 1 else ''} stay linked: {_names(kept)}.")
+        if added:
+            notes.append(
+                f"{len(added)} work item{'s' if len(added) != 1 else ''} in “{dst}” will be newly linked: {_names(added)}."
+            )
+    chats = plan["chats"]
+    if chats:
+        scoped = [c for c in chats if c.get("space_id") and c["space_id"] != target_space_id]
+        line = (
+            f"{len(chats)} chat{'s' if len(chats) != 1 else ''} with this document attached keep the attachment "
+            f"and still see its summary."
+        )
+        if scoped:
+            line += (
+                f" {len(scoped)} of them belong{'s' if len(scoped) == 1 else ''} to another space and will no longer "
+                f"search its passages."
+            )
+        notes.append(line)
+    else:
+        notes.append("No chats have this document attached.")
+    notes.append(
+        "Earlier chat answers and Coherence traces that cited this document are left as they are."
+    )
+    return notes
+
+
+async def move_preview(document_id: str, target_space_id: str) -> dict[str, Any]:
+    """What moving the document to ``target_space_id`` would do, without doing it."""
+    plan = await _plan_move(document_id, target_space_id)
+    return _move_summary(plan, target_space_id)
+
+
+def _move_summary(plan: dict[str, Any], target_space_id: str) -> dict[str, Any]:
+    return {
+        "document_id": plan["row"]["document_id"],
+        "from_space_id": plan["row"]["space_id"],
+        "from_space_name": plan["from_space_name"],
+        "space_id": target_space_id,
+        "space_name": plan["to_space_name"],
+        "links_kept": [l["entity_id"] for l in plan["kept"]],
+        "links_removed": [l["entity_id"] for l in plan["removed"]],
+        "links_added": [l["entity_id"] for l in plan["added"]],
+        "attached_chat_count": len(plan["chats"]),
+        "notes": _move_notes(plan, target_space_id),
+    }
+
+
+async def move(document_id: str, target_space_id: str) -> dict[str, Any]:
+    """Move a ready or failed document to another space.
+
+    The row's space and its entity links (re-resolved against the target
+    space's cards) change in one transaction. The Chroma vectors keep their
+    embeddings; only their ``space_id`` and ``entity_refs`` metadata are
+    patched. If that patch fails the vectors still carry the old space, so an
+    embed-only run is started to rewrite them from the moved row.
+    """
+    plan = await _plan_move(document_id, target_space_id)
+    _moving.add(document_id)
+    try:
+        try:
+            await store.move_to_space(document_id, target_space_id, plan["new_links"])
+        except sqlite3.IntegrityError:
+            raise DocumentError(409, "The target space already has a document with this content", "duplicate")
+        refs = entity_refs_csv(plan["new_links"])
+        try:
+            await update_document_metadata(document_id, {"space_id": target_space_id, "entity_refs": refs})
+        except Exception as e:
+            log.warning("document_move_vector_patch_failed", document_id=document_id, error=str(e))
+            _start(document_id, ("embed",))
+        log.info(
+            "document_moved", document_id=document_id, from_space=plan["row"]["space_id"],
+            to_space=target_space_id, links=len(plan["new_links"]),
+        )
+    finally:
+        _moving.discard(document_id)
+    row = await store.get_document(document_id)
+    if row:
+        await _broadcast(row)
+    return {**_move_summary(plan, target_space_id), "document": row}
 
 
 # ---------------------------------------------------------------------------

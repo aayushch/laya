@@ -1032,7 +1032,11 @@ Driver `summarize_document(document_id, chunks, title, file_type, page_count, sp
 - Cap `summary_max_windows` (24): beyond it keep the first 12, the last 6 and
   6 evenly sampled, and note "(summary covers a sample of N sections)".
 - Map calls under `asyncio.Semaphore(2)`:
-  `llm_call(role=ROLE, messages=..., response_schema=map_schema, step="document_summary_map", temperature=0.2, max_tokens=1024, space_id=space_id)`.
+  `llm_call(role=ROLE, messages=..., response_schema=map_schema, step="document_summary_map", temperature=0.2, space_id=space_id)`.
+  No explicit `max_tokens`: like every other call these use `DEFAULT_MAX_TOKENS`,
+  which the client clamps to the model's context window. A reasoning model's
+  thinking counts against the cap, so a small cap truncates the JSON before
+  it is written.
 - Reduce hierarchically in groups of 8 when the partials exceed a window;
   `step="document_summary_reduce"`.
 - `ROLE = "document_summary"` when `settings["models"].get("document_summary")`

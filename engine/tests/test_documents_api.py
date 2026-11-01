@@ -198,6 +198,110 @@ class TestUpdate:
         assert src.exists()
 
 
+async def _add_space(db, space_id, name):
+    await db.execute("INSERT INTO spaces (space_id, name) VALUES (?, ?)", (space_id, name))
+    await db.commit()
+
+
+@pytest.mark.asyncio
+class TestMove:
+    """POST /documents/{id}/move: preview, move, and the cases that refuse a move."""
+
+    async def _setup(self, db):
+        await _add_space(db, "space_b", "Payments")
+        # PAY-1 has a card in both spaces, PAY-2 only in default, PAY-3 only in space_b.
+        await insert_test_card(db, card_id="c1", event_id="e1", entity_id="jira:ticket:PAY-1", space_id="default")
+        await insert_test_card(db, card_id="c1b", event_id="e1b", entity_id="jira:ticket:PAY-1", space_id="space_b")
+        await insert_test_card(db, card_id="c2", event_id="e2", entity_id="jira:ticket:PAY-2", space_id="default")
+        await insert_test_card(db, card_id="c3", event_id="e3", entity_id="jira:ticket:PAY-3", space_id="space_b")
+        await insert_test_document(db, document_id="doc_m", chunks=[
+            {"text": "Rollout covers PAY-1, PAY-2 and PAY-3 for the payment service.", "page_start": 1, "page_end": 1},
+        ])
+        await store.replace_links("doc_m", [
+            {"entity_id": "jira:ticket:PAY-1", "link_method": "identifier", "confidence": 1.0, "matched_text": "PAY-1"},
+            {"entity_id": "jira:ticket:PAY-2", "link_method": "identifier", "confidence": 1.0, "matched_text": "PAY-2"},
+        ])
+        await db.execute(
+            "INSERT INTO chat_conversations (conversation_id, title, space_id, created_at, updated_at, document_ids) "
+            "VALUES ('conv_1', 'Chat', 'default', '2026-10-19 00:00:00', '2026-10-19 00:00:00', ?)",
+            (store.canonical_document_ids(["doc_m"]),),
+        )
+        await db.commit()
+
+    async def test_dry_run_describes_without_writing(self, db):
+        await self._setup(db)
+        with patch("laya.documents.ingest.update_document_metadata", new_callable=AsyncMock) as patch_meta:
+            async with _client() as c:
+                resp = await c.post("/documents/doc_m/move", json={"space_id": "space_b", "dry_run": True})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["links_kept"] == ["jira:ticket:PAY-1"]
+        assert body["links_removed"] == ["jira:ticket:PAY-2"]
+        assert body["links_added"] == ["jira:ticket:PAY-3"]
+        assert body["attached_chat_count"] == 1
+        notes = " ".join(body["notes"])
+        assert "unlinked" in notes and "PAY-2" in notes and "newly linked" in notes and "PAY-3" in notes
+        assert "no longer search its passages" in notes
+        patch_meta.assert_not_awaited()
+        assert (await store.get_document("doc_m"))["space_id"] == "default"
+
+    async def test_move_updates_row_links_and_vectors(self, db):
+        await self._setup(db)
+        with patch("laya.documents.ingest.update_document_metadata", new_callable=AsyncMock) as patch_meta, \
+             patch("laya.documents.ingest.manager.broadcast", new_callable=AsyncMock):
+            async with _client() as c:
+                resp = await c.post("/documents/doc_m/move", json={"space_id": "space_b"})
+        assert resp.status_code == 200
+        assert resp.json()["document"]["space_id"] == "space_b"
+        assert (await store.get_document("doc_m"))["space_id"] == "space_b"
+        assert sorted(l["entity_id"] for l in await store.links_for_document("doc_m")) == [
+            "jira:ticket:PAY-1", "jira:ticket:PAY-3",
+        ]
+        patch_meta.assert_awaited_once()
+        doc_id, fields = patch_meta.await_args.args
+        assert doc_id == "doc_m" and fields["space_id"] == "space_b"
+        assert "PAY-3" in fields["entity_refs"] and "PAY-2" not in fields["entity_refs"]
+        # The chat attachment is untouched.
+        rows = await db.execute_fetchall("SELECT document_ids FROM chat_conversations WHERE conversation_id = 'conv_1'")
+        assert store.parse_document_ids(rows[0]["document_ids"]) == ["doc_m"]
+
+    async def test_vector_patch_failure_starts_reembed(self, db):
+        await self._setup(db)
+        with patch("laya.documents.ingest.update_document_metadata", new_callable=AsyncMock, side_effect=RuntimeError("chroma down")), \
+             patch("laya.documents.ingest._start") as start, \
+             patch("laya.documents.ingest.manager.broadcast", new_callable=AsyncMock):
+            async with _client() as c:
+                resp = await c.post("/documents/doc_m/move", json={"space_id": "space_b"})
+        assert resp.status_code == 200
+        start.assert_called_once_with("doc_m", ("embed",))
+
+    async def test_refusals(self, db):
+        await self._setup(db)
+        await insert_test_document(db, document_id="doc_busy", status="summarizing", sha256="sha_busy")
+        await insert_test_document(db, document_id="doc_dup", space_id="space_b", sha256="sha_doc_m")
+        async with _client() as c:
+            busy = await c.post("/documents/doc_busy/move", json={"space_id": "space_b", "dry_run": True})
+            assert busy.status_code == 409 and busy.json()["detail"]["error_code"] == "processing"
+            dup = await c.post("/documents/doc_m/move", json={"space_id": "space_b"})
+            assert dup.status_code == 409 and dup.json()["detail"]["error_code"] == "duplicate"
+            same = await c.post("/documents/doc_m/move", json={"space_id": "default"})
+            assert same.status_code == 400 and same.json()["detail"]["error_code"] == "same_space"
+            nospace = await c.post("/documents/doc_m/move", json={"space_id": "space_x"})
+            assert nospace.status_code == 404
+            assert (await c.post("/documents/doc_none/move", json={"space_id": "space_b"})).status_code == 404
+        assert (await store.get_document("doc_m"))["space_id"] == "default"
+
+    async def test_reprocess_refused_while_moving(self, db):
+        await insert_test_document(db, document_id="doc_mv")
+        ingest._moving.add("doc_mv")
+        try:
+            async with _client() as c:
+                resp = await c.post("/documents/doc_mv/reprocess", params={"stage": "embed"})
+            assert resp.status_code == 409 and resp.json()["detail"]["error_code"] == "moving"
+        finally:
+            ingest._moving.discard("doc_mv")
+
+
 @pytest.mark.asyncio
 class TestEndToEnd:
     async def test_upload_runs_ingest(self, db, tmp_path, mock_document_vectors):

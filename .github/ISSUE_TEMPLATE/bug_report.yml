@@ -9,6 +9,10 @@ body:
         Thanks for taking the time to report a bug. Please fill out the sections
         below so we can reproduce and fix the issue.
 
+        If an AI tool helped you write this, read it and check it against the actual
+        behaviour before submitting. You are responsible for what you post here
+        (see CONTRIBUTING.md).
+
   - type: textarea
     id: description
     attributes:

@@ -334,6 +334,45 @@ async def replace_links(document_id: str, links: list[dict[str, Any]]) -> None:
         )
 
 
+async def move_to_space(document_id: str, space_id: str, links: list[dict[str, Any]]) -> None:
+    """Set a document's space and replace its entity links in one transaction,
+    so the row never names one space while holding links resolved in another.
+
+    Raises ``sqlite3.IntegrityError`` when the target space already holds a
+    document with the same content hash (unique ``(space_id, sha256)``).
+    """
+    now = db_now()
+    async with transaction() as db:
+        await db.execute(
+            "UPDATE documents SET space_id = ?, updated_at = ? WHERE document_id = ?",
+            (space_id, now, document_id),
+        )
+        await db.execute("DELETE FROM document_entity_links WHERE document_id = ?", (document_id,))
+        await db.executemany(
+            """INSERT OR REPLACE INTO document_entity_links
+               (document_id, entity_id, link_method, confidence, mention_count, first_page, matched_text, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            [
+                (
+                    document_id, link["entity_id"], link.get("link_method", "mention"),
+                    float(link.get("confidence", 1.0)), int(link.get("mention_count", 1)),
+                    link.get("first_page"), link.get("matched_text"), now,
+                )
+                for link in links
+            ],
+        )
+
+
+async def conversations_with_document(document_id: str) -> list[dict[str, Any]]:
+    """Chat conversations that have this document attached, with their space."""
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT conversation_id, title, space_id FROM chat_conversations WHERE document_ids LIKE ?",
+        (f'%"{document_id}"%',),
+    )
+    return [_row_dict(r) for r in rows]
+
+
 async def links_for_document(document_id: str) -> list[dict[str, Any]]:
     db = await get_db()
     rows = await db.execute_fetchall(
