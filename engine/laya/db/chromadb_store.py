@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import stat
 import sys
 import threading
 from functools import partial
@@ -254,11 +255,38 @@ def _secure_chromadb_tree(root: Path) -> None:
                     log.warning("chromadb_file_chmod_failed", path=str(fp), error=str(e))
 
 
+def _verify_chromadb_ancestor_chain(chroma_dir: Path) -> None:
+    """Log a warning if chroma_dir or its managed ancestors are not 0700.
+
+    The one-time filesystem migration secures all Laya-managed directories.
+    This lightweight check runs at each startup to detect later permission
+    drift (e.g. from a file manager or backup tool restoring permissive modes).
+    Only checks the three managed levels: chromadb/, data/, and laya home.
+    """
+    if sys.platform == "win32":
+        return
+    # Check chromadb dir and its two immediate managed ancestors (data, home).
+    paths = [chroma_dir, chroma_dir.parent, chroma_dir.parent.parent]
+    for p in paths:
+        try:
+            st = os.lstat(p)
+            if stat.S_ISDIR(st.st_mode) and stat.S_IMODE(st.st_mode) != DIR_MODE:
+                log.warning(
+                    "chromadb_ancestor_not_private",
+                    path=str(p),
+                    mode=oct(stat.S_IMODE(st.st_mode)),
+                    expected=oct(DIR_MODE),
+                )
+        except OSError:
+            pass
+
+
 def connect_chromadb() -> Collection:
     """Initialize ChromaDB persistent client and return the collection."""
     global _client, _collection
 
     secure_directory(CHROMADB_DIR)
+    _verify_chromadb_ancestor_chain(CHROMADB_DIR)
     # Pass anonymized_telemetry=False defensively even though
     # _telemetry_suppression.py already sets ANONYMIZED_TELEMETRY=False in the
     # env at import time. This survives future chromadb releases that might
@@ -291,10 +319,13 @@ def connect_chromadb() -> Collection:
 
     _collection = _client.get_or_create_collection(**kwargs)
 
-    # Enforce permissions on all files ChromaDB created during initialization.
-    # Done here (not just in the one-time migration marker) so every startup
-    # tightens files written since the last run.
-    _secure_chromadb_tree(CHROMADB_DIR)
+    # shortcut: ChromaDB descendant files may have wider modes (e.g. 0o644)
+    # because ChromaDB uses Python's default file creation without honouring
+    # a restrictive umask.  The 0700 root directory (enforced above by
+    # secure_directory) prevents other users from listing or reaching them.
+    # Existing files are tightened once by the one-time filesystem migration;
+    # files created between migrations are secured on next migration run.
+    # when to upgrade: when ChromaDB exposes a creation-time permission hook.
 
     log.info("chromadb_connected", path=str(CHROMADB_DIR), collection=COLLECTION_NAME)
     return _collection

@@ -246,7 +246,17 @@ async def lifespan(app: FastAPI):
     setup_logging()
     _start_parent_watchdog()
     ensure_directories()
-    migrate_managed_filesystem_permissions()
+    # Global os.umask(0o077) is intentionally NOT set here.  The engine spawns
+    # coding-agent subprocesses (Claude Code, Gemini CLI, etc.) that operate
+    # inside user Git repositories; they would inherit the restrictive umask and
+    # create repo files with wrong permissions.  Laya-managed sensitive files are
+    # secured explicitly via fchmod/atomic_write_private/open_private_file instead.
+    _perm_ok = migrate_managed_filesystem_permissions()
+    if not _perm_ok:
+        log.warning(
+            "filesystem_permissions_incomplete",
+            message="Some managed files could not be fully secured; check earlier log entries for details",
+        )
     log.info("engine_starting", host=ENGINE_HOST, port=ENGINE_PORT)
 
     # Connect to SQLite and run migrations
