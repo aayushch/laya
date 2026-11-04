@@ -50,7 +50,10 @@ fn parse_remote_url(url: &str) -> Option<(String, String, String)> {
         // ssh://[user@]host[:port]/path/to/repo.git
         let rest = rest.split_once('@').map(|(_, r)| r).unwrap_or(rest);
         let (host_port, path) = rest.split_once('/')?;
-        let host = host_port.split_once(':').map(|(h, _)| h).unwrap_or(host_port);
+        let host = host_port
+            .split_once(':')
+            .map(|(h, _)| h)
+            .unwrap_or(host_port);
         let remote_id = path.trim_start_matches('/').trim_end_matches(".git");
         (host.to_string(), remote_id.to_string())
     } else if let Some(rest) = url.strip_prefix("git@") {
@@ -62,7 +65,10 @@ fn parse_remote_url(url: &str) -> Option<(String, String, String)> {
         // https://host[:port]/org/repo.git
         let without_scheme = url.splitn(3, '/').nth(2)?;
         let (host_port, path) = without_scheme.split_once('/')?;
-        let host = host_port.split_once(':').map(|(h, _)| h).unwrap_or(host_port);
+        let host = host_port
+            .split_once(':')
+            .map(|(h, _)| h)
+            .unwrap_or(host_port);
         let remote_id = path.trim_end_matches(".git");
         (host.to_string(), remote_id.to_string())
     } else {
@@ -159,7 +165,13 @@ async fn pick_repo_folder(app: tauri::AppHandle) -> Result<RepoDetection, String
         .unwrap_or("repo")
         .to_string();
 
-    Ok(RepoDetection { path, name, platform, remote_id, host })
+    Ok(RepoDetection {
+        path,
+        name,
+        platform,
+        remote_id,
+        host,
+    })
 }
 
 /// Generic folder picker — returns the selected path as a string.
@@ -197,7 +209,9 @@ async fn pick_folder(app: tauri::AppHandle, title: Option<String>) -> Result<Str
 fn set_window_theme(app: tauri::AppHandle, theme: String) {
     #[cfg(target_os = "macos")]
     {
-        let Some(win) = app.get_webview_window("main") else { return };
+        let Some(win) = app.get_webview_window("main") else {
+            return;
+        };
         #[allow(deprecated)]
         {
             use cocoa::appkit::{NSColor, NSWindow};
@@ -212,7 +226,11 @@ fn set_window_theme(app: tauri::AppHandle, theme: String) {
             };
             unsafe {
                 let bg_color = NSColor::colorWithRed_green_blue_alpha_(
-                    nil, r / 255.0, g / 255.0, b / 255.0, 1.0,
+                    nil,
+                    r / 255.0,
+                    g / 255.0,
+                    b / 255.0,
+                    1.0,
                 );
                 ns_window.setBackgroundColor_(bg_color);
             }
@@ -254,11 +272,14 @@ fn setup_environment(app: tauri::AppHandle) {
 
     std::thread::spawn(move || {
         let emit = |step: &'static str, status: &'static str, msg: &str| {
-            let _ = app.emit("setup-progress", SetupEvent {
-                step,
-                status,
-                message: msg.to_string(),
-            });
+            let _ = app.emit(
+                "setup-progress",
+                SetupEvent {
+                    step,
+                    status,
+                    message: msg.to_string(),
+                },
+            );
         };
 
         // ── Step 1: Ensure runtimes (auto-download if missing) ─────
@@ -281,15 +302,22 @@ fn setup_environment(app: tauri::AppHandle) {
                 },
                 runtime::RuntimeProgress::Done(s) => s,
             };
-            let _ = app_for_progress.emit("setup-progress", SetupEvent {
-                step: "preflight",
-                status: "running",
-                message: msg,
-            });
+            let _ = app_for_progress.emit(
+                "setup-progress",
+                SetupEvent {
+                    step: "preflight",
+                    status: "running",
+                    message: msg,
+                },
+            );
         });
 
         if let Err(e) = ensure_result {
-            emit("preflight", "error", &format!("Runtime provisioning failed: {e}"));
+            emit(
+                "preflight",
+                "error",
+                &format!("Runtime provisioning failed: {e}"),
+            );
             return;
         }
 
@@ -304,7 +332,11 @@ fn setup_environment(app: tauri::AppHandle) {
         // managed install we may have just provisioned.
         let python_path = match sidecar::find_python() {
             Ok((path, ver)) => {
-                emit("preflight", "running", &format!("Python {} found. Checking for Node.js...", ver));
+                emit(
+                    "preflight",
+                    "running",
+                    &format!("Python {} found. Checking for Node.js...", ver),
+                );
                 path
             }
             Err(e) => {
@@ -315,10 +347,18 @@ fn setup_environment(app: tauri::AppHandle) {
 
         match n8n::find_node() {
             Ok((_, ver)) => {
-                emit("preflight", "done", &format!("Python and Node.js {} ready", ver));
+                emit(
+                    "preflight",
+                    "done",
+                    &format!("Python and Node.js {} ready", ver),
+                );
             }
             Err(e) => {
-                emit("preflight", "error", &format!("Node.js 22+ is required. {}", e));
+                emit(
+                    "preflight",
+                    "error",
+                    &format!("Node.js 22+ is required. {}", e),
+                );
                 return;
             }
         };
@@ -357,17 +397,27 @@ fn setup_environment(app: tauri::AppHandle) {
         // against pip's write of setuptools, so we keep them ordered.
         let env = sidecar::check_environment();
         if !env.deps_installed {
-            emit("deps", "running", "Installing Python packages (usually 2-5 minutes)...");
+            emit(
+                "deps",
+                "running",
+                "Installing Python packages (usually 2-5 minutes)...",
+            );
             let app_deps = app.clone();
             match sidecar::install_requirements(|line| {
-                let _ = app_deps.emit("setup-progress", SetupEvent {
-                    step: "deps",
-                    status: "running",
-                    message: line.to_string(),
-                });
+                let _ = app_deps.emit(
+                    "setup-progress",
+                    SetupEvent {
+                        step: "deps",
+                        status: "running",
+                        message: line.to_string(),
+                    },
+                );
             }) {
                 Ok(()) => emit("deps", "done", "All packages installed"),
-                Err(e) => { emit("deps", "error", &e); return; }
+                Err(e) => {
+                    emit("deps", "error", &e);
+                    return;
+                }
             }
         } else {
             emit("deps", "done", "Packages up to date");
@@ -375,17 +425,27 @@ fn setup_environment(app: tauri::AppHandle) {
 
         // ── Step 4: Install n8n ─────────────────────────────────────
         if !n8n::is_n8n_installed() {
-            emit("automation", "running", "Installing n8n (this may take several minutes)...");
+            emit(
+                "automation",
+                "running",
+                "Installing n8n (this may take several minutes)...",
+            );
             let app_n8n = app.clone();
             match n8n::install_n8n(|line| {
-                let _ = app_n8n.emit("setup-progress", SetupEvent {
-                    step: "automation",
-                    status: "running",
-                    message: line.to_string(),
-                });
+                let _ = app_n8n.emit(
+                    "setup-progress",
+                    SetupEvent {
+                        step: "automation",
+                        status: "running",
+                        message: line.to_string(),
+                    },
+                );
             }) {
                 Ok(()) => {}
-                Err(e) => { emit("automation", "error", &e); return; }
+                Err(e) => {
+                    emit("automation", "error", &e);
+                    return;
+                }
             }
         }
 
@@ -408,7 +468,11 @@ fn setup_environment(app: tauri::AppHandle) {
             }
             other => {
                 log::warn!("n8n startup: {:?}", other);
-                emit("automation", "error", &format!("Failed to start n8n: {:?}", other));
+                emit(
+                    "automation",
+                    "error",
+                    &format!("Failed to start n8n: {:?}", other),
+                );
                 return;
             }
         }
@@ -453,7 +517,11 @@ fn setup_environment(app: tauri::AppHandle) {
                     std::time::Duration::from_secs(60),
                     engine_state.as_ref().map(|s| &s.0),
                 );
-                let status = if matches!(outcome, sidecar::EngineWait::Ready) { "done" } else { "error" };
+                let status = if matches!(outcome, sidecar::EngineWait::Ready) {
+                    "done"
+                } else {
+                    "error"
+                };
                 emit("engine", status, &outcome.describe());
             }
             Err(e) => {
@@ -630,8 +698,14 @@ fn start_health_polling(tray: TrayIcon) {
             let tooltip = match client.get(format!("{}/health", engine_base)).send() {
                 Ok(resp) => {
                     if let Ok(body) = resp.json::<serde_json::Value>() {
-                        let engine = body.get("engine").and_then(|v| v.as_str()).unwrap_or("unknown");
-                        let n8n = body.get("n8n").and_then(|v| v.as_str()).unwrap_or("unknown");
+                        let engine = body
+                            .get("engine")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown");
+                        let n8n = body
+                            .get("n8n")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown");
 
                         let pending = match client
                             .get(format!("{}/cards?status=pending&limit=1", engine_base))
@@ -726,7 +800,9 @@ pub(crate) fn kill_process_on_port(port: u16, identity: &str) {
                         continue;
                     }
                     log::info!("Killing orphaned process on port {} (pid {})", port, pid);
-                    unsafe { libc::kill(pid, libc::SIGTERM); }
+                    unsafe {
+                        libc::kill(pid, libc::SIGTERM);
+                    }
                 }
             }
         }

@@ -77,11 +77,7 @@ fn n8n_bin() -> PathBuf {
 /// Well-known Node.js install directories on macOS / Linux.
 /// macOS .app bundles inherit a minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin)
 /// that does NOT include these, so we must search them explicitly.
-const NODE_SEARCH_DIRS: &[&str] = &[
-    "/usr/local/bin",
-    "/opt/homebrew/bin",
-    "/usr/bin",
-];
+const NODE_SEARCH_DIRS: &[&str] = &["/usr/local/bin", "/opt/homebrew/bin", "/usr/bin"];
 
 /// Resolve a bare command name to its absolute path using the `which` crate.
 /// The old implementation shelled out to a `which` binary, which doesn't
@@ -229,13 +225,11 @@ fn sanitize_node_cmd(cmd: &mut Command) {
 
 /// Get the directory containing the node binary (for augmenting PATH).
 fn node_bin_dir() -> Option<String> {
-    find_node()
-        .ok()
-        .and_then(|(path, _)| {
-            PathBuf::from(&path)
-                .parent()
-                .map(|p| p.to_string_lossy().to_string())
-        })
+    find_node().ok().and_then(|(path, _)| {
+        PathBuf::from(&path)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+    })
 }
 
 /// Build a PATH with the correct node directory *first*, so that
@@ -363,7 +357,13 @@ pub fn install_n8n<F: FnMut(&str)>(mut on_line: F) -> Result<(), String> {
     let venv_py = venv_python();
     let dev_venv_py = {
         let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        manifest.join("..").join("..").join("engine").join(".venv").join("bin").join("python")
+        manifest
+            .join("..")
+            .join("..")
+            .join("engine")
+            .join(".venv")
+            .join("bin")
+            .join("python")
     };
     let gyp_python = if venv_py.exists() {
         Some(venv_py)
@@ -409,8 +409,22 @@ pub fn install_n8n<F: FnMut(&str)>(mut on_line: F) -> Result<(), String> {
     // the ones n8n actually requires (sqlite3, better-sqlite3) while leaving
     // the problematic one (isolated-vm) alone.
     on_line("Building database drivers...");
-    rebuild_native_addon(&npm, &module_dir, &path, &gyp_python, "sqlite3", &mut on_line);
-    rebuild_native_addon(&npm, &module_dir, &path, &gyp_python, "better-sqlite3", &mut on_line);
+    rebuild_native_addon(
+        &npm,
+        &module_dir,
+        &path,
+        &gyp_python,
+        "sqlite3",
+        &mut on_line,
+    );
+    rebuild_native_addon(
+        &npm,
+        &module_dir,
+        &path,
+        &gyp_python,
+        "better-sqlite3",
+        &mut on_line,
+    );
 
     // Replace isolated-vm with a stub module. The --ignore-scripts flag
     // skipped its native compilation, and it's the one that fails (Xcode CLT,
@@ -514,7 +528,11 @@ fn rebuild_native_addon<F: FnMut(&str)>(
                 on_line(&format!("{} ready", package));
             } else {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                log::warn!("Failed to rebuild {} (non-fatal): {}", package, stderr.chars().take(200).collect::<String>());
+                log::warn!(
+                    "Failed to rebuild {} (non-fatal): {}",
+                    package,
+                    stderr.chars().take(200).collect::<String>()
+                );
                 on_line(&format!("{} build failed (will try prebuilt)", package));
             }
         }
@@ -553,9 +571,22 @@ fn run_npm_install<F: FnMut(&str)>(
     // warns "Unknown cli config", so it is safe to pass unconditionally.
     // See https://github.com/aayushch/laya/issues/18.
     if ignore_scripts {
-        cmd.args(["install", "--prefix", &prefix, "--ignore-scripts", "--allow-remote=all", "n8n@2.15.0"]);
+        cmd.args([
+            "install",
+            "--prefix",
+            &prefix,
+            "--ignore-scripts",
+            "--allow-remote=all",
+            "n8n@2.15.0",
+        ]);
     } else {
-        cmd.args(["install", "--prefix", &prefix, "--allow-remote=all", "n8n@2.15.0"]);
+        cmd.args([
+            "install",
+            "--prefix",
+            &prefix,
+            "--allow-remote=all",
+            "n8n@2.15.0",
+        ]);
     }
 
     cmd.env("PATH", path);
@@ -599,16 +630,27 @@ fn run_npm_install<F: FnMut(&str)>(
     let mut output_lines: Vec<String> = Vec::new();
     for line in rx {
         on_line(&line);
-        if let Some(f) = log.as_mut() { let _ = writeln!(f, "{line}"); }
+        if let Some(f) = log.as_mut() {
+            let _ = writeln!(f, "{line}");
+        }
         output_lines.push(line);
     }
 
-    if let Some(h) = stdout_thread { let _ = h.join(); }
-    if let Some(h) = stderr_thread { let _ = h.join(); }
+    if let Some(h) = stdout_thread {
+        let _ = h.join();
+    }
+    if let Some(h) = stderr_thread {
+        let _ = h.join();
+    }
 
     let status = child.wait().map_err(|e| format!("npm wait failed: {e}"))?;
     if !status.success() {
-        let tail: Vec<&str> = output_lines.iter().rev().take(5).map(|s| s.as_str()).collect();
+        let tail: Vec<&str> = output_lines
+            .iter()
+            .rev()
+            .take(5)
+            .map(|s| s.as_str())
+            .collect();
         let detail = tail.into_iter().rev().collect::<Vec<_>>().join("\n");
         return Err(format!(
             "npm install failed (exit code {}).\n{}",
@@ -713,7 +755,12 @@ fn spawn_n8n() -> Result<Child, String> {
     // macOS .app bundles have a minimal PATH, so we must ensure the
     // directory containing `node` is on PATH for the child process.
     let path = augmented_path();
-    log::info!("Spawning n8n: {} start (port {}, PATH: {})", bin.display(), N8N_PORT, path);
+    log::info!(
+        "Spawning n8n: {} start (port {}, PATH: {})",
+        bin.display(),
+        N8N_PORT,
+        path
+    );
 
     let mut cmd = Command::new(&bin);
     no_window(&mut cmd);
@@ -730,10 +777,7 @@ fn spawn_n8n() -> Result<Child, String> {
         // Bind loopback only so the editor, REST API and webhooks are not
         // reachable from the LAN.
         .env("N8N_LISTEN_ADDRESS", "127.0.0.1")
-        .env(
-            "WEBHOOK_URL",
-            format!("http://127.0.0.1:{}/", N8N_PORT),
-        )
+        .env("WEBHOOK_URL", format!("http://127.0.0.1:{}/", N8N_PORT))
         .env("N8N_SECURE_COOKIE", "false")
         .env("N8N_PUBLIC_API_DISABLED", "false")
         .env("N8N_RUNNERS_ENABLED", "false")
@@ -750,7 +794,13 @@ fn spawn_n8n() -> Result<Child, String> {
         .env("EXTERNAL_FRONTEND_HOOKS_URLS", "")
         .env("N8N_DIAGNOSTICS_CONFIG_FRONTEND", "")
         .env("N8N_DIAGNOSTICS_CONFIG_BACKEND", "")
-        .env("LAYA_ENGINE_URL", format!("http://127.0.0.1:{}", std::env::var("LAYA_ENGINE_PORT").unwrap_or_else(|_| "8420".to_string())))
+        .env(
+            "LAYA_ENGINE_URL",
+            format!(
+                "http://127.0.0.1:{}",
+                std::env::var("LAYA_ENGINE_PORT").unwrap_or_else(|_| "8420".to_string())
+            ),
+        )
         // n8n 2.x blocks $env access in workflow expressions by default
         .env("N8N_BLOCK_ENV_ACCESS_IN_NODE", "false")
         // The bundled workflows read this with `$env.LAYA_N8N_TOKEN` and send
@@ -785,13 +835,9 @@ fn spawn_n8n() -> Result<Child, String> {
 
     // Capture n8n's stdout/stderr into a size-capped, rotating log so n8n.log
     // can't grow unbounded within a long session. 10 MB × 3 backups.
-    if let Err(e) = crate::rotating_log::pipe_to_rotating(
-        &mut child,
-        &log_dir,
-        "n8n.log",
-        10 * 1024 * 1024,
-        3,
-    ) {
+    if let Err(e) =
+        crate::rotating_log::pipe_to_rotating(&mut child, &log_dir, "n8n.log", 10 * 1024 * 1024, 3)
+    {
         log::warn!("Failed to set up rotating n8n log capture: {e}");
     }
 
@@ -895,9 +941,7 @@ pub fn shutdown_n8n() {
                                 log::warn!("n8n did not exit; force-killing tree");
                                 let mut force = Command::new("taskkill");
                                 no_window(&mut force);
-                                let _ = force
-                                    .args(["/T", "/F", "/PID", &pid.to_string()])
-                                    .status();
+                                let _ = force.args(["/T", "/F", "/PID", &pid.to_string()]).status();
                                 let _ = child.wait();
                                 break;
                             }

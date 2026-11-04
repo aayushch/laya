@@ -150,8 +150,7 @@ pub enum RuntimeProgress {
 /// Detects system installs first; only downloads what is missing.
 /// Idempotent across launches via `.version` marker files.
 pub fn ensure_runtimes<F: FnMut(RuntimeProgress)>(mut on_progress: F) -> Result<(), String> {
-    fs::create_dir_all(laya_home())
-        .map_err(|e| format!("Failed to create ~/.laya: {e}"))?;
+    fs::create_dir_all(laya_home()).map_err(|e| format!("Failed to create ~/.laya: {e}"))?;
 
     let python_needed = match managed_python() {
         Some(_) => !managed_python_version_matches(),
@@ -169,8 +168,12 @@ pub fn ensure_runtimes<F: FnMut(RuntimeProgress)>(mut on_progress: F) -> Result<
     }
 
     // Emit ready status for runtimes that don't need downloading.
-    if !python_needed { on_progress(RuntimeProgress::Done("Python ready".to_string())); }
-    if !node_needed { on_progress(RuntimeProgress::Done("Node.js ready".to_string())); }
+    if !python_needed {
+        on_progress(RuntimeProgress::Done("Python ready".to_string()));
+    }
+    if !node_needed {
+        on_progress(RuntimeProgress::Done("Node.js ready".to_string()));
+    }
 
     // Download needed runtimes in parallel.  Each thread sends progress
     // events through an mpsc channel; the calling thread drains them
@@ -181,19 +184,25 @@ pub fn ensure_runtimes<F: FnMut(RuntimeProgress)>(mut on_progress: F) -> Result<
     if python_needed {
         let tx = tx.clone();
         handles.push(std::thread::spawn(move || {
-            provision_python(&mut |p| { let _ = tx.send(label_download("Python", p)); })
+            provision_python(&mut |p| {
+                let _ = tx.send(label_download("Python", p));
+            })
         }));
     }
     if node_needed {
         let tx = tx.clone();
         handles.push(std::thread::spawn(move || {
-            provision_node(&mut |p| { let _ = tx.send(label_download("Node", p)); })
+            provision_node(&mut |p| {
+                let _ = tx.send(label_download("Node", p));
+            })
         }));
     }
     if uv_needed {
         let tx = tx.clone();
         handles.push(std::thread::spawn(move || {
-            provision_uv(&mut |p| { let _ = tx.send(label_download("uv", p)); })
+            provision_uv(&mut |p| {
+                let _ = tx.send(label_download("uv", p));
+            })
         }));
     }
 
@@ -278,7 +287,9 @@ fn provision_python<F: FnMut(RuntimeProgress)>(on_progress: &mut F) -> Result<()
     )));
     download_with_retry(&url, &archive, on_progress)?;
 
-    on_progress(RuntimeProgress::Phase("Verifying Python checksum".to_string()));
+    on_progress(RuntimeProgress::Phase(
+        "Verifying Python checksum".to_string(),
+    ));
     let expected = fetch_python_sha256(&filename)?;
     verify_sha256(&archive, &expected).inspect_err(|_| {
         let _ = fs::remove_file(&archive);
@@ -308,7 +319,10 @@ fn provision_python<F: FnMut(RuntimeProgress)>(on_progress: &mut F) -> Result<()
         PYTHON_VERSION,
         python_dir().display()
     );
-    on_progress(RuntimeProgress::Done(format!("Python {} ready", PYTHON_VERSION)));
+    on_progress(RuntimeProgress::Done(format!(
+        "Python {} ready",
+        PYTHON_VERSION
+    )));
     Ok(())
 }
 
@@ -372,7 +386,9 @@ fn provision_node<F: FnMut(RuntimeProgress)>(on_progress: &mut F) -> Result<(), 
     )));
     download_with_retry(&url, &archive, on_progress)?;
 
-    on_progress(RuntimeProgress::Phase("Verifying Node.js checksum".to_string()));
+    on_progress(RuntimeProgress::Phase(
+        "Verifying Node.js checksum".to_string(),
+    ));
     let expected = fetch_node_sha256(&filename)?;
     verify_sha256(&archive, &expected).inspect_err(|_| {
         let _ = fs::remove_file(&archive);
@@ -414,7 +430,10 @@ fn provision_node<F: FnMut(RuntimeProgress)>(on_progress: &mut F) -> Result<(), 
         NODE_VERSION,
         node_dir().display()
     );
-    on_progress(RuntimeProgress::Done(format!("Node.js {} ready", NODE_VERSION)));
+    on_progress(RuntimeProgress::Done(format!(
+        "Node.js {} ready",
+        NODE_VERSION
+    )));
     Ok(())
 }
 
@@ -474,7 +493,10 @@ fn provision_uv<F: FnMut(RuntimeProgress)>(on_progress: &mut F) -> Result<(), St
         .map_err(|e| format!("Failed to create runtimes dir: {e}"))?;
     let archive = runtimes_dir().join(&filename);
 
-    on_progress(RuntimeProgress::Phase(format!("Downloading uv {}", UV_VERSION)));
+    on_progress(RuntimeProgress::Phase(format!(
+        "Downloading uv {}",
+        UV_VERSION
+    )));
     download_with_retry(&url, &archive, on_progress)?;
 
     on_progress(RuntimeProgress::Phase("Verifying uv checksum".to_string()));
@@ -507,7 +529,11 @@ fn provision_uv<F: FnMut(RuntimeProgress)>(on_progress: &mut F) -> Result<(), St
     //   - Windows zip extracts the binaries (uv.exe, uvw.exe, uvx.exe)
     //     directly at the archive root with no wrapping dir, so the staging
     //     dir itself is what we install.
-    let uv_bin = if cfg!(target_os = "windows") { "uv.exe" } else { "uv" };
+    let uv_bin = if cfg!(target_os = "windows") {
+        "uv.exe"
+    } else {
+        "uv"
+    };
     let install_src = if staging.join(uv_bin).exists() {
         staging.clone()
     } else {
@@ -523,7 +549,11 @@ fn provision_uv<F: FnMut(RuntimeProgress)>(on_progress: &mut F) -> Result<(), St
 
     let _ = fs::write(version_marker(&uv_dir()), UV_VERSION);
 
-    log::info!("Managed uv {} installed at {}", UV_VERSION, uv_dir().display());
+    log::info!(
+        "Managed uv {} installed at {}",
+        UV_VERSION,
+        uv_dir().display()
+    );
     on_progress(RuntimeProgress::Done(format!("uv {} ready", UV_VERSION)));
     Ok(())
 }
@@ -564,7 +594,10 @@ fn fetch_uv_sha256(filename: &str) -> Result<String, String> {
     );
     let text = fetch_text(&url)?;
     // The sidecar file may contain just the hash, or `<hash>  <filename>`.
-    let hash = text.trim().split_whitespace().next()
+    let hash = text
+        .trim()
+        .split_whitespace()
+        .next()
         .ok_or_else(|| format!("Empty SHA-256 file for {}", filename))?;
     if hash.len() != 64 {
         return Err(format!("Invalid SHA-256 in {}: '{}'", url, hash));
@@ -633,8 +666,7 @@ fn download_with_progress<F: FnMut(RuntimeProgress)>(
     }
     let total = resp.content_length();
 
-    let mut file = fs::File::create(dest)
-        .map_err(|e| format!("Create {}: {e}", dest.display()))?;
+    let mut file = fs::File::create(dest).map_err(|e| format!("Create {}: {e}", dest.display()))?;
 
     // Throttle progress events to roughly every 512 KB so we don't flood
     // the Tauri event channel for a 30 MB download.
@@ -671,14 +703,12 @@ fn download_with_progress<F: FnMut(RuntimeProgress)>(
 }
 
 fn verify_sha256(path: &Path, expected_hex: &str) -> Result<(), String> {
-    let mut file = fs::File::open(path)
-        .map_err(|e| format!("Open {} for hashing: {e}", path.display()))?;
+    let mut file =
+        fs::File::open(path).map_err(|e| format!("Open {} for hashing: {e}", path.display()))?;
     let mut hasher = Sha256::new();
     let mut buf = vec![0u8; 64 * 1024];
     loop {
-        let n = file
-            .read(&mut buf)
-            .map_err(|e| format!("Hash read: {e}"))?;
+        let n = file.read(&mut buf).map_err(|e| format!("Hash read: {e}"))?;
         if n == 0 {
             break;
         }
@@ -707,8 +737,8 @@ fn hex_lower(bytes: &[u8]) -> String {
 }
 
 pub(crate) fn extract_tar_gz(archive: &Path, dest: &Path) -> Result<(), String> {
-    let file = fs::File::open(archive)
-        .map_err(|e| format!("Open archive {}: {e}", archive.display()))?;
+    let file =
+        fs::File::open(archive).map_err(|e| format!("Open archive {}: {e}", archive.display()))?;
     let decoder = flate2::read::GzDecoder::new(file);
     let mut tar_archive = tar::Archive::new(decoder);
     // preserve_permissions matters for executable bits on bin/python3, bin/node.
@@ -721,8 +751,8 @@ pub(crate) fn extract_tar_gz(archive: &Path, dest: &Path) -> Result<(), String> 
 
 #[cfg(target_os = "windows")]
 fn extract_zip(archive: &Path, dest: &Path) -> Result<(), String> {
-    let file = fs::File::open(archive)
-        .map_err(|e| format!("Open zip {}: {e}", archive.display()))?;
+    let file =
+        fs::File::open(archive).map_err(|e| format!("Open zip {}: {e}", archive.display()))?;
     let mut zip = zip::ZipArchive::new(file).map_err(|e| format!("Read zip: {e}"))?;
     zip.extract(dest)
         .map_err(|e| format!("Extract zip into {}: {e}", dest.display()))?;
@@ -734,8 +764,7 @@ fn extract_zip(archive: &Path, dest: &Path) -> Result<(), String> {
 /// rather than nesting into it.
 fn install_atomically(src: &Path, dest: &Path) -> Result<(), String> {
     if dest.exists() {
-        fs::remove_dir_all(dest)
-            .map_err(|e| format!("Remove old {}: {e}", dest.display()))?;
+        fs::remove_dir_all(dest).map_err(|e| format!("Remove old {}: {e}", dest.display()))?;
     }
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent)
@@ -755,8 +784,7 @@ fn install_atomically(src: &Path, dest: &Path) -> Result<(), String> {
 /// one directory; this helper finds it without having to know the exact
 /// version-stamped name.
 fn find_only_subdir(dir: &Path) -> Result<PathBuf, String> {
-    let mut iter = fs::read_dir(dir)
-        .map_err(|e| format!("Read {}: {e}", dir.display()))?;
+    let mut iter = fs::read_dir(dir).map_err(|e| format!("Read {}: {e}", dir.display()))?;
     let first = iter
         .next()
         .ok_or_else(|| format!("Archive extracted nothing into {}", dir.display()))?
@@ -830,16 +858,34 @@ mod tests {
 
     #[test]
     fn label_download_names_the_runtime_with_total() {
-        let p = RuntimeProgress::Bytes { downloaded: 15 * 1_048_576, total: Some(28 * 1_048_576) };
-        assert_eq!(phase_text(label_download("Python", p)).as_deref(), Some("Python: 15 / 28 MB"));
+        let p = RuntimeProgress::Bytes {
+            downloaded: 15 * 1_048_576,
+            total: Some(28 * 1_048_576),
+        };
+        assert_eq!(
+            phase_text(label_download("Python", p)).as_deref(),
+            Some("Python: 15 / 28 MB")
+        );
     }
 
     #[test]
     fn label_download_without_known_total() {
-        let unknown = RuntimeProgress::Bytes { downloaded: 5 * 1_048_576, total: None };
-        assert_eq!(phase_text(label_download("Node", unknown)).as_deref(), Some("Node: 5 MB"));
-        let zero = RuntimeProgress::Bytes { downloaded: 3 * 1_048_576, total: Some(0) };
-        assert_eq!(phase_text(label_download("uv", zero)).as_deref(), Some("uv: 3 MB"));
+        let unknown = RuntimeProgress::Bytes {
+            downloaded: 5 * 1_048_576,
+            total: None,
+        };
+        assert_eq!(
+            phase_text(label_download("Node", unknown)).as_deref(),
+            Some("Node: 5 MB")
+        );
+        let zero = RuntimeProgress::Bytes {
+            downloaded: 3 * 1_048_576,
+            total: Some(0),
+        };
+        assert_eq!(
+            phase_text(label_download("uv", zero)).as_deref(),
+            Some("uv: 3 MB")
+        );
     }
 
     #[test]
