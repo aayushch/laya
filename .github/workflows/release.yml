@@ -69,6 +69,18 @@ jobs:
           New-Item -ItemType Directory -Force -Path $dest | Out-Null
           Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" `
                             -OutFile "$dest/vc_redist.x64.exe"
+          $installer = "$dest/vc_redist.x64.exe"
+          $file = Get-Item $installer
+          if ($file.Length -eq 0) { throw "vc_redist.x64.exe downloaded but is empty" }
+          $sig = Get-AuthenticodeSignature -FilePath $installer
+          if ($sig.Status -ne 'Valid') { throw "Invalid Authenticode signature: $($sig.Status)" }
+          if ($null -eq $sig.SignerCertificate) { throw "Authenticode signer certificate is null" }
+          $publisher = $sig.SignerCertificate.GetNameInfo(
+              [System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
+          if ($publisher -ne 'Microsoft Corporation') {
+              throw "Unexpected VC++ Redistributable publisher: $publisher"
+          }
+          Write-Host "vc_redist.x64.exe verified — publisher: $publisher"
 
       - name: Set version from tag
         shell: bash
