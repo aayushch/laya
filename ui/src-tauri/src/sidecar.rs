@@ -58,7 +58,6 @@ fn venv_python() -> PathBuf {
     }
 }
 
-
 /// Engine source directory (dev: repo checkout, prod: bundled in .app).
 fn engine_source_dir() -> PathBuf {
     if cfg!(dev) {
@@ -73,7 +72,7 @@ fn engine_source_dir() -> PathBuf {
         // macOS .app bundle: Contents/MacOS/ -> Contents/Resources/resources/engine
         // (Tauri nests bundle resources under a "resources" subdirectory)
         let mac_resources = exe_dir
-            .parent()                   // Contents/
+            .parent() // Contents/
             .map(|p| p.join("Resources").join("resources").join("engine"))
             .unwrap_or_else(|| exe_dir.join("engine"));
         if mac_resources.exists() {
@@ -82,7 +81,7 @@ fn engine_source_dir() -> PathBuf {
         // Linux AppImage / .deb: exe is at usr/bin/, resources at
         // usr/lib/<productName>/resources/engine/
         let linux_resources = exe_dir
-            .parent()                   // usr/
+            .parent() // usr/
             .map(|p| p.join("lib").join("Laya").join("resources").join("engine"))
             .unwrap_or_else(|| exe_dir.join("engine"));
         if linux_resources.exists() {
@@ -250,7 +249,12 @@ fn parse_probe_output(stdout: &str) -> Option<PythonProbe> {
     if major != 3 {
         return None;
     }
-    Some(PythonProbe { minor, version, platform, executable: PathBuf::from(executable) })
+    Some(PythonProbe {
+        minor,
+        version,
+        platform,
+        executable: PathBuf::from(executable),
+    })
 }
 
 /// Run `program [prefix_args] -c PROBE_SCRIPT` and parse the result.
@@ -270,7 +274,10 @@ fn probe_python(program: &Path, prefix_args: &[&str]) -> Option<PythonProbe> {
 /// `max_minor` is None for the managed runtime (pinned by us; no ceiling).
 fn check_python_supported(probe: &PythonProbe, max_minor: Option<u32>) -> Result<(), String> {
     if probe.minor < MIN_PYTHON_MINOR {
-        return Err(format!("Python {} is older than 3.{}", probe.version, MIN_PYTHON_MINOR));
+        return Err(format!(
+            "Python {} is older than 3.{}",
+            probe.version, MIN_PYTHON_MINOR
+        ));
     }
     if let Some(max) = max_minor {
         if probe.minor > max {
@@ -374,7 +381,9 @@ pub fn find_python_system() -> Result<(PathBuf, String), String> {
                 let probe = probe_python(&program, args)?;
                 Some((program, probe))
             });
-            let Some((program, probe)) = probed else { continue };
+            let Some((program, probe)) = probed else {
+                continue;
+            };
             match check_python_supported(probe, Some(max)) {
                 Ok(()) => {
                     // For the `py` launcher, the command isn't the interpreter:
@@ -382,16 +391,28 @@ pub fn find_python_system() -> Result<(PathBuf, String), String> {
                     // default (newest) version. Use the real sys.executable.
                     // Everywhere else keep the resolved command path, exactly
                     // as before, so macOS/Linux pick the same path they always did.
-                    let path = if args.is_empty() { program.clone() } else { probe.executable.clone() };
+                    let path = if args.is_empty() {
+                        program.clone()
+                    } else {
+                        probe.executable.clone()
+                    };
                     log::info!(
                         "Using system Python {} ({}) at {} (via {})",
-                        probe.version, probe.platform, path.display(), name
+                        probe.version,
+                        probe.platform,
+                        path.display(),
+                        name
                     );
                     return Ok((path, probe.version.clone()));
                 }
                 Err(reason) => {
                     if max == MAX_PYTHON_MINOR {
-                        log::info!("Skipping {} (via {}): {}", probe.executable.display(), name, reason);
+                        log::info!(
+                            "Skipping {} (via {}): {}",
+                            probe.executable.display(),
+                            name,
+                            reason
+                        );
                         let entry = format!("{} ({})", probe.executable.display(), reason);
                         if !rejected.contains(&entry) {
                             rejected.push(entry);
@@ -402,7 +423,8 @@ pub fn find_python_system() -> Result<(PathBuf, String), String> {
         }
     }
 
-    let mut msg = format!(
+    let mut msg =
+        format!(
         "No compatible Python found (need Python 3.{MIN_PYTHON_MINOR}–3.{MAX_PYTHON_MINOR}{}). \
          Laya normally downloads its own Python automatically.",
         if cfg!(target_os = "windows") { ", 64-bit x86 build" } else { "" }
@@ -451,12 +473,19 @@ fn venv_is_usable() -> bool {
         Some(probe) => match check_python_supported(&probe, Some(MAX_PYTHON_MINOR)) {
             Ok(()) => true,
             Err(reason) => {
-                log::warn!("Existing venv at {} is unusable: {}", venv_dir().display(), reason);
+                log::warn!(
+                    "Existing venv at {} is unusable: {}",
+                    venv_dir().display(),
+                    reason
+                );
                 false
             }
         },
         None => {
-            log::warn!("Existing venv interpreter {} failed to run", python.display());
+            log::warn!(
+                "Existing venv interpreter {} failed to run",
+                python.display()
+            );
             false
         }
     }
@@ -468,7 +497,11 @@ fn venv_is_usable() -> bool {
 /// Any existing venv is removed first, together with the deps hash.
 pub fn create_venv(python: &PathBuf) -> Result<(), String> {
     let venv = venv_dir();
-    log::info!("Creating venv at {} using {}", venv.display(), python.display());
+    log::info!(
+        "Creating venv at {} using {}",
+        venv.display(),
+        python.display()
+    );
 
     crate::fs_private::mkdir_private(&laya_home())
         .map_err(|e| format!("Failed to create ~/.laya: {e}"))?;
@@ -497,7 +530,12 @@ pub fn create_venv(python: &PathBuf) -> Result<(), String> {
         log::info!("Using uv for venv creation: {}", uv.display());
         let mut cmd = Command::new(&uv);
         no_window(&mut cmd);
-        cmd.args(["venv", &venv.to_string_lossy(), "--python", &python.to_string_lossy()]);
+        cmd.args([
+            "venv",
+            &venv.to_string_lossy(),
+            "--python",
+            &python.to_string_lossy(),
+        ]);
         sanitize_python_cmd(&mut cmd);
 
         let output = cmd.output();
@@ -519,7 +557,8 @@ pub fn create_venv(python: &PathBuf) -> Result<(), String> {
     cmd.args(["-m", "venv", &venv.to_string_lossy()]);
     sanitize_python_cmd(&mut cmd);
 
-    let output = cmd.output()
+    let output = cmd
+        .output()
         .map_err(|e| format!("Failed to run python -m venv: {e}"))?;
 
     if !output.status.success() {
@@ -599,12 +638,17 @@ enum ReqKind {
 /// Arguments for `uv pip install` of one requirements file into `python`'s venv.
 fn uv_install_args(req: &Path, python: &Path, kind: ReqKind) -> Vec<String> {
     let mut args: Vec<String> = vec![
-        "pip".into(), "install".into(),
-        "-r".into(), req.to_string_lossy().into_owned(),
-        "--python".into(), python.to_string_lossy().into_owned(),
-        "--only-binary".into(), ":all:".into(),
+        "pip".into(),
+        "install".into(),
+        "-r".into(),
+        req.to_string_lossy().into_owned(),
+        "--python".into(),
+        python.to_string_lossy().into_owned(),
+        "--only-binary".into(),
+        ":all:".into(),
         // Keep the streamed output / log free of ANSI escape codes.
-        "--color".into(), "never".into(),
+        "--color".into(),
+        "never".into(),
     ];
     if kind == ReqKind::Locked {
         // Refuse any package that is not pinned with a matching hash, so the
@@ -619,10 +663,15 @@ fn pip_install_args(req: &Path, kind: ReqKind) -> Vec<String> {
     // No --log: run_install_cmd tees the streamed stdout/stderr to the log
     // file, so a pip --log here would be a second writer racing the same file.
     let mut args: Vec<String> = vec![
-        "-m".into(), "pip".into(),
-        "install".into(), "-r".into(), req.to_string_lossy().into_owned(),
-        "--only-binary".into(), ":all:".into(),
-        "--progress-bar".into(), "off".into(),
+        "-m".into(),
+        "pip".into(),
+        "install".into(),
+        "-r".into(),
+        req.to_string_lossy().into_owned(),
+        "--only-binary".into(),
+        ":all:".into(),
+        "--progress-bar".into(),
+        "off".into(),
     ];
     if kind == ReqKind::Locked {
         args.push("--require-hashes".into());
@@ -686,7 +735,11 @@ fn install_locked_or_ranges(
             }
         }
     } else {
-        log::warn!("{} not found, resolving {} instead", lock.display(), req.display());
+        log::warn!(
+            "{} not found, resolving {} instead",
+            lock.display(),
+            req.display()
+        );
     }
     install(req, ReqKind::Ranges, fallback_log_name)
 }
@@ -707,7 +760,9 @@ fn pip_install_locked_or_ranges<F: FnMut(&str)>(
         log_name,
         fallback_log_name,
         &mut |line| (*on_line.borrow_mut())(line),
-        &mut |file, kind, log| pip_install(file, kind, log, &mut |line| (*on_line.borrow_mut())(line)),
+        &mut |file, kind, log| {
+            pip_install(file, kind, log, &mut |line| (*on_line.borrow_mut())(line))
+        },
     )
 }
 
@@ -728,7 +783,11 @@ fn uv_pip_install<F: FnMut(&str)>(
     crate::fs_private::mkdir_private(&log_dir).ok();
     let log_path = log_dir.join(log_name);
 
-    log::info!("Installing from {} via uv (log: {})", req.display(), log_path.display());
+    log::info!(
+        "Installing from {} via uv (log: {})",
+        req.display(),
+        log_path.display()
+    );
 
     let mut cmd = Command::new(uv);
     no_window(&mut cmd);
@@ -756,7 +815,11 @@ fn legacy_pip_install<F: FnMut(&str)>(
     crate::fs_private::mkdir_private(&log_dir).ok();
     let log_path = log_dir.join(log_name);
 
-    log::info!("Installing from {} via pip (log: {})", req.display(), log_path.display());
+    log::info!(
+        "Installing from {} via pip (log: {})",
+        req.display(),
+        log_path.display()
+    );
 
     let mut cmd = Command::new(&python);
     no_window(&mut cmd);
@@ -775,7 +838,8 @@ fn run_install_cmd<F: FnMut(&str)>(
     on_line: &mut F,
     label: &str,
 ) -> Result<bool, String> {
-    let mut child = cmd.spawn()
+    let mut child = cmd
+        .spawn()
         .map_err(|e| format!("Failed to start {label}: {e}"))?;
 
     // Tee streamed output to the log file. uv (unlike pip) has no --log flag,
@@ -790,7 +854,9 @@ fn run_install_cmd<F: FnMut(&str)>(
         for line in reader.lines() {
             if let Ok(line) = line {
                 on_line(&line);
-                if let Some(f) = log.as_mut() { let _ = writeln!(f, "{line}"); }
+                if let Some(f) = log.as_mut() {
+                    let _ = writeln!(f, "{line}");
+                }
                 output_lines.push(line);
             }
         }
@@ -799,16 +865,25 @@ fn run_install_cmd<F: FnMut(&str)>(
             for line in reader.lines() {
                 if let Ok(line) = line {
                     on_line(&line);
-                    if let Some(f) = log.as_mut() { let _ = writeln!(f, "{line}"); }
+                    if let Some(f) = log.as_mut() {
+                        let _ = writeln!(f, "{line}");
+                    }
                     output_lines.push(line);
                 }
             }
         }
     }
 
-    let status = child.wait().map_err(|e| format!("{label} wait failed: {e}"))?;
+    let status = child
+        .wait()
+        .map_err(|e| format!("{label} wait failed: {e}"))?;
     if !status.success() {
-        let tail: Vec<&str> = output_lines.iter().rev().take(5).map(|s| s.as_str()).collect();
+        let tail: Vec<&str> = output_lines
+            .iter()
+            .rev()
+            .take(5)
+            .map(|s| s.as_str())
+            .collect();
         let detail = tail.into_iter().rev().collect::<Vec<_>>().join("\n");
         let msg = format!(
             "{label} failed (exit code {}).\nSee full log: {}\n\nLast output:\n{}",
@@ -1024,7 +1099,10 @@ pub enum EngineWait {
     /// the exit status description (`exit status: 1`, `signal: 9`) and
     /// `last_line` is the final non-empty line it wrote to stdout/stderr —
     /// for a Python crash that is the `SomeError: ...` line of the traceback.
-    Exited { status: String, last_line: Option<String> },
+    Exited {
+        status: String,
+        last_line: Option<String>,
+    },
     TimedOut,
 }
 
@@ -1088,7 +1166,11 @@ fn engine_log_last_line() -> Option<String> {
 /// line is often noise. Prefer the last line that reads as an exception or an
 /// `ERROR`/`CRITICAL` log line, and fall back to the last non-empty line.
 fn pick_error_line(content: &str) -> Option<&str> {
-    let lines: Vec<&str> = content.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let lines: Vec<&str> = content
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
     lines
         .iter()
         .rev()
@@ -1104,7 +1186,9 @@ fn looks_like_error_line(line: &str) -> bool {
     // `pkg.mod.NameError: detail` or a bare `KeyboardInterrupt`.
     let head = line.split(':').next().unwrap_or("");
     let is_dotted_ident = !head.is_empty()
-        && head.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.');
+        && head
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.');
     is_dotted_ident
         && ["Error", "Exception", "Exit", "Interrupt"]
             .iter()
@@ -1157,7 +1241,9 @@ pub fn wait_for_engine(
 
 /// Non-blocking check that the shared engine child exists and has not exited.
 pub fn child_is_running(engine: &std::sync::Mutex<Option<Child>>) -> bool {
-    let Ok(mut guard) = engine.try_lock() else { return false };
+    let Ok(mut guard) = engine.try_lock() else {
+        return false;
+    };
     match guard.as_mut() {
         Some(child) => matches!(child.try_wait(), Ok(None)),
         None => false,
@@ -1199,7 +1285,10 @@ mod tests {
             pip_install_args(req, ReqKind::Locked),
             pip_install_args(req, ReqKind::Ranges),
         ] {
-            let i = args.iter().position(|a| a == "--only-binary").expect("wheels only");
+            let i = args
+                .iter()
+                .position(|a| a == "--only-binary")
+                .expect("wheels only");
             assert_eq!(args[i + 1], ":all:");
         }
     }
@@ -1210,7 +1299,11 @@ mod tests {
         lock_exists: bool,
         lock_result: Result<bool, String>,
         ranges_result: Result<bool, String>,
-    ) -> (Result<bool, String>, Vec<(String, ReqKind, String)>, Vec<String>) {
+    ) -> (
+        Result<bool, String>,
+        Vec<(String, ReqKind, String)>,
+        Vec<String>,
+    ) {
         let dir = std::env::temp_dir().join(format!(
             "laya-lock-fallback-{}-{:?}",
             std::process::id(),
@@ -1251,7 +1344,11 @@ mod tests {
         assert_eq!(result, Ok(true));
         assert_eq!(
             attempts,
-            vec![("requirements.lock".to_string(), ReqKind::Locked, "pip-install.log".to_string())]
+            vec![(
+                "requirements.lock".to_string(),
+                ReqKind::Locked,
+                "pip-install.log".to_string()
+            )]
         );
         assert!(notes.is_empty());
     }
@@ -1265,9 +1362,17 @@ mod tests {
         assert_eq!(
             attempts,
             vec![
-                ("requirements.lock".to_string(), ReqKind::Locked, "pip-install.log".to_string()),
+                (
+                    "requirements.lock".to_string(),
+                    ReqKind::Locked,
+                    "pip-install.log".to_string()
+                ),
                 // A separate log keeps the locked attempt's output for diagnosis.
-                ("requirements.txt".to_string(), ReqKind::Ranges, "pip-install-fallback.log".to_string()),
+                (
+                    "requirements.txt".to_string(),
+                    ReqKind::Ranges,
+                    "pip-install-fallback.log".to_string()
+                ),
             ]
         );
         assert_eq!(notes.len(), 1);
@@ -1328,13 +1433,22 @@ mod tests {
         assert_eq!(p.minor, 12);
         assert_eq!(p.version, "3.12.13");
         assert_eq!(p.platform, "win-amd64");
-        assert_eq!(p.executable, PathBuf::from("C:\\Program Files\\Python312\\python.exe"));
+        assert_eq!(
+            p.executable,
+            PathBuf::from("C:\\Program Files\\Python312\\python.exe")
+        );
     }
 
     #[test]
     fn parse_probe_output_rejects_non_python3_and_garbage() {
-        assert_eq!(parse_probe_output("2\n7\n2.7.18\nlinux-x86_64\n/usr/bin/python\n"), None);
-        assert_eq!(parse_probe_output("Python was not found; run without arguments...\n"), None);
+        assert_eq!(
+            parse_probe_output("2\n7\n2.7.18\nlinux-x86_64\n/usr/bin/python\n"),
+            None
+        );
+        assert_eq!(
+            parse_probe_output("Python was not found; run without arguments...\n"),
+            None
+        );
         assert_eq!(parse_probe_output("3\n12\n3.12.1\nwin-amd64\n"), None); // truncated
     }
 
@@ -1342,15 +1456,23 @@ mod tests {
     /// wheels-only install then failed.
     #[test]
     fn rejects_issue_14_interpreter() {
-        let err = check_python_supported(&probe(15, "3.15.0rc2", "win-arm64"), Some(MAX_PYTHON_MINOR))
-            .unwrap_err();
+        let err =
+            check_python_supported(&probe(15, "3.15.0rc2", "win-arm64"), Some(MAX_PYTHON_MINOR))
+                .unwrap_err();
         assert!(err.contains("newer than the latest tested"), "{err}");
     }
 
     #[test]
     fn rejects_too_new_system_python_even_on_supported_platform() {
-        assert!(check_python_supported(&probe(15, "3.15.0", "win-amd64"), Some(MAX_PYTHON_MINOR)).is_err());
-        assert!(check_python_supported(&probe(15, "3.15.0", "macosx-11.0-arm64"), Some(MAX_PYTHON_MINOR)).is_err());
+        assert!(
+            check_python_supported(&probe(15, "3.15.0", "win-amd64"), Some(MAX_PYTHON_MINOR))
+                .is_err()
+        );
+        assert!(check_python_supported(
+            &probe(15, "3.15.0", "macosx-11.0-arm64"),
+            Some(MAX_PYTHON_MINOR)
+        )
+        .is_err());
     }
 
     /// No regression for existing installs: 3.14 (e.g. Homebrew on Apple
@@ -1366,7 +1488,8 @@ mod tests {
     #[test]
     fn rejects_platforms_without_wheels_even_at_supported_version() {
         for plat in ["win-arm64", "win32"] {
-            let err = check_python_supported(&probe(12, "3.12.13", plat), Some(MAX_PYTHON_MINOR)).unwrap_err();
+            let err = check_python_supported(&probe(12, "3.12.13", plat), Some(MAX_PYTHON_MINOR))
+                .unwrap_err();
             assert!(err.contains(plat), "{err}");
         }
     }
@@ -1382,7 +1505,11 @@ mod tests {
             (12, "linux-x86_64"),
         ] {
             let p = probe(minor, &format!("3.{minor}.0"), plat);
-            assert_eq!(check_python_supported(&p, Some(MAX_PYTHON_MINOR)), Ok(()), "{plat} 3.{minor}");
+            assert_eq!(
+                check_python_supported(&p, Some(MAX_PYTHON_MINOR)),
+                Ok(()),
+                "{plat} 3.{minor}"
+            );
         }
     }
 
@@ -1395,11 +1522,18 @@ mod tests {
     /// managed runtime would be rebuilt on every launch if the pin exceeded it.
     #[test]
     fn managed_python_pin_is_within_supported_range() {
-        let minor: u32 = crate::runtime::PYTHON_VERSION.split('.').nth(1).unwrap().parse().unwrap();
+        let minor: u32 = crate::runtime::PYTHON_VERSION
+            .split('.')
+            .nth(1)
+            .unwrap()
+            .parse()
+            .unwrap();
         assert!(
             (MIN_PYTHON_MINOR..=MAX_PYTHON_MINOR).contains(&minor),
             "runtime::PYTHON_VERSION {} is outside 3.{}–3.{}",
-            crate::runtime::PYTHON_VERSION, MIN_PYTHON_MINOR, MAX_PYTHON_MINOR
+            crate::runtime::PYTHON_VERSION,
+            MIN_PYTHON_MINOR,
+            MAX_PYTHON_MINOR
         );
     }
 
@@ -1407,7 +1541,10 @@ mod tests {
     /// platform check still applies.
     #[test]
     fn no_ceiling_mode_still_checks_platform() {
-        assert_eq!(check_python_supported(&probe(15, "3.15.0", "win-amd64"), None), Ok(()));
+        assert_eq!(
+            check_python_supported(&probe(15, "3.15.0", "win-amd64"), None),
+            Ok(())
+        );
         assert!(check_python_supported(&probe(12, "3.12.13", "win-arm64"), None).is_err());
     }
 

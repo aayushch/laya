@@ -109,7 +109,9 @@ pub fn pipe_to_rotating(
     max_bytes: u64,
     backups: usize,
 ) -> io::Result<()> {
-    let writer = Arc::new(Mutex::new(RotatingWriter::open(dir, base, max_bytes, backups)?));
+    let writer = Arc::new(Mutex::new(RotatingWriter::open(
+        dir, base, max_bytes, backups,
+    )?));
 
     if let Some(stdout) = child.stdout.take() {
         spawn_copy(stdout, writer.clone());
