@@ -391,119 +391,450 @@ def secure_sqlite_files(db_path: Path | str) -> None:
             secure_file(sidecar, FILE_MODE)
 
 
+# Stable version identifier for the one-time permission migration.
+# Changing this value triggers a re-run on the next startup.
+MIGRATION_VERSION = "filesystem_permissions_v1"
+
+
+def resolve_app_root(laya_home: Path) -> Path:
+    """Follow an intentional root-level symlink to its real target directory.
+
+    Supports relocating application data with a symlink such as:
+        ~/.laya -> /mnt/storage/laya-data
+
+    Rules:
+    - A real directory is returned unchanged.
+    - A single-level symlink to a real directory is followed and the resolved
+      path is returned as the trusted application root.
+    - A symlink chain (symlink -> symlink) is rejected — only one hop is allowed.
+    - A symlink pointing to a non-directory is rejected.
+    - A non-existent target is returned as-is (it will be created on first use).
+    """
+    if not os.path.islink(str(laya_home)):
+        return laya_home
+
+    raw = os.readlink(str(laya_home))
+    target = Path(raw) if Path(raw).is_absolute() else (laya_home.parent / raw)
+    target = Path(os.path.abspath(target))
+
+    if os.path.islink(str(target)):
+        raise PermissionError(
+            f"Symlink chain not allowed at application root: {laya_home} -> {target}"
+        )
+
+    if target.exists() and not target.is_dir():
+        raise PermissionError(
+            f"Application root symlink target is not a directory: {target}"
+        )
+
+    return target
+
+
+_MARKER_MAX_BYTES = 4096
+
+
+def _read_marker_raw(marker: Path) -> bytes | None:
+    """Open marker and its parent with O_NOFOLLOW, return raw bytes or None on any failure.
+
+    Returns None if the marker or its parent directory is a symlink, missing,
+    oversized, or not a regular file.  Caller is responsible for JSON parsing.
+    """
+    if sys.platform == "win32":
+        if not marker.exists() or is_symlink(str(marker)):
+            return None
+        try:
+            return marker.read_bytes()
+        except Exception:
+            return None
+
+    O_NF = getattr(os, "O_NOFOLLOW", 0)
+    O_DIR = getattr(os, "O_DIRECTORY", 0)
+    data_dir = marker.parent
+
+    dir_fd: int | None = None
+    marker_fd: int | None = None
+    try:
+        try:
+            dir_fd = os.open(str(data_dir), os.O_RDONLY | O_DIR | O_NF)
+        except OSError:
+            return None
+
+        try:
+            if _DIR_FD_SUPPORTED:
+                marker_fd = os.open(marker.name, os.O_RDONLY | O_NF, dir_fd=dir_fd)
+            else:
+                marker_fd = os.open(str(marker), os.O_RDONLY | O_NF)
+        except OSError:
+            return None
+
+        st = os.fstat(marker_fd)
+        if not stat.S_ISREG(st.st_mode) or st.st_size > _MARKER_MAX_BYTES:
+            return None
+
+        return os.read(marker_fd, _MARKER_MAX_BYTES)
+    finally:
+        for _fd in (marker_fd, dir_fd):
+            if _fd is not None:
+                try:
+                    os.close(_fd)
+                except OSError:
+                    pass
+
+
+def _read_migration_status(marker: Path, version: str) -> str:
+    """Return the migration status recorded in *marker* for *version*.
+
+    Returns one of: ``"completed"``, ``"incomplete"``, ``"in_progress"``,
+    ``"not_started"``, or ``"invalid"``.  A marker without an explicit
+    ``status`` key is treated as ``"completed"`` for backward compatibility
+    with the earlier single-state format.
+    """
+    raw = _read_marker_raw(marker)
+    if raw is None:
+        return "not_started"
+    try:
+        data = json.loads(raw.decode("utf-8"))
+        if data.get("version") != version:
+            return "invalid"
+        # Legacy markers (no "status" key) were written only on full success.
+        return data.get("status", "completed")
+    except Exception:
+        return "invalid"
+
+
+def _read_migration_marker(marker: Path, version: str) -> bool:
+    """Return True iff the marker records successful completion of *version*.
+
+    On POSIX, opens the parent data directory then the marker file both with
+    O_NOFOLLOW so a symlink inserted between check and open is rejected rather
+    than followed.  Verifies the descriptor is a regular file, checks the
+    size, reads the bytes, and validates the JSON.
+
+    A symlinked, oversized, non-regular-file, or malformed marker never causes
+    migration to be skipped.
+    """
+    return _read_migration_status(marker, version) == "completed"
+
+
+def _write_migration_status(marker: Path, version: str, status: str, failed_count: int = 0) -> None:
+    """Atomically write a versioned migration status record to *marker*."""
+    payload: dict = {"version": version, "status": status}
+    if failed_count:
+        payload["failed_count"] = failed_count
+    write_private_json(marker, payload)
+
+
 def migrate_managed_filesystem_permissions(
     laya_home: Path | None = None,
     force: bool = False,
 ) -> bool:
-    """Enforce restrictive permissions across all Laya-managed files and directories.
+    """One-time upgrade: enforce restrictive permissions across Laya-managed files.
 
-    Secures directories to 0700 and sensitive files to 0600.
-    Tracks completion via a marker file in the data directory so large document
-    trees are not rescanned unnecessarily on every startup.
-    Returns True if all operations succeeded, False otherwise.
+    Secures directories to 0700 and sensitive files to 0600.  The marker file
+    ``data/.permissions_migrated`` records the migration status so the deep
+    scan does not repeat on normal startups.
+
+    Migration states:
+      - ``completed``  — fully succeeded; skip on next startup.
+      - ``incomplete`` — some chmods failed (NFS, bind-mount); log warning,
+                         skip deep scan, retry with ``force=True``.
+      - ``in_progress``— previous run was interrupted; require repair.
+      - ``not_started``— first run; execute full migration.
+
+    All chmod operations use ``O_NOFOLLOW + os.fchmod`` so a symlink injected
+    between path discovery and permission enforcement is rejected rather than
+    followed.  Symlinked paths inside the managed tree are silently skipped.
+
+    Supports an intentionally symlinked application root such as
+    ``~/.laya -> /mnt/storage/laya-data`` via :func:`resolve_app_root`.
+
+    Returns True if the migration is complete or was skipped successfully,
+    False if it remains incomplete.
     """
+    # POSIX-specific migration: Windows lacks O_NOFOLLOW and ACL management
+    # is outside the scope of this migration.  Functionality is preserved.
+    if sys.platform == "win32":
+        log.info(
+            "permission_migration_skipped_windows",
+            message="POSIX filesystem permission migration is not applicable on Windows.",
+        )
+        return True
+
     if laya_home is None:
         from laya.config import LAYA_HOME
         home = LAYA_HOME
     else:
         home = Path(laya_home)
 
+    # Follow an intentional root-level symlink (e.g. ~/.laya -> /mnt/storage).
+    # Security failures here (chains, non-directory targets) abort the migration.
+    try:
+        home = resolve_app_root(home)
+    except (PermissionError, OSError) as e:
+        log.warning("migration_root_resolution_failed", error=str(e))
+        return False
+
     data_dir = home / "data"
     logs_dir = home / "logs"
     docs_dir = data_dir / "documents"
     chroma_dir = data_dir / "chromadb"
     tmp_dir = home / "tmp"
+    n8n_dir = home / "n8n"
     marker = data_dir / ".permissions_migrated"
 
+    O_NF = getattr(os, "O_NOFOLLOW", 0)
+    O_DIR = getattr(os, "O_DIRECTORY", 0)
+
+    # --- Status check (before any filesystem mutation) ---
+    run_deep_scan = True
+    if not force:
+        status = _read_migration_status(marker, MIGRATION_VERSION)
+        if status == "completed":
+            return True
+        if status == "in_progress":
+            log.warning(
+                "permission_migration_interrupted",
+                message="A previous migration was interrupted mid-run. "
+                        "Use force=True to re-run the full migration.",
+            )
+            return False
+        if status == "incomplete":
+            log.warning(
+                "permission_migration_incomplete_previous",
+                message="A previous migration completed with errors; "
+                        "skipping deep scan. Use force=True to retry everything.",
+            )
+            run_deep_scan = False
+        # else: "not_started" or "invalid" — run full migration
+
+    # Ensure the data directory exists with restricted permissions before
+    # writing the in_progress marker.
+    try:
+        secure_directory(data_dir, DIR_MODE, laya_home=home)
+    except (PermissionError, OSError) as e:
+        log.warning("migration_data_dir_init_failed", path=str(data_dir), error=str(e))
+        return False
+
+    # Mark as in_progress so a crash mid-migration is detectable next startup.
+    try:
+        _write_migration_status(marker, MIGRATION_VERSION, "in_progress")
+    except OSError as e:
+        log.warning("migrate_marker_in_progress_write_failed", error=str(e))
+        # Non-fatal: proceed without the in_progress sentinel.
+
     all_succeeded = True
+    failures: list[dict] = []
 
-    # 1. Enforce top-level directory permissions
-    for d in (home, data_dir, logs_dir, docs_dir):
+    # --- fd-based chmod helpers (close lstat→chmod TOCTOU window) ---
+
+    def _try_fchmod_dir(d: Path) -> None:
+        nonlocal all_succeeded
+        # O_DIRECTORY rejects regular files; O_NOFOLLOW rejects symlinks.
         try:
-            secure_directory(d, DIR_MODE, laya_home=home)
+            fd = os.open(str(d), os.O_RDONLY | O_DIR | O_NF)
+        except FileNotFoundError:
+            return
         except OSError as e:
-            log.warning("migrate_directory_failed", path=str(d), error=str(e))
+            if e.errno in (_errno.ELOOP, _errno.ENOTDIR):
+                return  # symlink or non-directory — skip
+            failures.append({"path": str(d), "error": str(e), "kind": "directory"})
             all_succeeded = False
+            return
+        try:
+            st = os.fstat(fd)
+            if stat.S_ISDIR(st.st_mode) and stat.S_IMODE(st.st_mode) != DIR_MODE:
+                os.fchmod(fd, DIR_MODE)
+        except OSError as e:
+            failures.append({"path": str(d), "error": str(e), "kind": "directory"})
+            all_succeeded = False
+        finally:
+            os.close(fd)
 
-    # 2. Enforce known configuration file permissions
-    config_files = [
+    def _try_fchmod_file(f: Path) -> None:
+        nonlocal all_succeeded
+        # O_NOFOLLOW rejects symlinks as the final path component.
+        try:
+            fd = os.open(str(f), os.O_RDONLY | O_NF)
+        except FileNotFoundError:
+            return
+        except OSError as e:
+            if e.errno == _errno.ELOOP:
+                return  # symlink — skip
+            failures.append({"path": str(f), "error": str(e), "kind": "file"})
+            all_succeeded = False
+            return
+        try:
+            st = os.fstat(fd)
+            if stat.S_ISREG(st.st_mode) and stat.S_IMODE(st.st_mode) != FILE_MODE:
+                os.fchmod(fd, FILE_MODE)
+        except OSError as e:
+            failures.append({"path": str(f), "error": str(e), "kind": "file"})
+            all_succeeded = False
+        finally:
+            os.close(fd)
+
+    def _secure_tree_fd(parent_fd: int, parent_path: Path) -> None:
+        """Recursively secure *parent_fd* using descriptor-relative opens.
+
+        Every child is opened relative to the already-validated parent
+        descriptor, so no path component is traversed without being checked.
+        Symlinks are rejected by O_NOFOLLOW rather than followed.
+        """
+        nonlocal all_succeeded
+        try:
+            entries = os.listdir(parent_fd)
+        except OSError as e:
+            failures.append({"path": str(parent_path), "error": str(e), "kind": "listdir"})
+            all_succeeded = False
+            return
+
+        for name in entries:
+            child_path = parent_path / name
+
+            # Try to open as a directory first.
+            # ENOTDIR → regular file; ELOOP → symlink (skip).
+            try:
+                if _DIR_FD_SUPPORTED:
+                    child_fd = os.open(name, os.O_RDONLY | O_DIR | O_NF, dir_fd=parent_fd)
+                else:
+                    child_fd = os.open(str(child_path), os.O_RDONLY | O_DIR | O_NF)
+            except FileNotFoundError:
+                continue
+            except OSError as dir_err:
+                if dir_err.errno == _errno.ELOOP:
+                    continue  # symlink — skip without recording a failure
+                if dir_err.errno != _errno.ENOTDIR:
+                    failures.append({"path": str(child_path), "error": str(dir_err), "kind": "open"})
+                    all_succeeded = False
+                    continue
+                # ENOTDIR: open as a regular file
+                try:
+                    if _DIR_FD_SUPPORTED:
+                        file_fd = os.open(name, os.O_RDONLY | O_NF, dir_fd=parent_fd)
+                    else:
+                        file_fd = os.open(str(child_path), os.O_RDONLY | O_NF)
+                except FileNotFoundError:
+                    continue
+                except OSError as e:
+                    if e.errno == _errno.ELOOP:
+                        continue
+                    failures.append({"path": str(child_path), "error": str(e), "kind": "file_open"})
+                    all_succeeded = False
+                    continue
+                try:
+                    st = os.fstat(file_fd)
+                    if stat.S_ISREG(st.st_mode) and stat.S_IMODE(st.st_mode) != FILE_MODE:
+                        os.fchmod(file_fd, FILE_MODE)
+                except OSError as e:
+                    failures.append({"path": str(child_path), "error": str(e), "kind": "file"})
+                    all_succeeded = False
+                finally:
+                    os.close(file_fd)
+                continue
+
+            # It is a directory.
+            try:
+                st = os.fstat(child_fd)
+                if stat.S_ISDIR(st.st_mode):
+                    if stat.S_IMODE(st.st_mode) != DIR_MODE:
+                        os.fchmod(child_fd, DIR_MODE)
+                    _secure_tree_fd(child_fd, child_path)
+            except OSError as e:
+                failures.append({"path": str(child_path), "error": str(e), "kind": "directory"})
+                all_succeeded = False
+            finally:
+                os.close(child_fd)
+
+    # --- Shallow scan: known managed paths ---
+
+    # 1. Top-level managed directories (including n8n data directory)
+    for d in (home, data_dir, logs_dir, docs_dir, n8n_dir):
+        _try_fchmod_dir(d)
+
+    # 2. Known configuration files
+    for cfg in (
         home / "settings.json",
         home / "team.json",
         home / "rules.json",
         home / "repos.json",
         data_dir / "workflow_versions.json",
-    ]
-    for cfg in config_files:
-        if cfg.exists() and not is_symlink(cfg):
-            try:
-                secure_file(cfg, FILE_MODE)
-            except OSError as e:
-                log.warning("migrate_config_file_failed", path=str(cfg), error=str(e))
-                all_succeeded = False
+    ):
+        _try_fchmod_file(cfg)
 
-    # 3. Enforce SQLite database and sidecars
+    # 3. SQLite database and sidecars
     db_file = data_dir / "laya.db"
-    if db_file.exists():
+    _try_fchmod_file(db_file)
+    for suffix in ("-wal", "-shm", "-journal"):
+        _try_fchmod_file(Path(str(db_file) + suffix))
+
+    # 4. All log files in the logs directory — engine.log, engine-stdout.log,
+    #    n8n.log, and any rotated backups — without hardcoding filenames.
+    try:
+        logs_fd = os.open(str(logs_dir), os.O_RDONLY | O_DIR | O_NF)
+    except OSError:
+        logs_fd = None
+    if logs_fd is not None:
         try:
-            secure_sqlite_files(db_file)
+            for entry_name in os.listdir(logs_fd):
+                _try_fchmod_file(logs_dir / entry_name)
         except OSError as e:
-            log.warning("migrate_sqlite_failed", path=str(db_file), error=str(e))
+            failures.append({"path": str(logs_dir), "error": str(e), "kind": "log_scan"})
             all_succeeded = False
+        finally:
+            os.close(logs_fd)
 
-    # 4. Enforce engine log files
-    if logs_dir.exists() and not is_symlink(logs_dir):
+    # 5. n8n sensitive state files (credentials, database, environment)
+    try:
+        n8n_fd = os.open(str(n8n_dir), os.O_RDONLY | O_DIR | O_NF)
+    except OSError:
+        n8n_fd = None
+    if n8n_fd is not None:
         try:
-            for log_entry in logs_dir.glob("engine.log*"):
-                if not is_symlink(log_entry):
-                    secure_file(log_entry, FILE_MODE)
-        except OSError as e:
-            log.warning("migrate_logs_failed", error=str(e))
-            all_succeeded = False
+            for n8n_file in ("credentials.json", "n8n.sqlite", ".env"):
+                _try_fchmod_file(n8n_dir / n8n_file)
+        finally:
+            os.close(n8n_fd)
 
-    # 5. Check if deep tree scan is needed
-    if marker.exists() and not force:
-        return all_succeeded
-
-    # 6. Deep scan managed trees
-    for tree_dir in (docs_dir, chroma_dir, tmp_dir):
-        if tree_dir.exists() and not is_symlink(tree_dir):
+    # --- Deep scan: descriptor-relative traversal of large managed trees ---
+    # Skipped when a previous migration already ran but left some failures;
+    # avoids re-scanning large trees on every startup.  Use force=True to retry.
+    if run_deep_scan:
+        for tree_dir in (docs_dir, chroma_dir, tmp_dir):
             try:
-                secure_directory(tree_dir, DIR_MODE, laya_home=home)
-                for root, dirnames, filenames in os.walk(tree_dir, followlinks=False):
-                    root_path = Path(root)
-                    for dname in dirnames:
-                        dpath = root_path / dname
-                        if not is_symlink(dpath):
-                            try:
-                                secure_directory(dpath, DIR_MODE, laya_home=home)
-                            except OSError as e:
-                                log.warning("migrate_tree_dir_failed", path=str(dpath), error=str(e))
-                                all_succeeded = False
-                    for fname in filenames:
-                        fpath = root_path / fname
-                        if not is_symlink(fpath):
-                            try:
-                                secure_file(fpath, FILE_MODE)
-                            except OSError as e:
-                                log.warning("migrate_tree_file_failed", path=str(fpath), error=str(e))
-                                all_succeeded = False
+                tree_fd = os.open(str(tree_dir), os.O_RDONLY | O_DIR | O_NF)
+            except FileNotFoundError:
+                continue
             except OSError as e:
-                log.warning("migrate_tree_walk_failed", path=str(tree_dir), error=str(e))
+                if e.errno == _errno.ELOOP:
+                    continue  # symlink root — skip
+                failures.append({"path": str(tree_dir), "error": str(e), "kind": "deep_scan_open"})
                 all_succeeded = False
-
-    # 7. Record migration completion
-    if all_succeeded:
-        try:
-            write_private_json(marker, {"migrated": True, "version": 1})
-        except OSError as e:
-            log.warning("migrate_marker_write_failed", error=str(e))
-            all_succeeded = False
-    else:
-        log.warning("permission_migration_incomplete")
-        if marker.exists():
+                continue
             try:
-                os.unlink(marker)
-            except OSError:
-                pass
+                st = os.fstat(tree_fd)
+                if stat.S_ISDIR(st.st_mode):
+                    if stat.S_IMODE(st.st_mode) != DIR_MODE:
+                        os.fchmod(tree_fd, DIR_MODE)
+                    _secure_tree_fd(tree_fd, tree_dir)
+            except OSError as e:
+                failures.append({"path": str(tree_dir), "error": str(e), "kind": "deep_scan"})
+                all_succeeded = False
+            finally:
+                os.close(tree_fd)
+
+    # --- Write final migration status ---
+    final_status = "completed" if all_succeeded else "incomplete"
+    try:
+        _write_migration_status(marker, MIGRATION_VERSION, final_status, failed_count=len(failures))
+    except OSError as e:
+        log.warning("migrate_marker_write_failed", error=str(e))
+        all_succeeded = False
+
+    if not all_succeeded:
+        log.warning(
+            "permission_migration_incomplete",
+            failed_count=len(failures),
+            failures=failures[:20],
+        )
 
     return all_succeeded
