@@ -17,7 +17,7 @@ import structlog
 from laya.config import LAYA_DATA_DIR, get_n8n_config
 from laya.http_client import get_client
 from laya.security.keychain import get_api_key, has_api_key, store_api_key
-from laya.security.permissions import FILE_MODE, secure_file, write_private_json
+from laya.security.permissions import write_private_json
 
 log = structlog.get_logger()
 
@@ -409,8 +409,6 @@ _VERSIONS_FILE = LAYA_DATA_DIR / "workflow_versions.json"
 def _load_deployed_versions() -> dict[str, str]:
     """Load the mapping of workflow name -> deployed laya_version."""
     try:
-        if _VERSIONS_FILE.exists():
-            secure_file(_VERSIONS_FILE, FILE_MODE)
         return json.loads(_VERSIONS_FILE.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
         return {}

@@ -12,13 +12,7 @@ from pathlib import Path
 import structlog
 
 from laya.config import LAYA_LOG_DIR, ensure_directories, load_settings
-from laya.security.permissions import (
-    DIR_MODE,
-    FILE_MODE,
-    is_symlink,
-    secure_directory,
-    secure_file,
-)
+from laya.security.permissions import FILE_MODE, is_symlink
 
 # 10 MB per log file, keep 5 rotated backups (~60 MB max disk usage)
 LOG_MAX_BYTES = 10 * 1024 * 1024
@@ -65,14 +59,19 @@ def resolve_log_level() -> str:
 
 
 class PrivateRotatingFileHandler(RotatingFileHandler):
-    """RotatingFileHandler that creates log files and rotated backups with 0600 permissions."""
+    """RotatingFileHandler whose log files are owner-only (0600).
+
+    Every file this handler opens (the initial file and each fresh one after a
+    rotation) is created with mode 0600 and ``fchmod``-ed on its descriptor,
+    so the mode does not depend on the process umask.  Rotation renames the
+    current file, which keeps its mode, so backups need no extra step.
+    """
 
     def _open(self):
         if sys.platform == "win32":
             return super()._open()
 
         log_path = Path(self.baseFilename)
-        secure_directory(log_path.parent, DIR_MODE)
         if is_symlink(log_path):
             raise PermissionError(f"Log file path is a symbolic link: {log_path}")
 
@@ -88,15 +87,9 @@ class PrivateRotatingFileHandler(RotatingFileHandler):
         try:
             os.fchmod(fd, FILE_MODE)
         except OSError:
+            # The filesystem cannot represent POSIX modes; logging still works.
             pass
         return open(fd, self.mode, encoding=self.encoding, errors=self.errors)
-
-    def rotate(self, source: str, dest: str) -> None:
-        super().rotate(source, dest)
-        if sys.platform != "win32":
-            dest_path = Path(dest)
-            if dest_path.exists() and not is_symlink(dest_path):
-                secure_file(dest_path, FILE_MODE)
 
 
 def setup_logging(log_level: str | None = None) -> None:
@@ -105,11 +98,6 @@ def setup_logging(log_level: str | None = None) -> None:
     ``log_level`` defaults to :func:`resolve_log_level` (env var → settings → INFO).
     """
     ensure_directories()
-    if sys.platform != "win32" and LAYA_LOG_DIR.exists() and not is_symlink(LAYA_LOG_DIR):
-        secure_directory(LAYA_LOG_DIR, DIR_MODE)
-        for entry in LAYA_LOG_DIR.glob("engine.log*"):
-            if not is_symlink(entry):
-                secure_file(entry, FILE_MODE)
 
     level = _coerce_level(log_level if log_level is not None else resolve_log_level())
 

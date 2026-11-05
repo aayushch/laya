@@ -20,7 +20,7 @@ from chromadb import Collection, Documents, Embeddings, EmbeddingFunction
 from chromadb.config import Settings as ChromaSettings
 
 from laya.config import LAYA_DATA_DIR
-from laya.security.permissions import DIR_MODE, FILE_MODE, is_symlink, secure_directory
+from laya.security.permissions import DIR_MODE, secure_directory
 
 log = structlog.get_logger()
 
@@ -231,30 +231,6 @@ def get_embedding_info() -> dict[str, str]:
     }
 
 
-def _secure_chromadb_tree(root: Path) -> None:
-    """Enforce 0700/0600 on all ChromaDB files and directories after initialization.
-
-    Called after ChromaDB creates its files so that newly created descendants
-    have restricted permissions regardless of the process umask.
-    """
-    if sys.platform == "win32" or not root.exists():
-        return
-    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
-        dp = Path(dirpath)
-        if not is_symlink(dp):
-            try:
-                os.chmod(dp, DIR_MODE)
-            except OSError as e:
-                log.warning("chromadb_dir_chmod_failed", path=str(dp), error=str(e))
-        for fname in filenames:
-            fp = dp / fname
-            if not is_symlink(fp):
-                try:
-                    os.chmod(fp, FILE_MODE)
-                except OSError as e:
-                    log.warning("chromadb_file_chmod_failed", path=str(fp), error=str(e))
-
-
 def _verify_chromadb_ancestor_chain(chroma_dir: Path) -> None:
     """Log a warning if chroma_dir or its managed ancestors are not 0700.
 
@@ -319,13 +295,11 @@ def connect_chromadb() -> Collection:
 
     _collection = _client.get_or_create_collection(**kwargs)
 
-    # shortcut: ChromaDB descendant files may have wider modes (e.g. 0o644)
-    # because ChromaDB uses Python's default file creation without honouring
-    # a restrictive umask.  The 0700 root directory (enforced above by
-    # secure_directory) prevents other users from listing or reaching them.
-    # Existing files are tightened once by the one-time filesystem migration;
-    # files created between migrations are secured on next migration run.
-    # when to upgrade: when ChromaDB exposes a creation-time permission hook.
+    # Files ChromaDB creates inside CHROMADB_DIR carry umask-derived modes
+    # (typically 0644), since ChromaDB offers no creation-mode hook. They are
+    # still unreachable by other users because CHROMADB_DIR and its ancestors
+    # are 0700. The one-time filesystem migration tightens files that existed
+    # when it ran; files created afterwards keep their wider mode.
 
     log.info("chromadb_connected", path=str(CHROMADB_DIR), collection=COLLECTION_NAME)
     return _collection

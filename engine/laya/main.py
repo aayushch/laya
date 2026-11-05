@@ -53,7 +53,7 @@ from laya.api.trace_api import router as trace_router
 from laya.api.websocket import manager
 from laya.api.workspace_api import router as workspace_router
 from laya.api.ws_router import handle_ws_message
-from laya.config import DB_PATH, ENGINE_HOST, ENGINE_PORT, ensure_directories, load_repos, load_rules, load_settings, load_team
+from laya.config import ENGINE_HOST, ENGINE_PORT, ensure_directories, load_repos, load_rules, load_settings, load_team
 from laya.http_client import close_client as close_http_client
 from laya.integrations.n8n_bootstrap import provision_n8n_background, sync_workflows_background
 from laya.db.chromadb_store import connect_chromadb_background, disconnect_chromadb
@@ -64,7 +64,7 @@ from laya.logging_setup import resolve_log_level, setup_logging
 from laya.pipeline.omni import start_omni_processor, stop_omni_processor
 from laya.pipeline.queue import recover_stalled_cards, recover_stalled_events, start_consumer, stop_consumer
 from laya.scheduler import start_scheduler, stop_scheduler
-from laya.security.permissions import migrate_managed_filesystem_permissions, secure_sqlite_files
+from laya.security.permissions import migrate_managed_filesystem_permissions
 from laya.security.engine_auth import (
     WS_SUBPROTOCOL,
     offered_subprotocols,
@@ -250,19 +250,15 @@ async def lifespan(app: FastAPI):
     # coding-agent subprocesses (Claude Code, Gemini CLI, etc.) that operate
     # inside user Git repositories; they would inherit the restrictive umask and
     # create repo files with wrong permissions.  Laya-managed sensitive files are
-    # secured explicitly via fchmod/atomic_write_private/open_private_file instead.
-    _perm_ok = migrate_managed_filesystem_permissions()
-    if not _perm_ok:
-        log.warning(
-            "filesystem_permissions_incomplete",
-            message="Some managed files could not be fully secured; check earlier log entries for details",
-        )
+    # created private by the helpers in security/permissions.py instead, and
+    # pre-existing data is tightened once by this migration (it logs its own
+    # warning, naming the marker file, when it cannot).
+    migrate_managed_filesystem_permissions()
     log.info("engine_starting", host=ENGINE_HOST, port=ENGINE_PORT)
 
     # Connect to SQLite and run migrations
     db = await connect()
     await run_migrations(db)
-    secure_sqlite_files(DB_PATH)
 
     # Build the FTS5/BM25 keyword-search index (tables + sync triggers + backfill).
     # Runs after migrations so the thread_context column exists; degrades to LIKE

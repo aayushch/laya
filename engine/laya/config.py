@@ -11,16 +11,12 @@ import subprocess
 from pathlib import Path
 from typing import Callable, Iterator
 
-from laya.security.permissions import (
-    DIR_MODE,
-    FILE_MODE,
-    secure_directory,
-    secure_file,
-    write_private_json,
-)
+from laya.security.permissions import resolve_app_root, secure_directory, write_private_json
 
-# Laya data directory
-LAYA_HOME = Path.home() / ".laya"
+# Laya data directory. A user may relocate it by symlinking ~/.laya elsewhere;
+# the symlink is resolved once here so every derived path below, and every
+# permission helper, works on the real directory.
+LAYA_HOME = resolve_app_root(Path.home() / ".laya")
 LAYA_DATA_DIR = LAYA_HOME / "data"
 LAYA_LOG_DIR = LAYA_HOME / "logs"
 LAYA_CONFIG_FILE = LAYA_HOME / "settings.json"
@@ -250,12 +246,22 @@ def get_debounce_config() -> dict:
     )
 
 
+# The directory set ensure_directories() last verified. It is called from every
+# config load and save, which the pipeline does several times per event, so
+# after the first successful call it returns without touching the filesystem.
+# Keyed on the paths themselves so a test that repoints them gets a fresh check.
+_directories_ready_for: tuple[Path, ...] | None = None
+
+
 def ensure_directories() -> None:
-    """Create ~/.laya/ directory structure with restricted permissions (0700)."""
-    secure_directory(LAYA_HOME, DIR_MODE)
-    secure_directory(LAYA_DATA_DIR, DIR_MODE)
-    secure_directory(LAYA_LOG_DIR, DIR_MODE)
-    secure_directory(DOCUMENTS_DIR, DIR_MODE)
+    """Create the ~/.laya/ directory structure (owner-only, 0700) if missing."""
+    global _directories_ready_for
+    wanted = (LAYA_HOME, LAYA_DATA_DIR, LAYA_LOG_DIR, DOCUMENTS_DIR)
+    if _directories_ready_for == wanted:
+        return
+    for d in wanted:
+        secure_directory(d)
+    _directories_ready_for = wanted
 
 
 # mtime-keyed cache. load_settings() is called ~10× per pipeline event plus per
@@ -283,7 +289,6 @@ def load_settings() -> dict:
         return copy.deepcopy(_settings_cache)
 
     if mtime:
-        secure_file(LAYA_CONFIG_FILE, FILE_MODE)
         with open(LAYA_CONFIG_FILE, encoding="utf-8") as f:
             user_settings = json.load(f)
         # Merge user settings over defaults (two-level deep merge so that
@@ -341,8 +346,6 @@ def load_team() -> dict:
     ensure_directories()
     if not LAYA_TEAM_FILE.exists():
         save_team(DEFAULT_TEAM)
-    else:
-        secure_file(LAYA_TEAM_FILE, FILE_MODE)
     with open(LAYA_TEAM_FILE, encoding="utf-8") as f:
         return json.load(f)
 
@@ -378,8 +381,6 @@ def load_rules() -> dict:
     ensure_directories()
     if not LAYA_RULES_FILE.exists():
         save_rules(DEFAULT_RULES)
-    else:
-        secure_file(LAYA_RULES_FILE, FILE_MODE)
     with open(LAYA_RULES_FILE, encoding="utf-8") as f:
         return json.load(f)
 
@@ -395,8 +396,6 @@ def load_repos() -> dict:
     ensure_directories()
     if not LAYA_REPOS_FILE.exists():
         save_repos(DEFAULT_REPOS)
-    else:
-        secure_file(LAYA_REPOS_FILE, FILE_MODE)
     with open(LAYA_REPOS_FILE, encoding="utf-8") as f:
         return json.load(f)
 

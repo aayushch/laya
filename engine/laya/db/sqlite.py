@@ -12,13 +12,7 @@ import aiosqlite
 import structlog
 
 from laya.config import DB_PATH, ensure_directories
-from laya.security.permissions import (
-    FILE_MODE,
-    is_symlink,
-    secure_directory,
-    secure_file,
-    secure_sqlite_files,
-)
+from laya.security.permissions import FILE_MODE, is_symlink
 
 log = structlog.get_logger()
 
@@ -80,27 +74,28 @@ async def connect() -> aiosqlite.Connection:
     """Open the SQLite connection and enable WAL mode."""
     global _db
     ensure_directories()
-    secure_directory(DB_PATH.parent)
     if sys.platform != "win32":
         if is_symlink(DB_PATH):
             raise PermissionError(
                 f"Database path is a symbolic link, refusing to connect: {DB_PATH}"
             )
         if not DB_PATH.exists():
+            # Create the database file owner-only before SQLite opens it. SQLite
+            # gives the -wal, -shm and -journal sidecars the same mode as the
+            # database file, so this one creation covers all of them.
             fd = os.open(str(DB_PATH), os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), FILE_MODE)
             try:
                 os.fchmod(fd, FILE_MODE)
+            except OSError as e:
+                log.warning("private_mode_not_applied", path=str(DB_PATH), error=str(e))
             finally:
                 os.close(fd)
-        else:
-            secure_file(DB_PATH, FILE_MODE)
 
     _db = await aiosqlite.connect(str(DB_PATH))
     _db.row_factory = aiosqlite.Row
     await _db.execute("PRAGMA journal_mode=WAL")
     await _db.execute("PRAGMA foreign_keys=ON")
     await _db.execute("PRAGMA busy_timeout=5000")
-    secure_sqlite_files(DB_PATH)
     log.info("sqlite_connected", path=str(DB_PATH))
     return _db
 
@@ -111,7 +106,6 @@ async def disconnect() -> None:
     if _db is not None:
         await _db.close()
         _db = None
-        secure_sqlite_files(DB_PATH)
         log.info("sqlite_disconnected")
 
 

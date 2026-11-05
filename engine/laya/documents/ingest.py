@@ -30,13 +30,7 @@ import structlog
 
 from laya.api.websocket import manager
 from laya.config import DEFAULT_SETTINGS, DOCUMENTS_DIR, LAYA_HOME, load_settings
-from laya.security.permissions import (
-    DIR_MODE,
-    FILE_MODE,
-    open_private_file,
-    secure_directory,
-    secure_file,
-)
+from laya.security.permissions import open_private_file, secure_directory
 from laya.db.chromadb_store import (
     delete_where,
     embed_batch,
@@ -196,7 +190,7 @@ async def create_from_bytes(
     """
     ext, file_type = _validate_extension(filename)
     cap = max_file_bytes()
-    secure_directory(DOCUMENTS_DIR, DIR_MODE)
+    secure_directory(DOCUMENTS_DIR)
     tmp = DOCUMENTS_DIR / f".upload-{uuid.uuid4().hex}.{ext}"
     h = hashlib.sha256()
     size = 0
@@ -235,8 +229,8 @@ async def create_from_bytes(
             "updated_at": now,
         }
         await store.insert_document(row)
+        # The temp file was created 0600 by open_private_file; rename keeps it.
         os.replace(tmp, final)
-        secure_file(final, FILE_MODE)
     except Exception:
         try:
             tmp.unlink(missing_ok=True)
