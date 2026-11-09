@@ -9,7 +9,9 @@ matching the ``project/repo`` remote_id parsed from on-prem clone URLs) and
 ``bb_*`` event metadata — but its executor drives the Server REST API
 (``{base_url}/rest/api/1.0/...``) instead of ``api.bitbucket.org``. The
 per-connection base URL is injected into the payload by the n8n backend via
-``payload_credential_fields``; it is never LLM- or user-supplied.
+``payload_credential_fields``. The backend first removes any ``base_url`` or
+``allow_insecure_ssl`` the payload carries, so neither can come from the LLM
+or the user, and fails the request if the connection has no server URL.
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ class BitbucketServerPlatform(BitbucketPlatform):
     # opt-in TLS toggle rides along so its HTTP nodes can set
     # allowUnauthorizedCerts for servers with internal-CA/self-signed certs.
     payload_credential_fields = {"server": "base_url", "allowInsecureSsl": "allow_insecure_ssl"}
+    payload_credential_required = frozenset({"base_url"})
     compose_guidance = (
         "You are composing a BITBUCKET SERVER PR or COMMENT. Field requirements:\n"
         "- 'repo': repository in project/repo format (project key + repo slug).\n"

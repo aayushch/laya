@@ -66,15 +66,6 @@ pub fn append_file_private(path: &Path) -> io::Result<fs::File> {
     opts.open(path)
 }
 
-/// Tighten an existing file to 0600 on Unix. No-op on Windows or if missing.
-pub fn set_file_private(path: &Path) -> io::Result<()> {
-    #[cfg(unix)]
-    if path.exists() {
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,22 +124,6 @@ mod tests {
         drop(f);
 
         assert_eq!(mode(&file_path), 0o600, "new file must be 0600");
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn set_file_private_tightens_existing_file() {
-        let dir = std::env::temp_dir().join(format!("laya_fsp_chmod_{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        let file_path = dir.join("cfg.json");
-        fs::write(&file_path, b"{}").unwrap();
-        fs::set_permissions(&file_path, fs::Permissions::from_mode(0o644)).unwrap();
-        assert_eq!(mode(&file_path), 0o644);
-
-        set_file_private(&file_path).unwrap();
-        assert_eq!(mode(&file_path), 0o600);
         let _ = fs::remove_dir_all(&dir);
     }
 

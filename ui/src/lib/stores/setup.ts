@@ -17,6 +17,8 @@ export interface EnvStatus {
 	engine_source_found: boolean;
 	node_found: boolean;
 	n8n_installed: boolean;
+	/** The n8n upgrade (or the recovery of an interrupted one) runs on this launch. */
+	n8n_upgrade_needed: boolean;
 }
 
 export interface SetupStep {
@@ -44,18 +46,29 @@ export const setupError = writable<string | null>(null);
 /** Whether setup has completed successfully. */
 export const setupComplete = writable<boolean>(false);
 
+/**
+ * Whether the setup flow on the splash screen must run. It runs when the
+ * Python environment is missing or stale, when n8n is not installed, and when
+ * the n8n upgrade (or the recovery of an interrupted one) is due. The setup
+ * flow's automation step performs the upgrade.
+ */
+export function environmentNeedsSetup(status: EnvStatus): boolean {
+	return !(
+		status.venv_ready &&
+		status.deps_installed &&
+		status.engine_source_found &&
+		status.n8n_installed &&
+		!status.n8n_upgrade_needed
+	);
+}
+
 /** Check if environment is ready. Call on app mount. */
 export async function checkEnvironment(): Promise<EnvStatus | null> {
 	try {
 		const { invoke } = await import('@tauri-apps/api/core');
 		const status = await invoke<EnvStatus>('check_environment');
 
-		// If everything is ready, no setup needed
-		if (status.venv_ready && status.deps_installed && status.engine_source_found) {
-			needsSetup.set(false);
-		} else {
-			needsSetup.set(true);
-		}
+		needsSetup.set(environmentNeedsSetup(status));
 
 		return status;
 	} catch {

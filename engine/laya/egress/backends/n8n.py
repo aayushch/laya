@@ -68,6 +68,18 @@ async def _resolve_jira_assignee(
     return users[0]["accountId"]
 
 
+
+def _connection_owned_fields(platform: str, adapter) -> list[str]:
+    """Payload fields whose value must come from the connection's stored
+    credentials: ``jira_base_url`` for Jira, and every payload field named in
+    the adapter's ``payload_credential_fields`` (Bitbucket Server:
+    ``base_url`` and ``allow_insecure_ssl``)."""
+    fields = list(adapter.payload_credential_fields.values()) if adapter is not None else []
+    if platform == "jira":
+        fields.append("jira_base_url")
+    return fields
+
+
 class N8nBackend(EgressBackend):
     """Primary execution backend. Routes actions to n8n executor workflows via webhooks.
 
@@ -311,14 +323,25 @@ class N8nBackend(EgressBackend):
         """
         payload, event_ctx = await enrich_payload_from_event(request)
 
+        # Fields that name the host an executor sends the stored credentials
+        # to, or that turn off TLS verification for it, belong to the
+        # connection, never to the payload. Payloads come from LLM-drafted
+        # card actions (whose text can come from an inbound email or ticket),
+        # the composer and chat tools, so a payload could otherwise name an
+        # attacker's host and receive the user's Jira token or Bitbucket
+        # Server credentials. Every such field is removed here and set again
+        # from the connection below.
+        from laya.egress import platforms as _platforms
+        _mod = _platforms.for_platform(request.platform)
+        for _field in _connection_owned_fields(request.platform, _mod):
+            payload.pop(_field, None)
+
         # Validate the enriched payload against the platform adapter's contract
         # before dispatch. validate_payload was previously dead (~250 lines across
         # 10 adapters) — invalid payloads travelled to n8n and failed with an
         # opaque generic error. This single point covers the card, composer and
         # chat paths, which all execute through here (review §2 egress — P4-19).
         # Raises ValueError → caught in execute() and surfaced as a failed result.
-        from laya.egress import platforms as _platforms
-        _mod = _platforms.for_platform(request.platform)
         if _mod is not None:
             _errors = _mod.validate_payload(request.action_type, payload)
             if _errors:
@@ -341,13 +364,23 @@ class N8nBackend(EgressBackend):
         # slash stripped so workflow expressions can concatenate paths); non-string
         # values (e.g. the allow_insecure_ssl boolean) pass through untouched.
         # Falsy values are never injected, so a False toggle simply stays absent.
-        if _mod is not None and _mod.payload_credential_fields and request.connection_id:
-            from laya.egress.connections import _get_from_keychain
-            _creds = _get_from_keychain(request.connection_id, request.platform) or {}
+        if _mod is not None and _mod.payload_credential_fields:
+            _creds: dict = {}
+            if request.connection_id:
+                from laya.egress.connections import _get_from_keychain
+                _creds = _get_from_keychain(request.connection_id, request.platform) or {}
             for _cred_field, _payload_field in _mod.payload_credential_fields.items():
                 _val = _creds.get(_cred_field)
-                if _val and not payload.get(_payload_field):
+                if _val:
                     payload[_payload_field] = _val.rstrip("/") if isinstance(_val, str) else _val
+            _missing = [
+                f for f in sorted(_mod.payload_credential_required) if not payload.get(f)
+            ]
+            if _missing:
+                raise ValueError(
+                    f"The {request.platform} connection has no server URL configured "
+                    f"(missing {', '.join(_missing)}); reconnect it in Settings → Integrations"
+                )
 
         # Jira: retrieve connection credentials once for base URL injection
         # and assignee resolution (email/name → accountId).
@@ -359,7 +392,7 @@ class N8nBackend(EgressBackend):
             except Exception:
                 pass
 
-            if jira_creds and jira_creds.get("domain") and not payload.get("jira_base_url"):
+            if jira_creds and jira_creds.get("domain"):
                 payload["jira_base_url"] = jira_creds["domain"].rstrip("/")
 
             if (
@@ -374,6 +407,14 @@ class N8nBackend(EgressBackend):
                     jira_creds["email"],
                     jira_creds["apiToken"],
                 )
+
+        # The Jira executor builds every request URL from jira_base_url. Without
+        # it the request must fail here rather than reach n8n.
+        if request.platform == "jira" and not payload.get("jira_base_url"):
+            raise ValueError(
+                "The Jira connection has no site URL configured; reconnect Jira in "
+                "Settings → Integrations"
+            )
 
         # Gmail send_email: build the raw MIME message + base64url in Python
         # so the n8n workflow doesn't need a fragile JS expression.

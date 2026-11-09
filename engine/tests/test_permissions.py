@@ -48,7 +48,10 @@ from laya.security.permissions import (
     secure_directory,
 )
 
-pytestmark = pytest.mark.skipif(
+# Every class except TestMarkerSharedWithShell tests POSIX modes. The marker
+# file is shared with the Tauri shell on every platform, so that class also
+# runs on Windows.
+posix_only = pytest.mark.skipif(
     sys.platform == "win32",
     reason="POSIX filesystem permissions tests require a Unix-like system",
 )
@@ -141,6 +144,7 @@ def isolated_env(tmp_path):
             p.stop()
 
 
+@posix_only
 class TestCreationTimeModes:
     """Rule 1: everything Laya creates is private from the moment it exists."""
 
@@ -285,6 +289,7 @@ class TestCreationTimeModes:
         assert stream_file.read_bytes() == b"x"
 
 
+@posix_only
 class TestNoRetightenOnUse:
     """Rule 3: ordinary reads and writes never chmod existing paths."""
 
@@ -340,6 +345,7 @@ class TestNoRetightenOnUse:
         assert paths_b["docs_dir"].is_dir()
 
 
+@posix_only
 class TestSymlinks:
     def test_g_symbolic_link_safety(self, isolated_env, tmp_path):
         """Symlinked files are never written through, and the migration never follows links."""
@@ -500,6 +506,7 @@ class TestSymlinks:
         assert get_mode(external) == 0o644
 
 
+@posix_only
 class TestMigration:
     """Rule 2: pre-existing data is tightened once, outcome recorded in the marker."""
 
@@ -783,6 +790,7 @@ class TestMigration:
         assert counts[0] == 0
 
 
+@posix_only
 class TestMarkerReading:
     """The marker can never suppress the migration unless it is a trustworthy regular file."""
 
@@ -828,6 +836,7 @@ class TestMarkerReading:
         assert _read_migration_status(sym_data / MIGRATION_MARKER_NAME, MIGRATION_VERSION) == "not_started"
 
 
+@posix_only
 class TestChromaAncestorCheck:
     def _capture_warnings(self, chroma_dir: Path) -> list[str]:
         from laya.db import chromadb_store
@@ -858,3 +867,46 @@ class TestChromaAncestorCheck:
         os.chmod(chroma_dir.parent, 0o700)
         os.chmod(tmp_path, 0o700)
         assert self._capture_warnings(chroma_dir) == []
+
+
+class TestMarkerSharedWithShell:
+    """The Tauri shell keeps the n8n runtime record under ``n8n_runtime`` in
+    the same marker file (ui/src-tauri/src/n8n_upgrade.rs). The permission
+    migration must keep that key when it writes its own status."""
+
+    RECORD = {"status": "failed", "n8n_version": "2.15.0", "node_path": "/usr/bin/node"}
+
+    def test_migration_keeps_the_n8n_runtime_record(self, tmp_path):
+        home = tmp_path / ".laya"
+        data_dir = home / "data"
+        data_dir.mkdir(parents=True, mode=0o700)
+        marker = data_dir / MIGRATION_MARKER_NAME
+        # Written by the shell on a fresh install, before the engine's first run.
+        marker.write_text(json.dumps({"n8n_runtime": self.RECORD}))
+
+        assert migrate_managed_filesystem_permissions(home) is True
+
+        data = json.loads(marker.read_text())
+        if sys.platform == "win32":
+            # The migration does not run on Windows and leaves the file as
+            # the shell wrote it.
+            assert data == {"n8n_runtime": self.RECORD}
+            return
+        assert data["version"] == MIGRATION_VERSION
+        assert data["status"] == "completed"
+        assert data["n8n_runtime"] == self.RECORD
+        assert _read_migration_status(marker, MIGRATION_VERSION) == "completed"
+
+    def test_completed_write_drops_a_stale_failed_count(self, tmp_path):
+        from laya.security.permissions import _write_migration_status
+
+        marker = tmp_path / MIGRATION_MARKER_NAME
+        marker.write_text(json.dumps({
+            "version": MIGRATION_VERSION, "status": "failed", "failed_count": 3,
+            "n8n_runtime": self.RECORD,
+        }))
+        _write_migration_status(marker, MIGRATION_VERSION, "completed")
+        data = json.loads(marker.read_text())
+        assert "failed_count" not in data
+        assert data["status"] == "completed"
+        assert data["n8n_runtime"] == self.RECORD

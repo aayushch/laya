@@ -3,16 +3,17 @@
 
 //! Automatic provisioning of Python, Node.js, and uv runtimes into `~/.laya/`.
 //!
-//! On first launch, when the system lacks a Python 3.10+ or Node.js 22+
-//! installation, this module downloads prebuilt binaries — python-build-
-//! standalone (Astral/indygreg) for Python, the official `nodejs.org`
-//! tarballs/zips for Node, and `uv` (Astral) as a fast pip replacement —
+//! On first launch this module downloads prebuilt binaries when they are
+//! missing: python-build-standalone (Astral/indygreg) for Python when the
+//! system has no Python 3.10+, the official `nodejs.org` tarballs/zips for
+//! the Node that runs n8n (always Laya's own copy, never the system Node; see
+//! `n8n_upgrade.rs`), and `uv` (Astral) as a fast pip replacement. It
 //! verifies their SHA-256, extracts them, and exposes the resulting
 //! binaries via `managed_python()` / `managed_node()` / `managed_uv()`
 //! so the rest of the startup flow can use them transparently.
 //!
 //! Design:
-//!   1. Detect a working runtime (managed first, then system).
+//!   1. Detect a working runtime (managed first, then system for Python).
 //!   2. Only download what is missing.
 //!   3. Downloads run in parallel threads; progress events are multiplexed
 //!      through an `mpsc` channel back to the caller's callback.
@@ -50,8 +51,14 @@ pub(crate) const PYTHON_VERSION: &str = "3.12.13";
 /// https://github.com/astral-sh/python-build-standalone/releases
 const PBS_RELEASE_TAG: &str = "20260510";
 
-/// Node.js LTS version from nodejs.org/dist.
-const NODE_VERSION: &str = "22.22.3";
+/// Node.js LTS version from nodejs.org/dist that runs n8n.
+///
+/// n8n's native add-on `isolated-vm` is compiled for one Node ABI, so n8n has
+/// to be reinstalled whenever this changes. Changing it changes the n8n
+/// upgrade target (`n8n_upgrade::target_id`), and existing installs move to
+/// the new Node through the upgrade sequence in `n8n_upgrade.rs`, with a
+/// database backup and rollback.
+pub(crate) const NODE_VERSION: &str = "24.22.2";
 
 /// uv version (Astral's fast pip/venv replacement).
 /// Releases: https://github.com/astral-sh/uv/releases
@@ -65,7 +72,7 @@ fn python_dir() -> PathBuf {
     laya_home().join("python")
 }
 
-fn node_dir() -> PathBuf {
+pub(crate) fn node_dir() -> PathBuf {
     laya_home().join("node")
 }
 
@@ -77,7 +84,7 @@ fn runtimes_dir() -> PathBuf {
     laya_home().join("runtimes")
 }
 
-fn version_marker(dir: &Path) -> PathBuf {
+pub(crate) fn version_marker(dir: &Path) -> PathBuf {
     dir.join(".version")
 }
 
@@ -105,15 +112,41 @@ pub fn managed_python() -> Option<PathBuf> {
 /// On Unix the official Node tarball uses `bin/node`.
 /// On Windows the zip puts `node.exe` at the top level alongside `npm.cmd`.
 pub fn managed_node() -> Option<PathBuf> {
-    let candidate = if cfg!(target_os = "windows") {
-        node_dir().join("node.exe")
-    } else {
-        node_dir().join("bin").join("node")
-    };
+    let candidate = node_binary_in(&node_dir());
     if candidate.exists() {
         Some(candidate)
     } else {
         None
+    }
+}
+
+/// Path of the `node` binary inside an extracted Node distribution directory
+/// `dir` (the managed `~/.laya/node` or a staging copy of it).
+pub(crate) fn node_binary_in(dir: &Path) -> PathBuf {
+    if cfg!(target_os = "windows") {
+        dir.join("node.exe")
+    } else {
+        dir.join("bin").join("node")
+    }
+}
+
+/// Path of npm's JavaScript entry point inside the Node distribution `dir`.
+/// Laya runs it as `node npm-cli.js ...` rather than through the `npm` /
+/// `npm.cmd` launcher. The Unix launcher starts with `#!/usr/bin/env node`
+/// and so runs whichever `node` is first on `PATH`. On Windows, running the
+/// `.cmd` launcher goes through `cmd.exe`.
+pub(crate) fn npm_cli_in(dir: &Path) -> PathBuf {
+    if cfg!(target_os = "windows") {
+        dir.join("node_modules")
+            .join("npm")
+            .join("bin")
+            .join("npm-cli.js")
+    } else {
+        dir.join("lib")
+            .join("node_modules")
+            .join("npm")
+            .join("bin")
+            .join("npm-cli.js")
     }
 }
 
@@ -143,23 +176,31 @@ pub enum RuntimeProgress {
     Done(String),
 }
 
-/// Ensure Python (3.10+), Node (22+), and uv runtimes are available, either
-/// from the system or downloaded into `~/.laya/{python,node,uv}/`.
+/// Ensure Python (3.10+) and uv are available, either from the system or
+/// downloaded into `~/.laya/{python,uv}/`, and, when `provision_node` is
+/// true, that the managed Node `NODE_VERSION` is in `~/.laya/node/`.
+///
+/// `provision_node` is true only for a fresh install (n8n not installed yet).
+/// When n8n is already installed, `~/.laya/node` may be the Node the
+/// installed n8n was built for, and replacing it here would make that n8n
+/// impossible to restore after a failed upgrade. In that case the upgrade
+/// sequence in `n8n_upgrade.rs` downloads the new Node into a staging
+/// directory instead.
 ///
 /// Downloads run in parallel when multiple runtimes are needed.
-/// Detects system installs first; only downloads what is missing.
 /// Idempotent across launches via `.version` marker files.
-pub fn ensure_runtimes<F: FnMut(RuntimeProgress)>(mut on_progress: F) -> Result<(), String> {
+pub fn ensure_runtimes<F: FnMut(RuntimeProgress)>(
+    provision_node: bool,
+    mut on_progress: F,
+) -> Result<(), String> {
     fs::create_dir_all(laya_home()).map_err(|e| format!("Failed to create ~/.laya: {e}"))?;
 
     let python_needed = match managed_python() {
         Some(_) => !managed_python_version_matches(),
         None => crate::sidecar::find_python_system().is_err(),
     };
-    let node_needed = match managed_node() {
-        Some(_) => !managed_node_version_matches(),
-        None => crate::n8n::find_node_system().is_err(),
-    };
+    let node_needed =
+        provision_node && (managed_node().is_none() || !managed_node_version_matches());
     let uv_needed = managed_uv().is_none() || !managed_uv_version_matches();
 
     if !python_needed && !node_needed && !uv_needed {
@@ -192,7 +233,7 @@ pub fn ensure_runtimes<F: FnMut(RuntimeProgress)>(mut on_progress: F) -> Result<
     if node_needed {
         let tx = tx.clone();
         handles.push(std::thread::spawn(move || {
-            provision_node(&mut |p| {
+            provision_node_into(&node_dir(), &mut |p| {
                 let _ = tx.send(label_download("Node", p));
             })
         }));
@@ -255,7 +296,7 @@ fn managed_python_version_matches() -> bool {
         .unwrap_or(false)
 }
 
-fn managed_node_version_matches() -> bool {
+pub(crate) fn managed_node_version_matches() -> bool {
     fs::read_to_string(version_marker(&node_dir()))
         .map(|s| s.trim() == NODE_VERSION)
         .unwrap_or(false)
@@ -372,7 +413,14 @@ fn fetch_python_sha256(filename: &str) -> Result<String, String> {
 
 // ── Provisioning: Node ──────────────────────────────────────────────────
 
-fn provision_node<F: FnMut(RuntimeProgress)>(on_progress: &mut F) -> Result<(), String> {
+/// Download Node `NODE_VERSION`, verify its SHA-256 against the published
+/// `SHASUMS256.txt`, and install it as the directory `dest` with a `.version`
+/// file. `dest` is `~/.laya/node` for a fresh install, or the staging
+/// directory `~/.laya/runtimes/node-next` during an n8n upgrade.
+pub(crate) fn provision_node_into<F: FnMut(RuntimeProgress)>(
+    dest: &Path,
+    on_progress: &mut F,
+) -> Result<(), String> {
     let filename = node_filename()?;
     let url = format!("https://nodejs.org/dist/v{}/{}", NODE_VERSION, filename);
 
@@ -396,6 +444,7 @@ fn provision_node<F: FnMut(RuntimeProgress)>(on_progress: &mut F) -> Result<(), 
 
     on_progress(RuntimeProgress::Phase("Extracting Node.js".to_string()));
     let staging = runtimes_dir().join("staging-node");
+    let dest = dest.to_path_buf();
     let _ = fs::remove_dir_all(&staging);
     fs::create_dir_all(&staging).map_err(|e| format!("Failed to create staging: {e}"))?;
 
@@ -415,20 +464,21 @@ fn provision_node<F: FnMut(RuntimeProgress)>(on_progress: &mut F) -> Result<(), 
     // Node archives extract into a single top-level directory like
     // `node-v22.12.0-darwin-arm64/`.
     let extracted = find_only_subdir(&staging)?;
-    install_atomically(&extracted, &node_dir())?;
+    install_atomically(&extracted, &dest)?;
 
     let _ = fs::remove_dir_all(&staging);
     let _ = fs::remove_file(&archive);
 
     #[cfg(target_os = "macos")]
-    remove_quarantine(&node_dir());
+    remove_quarantine(&dest);
 
-    let _ = fs::write(version_marker(&node_dir()), NODE_VERSION);
+    fs::write(version_marker(&dest), NODE_VERSION)
+        .map_err(|e| format!("Write {}: {e}", version_marker(&dest).display()))?;
 
     log::info!(
         "Managed Node.js {} installed at {}",
         NODE_VERSION,
-        node_dir().display()
+        dest.display()
     );
     on_progress(RuntimeProgress::Done(format!(
         "Node.js {} ready",
@@ -444,6 +494,7 @@ fn node_filename() -> Result<String, String> {
         ("linux", "x86_64") => ("linux", "x64", "tar.gz"),
         ("linux", "aarch64") => ("linux", "arm64", "tar.gz"),
         ("windows", "x86_64") => ("win", "x64", "zip"),
+        ("windows", "aarch64") => ("win", "arm64", "zip"),
         (os, arch) => {
             return Err(format!(
                 "Unsupported platform for managed Node: {}/{}",
@@ -623,50 +674,112 @@ fn fetch_text(url: &str) -> Result<String, String> {
         .map_err(|e| format!("Read body from {}: {e}", url))
 }
 
+/// Seconds to wait before each retry of a failed download. A CDN outage
+/// (GitHub's release CDN answering 502/503/504) often lasts under a minute, so
+/// a first-run setup tries for about 20 seconds before it reports the error
+/// and offers Retry on the splash screen.
+const DOWNLOAD_RETRY_DELAYS_SECS: [u64; 3] = [2, 6, 12];
+
+/// How long a download may receive no bytes before it fails and is retried.
+/// A server or network that stops sending without closing the connection
+/// would otherwise block the download, and first-run setup with it, forever.
+const DOWNLOAD_STALL_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// A failed download. `retryable` is false for answers that another try
+/// cannot change, such as 404.
+struct DownloadError {
+    message: String,
+    retryable: bool,
+}
+
+impl DownloadError {
+    fn retryable(message: String) -> Self {
+        DownloadError {
+            message,
+            retryable: true,
+        }
+    }
+}
+
+/// True for HTTP statuses worth retrying: server errors, 408 and 429.
+fn status_is_retryable(status: reqwest::StatusCode) -> bool {
+    status.is_server_error()
+        || status == reqwest::StatusCode::REQUEST_TIMEOUT
+        || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+}
+
 fn download_with_retry<F: FnMut(RuntimeProgress)>(
     url: &str,
     dest: &Path,
     on_progress: &mut F,
 ) -> Result<(), String> {
-    match download_with_progress(url, dest, on_progress) {
-        Ok(()) => Ok(()),
-        Err(first) => {
-            log::warn!("Download failed, retrying once: {}", first);
-            std::thread::sleep(Duration::from_secs(2));
-            download_with_progress(url, dest, on_progress)
-                .map_err(|second| format!("{first} (after retry: {second})"))
-        }
+    let mut errors: Vec<String> = Vec::new();
+    let mut delays = DOWNLOAD_RETRY_DELAYS_SECS.iter();
+    loop {
+        let err = match download_with_progress(url, dest, DOWNLOAD_STALL_TIMEOUT, on_progress) {
+            Ok(()) => return Ok(()),
+            Err(err) => err,
+        };
+        errors.push(err.message);
+        let delay = match delays.next() {
+            Some(delay) if err.retryable => *delay,
+            _ => break,
+        };
+        log::warn!(
+            "Download failed (attempt {}), retrying in {delay}s: {}",
+            errors.len(),
+            errors.last().map(String::as_str).unwrap_or_default()
+        );
+        std::thread::sleep(Duration::from_secs(delay));
+    }
+    let first = errors.remove(0);
+    match errors.pop() {
+        None => Err(first),
+        Some(last) => Err(format!(
+            "{first} (after {} retries: {last})",
+            errors.len() + 1
+        )),
     }
 }
 
+/// Download `url` to `dest`, reporting progress through `on_progress`. The
+/// download fails with a retryable error when no bytes arrive for
+/// `stall_timeout`.
 fn download_with_progress<F: FnMut(RuntimeProgress)>(
     url: &str,
     dest: &Path,
+    stall_timeout: Duration,
     on_progress: &mut F,
-) -> Result<(), String> {
+) -> Result<(), DownloadError> {
     let client = reqwest::blocking::Client::builder()
-        // No overall request timeout: large downloads on slow connections
-        // can legitimately take minutes.  reqwest's per-read timeout via
-        // `read_timeout` would be nicer but isn't on the blocking client.
-        .timeout(None)
+        // On reqwest's blocking client this timeout does not limit the whole
+        // download. It limits the wait for the response headers, and then
+        // each `resp.read` call below separately. A large download on a slow
+        // connection can take as long as it needs, provided some bytes arrive
+        // within `stall_timeout`. When the server stops sending without
+        // closing the connection, one `resp.read` call waits `stall_timeout`
+        // and returns an error, and `download_with_retry` tries again.
+        .timeout(stall_timeout)
         .connect_timeout(Duration::from_secs(30))
         .build()
-        .map_err(|e| format!("http client init: {e}"))?;
+        .map_err(|e| DownloadError::retryable(format!("http client init: {e}")))?;
 
     let mut resp = client
         .get(url)
         .send()
-        .map_err(|e| format!("Download failed for {}: {e}", url))?;
+        .map_err(|e| DownloadError::retryable(format!("Download failed for {}: {e}", url)))?;
     if !resp.status().is_success() {
-        return Err(format!(
-            "Download failed for {}: HTTP {}",
-            url,
-            resp.status()
-        ));
+        return Err(DownloadError {
+            message: format!("Download failed for {}: HTTP {}", url, resp.status()),
+            retryable: status_is_retryable(resp.status()),
+        });
     }
     let total = resp.content_length();
 
-    let mut file = fs::File::create(dest).map_err(|e| format!("Create {}: {e}", dest.display()))?;
+    let mut file = fs::File::create(dest).map_err(|e| DownloadError {
+        message: format!("Create {}: {e}", dest.display()),
+        retryable: false,
+    })?;
 
     // Throttle progress events to roughly every 512 KB so we don't flood
     // the Tauri event channel for a 30 MB download.
@@ -681,7 +794,7 @@ fn download_with_progress<F: FnMut(RuntimeProgress)>(
             Ok(n) => n,
             Err(e) => {
                 let _ = fs::remove_file(dest);
-                return Err(format!("Read from {}: {e}", url));
+                return Err(DownloadError::retryable(format!("Read from {}: {e}", url)));
             }
         };
         if n == 0 {
@@ -689,7 +802,10 @@ fn download_with_progress<F: FnMut(RuntimeProgress)>(
         }
         if let Err(e) = file.write_all(&buf[..n]) {
             let _ = fs::remove_file(dest);
-            return Err(format!("Write {}: {e}", dest.display()));
+            return Err(DownloadError {
+                message: format!("Write {}: {e}", dest.display()),
+                retryable: false,
+            });
         }
         downloaded += n as u64;
         if downloaded - last_reported >= PROGRESS_STEP {
@@ -825,6 +941,119 @@ fn remove_quarantine(dir: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn download_retries_only_statuses_another_try_can_change() {
+        use reqwest::StatusCode;
+        for status in [504, 503, 502, 500, 429, 408] {
+            assert!(
+                status_is_retryable(StatusCode::from_u16(status).unwrap()),
+                "{status}"
+            );
+        }
+        for status in [404, 403, 401, 400] {
+            assert!(
+                !status_is_retryable(StatusCode::from_u16(status).unwrap()),
+                "{status}"
+            );
+        }
+    }
+
+    /// Start an HTTP server on a free loopback port and return the URL to
+    /// request from it. The server handles one request. It answers with a
+    /// 200 response whose headers announce `content_length` body bytes, then
+    /// calls `send_body` with the connection, and closes the connection when
+    /// `send_body` returns.
+    fn serve_once(
+        content_length: usize,
+        send_body: impl FnOnce(&mut std::net::TcpStream) + Send + 'static,
+    ) -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/file", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            let Ok((mut stream, _)) = listener.accept() else {
+                return;
+            };
+            // Each write goes out at once, so the gaps the test puts between
+            // writes are the gaps the client sees.
+            let _ = stream.set_nodelay(true);
+            let mut request = Vec::new();
+            let mut byte = [0u8; 1];
+            while !request.ends_with(b"\r\n\r\n") {
+                if stream.read(&mut byte).unwrap_or(0) == 0 {
+                    return;
+                }
+                request.push(byte[0]);
+            }
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {content_length}\r\nConnection: close\r\n\r\n"
+            );
+            if stream.write_all(head.as_bytes()).is_err() {
+                return;
+            }
+            send_body(&mut stream);
+        });
+        url
+    }
+
+    /// A path in the system temp directory that no other test uses.
+    fn download_dest(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "laya-download-test-{name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    #[test]
+    fn download_fails_when_the_server_stops_sending() {
+        // Dropping `release` at the end of the test ends the server thread.
+        let (release, until_released) = std::sync::mpsc::channel::<()>();
+        let url = serve_once(1000, move |stream| {
+            let _ = stream.write_all(&[b'x'; 10]);
+            // Keep the connection open without sending the other 990 bytes.
+            let _ = until_released.recv();
+        });
+        let dest = download_dest("stall");
+        let started = std::time::Instant::now();
+        let result = download_with_progress(&url, &dest, Duration::from_millis(500), &mut |_| {});
+        let waited = started.elapsed();
+        drop(release);
+
+        let err = result
+            .err()
+            .expect("a download that stops receiving bytes must fail");
+        assert!(err.retryable, "{}", err.message);
+        assert!(waited < Duration::from_secs(10), "waited {waited:?}");
+        assert!(!dest.exists(), "the partial file is deleted");
+    }
+
+    #[test]
+    fn download_survives_a_slow_server_that_keeps_sending() {
+        // Eight bytes, one every 200 ms. The whole download takes 1.6 s,
+        // which is longer than the 1 s stall timeout, but the client never
+        // waits 1 s for the next byte.
+        let url = serve_once(8, |stream| {
+            for _ in 0..8 {
+                std::thread::sleep(Duration::from_millis(200));
+                if stream.write_all(b"x").is_err() {
+                    return;
+                }
+            }
+        });
+        let dest = download_dest("slow");
+        let result = download_with_progress(&url, &dest, Duration::from_secs(1), &mut |_| {});
+        let body = fs::read(&dest).unwrap_or_default();
+        let _ = fs::remove_file(&dest);
+
+        if let Err(err) = result {
+            panic!("a slow download must not time out: {}", err.message);
+        }
+        assert_eq!(body, b"xxxxxxxx");
+    }
 
     #[test]
     fn python_triple_covers_all_supported_platforms() {

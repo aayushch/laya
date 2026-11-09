@@ -60,6 +60,17 @@ class TestNormalizePayload:
 
 
 class TestBuildPayload:
+    @pytest.fixture(autouse=True)
+    def _jira_connection(self):
+        """Jira requests need a connection with a site URL; the backend fails
+        a Jira request whose connection has none."""
+        creds = {"jira": {"domain": "https://acme.atlassian.net/"}}
+        with patch(
+            "laya.egress.connections._get_from_keychain",
+            side_effect=lambda _cid, platform: creds.get(platform, {}),
+        ):
+            yield
+
     @pytest.mark.asyncio
     async def test_payload_structure(self, backend):
         with patch("laya.egress.enrichment.get_db") as mock_get_db:
@@ -70,6 +81,7 @@ class TestBuildPayload:
             request = EgressRequest(
                 platform="jira",
                 action_type="comment",
+                connection_id="conn_jira",
                 payload={"issue_key": "PROJ-1", "comment": "Hello"},
                 source_event_id=None,
             )
@@ -98,6 +110,7 @@ class TestBuildPayload:
             request = EgressRequest(
                 platform="jira",
                 action_type="comment",
+                connection_id="conn_jira",
                 payload={"issue_key": "X-1", "comment": "Done"},
                 source_event_id="evt_123",
             )
@@ -180,6 +193,7 @@ class TestBuildPayload:
             request = EgressRequest(
                 platform="jira",
                 action_type="comment",
+                connection_id="conn_jira",
                 payload={"comment": "Fixed"},
                 source_event_id="evt_jira_10017_1776",
             )

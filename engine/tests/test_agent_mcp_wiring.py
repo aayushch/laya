@@ -131,7 +131,11 @@ class TestClaudeCodeMcpArgs:
             cfg = json.load(f)
         assert cfg["mcpServers"]["laya"]["type"] == "sse"
         assert cfg["mcpServers"]["laya"]["url"].endswith("?space_id=space_abc")
-        assert (os.stat(cfg_path).st_mode & 0o777) == 0o600
+        # POSIX modes only. On Windows, mkstemp creates the file in the
+        # user's own %TEMP%, whose ACL already limits it to that user, and
+        # st_mode reports 0o666 for any writable file.
+        if os.name != "nt":
+            assert (os.stat(cfg_path).st_mode & 0o777) == 0o600
 
     @pytest.mark.asyncio
     async def test_start_session_includes_user_scope_allowlist(self, reset_mcp_settings):
