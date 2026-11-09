@@ -621,11 +621,15 @@ fn fault(step: &str, log: &mut UpgradeLog) -> Result<(), String> {
 /// `LAYA_N8N_FORCE_QUICKJS=1` treats `isolated-vm` as not loadable, so the
 /// install records the `quickjs` expression engine.
 pub fn force_quickjs() -> bool {
-    let on = std::env::var("LAYA_N8N_FORCE_QUICKJS").ok().as_deref() == Some("1");
+    let on = force_quickjs_requested();
     if on {
         log::warn!("Test hook LAYA_N8N_FORCE_QUICKJS=1 is active");
     }
     on
+}
+
+fn force_quickjs_requested() -> bool {
+    std::env::var("LAYA_N8N_FORCE_QUICKJS").ok().as_deref() == Some("1")
 }
 
 /// `LAYA_N8N_UPGRADE_PAUSE=<phase>` waits 300 seconds right after the record
@@ -1008,6 +1012,13 @@ fn run_steps(
 
     // Step 3: install the new n8n next to the old one.
     fault("stage_n8n", &mut session.log).map_err(BeforeBackup)?;
+    // The install itself checks the variable (n8n::install_n8n_into); the
+    // upgrade log records it here, like the other test hooks.
+    if force_quickjs_requested() {
+        session
+            .log
+            .warn("Test hook LAYA_N8N_FORCE_QUICKJS=1: isolated-vm is treated as not loadable");
+    }
     session.log.info(&format!(
         "Installing n8n {} into {}",
         n8n::N8N_VERSION,

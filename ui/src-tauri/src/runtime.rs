@@ -674,19 +674,66 @@ fn fetch_text(url: &str) -> Result<String, String> {
         .map_err(|e| format!("Read body from {}: {e}", url))
 }
 
+/// Seconds to wait before each retry of a failed download. A CDN outage
+/// (GitHub's release CDN answering 502/503/504) often lasts under a minute, so
+/// a first-run setup tries for about 20 seconds before it reports the error
+/// and offers Retry on the splash screen.
+const DOWNLOAD_RETRY_DELAYS_SECS: [u64; 3] = [2, 6, 12];
+
+/// A failed download. `retryable` is false for answers that another try
+/// cannot change, such as 404.
+struct DownloadError {
+    message: String,
+    retryable: bool,
+}
+
+impl DownloadError {
+    fn retryable(message: String) -> Self {
+        DownloadError {
+            message,
+            retryable: true,
+        }
+    }
+}
+
+/// True for HTTP statuses worth retrying: server errors, 408 and 429.
+fn status_is_retryable(status: reqwest::StatusCode) -> bool {
+    status.is_server_error()
+        || status == reqwest::StatusCode::REQUEST_TIMEOUT
+        || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+}
+
 fn download_with_retry<F: FnMut(RuntimeProgress)>(
     url: &str,
     dest: &Path,
     on_progress: &mut F,
 ) -> Result<(), String> {
-    match download_with_progress(url, dest, on_progress) {
-        Ok(()) => Ok(()),
-        Err(first) => {
-            log::warn!("Download failed, retrying once: {}", first);
-            std::thread::sleep(Duration::from_secs(2));
-            download_with_progress(url, dest, on_progress)
-                .map_err(|second| format!("{first} (after retry: {second})"))
-        }
+    let mut errors: Vec<String> = Vec::new();
+    let mut delays = DOWNLOAD_RETRY_DELAYS_SECS.iter();
+    loop {
+        let err = match download_with_progress(url, dest, on_progress) {
+            Ok(()) => return Ok(()),
+            Err(err) => err,
+        };
+        errors.push(err.message);
+        let delay = match delays.next() {
+            Some(delay) if err.retryable => *delay,
+            _ => break,
+        };
+        log::warn!(
+            "Download failed (attempt {}), retrying in {delay}s: {}",
+            errors.len(),
+            errors.last().map(String::as_str).unwrap_or_default()
+        );
+        std::thread::sleep(Duration::from_secs(delay));
+    }
+    let first = errors.remove(0);
+    match errors.pop() {
+        None => Err(first),
+        Some(last) => Err(format!(
+            "{first} (after {} retries: {last})",
+            errors.len() + 1
+        )),
     }
 }
 
@@ -694,7 +741,7 @@ fn download_with_progress<F: FnMut(RuntimeProgress)>(
     url: &str,
     dest: &Path,
     on_progress: &mut F,
-) -> Result<(), String> {
+) -> Result<(), DownloadError> {
     let client = reqwest::blocking::Client::builder()
         // No overall request timeout: large downloads on slow connections
         // can legitimately take minutes.  reqwest's per-read timeout via
@@ -702,22 +749,24 @@ fn download_with_progress<F: FnMut(RuntimeProgress)>(
         .timeout(None)
         .connect_timeout(Duration::from_secs(30))
         .build()
-        .map_err(|e| format!("http client init: {e}"))?;
+        .map_err(|e| DownloadError::retryable(format!("http client init: {e}")))?;
 
     let mut resp = client
         .get(url)
         .send()
-        .map_err(|e| format!("Download failed for {}: {e}", url))?;
+        .map_err(|e| DownloadError::retryable(format!("Download failed for {}: {e}", url)))?;
     if !resp.status().is_success() {
-        return Err(format!(
-            "Download failed for {}: HTTP {}",
-            url,
-            resp.status()
-        ));
+        return Err(DownloadError {
+            message: format!("Download failed for {}: HTTP {}", url, resp.status()),
+            retryable: status_is_retryable(resp.status()),
+        });
     }
     let total = resp.content_length();
 
-    let mut file = fs::File::create(dest).map_err(|e| format!("Create {}: {e}", dest.display()))?;
+    let mut file = fs::File::create(dest).map_err(|e| DownloadError {
+        message: format!("Create {}: {e}", dest.display()),
+        retryable: false,
+    })?;
 
     // Throttle progress events to roughly every 512 KB so we don't flood
     // the Tauri event channel for a 30 MB download.
@@ -732,7 +781,7 @@ fn download_with_progress<F: FnMut(RuntimeProgress)>(
             Ok(n) => n,
             Err(e) => {
                 let _ = fs::remove_file(dest);
-                return Err(format!("Read from {}: {e}", url));
+                return Err(DownloadError::retryable(format!("Read from {}: {e}", url)));
             }
         };
         if n == 0 {
@@ -740,7 +789,10 @@ fn download_with_progress<F: FnMut(RuntimeProgress)>(
         }
         if let Err(e) = file.write_all(&buf[..n]) {
             let _ = fs::remove_file(dest);
-            return Err(format!("Write {}: {e}", dest.display()));
+            return Err(DownloadError {
+                message: format!("Write {}: {e}", dest.display()),
+                retryable: false,
+            });
         }
         downloaded += n as u64;
         if downloaded - last_reported >= PROGRESS_STEP {
@@ -876,6 +928,23 @@ fn remove_quarantine(dir: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn download_retries_only_statuses_another_try_can_change() {
+        use reqwest::StatusCode;
+        for status in [504, 503, 502, 500, 429, 408] {
+            assert!(
+                status_is_retryable(StatusCode::from_u16(status).unwrap()),
+                "{status}"
+            );
+        }
+        for status in [404, 403, 401, 400] {
+            assert!(
+                !status_is_retryable(StatusCode::from_u16(status).unwrap()),
+                "{status}"
+            );
+        }
+    }
 
     #[test]
     fn python_triple_covers_all_supported_platforms() {

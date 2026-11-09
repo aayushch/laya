@@ -664,6 +664,20 @@ use tauri::{
 
 struct EngineProcess(Mutex<Option<std::process::Child>>);
 
+/// Set by the first `RunEvent::Ready` on Linux. Every later Ready comes from
+/// another launch of Laya and only brings the window forward.
+#[cfg(target_os = "linux")]
+static LINUX_READY_SEEN: AtomicBool = AtomicBool::new(false);
+
+/// Show, restore and focus the main window, for another launch of Laya.
+fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
 /// Environment variable that carries the engine API token to the engine
 /// process (read by `laya.security.keychain.ensure_engine_token`).
 pub(crate) const ENGINE_TOKEN_ENV: &str = "LAYA_ENGINE_TOKEN";
@@ -1036,7 +1050,35 @@ pub fn run() {
     #[cfg(target_os = "linux")]
     apply_webkit_rendering_workarounds();
 
-    tauri::Builder::default()
+    #[allow(unused_mut)]
+    let mut context = tauri::generate_context!();
+
+    // Linux: with `enableGTKAppId`, launching Laya while it already runs makes
+    // the new process hand off to the running one through GApplication and exit.
+    // The running process then gets a second GTK `activate`, which Tauri treats
+    // as a fresh start: it creates the config windows again and panics with
+    // "a webview with label `main` already exists", taking down the engine and
+    // n8n (and any n8n upgrade in progress) with it. Tauri does not create the
+    // config windows here; `setup` creates them once, and a later
+    // `RunEvent::Ready` only brings the window forward.
+    #[cfg(target_os = "linux")]
+    for window in context.config_mut().app.windows.iter_mut() {
+        window.create = false;
+    }
+
+    let builder = tauri::Builder::default();
+
+    // macOS and Windows have no launch-time hand-off, so a second launch would
+    // start a second shell competing for the engine and n8n ports. The plugin
+    // must be registered first: a second instance exits inside its setup,
+    // before any other plugin or window starts.
+    #[cfg(any(target_os = "macos", windows))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        log::info!("Another Laya launch was forwarded to this instance");
+        show_main_window(app);
+    }));
+
+    builder
         // Registered as an init script so the token is in place before any
         // page script runs, on first load and on every reload.
         .plugin(
@@ -1051,6 +1093,13 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
+            // Linux creates the config windows here (see the top of `run`).
+            // This runs before anything below looks up the "main" window.
+            #[cfg(target_os = "linux")]
+            for window_config in app.config().app.windows.clone().iter() {
+                tauri::WebviewWindowBuilder::from_config(app.handle(), window_config)?.build()?;
+            }
+
             {
                 use tauri_plugin_log::{Target, TargetKind};
 
@@ -1072,6 +1121,34 @@ pub fn run() {
                 }
 
                 app.handle().plugin(log_builder.build())?;
+            }
+
+            // With their default action, SIGTERM (logout, shutdown, `kill`) and
+            // SIGINT (Ctrl+C) end the process without RunEvent::Exit, which
+            // leaves n8n running and holding its port for the next launch.
+            // Each becomes a normal exit here, the same as Quit in the tray. A
+            // second signal while that cleanup runs ends the process at once.
+            // SIGHUP is left alone so `nohup` launches keep working.
+            #[cfg(unix)]
+            {
+                use signal_hook::consts::{SIGINT, SIGTERM};
+                match signal_hook::iterator::Signals::new([SIGTERM, SIGINT]) {
+                    Ok(mut signals) => {
+                        let handle = app.handle().clone();
+                        std::thread::spawn(move || {
+                            let mut exiting = false;
+                            for signal in signals.forever() {
+                                if exiting {
+                                    let _ = signal_hook::low_level::emulate_default_handler(signal);
+                                }
+                                exiting = true;
+                                log::info!("Received signal {signal}; quitting");
+                                handle.exit(0);
+                            }
+                        });
+                    }
+                    Err(e) => log::warn!("Could not install the SIGTERM/SIGINT handler: {e}"),
+                }
             }
 
             // Set macOS dock icon (needed in dev mode where there's no .app bundle)
@@ -1251,8 +1328,15 @@ pub fn run() {
                 &[&dashboard, &separator, &show, &legal, &separator2, &quit],
             )?;
 
+            // macOS recolours the black template image to suit the menu bar.
+            // Linux and Windows draw the image as it is, where black disappears
+            // on a dark panel or taskbar, so they get the same glyph in the
+            // brand orange, which stays visible on dark and light themes.
             let tray_icon = {
+                #[cfg(target_os = "macos")]
                 let bytes = include_bytes!("../icons/trayTemplate@2x.png");
+                #[cfg(not(target_os = "macos"))]
+                let bytes = include_bytes!("../icons/tray@2x.png");
                 tauri::image::Image::from_bytes(bytes).expect("failed to load tray icon")
             };
 
@@ -1455,10 +1539,19 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
                 }
             }
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building tauri application")
         .run(|app, event| {
             match event {
+                // The first Ready follows `setup`. Each later one is the GTK
+                // `activate` from another launch (see the top of `run`).
+                #[cfg(target_os = "linux")]
+                tauri::RunEvent::Ready => {
+                    if LINUX_READY_SEEN.swap(true, Ordering::Relaxed) {
+                        log::info!("Another Laya launch was forwarded to this instance");
+                        show_main_window(app);
+                    }
+                }
                 #[cfg(target_os = "macos")]
                 tauri::RunEvent::WindowEvent {
                     label,

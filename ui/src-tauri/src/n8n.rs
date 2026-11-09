@@ -221,9 +221,12 @@ pub fn find_old_runtime_node() -> Result<(String, String), String> {
 }
 
 /// Strip AppImage-injected environment variables before invoking
-/// Node.js, same rationale as `sanitize_python_cmd` in sidecar.rs.
+/// Node.js, same rationale as `sanitize_python_cmd` in sidecar.rs. The
+/// Python variables matter because npm's node-gyp runs Python to build a
+/// native add-on from source when no prebuilt binary can be downloaded.
 pub(crate) fn sanitize_node_cmd(cmd: &mut Command) {
     crate::process_util::sanitize_ld_library_path(cmd);
+    crate::process_util::sanitize_appimage_python_env(cmd);
 }
 
 /// Build a PATH for a child process with the directory of `node_path` first.
