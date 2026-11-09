@@ -149,7 +149,7 @@ The fastest way to try Laya is a prebuilt release — no toolchains required.
    | Windows | `.msi` or `.exe` |
    | Linux | `.deb` or `.AppImage` |
 
-2. Install and launch. You do **not** need Python, Node, or Rust installed to *run* a release build. On first run, Laya checks for a compatible Python (3.10–3.14; on Windows, an x64 build) and Node.js (20+) already on your machine and uses those if found; otherwise it provisions its own bundled runtimes. Either way, a local n8n instance is set up under `~/.laya/`.
+2. Install and launch. You do **not** need Python, Node, or Rust installed to *run* a release build. On first run, Laya checks for a compatible Python (3.10–3.14; on Windows, an x64 build) already on your machine and uses it if found; otherwise it provisions its own. n8n always runs on Laya's own Node.js 24 in `~/.laya/node/`, downloaded on first run, so a later change to your system Node cannot break it. A local n8n instance is set up under `~/.laya/`. When a Laya release moves n8n or its Node to a new version, the next launch upgrades it on the setup screen, backs up n8n's database first, and restores the previous n8n if anything fails.
 3. Add an API key (Anthropic, OpenAI, Google, …) or point Laya at a local Ollama / LM Studio endpoint, then connect your tools from Settings.
 
 > **macOS:** release builds are signed, so they open normally — just double-click to launch.
@@ -171,6 +171,8 @@ You need three runtimes installed. Here's how to get each one:
 Verify: `python3 --version`
 
 #### Node.js 20+
+
+This Node builds the UI. n8n does not use it: the app downloads its own Node.js 24 for n8n on first launch.
 
 - **All platforms:** Download from [nodejs.org](https://nodejs.org/) (LTS recommended), or use a version manager like [nvm](https://github.com/nvm-sh/nvm) / [fnm](https://github.com/Schniz/fnm)
 - **macOS:** `brew install node`
@@ -295,7 +297,7 @@ npm error Fetching packages of type "remote" have been disabled
 npm error Refusing to fetch "xlsx@https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz"
 ```
 
-your `npm` is version 12 or newer, which defaults `allow-remote` to `none`. n8n depends on `n8n-nodes-base`, which pins `xlsx` to a tarball hosted outside the npm registry, so npm refuses to install it. This happens when Laya finds a system Node 22+ whose `npm` was upgraded separately (for example Arch's `npm` package). Laya's managed Node download ships npm 10 and is unaffected.
+your `npm` is version 12 or newer, which defaults `allow-remote` to `none`. n8n depends on `n8n-nodes-base`, which pins `xlsx` to a tarball hosted outside the npm registry, so npm refuses to install it. Releases up to v2.5.0 could hit this when they used a system Node 22+ whose `npm` was upgraded separately (for example Arch's `npm` package). Later releases always install n8n with Laya's own Node and pass `--allow-remote=all`.
 
 Laya passes `--allow-remote=all` on its n8n install starting with the release after v1.9.1. On v1.9.1 or earlier, install n8n by hand with a project-local `.npmrc` so your global npm settings stay untouched, then click **Retry** in the setup screen:
 

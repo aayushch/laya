@@ -3,16 +3,17 @@
 
 //! Automatic provisioning of Python, Node.js, and uv runtimes into `~/.laya/`.
 //!
-//! On first launch, when the system lacks a Python 3.10+ or Node.js 22+
-//! installation, this module downloads prebuilt binaries — python-build-
-//! standalone (Astral/indygreg) for Python, the official `nodejs.org`
-//! tarballs/zips for Node, and `uv` (Astral) as a fast pip replacement —
+//! On first launch this module downloads prebuilt binaries when they are
+//! missing: python-build-standalone (Astral/indygreg) for Python when the
+//! system has no Python 3.10+, the official `nodejs.org` tarballs/zips for
+//! the Node that runs n8n (always Laya's own copy, never the system Node; see
+//! `n8n_upgrade.rs`), and `uv` (Astral) as a fast pip replacement. It
 //! verifies their SHA-256, extracts them, and exposes the resulting
 //! binaries via `managed_python()` / `managed_node()` / `managed_uv()`
 //! so the rest of the startup flow can use them transparently.
 //!
 //! Design:
-//!   1. Detect a working runtime (managed first, then system).
+//!   1. Detect a working runtime (managed first, then system for Python).
 //!   2. Only download what is missing.
 //!   3. Downloads run in parallel threads; progress events are multiplexed
 //!      through an `mpsc` channel back to the caller's callback.
@@ -50,8 +51,14 @@ pub(crate) const PYTHON_VERSION: &str = "3.12.13";
 /// https://github.com/astral-sh/python-build-standalone/releases
 const PBS_RELEASE_TAG: &str = "20260510";
 
-/// Node.js LTS version from nodejs.org/dist.
-const NODE_VERSION: &str = "22.22.3";
+/// Node.js LTS version from nodejs.org/dist that runs n8n.
+///
+/// n8n's native add-on `isolated-vm` is compiled for one Node ABI, so n8n has
+/// to be reinstalled whenever this changes. Changing it changes the n8n
+/// upgrade target (`n8n_upgrade::target_id`), and existing installs move to
+/// the new Node through the upgrade sequence in `n8n_upgrade.rs`, with a
+/// database backup and rollback.
+pub(crate) const NODE_VERSION: &str = "24.22.2";
 
 /// uv version (Astral's fast pip/venv replacement).
 /// Releases: https://github.com/astral-sh/uv/releases
@@ -65,7 +72,7 @@ fn python_dir() -> PathBuf {
     laya_home().join("python")
 }
 
-fn node_dir() -> PathBuf {
+pub(crate) fn node_dir() -> PathBuf {
     laya_home().join("node")
 }
 
@@ -77,7 +84,7 @@ fn runtimes_dir() -> PathBuf {
     laya_home().join("runtimes")
 }
 
-fn version_marker(dir: &Path) -> PathBuf {
+pub(crate) fn version_marker(dir: &Path) -> PathBuf {
     dir.join(".version")
 }
 
@@ -105,15 +112,41 @@ pub fn managed_python() -> Option<PathBuf> {
 /// On Unix the official Node tarball uses `bin/node`.
 /// On Windows the zip puts `node.exe` at the top level alongside `npm.cmd`.
 pub fn managed_node() -> Option<PathBuf> {
-    let candidate = if cfg!(target_os = "windows") {
-        node_dir().join("node.exe")
-    } else {
-        node_dir().join("bin").join("node")
-    };
+    let candidate = node_binary_in(&node_dir());
     if candidate.exists() {
         Some(candidate)
     } else {
         None
+    }
+}
+
+/// Path of the `node` binary inside an extracted Node distribution directory
+/// `dir` (the managed `~/.laya/node` or a staging copy of it).
+pub(crate) fn node_binary_in(dir: &Path) -> PathBuf {
+    if cfg!(target_os = "windows") {
+        dir.join("node.exe")
+    } else {
+        dir.join("bin").join("node")
+    }
+}
+
+/// Path of npm's JavaScript entry point inside the Node distribution `dir`.
+/// Laya runs it as `node npm-cli.js ...` rather than through the `npm` /
+/// `npm.cmd` launcher. The Unix launcher starts with `#!/usr/bin/env node`
+/// and so runs whichever `node` is first on `PATH`. On Windows, running the
+/// `.cmd` launcher goes through `cmd.exe`.
+pub(crate) fn npm_cli_in(dir: &Path) -> PathBuf {
+    if cfg!(target_os = "windows") {
+        dir.join("node_modules")
+            .join("npm")
+            .join("bin")
+            .join("npm-cli.js")
+    } else {
+        dir.join("lib")
+            .join("node_modules")
+            .join("npm")
+            .join("bin")
+            .join("npm-cli.js")
     }
 }
 
@@ -143,23 +176,31 @@ pub enum RuntimeProgress {
     Done(String),
 }
 
-/// Ensure Python (3.10+), Node (22+), and uv runtimes are available, either
-/// from the system or downloaded into `~/.laya/{python,node,uv}/`.
+/// Ensure Python (3.10+) and uv are available, either from the system or
+/// downloaded into `~/.laya/{python,uv}/`, and, when `provision_node` is
+/// true, that the managed Node `NODE_VERSION` is in `~/.laya/node/`.
+///
+/// `provision_node` is true only for a fresh install (n8n not installed yet).
+/// When n8n is already installed, `~/.laya/node` may be the Node the
+/// installed n8n was built for, and replacing it here would make that n8n
+/// impossible to restore after a failed upgrade. In that case the upgrade
+/// sequence in `n8n_upgrade.rs` downloads the new Node into a staging
+/// directory instead.
 ///
 /// Downloads run in parallel when multiple runtimes are needed.
-/// Detects system installs first; only downloads what is missing.
 /// Idempotent across launches via `.version` marker files.
-pub fn ensure_runtimes<F: FnMut(RuntimeProgress)>(mut on_progress: F) -> Result<(), String> {
+pub fn ensure_runtimes<F: FnMut(RuntimeProgress)>(
+    provision_node: bool,
+    mut on_progress: F,
+) -> Result<(), String> {
     fs::create_dir_all(laya_home()).map_err(|e| format!("Failed to create ~/.laya: {e}"))?;
 
     let python_needed = match managed_python() {
         Some(_) => !managed_python_version_matches(),
         None => crate::sidecar::find_python_system().is_err(),
     };
-    let node_needed = match managed_node() {
-        Some(_) => !managed_node_version_matches(),
-        None => crate::n8n::find_node_system().is_err(),
-    };
+    let node_needed =
+        provision_node && (managed_node().is_none() || !managed_node_version_matches());
     let uv_needed = managed_uv().is_none() || !managed_uv_version_matches();
 
     if !python_needed && !node_needed && !uv_needed {
@@ -192,7 +233,7 @@ pub fn ensure_runtimes<F: FnMut(RuntimeProgress)>(mut on_progress: F) -> Result<
     if node_needed {
         let tx = tx.clone();
         handles.push(std::thread::spawn(move || {
-            provision_node(&mut |p| {
+            provision_node_into(&node_dir(), &mut |p| {
                 let _ = tx.send(label_download("Node", p));
             })
         }));
@@ -255,7 +296,7 @@ fn managed_python_version_matches() -> bool {
         .unwrap_or(false)
 }
 
-fn managed_node_version_matches() -> bool {
+pub(crate) fn managed_node_version_matches() -> bool {
     fs::read_to_string(version_marker(&node_dir()))
         .map(|s| s.trim() == NODE_VERSION)
         .unwrap_or(false)
@@ -372,7 +413,14 @@ fn fetch_python_sha256(filename: &str) -> Result<String, String> {
 
 // ── Provisioning: Node ──────────────────────────────────────────────────
 
-fn provision_node<F: FnMut(RuntimeProgress)>(on_progress: &mut F) -> Result<(), String> {
+/// Download Node `NODE_VERSION`, verify its SHA-256 against the published
+/// `SHASUMS256.txt`, and install it as the directory `dest` with a `.version`
+/// file. `dest` is `~/.laya/node` for a fresh install, or the staging
+/// directory `~/.laya/runtimes/node-next` during an n8n upgrade.
+pub(crate) fn provision_node_into<F: FnMut(RuntimeProgress)>(
+    dest: &Path,
+    on_progress: &mut F,
+) -> Result<(), String> {
     let filename = node_filename()?;
     let url = format!("https://nodejs.org/dist/v{}/{}", NODE_VERSION, filename);
 
@@ -396,6 +444,7 @@ fn provision_node<F: FnMut(RuntimeProgress)>(on_progress: &mut F) -> Result<(), 
 
     on_progress(RuntimeProgress::Phase("Extracting Node.js".to_string()));
     let staging = runtimes_dir().join("staging-node");
+    let dest = dest.to_path_buf();
     let _ = fs::remove_dir_all(&staging);
     fs::create_dir_all(&staging).map_err(|e| format!("Failed to create staging: {e}"))?;
 
@@ -415,20 +464,21 @@ fn provision_node<F: FnMut(RuntimeProgress)>(on_progress: &mut F) -> Result<(), 
     // Node archives extract into a single top-level directory like
     // `node-v22.12.0-darwin-arm64/`.
     let extracted = find_only_subdir(&staging)?;
-    install_atomically(&extracted, &node_dir())?;
+    install_atomically(&extracted, &dest)?;
 
     let _ = fs::remove_dir_all(&staging);
     let _ = fs::remove_file(&archive);
 
     #[cfg(target_os = "macos")]
-    remove_quarantine(&node_dir());
+    remove_quarantine(&dest);
 
-    let _ = fs::write(version_marker(&node_dir()), NODE_VERSION);
+    fs::write(version_marker(&dest), NODE_VERSION)
+        .map_err(|e| format!("Write {}: {e}", version_marker(&dest).display()))?;
 
     log::info!(
         "Managed Node.js {} installed at {}",
         NODE_VERSION,
-        node_dir().display()
+        dest.display()
     );
     on_progress(RuntimeProgress::Done(format!(
         "Node.js {} ready",
@@ -444,6 +494,7 @@ fn node_filename() -> Result<String, String> {
         ("linux", "x86_64") => ("linux", "x64", "tar.gz"),
         ("linux", "aarch64") => ("linux", "arm64", "tar.gz"),
         ("windows", "x86_64") => ("win", "x64", "zip"),
+        ("windows", "aarch64") => ("win", "arm64", "zip"),
         (os, arch) => {
             return Err(format!(
                 "Unsupported platform for managed Node: {}/{}",

@@ -138,10 +138,14 @@ pub struct EnvStatus {
     pub deps_installed: bool,
     /// Whether the engine source is available
     pub engine_source_found: bool,
-    /// Whether Node.js 22+ is available on the system
+    /// Whether a Node.js runtime for n8n is available
     pub node_found: bool,
     /// Whether n8n is installed in ~/.laya/n8n_module/
     pub n8n_installed: bool,
+    /// Whether this launch must run the n8n upgrade, or recover an
+    /// interrupted one (see `n8n_upgrade::upgrade_pending`). The splash
+    /// screen runs setup when it is true.
+    pub n8n_upgrade_needed: bool,
 }
 
 /// Check the full environment status.
@@ -154,8 +158,9 @@ pub fn check_environment() -> EnvStatus {
     let venv_ready = venv_is_usable();
     let deps_installed = venv_ready && deps_up_to_date();
     let engine_source_found = engine_source_dir().join("laya").join("main.py").exists();
-    let node_found = crate::n8n::find_node().is_ok();
+    let node_found = crate::n8n_upgrade::active_runtime().is_some();
     let n8n_installed = crate::n8n::is_n8n_installed();
+    let n8n_upgrade_needed = crate::n8n_upgrade::upgrade_pending();
 
     EnvStatus {
         python_path,
@@ -165,6 +170,7 @@ pub fn check_environment() -> EnvStatus {
         engine_source_found,
         node_found,
         n8n_installed,
+        n8n_upgrade_needed,
     }
 }
 

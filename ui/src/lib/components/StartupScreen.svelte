@@ -57,7 +57,9 @@
 	// ── Setup phase ──
 	let setupStarted = $state(false);
 
-	const setupReadyCount = $derived(($setupSteps).filter(s => s.status === 'done').length);
+	// A step that finished with a warning (for example, a failed n8n upgrade
+	// that was rolled back) counts as finished: setup continues past it.
+	const setupReadyCount = $derived(($setupSteps).filter(s => s.status === 'done' || s.status === 'warning').length);
 	const setupTotal = $derived(($setupSteps).length);
 
 	onMount(async () => {
@@ -135,7 +137,12 @@
 							<span class="flex-1 text-sm text-surface-200">{step.label}</span>
 							<span class="text-xs {stateIcon[step.status]}">{stateLabel[step.status]}</span>
 						</div>
-						<p class="h-4 text-[10px] truncate mt-1 pl-[22px] {step.status === 'error' ? 'text-red-400' : step.status === 'running' ? 'text-surface-500' : 'text-transparent'}">{step.message || '\u00A0'}</p>
+						{#if step.status === 'warning'}
+							<!-- Warnings stay visible after the step ends and may be longer than one line. -->
+							<p class="mt-1 pl-[22px] text-[10px] text-yellow-400 break-words">{step.message}</p>
+						{:else}
+							<p class="h-4 text-[10px] truncate mt-1 pl-[22px] {step.status === 'error' ? 'text-red-400' : step.status === 'running' ? 'text-surface-500' : 'text-transparent'}">{step.message || '\u00A0'}</p>
+						{/if}
 					</div>
 				{/each}
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Dev environment setup for Laya.
 #
-#   scripts/setup-dev.sh           one-time setup: venv, node_modules, n8n, ~/.laya dirs
+#   scripts/setup-dev.sh           one-time setup: venv, node_modules, ~/.laya dirs
 #   scripts/setup-dev.sh --update  sync the installed Python, Node and Rust packages to the
 #                                  committed lock files after a dependency change; n8n and
 #                                  the ~/.laya directories are left alone
@@ -84,16 +84,18 @@ if [ "$UPDATE" = 1 ]; then
     exit 0
 fi
 
-# Install n8n locally
+# n8n is not installed here. The app installs it on its first launch, on
+# Laya's own Node.js in ~/.laya/node (the system Node is never used for n8n),
+# and upgrades an existing install with a database backup and rollback
+# (ui/src-tauri/src/n8n_upgrade.rs). An npm install from this script would
+# use the system Node, and over an existing install it would migrate n8n's
+# database with no backup.
 echo ""
-echo "Installing n8n into ~/.laya/n8n_module/..."
-mkdir -p ~/.laya/n8n_module ~/.laya/n8n
-# Point node-gyp at the engine venv Python (has setuptools for distutils shim)
-# --allow-remote=all: npm 12 defaults allow-remote=none and refuses n8n's
-# non-registry xlsx tarball (cdn.sheetjs.com) with EALLOWREMOTE. Harmless on
-# npm 10/11 (npm 11 prints an "Unknown cli config" warning). See issue #18.
-npm_config_python="$REPO_ROOT/engine/.venv/bin/python" npm install --prefix ~/.laya/n8n_module --allow-remote=all n8n@2.15.0
-echo "  n8n installed"
+if [ -d ~/.laya/n8n_module/node_modules/n8n ]; then
+    echo "n8n: installed; the app upgrades it on launch when a new version is pinned"
+else
+    echo "n8n: the app installs it on its first launch (setup screen)"
+fi
 
 # Create ~/.laya directories
 echo ""

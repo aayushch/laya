@@ -412,3 +412,20 @@ class TestBootstrapEndpoint:
         data = resp.json()
         assert data["status"] == "ready"
         assert data["has_api_key"] is True
+
+
+@pytest.mark.asyncio
+async def test_reclaim_reads_the_paginated_list_of_n8n_2_46():
+    """n8n 2.46 answers GET /rest/api-keys with {"data": {"items": [...]}}."""
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=_response(200, {"data": {
+        "items": [{"id": "k1", "label": "laya-engine"}, {"id": "k2", "label": "other"}],
+        "count": 2,
+    }}))
+    mock_client.delete = AsyncMock(return_value=_response(200, {"success": True}))
+
+    with patch("laya.integrations.n8n_bootstrap.get_client", return_value=mock_client):
+        deleted = await _reclaim_api_key_label("http://localhost:45678", {"n8n-auth": "c"})
+
+    assert deleted == 1
+    assert mock_client.delete.call_args.args[0] == "http://localhost:45678/rest/api-keys/k1"

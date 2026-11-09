@@ -3,6 +3,7 @@
 
 mod fs_private;
 mod n8n;
+mod n8n_upgrade;
 mod process_util;
 mod rotating_log;
 mod runtime;
@@ -259,10 +260,12 @@ struct SetupEvent {
 /// Run full environment setup with fail-fast preflight checks.
 ///
 /// Steps:
-/// 1. Preflight — verify Python 3.10+ and Node.js 18+ are installed
+/// 1. Preflight — provision Python, uv and (for a fresh install) the managed
+///    Node; when an n8n upgrade runs, download its new Node here
 /// 2. Environment — create Python venv
 /// 3. Dependencies — pip install requirements
-/// 4. Automation — install n8n via npm + start it
+/// 4. Automation — install, upgrade or restore n8n (see `n8n_upgrade.rs`),
+///    then start it
 /// 5. Engine — start the Laya engine
 ///
 /// Emits `setup-progress` events throughout.
@@ -288,29 +291,48 @@ fn setup_environment(app: tauri::AppHandle) {
         // have to install runtimes by hand.  See runtime.rs for details.
         emit("preflight", "running", "Checking runtimes...");
 
+        let runtime_progress_message = |p: runtime::RuntimeProgress| match p {
+            runtime::RuntimeProgress::Phase(s) => s,
+            runtime::RuntimeProgress::Bytes { downloaded, total } => match total {
+                Some(t) if t > 0 => format!(
+                    "Downloaded {} MB / {} MB",
+                    downloaded / 1_048_576,
+                    t / 1_048_576
+                ),
+                _ => format!("Downloaded {} MB", downloaded / 1_048_576),
+            },
+            runtime::RuntimeProgress::Done(s) => s,
+        };
+
+        // Only one Laya process at a time may install, upgrade or restore n8n.
+        // The lock is held until the n8n step below has finished, and the OS
+        // releases it if this process crashes.
+        let setup_lock = match n8n_upgrade::acquire_setup_lock() {
+            Ok(lock) => lock,
+            Err(e) => {
+                emit("preflight", "error", &e);
+                return;
+            }
+        };
+
+        // What happens to n8n on this launch (plan section 6.5). Decided once,
+        // while holding the setup lock and before anything is downloaded, and
+        // carried through the steps below.
+        let n8n_decision = n8n_upgrade::decide();
+        log::info!("n8n setup decision: {:?}", n8n_decision);
+
         let app_for_progress = app.clone();
-        let ensure_result = runtime::ensure_runtimes(|p| {
-            let msg = match p {
-                runtime::RuntimeProgress::Phase(s) => s,
-                runtime::RuntimeProgress::Bytes { downloaded, total } => match total {
-                    Some(t) if t > 0 => format!(
-                        "Downloaded {} MB / {} MB",
-                        downloaded / 1_048_576,
-                        t / 1_048_576
-                    ),
-                    _ => format!("Downloaded {} MB", downloaded / 1_048_576),
-                },
-                runtime::RuntimeProgress::Done(s) => s,
-            };
-            let _ = app_for_progress.emit(
-                "setup-progress",
-                SetupEvent {
-                    step: "preflight",
-                    status: "running",
-                    message: msg,
-                },
-            );
-        });
+        let ensure_result =
+            runtime::ensure_runtimes(n8n_decision == n8n_upgrade::Decision::FreshInstall, |p| {
+                let _ = app_for_progress.emit(
+                    "setup-progress",
+                    SetupEvent {
+                        step: "preflight",
+                        status: "running",
+                        message: runtime_progress_message(p),
+                    },
+                );
+            });
 
         if let Err(e) = ensure_result {
             emit(
@@ -345,23 +367,67 @@ fn setup_environment(app: tauri::AppHandle) {
             }
         };
 
-        match n8n::find_node() {
-            Ok((_, ver)) => {
-                emit(
+        // Steps 1 and 2 of the n8n upgrade run here so the Node download shows
+        // under "Preparing runtimes". Nothing live changes until the automation
+        // step. A failure here is final for this target (it is not retried on
+        // later launches) and the previous n8n keeps running.
+        let mut upgrade_session: Option<n8n_upgrade::UpgradeSession> = None;
+        let mut n8n_warning: Option<String> = None;
+        if n8n_decision == n8n_upgrade::Decision::Upgrade {
+            match n8n_upgrade::begin(&setup_lock) {
+                Ok(mut session) => {
+                    let app_for_node = app.clone();
+                    let staged = n8n_upgrade::stage_node(&mut session, |p| {
+                        let _ = app_for_node.emit(
+                            "setup-progress",
+                            SetupEvent {
+                                step: "preflight",
+                                status: "running",
+                                message: runtime_progress_message(p),
+                            },
+                        );
+                    });
+                    match staged {
+                        Ok(()) => upgrade_session = Some(session),
+                        Err(e) => {
+                            n8n_warning = Some(n8n_upgrade::fail_before_swap(session, &e));
+                        }
+                    }
+                }
+                Err(e) => {
+                    // The attempt could not even be recorded (for example, the
+                    // disk is full). Nothing changed and nothing was recorded,
+                    // so the next launch tries again.
+                    log::warn!("Could not start the n8n upgrade: {e}");
+                    n8n_warning = Some(format!(
+                        "The n8n upgrade could not start: {e}. Laya keeps using the current n8n."
+                    ));
+                }
+            }
+        }
+
+        if APP_EXITING.load(Ordering::Relaxed) {
+            log::info!("App is exiting, aborting setup");
+            if let Some(session) = upgrade_session.take() {
+                n8n_upgrade::abort(session, "Laya quit before the n8n upgrade ran");
+            }
+            return;
+        }
+
+        match n8n_decision {
+            n8n_upgrade::Decision::FreshInstall => match n8n::find_node() {
+                Ok((_, ver)) => emit(
                     "preflight",
                     "done",
                     &format!("Python and Node.js {} ready", ver),
-                );
-            }
-            Err(e) => {
-                emit(
-                    "preflight",
-                    "error",
-                    &format!("Node.js 22+ is required. {}", e),
-                );
-                return;
-            }
-        };
+                ),
+                Err(e) => {
+                    emit("preflight", "error", &e);
+                    return;
+                }
+            },
+            _ => emit("preflight", "done", "Python and Node.js ready"),
+        }
 
         // ── Step 2: Set up environment ──────────────────────────────
         if !sidecar::check_environment().venv_ready {
@@ -378,6 +444,9 @@ fn setup_environment(app: tauri::AppHandle) {
             match sidecar::create_venv(&python_path) {
                 Ok(()) => emit("environment", "done", "Python environment created"),
                 Err(e) => {
+                    if let Some(session) = upgrade_session.take() {
+                        n8n_upgrade::abort(session, &e);
+                    }
                     emit("environment", "error", &e);
                     return;
                 }
@@ -415,6 +484,9 @@ fn setup_environment(app: tauri::AppHandle) {
             }) {
                 Ok(()) => emit("deps", "done", "All packages installed"),
                 Err(e) => {
+                    if let Some(session) = upgrade_session.take() {
+                        n8n_upgrade::abort(session, &e);
+                    }
                     emit("deps", "error", &e);
                     return;
                 }
@@ -423,57 +495,105 @@ fn setup_environment(app: tauri::AppHandle) {
             emit("deps", "done", "Packages up to date");
         }
 
-        // ── Step 4: Install n8n ─────────────────────────────────────
-        if !n8n::is_n8n_installed() {
-            emit(
-                "automation",
-                "running",
-                "Installing n8n (this may take several minutes)...",
+        // ── Step 4: Install, upgrade or restore n8n ─────────────────
+        let app_n8n = app.clone();
+        let mut automation_line = move |line: &str| {
+            let _ = app_n8n.emit(
+                "setup-progress",
+                SetupEvent {
+                    step: "automation",
+                    status: "running",
+                    message: line.to_string(),
+                },
             );
-            let app_n8n = app.clone();
-            match n8n::install_n8n(|line| {
-                let _ = app_n8n.emit(
-                    "setup-progress",
-                    SetupEvent {
-                        step: "automation",
-                        status: "running",
-                        message: line.to_string(),
-                    },
+        };
+        let mut upgrade_done_message: Option<String> = None;
+        match n8n_decision {
+            n8n_upgrade::Decision::FreshInstall => {
+                emit(
+                    "automation",
+                    "running",
+                    "Installing n8n (this may take several minutes)...",
                 );
-            }) {
-                Ok(()) => {}
-                Err(e) => {
+                if let Err(e) = n8n_upgrade::install_fresh(&setup_lock, &mut automation_line) {
                     emit("automation", "error", &e);
                     return;
                 }
             }
+            n8n_upgrade::Decision::Recover => {
+                match n8n_upgrade::recover(&setup_lock, &mut automation_line) {
+                    n8n_upgrade::UpgradeOutcome::Fatal(msg) => {
+                        emit("automation", "error", &msg);
+                        return;
+                    }
+                    n8n_upgrade::UpgradeOutcome::Completed(msg)
+                    | n8n_upgrade::UpgradeOutcome::RolledBack(msg) => n8n_warning = Some(msg),
+                }
+            }
+            n8n_upgrade::Decision::Upgrade => {
+                if let Some(session) = upgrade_session.take() {
+                    emit("automation", "running", "Upgrading n8n...");
+                    match n8n_upgrade::finish(session, &mut automation_line) {
+                        n8n_upgrade::UpgradeOutcome::Completed(msg) => {
+                            upgrade_done_message = Some(msg)
+                        }
+                        n8n_upgrade::UpgradeOutcome::RolledBack(msg) => n8n_warning = Some(msg),
+                        n8n_upgrade::UpgradeOutcome::Fatal(msg) => {
+                            emit("automation", "error", &msg);
+                            return;
+                        }
+                    }
+                }
+            }
+            n8n_upgrade::Decision::Blocked => {
+                n8n_warning = n8n_upgrade::read_record().map(|r| n8n_upgrade::failure_warning(&r));
+            }
+            n8n_upgrade::Decision::UpToDate => n8n_upgrade::remove_committed_leftovers(),
         }
+        drop(setup_lock);
 
         if APP_EXITING.load(Ordering::Relaxed) {
             log::info!("App is exiting, aborting setup");
             return;
         }
 
-        // Start n8n
+        // Start n8n (a no-op when the upgrade or the rollback already did).
+        // After a failed upgrade, a start failure is part of the warning and
+        // setup continues to the engine step, so Laya still opens.
         emit("automation", "running", "Starting n8n...");
         match n8n::startup_n8n() {
             n8n::N8nStartResult::Started | n8n::N8nStartResult::AlreadyRunning => {
                 emit("automation", "running", "Waiting for n8n API...");
-                if n8n::wait_for_n8n_api(std::time::Duration::from_secs(60)) {
-                    emit("automation", "done", "n8n running");
-                } else {
-                    log::warn!("n8n REST API did not become ready in time — engine will retry");
-                    emit("automation", "done", "n8n started (API still loading)");
+                let ready = n8n::wait_for_n8n_stable(
+                    std::time::Duration::from_secs(60),
+                    std::time::Duration::from_secs(3),
+                );
+                match (&n8n_warning, ready) {
+                    (Some(w), _) => emit("automation", "warning", w),
+                    (None, Ok(())) => emit(
+                        "automation",
+                        "done",
+                        upgrade_done_message.as_deref().unwrap_or("n8n running"),
+                    ),
+                    (None, Err(e)) => {
+                        log::warn!("n8n startup check: {e} — engine will retry");
+                        emit("automation", "done", "n8n started (API still loading)");
+                    }
                 }
             }
             other => {
                 log::warn!("n8n startup: {:?}", other);
-                emit(
-                    "automation",
-                    "error",
-                    &format!("Failed to start n8n: {:?}", other),
-                );
-                return;
+                match &n8n_warning {
+                    Some(w) => emit("automation", "warning", w),
+                    None => {
+                        emit(
+                            "automation",
+                            "error",
+                            &format!("Failed to start n8n: {:?}", other),
+                        );
+                        return;
+                    }
+                }
             }
         }
 
@@ -746,7 +866,7 @@ fn start_health_polling(tray: TrayIcon) {
 /// Return the lowercased command line for a pid (best-effort, empty on failure).
 /// Used to confirm a port-holder is actually a Laya process before we kill it.
 #[cfg(unix)]
-fn process_cmdline(pid: i32) -> String {
+pub(crate) fn process_cmdline(pid: i32) -> String {
     std::process::Command::new("ps")
         .args(["-p", &pid.to_string(), "-o", "command="])
         .output()
@@ -755,16 +875,39 @@ fn process_cmdline(pid: i32) -> String {
         .unwrap_or_default()
 }
 
+/// The lowercased command line of process `pid`, or "" if it cannot be read.
+/// `wmic` is tried first. Windows 11 24H2 and later no longer install it, so
+/// PowerShell's `Get-CimInstance` is the fallback.
 #[cfg(windows)]
-fn process_cmdline(pid: u32) -> String {
+pub(crate) fn process_cmdline(pid: u32) -> String {
     let mut cmd = std::process::Command::new("wmic");
     no_window(&mut cmd);
-    cmd.args([
-        "process",
-        "where",
-        &format!("ProcessId={}", pid),
-        "get",
-        "CommandLine",
+    let wmic = cmd
+        .args([
+            "process",
+            "where",
+            &format!("ProcessId={}", pid),
+            "get",
+            "CommandLine",
+        ])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_lowercase())
+        .unwrap_or_default();
+    if wmic.contains(char::is_alphanumeric) && !wmic.trim().eq_ignore_ascii_case("commandline") {
+        return wmic;
+    }
+    let mut ps = std::process::Command::new("powershell");
+    no_window(&mut ps);
+    ps.args([
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        &format!(
+            "(Get-CimInstance Win32_Process -Filter 'ProcessId={}').CommandLine",
+            pid
+        ),
     ])
     .output()
     .ok()
@@ -783,14 +926,21 @@ fn process_cmdline(pid: u32) -> String {
 /// command line can't be read the process is left alone (safe default).
 #[cfg(unix)]
 pub(crate) fn kill_process_on_port(port: u16, identity: &str) {
+    // `-sTCP:LISTEN` limits the match to the process that listens on the
+    // port. Without it lsof also lists every client connected to the port,
+    // including this app itself (its health-check HTTP client keeps
+    // connections to n8n open), whose command line also contains "laya".
     if let Ok(output) = std::process::Command::new("lsof")
-        .args(["-ti", &format!("tcp:{}", port)])
+        .args(["-ti", &format!("tcp:{}", port), "-sTCP:LISTEN"])
         .output()
     {
         if output.status.success() {
             let pids = String::from_utf8_lossy(&output.stdout);
             for pid_str in pids.split_whitespace() {
                 if let Ok(pid) = pid_str.parse::<i32>() {
+                    if pid as u32 == std::process::id() {
+                        continue;
+                    }
                     if !process_cmdline(pid).contains(identity) {
                         log::warn!(
                             "Port {} held by foreign process (pid {}); not killing",
@@ -1142,7 +1292,23 @@ pub fn run() {
             start_health_polling(tray);
 
             // --- Start n8n as a local process ---
-            match n8n::startup_n8n() {
+            // When an n8n upgrade (or the recovery of an interrupted one) is
+            // about to run, neither n8n nor the engine starts here. n8n would
+            // hold the database the upgrade backs up and migrates, and the
+            // engine would provision workflows against an n8n that is about to
+            // stop. check_environment reports `n8n_upgrade_needed`, so the
+            // splash screen runs setup_environment, which starts both after
+            // the upgrade.
+            let upgrade_pending = n8n_upgrade::upgrade_pending();
+            if upgrade_pending {
+                log::info!("n8n upgrade pending; n8n and the engine start after it");
+            }
+            let launch_n8n = if upgrade_pending {
+                None
+            } else {
+                Some(n8n::startup_n8n())
+            };
+            if let Some(result) = launch_n8n { match result {
                 n8n::N8nStartResult::Started => {
                     log::info!("n8n process started successfully");
                 }
@@ -1161,7 +1327,7 @@ pub fn run() {
                 n8n::N8nStartResult::PortConflict(msg) => {
                     log::error!("n8n port conflict: {}", msg);
                 }
-            }
+            } }
 
             // --- Spawn engine ---
             // If the environment is ready (dev venv or managed venv), spawn immediately.
@@ -1170,7 +1336,8 @@ pub fn run() {
             app.manage(EngineProcess(Mutex::new(None)));
 
             let env = sidecar::check_environment();
-            let can_spawn = cfg!(dev) || (env.venv_ready && env.deps_installed && env.engine_source_found);
+            let can_spawn = !upgrade_pending
+                && (cfg!(dev) || (env.venv_ready && env.deps_installed && env.engine_source_found));
 
             if can_spawn {
                 match sidecar::spawn_engine() {
@@ -1207,6 +1374,9 @@ pub fn run() {
             n8n::n8n_status,
             n8n::start_n8n,
             n8n::stop_n8n,
+            n8n_upgrade::n8n_runtime_status,
+            n8n_upgrade::request_n8n_upgrade_retry,
+            n8n_upgrade::cancel_n8n_upgrade_retry,
             pick_repo_folder,
             pick_folder,
             check_environment,
@@ -1421,6 +1591,7 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
                     }
 
                     log::info!("Stopping n8n process");
+                    n8n_upgrade::stop_active_child();
                     n8n::shutdown_n8n();
                 }
                 _ => {}
