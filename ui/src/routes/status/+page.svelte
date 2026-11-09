@@ -7,6 +7,15 @@
 	import { engineApi } from '$lib/api/engine';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import type { DashboardResponse, ThroughputResponse } from '$lib/api/types';
+	import {
+		cancelN8nUpgradeRetry,
+		describeTarget,
+		fetchN8nRuntimeStatus,
+		requestN8nUpgradeRetry,
+		runtimeSummary,
+		upgradeFailed,
+		type N8nRuntimeStatus,
+	} from '$lib/utils/n8nRuntime';
 	import StatCard from '$lib/components/dashboard/StatCard.svelte';
 	import BarChart from '$lib/components/dashboard/BarChart.svelte';
 	import DonutChart from '$lib/components/dashboard/DonutChart.svelte';
@@ -53,6 +62,30 @@
 		await new Promise((r) => setTimeout(r, 2000));
 		await checkN8nProcess();
 		n8nAction = '';
+	}
+
+	// n8n runtime and upgrade state (desktop app only; null in a browser).
+	let n8nRuntime = $state<N8nRuntimeStatus | null>(null);
+	let retryBusy = $state(false);
+	let retryError = $state('');
+
+	async function loadN8nRuntime() {
+		n8nRuntime = await fetchN8nRuntimeStatus();
+	}
+
+	// Sets or clears the record's retry request. The shell reads it on the
+	// next launch; nothing is retried while Laya is running.
+	async function setRetry(requested: boolean) {
+		retryBusy = true;
+		retryError = '';
+		try {
+			if (requested) await requestN8nUpgradeRetry();
+			else await cancelN8nUpgradeRetry();
+		} catch (e) {
+			retryError = String(e);
+		}
+		await loadN8nRuntime();
+		retryBusy = false;
 	}
 
 	async function stopN8n() {
@@ -172,6 +205,7 @@
 
 	onMount(() => {
 		checkN8nProcess();
+		loadN8nRuntime();
 		loadDashboard();
 		loadThroughput();
 	});
@@ -292,6 +326,9 @@
 							{n8nProcessStatus}
 						</span>
 					</div>
+					{#if runtimeSummary(n8nRuntime)}
+						<div class="mt-1 text-xs text-surface-400">{runtimeSummary(n8nRuntime)}</div>
+					{/if}
 				</div>
 				<div class="flex gap-2">
 					{#if n8nProcessStatus !== 'running' && n8nProcessStatus !== 'starting'}
@@ -313,6 +350,45 @@
 					{/if}
 				</div>
 			</div>
+
+			{#if n8nRuntime && upgradeFailed(n8nRuntime)}
+				{@const record = n8nRuntime.record}
+				<div class="mt-3 rounded-md border border-laya-gold/25 bg-laya-gold/10 p-3">
+					<div class="text-xs font-medium text-laya-amber">
+						The upgrade to {describeTarget(record?.failed_target ?? n8nRuntime.target)} failed. Laya is still using n8n {record?.n8n_version}.
+					</div>
+					{#if record?.attempt?.finished_at}
+						<div class="mt-1 text-[11px] text-surface-400">Failed at {record.attempt.finished_at} (UTC), during the "{record.attempt.phase}" step.</div>
+					{/if}
+					{#if record?.attempt?.error}
+						<div class="mt-1 break-words text-[11px] text-surface-300">{record.attempt.error}</div>
+					{/if}
+					<div class="mt-1 text-[11px] text-surface-500">The full log is in ~/.laya/logs/n8n-upgrade.log.</div>
+					<div class="mt-2 flex items-center gap-2">
+						{#if record?.retry_requested}
+							<span class="text-xs text-surface-300">Retry scheduled. Restart Laya to upgrade.</span>
+							<button
+								class="rounded-md bg-surface-700 px-3 py-1.5 text-xs text-surface-200 transition-colors hover:bg-surface-600 disabled:opacity-50"
+								onclick={() => setRetry(false)}
+								disabled={retryBusy}
+							>
+								Cancel
+							</button>
+						{:else}
+							<button
+								class="rounded-md bg-laya-orange px-3 py-1.5 text-xs font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50"
+								onclick={() => setRetry(true)}
+								disabled={retryBusy}
+							>
+								Retry upgrade on next restart
+							</button>
+						{/if}
+					</div>
+					{#if retryError}
+						<div class="mt-1 text-[11px] text-red-400">{retryError}</div>
+					{/if}
+				</div>
+			{/if}
 		</div>
 
 		<!-- Last WS message (collapsible) -->

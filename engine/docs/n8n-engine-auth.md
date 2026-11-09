@@ -23,8 +23,11 @@ tracking that enforcement depends on.
 
 The n8n token is a different secret from the app token on purpose. Workflow expressions can
 read n8n's environment (`N8N_BLOCK_ENV_ACCESS_IN_NODE=false`, needed for `$env.LAYA_ENGINE_URL`),
-and the shell strips the app token from n8n's environment for exactly that reason. A
-compromised n8n therefore holds a token that opens four routes and nothing else.
+so the shell does not let n8n inherit its environment. n8n starts from an empty environment
+and receives only the variables it needs (`n8n_command` and the `N8N_ENV_FROM_PARENT*` lists in
+`ui/src-tauri/src/n8n.rs`). The app token is not among them, and neither is any other secret
+exported in the terminal Laya was started from. A compromised n8n therefore holds a token that
+opens four routes and nothing else.
 
 ## 2. Token lifecycle
 

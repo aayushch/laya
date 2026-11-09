@@ -205,6 +205,18 @@ async def _create_api_key(base_url: str, cookies: dict) -> str | None:
         return None
 
 
+def _api_key_list(body) -> list | None:
+    """The list of keys in a ``GET /rest/api-keys`` response, or None.
+
+    n8n 2.46 answers ``{"data": {"items": [...], ...}}``. Older versions
+    answered ``{"data": [...]}``, and a bare list is accepted too.
+    """
+    data = body.get("data", body) if isinstance(body, dict) else body
+    if isinstance(data, dict):
+        data = data.get("items")
+    return data if isinstance(data, list) else None
+
+
 async def _reclaim_api_key_label(base_url: str, cookies: dict) -> int:
     """Delete every n8n API key that carries Laya's label. Returns the count deleted.
 
@@ -226,9 +238,8 @@ async def _reclaim_api_key_label(base_url: str, cookies: dict) -> int:
         if resp.status_code != 200:
             log.warning("n8n_api_key_list_failed", status=resp.status_code)
             return 0
-        body = resp.json()
-        keys = body.get("data", body) if isinstance(body, dict) else body
-        if not isinstance(keys, list):
+        keys = _api_key_list(resp.json())
+        if keys is None:
             return 0
     except Exception as e:
         log.warning("n8n_api_key_list_error", error=str(e))

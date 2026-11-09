@@ -51,10 +51,10 @@ async def handle_egress_tool(
 
     # Chat has no originating event to derive the account from, so resolve a
     # connection for the platform and set it explicitly. Without this the executor
-    # silently used the oldest connection (the wrong account with 2+ accounts) AND
-    # Jira never received its base URL, falling back to the literal
-    # your-domain.atlassian.net (review §2 egress — P4-22). The n8n backend derives
-    # jira_base_url from the connection creds once connection_id is set.
+    # would use the oldest connection (the wrong account with 2+ accounts), and a
+    # Jira request would fail for lack of a site URL (review §2 egress — P4-22).
+    # The n8n backend sets jira_base_url from the connection creds once
+    # connection_id is set.
     if not request.connection_id:
         conn_id = await _resolve_connection_id(request.platform, space_id)
         if conn_id:

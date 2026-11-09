@@ -62,6 +62,15 @@ getrandom = "0.3"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+# Turns SIGTERM/SIGINT into a normal app exit so the RunEvent::Exit cleanup stops
+# the engine and n8n. Already in the dependency tree (Cargo.lock).
+signal-hook = "0.3"
+
+# Keeps one Laya running on macOS and Windows. Linux gets the same guarantee from
+# the GTK application ID (`enableGTKAppId`), which forwards a second launch to the
+# running instance before any plugin runs (see `run()` in lib.rs).
+[target.'cfg(any(target_os = "macos", windows))'.dependencies]
+tauri-plugin-single-instance = "=2.5.4"
 
 # Low-level WebKitGTK bindings, for reading the loaded library's version at startup.
 # Already in the dependency tree (Cargo.lock) through wry; pinned to that version.

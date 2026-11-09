@@ -14,9 +14,24 @@ from laya import config
 
 
 def _script(path, body: str):
+    """An executable that runs ``body`` (an ``echo`` line). Windows cannot run
+    a ``#!/bin/sh`` file and only finds commands with a ``PATHEXT`` extension,
+    so there it is a ``.cmd`` batch file next to ``path``."""
+    if os.name == "nt":
+        path = path.with_name(path.name + ".cmd")
+        path.write_text(f"@{body}\r\n")
+        return str(path)
     path.write_text(f"#!/bin/sh\n{body}\n")
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
     return str(path)
+
+
+def _symlink_or_skip(link, target):
+    """Creating a symlink on Windows needs Developer Mode or admin rights."""
+    try:
+        link.symlink_to(target)
+    except OSError as e:
+        pytest.skip(f"cannot create symlinks here: {e}")
 
 
 @pytest.fixture(autouse=True)
@@ -30,10 +45,10 @@ class TestIsCursorAgent:
     def test_symlink_into_cursor_install_needs_no_probe(self, tmp_path):
         real = tmp_path / ".local/share/cursor-agent/versions/1/cursor-agent"
         real.parent.mkdir(parents=True)
-        _script(real, "echo 2026.09.23-86fc751")
+        real = _script(real, "echo 2026.09.23-86fc751")
         link = tmp_path / "bin" / "agent"
         link.parent.mkdir()
-        link.symlink_to(real)
+        _symlink_or_skip(link, real)
         with patch("laya.config.subprocess.run") as run:
             assert config._is_cursor_agent(str(link)) is True
         run.assert_not_called()
@@ -62,14 +77,15 @@ class TestDetectAgentPaths:
         path = os.pathsep.join([str(bin0), str(bin1)])
         with patch("laya.config._augmented_path", return_value=path):
             found = config.detect_agent_paths()
-        assert found["cursor_cli"] == cursor
+        assert os.path.normcase(found["cursor_cli"]) == os.path.normcase(cursor)
 
     def test_other_agents_still_use_first_hit(self, tmp_path):
         bin0 = tmp_path / "bin0"; bin0.mkdir()
         claude = _script(bin0 / "claude", "echo x")
         with patch("laya.config._augmented_path", return_value=str(bin0)):
             found = config.detect_agent_paths()
-        assert found["claude_code"] == claude
+        # normcase: on Windows shutil.which returns the PATHEXT case (.CMD).
+        assert os.path.normcase(found["claude_code"]) == os.path.normcase(claude)
         assert found["cursor_cli"] == ""
 
 

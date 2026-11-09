@@ -345,8 +345,26 @@ def _read_migration_status(marker: Path, version: str) -> str:
 
 
 def _write_migration_status(marker: Path, version: str, status: str, failed_count: int = 0) -> None:
-    """Atomically write a versioned migration status record to ``marker``."""
-    payload: dict = {"version": version, "status": status}
+    """Atomically write a versioned migration status record to ``marker``.
+
+    Only ``version``, ``status`` and ``failed_count`` belong to this
+    migration. Every other top-level key of an existing marker is kept: the
+    Tauri shell stores the n8n runtime record under ``n8n_runtime`` in the
+    same file (``ui/src-tauri/src/n8n_upgrade.rs``), and losing it would make
+    the shell treat n8n as never installed by this Laya version.
+    """
+    payload: dict = {}
+    raw = _read_marker_raw(marker)
+    if raw is not None:
+        try:
+            existing = json.loads(raw.decode("utf-8"))
+            if isinstance(existing, dict):
+                payload.update(existing)
+        except Exception:
+            pass
+    payload.pop("failed_count", None)
+    payload["version"] = version
+    payload["status"] = status
     if failed_count:
         payload["failed_count"] = failed_count
     write_private_json(marker, payload)

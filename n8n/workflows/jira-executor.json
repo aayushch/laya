@@ -177,7 +177,7 @@
       ],
       "parameters": {
         "method": "GET",
-        "url": "={{ $json.body.payload.jira_base_url || 'https://your-domain.atlassian.net' }}/rest/api/3/issue/{{ $json.body.payload.issue_key }}/transitions",
+        "url": "={{ $json.body.payload.jira_base_url }}/rest/api/3/issue/{{ $json.body.payload.issue_key }}/transitions",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "jiraSoftwareCloudApi",
         "options": {}
@@ -223,7 +223,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "={{ $('Webhook').first().json.body.payload.jira_base_url || 'https://your-domain.atlassian.net' }}/rest/api/3/issue/{{ $('Webhook').first().json.body.payload.issue_key }}/transitions",
+        "url": "={{ $('Webhook').first().json.body.payload.jira_base_url }}/rest/api/3/issue/{{ $('Webhook').first().json.body.payload.issue_key }}/transitions",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "jiraSoftwareCloudApi",
         "sendBody": true,
@@ -249,7 +249,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "={{ $json.body.payload.jira_base_url || 'https://your-domain.atlassian.net' }}/rest/api/2/issue",
+        "url": "={{ $json.body.payload.jira_base_url }}/rest/api/2/issue",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "jiraSoftwareCloudApi",
         "sendBody": true,
@@ -275,7 +275,7 @@
       ],
       "parameters": {
         "method": "PUT",
-        "url": "={{ $json.body.payload.jira_base_url || 'https://your-domain.atlassian.net' }}/rest/api/3/issue/{{ $json.body.payload.issue_key }}/assignee",
+        "url": "={{ $json.body.payload.jira_base_url }}/rest/api/3/issue/{{ $json.body.payload.issue_key }}/assignee",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "jiraSoftwareCloudApi",
         "sendBody": true,
@@ -631,6 +631,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.05.2"
+    "laya_version": "2026.11.1"
   }
 }
