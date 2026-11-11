@@ -212,13 +212,6 @@ class TestCreate:
         with pytest.raises(ingest.DocumentError) as e:
             await ingest.create_from_path("default", "relative/notes.md")
         assert e.value.status_code == 400
-        secret = tmp_path / "id_rsa"
-        secret.write_text("key")
-        link = tmp_path / "notes.md"
-        link.symlink_to(secret)
-        with pytest.raises(ingest.DocumentError) as e:
-            await ingest.create_from_path("default", str(link))
-        assert e.value.status_code == 415
         home = tmp_path / "laya-home"
         home.mkdir()
         inside = home / "notes.md"
@@ -226,6 +219,18 @@ class TestCreate:
         with patch("laya.documents.ingest.LAYA_HOME", home), pytest.raises(ingest.DocumentError) as e:
             await ingest.create_from_path("default", str(inside))
         assert e.value.status_code == 403
+        # Last, because creating a symlink on Windows needs Developer Mode or
+        # admin rights; without them this check is skipped.
+        secret = tmp_path / "id_rsa"
+        secret.write_text("key")
+        link = tmp_path / "notes.md"
+        try:
+            link.symlink_to(secret)
+        except OSError as err:
+            pytest.skip(f"cannot create symlinks here: {err}")
+        with pytest.raises(ingest.DocumentError) as e:
+            await ingest.create_from_path("default", str(link))
+        assert e.value.status_code == 415
 
     async def test_duplicate_in_space(self, db, tmp_path, no_autostart, broadcasts):
         src = tmp_path / "a.md"

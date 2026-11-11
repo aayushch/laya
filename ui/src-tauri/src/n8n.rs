@@ -717,7 +717,15 @@ pub fn startup_n8n() -> N8nStartResult {
 /// Start n8n from `~/.laya/n8n_module` on the given runtime. Used directly by
 /// the upgrade, which starts the new and the old runtime explicitly.
 pub fn startup_n8n_with(runtime: &N8nRuntime) -> N8nStartResult {
-    // 1. Already running? (check HTTP health)
+    // 1. Already started by this Laya and still alive, even if it does not
+    // answer yet? A cold n8n start on Windows can take minutes. Spawning a
+    // second n8n here would replace the handle of the first one, which would
+    // then keep running untracked and survive Laya's quit.
+    if n8n_child_alive() {
+        return N8nStartResult::AlreadyRunning;
+    }
+
+    // 2. Already running? (check HTTP health)
     if is_n8n_running() {
         // If we hold a handle, we spawned it — reuse. Otherwise it's a
         // stale orphan from a previous session (e.g. dev-mode exit that
@@ -732,7 +740,7 @@ pub fn startup_n8n_with(runtime: &N8nRuntime) -> N8nStartResult {
         }
     }
 
-    // 2. Node.js available?
+    // 3. Node.js available?
     if !runtime.node_path.exists() {
         return N8nStartResult::NodeNotFound(format!(
             "The Node.js runtime for n8n is missing: {}",
@@ -740,14 +748,19 @@ pub fn startup_n8n_with(runtime: &N8nRuntime) -> N8nStartResult {
         ));
     }
 
-    // 3. n8n installed?
+    // 4. n8n installed?
     if !is_n8n_installed() {
         return N8nStartResult::N8nNotInstalled(
             "n8n is not installed yet. It will be installed during setup.".to_string(),
         );
     }
 
-    // 4. Start
+    // 5. Stop any n8n left by an earlier Laya that does not answer on the
+    // port (step 2 only finds one that does). It would keep the database and
+    // the runtime directories open next to the new process.
+    crate::n8n_upgrade::stop_leftover_n8n();
+
+    // 6. Start
     match spawn_n8n(runtime) {
         Ok(child) => {
             if let Ok(mut guard) = N8N_PROCESS.lock() {
@@ -946,8 +959,16 @@ pub fn is_n8n_running() -> bool {
         .unwrap_or(false)
 }
 
+/// Process id of the n8n Laya started, if it holds one.
+pub(crate) fn tracked_n8n_pid() -> Option<u32> {
+    N8N_PROCESS
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().map(|c| c.id()))
+}
+
 /// True if Laya started n8n and that process has not exited.
-fn n8n_child_alive() -> bool {
+pub(crate) fn n8n_child_alive() -> bool {
     match N8N_PROCESS.lock() {
         Ok(mut guard) => match guard.as_mut() {
             Some(child) => matches!(child.try_wait(), Ok(None)),
@@ -983,13 +1004,43 @@ pub fn wait_for_n8n_api(timeout: Duration) -> bool {
     false
 }
 
+/// `wait_for_n8n_api`, except that it returns false as soon as the n8n
+/// process Laya started has exited. Without a tracked process (n8n was found
+/// already running) it waits the full `timeout`.
+fn wait_for_n8n_api_while_alive(timeout: Duration) -> bool {
+    let tracked = N8N_PROCESS.lock().map(|g| g.is_some()).unwrap_or(false);
+    let start = std::time::Instant::now();
+    let client = shared_client();
+    let url = format!("http://127.0.0.1:{}/rest/settings", N8N_PORT);
+    while start.elapsed() < timeout {
+        if let Ok(resp) = client.get(&url).send() {
+            if resp.status().is_success() {
+                log::info!("n8n REST API is ready (waited {:?})", start.elapsed());
+                return true;
+            }
+        }
+        if tracked && !n8n_child_alive() {
+            log::warn!("n8n exited before its REST API answered");
+            return false;
+        }
+        std::thread::sleep(Duration::from_secs(1));
+    }
+    log::warn!("n8n REST API not ready after {:?}", timeout);
+    false
+}
+
 /// Wait until n8n's REST API answers, then check that the n8n process
 /// Laya started is still running `stable_for` later and the API still
 /// answers. n8n with an `isolated-vm` add-on that does not load answers
 /// `/rest/settings` briefly and then exits, so an answer alone does not
 /// show that n8n is working.
+///
+/// The wait ends early when the n8n process Laya started exits, so a long
+/// `timeout` only costs time while n8n is still starting. On Windows a cold
+/// start (first run after its files were written, with antivirus scanning
+/// every module it loads) takes several minutes.
 pub fn wait_for_n8n_stable(timeout: Duration, stable_for: Duration) -> Result<(), String> {
-    if !wait_for_n8n_api(timeout) {
+    if !wait_for_n8n_api_while_alive(timeout) {
         if !n8n_child_alive() {
             return Err("n8n exited during startup. See ~/.laya/logs/n8n.log.".to_string());
         }
@@ -1051,12 +1102,13 @@ pub fn shutdown_n8n() {
 
             #[cfg(windows)]
             {
-                // /T stops the whole process tree, including any process
-                // node.exe started.
+                // Ctrl+C reaches every process on n8n's console, so n8n and
+                // the processes it started shut down cleanly. If it cannot be
+                // sent, the forced tree kill below runs after the wait.
                 log::info!("Stopping n8n process tree (pid {})", pid);
-                let mut tk = Command::new("taskkill");
-                no_window(&mut tk);
-                let _ = tk.args(["/T", "/PID", &pid.to_string()]).status();
+                if !crate::process_util::send_ctrl_c(pid) {
+                    log::warn!("Could not send Ctrl+C to n8n (pid {pid})");
+                }
 
                 let start = std::time::Instant::now();
                 loop {
@@ -1066,7 +1118,10 @@ pub fn shutdown_n8n() {
                             break;
                         }
                         Ok(None) => {
-                            if start.elapsed() > Duration::from_secs(5) {
+                            // n8n closes its database and HTTP server on
+                            // SIGINT; on Windows this takes a few seconds
+                            // longer than on Unix.
+                            if start.elapsed() > Duration::from_secs(10) {
                                 log::warn!("n8n did not exit; force-killing tree");
                                 let mut force = Command::new("taskkill");
                                 no_window(&mut force);
@@ -1110,11 +1165,10 @@ pub fn n8n_status() -> Result<String, String> {
     if is_n8n_running() {
         Ok("running".to_string())
     } else {
-        // Check if we have a process handle (started but not healthy yet)
-        if let Ok(guard) = N8N_PROCESS.lock() {
-            if guard.is_some() {
-                return Ok("starting".to_string());
-            }
+        // Started by Laya, still alive, not answering yet. A process that
+        // has exited is not running, even though its handle is still held.
+        if n8n_child_alive() {
+            return Ok("starting".to_string());
         }
         Ok("not_running".to_string())
     }

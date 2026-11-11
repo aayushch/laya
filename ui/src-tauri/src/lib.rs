@@ -5,6 +5,8 @@ mod fs_private;
 mod n8n;
 mod n8n_upgrade;
 mod process_util;
+#[cfg(windows)]
+pub use process_util::ctrl_c_helper_main;
 mod rotating_log;
 mod runtime;
 mod sidecar;
@@ -532,7 +534,16 @@ fn setup_environment(app: tauri::AppHandle) {
             }
             n8n_upgrade::Decision::Upgrade => {
                 if let Some(session) = upgrade_session.take() {
-                    emit("automation", "running", "Upgrading n8n...");
+                    // npm install and the flush to disk are slow on Windows,
+                    // where antivirus scans each of n8n's files as it is
+                    // written and opened; the expected time is shown so a long
+                    // wait does not look like a hang.
+                    let upgrading = if cfg!(windows) {
+                        "Upgrading n8n (this usually takes 15 to 30 minutes on Windows)..."
+                    } else {
+                        "Upgrading n8n (this can take several minutes)..."
+                    };
+                    emit("automation", "running", upgrading);
                     match n8n_upgrade::finish(session, &mut automation_line) {
                         n8n_upgrade::UpgradeOutcome::Completed(msg) => {
                             upgrade_done_message = Some(msg)
@@ -546,9 +557,10 @@ fn setup_environment(app: tauri::AppHandle) {
                 }
             }
             n8n_upgrade::Decision::Blocked => {
+                n8n_upgrade::remove_finished_leftovers();
                 n8n_warning = n8n_upgrade::read_record().map(|r| n8n_upgrade::failure_warning(&r));
             }
-            n8n_upgrade::Decision::UpToDate => n8n_upgrade::remove_committed_leftovers(),
+            n8n_upgrade::Decision::UpToDate => n8n_upgrade::remove_finished_leftovers(),
         }
         drop(setup_lock);
 
@@ -1319,8 +1331,9 @@ pub fn run() {
                 MenuItem::with_id(app, "dashboard", "Dashboard", true, None::<&str>)?;
             let separator = PredefinedMenuItem::separator(app)?;
             let show = MenuItem::with_id(app, "show", "Show Laya", true, None::<&str>)?;
+            // Menu text marks a mnemonic with `&`; `&&` displays one `&`.
             let legal =
-                MenuItem::with_id(app, "legal", "Terms & License", true, None::<&str>)?;
+                MenuItem::with_id(app, "legal", "Terms && License", true, None::<&str>)?;
             let separator2 = PredefinedMenuItem::separator(app)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(
@@ -1638,11 +1651,12 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
                                 {
                                     log::info!("Stopping engine process (pid {})", pid);
 
-                                    // taskkill without /F asks the process to exit cleanly,
-                                    // giving uvicorn a chance to run its lifespan shutdown.
-                                    let mut tk = std::process::Command::new("taskkill");
-                                    no_window(&mut tk);
-                                    let _ = tk.args(["/PID", &pid.to_string()]).status();
+                                    // Ctrl+C lets uvicorn run its lifespan shutdown (see
+                                    // process_util::send_ctrl_c for why taskkill without /F
+                                    // cannot). The forced kill below covers a failed send.
+                                    if !process_util::send_ctrl_c(pid) {
+                                        log::warn!("Could not send Ctrl+C to the engine (pid {pid})");
+                                    }
 
                                     let start = std::time::Instant::now();
                                     loop {
@@ -1652,7 +1666,7 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
                                                 break;
                                             }
                                             Ok(None) => {
-                                                if start.elapsed() > Duration::from_secs(5) {
+                                                if start.elapsed() > Duration::from_secs(10) {
                                                     log::warn!("Engine did not exit; force-killing");
                                                     let mut force = std::process::Command::new("taskkill");
                                                     no_window(&mut force);

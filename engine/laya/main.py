@@ -4,6 +4,7 @@
 """Laya Engine — FastAPI entry point."""
 
 import asyncio
+import logging
 import os
 import signal
 import socket
@@ -611,3 +612,12 @@ if __name__ == "__main__":
             timeout_keep_alive=65,
             log_level=uvicorn_log_level,
         )
+        if sys.platform == "win32":
+            # uvicorn has run the lifespan shutdown (database and stores
+            # closed). On Windows the interpreter then keeps waiting for
+            # non-daemon worker threads (thread-pool and library threads)
+            # well past the shell's 10-second graceful-exit window, so the
+            # shell force-kills the process tree after a clean shutdown.
+            # Ending here after flushing the logs exits promptly instead.
+            logging.shutdown()
+            os._exit(0)

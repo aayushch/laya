@@ -84,6 +84,13 @@ const MIGRATION_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 /// upgrade commits.
 const START_CHECK_STABLE: Duration = Duration::from_secs(15);
 
+/// The longest wait for a started n8n (new or restored) to answer. The wait
+/// ends as soon as that n8n exits, so this only matters for an n8n that is
+/// still starting. The first start after its files were written or restored
+/// takes over two minutes on Windows with antivirus scanning every module it
+/// loads, and more on slow disks.
+const START_CHECK_TIMEOUT: Duration = Duration::from_secs(600);
+
 /// Files in `~/.laya/n8n/.n8n` that the upgrade backs up and restores.
 /// `config` holds the key n8n encrypts stored credentials with. The `-wal`
 /// and `-shm` files are included because an n8n that was killed rather than
@@ -556,7 +563,8 @@ pub fn install_fresh(
     }
     let engine = n8n::install_n8n_into(&layout.module_next(), Path::new(&node), &mut *on_line)?;
     let mut log = UpgradeLog::open(&layout);
-    flush_tree(&layout.module_next(), &mut log);
+    on_line("Writing n8n to disk...");
+    flush_tree(&layout.module_next(), &mut log, &mut *on_line);
     record_fresh_install(engine)?;
     // A directory without `node_modules/n8n/package.json` (an install that
     // an older Laya build left unfinished) can be in the way.
@@ -583,21 +591,39 @@ fn record_fresh_install(engine: ExpressionEngine) -> Result<(), String> {
     })
 }
 
-/// Delete directories that a committed upgrade leaves if Laya quit between
-/// writing the `completed` record and deleting them. Only called when the
-/// decision is `UpToDate`, where none of them can still be needed.
-pub fn remove_committed_leftovers() {
+/// Delete directories that a finished upgrade attempt left behind: after a
+/// commit, the previous install and the backup if Laya quit before deleting
+/// them or a file in them was locked; after a rollback, the staging
+/// directories and the backup if the previous n8n did not pass its start
+/// check. Called on launch when the decision is `UpToDate` or `Blocked`,
+/// where none of them can still be needed: no `in_progress` record exists
+/// (that decision is `Recover`) and a rollback has already restored the
+/// database from the backup.
+///
+/// An earlier n8n that is still running (a killed Laya leaves it behind)
+/// can hold these directories open, so it is stopped first.
+pub fn remove_finished_leftovers() {
     let layout = Layout::current();
-    for dir in [
+    let dirs: Vec<PathBuf> = [
         layout.module_prev(),
         layout.module_next(),
         layout.node_prev(),
         layout.node_next(),
         layout.backup(),
-    ] {
-        if dir.exists() {
-            log::info!("Removing upgrade leftover {}", dir.display());
-            let _ = remove_dir_robust(&dir);
+    ]
+    .into_iter()
+    .filter(|d| d.exists())
+    .collect();
+    if dirs.is_empty() {
+        return;
+    }
+    stop_leftover_n8n();
+    for dir in dirs {
+        log::info!("Removing upgrade leftover {}", dir.display());
+        if let Err(e) = remove_dir_robust(&dir) {
+            log::warn!(
+                "Could not delete upgrade leftover: {e}. Laya tries again on the next launch."
+            );
         }
     }
 }
@@ -1037,10 +1063,20 @@ fn run_steps(
         engine.as_str()
     ));
 
-    // Step 4: stop n8n.
+    // Step 4: stop n8n: Laya's own, one on the port, and any other process
+    // running from `n8n_module` (an n8n that has not bound the port yet, or
+    // its task runner). Nothing may have the database open while it is backed
+    // up and migrated.
     on_line("Stopping n8n...");
     n8n::shutdown_n8n();
     n8n::stop_orphaned_n8n().map_err(BeforeBackup)?;
+    let left = stop_leftover_n8n_processes(&layout, &mut session.log);
+    if let Some((pid, cmdline)) = left.first() {
+        return Err(BeforeBackup(format!(
+            "An earlier n8n process is still running and could not be stopped \
+             (pid {pid}: {cmdline})"
+        )));
+    }
 
     // Step 5: count workflows in the current database.
     let db = layout.n8n_db_dir().join("database.sqlite");
@@ -1118,15 +1154,15 @@ fn run_steps(
         n8n::N8nStartResult::Started | n8n::N8nStartResult::AlreadyRunning => {}
         other => return Err(AfterBackup(format!("The new n8n did not start: {other:?}"))),
     }
-    n8n::wait_for_n8n_stable(Duration::from_secs(180), START_CHECK_STABLE)
+    n8n::wait_for_n8n_stable(START_CHECK_TIMEOUT, START_CHECK_STABLE)
         .map_err(|e| AfterBackup(format!("The new n8n failed its start check: {e}")))?;
     fault("start_check", &mut session.log).map_err(AfterBackup)?;
 
     // Step 11: commit. The new files are written to disk first, because the
     // commit deletes the backup and the previous install.
     on_line("Writing the new n8n to disk...");
-    flush_tree(&layout.module(), &mut session.log);
-    flush_tree(&layout.node(), &mut session.log);
+    flush_tree(&layout.module(), &mut session.log, &mut *on_line);
+    flush_tree(&layout.node(), &mut session.log, &mut *on_line);
     let node_version = n8n::probe_node_version(&new_runtime.node_path)
         .unwrap_or_else(|| format!("v{}", runtime::NODE_VERSION));
     session.record.status = "completed".to_string();
@@ -1147,7 +1183,7 @@ fn run_steps(
         if dir.exists() {
             if let Err(e) = remove_dir_robust(&dir) {
                 session.log.warn(&format!(
-                    "Could not delete {} after the upgrade: {e}. It is deleted on the next launch.",
+                    "Could not delete {} after the upgrade: {e}. Laya tries again on the next launch.",
                     dir.display()
                 ));
             }
@@ -1284,23 +1320,31 @@ fn rollback(
             .warn("The previous n8n has no Node.js to run on; it was not started");
         return UpgradeOutcome::RolledBack(warning);
     };
-    let started = matches!(
-        n8n::startup_n8n_with(&previous),
-        n8n::N8nStartResult::Started | n8n::N8nStartResult::AlreadyRunning
-    ) && n8n::wait_for_n8n_stable(Duration::from_secs(120), Duration::from_secs(10))
-        .is_ok();
-    if started {
-        session.log.info("The previous n8n is running");
-        if let Err(e) = remove_dir_robust(&layout.backup()) {
-            session
-                .log
-                .warn(&format!("Could not delete the backup: {e}"));
+    let started = match n8n::startup_n8n_with(&previous) {
+        n8n::N8nStartResult::Started | n8n::N8nStartResult::AlreadyRunning => {
+            n8n::wait_for_n8n_stable(START_CHECK_TIMEOUT, Duration::from_secs(10))
         }
-    } else {
-        session.log.warn(&format!(
-            "The previous n8n did not start. The database backup is kept in {}",
-            layout.backup().display()
-        ));
+        other => Err(format!("{other:?}")),
+    };
+    match started {
+        Ok(()) => {
+            session.log.info("The previous n8n is running");
+            if let Err(e) = remove_dir_robust(&layout.backup()) {
+                session
+                    .log
+                    .warn(&format!("Could not delete the backup: {e}"));
+            }
+        }
+        Err(e) => {
+            // Stop what was started, so the normal start after the rollback
+            // begins from no n8n at all rather than next to one that may
+            // still be starting.
+            n8n::shutdown_n8n();
+            session.log.warn(&format!(
+                "The previous n8n did not pass its start check ({e}); it was stopped.                  The database backup is kept in {}",
+                layout.backup().display()
+            ));
+        }
     }
     UpgradeOutcome::RolledBack(warning)
 }
@@ -1381,7 +1425,11 @@ pub fn recover(_lock: &SetupLock, on_line: &mut dyn FnMut(&str)) -> UpgradeOutco
     if let Some(pid) = record.attempt.as_ref().and_then(|a| a.child_pid) {
         stop_recorded_process(pid, &mut log);
     }
-    stop_leftover_n8n_processes(&layout, &mut log);
+    for (pid, cmdline) in stop_leftover_n8n_processes(&layout, &mut log) {
+        log.warn(&format!(
+            "Leftover process {pid} is still running: {cmdline}"
+        ));
+    }
     n8n::UPGRADE_IN_PROGRESS.store(true, Ordering::SeqCst);
     let previous = PreviousRuntime {
         // A synthesized record does not know the previous n8n version. It is
@@ -1685,53 +1733,66 @@ fn kill_pid(pid: u32) {
 
 // ── Filesystem helpers ──────────────────────────────────────────────────
 
-/// `std::fs::rename`, retried for up to 5 seconds. On Windows a rename fails
-/// while any process (an antivirus scanner, the search indexer) has a file in
-/// the tree open; such locks are usually released within a second.
-fn rename_with_retry(from: &Path, to: &Path) -> Result<(), String> {
-    let mut last = String::new();
-    for attempt in 0..10 {
-        match std::fs::rename(from, to) {
-            Ok(()) => return Ok(()),
-            Err(e) => {
-                last = e.to_string();
-                if attempt < 9 {
-                    std::thread::sleep(Duration::from_millis(500));
-                }
+/// How long `rename_with_retry` and `remove_dir_robust` keep trying. On
+/// Windows a rename or delete fails while any process has a file in the tree
+/// open. Antivirus scanners, the search indexer and backup or sync tools open
+/// files in a freshly written tree of hundreds of thousands of files, and can
+/// hold them for tens of seconds.
+const FS_RETRY_FOR: Duration = Duration::from_secs(60);
+
+/// Run `op` until it succeeds or `FS_RETRY_FOR` has passed, waiting 250 ms
+/// after the first failure and doubling up to 5 s between later tries.
+/// `give_up` returns true for errors that retrying cannot fix.
+fn retry_fs<T>(
+    mut op: impl FnMut(u32) -> std::io::Result<T>,
+    give_up: impl Fn(&std::io::Error) -> bool,
+) -> std::io::Result<T> {
+    let started = Instant::now();
+    let mut wait = Duration::from_millis(250);
+    let mut attempt = 0;
+    loop {
+        match op(attempt) {
+            Ok(v) => return Ok(v),
+            Err(e) if give_up(&e) || started.elapsed() + wait > FS_RETRY_FOR => return Err(e),
+            Err(_) => {
+                std::thread::sleep(wait);
+                wait = (wait * 2).min(Duration::from_secs(5));
+                attempt += 1;
             }
         }
     }
-    Err(format!(
-        "Rename {} -> {}: {last}",
-        from.display(),
-        to.display()
-    ))
 }
 
-/// `std::fs::remove_dir_all`, retried for up to 5 seconds for the same
-/// reason as `rename_with_retry`. On Windows, read-only attributes (npm
-/// packages can ship read-only files) are cleared before the second try.
+/// `std::fs::rename`, retried for up to `FS_RETRY_FOR` (see there).
+fn rename_with_retry(from: &Path, to: &Path) -> Result<(), String> {
+    retry_fs(
+        |_| std::fs::rename(from, to),
+        |e| e.kind() == std::io::ErrorKind::NotFound,
+    )
+    .map_err(|e| format!("Rename {} -> {}: {e}", from.display(), to.display()))
+}
+
+/// `std::fs::remove_dir_all`, retried for up to `FS_RETRY_FOR` (see there).
+/// On Windows, read-only attributes (npm packages can ship read-only files)
+/// are cleared before the second try.
 fn remove_dir_robust(dir: &Path) -> Result<(), String> {
-    let mut last = String::new();
-    for attempt in 0..10 {
-        match std::fs::remove_dir_all(dir) {
-            Ok(()) => return Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-            Err(e) => {
-                last = e.to_string();
-                #[cfg(windows)]
-                {
-                    if attempt == 0 {
-                        clear_readonly(dir);
-                    }
-                }
-                if attempt < 9 {
-                    std::thread::sleep(Duration::from_millis(500));
-                }
+    let result = retry_fs(
+        |attempt| {
+            #[cfg(windows)]
+            if attempt == 1 {
+                clear_readonly(dir);
             }
-        }
+            #[cfg(not(windows))]
+            let _ = attempt;
+            std::fs::remove_dir_all(dir)
+        },
+        |e| e.kind() == std::io::ErrorKind::NotFound,
+    );
+    match result {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!("Delete {}: {e}", dir.display())),
     }
-    Err(format!("Delete {}: {last}", dir.display()))
 }
 
 #[cfg(windows)]
@@ -1828,13 +1889,19 @@ fn sync_dir(dir: &Path) {
 ///   Rust implements with `F_FULLFSYNC` on macOS) then empties the drive's
 ///   own write cache once.
 /// - Windows: every file gets `FlushFileBuffers` through `sync_file`.
-fn flush_tree(dir: &Path, log: &mut UpgradeLog) {
+///
+/// On macOS and Windows the files are flushed by several threads, because
+/// n8n has hundreds of thousands of files and each flush waits on the disk
+/// (and on Windows on the antivirus scan of the open file). `on_line` gets a
+/// progress line every 5 seconds, so the splash does not look stuck.
+fn flush_tree(dir: &Path, log: &mut UpgradeLog, on_line: &mut dyn FnMut(&str)) {
     if !dir.exists() {
         return;
     }
     let started = Instant::now();
     #[cfg(target_os = "linux")]
     {
+        let _ = &on_line;
         use std::os::unix::io::AsRawFd;
         match std::fs::File::open(dir) {
             Ok(f) => {
@@ -1851,20 +1918,64 @@ fn flush_tree(dir: &Path, log: &mut UpgradeLog) {
     }
     #[cfg(not(target_os = "linux"))]
     {
-        let mut flushed = 0u64;
-        let mut failed = 0u64;
-        flush_walk(dir, &mut flushed, &mut failed);
+        use std::sync::atomic::{AtomicU64, AtomicUsize};
+        let mut files = Vec::new();
+        let mut dirs = Vec::new();
+        let mut unreadable = 0u64;
+        collect_tree(dir, &mut files, &mut dirs, &mut unreadable);
+        // Directories after the files they contain, so each directory's
+        // entries are flushed once its files are.
+        files.extend(dirs.into_iter().rev());
+        let total = files.len();
+        let next = AtomicUsize::new(0);
+        let done = AtomicUsize::new(0);
+        let failed = AtomicU64::new(unreadable);
+        let workers = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4)
+            .clamp(2, 8);
+        std::thread::scope(|scope| {
+            for _ in 0..workers {
+                scope.spawn(|| loop {
+                    let i = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(path) = files.get(i) else {
+                        break;
+                    };
+                    if flush_file_contents(path).is_err() {
+                        failed.fetch_add(1, Ordering::Relaxed);
+                    }
+                    done.fetch_add(1, Ordering::Relaxed);
+                });
+            }
+            let mut last_report = Instant::now();
+            while done.load(Ordering::Relaxed) < total {
+                std::thread::sleep(Duration::from_millis(250));
+                if last_report.elapsed() >= Duration::from_secs(5) {
+                    last_report = Instant::now();
+                    on_line(&format!(
+                        "Writing the new n8n to disk: {} of {} files...",
+                        done.load(Ordering::Relaxed),
+                        total
+                    ));
+                }
+            }
+        });
         #[cfg(target_os = "macos")]
         if let Ok(f) = std::fs::File::open(dir) {
             let _ = f.sync_all();
         }
+        let failed = failed.load(Ordering::Relaxed);
         if failed > 0 {
             log.warn(&format!(
                 "{failed} files under {} could not be flushed to disk",
                 dir.display()
             ));
         }
-        log.info(&format!("Flushed {flushed} files under {}", dir.display()));
+        log.info(&format!(
+            "Flushed {} files under {} with {workers} threads",
+            total as u64 - failed.min(total as u64),
+            dir.display()
+        ));
     }
     log.info(&format!(
         "Flushing {} to disk took {} s",
@@ -1873,32 +1984,35 @@ fn flush_tree(dir: &Path, log: &mut UpgradeLog) {
     ));
 }
 
-/// The recursive part of `flush_tree` for macOS and Windows. Symbolic links
-/// are skipped, not followed.
+/// The files (and on Unix the directories) under `dir`, for `flush_tree` on
+/// macOS and Windows. Symbolic links are skipped, not followed. `unreadable`
+/// counts entries that could not be listed.
 #[cfg(not(target_os = "linux"))]
-fn flush_walk(dir: &Path, flushed: &mut u64, failed: &mut u64) {
+fn collect_tree(
+    dir: &Path,
+    files: &mut Vec<PathBuf>,
+    dirs: &mut Vec<PathBuf>,
+    unreadable: &mut u64,
+) {
     let Ok(entries) = std::fs::read_dir(dir) else {
-        *failed += 1;
+        *unreadable += 1;
         return;
     };
+    #[cfg(unix)]
+    dirs.push(dir.to_path_buf());
+    #[cfg(not(unix))]
+    let _ = &dirs;
     for entry in entries.flatten() {
         let Ok(kind) = entry.file_type() else {
-            *failed += 1;
+            *unreadable += 1;
             continue;
         };
         let path = entry.path();
         if kind.is_dir() {
-            flush_walk(&path, flushed, failed);
+            collect_tree(&path, files, dirs, unreadable);
         } else if kind.is_file() {
-            match flush_file_contents(&path) {
-                Ok(()) => *flushed += 1,
-                Err(_) => *failed += 1,
-            }
+            files.push(path);
         }
-    }
-    #[cfg(unix)]
-    if flush_file_contents(dir).is_err() {
-        *failed += 1;
     }
 }
 
@@ -1994,19 +2108,68 @@ fn acquire_setup_lock_at(layout: &Layout) -> Result<SetupLock, String> {
 ///
 /// This covers a migration whose process id never reached the record (Laya
 /// crashed between starting it and writing the id).
-fn stop_leftover_n8n_processes(layout: &Layout, log: &mut UpgradeLog) {
-    let needle = layout.module().to_string_lossy().to_lowercase();
+///
+/// Returns the processes still running afterwards (normally none).
+fn stop_leftover_n8n_processes(layout: &Layout, log: &mut UpgradeLog) -> Vec<(u32, String)> {
+    stop_leftovers_matching(layout, &mut |line| log.warn(line))
+}
+
+/// Stop every process whose command line runs from `~/.laya/n8n_module`
+/// (including `n8n_module.prev` and `.next`) and that Laya does not track,
+/// then wait up to 10 seconds for them to exit. Returns those still running.
+///
+/// This finds an n8n left by an earlier Laya that was killed (Task Manager's
+/// "End task" stops only `laya-app.exe`), whether or not that n8n has bound
+/// its port yet. Such an n8n keeps the database and the Node and n8n
+/// directories open: on Windows the upgrade could then not replace or delete
+/// them, and on every platform it would back up and migrate a database that
+/// another n8n is writing.
+fn stop_leftovers_matching(layout: &Layout, warn: &mut dyn FnMut(&str)) -> Vec<(u32, String)> {
+    let needle = normalize_cmdline(&layout.module().to_string_lossy());
     let me = std::process::id();
-    let mut stopped = false;
-    for (pid, cmdline) in list_processes() {
-        if pid != me && cmdline.to_lowercase().contains(&needle) {
-            log.warn(&format!("Stopping leftover process {pid}: {cmdline}"));
-            kill_pid(pid);
-            stopped = true;
+    let tracked = n8n::tracked_n8n_pid();
+    let matching = || -> Vec<(u32, String)> {
+        list_processes()
+            .into_iter()
+            .filter(|(pid, cmdline)| {
+                *pid != me && Some(*pid) != tracked && normalize_cmdline(cmdline).contains(&needle)
+            })
+            .collect()
+    };
+    let found = matching();
+    if found.is_empty() {
+        return found;
+    }
+    for (pid, cmdline) in &found {
+        warn(&format!("Stopping leftover process {pid}: {cmdline}"));
+        kill_pid(*pid);
+    }
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        std::thread::sleep(Duration::from_secs(1));
+        let left = matching();
+        if left.is_empty() || Instant::now() >= deadline {
+            return left;
         }
     }
-    if stopped {
-        std::thread::sleep(Duration::from_secs(2));
+}
+
+/// A command line or path in a form where one can be searched for the other:
+/// lower case, with `/` as the separator, and without the `\\?\` prefix.
+fn normalize_cmdline(s: &str) -> String {
+    s.to_lowercase().replace('\\', "/").replace("//?/", "")
+}
+
+/// `stop_leftovers_matching` for callers outside an upgrade: the normal n8n
+/// start and the leftover cleanup on launch. Skipped while Laya's own n8n is
+/// running, because that n8n's child processes run from the same directory.
+pub(crate) fn stop_leftover_n8n() {
+    if n8n::n8n_child_alive() {
+        return;
+    }
+    let left = stop_leftovers_matching(&Layout::current(), &mut |line| log::warn!("{line}"));
+    for (pid, cmdline) in left {
+        log::warn!("Leftover process {pid} is still running: {cmdline}");
     }
 }
 
@@ -2289,8 +2452,8 @@ mod tests {
         #[cfg(unix)]
         std::os::unix::fs::symlink(dir.join("c.json"), dir.join("link")).unwrap();
         let mut log = UpgradeLog { file: None };
-        flush_tree(&dir, &mut log);
-        flush_tree(&home.0.join("missing"), &mut log);
+        flush_tree(&dir, &mut log, &mut |_| {});
+        flush_tree(&home.0.join("missing"), &mut log, &mut |_| {});
         assert_eq!(read(&dir.join("a").join("b.js")), "x");
     }
 
@@ -2298,6 +2461,106 @@ mod tests {
     fn list_processes_includes_this_process() {
         let me = std::process::id();
         assert!(list_processes().iter().any(|(pid, _)| *pid == me));
+    }
+
+    #[test]
+    fn normalized_command_lines_contain_the_module_path() {
+        let module = normalize_cmdline(r"C:\Users\A\.laya\n8n_module");
+        for cmdline in [
+            r#""C:\Users\a\.laya\node\node.exe" C:\Users\a\.laya\n8n_module\node_modules\n8n\bin\n8n start"#,
+            r#"C:\WINDOWS\system32\cmd.exe /c ""\\?\C:\Users\A\.laya\n8n_module\node_modules\.bin\n8n.cmd" start""#,
+            r"C:\Users\A\.laya\n8n_module.prev\node_modules\n8n\bin\n8n list:workflow",
+        ] {
+            assert!(normalize_cmdline(cmdline).contains(&module), "{cmdline}");
+        }
+        assert!(
+            !normalize_cmdline(r"C:\Users\A\.laya\venv\python.exe -m laya.main").contains(&module)
+        );
+        let unix = normalize_cmdline("/home/u/.laya/n8n_module");
+        assert!(normalize_cmdline(
+            "/home/u/.laya/node/bin/node /home/u/.laya/n8n_module/node_modules/n8n/bin/n8n start"
+        )
+        .contains(&unix));
+    }
+
+    /// A process whose command line names `n8n_module` but that Laya did not
+    /// start (an n8n left by a killed Laya, before it binds its port) is
+    /// stopped.
+    #[test]
+    fn leftover_processes_running_from_n8n_module_are_stopped() {
+        let home = TempHome::new("leftover");
+        let layout = Layout::at(&home.0);
+        let marker = layout.module().join("node_modules").join("n8n");
+        #[cfg(windows)]
+        let mut cmd = {
+            let mut c = Command::new("cmd");
+            c.args(["/c", "ping -n 120 127.0.0.1 >nul & rem"])
+                .arg(&marker);
+            c
+        };
+        #[cfg(unix)]
+        let mut cmd = {
+            let mut c = Command::new("sh");
+            c.args(["-c", "sleep 120; : \"$0\""]).arg(&marker);
+            c
+        };
+        let mut child = cmd.stdout(Stdio::null()).spawn().unwrap();
+        let pid = child.id();
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !list_processes().iter().any(|(p, _)| *p == pid) {
+            assert!(Instant::now() < deadline, "the test process never appeared");
+            std::thread::sleep(Duration::from_millis(200));
+        }
+        let mut warned = Vec::new();
+        let left = stop_leftovers_matching(&layout, &mut |l| warned.push(l.to_string()));
+        assert!(left.is_empty(), "still running: {left:?}");
+        assert!(
+            warned.iter().any(|l| l.contains(&pid.to_string())),
+            "{warned:?}"
+        );
+        let exited = (0..50).any(|_| {
+            std::thread::sleep(Duration::from_millis(100));
+            matches!(child.try_wait(), Ok(Some(_)))
+        });
+        if !exited {
+            let _ = child.kill();
+        }
+        assert!(exited, "the leftover process was not stopped");
+    }
+
+    #[test]
+    fn retry_fs_retries_until_success_and_stops_on_give_up() {
+        let mut calls = 0;
+        let r = retry_fs(
+            |_| {
+                calls += 1;
+                if calls < 3 {
+                    Err(std::io::Error::other("locked"))
+                } else {
+                    Ok(calls)
+                }
+            },
+            |_| false,
+        );
+        assert_eq!(r.unwrap(), 3);
+        let mut calls = 0;
+        let r: std::io::Result<()> = retry_fs(
+            |_| {
+                calls += 1;
+                Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+            },
+            |e| e.kind() == std::io::ErrorKind::NotFound,
+        );
+        assert!(r.is_err());
+        assert_eq!(calls, 1);
+    }
+
+    #[test]
+    fn remove_dir_robust_of_a_missing_dir_returns_at_once() {
+        let home = TempHome::new("rm-missing");
+        let started = Instant::now();
+        assert!(remove_dir_robust(&home.0.join("missing")).is_ok());
+        assert!(started.elapsed() < Duration::from_secs(1));
     }
 
     #[test]

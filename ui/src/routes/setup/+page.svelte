@@ -129,7 +129,9 @@
 	]);
 
 	// Step 3: n8n
-	let n8nStatus = $state<'checking' | 'running' | 'not_running' | 'configured'>('checking');
+	let n8nStatus = $state<'checking' | 'starting' | 'running' | 'not_running' | 'configured'>(
+		'checking'
+	);
 	let bootstrapping = $state(false);
 	let bootstrapMessage = $state('');
 
@@ -280,18 +282,40 @@
 		step = 3;
 	}
 
+	// How long the wizard keeps polling an n8n that the shell reports as
+	// starting. The first start after install or upgrade can take minutes on
+	// Windows, where antivirus scans every module n8n loads.
+	const N8N_START_WAIT_MS = 10 * 60 * 1000;
+	const N8N_START_POLL_MS = 3000;
+
+	/** True when the Tauri shell has started n8n and it is not answering yet. */
+	async function shellSaysN8nStarting(): Promise<boolean> {
+		try {
+			return (await invoke('n8n_status')) === 'starting';
+		} catch {
+			// Plain-browser dev mode has no shell to ask.
+			return false;
+		}
+	}
+
 	async function checkN8n() {
 		n8nStatus = 'checking';
+		const deadline = Date.now() + N8N_START_WAIT_MS;
 		try {
-			const result = await engineApi.testN8nConnection();
-			if (result.health === 'healthy') {
-				const settings = await engineApi.getSettings();
-				n8nStatus = settings.api_keys?.n8n ? 'configured' : 'running';
-				if (n8nStatus === 'running') {
-					await doBootstrap();
+			for (;;) {
+				const result = await engineApi.testN8nConnection();
+				if (result.health === 'healthy') break;
+				if (step !== 3 || Date.now() > deadline || !(await shellSaysN8nStarting())) {
+					n8nStatus = 'not_running';
+					return;
 				}
-			} else {
-				n8nStatus = 'not_running';
+				n8nStatus = 'starting';
+				await new Promise((r) => setTimeout(r, N8N_START_POLL_MS));
+			}
+			const settings = await engineApi.getSettings();
+			n8nStatus = settings.api_keys?.n8n ? 'configured' : 'running';
+			if (n8nStatus === 'running') {
+				await doBootstrap();
 			}
 		} catch {
 			n8nStatus = 'not_running';
@@ -736,7 +760,9 @@
 								? 'bg-yellow-500'
 								: n8nStatus === 'not_running'
 									? 'bg-red-500'
-									: 'bg-surface-500 animate-pulse'}"
+									: n8nStatus === 'starting'
+										? 'bg-yellow-500 animate-pulse'
+										: 'bg-surface-500 animate-pulse'}"
 					></span>
 					<span class="text-sm font-medium">
 						{#if n8nStatus === 'configured'}
@@ -745,6 +771,8 @@
 							n8n is running
 						{:else if n8nStatus === 'not_running'}
 							n8n is not running
+						{:else if n8nStatus === 'starting'}
+							n8n is starting (the first start can take a few minutes)...
 						{:else}
 							Checking n8n...
 						{/if}

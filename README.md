@@ -154,6 +154,8 @@ The fastest way to try Laya is a prebuilt release — no toolchains required.
 
 > **macOS:** release builds are signed, so they open normally — just double-click to launch.
 
+> **Windows:** the `.exe` installer asks whether to install for you only or for all users of the machine. Both ask for administrator approval, because the installer also installs the Microsoft Visual C++ Redistributable when it is missing. For an unattended install, pick the mode explicitly: `Laya_<version>_x64-setup.exe /S /CurrentUser` installs for the current user in `%LOCALAPPDATA%\Laya`, and `/S /AllUsers` installs in `Program Files`. `/S` on its own installs for all users. Upgrading n8n on Windows takes 15–30 minutes, much longer than on macOS or Linux, because antivirus scans each of n8n's files as it is written. The setup screen shows progress while it runs.
+
 Want to build from source, hack on the engine, or contribute? Follow the **Development** setup below and read the [contributing guide](.github/CONTRIBUTING.md) before opening an issue or PR.
 
 ## Development

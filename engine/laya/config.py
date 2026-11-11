@@ -267,9 +267,12 @@ def ensure_directories() -> None:
 # mtime-keyed cache. load_settings() is called ~10× per pipeline event plus per
 # scheduler tick / budget check / rule firing; re-reading and re-merging the file
 # every time was pure overhead (review §4 — P5-3). Invalidated by save_settings
-# and by the file's mtime changing underneath us.
+# and by the file changing underneath us. The key is the file's path, mtime in
+# nanoseconds and size: two settings files written within one timestamp tick
+# (common on Windows, where mtime is updated lazily) would otherwise share a
+# cache entry.
 _settings_cache: dict | None = None
-_settings_cache_mtime: float | None = None
+_settings_cache_key: tuple | None = None
 
 
 def load_settings() -> dict:
@@ -279,16 +282,17 @@ def load_settings() -> dict:
     ``s = load_settings(); s[...] = ...; save_settings(s)`` pattern) can't corrupt
     the process-wide DEFAULT_SETTINGS or the cache — the old shallow copy leaked
     references to nested default dicts (review §2 Config — P4-7)."""
-    global _settings_cache, _settings_cache_mtime
+    global _settings_cache, _settings_cache_key
     try:
-        mtime = LAYA_CONFIG_FILE.stat().st_mtime if LAYA_CONFIG_FILE.exists() else 0.0
+        st = LAYA_CONFIG_FILE.stat() if LAYA_CONFIG_FILE.exists() else None
     except OSError:
-        mtime = 0.0
+        st = None
+    key = (str(LAYA_CONFIG_FILE), st.st_mtime_ns, st.st_size) if st else (str(LAYA_CONFIG_FILE),)
 
-    if _settings_cache is not None and _settings_cache_mtime == mtime:
+    if _settings_cache is not None and _settings_cache_key == key:
         return copy.deepcopy(_settings_cache)
 
-    if mtime:
+    if st:
         with open(LAYA_CONFIG_FILE, encoding="utf-8") as f:
             user_settings = json.load(f)
         # Merge user settings over defaults (two-level deep merge so that
@@ -310,18 +314,18 @@ def load_settings() -> dict:
         merged = copy.deepcopy(DEFAULT_SETTINGS)
 
     _settings_cache = merged
-    _settings_cache_mtime = mtime
+    _settings_cache_key = key
     return copy.deepcopy(merged)
 
 
 def save_settings(settings: dict) -> None:
     """Persist settings to ~/.laya/settings.json."""
-    global _settings_cache, _settings_cache_mtime
+    global _settings_cache, _settings_cache_key
     ensure_directories()
     write_private_json(LAYA_CONFIG_FILE, settings)
     # Invalidate the cache so the next load reflects what we just wrote.
     _settings_cache = None
-    _settings_cache_mtime = None
+    _settings_cache_key = None
 
 
 def get_n8n_config() -> dict:
@@ -432,14 +436,27 @@ _CURSOR_VERSION_RE = re.compile(r"^\d{4}\.\d{2}\.\d{2}-[0-9a-f]+$")
 _cursor_probe_cache: dict[tuple[str, float], bool] = {}
 
 
+def _executable_names(binary_name: str) -> list[str]:
+    """File names that run as ``binary_name``: the name itself, and on Windows
+    the name with each ``PATHEXT`` extension (``agent.exe``, ``agent.cmd``),
+    which is how a command is found there."""
+    if os.name != "nt":
+        return [binary_name]
+    exts = os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(os.pathsep)
+    return [binary_name + e.lower() for e in exts if e] + [binary_name]
+
+
 def _iter_executable_candidates(binary_name: str, path: str) -> Iterator[str]:
     """Yield every executable named ``binary_name`` across the PATH dirs, in order."""
+    names = _executable_names(binary_name)
     for d in path.split(os.pathsep):
         if not d:
             continue
-        candidate = os.path.join(d, binary_name)
-        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-            yield candidate
+        for name in names:
+            candidate = os.path.join(d, name)
+            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                yield candidate
+                break
 
 
 def _is_cursor_agent(candidate: str) -> bool:
