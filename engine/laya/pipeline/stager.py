@@ -30,6 +30,7 @@ from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 from laya.pipeline.card_status import llm_card_status_enabled, work_item_state_before
 from laya.pipeline.context_presets import get_strictness
+from laya.pipeline.tags import select_prompt_tags
 from laya.workers.base import WorkerResult
 
 log = structlog.get_logger()
@@ -121,14 +122,15 @@ async def run_stager(
     timeline = await _query_work_item_timeline(event)
     card_status = llm_card_status_enabled()
 
-    # 1c. Load existing tag names so the LLM prefers reusing them
+    # 1c. Pick the existing tag names this event is most likely to need, so
+    # the LLM reuses them. A failure here only costs the hint: the stager then
+    # runs without a tag list.
     existing_tags: list[str] = []
     try:
         db = await get_db()
-        tag_rows = await db.execute_fetchall("SELECT name FROM tags ORDER BY name")
-        existing_tags = [r["name"] for r in tag_rows]
-    except Exception:
-        pass
+        existing_tags = await select_prompt_tags(db, event)
+    except Exception as e:
+        log.warning("stager_tag_selection_failed", event_id=event.event_id, error=str(e))
 
     # 2. Build messages and call LLM
     _sg = load_settings().get("smart_grouping", {})

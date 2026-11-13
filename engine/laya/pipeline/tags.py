@@ -5,13 +5,140 @@
 
 from __future__ import annotations
 
+import re
+from datetime import datetime, timedelta, timezone
+
 import structlog
 
 from laya.db.sqlite import get_db
+from laya.db.timeutil import db_ts
+from laya.models.event import LayaEvent
 
 log = structlog.get_logger()
 
 TAG_SOFT_CAP = 10
+
+# Limits for the tag names shown to the stager (see select_prompt_tags).
+#
+# When the tags table has at most this many names, all of them are shown.
+PROMPT_TAGS_SHOW_ALL_MAX = 200
+# How many of the most used tags of the last PROMPT_TAGS_RECENT_DAYS days are shown.
+PROMPT_TAGS_RECENT_TOP = 150
+PROMPT_TAGS_RECENT_DAYS = 30
+# How many of the tags most often given to the same actor's events are shown.
+PROMPT_TAGS_ACTOR_TOP = 30
+# How many tags whose words all appear in the event's text are shown.
+PROMPT_TAGS_TEXT_MATCH_MAX = 60
+
+_WORD_RE = re.compile(r"[a-z0-9]+")
+
+
+async def select_prompt_tags(db, event: LayaEvent) -> list[str]:
+    """Pick the existing tag names to show the stager for one event.
+
+    The stager is asked to reuse existing tag names. Showing it every name does
+    not scale: each new tag would be added to every later prompt, and with a
+    few thousand tags the list becomes most of the stager's input. This
+    function returns a short list of the names the event is most likely to
+    need. The stager can still suggest a name that is not in the list, and
+    persist_suggested_tags reuses an existing tag when the name matches one.
+
+    The list is built from five sources, in this order, without duplicates:
+
+    1. Tags on earlier cards of the same entity, and tags assigned to the
+       entity itself.
+    2. Tags whose words all appear in the event's title or body. A tag named
+       "integration-test" matches an event that mentions both "integration"
+       and "test". At most PROMPT_TAGS_TEXT_MATCH_MAX are taken, names with
+       more words first.
+    3. The PROMPT_TAGS_ACTOR_TOP tags most often given to events of the same
+       actor (matched by email, or by name when the event has no email).
+    4. The PROMPT_TAGS_RECENT_TOP most used tags of the last
+       PROMPT_TAGS_RECENT_DAYS days.
+    5. System tags (for example "spam"), which are always shown.
+
+    When the tags table has at most PROMPT_TAGS_SHOW_ALL_MAX names, all of
+    them are returned in alphabetical order and the sources are not queried.
+    """
+    tag_rows = await db.execute_fetchall("SELECT name, is_system FROM tags ORDER BY name")
+    all_names = [r["name"] for r in tag_rows]
+    if len(all_names) <= PROMPT_TAGS_SHOW_ALL_MAX:
+        return all_names
+
+    selected: list[str] = []
+    seen: set[str] = set()
+
+    def add(names) -> None:
+        for name in names:
+            if name not in seen:
+                seen.add(name)
+                selected.append(name)
+
+    # 1. Same entity. The event's own card is excluded: it exists already when
+    # a card is reprocessed, and its old tags must not be fed back as a hint.
+    entity_id = event.entity_id
+    rows = await db.execute_fetchall(
+        """SELECT DISTINCT t.name FROM tag_assignments ta
+           JOIN tags t ON t.tag_id = ta.tag_id
+           WHERE (ta.target_type = 'card' AND ta.target_id IN (
+                      SELECT card_id FROM action_cards
+                      WHERE entity_id = ? AND event_id != ?))
+              OR (ta.target_type = 'entity' AND ta.target_id = ?)
+           ORDER BY t.name""",
+        (entity_id, event.event_id, entity_id),
+    )
+    add(r["name"] for r in rows)
+
+    # 2. Words of the event text.
+    event_words = set(_WORD_RE.findall(f"{event.subject.title} {event.content.body}".lower()))
+    matches: list[tuple[int, int, str]] = []
+    for name in all_names:
+        tag_words = _WORD_RE.findall(name.lower())
+        if tag_words and all(w in event_words for w in tag_words):
+            matches.append((-len(tag_words), -len(name), name))
+    matches.sort()
+    add(name for _, _, name in matches[:PROMPT_TAGS_TEXT_MATCH_MAX])
+
+    # 3. Same actor. The subquery picks the actor's cards first, so SQLite reads
+    # only their tag assignments instead of scanning the whole assignments table.
+    actor_column = "actor_email" if event.actor.email else "actor_name"
+    actor_value = event.actor.email or event.actor.name
+    if actor_value:
+        rows = await db.execute_fetchall(
+            f"""SELECT t.name, COUNT(*) AS uses FROM tag_assignments ta
+                JOIN tags t ON t.tag_id = ta.tag_id
+                WHERE ta.target_type = 'card' AND ta.target_id IN (
+                    SELECT ac.card_id FROM events e
+                    JOIN action_cards ac ON ac.event_id = e.event_id
+                    WHERE e.{actor_column} = ? AND e.event_id != ?)
+                GROUP BY ta.tag_id
+                ORDER BY uses DESC, t.name
+                LIMIT ?""",
+            (actor_value, event.event_id, PROMPT_TAGS_ACTOR_TOP),
+        )
+        add(r["name"] for r in rows)
+
+    # 4. Most used recently. tag_assignments has no index on created_at.
+    # Assignment ids grow with time, so the subquery finds the newest
+    # assignment older than the cutoff by walking the primary key backwards,
+    # and the outer query then reads only the rows after it.
+    cutoff = db_ts(datetime.now(timezone.utc) - timedelta(days=PROMPT_TAGS_RECENT_DAYS))
+    rows = await db.execute_fetchall(
+        """SELECT t.name, COUNT(*) AS uses FROM tag_assignments ta
+           JOIN tags t ON t.tag_id = ta.tag_id
+           WHERE ta.id > (SELECT COALESCE(MAX(id), 0) FROM tag_assignments
+                          WHERE created_at < ?)
+           GROUP BY ta.tag_id
+           ORDER BY uses DESC, t.name
+           LIMIT ?""",
+        (cutoff, PROMPT_TAGS_RECENT_TOP),
+    )
+    add(r["name"] for r in rows)
+
+    # 5. System tags.
+    add(r["name"] for r in tag_rows if r["is_system"])
+
+    return selected
 
 
 async def persist_suggested_tags(card_id: str, tag_names: list[str]) -> list[str]:

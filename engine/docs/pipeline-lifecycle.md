@@ -67,6 +67,22 @@ flowchart TD
     end
 ```
 
+## Tags shown to the Stager
+
+The stager suggests up to 3 tags per card and is asked to reuse existing
+names. The `[EXISTING TAGS]` block in its user message holds a short selection,
+built per event by `pipeline/tags.select_prompt_tags`:
+
+1. tags on earlier cards of the same entity, and tags assigned to the entity;
+2. tags whose words all appear in the event's title or body (at most 60);
+3. the 30 tags most often given to events of the same actor;
+4. the 150 most used tags of the last 30 days;
+5. system tags.
+
+When the `tags` table has 200 names or fewer, all of them are shown. The
+stager may suggest a name that is not in the block. `persist_suggested_tags`
+creates it only when no tag with that exact name exists.
+
 ## Card Status (decided by the Stager)
 
 A card is created `ready` or `done`. The stager LLM decides which, in the same

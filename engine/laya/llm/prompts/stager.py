@@ -778,11 +778,15 @@ Body:
         f"\n\n{supported_actions_text}" if supported_actions_text else ""
     )
 
+    # `existing_tags` is a selection, not every tag (see
+    # pipeline/tags.select_prompt_tags), so the text does not call it a
+    # complete list.
     existing_tags_text = ""
     if existing_tags:
         existing_tags_text = (
             f"\n\n[EXISTING TAGS]\n{', '.join(existing_tags)}\n"
-            "Prefer reusing these names when they fit. You may also suggest new tags.\n"
+            "These are existing tags that may fit this event. Prefer reusing these "
+            "names when they fit. You may also suggest new tags.\n"
             "[END EXISTING TAGS]"
         )
 
