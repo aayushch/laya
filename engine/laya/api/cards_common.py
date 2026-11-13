@@ -27,7 +27,8 @@ from laya.models.card import CardResponse, StagedOutput, SuggestedAction
 CARD_SELECT_COLUMNS = (
     "c.card_id, c.event_id, c.created_at, c.priority, c.persona, c.category, "
     "c.header, c.summary, c.intelligence, c.staged_output, c.suggested_actions, "
-    "c.status, c.privacy_tier, c.has_workspace, c.resolved_at, c.user_feedback, "
+    "c.status, c.privacy_tier, c.has_workspace, c.resolved_at, c.status_reason, "
+    "c.status_set_by, c.user_feedback, "
     "c.feedback_type, c.confidence, c.router_model, c.stager_model, c.updated_at, "
     "c.entity_id, c.source_ref, c.source_url, c.selected_action_id, "
     "c.space_id, c.bookmarked_at, c.read_at, c.group_active_at, c.context_id, "
@@ -100,6 +101,8 @@ def _row_to_card(row, slim: bool = False) -> CardResponse:
         privacy_tier=_safe_privacy_tier(row["privacy_tier"]),
         has_workspace=bool(row["has_workspace"]),
         resolved_at=row["resolved_at"],
+        status_reason=row["status_reason"] if "status_reason" in row.keys() else None,
+        status_set_by=row["status_set_by"] if "status_set_by" in row.keys() else None,
         user_feedback=row["user_feedback"],
         feedback_type=row["feedback_type"],
         confidence=row["confidence"],

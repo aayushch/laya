@@ -584,17 +584,25 @@ async def mark_card_done(card_id: str) -> dict:
 
     current = rows[0]["status"]
     now = db_now()
+    # status_reason and status_set_by describe a status that the pipeline set.
+    # The user is setting the status here, so both are cleared. This matches
+    # what transition_card_status does when a person closes a card.
     await db.execute(
         """UPDATE action_cards
            SET status = 'done', previous_status = ?, resolved_at = ?, updated_at = ?,
-               read_at = COALESCE(read_at, ?)
+               read_at = COALESCE(read_at, ?),
+               status_reason = NULL, status_set_by = NULL
            WHERE card_id = ?""",
         (current, now, now, now, card_id),
     )
     await db.commit()
 
     await manager.broadcast(
-        {"type": "card_updated", "card_id": card_id, "payload": {"status": "done"}}
+        {
+            "type": "card_updated",
+            "card_id": card_id,
+            "payload": {"status": "done", "status_reason": None, "status_set_by": None},
+        }
     )
 
     # Audit the lifecycle change to match the dismiss/archive/reopen endpoints, which

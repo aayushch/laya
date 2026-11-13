@@ -87,7 +87,6 @@ class Platform(abc.ABC):
         """Return human-readable errors for payloads the executor would reject."""
 
     # ---- Optional declarative data (defaults == registry getter fallbacks)
-    terminal_event_types: frozenset[str] = frozenset()        # is_terminal_event
     # Connection-credential field → payload field. The n8n backend removes each
     # named payload field from the incoming payload and sets it from the
     # connection's stored credentials, so executor workflows can target

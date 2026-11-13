@@ -49,7 +49,6 @@ GITHUB_DRAFT_SCHEMA: dict = {
 
 class GithubPlatform(Platform):
     name = "github"
-    terminal_event_types = frozenset({"pull_request_closed", "issue_closed"})
     platform_hint = "a GitHub issue, PR, or comment"
     chapter_default = "Code"
     draft_schema = GITHUB_DRAFT_SCHEMA

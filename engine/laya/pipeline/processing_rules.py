@@ -349,7 +349,7 @@ async def _execute_action(
 
 
 async def _exec_set_status(action: SetStatusAction, card_id: str) -> dict[str, Any]:
-    from laya.models.card_lifecycle import transition_card_status
+    from laya.models.card_lifecycle import TERMINAL_STATUSES, transition_card_status
     try:
         await transition_card_status(
             card_id, action.status,
@@ -358,6 +358,20 @@ async def _exec_set_status(action: SetStatusAction, card_id: str) -> dict[str, A
         )
         return {"success": True, "status": action.status}
     except ValueError as e:
+        # A card can already be done, dismissed or archived when the rule runs.
+        # The emit step creates a card as `done` when its work item has
+        # concluded, and rules run after emit. The lifecycle refuses most
+        # transitions out of those statuses (for example done -> dismissed).
+        # That is not a fault in the rule, so it is reported as a skipped
+        # action. Reporting it as an error would count towards the consecutive
+        # errors that disable the rule.
+        db = await get_db()
+        rows = await db.execute_fetchall(
+            "SELECT status FROM action_cards WHERE card_id = ?", (card_id,)
+        )
+        current = rows[0]["status"] if rows else None
+        if current in TERMINAL_STATUSES:
+            return {"success": True, "skipped": True, "reason": f"card is already {current}"}
         log.warning("processing_rule_invalid_transition", card_id=card_id, error=str(e))
         return {"success": False, "error": str(e)}
 

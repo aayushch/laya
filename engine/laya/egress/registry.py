@@ -93,33 +93,6 @@ def get_platform_hint(platform: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Terminal inbound event types — delegated to each adapter's
-# ``terminal_event_types`` (the single source of truth). When such an event
-# arrives, the pipeline auto-resolves pending sibling cards in the same entity
-# group (see emit.run_emit -> LayaEvent.is_terminal). Per-platform values are
-# kept in lock-step with the n8n ingestion workflows by
-# tests/test_terminal_event_parity.py.
-# ---------------------------------------------------------------------------
-
-
-def is_terminal_event(platform: str, raw_event_type: str) -> bool:
-    """True when this platform event means the underlying work item has
-    completed, so pending sibling cards in its entity group can be auto-resolved."""
-    a = _adapter(platform)
-    return bool(a and raw_event_type in a.terminal_event_types)
-
-
-# Derived snapshot of per-platform terminal event types, built from the adapters.
-# Kept importable for tests/test_terminal_event_parity.py; includes only the
-# platforms that actually declare terminal events (github/bitbucket/jira/linear).
-_TERMINAL_EVENT_TYPES: dict[str, frozenset[str]] = {
-    name: a.terminal_event_types
-    for name, a in _platforms.registry_platforms().items()
-    if a.terminal_event_types
-}
-
-
-# ---------------------------------------------------------------------------
 # Platform keywords — used to detect platform from n8n workflow names.
 # Cross-cutting: includes discord/gitlab (no adapter) and omits smtp/
 # outlook_calendar, so it cannot be derived from the adapters.

@@ -36,6 +36,13 @@ export interface CardUpdatePayload {
 	bookmarked_at?: string | null;
 	/** New space the card was moved to (move-to-space feature). */
 	space_id?: string;
+	/**
+	 * Why Laya set the card to done, and who set the current status. The engine
+	 * sends both keys when Laya closes a card and when the user reopens one. A
+	 * null value clears the field on the card.
+	 */
+	status_reason?: string | null;
+	status_set_by?: 'laya' | 'user' | null;
 }
 
 /** The slice of feed filter state the reducer needs. */
@@ -121,6 +128,8 @@ export function removeCardFromGroups(groups: CardGroup[], cardId: string): CardG
  * are only applied when `status` is also present in the payload — the backend
  * only sends those together. persona/has_workspace/bookmarked_at apply
  * unconditionally, and bookmarked_at uses `in` so it can be explicitly cleared.
+ * status_reason and status_set_by also use `in`, because the engine sends null
+ * to clear them when the user reopens a card that Laya had closed.
  */
 export function applyPayloadToCard(
 	card: ActionCard,
@@ -140,6 +149,8 @@ export function applyPayloadToCard(
 	if (payload.has_workspace !== undefined) next.has_workspace = payload.has_workspace;
 	if ('bookmarked_at' in payload) next.bookmarked_at = payload.bookmarked_at ?? undefined;
 	if (payload.space_id !== undefined) next.space_id = payload.space_id;
+	if ('status_reason' in payload) next.status_reason = payload.status_reason ?? undefined;
+	if ('status_set_by' in payload) next.status_set_by = payload.status_set_by ?? undefined;
 	return { card: next, wasAgent };
 }
 

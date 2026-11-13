@@ -481,3 +481,32 @@ class TestResynthesisStatusSchedule:
         async with _client() as client:
             data = (await client.get("/omni/resynthesis/status")).json()
         assert data["next_scheduled_at"] is None
+
+
+class TestBucketFor:
+    """The outcome bucket of one evidence card in the item drill-down."""
+
+    def test_resolved_comes_from_the_card_status(self):
+        from laya.api.omni_api import _bucket_for
+
+        for status in ("done", "dismissed", "archived"):
+            assert _bucket_for(status, "bitbucket", "pr_merged") == "resolved"
+
+    def test_event_type_alone_does_not_make_a_card_resolved(self):
+        """A card for a merge or close event that is still `ready` is waiting on
+        the user. The pipeline sets the status when a work item concludes, so the
+        bucket never reads the event type to decide that."""
+        from laya.api.omni_api import _bucket_for
+
+        for platform, event_type in (
+            ("bitbucket", "pr_merged"),
+            ("github", "issue_closed"),
+            ("jira", "issue_resolved"),
+        ):
+            assert _bucket_for("ready", platform, event_type) == "awaiting_you"
+
+    def test_failed_and_changes_requested_come_first(self):
+        from laya.api.omni_api import _bucket_for
+
+        assert _bucket_for("failed", "jira", "issue_updated") == "changes_requested"
+        assert _bucket_for("done", "bitbucket", "pr_declined") == "changes_requested"

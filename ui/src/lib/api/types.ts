@@ -414,6 +414,12 @@ export interface PipelineSettings {
 	max_retry_attempts: number;
 	max_concurrent_events: number;
 	queue_poll_interval: number;
+	/**
+	 * When true, the stager model sets each new card to ready or done and closes
+	 * earlier cards of a work item that has concluded. When false, every card is
+	 * created ready and only the user closes cards.
+	 */
+	llm_card_status: boolean;
 }
 
 /** Full settings response from GET /settings */
@@ -564,6 +570,13 @@ export interface ActionCard {
 	privacy_tier: number;
 	has_workspace: boolean;
 	resolved_at?: string;
+	/** One sentence saying why Laya set this card to done. Absent on cards Laya did not close. */
+	status_reason?: string | null;
+	/**
+	 * 'laya' when Laya set the card to done because its work item concluded.
+	 * 'user' when the user reopened a card Laya had closed. Absent otherwise.
+	 */
+	status_set_by?: 'laya' | 'user' | null;
 	user_feedback?: string;
 	feedback_type?: string;
 	confidence?: number;

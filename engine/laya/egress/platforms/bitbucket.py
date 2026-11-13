@@ -20,7 +20,6 @@ class BitbucketPlatform(Platform):
     # Class attribute (not module constant) so BitbucketServerPlatform can swap
     # in its own evt_bbs_pr_ prefix while inheriting identifiers_from_event.
     event_id_pr_re = _EVENT_ID_PR_RE
-    terminal_event_types = frozenset({"pr_merged", "pr_declined"})
     platform_hint = "a Bitbucket PR or comment"
     chapter_default = "Code"
     draft_schema = GITHUB_DRAFT_SCHEMA  # shares github's draft schema

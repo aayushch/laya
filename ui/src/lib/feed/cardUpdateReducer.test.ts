@@ -146,6 +146,31 @@ describe('applyPayloadToCard', () => {
 		expect(out.card.has_workspace).toBe(true);
 		expect(out.card.bookmarked_at).toBeUndefined();
 	});
+	it('sets and clears the reason and marker of a card Laya closed', () => {
+		// Laya closes an earlier card: status, reason and marker arrive together.
+		const closed = applyPayloadToCard(card('a', { status: 'ready' }), {
+			status: 'done',
+			status_reason: 'The pull request was merged.',
+			status_set_by: 'laya'
+		});
+		expect(closed.card.status).toBe('done');
+		expect(closed.card.status_reason).toBe('The pull request was merged.');
+		expect(closed.card.status_set_by).toBe('laya');
+
+		// The user reopens it: the engine sends null for the reason.
+		const reopened = applyPayloadToCard(closed.card, {
+			status: 'ready',
+			status_reason: null,
+			status_set_by: 'user'
+		});
+		expect(reopened.card.status_reason).toBeUndefined();
+		expect(reopened.card.status_set_by).toBe('user');
+
+		// A payload without the keys leaves both fields as they are.
+		const untouched = applyPayloadToCard(closed.card, { priority: 'HIGH' });
+		expect(untouched.card.status_reason).toBe('The pull request was merged.');
+		expect(untouched.card.status_set_by).toBe('laya');
+	});
 	it('does not mutate the input card', () => {
 		const base = card('a', { status: 'pending' });
 		applyPayloadToCard(base, { status: 'done' });

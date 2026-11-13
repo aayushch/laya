@@ -136,6 +136,11 @@ DEFAULT_SETTINGS = {
         "max_retry_attempts": 3,
         "max_concurrent_events": 4,
         "queue_poll_interval": 2,
+        # When True, the stager LLM sets each new card to ready or done and
+        # says which earlier cards of the same entity an event settles (see
+        # pipeline/card_status.py). When False, every card is created with its
+        # default status and Laya closes no card on its own.
+        "llm_card_status": True,
         "debounce": {
             "daily_summary_seconds": 90,
             # Max cards folded into a single daily-summary LLM call. A debounce

@@ -22,6 +22,7 @@ LAYA_PROMPTS_DIR = Path.home() / ".laya" / "prompts"
 PROMPT_FILES: dict[str, str] = {
     "router": "router.md",
     "stager": "stager.md",
+    "stager_card_status": "stager_card_status.md",
     "omni": "omni.md",
     "group_summary_initial": "group_summary_initial.md",
     "group_summary_rolling": "group_summary_rolling.md",

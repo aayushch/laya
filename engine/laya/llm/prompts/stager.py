@@ -5,10 +5,12 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Any
 
 from laya.egress.registry import get_capabilities
 from laya.llm.prompts.overrides import get_prompt
+from laya.models.card import LLM_ASSIGNABLE_STATUSES, STATUS_EFFECTS
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 from laya.workers.base import WorkerResult
@@ -422,6 +424,178 @@ def _build_role_directive(
 # event regardless of source (email-phishing guidance on Jira events, PR-lifecycle
 # on emails). Each event now gets only its family's block(s); an unrecognized
 # platform (chat/calendar/new) gets the universal core alone.
+# Rules that let the stager set the status of the card it writes. They are
+# appended to the system prompt by build_stager_messages for every platform:
+# the text names kinds of work item (a proposed change, a tracked task, a
+# conversation, a meeting) and never a platform, so one text covers all of them.
+#
+# The value names in this text must match STATUS_EFFECTS and
+# LLM_ASSIGNABLE_STATUSES in models/card.py, and the list of other statuses must
+# match VALID_STATUS_TRANSITIONS in models/card_lifecycle.py.
+# tests/test_stager_prompt.py checks both.
+CARD_STATUS_RULES = """\
+## Card Status
+
+Every card has a status. You set the status of the card you are writing. You also say \
+which earlier cards of the same work item this event settles. Earlier cards, if any, \
+are listed in [WORK ITEM TIMELINE] in the user message. The last line of the timeline \
+says whether the work item was open or concluded before this event. When there is no \
+timeline, this is the first card and the work item was open.
+
+The work item is the one thing this event belongs to: one pull request, one ticket, \
+one meeting, one page. For an email or chat thread the work item is the conversation \
+itself, not the project it talks about.
+
+Statuses you can assign:
+- "ready": open. The work item is still in motion, or the card holds something the \
+user may still have to read and act on.
+- "done": closed. The work item has reached its end, so nothing on the card is waiting \
+on anyone.
+
+Laya also has the statuses pending, requires_approval, agent_running, awaiting_input, \
+executing, failed, dismissed and archived. Only the user or Laya's own machinery sets \
+them. You may see them in the timeline. Never output them.
+
+Step 1. Decide event_effect: what this one event does to the work item.
+- "concludes": this event brings the work item to its natural end, or reports that the \
+end has been reached.
+- "reopens": the work item had concluded and this event puts it back in motion.
+- "standalone_notice": this event is a message that stands alone and only informs: a \
+newsletter, a promotion, an automated alert, an announcement. It belongs to no work \
+item that can end, so it concludes nothing.
+- "none": anything else. The work item stays as it was before this event.
+
+Each kind of work item has its own natural end. A proposed change ends when it is \
+merged or rejected. A tracked task ends when it reaches the final state of its \
+workflow. A conversation ends when its last open question or request has been answered \
+or acknowledged and nobody is waiting for a reply. A scheduled meeting ends when it \
+has taken place or been cancelled. Work out the natural end from the platform and the \
+subject type. A negative end (declined, rejected, cancelled, closed as not planned) is \
+still an end.
+
+"concludes" needs explicit evidence inside this event: an event type or a state field \
+that reports a closing transition, a resolution, or wording in the body that closes \
+the matter. These are not evidence:
+- The card asks nothing of the user. Needing no action is not an end. A message that \
+stands alone and only informs is "standalone_notice", never "concludes".
+- A state name you cannot place. Teams name their workflow states freely. A final \
+state is one that work does not normally leave again. If the new state is not clearly \
+final, treat it as a step on the way.
+- Progress. Approvals, new commits, comments, reassignments and moves between working \
+states are "none".
+
+In a conversation, the end is the closing message itself: an acknowledgement, a \
+confirmation or a sign-off after which nobody is waiting for a reply. A message that \
+delivers an answer or information the user asked for is not the end, because the user \
+still has to read it. A message that raises something new after the conversation had \
+concluded is "reopens".
+
+Judge only this event. Earlier cards are history. An event that closes a work item is \
+"concludes" even if the work item was closed and reopened before. When the timeline \
+says the work item was already concluded, an edit or a remark that asks nothing new is \
+"none": it does not conclude the work item a second time and it does not reopen it.
+
+Step 2. Set status for the card you are writing.
+After this event the work item is concluded in two cases: event_effect is "concludes", \
+or event_effect is "none" and the timeline says the work item was already concluded. \
+In both cases status is "done". The one exception is a card that itself carries a new \
+request the user still has to act on, which is "ready".
+In every other case status is "ready". This includes every "standalone_notice" on a \
+work item that was open: a card is never "done" only because it needs no action. The \
+user decides when they have read it.
+
+Step 3. Set settled_refs.
+When event_effect is "concludes", Laya closes every earlier ready card itself, so \
+leave settled_refs empty. Otherwise list the # numbers of the earlier ready cards that \
+this event has settled, if any. For example: a review request that this approval \
+answers, a question that this message answers, a failure report that this success \
+report replaces. Most events settle nothing. Leave the list empty unless the link is \
+plain.
+
+The examples above show the reasoning. They are not a lookup table. A platform or \
+event type you have not seen before follows the same three steps.
+
+When the evidence is not clear, choose "none", "ready" and an empty list. A card left \
+open costs the user one click. A card closed by mistake can hide something they \
+needed.
+
+Write the reason field first: one short sentence that names the evidence, such as the \
+state change or the closing words."""
+
+
+# The most recent earlier cards shown to the stager in [WORK ITEM TIMELINE].
+# Older cards are counted in the block's first line but not listed.
+TIMELINE_MAX_CARDS = 40
+
+# A ready card's summary is shown under its timeline line, cut to this length.
+_TIMELINE_SUMMARY_CHARS = 160
+
+
+@dataclass
+class WorkItemTimeline:
+    """The earlier cards of the entity an event belongs to, as the stager sees them.
+
+    pipeline/stager.py builds this from the database and build_timeline_block
+    renders it into the user message.
+    """
+
+    # Earlier cards, oldest first, at most TIMELINE_MAX_CARDS. Each dict has
+    # card_id, header, summary, status, created_at, source_raw_event_type and
+    # actor_name. The card at index i is shown to the stager as "#i+1".
+    cards: list[dict[str, Any]] = field(default_factory=list)
+    # How many older cards exist but are not in `cards`.
+    omitted: int = 0
+    # "open" or "concluded": the state of the work item before the event.
+    prior_state: str = "open"
+    # The event's own time, in the database timestamp format (UTC).
+    event_time: str = ""
+
+
+def build_timeline_block(timeline: WorkItemTimeline | None) -> str:
+    """Render the [WORK ITEM TIMELINE] block, or "" when there are no earlier cards.
+
+    Each card is one line that starts with "#" and its position. The stager
+    refers to earlier cards by that number and never sees a card_id.
+    """
+    if timeline is None or not timeline.cards:
+        return ""
+    shown = len(timeline.cards)
+    total = shown + timeline.omitted
+    if timeline.omitted:
+        count_text = (
+            f"This work item already has {total} earlier card(s). The "
+            f"{timeline.omitted} oldest are not shown. The {shown} most recent "
+            "follow, oldest first."
+        )
+    else:
+        count_text = f"This work item already has {total} earlier card(s), oldest first."
+    lines = [
+        "[WORK ITEM TIMELINE]",
+        (
+            f"{count_text} Line format: #number | event time (UTC) | event type | "
+            "actor | status | card title. Do not repeat research or analysis these "
+            "cards already cover. For a status update, write a concise update card, "
+            "not a new investigation."
+        ),
+    ]
+    for ref, card in enumerate(timeline.cards, 1):
+        status = card.get("status") or "?"
+        lines.append(
+            f"#{ref} | {(card.get('created_at') or '?')[:16]} | "
+            f"{card.get('source_raw_event_type') or '?'} | "
+            f"{card.get('actor_name') or '?'} | {status} | {card.get('header') or '?'}"
+        )
+        if status == "ready" and card.get("summary"):
+            summary = " ".join(card["summary"].split())
+            if len(summary) > _TIMELINE_SUMMARY_CHARS:
+                summary = summary[: _TIMELINE_SUMMARY_CHARS - 1].rstrip() + "…"
+            lines.append(f"    {summary}")
+    lines.append(f"This event's time: {timeline.event_time[:16]} (UTC).")
+    lines.append(f"Before this event the work item was: {timeline.prior_state}.")
+    lines.append("[END WORK ITEM TIMELINE]")
+    return "\n".join(lines)
+
+
 _EMAIL_PLATFORMS = frozenset({"gmail", "outlook"})
 _CODE_PLATFORMS = frozenset({"github", "bitbucket", "bitbucket_server"})
 _ISSUE_PLATFORMS = frozenset({"jira", "linear"})
@@ -453,14 +627,20 @@ def build_stager_messages(
     router_output: RouterOutput,
     worker_results: list[WorkerResult] | None = None,
     related_context: list[dict[str, Any]] | None = None,
-    entity_history: list[dict[str, Any]] | None = None,
+    timeline: WorkItemTimeline | None = None,
     user_identity: dict[str, str] | None = None,
     actor_relationship: str = "external",
     participant_roles: dict[str, Any] | None = None,
     existing_tags: list[str] | None = None,
     strictness: str = "strict",
+    card_status: bool = True,
 ) -> list[dict[str, str]]:
-    """Build the messages array for the Stager LLM call."""
+    """Build the messages array for the Stager LLM call.
+
+    `timeline` holds the earlier cards of the event's entity. `card_status`
+    says whether the stager is asked to set the card's status. When it is
+    False, the status rules are left out of the system prompt.
+    """
     # Include event metadata so the LLM can use platform-specific IDs
     # (e.g., bb_comment_id for Bitbucket thread replies, gmail_thread_id for Gmail)
     metadata_text = ""
@@ -539,26 +719,10 @@ Body:
                 f"{ctx.get('document', '')[:200]}\n"
             )
 
-    # Existing cards for this entity (prevents redundant research)
-    entity_text = ""
-    if entity_history:
-        entity_text = (
-            f"\n\n[EXISTING CARDS FOR THIS ENTITY]\n"
-            f"This entity already has {len(entity_history)} card(s). "
-            f"DO NOT repeat research or analysis already covered:\n"
-        )
-        for i, card in enumerate(entity_history, 1):
-            entity_text += (
-                f"  {i}. [{card.get('created_at', '?')}] "
-                f"\"{card.get('header', '?')}\" "
-                f"({card.get('status', '?')}) — "
-                f"from {card.get('source_raw_event_type', '?')}\n"
-            )
-        entity_text += (
-            "For status updates, generate a concise update card — "
-            "not a new investigation.\n"
-            "[END EXISTING CARDS]"
-        )
+    # Earlier cards of the same entity. They keep the stager from repeating
+    # research, and they are the history it judges the card's status against.
+    timeline_block = build_timeline_block(timeline)
+    entity_text = f"\n\n{timeline_block}" if timeline_block else ""
 
     # Actor–user relationship context (pre-resolved by the system)
     identity_text = ""
@@ -635,14 +799,71 @@ Produce a JSON action card matching the required schema."""
     # Only ship the conditional blocks relevant to this event's platform (P6-9).
     system_prompt = build_stager_system_prompt(event.source.platform, strictness)
 
+    # The status rules are added after the "stager" override is resolved, so a
+    # user who replaces the stager prompt with their own file still gets them.
+    # They have their own override key.
+    system_content = get_prompt("stager", system_prompt)
+    if card_status:
+        system_content += "\n\n" + get_prompt("stager_card_status", CARD_STATUS_RULES)
+
     return [
-        {"role": "system", "content": get_prompt("stager", system_prompt)},
+        {"role": "system", "content": system_content},
         {"role": "user", "content": user_message},
     ]
 
 
-def get_stager_json_schema() -> dict[str, Any]:
-    """Return the JSON schema for the stager output."""
+def _card_status_schema() -> dict[str, Any]:
+    """Schema of the `card_status` object the stager returns.
+
+    `reason` is listed first so the model names its evidence before it picks
+    `event_effect` and `status`.
+    """
+    return {
+        "type": "object",
+        "description": (
+            "Status of this card and the earlier cards of the same work item "
+            "that this event settles"
+        ),
+        "properties": {
+            "reason": {
+                "type": "string",
+                "description": (
+                    "One short sentence naming the evidence for what this event "
+                    "does to the work item"
+                ),
+            },
+            "event_effect": {"type": "string", "enum": list(STATUS_EFFECTS)},
+            "status": {"type": "string", "enum": list(LLM_ASSIGNABLE_STATUSES)},
+            "settled_refs": {
+                "type": "array",
+                "items": {"type": "integer"},
+                "description": (
+                    "# numbers of earlier ready timeline cards this event settles "
+                    "while the work item stays open; usually empty"
+                ),
+            },
+        },
+        "required": ["reason", "event_effect", "status", "settled_refs"],
+        "additionalProperties": False,
+    }
+
+
+def get_stager_json_schema(card_status: bool = True) -> dict[str, Any]:
+    """Return the JSON schema for the stager output.
+
+    With `card_status` True the schema also requires the `card_status` object.
+    It is the last property, so the model writes the card before it judges the
+    status.
+    """
+    schema = _base_stager_json_schema()
+    if card_status:
+        schema["schema"]["properties"]["card_status"] = _card_status_schema()
+        schema["schema"]["required"].append("card_status")
+    return schema
+
+
+def _base_stager_json_schema() -> dict[str, Any]:
+    """The stager output schema without the `card_status` object."""
     return {
         "name": "action_card",
         "strict": True,

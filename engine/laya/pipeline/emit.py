@@ -17,9 +17,15 @@ from laya.db.sqlite import get_db
 from laya.db.timeutil import db_now, db_ts
 from laya.llm.client import log_to_audit
 from laya.models.card import ActionCardData
-from laya.models.card_lifecycle import INACTIVE_STATUSES, transition_card_status
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
+from laya.pipeline.card_status import (
+    StatusDecision,
+    close_earlier_cards,
+    decide_card_status,
+    entity_status_lock,
+    llm_card_status_enabled,
+)
 from laya.pipeline.entity_resolution import resolve_semantic_entities
 from laya.pipeline.summarize import trigger_summary_status_update, trigger_summary_update
 from laya.tasks import create_task
@@ -191,12 +197,24 @@ async def _persist_card(
     source_url: str | None,
     space_id: str | None,
     has_workspace: bool,
-    card_status: str,
+    decision: StatusDecision,
 ) -> None:
     """Persist the card (UPDATE the provisional row on the worker path, INSERT a
     fresh row otherwise), enqueue it for Omni, and carry the entity group's
     activity timestamp forward — all in ONE transaction, so the new row and the
-    group's bumped group_active_at become visible atomically."""
+    group's bumped group_active_at become visible atomically.
+
+    `decision` carries the card's status and the values of the status_effect,
+    status_reason and status_set_by columns. When Laya creates the card as
+    `done`, two more columns are written:
+    - resolved_at, as for every other card that reaches `done`;
+    - previous_status = 'ready', so the Reopen action returns the card to
+      `ready`. Without it, reopen_card (api/cards_lifecycle.py) finds no saved
+      status and sends the card to `pending`.
+    read_at is not written, so a card Laya closed still counts as unread."""
+    card_status = decision.status
+    resolved_at = db_now() if decision.created_done_by_laya else None
+    previous_status = "ready" if decision.created_done_by_laya else None
     intelligence_json = json.dumps(stager_output.intelligence_report)
     staged_output_json = json.dumps(stager_output.staged_output.model_dump())
     suggested_actions_json = json.dumps(
@@ -211,7 +229,10 @@ async def _persist_card(
                intelligence=?, staged_output=?, suggested_actions=?,
                status=?, privacy_tier=?, has_workspace=?,
                confidence=?, entity_id=?, source_ref=?, source_url=?,
-               space_id=?, updated_at=CURRENT_TIMESTAMP
+               space_id=?, status_effect=?, status_reason=?, status_set_by=?,
+               resolved_at=COALESCE(?, resolved_at),
+               previous_status=COALESCE(?, previous_status),
+               updated_at=CURRENT_TIMESTAMP
                WHERE card_id=?""",
             (
                 router_output.priority.value,
@@ -230,6 +251,11 @@ async def _persist_card(
                 source_ref,
                 source_url,
                 space_id,
+                decision.status_effect,
+                decision.status_reason,
+                decision.status_set_by,
+                resolved_at,
+                previous_status,
                 card_id,
             ),
         )
@@ -242,8 +268,10 @@ async def _persist_card(
                (card_id, event_id, priority, persona, category, header, summary,
                 intelligence, staged_output, suggested_actions, status,
                 privacy_tier, has_workspace, confidence, router_model, stager_model,
-                entity_id, source_ref, source_url, space_id, created_at, group_active_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                entity_id, source_ref, source_url, space_id, created_at, group_active_at,
+                status_effect, status_reason, status_set_by, resolved_at, previous_status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                       ?, ?, ?, ?, ?)""",
             (
                 card_id,
                 event.event_id,
@@ -267,6 +295,11 @@ async def _persist_card(
                 space_id,
                 ev_ts,
                 ev_ts,
+                decision.status_effect,
+                decision.status_reason,
+                decision.status_set_by,
+                resolved_at,
+                previous_status,
             ),
         )
 
@@ -312,41 +345,6 @@ async def _count_siblings(db, entity_id: str, card_id: str) -> int:
         (entity_id, card_id),
     )
     return rows[0]["cnt"]
-
-
-async def _auto_resolve_terminal_siblings(
-    db, event: LayaEvent, entity_id: str, card_id: str
-) -> int:
-    """A terminal event means the work item completed, so resolve this entity's
-    still-active sibling cards to ``done`` — they are no longer actionable.
-    Best-effort; returns the number resolved."""
-    inactive = tuple(INACTIVE_STATUSES)
-    placeholders = ", ".join("?" for _ in inactive)
-    sibling_rows = await db.execute_fetchall(
-        f"""SELECT card_id, header, status FROM action_cards
-            WHERE entity_id = ? AND card_id != ?
-            AND status NOT IN ({placeholders})""",
-        (entity_id, card_id, *inactive),
-    )
-    resolved = 0
-    for sib in sibling_rows:
-        try:
-            await transition_card_status(sib["card_id"], "done", actor="pipeline")
-            resolved += 1
-        except ValueError:
-            continue
-        create_task(
-            trigger_summary_status_update(sib["card_id"], sib["header"], "done"),
-            name=f"summary_status_{sib['card_id']}",
-        )
-    if resolved:
-        log.info(
-            "auto_resolved_siblings",
-            entity_id=entity_id,
-            trigger_event=event.source.raw_event_type,
-            resolved_count=resolved,
-        )
-    return resolved
 
 
 async def _embed_card(
@@ -532,7 +530,7 @@ async def _broadcast_card(
     entity_id: str,
     stager_output: ActionCardData,
     router_output: RouterOutput,
-    card_status: str,
+    decision: StatusDecision,
     has_workspace: bool,
     is_carry_forward: bool,
 ) -> None:
@@ -550,7 +548,9 @@ async def _broadcast_card(
                 "priority": router_output.priority.value,
                 "persona": router_output.persona.value,
                 "category": router_output.category.value,
-                "status": card_status,
+                "status": decision.status,
+                "status_reason": decision.status_reason,
+                "status_set_by": decision.status_set_by,
                 "has_workspace": has_workspace,
                 "privacy_tier": stager_output.privacy_tier,
                 "suggested_tags": stager_output.suggested_tags,
@@ -681,24 +681,60 @@ async def run_emit(
         source_url,
     )
 
-    has_workspace, card_status = _resolve_card_status(worker_results)
+    has_workspace, base_status = _resolve_card_status(worker_results)
 
-    # 1. Persist the card + enqueue it for omni + carry the group forward (one txn).
+    # 1. Decide the card's status, persist the card (+ enqueue it for omni +
+    # carry the group forward, one txn), and close the earlier cards the event
+    # settles. The three steps share the entity's status lock, so two events of
+    # the same entity cannot each decide before the other's card is written.
     db = await get_db()
-    await _persist_card(
-        db,
-        card_id=card_id,
-        pre_created=pre_created,
-        event=event,
-        router_output=router_output,
-        stager_output=stager_output,
-        entity_id=entity_id,
-        source_ref=source_ref,
-        source_url=source_url,
-        space_id=space_id,
-        has_workspace=has_workspace,
-        card_status=card_status,
-    )
+    event_ts = _event_ts(event)
+    closed_cards: list[dict] = []
+    async with entity_status_lock(entity_id):
+        if llm_card_status_enabled():
+            decision = await decide_card_status(
+                db,
+                entity_id=entity_id,
+                event_id=event.event_id,
+                event_ts=event_ts,
+                base_status=base_status,
+                verdict=stager_output.status_verdict,
+            )
+        else:
+            decision = StatusDecision(status=base_status)
+        await _persist_card(
+            db,
+            card_id=card_id,
+            pre_created=pre_created,
+            event=event,
+            router_output=router_output,
+            stager_output=stager_output,
+            entity_id=entity_id,
+            source_ref=source_ref,
+            source_url=source_url,
+            space_id=space_id,
+            has_workspace=has_workspace,
+            decision=decision,
+        )
+        # Best-effort: the new card is already saved, and a failure to close an
+        # earlier card must not fail the event and send it back to the queue.
+        try:
+            closed_cards = await close_earlier_cards(
+                db,
+                entity_id=entity_id,
+                event_id=event.event_id,
+                event_ts=event_ts,
+                decision=decision,
+            )
+        except Exception as e:
+            log.warning("close_earlier_cards_failed", card_id=card_id, error=str(e))
+
+    # Tell the daily summary about each earlier card that was just closed.
+    for closed in closed_cards:
+        create_task(
+            trigger_summary_status_update(closed["card_id"], closed["header"], "done"),
+            name=f"summary_status_{closed['card_id']}",
+        )
 
     # Persist stager-suggested tags (best-effort).
     if stager_output.suggested_tags:
@@ -719,16 +755,7 @@ async def run_emit(
         carry_forward=is_carry_forward,
     )
 
-    # 3. Auto-resolve sibling cards when a terminal event arrives (best-effort).
-    # Which event types are terminal is a per-platform concern owned by the egress
-    # platform registry — emit just asks the event (see LayaEvent.is_terminal).
-    if is_carry_forward and event.is_terminal:
-        try:
-            await _auto_resolve_terminal_siblings(db, event, entity_id, card_id)
-        except Exception as e:
-            log.warning("auto_resolve_siblings_failed", card_id=card_id, error=str(e))
-
-    # 4. Embed in ChromaDB; embed_text is reused verbatim by the grouping queries.
+    # 3. Embed in ChromaDB; embed_text is reused verbatim by the grouping queries.
     entity_refs = ",".join(e.value for e in router_output.entities)
     embed_text = await _embed_card(
         db,
@@ -742,8 +769,8 @@ async def run_emit(
         entity_refs=entity_refs,
     )
 
-    # 5. Broadcast to the feed IMMEDIATELY after embed, BEFORE the enrichment
-    # steps below. Context grouping (step 6) makes a blocking LLM confirm call;
+    # 4. Broadcast to the feed IMMEDIATELY after embed, BEFORE the enrichment
+    # steps below. Context grouping (step 5) makes a blocking LLM confirm call;
     # broadcasting after it meant the user saw new cards seconds-to-tens-of-
     # seconds late while a pipeline semaphore slot was held (review §4 — P5-5).
     # Grouping/entity-resolution then run and emit a card_updated follow-up.
@@ -753,12 +780,12 @@ async def run_emit(
         entity_id=entity_id,
         stager_output=stager_output,
         router_output=router_output,
-        card_status=card_status,
+        decision=decision,
         has_workspace=has_workspace,
         is_carry_forward=is_carry_forward,
     )
 
-    # 6. Semantic context grouping across entity boundaries (best-effort). If it
+    # 5. Semantic context grouping across entity boundaries (best-effort). If it
     # assigns a context, tell the feed via a card_updated follow-up so it can
     # re-group without a full reload.
     assigned_context_id = await _resolve_context_grouping(
@@ -781,7 +808,7 @@ async def run_emit(
         except Exception as e:
             log.warning("context_update_broadcast_failed", card_id=card_id, error=str(e))
 
-    # 7. Entity resolution Layer 2 (semantic, non-blocking).
+    # 6. Entity resolution Layer 2 (semantic, non-blocking).
     entity_values = [e.value for e in router_output.entities]
     if entity_values:
         try:
@@ -789,7 +816,7 @@ async def run_emit(
         except Exception as e:
             log.warning("entity_resolution_failed", card_id=card_id, error=str(e))
 
-    # 8. Audit log.
+    # 7. Audit log.
     await log_to_audit(
         event_id=event.event_id,
         card_id=card_id,
@@ -802,7 +829,7 @@ async def run_emit(
         metadata={"has_workspace": has_workspace, "privacy_tier": stager_output.privacy_tier},
     )
 
-    # 9. Kick off non-blocking follow-ups (group summary, daily summary, rules).
+    # 8. Kick off non-blocking follow-ups (group summary, daily summary, rules).
     _trigger_followups(
         event=event,
         router_output=router_output,

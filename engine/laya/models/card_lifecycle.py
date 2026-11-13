@@ -43,6 +43,12 @@ def is_active(status: str) -> bool:
     return status not in INACTIVE_STATUSES
 
 
+# Actors of transition_card_status that stand for a person: the UI ("user") and
+# the chat tools ("chat"). A status change by one of them is the person's own
+# decision about the card.
+PERSON_ACTORS = {"user", "chat"}
+
+
 async def transition_card_status(
     card_id: str,
     new_status: str,
@@ -86,12 +92,13 @@ async def transition_card_status(
     db = await get_db()
 
     rows = await db.execute_fetchall(
-        "SELECT status FROM action_cards WHERE card_id = ?", (card_id,),
+        "SELECT status, status_set_by FROM action_cards WHERE card_id = ?", (card_id,),
     )
     if not rows:
         raise ValueError(f"Card {card_id} not found")
 
     current = rows[0]["status"]
+    set_by_before = rows[0]["status_set_by"]
     allowed = VALID_STATUS_TRANSITIONS.get(current, set())
     if not allow_restore and new_status not in allowed:
         raise ValueError(f"Invalid transition {current} -> {new_status} for card {card_id}")
@@ -130,6 +137,27 @@ async def transition_card_status(
         sets.append("failed_stage = NULL")
         sets.append("last_error = NULL")
 
+    # status_reason and status_set_by record a status that the pipeline set
+    # from the stager's answer (see pipeline/card_status.py). When a person
+    # closes a card or reopens one, the status becomes that person's decision:
+    #   - The reason no longer applies and is cleared.
+    #   - If Laya had closed the card and the person reopens it, status_set_by
+    #     becomes "user". The pipeline never closes such a card again.
+    #   - In every other case status_set_by is cleared.
+    # A move between two active statuses, or between two inactive ones, leaves
+    # both columns unchanged. Reprocess is such a move (ready -> pending), so a
+    # reopened card keeps its "user" value while it is reprocessed.
+    person_fields: dict = {}
+    if actor in PERSON_ACTORS and is_active(current) != is_active(new_status):
+        reopened_laya_closure = is_active(new_status) and set_by_before == "laya"
+        person_fields = {
+            "status_set_by": "user" if reopened_laya_closure else None,
+            "status_reason": None,
+        }
+        for col, val in person_fields.items():
+            sets.append(f"{col} = ?")
+            params.append(val)
+
     if extra_fields:
         for col, val in extra_fields.items():
             sets.append(f"{col} = ?")
@@ -153,7 +181,7 @@ async def transition_card_status(
             f"'{current}' when the {current} -> {new_status} write ran"
         )
 
-    broadcast_payload: dict = {"status": new_status}
+    broadcast_payload: dict = {"status": new_status, **person_fields}
     if extra_fields:
         broadcast_payload.update(extra_fields)
     await manager.broadcast({"type": "card_updated", "card_id": card_id, "payload": broadcast_payload})

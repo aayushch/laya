@@ -392,6 +392,7 @@ async def get_card(card_id: str) -> dict[str, Any]:
         """SELECT card_id, event_id, entity_id, context_id, header, summary,
                   intelligence, staged_output, suggested_actions, status, priority,
                   persona, category, created_at, resolved_at,
+                  status_reason, status_set_by,
                   confidence, space_id, has_workspace
            FROM action_cards WHERE card_id = ?""",
         (card_id,),
@@ -419,6 +420,10 @@ async def get_card(card_id: str) -> dict[str, Any]:
         "space_id": r["space_id"],
         "has_workspace": bool(r["has_workspace"]),
     }
+    # Present only on a card Laya set to done because its work item concluded:
+    # the one-sentence reason the stager gave.
+    if r["status"] == "done" and r["status_set_by"] == "laya":
+        card["closed_by_laya_reason"] = r["status_reason"] or ""
 
     # Parse suggested actions JSON
     if r["suggested_actions"]:

@@ -9,10 +9,11 @@ from typing import Any
 
 from laya.llm.prompts.overrides import get_prompt
 
-# Note: the "INFER COMPLETION FROM CONTENT" section below describes terminal work
-# items in prose for the LLM to judge semantically. The code-level source of truth
-# for terminal *event types* is egress/registry._TERMINAL_EVENT_TYPES — these two
-# express the same concept in different ways and should co-vary when it shifts.
+# Note: the "INFER COMPLETION FROM CONTENT" section below asks the summarizer to
+# judge from a card's content whether its work item is finished. The stager makes
+# the same kind of judgement when it sets a card's status (CARD_STATUS_RULES in
+# llm/prompts/stager.py). The two texts describe the same idea and should stay
+# consistent with each other.
 SUMMARIZER_SYSTEM_PROMPT = """\
 You are the Daily Summarizer for Laya, an AI-powered professional work assistant. Your job is \
 to maintain a running summary of the user's day by incrementally incorporating new events.

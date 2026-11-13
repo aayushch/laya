@@ -1085,6 +1085,14 @@
 					<span>Created: {parseBackendDate(card.created_at)?.toLocaleString()}</span>
 				{/if}
 			</div>
+			<!-- Shown only on a card Laya set to done because its work item concluded.
+			     status_reason is the model's one-sentence explanation. The Reopen
+			     button in the footer below returns the card to ready. -->
+			{#if card.status === 'done' && card.status_set_by === 'laya'}
+				<p class="mt-1.5 text-laya-secondary text-surface-400">
+					Closed by Laya{card.status_reason ? `: ${card.status_reason}` : '.'}
+				</p>
+			{/if}
 		</div>
 	</div>
 

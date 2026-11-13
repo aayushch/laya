@@ -63,8 +63,9 @@ const TERMINAL_STATUSES = new Set(['done', 'dismissed', 'archived']);
 
 /**
  * Client-side fallback bucketing. Mirrors `_bucket_for` in `omni_api.py`, minus
- * the raw-event-type test — the legacy path has no event data, so a merged PR
- * whose card is still `ready` reads as awaiting. Prefer the server's `bucket`.
+ * its event-type test for the changes-requested bucket: the legacy path has no
+ * event data, so only a `failed` card reads as changes requested here. Prefer
+ * the server's `bucket`.
  */
 export function bucketOf(card: Pick<ActionCard, 'status'>): OmniBucket {
 	if (card.status === 'failed') return 'changes_requested';

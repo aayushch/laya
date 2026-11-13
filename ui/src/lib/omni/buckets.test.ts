@@ -41,8 +41,9 @@ describe('bucketOf (client fallback)', () => {
 
 describe('cardBucket', () => {
 	it('prefers the server-assigned bucket', () => {
-		// A merged PR whose card is still `ready`: only the server sees the
-		// terminal event type, so its answer must win over the status heuristic.
+		// The server also reads the event type (it puts a changes-requested or
+		// failed-build card in its own bucket), which the client cannot see. So
+		// when the server sent a bucket, it is used as is.
 		expect(cardBucket(card('ready', 'resolved'))).toBe('resolved');
 	});
 

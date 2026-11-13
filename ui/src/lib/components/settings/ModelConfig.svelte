@@ -212,7 +212,8 @@
 		llm_retries: 3,
 		max_retry_attempts: 5,
 		max_concurrent_events: 5,
-		queue_poll_interval: 2
+		queue_poll_interval: 2,
+		llm_card_status: true
 	});
 	let savingPipeline = $state(false);
 	let pipelineSaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1387,6 +1388,33 @@
 							/>
 							<span class="text-laya-secondary text-surface-500">events</span>
 						</div>
+					</div>
+
+					<!-- Automatic card status -->
+					<div class="grid grid-cols-[200px_1fr_auto] items-center gap-4">
+						<div>
+							<span id="llm-card-status-label" class="text-laya-base text-surface-300">Automatic Card Status</span>
+							<p class="text-laya-micro text-surface-500">The stager model marks a card Done when its work item has concluded, for example a merged pull request or a resolved ticket.</p>
+						</div>
+						<p class="text-laya-secondary text-surface-500">
+							{pipeline.llm_card_status
+								? 'On. Laya also closes the earlier cards of a concluded work item.'
+								: 'Off. Every card is created Ready and only you close cards.'}
+						</p>
+						<button
+							class="relative h-6 w-11 shrink-0 rounded-full transition-colors {pipeline.llm_card_status ? 'bg-laya-orange' : 'bg-surface-600'}"
+							onclick={() => {
+								pipeline.llm_card_status = !pipeline.llm_card_status;
+								debounceSavePipeline();
+							}}
+							role="switch"
+							aria-checked={pipeline.llm_card_status}
+							aria-labelledby="llm-card-status-label"
+						>
+							<span
+								class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform {pipeline.llm_card_status ? 'translate-x-5' : 'translate-x-0'}"
+							></span>
+						</button>
 					</div>
 
 				</div>

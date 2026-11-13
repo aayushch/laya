@@ -1117,9 +1117,10 @@ async def _resynthesize_space(
     # drop subjects that have since resolved or de-escalated. Resynthesis is
     # otherwise blind to status-only transitions of cards created before `since`
     # (they don't reappear in `new_cards`), so without this an attention item
-    # sticks forever. We compute state from each item's source_cards because the
-    # auto-resolution path (emit.py) transitions the very sibling cards embedded
-    # in the aggregate to a terminal status.
+    # sticks forever. We compute state from each item's source_cards because
+    # emit closes earlier cards of an entity when a later event settles them
+    # (pipeline/card_status.py), and those are the very cards embedded in the
+    # aggregate.
     item_states: list[dict] = []
     if current_snapshot:
         snapshot_card_ids: list[str] = []

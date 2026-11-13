@@ -39,7 +39,6 @@ JIRA_DRAFT_SCHEMA: dict = {
 
 class JiraPlatform(Platform):
     name = "jira"
-    terminal_event_types = frozenset({"issue_resolved"})
     platform_hint = "a Jira issue or comment"
     body_field = "description"
     draft_schema = JIRA_DRAFT_SCHEMA

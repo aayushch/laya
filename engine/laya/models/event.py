@@ -69,21 +69,11 @@ class LayaEvent(BaseModel):
         ingestion workflows, not here."""
         # A null/empty subject.id would collapse every such event into one shared
         # key (e.g. "gmail:email_thread:"), causing false carry-forward and
-        # unrelated cards being auto-resolved as siblings. Fall back to the unique
-        # event_id so degenerate events each get their own group (review §2).
+        # unrelated cards being closed as earlier cards of one work item. Fall
+        # back to the unique event_id so degenerate events each get their own
+        # group (review §2).
         sid = self.subject.id or self.event_id
         return f"{self.source.platform}:{self.subject.type}:{sid}"
-
-    @property
-    def is_terminal(self) -> bool:
-        """True when this event means the work item has completed, so pending
-        sibling cards in the same entity group can be auto-resolved. The set of
-        terminal event types per platform lives in the egress platform registry
-        (the single source of truth for everything platform). Imported lazily to
-        avoid a models→egress import-time cycle."""
-        from laya.egress.registry import is_terminal_event
-
-        return is_terminal_event(self.source.platform, self.source.raw_event_type)
 
 
 class EventResponse(BaseModel):

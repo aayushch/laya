@@ -15,7 +15,6 @@ _EVENT_ID_RE = re.compile(r"^evt_linear_(?P<id>[^_]+)_\d+$")
 
 class LinearPlatform(Platform):
     name = "linear"
-    terminal_event_types = frozenset({"issue_resolved"})
     platform_hint = "a Linear issue or comment"
     source_ref_config = {"default_format": "{id}"}
     compose_guidance = (

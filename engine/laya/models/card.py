@@ -34,6 +34,39 @@ class SuggestedAction(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
+# The stager says what each event does to its work item: the pull request,
+# ticket, thread, meeting or page the event belongs to. These are the values it
+# may return.
+#   concludes: the event brings the work item to its end, or reports the end.
+#   reopens: the work item had ended and the event puts it back in motion.
+#   standalone_notice: a message that only informs and belongs to no work item
+#     that can end, such as a newsletter.
+#   none: anything else. The work item stays as it was before the event.
+STATUS_EFFECTS = ("none", "concludes", "reopens", "standalone_notice")
+
+# The only statuses the stager may assign to a card. Every other status is set
+# by the user or by Laya's own code.
+LLM_ASSIGNABLE_STATUSES = ("ready", "done")
+
+
+class CardStatusVerdict(BaseModel):
+    """The stager's validated answer about the status of the card it wrote.
+
+    The emit step decides the card's final status from this answer and from the
+    state of the work item in the database (see pipeline/card_status.py).
+    """
+
+    # One of STATUS_EFFECTS.
+    event_effect: str
+    # One of LLM_ASSIGNABLE_STATUSES.
+    status: str
+    # One sentence naming the evidence for event_effect.
+    reason: str = ""
+    # Earlier cards of the same entity that the stager says this event settles
+    # while the work item stays open.
+    settled_card_ids: list[str] = Field(default_factory=list)
+
+
 class ActionCardData(BaseModel):
     """Structured output from the Stager LLM call."""
 
@@ -48,6 +81,10 @@ class ActionCardData(BaseModel):
     # so emit.py can reuse it instead of paying a redundant post-emit ChromaDB
     # search + confirm_context_link LLM call (see code-review-2026-07 §1.1).
     context_match: dict | None = None
+    # None when the stager returned no usable status answer, when the feature
+    # is switched off, or when this is the fallback card built after a stager
+    # parse failure. The card is then created with its default status.
+    status_verdict: CardStatusVerdict | None = None
 
 
 class TagResponse(BaseModel):
@@ -88,6 +125,10 @@ class CardResponse(BaseModel):
     privacy_tier: int = 2
     has_workspace: bool = False
     resolved_at: str | None = None
+    # Why Laya set this card to done, and who set the current status ("laya" or
+    # "user"). Both are None on cards Laya did not close.
+    status_reason: str | None = None
+    status_set_by: str | None = None
     user_feedback: str | None = None
     feedback_type: str | None = None
     confidence: float | None = None

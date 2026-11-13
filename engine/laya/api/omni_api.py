@@ -627,16 +627,16 @@ def _bucket_for(status: str | None, platform: str | None, raw_event_type: str | 
     Order matters: a failed/changes-requested card is called out even when its
     status would otherwise read as awaiting, because that's the one the user has
     to look at first.
-    """
-    from laya.egress.registry import is_terminal_event
 
+    "resolved" is read from the card's status alone. The pipeline sets a card to
+    `done` when its work item concludes (pipeline/card_status.py), so no event
+    type needs to be inspected for it.
+    """
     raw = (raw_event_type or "").lower()
 
     if status == "failed" or any(hint in raw for hint in _CHANGES_EVENT_HINTS):
         return "changes_requested"
-    if status in TERMINAL_STATUSES or (
-        platform and raw and is_terminal_event(platform, raw_event_type or "")
-    ):
+    if status in TERMINAL_STATUSES:
         return "resolved"
     if status in _AWAITING_STATUSES:
         return "awaiting_you"
