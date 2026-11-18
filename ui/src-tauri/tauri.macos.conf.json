@@ -3,9 +3,8 @@
     "windows": [
       {
         "decorations": true,
-        "titleBarStyle": "Transparent",
-        "hiddenTitle": true,
-        "backgroundColor": "#151210"
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ]
   }

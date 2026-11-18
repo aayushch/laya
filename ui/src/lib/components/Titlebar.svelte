@@ -7,7 +7,7 @@
 
 	let { nav, center, right, controlsDisabled = false }: { nav?: Snippet; center?: Snippet; right?: Snippet; controlsDisabled?: boolean } = $props();
 
-	// Read synchronously so the macOS bar is transparent from the first paint.
+	// Read synchronously so the bar already has its macOS left padding on the first paint.
 	// Outside Tauri (dev browser) the OS plugin is absent and platform() throws.
 	function detectPlatform(): string {
 		try {
@@ -46,10 +46,11 @@
 </script>
 
 <!-- Fixed titlebar: drag region + browser nav + center content + right content + window controls.
-     On macOS the native title bar above the webview holds the traffic lights, and this bar is
-     transparent so the app background (solid surface or glass gradient) runs up to it.
-     Windows / Linux keep a solid surface bar, since it is the window's only title bar. -->
-<div class="fixed top-0 left-0 right-0 z-[9999] flex h-[38px] select-none items-center {currentPlatform === 'macos' ? 'bg-transparent' : 'bg-surface-900'} pl-3">
+     On macOS the window has no separate native title bar. The system draws the close, minimize
+     and zoom buttons over the left end of this bar, so the bar's content starts 72px from the
+     left edge to stay clear of them.
+     On Windows / Linux this bar draws its own window controls at its right end. -->
+<div class="fixed top-0 left-0 right-0 z-[9999] flex h-[38px] select-none items-center bg-surface-900 {currentPlatform === 'macos' ? 'pl-[72px]' : 'pl-3'}">
 	<!-- Browser navigation controls (back / forward / reload) -->
 	<div class="flex items-center gap-1 pr-2">
 		<div class="flex items-center rounded-lg titlebar-chip">

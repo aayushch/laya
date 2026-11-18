@@ -204,10 +204,11 @@ async fn pick_folder(app: tauri::AppHandle, title: Option<String>) -> Result<Str
 // ── Theme sync ─────────────────────────────────────────────────────────
 
 /// Update the native window background color to match the active theme.
-/// On macOS the transparent native title bar is painted in this colour,
-/// directly above the web title bar, so it has to equal the theme's
-/// surface-900 for the two to read as one bar. It also keeps the greyed
-/// traffic lights of an unfocused window visible against the band.
+/// On macOS the close, minimize and zoom buttons are drawn over the web
+/// title bar in Titlebar.svelte, which is painted in the theme's
+/// surface-900. When the window loses focus the system draws those buttons
+/// in grey. The window background is set to the same surface-900 so that
+/// the grey buttons stay visible in both the dark and the light theme.
 #[tauri::command]
 fn set_window_theme(app: tauri::AppHandle, theme: String) {
     #[cfg(target_os = "macos")]
