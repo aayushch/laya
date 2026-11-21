@@ -188,7 +188,7 @@ snapshot was written:
 whether all of its source subjects are now resolved, and the highest priority still \
 live among them.
 - [RESOLVED SINCE LAST SYNTHESIS]: subjects (by entity_id) that reached a terminal \
-state (done / dismissed / archived / merged / closed) since the last synthesis.
+state (done / dismissed / merged / closed) since the last synthesis.
 
 Work subject by subject. A subject is identified by its entity_id(s). A new card whose \
 entity_id matches a prior attention item is an UPDATE to that subject: decide what the \
@@ -543,9 +543,13 @@ def get_omni_json_schema(
 ) -> dict[str, Any]:
     """Return the JSON schema for Omni resynthesis output.
 
-    The ``density`` preset is used to set a hard ``maxItems`` cap on each
-    section's items array, so the LLM cannot return more items than the
-    density allows even if it ignores the prompt instruction.
+    The ``sections`` array must hold exactly four sections, so a
+    grammar-constrained decoder cannot end the output before all four are
+    written.
+
+    The ``density`` preset's item limit is stated in the description of each
+    section's ``items`` array and in the prompt (``_density_instructions``).
+    The schema does not enforce it; see the comment on ``section_schema``.
 
     ``valid_card_ids`` — the cards the model was actually given this run (the
     new cards plus those behind the prior snapshot's items). When provided,
@@ -608,6 +612,14 @@ def get_omni_json_schema(
         "additionalProperties": False,
     }
 
+    # The `items` array deliberately has no `maxItems`. A grammar-constrained
+    # decoder enforces `maxItems` by forcing the array closed. When a local
+    # model is about to write one more item than the limit allows and the
+    # array is closed on it, the model either ends the `sections` array there,
+    # leaving the later sections unwritten, or copies the section it just
+    # wrote into the next one. The density limit is therefore only an
+    # instruction to the model, here and in the prompt, and a section can
+    # hold more items than the limit.
     section_schema = {
         "type": "object",
         "properties": {
@@ -622,7 +634,6 @@ def get_omni_json_schema(
             "items": {
                 "type": "array",
                 "items": item_schema,
-                "maxItems": max_items,
                 "description": f"Items in this section (max {max_items})",
             },
         },
@@ -679,9 +690,15 @@ def get_omni_json_schema(
                         "additionalProperties": False,
                     },
                 },
+                # `minItems` stops a grammar-constrained decoder from closing
+                # this array before the fourth section. Without it a local
+                # model can stop after `attention`, and the new cards, which
+                # belong in `recent`, are then never written.
                 "sections": {
                     "type": "array",
                     "items": section_schema,
+                    "minItems": 4,
+                    "maxItems": 4,
                     "description": "Exactly 4 sections: attention, recent, period, milestone",
                 },
                 "attention_exits": {

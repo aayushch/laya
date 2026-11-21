@@ -510,3 +510,88 @@ class TestBucketFor:
 
         assert _bucket_for("failed", "jira", "issue_updated") == "changes_requested"
         assert _bucket_for("done", "bitbucket", "pr_declined") == "changes_requested"
+
+
+@pytest.mark.asyncio
+class TestArchivedLinesHidden:
+    """A line whose cards the user has all archived is not served anywhere."""
+
+    ARCHIVED_ENTITY = "jira:ticket:A-1"
+    LIVE_ENTITY = "jira:ticket:L-1"
+
+    async def _seed(self, db):
+        await _insert_event(db, "evt_a", "jira", datetime(2026, 5, 4, 9, 0), raw_type="issue_updated")
+        await _insert_event(db, "evt_l", "jira", datetime(2026, 5, 4, 9, 5), raw_type="issue_updated")
+        await _insert_card(db, "card_arch", "evt_a", status="archived", entity_id=self.ARCHIVED_ENTITY)
+        await _insert_card(db, "card_live", "evt_l", status="ready", entity_id=self.LIVE_ENTITY)
+        archived_line = {"text": "A-1 resolved", "source_cards": ["card_arch"],
+                         "platforms": ["jira"], "priority": "LOW",
+                         "entity_ids": [self.ARCHIVED_ENTITY]}
+        mixed_line = {"text": "A-1 and L-1 moved", "source_cards": ["card_arch", "card_live"],
+                      "platforms": ["jira"], "priority": "MEDIUM",
+                      "entity_ids": [self.ARCHIVED_ENTITY, self.LIVE_ENTITY]}
+        archived_key = compute_item_key("recent", archived_line["entity_ids"])
+        mixed_key = compute_item_key("recent", mixed_line["entity_ids"])
+        await _insert_snapshot(db, 1, _snapshot([]), change_summary=None)
+        await _insert_snapshot(
+            db, 2,
+            _snapshot([{"type": "recent", "label": None, "items": [archived_line, mixed_line]}]),
+            card_ids=["card_arch", "card_live"],
+            change_summary={
+                "added": [
+                    {"item_key": archived_key, "section": "recent", "text": "A-1 resolved"},
+                    {"item_key": mixed_key, "section": "recent", "text": "A-1 and L-1 moved"},
+                ],
+                "folded": [], "resolved": [],
+                "counts": {"added": 2, "folded": 0, "resolved": 0},
+            })
+        await db.commit()
+        return archived_key, mixed_key
+
+    async def test_board_leaves_out_the_archived_line_and_its_change_entry(self, db):
+        _archived_key, mixed_key = await self._seed(db)
+        async with _client() as client:
+            data = (await client.get("/omni")).json()
+
+        items = data["sections"][0]["items"]
+        assert [i["text"] for i in items] == ["A-1 and L-1 moved"]
+        assert [e["item_key"] for e in data["change_summary"]["added"]] == [mixed_key]
+        assert data["change_summary"]["counts"]["added"] == 1
+
+    async def test_changes_endpoint_leaves_out_the_archived_line(self, db):
+        _archived_key, mixed_key = await self._seed(db)
+        async with _client() as client:
+            data = (await client.get("/omni/changes", params={"base": 1, "to": 2})).json()
+
+        assert [e["item_key"] for e in data["added"]] == [mixed_key]
+        assert data["counts"]["added"] == 1
+
+    async def test_item_page_does_not_open_the_archived_line(self, db):
+        archived_key, mixed_key = await self._seed(db)
+        async with _client() as client:
+            gone = await client.get("/omni/item", params={"item": archived_key})
+            lineage = await client.get("/omni/item/lineage", params={"item": archived_key})
+            kept = await client.get("/omni/item", params={"item": mixed_key})
+
+        assert gone.status_code == 404
+        assert lineage.status_code == 404
+        assert kept.status_code == 200
+
+    async def test_restoring_a_card_brings_the_line_back(self, db):
+        await self._seed(db)
+        await db.execute("UPDATE action_cards SET status = 'ready' WHERE card_id = 'card_arch'")
+        await db.commit()
+        async with _client() as client:
+            data = (await client.get("/omni")).json()
+
+        assert [i["text"] for i in data["sections"][0]["items"]] == [
+            "A-1 resolved", "A-1 and L-1 moved"]
+        assert data["change_summary"]["counts"]["added"] == 2
+
+    async def test_chat_tool_leaves_out_the_archived_line(self, db):
+        from laya.llm.tools.summary_tools import get_omni_summary
+
+        await self._seed(db)
+        data = await get_omni_summary("default")
+
+        assert [i["text"] for i in data["sections"][0]["items"]] == ["A-1 and L-1 moved"]

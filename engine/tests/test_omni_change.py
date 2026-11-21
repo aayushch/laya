@@ -10,6 +10,7 @@ from laya.pipeline.omni_change import (
     compute_item_key,
     compute_resynthesis_change_summary,
     decorate_item_keys,
+    drop_change_entries,
     fold_counts_by_section,
     merge_change_summaries,
     parse_change_summary,
@@ -428,3 +429,30 @@ class TestParsingAndCounts:
     def test_counts_helpers_tolerate_none(self):
         assert fold_counts_by_section(None) == {}
         assert resolved_counts_by_section(None) == {}
+
+
+class TestDropChangeEntries:
+    def _summary(self):
+        return {
+            "added": [{"item_key": "a", "text": "A"}, {"item_key": "b", "text": "B"}],
+            "folded": [{"item_key": "a", "from_section": "recent", "to_section": "period"}],
+            "resolved": [{"item_key": "c", "text": "C"}],
+            "counts": {"added": 2, "folded": 1, "resolved": 1},
+        }
+
+    def test_named_entries_are_removed_from_every_kind(self):
+        out = drop_change_entries(self._summary(), {"a"})
+        assert [e["item_key"] for e in out["added"]] == ["b"]
+        assert out["folded"] == []
+        assert [e["item_key"] for e in out["resolved"]] == ["c"]
+
+    def test_counts_match_the_lists_afterwards(self):
+        out = drop_change_entries(self._summary(), {"a", "c"})
+        assert out["counts"] == {"added": 1, "folded": 0, "resolved": 0}
+
+    def test_no_keys_leaves_the_summary_alone(self):
+        summary = self._summary()
+        assert drop_change_entries(summary, set()) == self._summary()
+
+    def test_none_summary_stays_none(self):
+        assert drop_change_entries(None, {"a"}) is None

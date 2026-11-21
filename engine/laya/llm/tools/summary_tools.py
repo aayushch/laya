@@ -115,6 +115,10 @@ async def get_omni_summary(
 
     # Build lean response — sections with items, stats
     sections = content.get("sections", [])
+    # A line whose cards the user has all archived is not reported, the same as
+    # on the Omni board (see pipeline.omni.is_archived_line).
+    from laya.pipeline.omni import remove_archived_lines
+    await remove_archived_lines(db, sections)
     card_ids: list[str] = []
     try:
         card_ids = json.loads(base["card_ids"])

@@ -437,6 +437,26 @@ def merge_change_summaries(summaries: list[dict]) -> dict:
     return _finalize(merged)
 
 
+def drop_change_entries(summary: dict | None, item_keys: set[str]) -> dict | None:
+    """Remove every entry whose ``item_key`` is in ``item_keys``, in place.
+
+    The Omni API hides a line when the user has archived all of its cards (see
+    ``pipeline.omni.is_archived_line``). The change log must not keep naming a
+    line the board no longer shows, so the API passes the keys of the hidden
+    lines here. ``counts`` is recomputed so it still matches the lists.
+
+    Returns the same ``summary`` object, or None when ``summary`` is None.
+    """
+    if not summary or not item_keys:
+        return summary
+    for kind in ("added", "folded", "resolved"):
+        summary[kind] = [
+            entry for entry in summary.get(kind) or []
+            if entry.get("item_key") not in item_keys
+        ]
+    return _finalize(summary)
+
+
 def parse_change_summary(raw: str | None) -> dict | None:
     """Decode a stored change_summary_json cell, tolerating legacy/NULL rows."""
     if not raw:

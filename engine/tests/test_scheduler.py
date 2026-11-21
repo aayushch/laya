@@ -119,6 +119,50 @@ class TestScheduler:
                 mock_gen.assert_not_called()
 
 
+class TestOmniThresholdTrigger:
+    """The event-threshold trigger must not send the same cards to the model
+    on every tick after a run that stored no snapshot."""
+
+    SINCE = "2026-11-19 22:50:25"
+
+    @pytest.fixture(autouse=True)
+    def _clear_recorded_runs(self):
+        _scheduler_mod._threshold_unstored_runs.clear()
+        yield
+        _scheduler_mod._threshold_unstored_runs.clear()
+
+    def test_runs_when_the_threshold_is_reached(self):
+        assert not _scheduler_mod._threshold_due("s1", self.SINCE, 24, 25)
+        assert _scheduler_mod._threshold_due("s1", self.SINCE, 25, 25)
+
+    def test_waits_for_another_threshold_of_cards_after_a_run_that_stored_nothing(self):
+        _scheduler_mod._record_threshold_run("s1", self.SINCE, 53, stored=False)
+        assert not _scheduler_mod._threshold_due("s1", self.SINCE, 53, 25)
+        assert not _scheduler_mod._threshold_due("s1", self.SINCE, 77, 25)
+        assert _scheduler_mod._threshold_due("s1", self.SINCE, 78, 25)
+
+    def test_each_run_that_stored_nothing_moves_the_required_count_up(self):
+        _scheduler_mod._record_threshold_run("s1", self.SINCE, 53, stored=False)
+        _scheduler_mod._record_threshold_run("s1", self.SINCE, 78, stored=False)
+        assert not _scheduler_mod._threshold_due("s1", self.SINCE, 102, 25)
+        assert _scheduler_mod._threshold_due("s1", self.SINCE, 103, 25)
+
+    def test_a_stored_run_restores_the_plain_threshold(self):
+        _scheduler_mod._record_threshold_run("s1", self.SINCE, 53, stored=False)
+        _scheduler_mod._record_threshold_run("s1", self.SINCE, 78, stored=True)
+        assert _scheduler_mod._threshold_due("s1", "2026-11-20 14:26:46", 25, 25)
+
+    def test_a_resynthesis_stored_by_another_trigger_restores_the_plain_threshold(self):
+        """The rolling-interval or end-of-day run stores a snapshot, which moves
+        `since`. The count recorded against the old `since` no longer applies."""
+        _scheduler_mod._record_threshold_run("s1", self.SINCE, 53, stored=False)
+        assert _scheduler_mod._threshold_due("s1", "2026-11-20 14:26:46", 25, 25)
+
+    def test_spaces_are_tracked_separately(self):
+        _scheduler_mod._record_threshold_run("s1", self.SINCE, 53, stored=False)
+        assert _scheduler_mod._threshold_due("s2", self.SINCE, 53, 25)
+
+
 @pytest.mark.asyncio
 class TestFiringLogHousekeeping:
     async def _seed(self, db):

@@ -1463,6 +1463,23 @@ class TestOmniSchema:
         assert src["items"] == {"type": "string", "enum": ["a", "b"]}
         assert src["minItems"] == 1
 
+    @pytest.mark.parametrize("density", ["compact", "standard", "detailed"])
+    def test_exactly_four_sections_are_required(self, density):
+        from laya.llm.prompts.omni import get_omni_json_schema
+        sections = get_omni_json_schema(density)["schema"]["properties"]["sections"]
+        assert sections["minItems"] == 4
+        assert sections["maxItems"] == 4
+
+    @pytest.mark.parametrize("density, limit", [("compact", 3), ("standard", 5), ("detailed", 8)])
+    def test_density_limit_is_an_instruction_not_a_schema_cap(self, density, limit):
+        """A `maxItems` on a section's items makes a local model end the output
+        early when it is about to write one more item (see the comment on
+        `section_schema`), so the limit is only stated in the description."""
+        from laya.llm.prompts.omni import get_omni_json_schema
+        items = get_omni_json_schema(density)["schema"]["properties"]["sections"]["items"]["properties"]["items"]
+        assert "maxItems" not in items
+        assert f"max {limit}" in items["description"]
+
 
 class TestTriageContract:
     """The model decides per subject in `triage`, written before the sections.
@@ -1556,3 +1573,140 @@ class TestTriageStorage:
         content = json.loads((await _latest_row(db))["content_json"])
         assert content["triage"] == [{"subject": "digests", "entity_ids": ["gmail:email_thread:t49"],
                                       "verdict": "recent", "rule": "none", "why": "informational"}]
+
+
+# ---------------------------------------------------------------------------
+# Archived cards. The user archives a card to take it off their feed, so Omni
+# must not report it as work that happened.
+# ---------------------------------------------------------------------------
+
+class TestIsArchivedLine:
+    def _line(self, cards, pinned=False):
+        return {"text": "x", "source_cards": list(cards), "pinned": pinned}
+
+    def test_every_card_archived_is_hidden(self):
+        from laya.pipeline.omni import is_archived_line
+        meta = {"a": {"status": "archived"}, "b": {"status": "archived"}}
+        assert is_archived_line(self._line(["a", "b"]), meta) is True
+
+    def test_one_card_in_another_status_keeps_the_line(self):
+        from laya.pipeline.omni import is_archived_line
+        for other in ("ready", "done", "dismissed"):
+            meta = {"a": {"status": "archived"}, "b": {"status": other}}
+            assert is_archived_line(self._line(["a", "b"]), meta) is False
+
+    def test_deleted_cards_are_ignored(self):
+        from laya.pipeline.omni import is_archived_line
+        meta = {"a": {"status": "archived"}}
+        assert is_archived_line(self._line(["a", "deleted_card"]), meta) is True
+
+    def test_line_with_no_card_rows_is_kept(self):
+        from laya.pipeline.omni import is_archived_line
+        assert is_archived_line(self._line(["deleted_card"]), {}) is False
+        assert is_archived_line(self._line([]), {}) is False
+
+    def test_pinned_line_is_kept(self):
+        from laya.pipeline.omni import is_archived_line
+        meta = {"a": {"status": "archived"}}
+        assert is_archived_line(self._line(["a"], pinned=True), meta) is False
+
+
+@pytest.mark.asyncio
+class TestArchivedCards:
+    async def _card(self, db, card_id, *, status, entity, created_at, resolved_at=None):
+        await insert_test_card(db, card_id=card_id, event_id=f"evt_{card_id}", status=status,
+                               entity_id=entity, space_id="default")
+        await db.execute(
+            "UPDATE action_cards SET created_at = ?, resolved_at = ? WHERE card_id = ?",
+            (_ts(created_at), _ts(resolved_at) if resolved_at else None, card_id))
+        await db.commit()
+
+    async def test_archived_cards_are_not_given_to_the_model(self, db):
+        """An archived card is not a new card, not a user-acted card and not a
+        resolved subject."""
+        from laya.pipeline import omni as omni_pipeline
+        omni_pipeline._latest_cache.pop("default", None)
+        now = datetime.now(timezone.utc)
+
+        await self._card(db, "card_live", status="ready", entity="jira:ticket:LIVE-1",
+                         created_at=now - timedelta(minutes=10))
+        await self._card(db, "card_arch", status="archived", entity="jira:ticket:ARCH-1",
+                         created_at=now - timedelta(minutes=9),
+                         resolved_at=now - timedelta(minutes=1))
+
+        captured = {}
+        out = _four_sections(recent=[
+            _agg("LIVE-1 opened", ["card_live"], ["jira:ticket:LIVE-1"])])
+        with patch.object(omni_pipeline, "llm_call", new=_fake_llm(out, captured)):
+            assert await _run(db) is not None
+
+        user = captured["user"]
+        assert "card_live" in user
+        assert "card_arch" not in user
+        assert "jira:ticket:ARCH-1" not in user
+        assert "[USER-ACTED CARDS" not in user
+        assert "(resolved: archived)" not in user
+
+    async def test_only_archived_new_cards_means_nothing_to_fold(self, db):
+        from laya.pipeline import omni as omni_pipeline
+        omni_pipeline._latest_cache.pop("default", None)
+        now = datetime.now(timezone.utc)
+        await self._card(db, "card_arch", status="archived", entity="jira:ticket:ARCH-1",
+                         created_at=now - timedelta(minutes=9))
+
+        llm = AsyncMock()
+        with patch.object(omni_pipeline, "llm_call", new=llm):
+            assert await _run(db) is None
+        llm.assert_not_called()
+
+    async def test_line_built_only_from_archived_cards_is_removed(self, db):
+        """Such a line is not shown to the model, is dropped if the model writes
+        it anyway, and is not recorded in the change summary. A line that also
+        cites a card in another status stays, and so does a pinned line."""
+        from laya.pipeline import omni as omni_pipeline
+        omni_pipeline._latest_cache.pop("default", None)
+        now = datetime.now(timezone.utc)
+        old = now - timedelta(hours=3)
+
+        await self._card(db, "card_arch1", status="archived", entity="jira:ticket:A-1", created_at=old)
+        await self._card(db, "card_arch2", status="archived", entity="jira:ticket:A-2", created_at=old)
+        await self._card(db, "card_arch3", status="archived", entity="jira:ticket:A-3", created_at=old)
+        await self._card(db, "card_done", status="done", entity="jira:ticket:D-1", created_at=old)
+        await self._card(db, "card_fresh", status="ready", entity="jira:ticket:NEW-1",
+                         created_at=now - timedelta(minutes=5))
+
+        only_archived = _agg("2 tickets resolved (A-1, A-2)", ["card_arch1", "card_arch2"],
+                             ["jira:ticket:A-1", "jira:ticket:A-2"])
+        mixed = _agg("D-1 shipped with A-1", ["card_arch1", "card_done"],
+                     ["jira:ticket:A-1", "jira:ticket:D-1"])
+        pinned = {**_agg("Pinned: watch A-3", ["card_arch3"], ["jira:ticket:A-3"]), "pinned": True}
+        await _seed_snapshot(
+            db, version=1, generated_at=_ts(now - timedelta(hours=1)),
+            content={"sections": _four_sections(recent=[only_archived, mixed], period=[pinned])},
+            card_ids=["card_arch1", "card_arch2", "card_arch3", "card_done"])
+
+        captured = {}
+        fresh = _agg("NEW-1 opened", ["card_fresh"], ["jira:ticket:NEW-1"])
+        # The model writes the archived-only line again even though it was not shown it.
+        out = _four_sections(recent=[fresh, only_archived], period=[mixed, pinned])
+        with patch.object(omni_pipeline, "llm_call", new=_fake_llm(out, captured)):
+            assert await _run(db) is not None
+
+        user = captured["user"]
+        assert "2 tickets resolved (A-1, A-2)" not in user
+        assert "D-1 shipped with A-1" in user
+        assert "Pinned: watch A-3" in user
+
+        row = await _latest_row(db)
+        content = json.loads(row["content_json"])
+        texts = [i["text"] for s in content["sections"] for i in s["items"]]
+        assert "2 tickets resolved (A-1, A-2)" not in texts
+        assert {"NEW-1 opened", "D-1 shipped with A-1", "Pinned: watch A-3"} <= set(texts)
+
+        change = json.loads(row["change_summary_json"])
+        named = [
+            e.get("text") or e.get("from_text")
+            for kind in ("added", "folded", "resolved") for e in change[kind]
+        ]
+        assert "2 tickets resolved (A-1, A-2)" not in named
+        assert change["resolved"] == []

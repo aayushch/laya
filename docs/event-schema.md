@@ -129,7 +129,8 @@ This is the escape hatch for source-specific data that doesn't fit the common sc
   "slack_channel": "engineering",
   "slack_channel_type": "public | private | dm",
   "slack_thread_ts": "1708612345.123456",
-  "slack_is_mention": true
+  "slack_mentioned_user_ids": ["U024BE7LH"],
+  "slack_mentions_me": true
 }
 ```
 

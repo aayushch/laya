@@ -27,6 +27,47 @@ _last_context_learn_check: datetime | None = None
 _threshold_cooldowns: dict[str, datetime] = {}
 _THRESHOLD_COOLDOWN_MINUTES = 10
 
+# Event-threshold Omni runs that stored no snapshot, keyed by space_id. A run
+# stores no snapshot when the model call fails or the pipeline rejects the
+# model's output. Each value is (since, new_count) as they were when that run
+# was triggered. `since` is the generated_at of the space's last stored
+# resynthesis. `new_count` is the number of cards counted after `since`.
+# The dict is kept in memory only, so it is empty after an engine restart.
+_threshold_unstored_runs: dict[str, tuple[str, int]] = {}
+
+
+def _threshold_due(space_id: str, since: str, new_count: int, event_threshold: int) -> bool:
+    """Whether the event-threshold trigger runs Omni resynthesis for a space on this tick.
+
+    Normally the trigger runs once the space has `event_threshold` cards newer
+    than `since`, the generated_at of its last stored resynthesis.
+
+    A run that stores no snapshot leaves `since` and the card count unchanged,
+    so the same cards would be sent to the model again on every tick. After
+    such a run the trigger waits until another `event_threshold` cards have
+    arrived on top of the count that run saw. The rolling-interval and
+    end-of-day triggers do not use this function and still run on schedule.
+
+    An entry recorded against a different `since` is ignored, because a
+    resynthesis has been stored since that run.
+    """
+    unstored = _threshold_unstored_runs.get(space_id)
+    if unstored is not None and unstored[0] == since:
+        return new_count >= unstored[1] + event_threshold
+    return new_count >= event_threshold
+
+
+def _record_threshold_run(space_id: str, since: str, new_count: int, stored: bool) -> None:
+    """Record the result of an event-threshold Omni run for `_threshold_due`.
+
+    `since` and `new_count` are the values the trigger read before the run.
+    `stored` is True when the run wrote a snapshot.
+    """
+    if stored:
+        _threshold_unstored_runs.pop(space_id, None)
+    else:
+        _threshold_unstored_runs[space_id] = (since, new_count)
+
 
 def omni_rolling_anchor() -> datetime | None:
     """The instant the rolling-resynthesis interval is currently measured from.
@@ -384,6 +425,9 @@ async def _scheduler_loop() -> None:
                     should_roll = False
                     trigger_reason = ""
                     _threshold_spaces: list[str] = []
+                    # space_id -> (since, new_count) read for each space in
+                    # _threshold_spaces, passed to _record_threshold_run.
+                    _threshold_inputs: dict[str, tuple[str, int]] = {}
 
                     if rolling_hours > 0:
                         if _last_omni_rolling is None:
@@ -420,13 +464,18 @@ async def _scheduler_loop() -> None:
                                 # so it compares directly against created_at.
                                 _raw = _last_synth[0]["generated_at"] if _last_synth else None
                                 _since = _raw if _raw else "2000-01-01 00:00:00"
+                                # Archived cards are not counted, because
+                                # resynthesis does not fold them (see
+                                # pipeline.omni._fetch_omni_cards).
                                 _count_rows = await _db.execute_fetchall(
-                                    "SELECT COUNT(*) AS cnt FROM action_cards WHERE space_id = ? AND created_at > ?",
+                                    "SELECT COUNT(*) AS cnt FROM action_cards "
+                                    "WHERE space_id = ? AND created_at > ? AND status != 'archived'",
                                     (_sid, _since),
                                 )
                                 _new_count = _count_rows[0]["cnt"] if _count_rows else 0
-                                if _new_count >= event_threshold:
+                                if _threshold_due(_sid, _since, _new_count, event_threshold):
                                     _threshold_spaces.append(_sid)
+                                    _threshold_inputs[_sid] = (_since, _new_count)
 
                             if _threshold_spaces:
                                 trigger_reason = f"threshold_{len(_threshold_spaces)}_spaces"
@@ -453,6 +502,9 @@ async def _scheduler_loop() -> None:
                                 snapshot_ids = await run_omni_resynthesis(space_id=_sid, snapshot_type="rolling")
                                 log.info("scheduler_omni_resynthesis_complete", trigger=f"threshold_space_{_sid}", snapshots=len(snapshot_ids))
                                 _threshold_cooldowns.pop(_sid, None)
+                                _record_threshold_run(
+                                    _sid, *_threshold_inputs[_sid], stored=bool(snapshot_ids),
+                                )
                             except Exception as e:
                                 _threshold_cooldowns[_sid] = now_utc
                                 log.error("scheduler_omni_resynthesis_failed", trigger=f"threshold_space_{_sid}", error=str(e))

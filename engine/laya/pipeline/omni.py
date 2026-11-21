@@ -16,6 +16,11 @@ items), validates its output (schema, empty/echo results) and prunes subjects
 whose cards are all terminal — it never adds an item to attention, promotes one
 into it by priority, or restores one the model left out. If attention is wrong,
 the prompt is wrong (llm/prompts/omni.py); fix it there.
+
+Archived cards: the user archives a card to take it off their feed. Resynthesis
+does not give archived cards to the model, and an item in any section whose
+source cards are all archived is removed (is_archived_line). This only ever
+removes items.
 """
 
 from __future__ import annotations
@@ -693,18 +698,80 @@ def _all_resolved(card_ids: list[str], meta: dict[str, dict]) -> bool:
     return all(m.get("status") in _TERMINAL_STATUSES for m in known)
 
 
+def is_archived_line(item: dict, meta: dict[str, dict]) -> bool:
+    """True when an Omni item must be hidden because the user archived its cards.
+
+    The user archives a card to take it off their feed, so Omni does not report
+    an archived card as something that happened.
+
+    An item is hidden when at least one of its source cards still has a row in
+    ``action_cards`` and every such card has status ``archived``. Source cards
+    with no row (housekeeping deleted them) are ignored. An item that also cites
+    a card in any other status is kept. A pinned item is never hidden, because
+    the user asked for that line to stay on the board.
+
+    ``meta`` is the ``{card_id: {status, ...}}`` dict that ``_fetch_card_meta``
+    returns.
+    """
+    if item.get("pinned"):
+        return False
+    known = [meta[cid] for cid in _item_source_cards(item) if cid in meta]
+    return bool(known) and all(m.get("status") == "archived" for m in known)
+
+
+def drop_archived_items(sections: list[dict], meta: dict[str, dict]) -> list[dict]:
+    """Remove every item for which ``is_archived_line`` is true, in place.
+
+    Resynthesis calls it on the snapshot it gives the model and on the model's
+    output. ``GET /omni`` and the chat tool ``get_omni_summary`` call it on the
+    snapshot they return.
+
+    Returns the removed items. A caller that also filters the change log reads
+    their ``item_key``.
+    """
+    removed: list[dict] = []
+    for section in sections or []:
+        items = section.get("items")
+        if not items:
+            continue
+        kept = []
+        for item in items:
+            if is_archived_line(item, meta):
+                removed.append(item)
+            else:
+                kept.append(item)
+        section["items"] = kept
+    return removed
+
+
+async def remove_archived_lines(db, sections: list[dict]) -> list[dict]:
+    """Look up the current status of every source card in ``sections``, then call
+    ``drop_archived_items``. Returns the removed items."""
+    card_ids = [
+        cid
+        for section in sections or []
+        for item in section.get("items", []) or []
+        for cid in _item_source_cards(item)
+    ]
+    return drop_archived_items(sections, await _fetch_card_meta(db, card_ids))
+
+
 # SQLite's default bound-parameter limit is 999; chunk id lists well below it.
 _SQL_IN_CHUNK = 500
 
 
 async def _fetch_omni_cards(db, where: str, params: tuple, limit: int | None = None) -> list:
-    """Card rows in the shape resynthesis folds into the prompt, newest first."""
+    """Card rows in the shape resynthesis folds into the prompt, newest first.
+
+    Archived cards are left out. The user archives a card to take it off their
+    feed, so resynthesis does not give it to the model as new material.
+    """
     sql = f"""SELECT ac.card_id, ac.header, ac.summary, ac.priority, ac.persona,
                      ac.status, ac.user_feedback, ac.category, ac.entity_id,
                      ac.created_at, e.source_platform, e.actor_name
               FROM action_cards ac
               LEFT JOIN events e ON ac.event_id = e.event_id
-              WHERE {where}
+              WHERE ({where}) AND ac.status != 'archived'
               ORDER BY ac.created_at DESC"""
     if limit is not None:
         sql += " LIMIT ?"
@@ -993,6 +1060,28 @@ async def _resynthesize_space(
                 current_snapshot = base_content
                 base_card_ids = list(base_ids)
                 _meta = base_meta
+
+    # 1c. Lines whose cards the user has all archived are removed before
+    # anything else reads the two snapshots (see is_archived_line). The model
+    # is not shown them, so it cannot carry them forward. They are removed from
+    # `prior_sections` too, because the Omni API already hides them and
+    # `prior_sections` stands for what the user was looking at.
+    if current_snapshot is not None:
+        archived_meta = await _fetch_card_meta(db, [
+            cid
+            for sections in (prior_sections, current_snapshot.get("sections", []))
+            for section in sections
+            for item in section.get("items", []) or []
+            for cid in _item_source_cards(item)
+        ])
+        drop_archived_items(prior_sections, archived_meta)
+        hidden = drop_archived_items(current_snapshot.get("sections", []), archived_meta)
+        if hidden:
+            log.info(
+                "omni_archived_lines_removed",
+                space_id=space_id, stage="input", dropped=len(hidden),
+            )
+
     # The very first snapshot of a space is written by the incremental path as a
     # base whose `recent` is raw per-card items; those cards are all still in the
     # new-card window, so there are no prior aggregates to offer.
@@ -1089,7 +1178,7 @@ async def _resynthesize_space(
     # 4. Separate user-acted cards (for higher weight in prompt)
     acted_cards = [
         c for c in new_cards
-        if c.get("user_feedback") or c.get("status") in ("done", "dismissed", "archived")
+        if c.get("user_feedback") or c.get("status") in ("done", "dismissed")
     ]
 
     # If no new cards, skip — nothing has changed since the last synthesis.
@@ -1144,11 +1233,13 @@ async def _resynthesize_space(
                 })
 
     # 4c. Subjects that reached a terminal state since the last synthesis.
+    # Archived cards are not listed: archiving takes a card off the user's feed
+    # and says nothing about whether its subject was resolved.
     resolved_rows = await db.execute_fetchall(
         """SELECT entity_id, header, status, resolved_at
            FROM action_cards
            WHERE space_id = ? AND resolved_at IS NOT NULL AND resolved_at > ?
-             AND status IN ('done', 'dismissed', 'archived')
+             AND status IN ('done', 'dismissed')
            ORDER BY resolved_at DESC LIMIT 100""",
         (space_id, since),
     )
@@ -1228,7 +1319,7 @@ async def _resynthesize_space(
             chunk_acted = [
                 c for c in chunk
                 if c.get("user_feedback")
-                or c.get("status") in ("done", "dismissed", "archived")
+                or c.get("status") in ("done", "dismissed")
             ]
             messages = build_omni_resynthesis_messages(
                 current_snapshot=folded_snapshot,
@@ -1434,12 +1525,14 @@ async def _resynthesize_space(
         for item in section.get("items", []):
             item["space_id"] = space_id
 
-    # 7b. Resolved-subject prune + entity_ids backfill.
+    # 7b. Archived-line removal, resolved-subject prune + entity_ids backfill.
     # The model decides what is in attention (Omni's first rule — module
-    # docstring). The one deterministic exception is this prune: an attention
-    # item whose source cards are ALL in a terminal status is dropped, because
-    # a finished subject cannot need the user whatever the model says, and the
-    # status-only transition that finished it is invisible in the new cards.
+    # docstring). Code removes items in two cases only. An item in any section
+    # whose source cards are ALL archived is dropped, because the user took
+    # those cards off their feed. An attention item whose source cards are ALL
+    # in a terminal status is dropped, because a finished subject cannot need
+    # the user whatever the model says, and the status-only transition that
+    # finished it is invisible in the new cards.
     # Nothing is ever ADDED to attention or moved into it by code. We also
     # backfill entity_ids from source_cards when the LLM left them empty, so the
     # NEXT resynthesis can correlate this subject reliably.
@@ -1454,6 +1547,20 @@ async def _resynthesize_space(
         for item in section.get("items", []):
             output_card_ids.extend(_item_source_cards(item))
     out_meta = await _fetch_card_meta(db, output_card_ids)
+
+    # Lines whose cards are all archived leave every section of the output, and
+    # leave `prior_sections` as well (see is_archived_line). Step 1c already did
+    # this once. It is repeated here with the statuses as they are now, because
+    # the user can archive a card while the model call is running. A line that
+    # is in neither list produces no change-summary entry, so an archived line
+    # is never recorded as resolved.
+    drop_archived_items(prior_sections, out_meta)
+    archived_out = drop_archived_items(result_sections, out_meta)
+    if archived_out:
+        log.info(
+            "omni_archived_lines_removed",
+            space_id=space_id, stage="output", dropped=len(archived_out),
+        )
 
     pruned_attention = 0
     for section in result_sections:

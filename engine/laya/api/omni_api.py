@@ -21,6 +21,7 @@ from laya.models.card_lifecycle import TERMINAL_STATUSES
 from laya.pipeline.omni_change import (
     SECTION_CHAIN,
     decorate_item_keys,
+    drop_change_entries,
     merge_change_summaries,
     parse_change_summary,
 )
@@ -98,6 +99,39 @@ def _decorate_live(sections: list[dict], meta: dict[str, dict]) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Archived lines — hidden from everything this API serves
+# ---------------------------------------------------------------------------
+#
+# A "line" here is one item of a snapshot section. The user archives a card to
+# take it off their feed, so a line whose source cards are all archived is not
+# served (the rule is `pipeline.omni.is_archived_line`). The stored snapshot is
+# left as it is, so the line is served again if the user restores one of its
+# cards.
+
+
+async def _hidden_item_keys(db, space_id: str, version: int | None) -> set[str]:
+    """The ``item_key`` of every line in a snapshot version that is hidden
+    because the user archived all of its cards. Empty when the version does not
+    exist."""
+    from laya.pipeline.omni import _load_full_snapshot, remove_archived_lines
+
+    content, _ver, _card_ids, _meta = await _load_full_snapshot(db, space_id, version)
+    if content is None:
+        return set()
+    sections = content.get("sections", [])
+    decorate_item_keys(sections)
+    return {item["item_key"] for item in await remove_archived_lines(db, sections)}
+
+
+async def _is_hidden_line(db, item: dict) -> bool:
+    """True when this one line is hidden because the user archived all of its cards."""
+    from laya.pipeline.omni import _fetch_card_meta, is_archived_line
+
+    cards = [c for c in (item.get("source_cards") or []) if c]
+    return is_archived_line(item, await _fetch_card_meta(db, cards))
+
+
+# ---------------------------------------------------------------------------
 # Snapshot endpoints
 # ---------------------------------------------------------------------------
 
@@ -112,8 +146,11 @@ async def get_omni(space_id: str = "default", version: int | None = None):
     Items are decorated with a stable ``item_key`` and a ``live`` block (see
     ``_decorate_live``). Both are computed on read, so snapshots written before
     migration 072 gain them without a backfill.
+
+    A line whose cards the user has all archived is left out, and so is any
+    ``change_summary`` entry that names it.
     """
-    from laya.pipeline.omni import _fetch_card_meta, _load_full_snapshot
+    from laya.pipeline.omni import _fetch_card_meta, _load_full_snapshot, drop_archived_items
 
     db = await get_db()
 
@@ -136,6 +173,7 @@ async def get_omni(space_id: str = "default", version: int | None = None):
     sections = content.get("sections", [])
     decorate_item_keys(sections)
     card_meta = await _fetch_card_meta(db, _all_item_card_ids(sections))
+    hidden_keys = {item["item_key"] for item in drop_archived_items(sections, card_meta)}
     _decorate_live(sections, card_meta)
 
     change_rows = await db.execute_fetchall(
@@ -145,6 +183,7 @@ async def get_omni(space_id: str = "default", version: int | None = None):
     change_summary = (
         parse_change_summary(change_rows[0]["change_summary_json"]) if change_rows else None
     )
+    drop_change_entries(change_summary, hidden_keys)
 
     return {
         "snapshot_id": meta.get("snapshot_id"),
@@ -174,6 +213,10 @@ async def get_omni_changes(
     Versions whose ``change_summary_json`` is NULL predate migration 072; they are
     reported in ``unsummarized_versions`` so the UI can say "partial" rather than
     silently under-reporting.
+
+    Entries that name a line hidden from version ``to`` (the user archived all
+    of its cards) are left out, so the rail never lists a line that ``GET /omni``
+    does not serve.
     """
     db = await get_db()
 
@@ -219,6 +262,7 @@ async def get_omni_changes(
             summaries.append(parsed)
 
     merged = merge_change_summaries(summaries)
+    drop_change_entries(merged, await _hidden_item_keys(db, space_id, to))
 
     base_rows = await db.execute_fetchall(
         "SELECT generated_at, snapshot_type FROM omni_snapshots WHERE space_id = ? AND version = ?",
@@ -843,6 +887,10 @@ async def get_omni_item(
 
     sections = content.get("sections", [])
     located = _locate_item(sections, item, section)
+    if located is not None and await _is_hidden_line(db, located[1]):
+        # The board does not show this line, so it is not served as a current
+        # one. The `at` fallback below can still serve it as a historical claim.
+        located = None
     found_version = ver
     found_generated_at = meta.get("generated_at")
     if located is None and at is not None and at != ver:
@@ -954,6 +1002,8 @@ async def get_omni_item_lineage(
         raise HTTPException(status_code=404, detail="No Omni snapshot for this space")
 
     located = _locate_item(content.get("sections", []), item, section)
+    if located is not None and await _is_hidden_line(db, located[1]):
+        located = None  # hidden from the board, same as GET /omni/item
     if located is None and at is not None and at != ver:
         # Same fallback as GET /omni/item: the key may name an item that has
         # since resolved or been compressed away. Lineage then walks from its
