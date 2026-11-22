@@ -129,6 +129,16 @@ original review/fix was insufficient.
 """
 
 
+_GITHUB_REVIEW_BLOCK = """GitHub review activity guidelines:
+- pull_request_review_approved: LOW priority, requires_research=false. The reviewer approved the PR.
+- pull_request_review_changes_requested: Requests work from the PR author. Consider the review
+  text and the Laya user's role when deciding priority and research needs.
+- issue_comment_created with comment_kind pull_request_review: This is an inline comment.
+  Use the comment body to determine whether the reviewer asks for a change.
+
+"""
+
+
 _ROUTER_TAIL = """Actor relationship context (from team.json):
 - self: The event actor IS the Laya user themselves. Their own actions are usually \
 LOW priority (they already know what they did), unless the event is a response to \
@@ -141,7 +151,9 @@ something they need to follow up on.
 
 # Full prompt (kept for reference / any external use); build_router_system_prompt
 # assembles the platform-appropriate subset (P6-9).
-ROUTER_SYSTEM_PROMPT = _ROUTER_HEAD + _JIRA_LIFECYCLE_BLOCK + _PR_LIFECYCLE_BLOCK + _ROUTER_TAIL
+ROUTER_SYSTEM_PROMPT = (
+    _ROUTER_HEAD + _JIRA_LIFECYCLE_BLOCK + _PR_LIFECYCLE_BLOCK + _GITHUB_REVIEW_BLOCK + _ROUTER_TAIL
+)
 
 
 # Platform families deciding which lifecycle-guideline block ships (review §3 —
@@ -162,7 +174,8 @@ def build_router_system_prompt(platforms: "str | None | list | set") -> str:
         plats = {(p or "").lower() for p in platforms}
     jira = _JIRA_LIFECYCLE_BLOCK if plats & _ISSUE_PLATFORMS else ""
     pr = _PR_LIFECYCLE_BLOCK if plats & _CODE_PLATFORMS else ""
-    return _ROUTER_HEAD + jira + pr + _ROUTER_TAIL
+    github = _GITHUB_REVIEW_BLOCK if "github" in plats else ""
+    return _ROUTER_HEAD + jira + pr + github + _ROUTER_TAIL
 
 
 def build_router_messages(
