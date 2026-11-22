@@ -726,8 +726,10 @@ pub fn startup_n8n_with(runtime: &N8nRuntime) -> N8nStartResult {
         return N8nStartResult::AlreadyRunning;
     }
 
-    // 2. Already running? (check HTTP health)
-    if is_n8n_running() {
+    // 2. Already running? (check HTTP health, and whether the port is taken:
+    // an n8n left running by a launch that was killed can hold the port
+    // without answering /healthz)
+    if is_n8n_running() || n8n_port_in_use(N8N_PORT) {
         // If we hold a handle, we spawned it — reuse. Otherwise it's a
         // stale orphan from a previous session (e.g. dev-mode exit that
         // didn't fire RunEvent::Exit). Kill it and respawn so the new
@@ -779,7 +781,7 @@ pub fn startup_n8n_with(runtime: &N8nRuntime) -> N8nStartResult {
 /// process `is_laya_n8n` recognises is stopped; a user's own n8n on this port
 /// is left alone and reported as an error.
 pub(crate) fn stop_orphaned_n8n() -> Result<(), String> {
-    if !is_n8n_running() {
+    if !n8n_port_in_use(N8N_PORT) {
         return Ok(());
     }
     log::warn!("Orphaned n8n on port {} — stopping it", N8N_PORT);
@@ -788,7 +790,7 @@ pub(crate) fn stop_orphaned_n8n() -> Result<(), String> {
         is_laya_n8n(pid, cmdline, recorded)
     });
     for _ in 0..20 {
-        if !is_n8n_running() {
+        if !n8n_port_in_use(N8N_PORT) {
             return Ok(());
         }
         std::thread::sleep(Duration::from_millis(500));
@@ -812,6 +814,13 @@ pub(crate) fn stop_orphaned_n8n() -> Result<(), String> {
 /// keeps the path.
 pub(crate) fn is_laya_n8n(pid: u32, cmdline: &str, recorded_pid: Option<u32>) -> bool {
     cmdline.contains("laya") || (recorded_pid == Some(pid) && cmdline.contains("n8n"))
+}
+
+/// True when another process holds `port` on 127.0.0.1, the address n8n
+/// listens on (`N8N_LISTEN_ADDRESS`). A listener that does not answer HTTP
+/// counts too, unlike `is_n8n_running`.
+fn n8n_port_in_use(port: u16) -> bool {
+    std::net::TcpListener::bind(("127.0.0.1", port)).is_err()
 }
 
 /// Where Laya records the process id of the n8n it started. A later launch
@@ -1380,6 +1389,15 @@ mod tests {
         // Windows reports the original command line.
         let cmdline = r"c:\users\me\.laya\node\node.exe c:\users\me\.laya\n8n_module\node_modules\n8n\bin\n8n start";
         assert!(is_laya_n8n(4242, cmdline, None));
+    }
+
+    #[test]
+    fn a_listener_that_never_answers_counts_as_holding_the_port() {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert!(n8n_port_in_use(port));
+        drop(listener);
+        assert!(!n8n_port_in_use(port));
     }
 
     #[test]
