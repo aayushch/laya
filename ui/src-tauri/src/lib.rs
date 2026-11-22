@@ -5,6 +5,8 @@ mod fs_private;
 mod n8n;
 #[cfg(windows)]
 mod n8n_job;
+#[cfg(windows)]
+pub use n8n_job::n8n_job_keeper_main;
 mod n8n_upgrade;
 mod process_util;
 #[cfg(windows)]

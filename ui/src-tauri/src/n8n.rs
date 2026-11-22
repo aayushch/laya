@@ -868,6 +868,11 @@ fn stop_n8n_tree(record: &N8nProcessRecord, grace: Duration) -> std::io::Result<
 #[cfg(windows)]
 fn stop_n8n_tree(record: &N8nProcessRecord, grace: Duration) -> std::io::Result<()> {
     let Some(job) = crate::n8n_job::N8nJob::open(record.pid, &record.started)? else {
+        if record.matches_current_process() && crate::n8n_job::process_is_running(record.pid)? {
+            return Err(std::io::Error::other(
+                "n8n's job disappeared before the process exited",
+            ));
+        }
         return Ok(());
     };
     if record.matches_current_process() {
@@ -1253,7 +1258,9 @@ fn register_n8n_child(child: &Child) -> std::io::Result<()> {
     let job = crate::n8n_job::N8nJob::attach(child, &record.started)?;
     let written = record_n8n_process(&n8n_pid_file(), &record);
     #[cfg(windows)]
-    let written = written.and_then(|()| crate::n8n_job::resume(child));
+    let written = written
+        .and_then(|()| job.start_keeper(record.pid, &record.started))
+        .and_then(|()| crate::n8n_job::resume(child));
     if written.is_err() {
         #[cfg(unix)]
         let _ = stop_n8n_tree(&record, Duration::ZERO);
