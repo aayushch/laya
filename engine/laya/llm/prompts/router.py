@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from laya.llm.prompts.overrides import get_prompt
@@ -129,6 +130,16 @@ original review/fix was insufficient.
 """
 
 
+_GITHUB_REVIEW_BLOCK = """GitHub review activity guidelines:
+- pull_request_review_approved: LOW priority, requires_research=false. The reviewer approved the PR.
+- pull_request_review_changes_requested: Requests work from the PR author. Consider the review
+  text and the Laya user's role when deciding priority and research needs.
+- issue_comment_created with comment_kind pull_request_review: This is an inline comment.
+  Use the comment body to determine whether the reviewer asks for a change.
+
+"""
+
+
 _ROUTER_TAIL = """Actor relationship context (from team.json):
 - self: The event actor IS the Laya user themselves. Their own actions are usually \
 LOW priority (they already know what they did), unless the event is a response to \
@@ -141,7 +152,9 @@ something they need to follow up on.
 
 # Full prompt (kept for reference / any external use); build_router_system_prompt
 # assembles the platform-appropriate subset (P6-9).
-ROUTER_SYSTEM_PROMPT = _ROUTER_HEAD + _JIRA_LIFECYCLE_BLOCK + _PR_LIFECYCLE_BLOCK + _ROUTER_TAIL
+ROUTER_SYSTEM_PROMPT = (
+    _ROUTER_HEAD + _JIRA_LIFECYCLE_BLOCK + _PR_LIFECYCLE_BLOCK + _GITHUB_REVIEW_BLOCK + _ROUTER_TAIL
+)
 
 
 # Platform families deciding which lifecycle-guideline block ships (review §3 —
@@ -149,6 +162,7 @@ ROUTER_SYSTEM_PROMPT = _ROUTER_HEAD + _JIRA_LIFECYCLE_BLOCK + _PR_LIFECYCLE_BLOC
 # (~450 tok) were sent on every event, including Gmail/Slack that have neither.
 _ISSUE_PLATFORMS = frozenset({"jira", "linear"})
 _CODE_PLATFORMS = frozenset({"github", "bitbucket", "bitbucket_server"})
+_MAX_DIFF_HUNK_CHARS = 2000
 
 
 def build_router_system_prompt(platforms: "str | None | list | set") -> str:
@@ -162,7 +176,8 @@ def build_router_system_prompt(platforms: "str | None | list | set") -> str:
         plats = {(p or "").lower() for p in platforms}
     jira = _JIRA_LIFECYCLE_BLOCK if plats & _ISSUE_PLATFORMS else ""
     pr = _PR_LIFECYCLE_BLOCK if plats & _CODE_PLATFORMS else ""
-    return _ROUTER_HEAD + jira + pr + _ROUTER_TAIL
+    github = _GITHUB_REVIEW_BLOCK if "github" in plats else ""
+    return _ROUTER_HEAD + jira + pr + github + _ROUTER_TAIL
 
 
 def build_router_messages(
@@ -179,21 +194,7 @@ def build_router_messages(
         related_context: Optional list of related past events from ChromaDB.
         feedback_context: Optional user feedback patterns for learning loop.
     """
-    event_text = f"""\
-[EVENT CONTENT - UNTRUSTED INPUT]
-Platform: {event.source.platform}
-Event Type: {event.source.raw_event_type}
-Actor: {event.actor.name} ({event.actor.email}) [relationship: {actor_relationship}]
-Subject: [{event.subject.type}] {event.subject.id} — {event.subject.title}
-URL: {event.subject.url or "N/A"}
-Body:
-{event.content.body}
-[END EVENT CONTENT]"""
-
-    # Add metadata if present
-    if event.content.metadata:
-        metadata_lines = [f"  {key}: {val}" for key, val in event.content.metadata.items()]
-        event_text += "\n\nSource Metadata:\n" + "\n".join(metadata_lines)
+    event_text = _format_event_text(event, actor_relationship)
 
     # Add related past context if available
     context_section = ""
@@ -310,6 +311,8 @@ def _single_classification_schema() -> dict[str, Any]:
 
 def _format_event_text(event: LayaEvent, actor_relationship: str) -> str:
     """Format a single event for use in batch or single routing prompts."""
+    metadata = event.content.metadata
+    hunk = metadata.get("diff_hunk")
     text = f"""\
 [EVENT CONTENT - UNTRUSTED INPUT]
 Platform: {event.source.platform}
@@ -318,11 +321,15 @@ Actor: {event.actor.name} ({event.actor.email}) [relationship: {actor_relationsh
 Subject: [{event.subject.type}] {event.subject.id} — {event.subject.title}
 URL: {event.subject.url or "N/A"}
 Body:
-{event.content.body}
-[END EVENT CONTENT]"""
+{event.content.body}"""
+    if isinstance(hunk, str) and hunk:
+        # Quote the excerpt so repository lines cannot create prompt delimiters.
+        excerpt = json.dumps(hunk[:_MAX_DIFF_HUNK_CHARS], ensure_ascii=False)
+        text += f"\nDiff hunk: {excerpt}"
+    text += "\n[END EVENT CONTENT]"
 
-    if event.content.metadata:
-        metadata_lines = [f"  {key}: {val}" for key, val in event.content.metadata.items()]
+    metadata_lines = [f"  {key}: {val}" for key, val in metadata.items() if key != "diff_hunk"]
+    if metadata_lines:
         text += "\n\nSource Metadata:\n" + "\n".join(metadata_lines)
 
     return text

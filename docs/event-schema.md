@@ -99,6 +99,22 @@ The "thing" this event is about, normalized to a common shape.
 
 This is the escape hatch for source-specific data that doesn't fit the common schema. The Engine may use these for richer context but does not depend on them.
 
+**GitHub pull request reviews**
+
+The GitHub poll emits `pull_request_review_approved` and
+`pull_request_review_changes_requested` for reviews submitted during the poll window.
+Inline discussions use `issue_comment_created` with
+`comment_kind: pull_request_review` so existing comment rules apply. The subject ID
+is the PR's `owner/repo/number`, the source URL opens the review or inline thread,
+and the actor is the reviewer or commenter. Metadata includes the PR participants
+and review ID. Inline comments also carry the file path, line and diff hunk when
+GitHub provides them.
+
+Both review endpoints use the existing GitHub connection. For fine-grained tokens,
+the watched repositories require **Pull requests** read permission.
+[Review endpoint](https://docs.github.com/en/rest/pulls/reviews#list-reviews-for-a-pull-request) ·
+[Inline comment endpoint](https://docs.github.com/en/rest/pulls/comments#list-review-comments-in-a-repository)
+
 **Jira:**
 ```json
 {
