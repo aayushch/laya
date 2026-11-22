@@ -84,6 +84,10 @@ event mentions your login, or you were already involved in an earlier event on
 the same item. Earlier review requests still count after GitHub clears the
 requested reviewer list.
 
+The first matching filter rule applies. An Ignore rule drops the event. An
+explicit Allow rule lets unrelated GitHub events through the involvement
+filter. The filter still drops your own comments.
+
 Comments with missing item participant data are kept. Your own comments are
 filtered even when item participant data is missing. Pull request and issue
 events are credited to the item's author, so updates to your own pull request

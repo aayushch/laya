@@ -141,7 +141,9 @@ async def _user_involved_before(
     return bool(previous)
 
 
-async def github_addressing(event: LayaEvent, space_id: str | None) -> GitHubAddressing | None:
+async def github_addressing(
+    event: LayaEvent, space_id: str | None, *, check_history: bool = True,
+) -> GitHubAddressing | None:
     """Compute GitHub involvement, or bypass filtering when identity is unavailable."""
     logins = github_logins(get_self_user())
     if not logins:
@@ -175,7 +177,7 @@ async def github_addressing(event: LayaEvent, space_id: str | None) -> GitHubAdd
         )
     )
 
-    needs_history = not (
+    needs_history = check_history and not (
         (is_comment and author_is_self) or roles or mentions_user or item_participants_unknown
     )
     user_involved_before = needs_history and await _user_involved_before(event, space_id, handles)

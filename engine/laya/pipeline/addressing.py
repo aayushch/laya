@@ -11,7 +11,9 @@ from laya.models.event import LayaEvent
 from laya.pipeline.github_addressing import github_addressing
 
 
-async def unaddressed_filter_rule(event: LayaEvent, space_id: str | None) -> str | None:
+async def unaddressed_filter_rule(
+    event: LayaEvent, space_id: str | None, *, allow_unaddressed: bool = False,
+) -> str | None:
     """Return the filter rule text when an action filter drops ``event``, else None.
 
     None also covers platforms without a filter and platforms whose filter is off.
@@ -19,8 +21,10 @@ async def unaddressed_filter_rule(event: LayaEvent, space_id: str | None) -> str
     if not github_action_filter_enabled(event.source.platform):
         return None
 
-    addressing = await github_addressing(event, space_id)
+    addressing = await github_addressing(event, space_id, check_history=not allow_unaddressed)
     if addressing is None or addressing.addressed:
+        return None
+    if allow_unaddressed and not addressing.own_comment:
         return None
 
     # A queued reprocess must finish updating its existing card even after a

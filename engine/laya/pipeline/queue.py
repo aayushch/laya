@@ -340,16 +340,16 @@ async def process_event(event_id: str) -> None:
         )
 
         # RULES ENGINE
-        filtered, filter_rule = await run_rules(event)
+        filtered, matching_rule = await run_rules(event)
         if filtered:
-            await _mark_filtered(event_id, filter_rule)
+            await _mark_filtered(event_id, matching_rule)
             return
 
-        # ADDRESSING — a GitHub event that does not concern the user is dropped here,
-        # before any model call. The router cannot tell which pull request or issue is
-        # the user's (see github_addressing.py), so it only sees events that already
-        # passed this check.
-        unaddressed_rule = await unaddressed_filter_rule(event, space_id)
+        # ADDRESSING — filter incoming GitHub events before calling the router.
+        # A matching Allow rule permits unrelated items.
+        unaddressed_rule = await unaddressed_filter_rule(
+            event, space_id, allow_unaddressed=matching_rule is not None,
+        )
         if unaddressed_rule:
             _batch_router_cache.pop(event_id, None)
             await _mark_filtered(event_id, unaddressed_rule)
@@ -802,12 +802,14 @@ async def _batch_route_events(event_ids: list[str]) -> None:
             space_id = await resolve_space(
                 eid, event.source.connection_id, event.source.platform
             )
-            filtered, _ = await run_rules(event)
+            filtered, matching_rule = await run_rules(event)
             if filtered:
                 continue
             # Events an action filter drops are filtered one by one in process_event;
             # leave them out so the batch call is not spent on them.
-            if await unaddressed_filter_rule(event, space_id):
+            if await unaddressed_filter_rule(
+                event, space_id, allow_unaddressed=matching_rule is not None,
+            ):
                 continue
             events_data.append({
                 "event_id": eid,

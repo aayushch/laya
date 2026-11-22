@@ -530,6 +530,54 @@ async def test_batch_router_only_receives_addressed_github_events(db):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("routing", ["individual", "batch"])
+async def test_explicit_allow_admits_unrelated_events_and_still_filters_own_comments(db, routing):
+    events = [
+        _pr_event("allowed", item="acme/api/7"),
+        _comment_event("own", item="acme/api/8", commenter="alex-morgan"),
+        _pr_event("assigned", item="acme/api/9", participants=_people(assignees=["alex-morgan"])),
+    ]
+    for event in events:
+        await receive_event(event)
+    condition = {"field": "source.platform", "operator": "equals", "value": "github"}
+    rules = {"rules": [
+        {"name": "Allow GitHub", "condition": condition, "action": "allow"},
+        {"name": "Ignore GitHub", "condition": condition, "action": "drop"},
+    ]}
+    classification = RouterOutput(
+        category="CODE", persona="ENGINEER", priority="LOW", confidence=0.9,
+    )
+
+    with (
+        patch("laya.config.load_settings", return_value=SETTINGS_ON),
+        patch("laya.pipeline.github_addressing.get_self_user", return_value=USER),
+        patch("laya.pipeline.rules.load_rules", return_value=rules),
+        patch("laya.pipeline.queue._batch_router_cache", {}),
+        patch("laya.pipeline.router.run_batch_router") as batch_route,
+        patch("laya.pipeline.router.run_router", return_value=classification) as route,
+        patch("laya.pipeline.queue._run_simple_pipeline"),
+    ):
+        if routing == "batch":
+            batch_route.side_effect = lambda batch: {
+                entry["event_id"]: classification for entry in batch
+            }
+            await _batch_route_events([event.event_id for event in events])
+            batch_route.assert_awaited_once()
+            batch, = batch_route.await_args.args
+            assert [entry["event_id"] for entry in batch] == ["allowed", "assigned"]
+        else:
+            await process_event("allowed")
+            await process_event("own")
+            route.assert_awaited_once()
+            assert route.await_args.args[0].event_id == "allowed"
+            own, = await db.execute_fetchall(
+                "SELECT processing_status, filter_rule FROM events WHERE event_id = 'own'"
+            )
+            assert own["processing_status"] == "filtered"
+            assert own["filter_rule"] == FILTER_RULE_FROM_SELF
+
+
+@pytest.mark.asyncio
 async def test_reprocess_keeps_existing_github_card_after_filter_is_enabled(db):
     event = _pr_event("gh-reprocess")
     await receive_event(event)

@@ -103,7 +103,7 @@ async def run_rules(event: LayaEvent) -> tuple[bool, str | None]:
                 log.info(
                     "event_allowed", event_id=event.event_id, rule=rule.name
                 )
-                return False, None
+                return False, rule.name
 
             # action == "drop"
             db = await get_db()
