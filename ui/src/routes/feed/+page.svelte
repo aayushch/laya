@@ -453,6 +453,9 @@
 
 	let _fetchId = 0;
 	let _reloadTimer: ReturnType<typeof setTimeout> | null = null;
+	// True when the latest loadGroups() failed. Plain (not $state) so the
+	// WebSocket effect below can read it without re-running on every load.
+	let _lastLoadFailed = false;
 
 	// Promise that resolves when any in-progress FLIP animation finishes
 	let _flipSettled: Promise<void> = Promise.resolve();
@@ -567,6 +570,7 @@
 				offset: 0
 			});
 			if (id !== _fetchId) return;
+			_lastLoadFailed = false;
 
 			// Capture positions before updating groups for FLIP animation
 			const oldPositions = captureCardPositions();
@@ -624,6 +628,7 @@
 			}
 		} catch {
 			if (id !== _fetchId) return;
+			_lastLoadFailed = true;
 			error = 'Failed to load cards';
 		} finally {
 			if (id === _fetchId) loading = false;
@@ -696,11 +701,14 @@
 	// disconnect, so after an engine restart the feed would otherwise stay silently
 	// stale until the user changed a filter (review §2 UI — P4-30). Fire only on a
 	// genuine reconnect (2nd+ time we reach 'connected'), not the initial connect —
-	// the mount-time reload effect above already fetched.
+	// the mount-time reload effect above already fetched. The initial connect
+	// also reloads when that mount-time fetch failed, e.g. because the engine
+	// was still starting: nothing else would retry it, and the feed would keep
+	// showing "Failed to load cards" with an empty list.
 	let _hasConnectedBefore = false;
 	$effect(() => {
 		if ($wsStatus === 'connected') {
-			if (_hasConnectedBefore) scheduleReload();
+			if (_hasConnectedBefore || _lastLoadFailed) scheduleReload();
 			_hasConnectedBefore = true;
 		}
 	});
