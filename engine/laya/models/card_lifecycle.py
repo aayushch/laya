@@ -61,6 +61,7 @@ async def transition_card_status(
     save_previous: bool = True,
     extra_fields: dict | None = None,
     allow_restore: bool = False,
+    only_if_auto_closable: bool = False,
 ) -> str:
     """Validate and apply a status transition on an action card.
 
@@ -81,6 +82,8 @@ async def transition_card_status(
             — atomic status guard, resolved_at/failed_stage clearing, broadcast —
             still applies, so reopen goes through this SSOT instead of a raw
             UPDATE (review §5.4 — P7-4).
+        only_if_auto_closable: Require the card to be Ready and protect cards
+            the user reopened, including when the card changes concurrently.
 
     Returns:
         The previous status.
@@ -99,6 +102,8 @@ async def transition_card_status(
 
     current = rows[0]["status"]
     set_by_before = rows[0]["status_set_by"]
+    if only_if_auto_closable and (current != "ready" or set_by_before == "user"):
+        raise ValueError(f"Card {card_id} is no longer eligible for automatic completion")
     allowed = VALID_STATUS_TRANSITIONS.get(current, set())
     if not allow_restore and new_status not in allowed:
         raise ValueError(f"Invalid transition {current} -> {new_status} for card {card_id}")
@@ -170,8 +175,11 @@ async def transition_card_status(
     # dismissed card resurrected. The conditional UPDATE + rowcount check makes
     # the check-and-set atomic on the shared connection (review §2 API — P3-8).
     params.append(current)
+    guard = "card_id = ? AND status = ?"
+    if only_if_auto_closable:
+        guard += " AND (status_set_by IS NULL OR status_set_by != 'user')"
     cursor = await db.execute(
-        f"UPDATE action_cards SET {', '.join(sets)} WHERE card_id = ? AND status = ?",
+        f"UPDATE action_cards SET {', '.join(sets)} WHERE {guard}",
         params,
     )
     await db.commit()

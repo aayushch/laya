@@ -54,8 +54,7 @@ def llm_card_status_enabled() -> bool:
     """Whether the stager is asked for a card status and emit applies it.
 
     Read from settings.json `pipeline.llm_card_status`, default True. When it is
-    False every card is created with its default status and Laya closes nothing
-    on its own.
+    False, emit skips the stager's status verdict.
     """
     return bool(load_settings().get("pipeline", {}).get("llm_card_status", True))
 
@@ -193,7 +192,7 @@ async def _later_conclusion_reason(
     return rows[0]["status_reason"] or _LATER_EVENT_REASON
 
 
-async def _user_reopened(db, event_id: str) -> bool:
+async def user_reopened_card(db, event_id: str) -> bool:
     """True when this event's card already exists and the user reopened it
     after Laya closed it. This happens when the user reprocesses such a card."""
     rows = await db.execute_fetchall(
@@ -236,7 +235,7 @@ async def decide_card_status(
         # as it was.
         state_after = state_before
 
-    if await _user_reopened(db, event_id):
+    if await user_reopened_card(db, event_id):
         # The card keeps the marker, so later events do not close it either.
         decision.status_set_by = SET_BY_USER
     elif base_status == "ready":
@@ -315,24 +314,7 @@ async def close_earlier_cards(
         params.extend(decision.settled_card_ids)
     rows = await db.execute_fetchall(sql, params)
 
-    closed: list[dict] = []
-    for row in rows:
-        try:
-            await transition_card_status(
-                row["card_id"],
-                "done",
-                actor="pipeline",
-                extra_fields={
-                    "status_reason": decision.closing_reason,
-                    "status_set_by": SET_BY_LAYA,
-                },
-            )
-        except ValueError:
-            # The card's status changed between the SELECT and the write, for
-            # example the user dismissed it. Leave it as the user set it.
-            continue
-        closed.append({"card_id": row["card_id"], "header": row["header"]})
-
+    closed = await close_ready_cards(rows, decision.closing_reason)
     if closed:
         log.info(
             "earlier_cards_closed",
@@ -341,4 +323,23 @@ async def close_earlier_cards(
             closed_count=len(closed),
             all_earlier=decision.close_all_earlier,
         )
+    return closed
+
+
+async def close_ready_cards(rows, reason: str | None) -> list[dict]:
+    """Complete selected Ready cards while respecting concurrent user actions."""
+    closed = []
+    for row in rows:
+        try:
+            await transition_card_status(
+                row["card_id"],
+                "done",
+                actor="pipeline",
+                extra_fields={"status_reason": reason, "status_set_by": SET_BY_LAYA},
+                only_if_auto_closable=True,
+            )
+        except ValueError:
+            # The card may have changed after the caller selected it.
+            continue
+        closed.append({"card_id": row["card_id"], "header": row["header"]})
     return closed
