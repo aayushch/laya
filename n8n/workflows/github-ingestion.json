@@ -45,13 +45,97 @@
     },
     {
       "parameters": {
-        "jsCode": "const repos = $input.first().json.repos ?? [];\nconst since = new Date(Date.now() - 150000).toISOString();\nreturn repos\n  .filter(r => r.platform === 'github' && r.remote_id && r.remote_id.includes('/'))\n  .map(r => {\n    const [owner, repo] = r.remote_id.split('/');\n    return { json: { owner, repo, name: r.name, since } };\n  });"
+        "jsCode": "const repos = ($input.first().json.repos ?? [])\n  .filter(r => r.platform === 'github' && r.remote_id && r.remote_id.includes('/'));\nreturn repos.length ? [{ json: { repos } }] : [];"
+      },
+      "name": "Filter Eligible Repos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.github.com/user",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "name": "Get GitHub Account",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        300
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.github.com/user/teams",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "paginationMode": "updateAParameterInEachRequest",
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "qs",
+                    "name": "page",
+                    "value": "={{ $pageCount + 1 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ $response.statusCode !== 200 || !$response.headers.link?.includes('rel=\"next\"') }}"
+            }
+          }
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "per_page",
+              "value": "100"
+            }
+          ]
+        }
+      },
+      "name": "Get GitHub Teams",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        300
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const repos = $('Filter Eligible Repos').first().json.repos;\nconst since = new Date(Date.now() - 150000).toISOString();\nreturn repos.map(r => {\n  const [owner, repo] = r.remote_id.split('/');\n  return { json: { owner, repo, name: r.name, since } };\n});"
       },
       "name": "Build Repo Items",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        680,
+        1340,
         300
       ]
     },
@@ -88,7 +172,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        900,
+        1560,
         200
       ],
       "onError": "continueErrorOutput"
@@ -118,7 +202,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        900,
+        1560,
         420
       ],
       "onError": "continueErrorOutput"
@@ -132,7 +216,7 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
       "position": [
-        1120,
+        1780,
         300
       ]
     },
@@ -145,7 +229,20 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1340,
+        2000,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// A team request is relevant to the authenticated account when GitHub lists that\n// same team ID among the account's memberships. Team slugs can repeat across orgs.\nconst items = $input.all();\nconst account = $('Get GitHub Account').first().json;\nconst memberTeamIds = new Set();\nfor (const { json: page } of $('Get GitHub Teams').all()) {\n  if (page.statusCode === 200 && Array.isArray(page.body)) {\n    for (const team of page.body) memberTeamIds.add(team.id);\n  }\n}\n\nconst requestedTeamsByPR = new Map();\nfor (const { json: pr } of $('Get Pull Requests').all()) {\n  const repo = pr.base?.repo?.full_name;\n  if (!repo || !pr.number || !Array.isArray(pr.requested_teams)) continue;\n\n  const org = repo.split('/')[0];\n  const requestedTeams = new Map();\n  for (const team of pr.requested_teams) {\n    if (team.slug && Number.isSafeInteger(team.id)) {\n      requestedTeams.set(team.id, org + '/' + team.slug);\n    }\n  }\n  if (requestedTeams.size) requestedTeamsByPR.set((repo + '/' + pr.number).toLowerCase(), requestedTeams);\n}\n\nfor (const { json: event } of items) {\n  if (event.subject.type !== 'pull_request') continue;\n  const requestedTeams = requestedTeamsByPR.get(event.subject.id.toLowerCase());\n  if (!requestedTeams) continue;\n\n  const metadata = event.content.metadata;\n  metadata.requested_teams = [...requestedTeams.values()];\n  if (!account.login) continue;\n\n  const matchedTeams = [...requestedTeams]\n    .filter(([id]) => memberTeamIds.has(id))\n    .map(([, name]) => name);\n  const login = account.login.toLowerCase();\n  if (matchedTeams.length && !metadata.participants.some(p => p.role === 'reviewer' && p.handle?.toLowerCase() === login)) {\n    metadata.participants.push({\n      role: 'reviewer',\n      name: account.login,\n      handle: account.login,\n      review_requested_via_teams: matchedTeams,\n    });\n  }\n}\n\nreturn items;"
+      },
+      "name": "Add Team Review Requests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2220,
         300
       ]
     },
@@ -175,7 +272,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1560,
+        2440,
         300
       ],
       "retryOnFail": true,
@@ -209,13 +306,30 @@
             }
           ]
         },
-        "options": {}
+        "options": {
+          "pagination": {
+            "pagination": {
+              "paginationMode": "updateAParameterInEachRequest",
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "qs",
+                    "name": "page",
+                    "value": "={{ $pageCount + 1 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.headers.link?.includes('rel=\"next\"') || !$response.body?.length || Date.parse($response.body[$response.body.length - 1].updated_at) < Date.parse($json.since) }}"
+            }
+          }
+        }
       },
       "name": "Get Pull Requests",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        900,
+        1560,
         600
       ],
       "onError": "continueErrorOutput"
@@ -229,7 +343,7 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
       "position": [
-        1200,
+        1860,
         400
       ]
     },
@@ -242,7 +356,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1120,
+        1780,
         800
       ]
     },
@@ -278,7 +392,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1340,
+        2000,
         800
       ]
     }
@@ -299,7 +413,7 @@
       "main": [
         [
           {
-            "node": "Build Repo Items",
+            "node": "Filter Eligible Repos",
             "type": "main",
             "index": 0
           }
@@ -378,7 +492,7 @@
       "main": [
         [
           {
-            "node": "POST to Laya Engine",
+            "node": "Add Team Review Requests",
             "type": "main",
             "index": 0
           }
@@ -424,6 +538,50 @@
           }
         ]
       ]
+    },
+    "Get GitHub Account": {
+      "main": [
+        [
+          {
+            "node": "Get GitHub Teams",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get GitHub Teams": {
+      "main": [
+        [
+          {
+            "node": "Build Repo Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Team Review Requests": {
+      "main": [
+        [
+          {
+            "node": "POST to Laya Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Eligible Repos": {
+      "main": [
+        [
+          {
+            "node": "Get GitHub Account",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
@@ -431,6 +589,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.10.11"
+    "laya_version": "2026.11.27"
   }
 }
