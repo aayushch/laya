@@ -1361,6 +1361,9 @@
 	// all three views: the timeline's SOURCE chips and gutter drag write them, and
 	// switching back to card/list keeps the same narrowed set.
 	const platformFilterSet = $derived(new Set($feedFilters.platformFilters));
+	const sourcePagePrompt = $derived(hasMoreGroups && platformFilterSet.size > 0
+		? 'Load more cards to check for matches in the selected sources.'
+		: null);
 
 	function cardPassesPlatform(card: ActionCard): boolean {
 		if (platformFilterSet.size === 0) return true;
@@ -2282,11 +2285,11 @@
 					onloadmore={loadMoreGroups}
 					onselectcard={selectCard}
 					onselectgroup={selectGroupSummary}
-					emptyLabel={searchActive
+					emptyLabel={sourcePagePrompt ?? (searchActive
 						? `No cards match "${searchQuery}"`
 						: platformFilterSet.size > 0
 							? 'No cards match the selected sources'
-							: `No cards for ${formatDateLabel($feedDate)}`}
+							: `No cards for ${formatDateLabel($feedDate)}`)}
 				/>
 			{:else if loading && groups.length === 0}
 				<div class="py-12 text-center text-surface-400">Loading cards...</div>
@@ -2320,11 +2323,17 @@
 					<svg class="mx-auto mb-2 h-8 w-8 text-surface-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
 					</svg>
-					<p class="text-laya-base">No cards match "<span class="text-surface-300">{searchQuery}</span>"</p>
+					<p class="text-laya-base">
+						{#if sourcePagePrompt}
+							{sourcePagePrompt}
+						{:else}
+							No cards match "<span class="text-surface-300">{searchQuery}</span>"
+						{/if}
+					</p>
 					<button class="mt-2 text-laya-secondary text-laya-orange hover:underline" onclick={() => (searchQuery = '')}>Clear search</button>
 				</div>
 			{:else if filteredGroups.length === 0 && platformFilterSet.size > 0}
-				<p class="py-12 text-center text-laya-base text-surface-500">No cards match the selected sources</p>
+				<p class="py-12 text-center text-laya-base text-surface-500">{sourcePagePrompt ?? 'No cards match the selected sources'}</p>
 			<!-- ── LIST VIEW ── -->
 			{:else if $feedViewMode === 'list'}
 				{#if sections}
