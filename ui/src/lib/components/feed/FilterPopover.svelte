@@ -25,12 +25,23 @@
 	} = $props();
 
 	let registeredSources = $state<Source[]>([]);
+	let sourceLoadFailed = $state(false);
+	let loadingSources = $state(false);
+	let sourceRetries = $state(0);
 	$effect(() => {
 		if (!open) return;
+		sourceRetries;
 		let closed = false;
+		loadingSources = true;
 		engineApi.getSources().then(({ sources }) => {
-			if (!closed) registeredSources = sources;
-		}).catch(() => {});
+			if (closed) return;
+			registeredSources = sources;
+			sourceLoadFailed = false;
+		}).catch(() => {
+			if (!closed) sourceLoadFailed = true;
+		}).finally(() => {
+			if (!closed) loadingSources = false;
+		});
 		return () => { closed = true; };
 	});
 
@@ -118,7 +129,7 @@
 		{/if}
 
 		<!-- Sources — shared with the timeline view's SOURCE chips -->
-		{#if platformRows.length > 0}
+		{#if platformRows.length > 0 || sourceLoadFailed}
 			<div class="mb-3">
 				<div class="mb-1.5 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">Sources</div>
 				<div class="space-y-0.5">
@@ -144,6 +155,17 @@
 						</button>
 					{/each}
 				</div>
+				{#if sourceLoadFailed}
+					<div class="mt-1 flex items-center justify-between gap-2 px-2 text-laya-secondary">
+						<span role="status" class="text-surface-400">Could not load connected sources.</span>
+						<button
+							type="button"
+							class="shrink-0 text-laya-orange hover:underline disabled:opacity-50"
+							disabled={loadingSources}
+							onclick={() => sourceRetries++}
+						>{loadingSources ? 'Retrying…' : 'Retry'}</button>
+					</div>
+				{/if}
 			</div>
 		{/if}
 
