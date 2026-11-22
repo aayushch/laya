@@ -5,8 +5,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from laya.api.cards_lifecycle import reprocess_card
 from laya.api.events import receive_event
+from laya.models.card import ActionCardData
+from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
+from laya.pipeline import emit as emit_mod
 from laya.pipeline.addressing import unaddressed_filter_rule
 from laya.pipeline.github_addressing import (
     FILTER_RULE_FROM_SELF,
@@ -263,3 +267,54 @@ async def test_queue_filters_uninvolved_github_without_a_model_call(db, event, r
     assert rows[0]["filter_rule"] == rule
     route.assert_not_awaited()
     stage.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reprocess_keeps_existing_github_card_after_filter_is_enabled(db):
+    event = _pr_event("gh-reprocess")
+    await receive_event(event)
+    settings = {"pipeline": {"github_actionable_only": False}}
+    classification = RouterOutput(
+        category="CODE", persona="ENGINEER", priority="LOW", confidence=0.9,
+    )
+    draft = ActionCardData(
+        header="Original header", summary="PR summary",
+        staged_output={"type": "text", "content": "PR details"},
+    )
+
+    with (
+        patch("laya.config.load_settings", return_value=settings),
+        patch("laya.pipeline.github_addressing.get_self_user", return_value=USER),
+        patch("laya.pipeline.router.run_router", return_value=classification) as route,
+        patch("laya.pipeline.stager.run_stager", return_value=draft),
+        patch("laya.pipeline.emit._embed_card", return_value=""),
+        patch("laya.pipeline.emit._resolve_context_grouping", return_value=None),
+        patch("laya.pipeline.emit._trigger_followups"),
+    ):
+        await process_event(event.event_id)
+        original, = await db.execute_fetchall(
+            "SELECT card_id, status FROM action_cards WHERE event_id = ?", (event.event_id,),
+        )
+        assert original["status"] == "ready"
+
+        settings["pipeline"]["github_actionable_only"] = True
+        assert await reprocess_card(original["card_id"]) == {
+            "status": "reprocessing", "card_id": original["card_id"],
+        }
+        # A restarted engine resumes without the in-memory reprocess marker.
+        emit_mod._reprocess_event_ids.discard(event.event_id)
+        draft.header = "Updated header"
+        await process_event(event.event_id)
+
+    stored_event, = await db.execute_fetchall(
+        "SELECT processing_status, filtered FROM events WHERE event_id = ?", (event.event_id,),
+    )
+    assert stored_event["processing_status"] == "completed"
+    assert not stored_event["filtered"]
+    updated, = await db.execute_fetchall(
+        "SELECT card_id, status, header FROM action_cards WHERE event_id = ?", (event.event_id,),
+    )
+    assert updated["card_id"] == original["card_id"]
+    assert updated["status"] == "ready"
+    assert updated["header"] == "Updated header"
+    assert route.await_count == 2
