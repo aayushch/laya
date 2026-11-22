@@ -151,8 +151,7 @@ def _is_laya_process(pid: int) -> bool:
     """Best-effort check that ``pid`` looks like a stale Laya engine before we
     SIGTERM it to reclaim our port. Without this, reclaiming the port would kill
     whatever unrelated user process happened to be listening on it (review §6).
-    Uses psutil on Windows (already a dependency there) and `ps` elsewhere so we
-    don't add a hard psutil requirement on Unix."""
+    Uses psutil on Windows and `ps` elsewhere to read the command line."""
     try:
         if sys.platform == "win32":
             import psutil
@@ -248,6 +247,8 @@ def _kill_stale_engine(host: str, port: int) -> None:
 
     import subprocess
 
+    import psutil
+
     try:
         result = subprocess.run(
             ["lsof", "-ti", f"tcp:{port}", "-s", "tcp:listen"],
@@ -257,25 +258,33 @@ def _kill_stale_engine(host: str, port: int) -> None:
         )
         pids = [int(p) for p in result.stdout.strip().split("\n") if p.strip()]
         my_pid = os.getpid()
-        killed: list[int] = []
+        terminated: list[psutil.Process] = []
         for pid in pids:
             if pid == my_pid:
+                continue
+            try:
+                process = psutil.Process(pid)
+            except psutil.NoSuchProcess:
                 continue
             if not _is_laya_process(pid):
                 log.warning("port_held_by_foreign_process", pid=pid, port=port)
                 continue
+            try:
+                process.terminate()
+            except psutil.NoSuchProcess:
+                continue
             log.warning("killing_stale_engine", pid=pid, port=port)
-            os.kill(pid, signal.SIGTERM)
-            killed.append(pid)
-        if killed and not _wait_for_port_release(host, port, STALE_ENGINE_GRACE_SECONDS):
-            # The stale engine belongs to a launch that has ended, so nothing
-            # will use the work it is still finishing.
-            for pid in killed:
-                log.warning("killing_stale_engine_forcefully", pid=pid, port=port)
+            terminated.append(process)
+        if terminated and not _wait_for_port_release(host, port, STALE_ENGINE_GRACE_SECONDS):
+            # psutil checks the original creation time again before signalling.
+            for process in terminated:
+                if not process.is_running() or not _is_laya_process(process.pid):
+                    continue
                 try:
-                    os.kill(pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+                    process.kill()
+                except psutil.NoSuchProcess:
+                    continue
+                log.warning("killing_stale_engine_forcefully", pid=process.pid, port=port)
             _wait_for_port_release(host, port, 5.0)
     except Exception as e:
         log.warning("stale_engine_cleanup_failed", error=str(e))

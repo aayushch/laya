@@ -3,10 +3,13 @@
 
 """Reclaiming the engine port from an engine left by an earlier launch."""
 
+import os
+import signal
 import socket
 import subprocess
 import sys
 
+import psutil
 import pytest
 
 from laya import main
@@ -66,3 +69,38 @@ def test_port_is_free_when_kill_stale_engine_returns(monkeypatch, on_term):
         if proc.poll() is None:
             proc.kill()
             proc.wait()
+
+
+def test_escalation_does_not_signal_a_reused_pid(monkeypatch):
+    port = _free_port()
+    proc = _start_stale_engine(port, "ignore-term")
+    get_ident = psutil.Process._get_ident
+    kill = os.kill
+    reused = False
+    signals = []
+
+    def identify(process):
+        pid, created = get_ident(process)
+        return (pid, created + 1) if pid == proc.pid and reused else (pid, created)
+
+    def wait_for_port_release(*_):
+        nonlocal reused
+        reused = True
+        return False
+
+    def observe_signal(pid, sig):
+        if pid == proc.pid:
+            signals.append(sig)
+            if sig == signal.SIGKILL:
+                return
+        kill(pid, sig)
+
+    monkeypatch.setattr(psutil.Process, "_get_ident", identify)
+    monkeypatch.setattr(main, "_wait_for_port_release", wait_for_port_release)
+    monkeypatch.setattr(os, "kill", observe_signal)
+    try:
+        main._kill_stale_engine(HOST, port)
+        assert signals == [signal.SIGTERM]
+    finally:
+        kill(proc.pid, signal.SIGKILL)
+        proc.wait()
