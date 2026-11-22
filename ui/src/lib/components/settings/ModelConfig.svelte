@@ -1398,8 +1398,8 @@
 						</div>
 						<p class="text-laya-secondary text-surface-500">
 							{pipeline.llm_card_status
-								? 'On. Laya also closes the earlier cards of a concluded work item.'
-								: 'Off. Every card is created Ready and only you close cards.'}
+								? 'On. The stager can also close earlier cards for a concluded work item.'
+								: 'Off. The stager skips card status decisions.'}
 						</p>
 						<button
 							class="relative h-6 w-11 shrink-0 rounded-full transition-colors {pipeline.llm_card_status ? 'bg-laya-orange' : 'bg-surface-600'}"
