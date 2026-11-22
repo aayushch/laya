@@ -2,19 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { writable } from 'svelte/store';
+import { engineFetch } from '$lib/api/engine';
 import type { HealthResponse } from '$lib/api/types';
-import { getEngineUrl, waitForEngineToken } from '$lib/config';
+import { waitForEngineToken } from '$lib/config';
 import { vectorStoreState } from '$lib/utils/vectorStore';
-
-const ENGINE_URL = getEngineUrl();
 
 const FAST_POLL_MS = 1500;
 const SLOW_POLL_MS = 30000;
+const HEALTH_TIMEOUT_MS = 5000;
 
 export const health = writable<HealthResponse | null>(null);
 export const healthError = writable<boolean>(false);
 
-/** True once the engine reports healthy (engine + sqlite) AND token is available. Stays true once set. */
+/** True once a single response confirms engine health, SQLite health and token acceptance. */
 export const startupReady = writable<boolean>(false);
 
 /**
@@ -38,16 +38,14 @@ const ENGINE_TOKEN_REJECTED_MESSAGE =
 /**
  * Startup checks in a row in which the engine refuses this page's token before
  * the startup screen says so (about 15 seconds at the fast poll rate). A
- * refusal for a few seconds is normal after a restart: see engineAcceptsToken.
+ * refusal for a few seconds is normal while the previous engine shuts down.
  */
 export const TOKEN_REJECTED_CHECKS_BEFORE_ERROR = 10;
 
 let pollInterval: ReturnType<typeof setInterval> | null = null;
 let pollMs = FAST_POLL_MS;
 let startupMode = true;
-// One token wait at a time: a wait can outlast the poll interval, and
-// overlapping polls would otherwise each start their own.
-let tokenWaitInFlight = false;
+let activePoll: AbortController | null = null;
 let tokenErrorLogged = false;
 let tokenRejectedChecks = 0;
 
@@ -58,80 +56,68 @@ function setPollRate(ms: number) {
 	pollInterval = setInterval(fetchHealth, ms);
 }
 
-/**
- * True when the engine answering on the port accepts `token`. After the app
- * restarts, the engine from the previous launch can still answer /health for
- * a few seconds while the new one starts. It holds the previous launch's
- * token and would refuse every request this page makes, so startup waits for
- * the engine that accepts this page's token.
- */
-async function engineAcceptsToken(token: string): Promise<boolean> {
-	try {
-		const resp = await fetch(`${ENGINE_URL}/health`, {
-			headers: { Authorization: `Bearer ${token}` }
-		});
-		if (!resp.ok) return false;
-		const data: HealthResponse = await resp.json();
-		return data.token === 'accepted';
-	} catch {
-		return false;
-	}
-}
-
 async function fetchHealth() {
+	if (activePoll) return;
+	const poll = new AbortController();
+	activePoll = poll;
+	let timeout: ReturnType<typeof setTimeout> | undefined;
 	try {
-		const resp = await fetch(`${ENGINE_URL}/health`);
-		if (resp.ok) {
-			const data: HealthResponse = await resp.json();
-			health.set(data);
-			healthError.set(false);
+		let token: string | undefined;
+		let tokenError: unknown;
+		if (startupMode) {
+			try {
+				token = await waitForEngineToken();
+			} catch (err) {
+				tokenError = err;
+			}
+		}
+		if (activePoll !== poll) return;
 
-			// Once engine + sqlite are healthy, ensure the token is ready and that
-			// this engine accepts it before marking startup complete
-			if (
-				startupMode &&
-				!tokenWaitInFlight &&
-				data.engine === 'healthy' &&
-				data.sqlite === 'healthy'
-			) {
-				tokenWaitInFlight = true;
-				try {
-					const token = await waitForEngineToken();
-					if (await engineAcceptsToken(token)) {
-						tokenRejectedChecks = 0;
-						engineAuthError.set(null);
-						startupReady.set(true);
-						startupMode = false;
-					} else {
-						// Stay in startupMode; the next poll checks again.
-						tokenRejectedChecks += 1;
-						if (tokenRejectedChecks >= TOKEN_REJECTED_CHECKS_BEFORE_ERROR) {
-							engineAuthError.set(ENGINE_TOKEN_REJECTED_MESSAGE);
-						}
-					}
-				} catch (err) {
-					// Stay in startupMode; the next poll retries.
-					if (!tokenErrorLogged) {
-						tokenErrorLogged = true;
-						console.error('Engine is healthy but no engine API token is available', err);
-					}
-					engineAuthError.set(ENGINE_AUTH_ERROR_MESSAGE);
-				} finally {
-					tokenWaitInFlight = false;
+		// The same engine must confirm both health and token acceptance.
+		timeout = setTimeout(() => poll.abort(), HEALTH_TIMEOUT_MS);
+		const resp = await engineFetch('/health', {
+			headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+			signal: poll.signal
+		});
+		if (activePoll !== poll) return;
+		if (!resp.ok) {
+			healthError.set(true);
+			return;
+		}
+		const data: HealthResponse = await resp.json();
+		if (activePoll !== poll || poll.signal.aborted) return;
+		health.set(data);
+		healthError.set(false);
+
+		if (startupMode && data.engine === 'healthy' && data.sqlite === 'healthy') {
+			if (!token) {
+				if (!tokenErrorLogged) {
+					tokenErrorLogged = true;
+					console.error('Engine is healthy but no engine API token is available', tokenError);
+				}
+				engineAuthError.set(ENGINE_AUTH_ERROR_MESSAGE);
+			} else if (data.token === 'accepted') {
+				tokenRejectedChecks = 0;
+				engineAuthError.set(null);
+				startupReady.set(true);
+				startupMode = false;
+			} else {
+				tokenRejectedChecks += 1;
+				if (tokenRejectedChecks >= TOKEN_REJECTED_CHECKS_BEFORE_ERROR) {
+					engineAuthError.set(ENGINE_TOKEN_REJECTED_MESSAGE);
 				}
 			}
-
-			// Poll fast during startup and while the vector store is still
-			// connecting, so the UI reflects its completion promptly; otherwise
-			// poll slowly.
-			const settling = startupMode || vectorStoreState(data) === 'starting';
-			setPollRate(settling ? FAST_POLL_MS : SLOW_POLL_MS);
-		} else {
-			healthError.set(true);
 		}
+
+		const settling = startupMode || vectorStoreState(data) === 'starting';
+		setPollRate(settling ? FAST_POLL_MS : SLOW_POLL_MS);
 	} catch {
+		if (activePoll !== poll) return;
 		health.set(null);
 		healthError.set(true);
+	} finally {
+		clearTimeout(timeout);
+		if (activePoll === poll) activePoll = null;
 	}
 }
 
@@ -139,9 +125,9 @@ export function startHealthPolling() {
 	stopHealthPolling();
 	startupMode = true;
 	tokenRejectedChecks = 0;
-	fetchHealth(); // immediate first check
 	pollMs = FAST_POLL_MS;
 	pollInterval = setInterval(fetchHealth, pollMs);
+	fetchHealth();
 }
 
 export function stopHealthPolling() {
@@ -149,4 +135,6 @@ export function stopHealthPolling() {
 		clearInterval(pollInterval);
 		pollInterval = null;
 	}
+	activePoll?.abort();
+	activePoll = null;
 }
