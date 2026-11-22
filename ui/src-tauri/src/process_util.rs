@@ -11,6 +11,69 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+/// Kernel creation stamp. Together with a PID this identifies the same
+/// process across app restarts, even if the process changes its command line.
+#[cfg(target_os = "linux")]
+pub(crate) fn process_start_stamp(pid: u32) -> Option<String> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    // The parenthesized command name can itself contain spaces and ')'s.
+    let (_, fields) = stat.rsplit_once(')')?;
+    let ticks = fields.split_whitespace().nth(19)?;
+    let boot = std::fs::read_to_string("/proc/sys/kernel/random/boot_id").ok()?;
+    Some(format!("{}:{ticks}", boot.trim()))
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn process_start_stamp(pid: u32) -> Option<String> {
+    let mut info = std::mem::MaybeUninit::<libc::proc_bsdinfo>::uninit();
+    let size = std::mem::size_of::<libc::proc_bsdinfo>() as i32;
+    let read = unsafe {
+        libc::proc_pidinfo(
+            pid.try_into().ok()?,
+            libc::PROC_PIDTBSDINFO,
+            0,
+            info.as_mut_ptr().cast(),
+            size,
+        )
+    };
+    if read != size {
+        return None;
+    }
+    let info = unsafe { info.assume_init() };
+    Some(format!(
+        "{}:{}",
+        info.pbi_start_tvsec, info.pbi_start_tvusec
+    ))
+}
+
+#[cfg(windows)]
+pub(crate) fn process_start_stamp(pid: u32) -> Option<String> {
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+    use windows_sys::Win32::Foundation::FILETIME;
+    use windows_sys::Win32::System::Threading::{
+        GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if handle.is_null() {
+        return None;
+    }
+    let handle = unsafe { OwnedHandle::from_raw_handle(handle) };
+    let mut created = FILETIME::default();
+    let mut exited = FILETIME::default();
+    let mut kernel = FILETIME::default();
+    let mut user = FILETIME::default();
+    let ok = unsafe {
+        GetProcessTimes(
+            handle.as_raw_handle(),
+            &mut created,
+            &mut exited,
+            &mut kernel,
+            &mut user,
+        )
+    };
+    (ok != 0).then(|| format!("{}:{}", created.dwHighDateTime, created.dwLowDateTime))
+}
+
 /// The user's home directory (`HOME` on Unix, `USERPROFILE` on Windows).
 pub(crate) fn home_dir() -> Option<PathBuf> {
     #[cfg(unix)]

@@ -79,3 +79,11 @@ webkit2gtk-sys = "=2.0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.26"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Security",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }

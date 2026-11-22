@@ -240,6 +240,13 @@ n8n is managed automatically by the Tauri app -- it starts on launch (port 45678
 ### Troubleshooting
 
 <details>
+<summary><strong>n8n reports a port 45678 conflict after a Laya update</strong></summary>
+
+An older Laya launch that was force-quit can leave n8n running without a process record the new version can verify. Quit Laya, restart the computer once to clear the old process, then reopen Laya. If another service uses port 45678, free that port before reopening Laya.
+
+</details>
+
+<details>
 <summary><strong>Ingestion stopped and the engine log shows <code>n8n_auth_missing</code> with <code>rejected=True</code></strong></summary>
 
 The engine is enforcing the n8n token (see "Engine API authentication") and a workflow is calling it without one. Open **Settings → Integrations → n8n**: a workflow row with a warning icon failed to take the latest template; press **Update workflow** on it. If n8n was started by hand, make sure it has the same `LAYA_N8N_TOKEN` as the engine.

@@ -151,8 +151,7 @@ def _is_laya_process(pid: int) -> bool:
     """Best-effort check that ``pid`` looks like a stale Laya engine before we
     SIGTERM it to reclaim our port. Without this, reclaiming the port would kill
     whatever unrelated user process happened to be listening on it (review §6).
-    Uses psutil on Windows (already a dependency there) and `ps` elsewhere so we
-    don't add a hard psutil requirement on Unix."""
+    Uses psutil on Windows and `ps` elsewhere to read the command line."""
     try:
         if sys.platform == "win32":
             import psutil
@@ -170,16 +169,52 @@ def _is_laya_process(pid: int) -> bool:
         return False
 
 
-def _kill_stale_engine(host: str, port: int) -> None:
-    """If another *Laya* process is holding our port, kill it before we proceed.
-    A foreign process on the port is left alone and logged (review §6)."""
+# Seconds a stale engine gets to exit after SIGTERM before it is killed. An
+# engine in its graceful shutdown keeps the port while it finishes in-flight
+# work, such as a model call that can run for minutes.
+STALE_ENGINE_GRACE_SECONDS = 10.0
+
+
+def _port_is_free(host: str, port: int) -> bool:
+    """True when a listening socket could bind host:port now.
+
+    SO_REUSEADDR is set as uvicorn sets it on Unix, so connections of an
+    earlier engine that are still in TIME_WAIT do not count as holding the port.
+    """
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
+        if sys.platform != "win32":
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind((host, port))
-        sock.close()
-        return  # Port is free
+        return True
     except OSError:
+        return False
+    finally:
         sock.close()
+
+
+def _wait_for_port_release(host: str, port: int, timeout: float) -> bool:
+    """Wait up to `timeout` seconds for host:port to become free."""
+    import time
+
+    deadline = time.monotonic() + timeout
+    while not _port_is_free(host, port):
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.2)
+    return True
+
+
+def _kill_stale_engine(host: str, port: int) -> None:
+    """If another *Laya* process is holding our port, kill it before we proceed.
+    A foreign process on the port is left alone and logged (review §6).
+
+    Returns once the port is free, or after the stale engine was given
+    STALE_ENGINE_GRACE_SECONDS and then killed. uvicorn binds the port right
+    after this, and if the port is still held, this engine exits with an error
+    and the app is left without an engine."""
+    if _port_is_free(host, port):
+        return
 
     log.warning("port_in_use", host=host, port=port)
 
@@ -205,14 +240,14 @@ def _kill_stale_engine(host: str, port: int) -> None:
                         psutil.Process(conn.pid).terminate()
                     except Exception:
                         pass
-            import time
-
-            time.sleep(1)
+            _wait_for_port_release(host, port, STALE_ENGINE_GRACE_SECONDS)
         except Exception as e:
             log.warning("stale_engine_cleanup_failed", error=str(e))
         return
 
     import subprocess
+
+    import psutil
 
     try:
         result = subprocess.run(
@@ -223,20 +258,34 @@ def _kill_stale_engine(host: str, port: int) -> None:
         )
         pids = [int(p) for p in result.stdout.strip().split("\n") if p.strip()]
         my_pid = os.getpid()
-        killed_any = False
+        terminated: list[psutil.Process] = []
         for pid in pids:
             if pid == my_pid:
+                continue
+            try:
+                process = psutil.Process(pid)
+            except psutil.NoSuchProcess:
                 continue
             if not _is_laya_process(pid):
                 log.warning("port_held_by_foreign_process", pid=pid, port=port)
                 continue
+            try:
+                process.terminate()
+            except psutil.NoSuchProcess:
+                continue
             log.warning("killing_stale_engine", pid=pid, port=port)
-            os.kill(pid, signal.SIGTERM)
-            killed_any = True
-        if killed_any:
-            import time
-
-            time.sleep(1)
+            terminated.append(process)
+        if terminated and not _wait_for_port_release(host, port, STALE_ENGINE_GRACE_SECONDS):
+            # psutil checks the original creation time again before signalling.
+            for process in terminated:
+                if not process.is_running() or not _is_laya_process(process.pid):
+                    continue
+                try:
+                    process.kill()
+                except psutil.NoSuchProcess:
+                    continue
+                log.warning("killing_stale_engine_forcefully", pid=process.pid, port=port)
+            _wait_for_port_release(host, port, 5.0)
     except Exception as e:
         log.warning("stale_engine_cleanup_failed", error=str(e))
 

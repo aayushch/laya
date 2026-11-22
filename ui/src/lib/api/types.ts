@@ -17,6 +17,8 @@ export interface HealthResponse {
 	n8n: string;
 	uptime_seconds: number;
 	embeddings?: EmbeddingInfo;
+	/** Whether this engine accepts the app token sent with the request. */
+	token?: 'accepted' | 'rejected' | 'absent';
 }
 
 /** WebSocket message from the engine */

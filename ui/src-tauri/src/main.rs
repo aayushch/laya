@@ -12,5 +12,9 @@ fn main() {
     if let Some(code) = laya_app_lib::ctrl_c_helper_main() {
         std::process::exit(code);
     }
+    #[cfg(windows)]
+    if let Some(code) = laya_app_lib::n8n_job_keeper_main() {
+        std::process::exit(code);
+    }
     laya_app_lib::run();
 }

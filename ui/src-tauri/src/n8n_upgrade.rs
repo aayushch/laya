@@ -610,7 +610,10 @@ pub fn remove_finished_leftovers(decision: Decision) {
     if dirs.is_empty() {
         return;
     }
-    stop_leftover_n8n();
+    if let Err(e) = stop_leftover_n8n() {
+        log::warn!("{e}");
+        return;
+    }
     for dir in dirs {
         log::info!("Removing upgrade leftover {}", dir.display());
         if let Err(e) = remove_dir_robust(&dir) {
@@ -1158,7 +1161,7 @@ fn run_steps(
     // its task runner). Nothing may have the database open while it is backed
     // up and migrated.
     on_line("Stopping n8n...");
-    n8n::shutdown_n8n();
+    n8n::shutdown_n8n().map_err(BeforeBackup)?;
     n8n::stop_orphaned_n8n().map_err(BeforeBackup)?;
     let left = stop_leftover_n8n_processes(&layout, &mut session.log);
     if let Some((pid, cmdline)) = left.first() {
@@ -1351,9 +1354,11 @@ fn rollback(
     on_line: &mut dyn FnMut(&str),
 ) -> UpgradeOutcome {
     let layout = session.layout.clone();
-    n8n::shutdown_n8n();
-    if let Err(e) = n8n::stop_orphaned_n8n() {
-        session.log.warn(&e);
+    if let Err(e) = n8n::shutdown_n8n().and_then(|()| n8n::stop_orphaned_n8n()) {
+        return fatal(
+            session,
+            &format!("{error}. Could not stop n8n before restoring its database: {e}"),
+        );
     }
     stop_active_child();
 
@@ -1432,7 +1437,12 @@ fn rollback(
             // Stop what was started, so the normal start after the rollback
             // begins from no n8n at all rather than next to one that may
             // still be starting.
-            n8n::shutdown_n8n();
+            if let Err(stop_error) = n8n::shutdown_n8n() {
+                return fatal(
+                    session,
+                    &format!("{e}. Could not stop the previous n8n: {stop_error}"),
+                );
+            }
             session.log.warn(&format!(
                 "The previous n8n did not pass its start check ({e}); it was stopped.                  The database backup is kept in {}",
                 layout.backup().display()
@@ -2258,14 +2268,17 @@ fn normalize_cmdline(s: &str) -> String {
 /// `stop_leftovers_matching` for callers outside an upgrade: the normal n8n
 /// start and the leftover cleanup on launch. Skipped while Laya's own n8n is
 /// running, because that n8n's child processes run from the same directory.
-pub(crate) fn stop_leftover_n8n() {
+pub(crate) fn stop_leftover_n8n() -> Result<(), String> {
     if n8n::n8n_child_alive() {
-        return;
+        return Ok(());
     }
     let left = stop_leftovers_matching(&Layout::current(), &mut |line| log::warn!("{line}"));
-    for (pid, cmdline) in left {
-        log::warn!("Leftover process {pid} is still running: {cmdline}");
+    if let Some((pid, cmdline)) = left.first() {
+        return Err(format!(
+            "Leftover n8n process {pid} is still running: {cmdline}"
+        ));
     }
+    Ok(())
 }
 
 /// Every process id with its command line. Empty if the list cannot be read.

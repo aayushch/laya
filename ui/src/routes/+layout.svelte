@@ -268,6 +268,16 @@
 		loadIntegrationErrorSummary();
 	});
 
+	// The Corpus document list comes from the engine, so it loads once startup
+	// has confirmed that the engine accepts this window's token. loadDocuments
+	// keeps the list it has when the request fails.
+	let documentsRequested = false;
+	$effect(() => {
+		if (!$startupReady || documentsRequested) return;
+		documentsRequested = true;
+		loadDocuments();
+	});
+
 	// Check for app updates after startup, then re-check periodically while
 	// the app stays open (every 2 hours — see updater store for rationale).
 	$effect(() => {
@@ -349,7 +359,6 @@
 		initChatStream();
 		// Corpus document progress is consumed at app level for the same reason.
 		initDocumentsStore();
-		loadDocuments();
 
 		// Selectively disable Tauri's default context menu to hide browser nav
 		// (Back/Forward/Reload/Inspect Element), but allow it on text-interactive
