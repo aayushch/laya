@@ -173,4 +173,38 @@ describe('startup readiness', () => {
 		expect(get(store.startupReady)).toBe(false);
 		store.stopHealthPolling();
 	});
+
+	const healthySnapshot = { engine: 'healthy', sqlite: 'healthy', n8n: 'healthy', uptime_seconds: 5 };
+
+	it.each([
+		['a missing token field', () => Response.json(healthySnapshot)],
+		['an absent token status', () => Response.json({ ...healthySnapshot, token: 'absent' })],
+		['unhealthy SQLite with an accepted token', () =>
+			Response.json({ ...healthySnapshot, token: 'accepted', sqlite: 'unhealthy' })],
+		['invalid JSON', () => new Response('not JSON')],
+		['an HTTP failure', () => new Response(null, { status: 503 })],
+		['a transport error', () => Promise.reject(new TypeError('connection failed'))]
+	] as const)('%s interrupts a streak of explicit rejections', async (_case, interruptedResponse) => {
+		const fetchHealth = vi.fn(async (_url: string, init?: RequestInit) => healthResponse(init));
+		vi.stubGlobal('fetch', fetchHealth);
+		const store = await loadHealthStore();
+		const threshold = store.TOKEN_REJECTED_CHECKS_BEFORE_ERROR;
+		store.startHealthPolling();
+		await vi.advanceTimersByTimeAsync(POLL_MS * (threshold - 2));
+		expect(get(store.engineAuthError)).toBeNull();
+
+		fetchHealth.mockImplementationOnce(async () => interruptedResponse());
+		await vi.advanceTimersByTimeAsync(POLL_MS);
+		expect(get(store.engineAuthError)).toBeNull();
+		await vi.advanceTimersByTimeAsync(POLL_MS * (threshold - 1));
+		expect(get(store.engineAuthError)).toBeNull();
+
+		await vi.advanceTimersByTimeAsync(POLL_MS);
+		expect(get(store.engineAuthError)).toContain('does not accept');
+		fetchHealth.mockImplementationOnce(async () => interruptedResponse());
+		await vi.advanceTimersByTimeAsync(POLL_MS);
+		expect(get(store.engineAuthError)).toBeNull();
+		expect(get(store.startupReady)).toBe(false);
+		store.stopHealthPolling();
+	});
 });

@@ -17,10 +17,7 @@ export const healthError = writable<boolean>(false);
 /** True once a single response confirms engine health, SQLite health and token acceptance. */
 export const startupReady = writable<boolean>(false);
 
-/**
- * Set while the engine is healthy but this page has no engine API token, so
- * startup cannot complete. Holds the message the startup screen shows.
- */
+/** Startup message for a missing local token or repeated explicit rejections. */
 export const engineAuthError = writable<string | null>(null);
 
 const ENGINE_AUTH_ERROR_MESSAGE =
@@ -48,6 +45,20 @@ let startupMode = true;
 let activePoll: AbortController | null = null;
 let tokenErrorLogged = false;
 let tokenRejectedChecks = 0;
+
+function recordTokenRejection(rejected: boolean) {
+	if (rejected) {
+		tokenRejectedChecks += 1;
+		if (tokenRejectedChecks >= TOKEN_REJECTED_CHECKS_BEFORE_ERROR) {
+			engineAuthError.set(ENGINE_TOKEN_REJECTED_MESSAGE);
+		}
+		return;
+	}
+	if (tokenRejectedChecks >= TOKEN_REJECTED_CHECKS_BEFORE_ERROR) {
+		engineAuthError.set(null);
+	}
+	tokenRejectedChecks = 0;
+}
 
 function setPollRate(ms: number) {
 	if (!pollInterval || ms === pollMs) return;
@@ -81,15 +92,19 @@ async function fetchHealth() {
 		});
 		if (activePoll !== poll) return;
 		if (!resp.ok) {
+			recordTokenRejection(false);
 			healthError.set(true);
 			return;
 		}
 		const data: HealthResponse = await resp.json();
-		if (activePoll !== poll || poll.signal.aborted) return;
+		if (activePoll !== poll) return;
+		if (poll.signal.aborted) throw poll.signal.reason;
 		health.set(data);
 		healthError.set(false);
 
-		if (startupMode && data.engine === 'healthy' && data.sqlite === 'healthy') {
+		const healthy = data.engine === 'healthy' && data.sqlite === 'healthy';
+		recordTokenRejection(startupMode && healthy && Boolean(token) && data.token === 'rejected');
+		if (startupMode && healthy) {
 			if (!token) {
 				if (!tokenErrorLogged) {
 					tokenErrorLogged = true;
@@ -97,15 +112,9 @@ async function fetchHealth() {
 				}
 				engineAuthError.set(ENGINE_AUTH_ERROR_MESSAGE);
 			} else if (data.token === 'accepted') {
-				tokenRejectedChecks = 0;
 				engineAuthError.set(null);
 				startupReady.set(true);
 				startupMode = false;
-			} else {
-				tokenRejectedChecks += 1;
-				if (tokenRejectedChecks >= TOKEN_REJECTED_CHECKS_BEFORE_ERROR) {
-					engineAuthError.set(ENGINE_TOKEN_REJECTED_MESSAGE);
-				}
 			}
 		}
 
@@ -113,6 +122,7 @@ async function fetchHealth() {
 		setPollRate(settling ? FAST_POLL_MS : SLOW_POLL_MS);
 	} catch {
 		if (activePoll !== poll) return;
+		recordTokenRejection(false);
 		health.set(null);
 		healthError.set(true);
 	} finally {
@@ -124,7 +134,7 @@ async function fetchHealth() {
 export function startHealthPolling() {
 	stopHealthPolling();
 	startupMode = true;
-	tokenRejectedChecks = 0;
+	recordTokenRejection(false);
 	pollMs = FAST_POLL_MS;
 	pollInterval = setInterval(fetchHealth, pollMs);
 	fetchHealth();
