@@ -73,6 +73,7 @@ def test_github_issue_and_comment_lists_follow_github_next_links(name):
     assert pagination.get("paginationMode") == "responseContainsNextURL"
     assert pagination.get("nextURL")
 
+
 @pytest.fixture
 def github_code():
     node = shutil.which("node")
@@ -85,7 +86,10 @@ def github_code():
         runner = """
 const {code, items, workflowId, since} = JSON.parse(require('node:fs').readFileSync(0));
 const input = {all: () => items.map(json => ({json}))};
-const selector = () => ({first: () => ({json: {since}})});
+const selector = name => {
+  if (name !== 'Build Repo Items') throw new Error('Unexpected workflow node: ' + name);
+  return {first: () => ({json: {since}})};
+};
 const output = new Function('$input', '$workflow', '$', code)(input, {id: workflowId}, selector);
 process.stdout.write(JSON.stringify(output.map(item => item.json)));
 """
@@ -99,9 +103,9 @@ process.stdout.write(JSON.stringify(output.map(item => item.json)));
             }),
             capture_output=True,
             text=True,
-            check=True,
             timeout=10,
         )
+        assert result.returncode == 0, result.stderr
         return json.loads(result.stdout)
 
     return run
