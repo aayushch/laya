@@ -948,16 +948,22 @@ pub(crate) fn process_cmdline(pid: u32) -> String {
 }
 
 /// Best-effort kill of a *Laya* process listening on the given TCP port.
-/// Used as a safety net during shutdown to catch orphaned engine processes,
-/// and by n8n startup to reclaim the port from stale instances.
+/// Used as a safety net during shutdown to catch orphaned engine processes.
 ///
 /// `identity` must appear (case-insensitively) in the port-holder's command
 /// line for it to be killed — otherwise an unrelated user process that happens
-/// to listen on the port would be SIGTERM'd (review §6). Both the engine and the
-/// Laya-managed n8n run from `~/.laya/...`, so "laya" identifies both. If the
-/// command line can't be read the process is left alone (safe default).
-#[cfg(unix)]
+/// to listen on the port would be SIGTERM'd (review §6). The engine's command
+/// line (`python -m laya.main`) contains "laya". If the command line can't be
+/// read the process is left alone (safe default).
 pub(crate) fn kill_process_on_port(port: u16, identity: &str) {
+    kill_listeners_on_port(port, &|_, cmdline| cmdline.contains(identity));
+}
+
+/// Best-effort kill of each process listening on the given TCP port that
+/// `is_ours` accepts, given its process id and lowercased command line. A
+/// process it rejects is left alone and logged as foreign.
+#[cfg(unix)]
+pub(crate) fn kill_listeners_on_port(port: u16, is_ours: &dyn Fn(u32, &str) -> bool) {
     // `-sTCP:LISTEN` limits the match to the process that listens on the
     // port. Without it lsof also lists every client connected to the port,
     // including this app itself (its health-check HTTP client keeps
@@ -973,7 +979,7 @@ pub(crate) fn kill_process_on_port(port: u16, identity: &str) {
                     if pid as u32 == std::process::id() {
                         continue;
                     }
-                    if !process_cmdline(pid).contains(identity) {
+                    if !is_ours(pid as u32, &process_cmdline(pid)) {
                         log::warn!(
                             "Port {} held by foreign process (pid {}); not killing",
                             port,
@@ -992,7 +998,7 @@ pub(crate) fn kill_process_on_port(port: u16, identity: &str) {
 }
 
 #[cfg(windows)]
-pub(crate) fn kill_process_on_port(port: u16, identity: &str) {
+pub(crate) fn kill_listeners_on_port(port: u16, is_ours: &dyn Fn(u32, &str) -> bool) {
     let mut netstat = std::process::Command::new("netstat");
     no_window(&mut netstat);
     if let Ok(output) = netstat.args(["-ano", "-p", "tcp"]).output() {
@@ -1008,7 +1014,7 @@ pub(crate) fn kill_process_on_port(port: u16, identity: &str) {
                     .last()
                     .and_then(|s| s.parse::<u32>().ok())
                 {
-                    if !process_cmdline(pid).contains(identity) {
+                    if !is_ours(pid, &process_cmdline(pid)) {
                         log::warn!(
                             "Port {} held by foreign process (pid {}); not killing",
                             port,

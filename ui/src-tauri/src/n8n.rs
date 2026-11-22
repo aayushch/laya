@@ -764,6 +764,7 @@ pub fn startup_n8n_with(runtime: &N8nRuntime) -> N8nStartResult {
     // 6. Start
     match spawn_n8n(runtime) {
         Ok(child) => {
+            record_n8n_pid(&n8n_pid_file(), child.id());
             if let Ok(mut guard) = N8N_PROCESS.lock() {
                 *guard = Some(child);
             }
@@ -775,15 +776,17 @@ pub fn startup_n8n_with(runtime: &N8nRuntime) -> N8nStartResult {
 }
 
 /// Stop a Laya n8n left running on `N8N_PORT` by an earlier session. Only a
-/// process whose command line contains "laya" (the n8n entry point lives
-/// under `~/.laya/`) is stopped; a user's own n8n on this port is left alone
-/// and reported as an error.
+/// process `is_laya_n8n` recognises is stopped; a user's own n8n on this port
+/// is left alone and reported as an error.
 pub(crate) fn stop_orphaned_n8n() -> Result<(), String> {
     if !is_n8n_running() {
         return Ok(());
     }
     log::warn!("Orphaned n8n on port {} — stopping it", N8N_PORT);
-    crate::kill_process_on_port(N8N_PORT, "laya");
+    let recorded = recorded_n8n_pid(&n8n_pid_file());
+    crate::kill_listeners_on_port(N8N_PORT, &|pid, cmdline| {
+        is_laya_n8n(pid, cmdline, recorded)
+    });
     for _ in 0..20 {
         if !is_n8n_running() {
             return Ok(());
@@ -795,6 +798,39 @@ pub(crate) fn stop_orphaned_n8n() -> Result<(), String> {
          Stop that process (or free the port) and restart Laya.",
         N8N_PORT
     ))
+}
+
+/// True when the process `pid` with the lowercased command line `cmdline` is
+/// an n8n that a Laya launch started. `recorded_pid` is the process id that
+/// launch wrote to `n8n_pid_file`.
+///
+/// n8n's start script renames its process to `n8n start` (`process.title`).
+/// On macOS and Linux that replaces the command line `ps` reports, so the
+/// `~/.laya` path of the n8n entry point is not in it there, and the recorded
+/// process id identifies the process instead. The name check keeps a process
+/// that reuses that id from being taken for n8n. On Windows the command line
+/// keeps the path.
+pub(crate) fn is_laya_n8n(pid: u32, cmdline: &str, recorded_pid: Option<u32>) -> bool {
+    cmdline.contains("laya") || (recorded_pid == Some(pid) && cmdline.contains("n8n"))
+}
+
+/// Where Laya records the process id of the n8n it started. A later launch
+/// reads it to recognise that n8n when this launch ends without stopping it,
+/// for example when it is killed.
+fn n8n_pid_file() -> PathBuf {
+    laya_home().join("n8n.pid")
+}
+
+fn record_n8n_pid(path: &Path, pid: u32) {
+    let written = crate::fs_private::create_file_private(path)
+        .and_then(|mut f| f.write_all(pid.to_string().as_bytes()));
+    if let Err(e) = written {
+        log::warn!("Could not record the n8n process id in {}: {e}", path.display());
+    }
+}
+
+fn recorded_n8n_pid(path: &Path) -> Option<u32> {
+    std::fs::read_to_string(path).ok()?.trim().parse().ok()
 }
 
 /// Variables that n8n receives from Laya's own environment on every
@@ -1262,6 +1298,7 @@ pub fn shutdown_n8n() {
             }
 
             *guard = None;
+            let _ = std::fs::remove_file(n8n_pid_file());
         }
     }
 }
@@ -1320,6 +1357,43 @@ pub fn stop_n8n() -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn laya_n8n_is_recognised_by_its_recorded_pid_after_renaming_itself() {
+        // What `ps` reports on macOS and Linux for the n8n Laya started.
+        assert!(is_laya_n8n(4242, "n8n start\n", Some(4242)));
+    }
+
+    #[test]
+    fn an_n8n_laya_did_not_record_is_left_alone() {
+        assert!(!is_laya_n8n(4242, "n8n start\n", Some(1111)));
+        assert!(!is_laya_n8n(4242, "n8n start\n", None));
+    }
+
+    #[test]
+    fn a_reused_pid_that_is_not_n8n_is_left_alone() {
+        assert!(!is_laya_n8n(4242, "python3 -m http.server 45678\n", Some(4242)));
+    }
+
+    #[test]
+    fn laya_n8n_is_recognised_by_its_path_when_the_command_line_keeps_it() {
+        // Windows reports the original command line.
+        let cmdline = r"c:\users\me\.laya\node\node.exe c:\users\me\.laya\n8n_module\node_modules\n8n\bin\n8n start";
+        assert!(is_laya_n8n(4242, cmdline, None));
+    }
+
+    #[test]
+    fn recorded_n8n_pid_round_trips_through_the_pid_file() {
+        let dir = std::env::temp_dir().join(format!("laya_n8n_pid_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("n8n.pid");
+        assert_eq!(recorded_n8n_pid(&path), None);
+        record_n8n_pid(&path, 4242);
+        assert_eq!(recorded_n8n_pid(&path), Some(4242));
+        record_n8n_pid(&path, 77);
+        assert_eq!(recorded_n8n_pid(&path), Some(77));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// The names `n8n_env_from_parent` keeps out of `names`, in order.
     fn passed(names: &[&str], windows: bool) -> Vec<String> {
