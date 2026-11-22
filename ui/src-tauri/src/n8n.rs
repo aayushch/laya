@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// On Windows, attach CREATE_NO_WINDOW so spawned child processes do not
 /// flash a console window. No-op on other platforms.
@@ -670,6 +670,7 @@ fn run_npm_install<F: FnMut(&str)>(
 
 /// Global n8n child process handle.
 static N8N_PROCESS: Mutex<Option<Child>> = Mutex::new(None);
+static N8N_LIFECYCLE: Mutex<()> = Mutex::new(());
 
 /// True while `n8n_upgrade` is replacing n8n. `startup_n8n` refuses to start
 /// n8n during that time, so a "Start" click on the Status page cannot open
@@ -718,6 +719,9 @@ pub fn startup_n8n() -> N8nStartResult {
 /// Start n8n from `~/.laya/n8n_module` on the given runtime. Used directly by
 /// the upgrade, which starts the new and the old runtime explicitly.
 pub fn startup_n8n_with(runtime: &N8nRuntime) -> N8nStartResult {
+    let Ok(_lifecycle) = N8N_LIFECYCLE.lock() else {
+        return N8nStartResult::StartFailed("Could not lock the n8n lifecycle".into());
+    };
     // 1. Already started by this Laya and still alive, even if it does not
     // answer yet? A cold n8n start on Windows can take minutes. Spawning a
     // second n8n here would replace the handle of the first one, which would
@@ -726,21 +730,9 @@ pub fn startup_n8n_with(runtime: &N8nRuntime) -> N8nStartResult {
         return N8nStartResult::AlreadyRunning;
     }
 
-    // 2. Already running? (check HTTP health, and whether the port is taken:
-    // an n8n left running by a launch that was killed can hold the port
-    // without answering /healthz)
-    if is_n8n_running() || n8n_port_in_use(N8N_PORT) {
-        // If we hold a handle, we spawned it — reuse. Otherwise it's a
-        // stale orphan from a previous session (e.g. dev-mode exit that
-        // didn't fire RunEvent::Exit). Kill it and respawn so the new
-        // process gets the correct environment variables.
-        let we_own_it = N8N_PROCESS.lock().map(|g| g.is_some()).unwrap_or(false);
-        if we_own_it {
-            return N8nStartResult::AlreadyRunning;
-        }
-        if let Err(msg) = stop_orphaned_n8n() {
-            return N8nStartResult::PortConflict(msg);
-        }
+    // 2. n8n can still be writing after its listener closes.
+    if let Err(msg) = stop_orphaned_n8n() {
+        return N8nStartResult::PortConflict(msg);
     }
 
     // 3. Node.js available?
@@ -758,21 +750,14 @@ pub fn startup_n8n_with(runtime: &N8nRuntime) -> N8nStartResult {
         );
     }
 
-    // 5. Stop any n8n left by an earlier Laya that does not answer on the
-    // port (step 2 only finds one that does). It would keep the database and
-    // the runtime directories open next to the new process.
-    crate::n8n_upgrade::stop_leftover_n8n();
+    // 5. Check for leftover migrations and other n8n module processes.
+    if let Err(msg) = crate::n8n_upgrade::stop_leftover_n8n() {
+        return N8nStartResult::StartFailed(msg);
+    }
 
     // 6. Start
     match spawn_n8n(runtime) {
         Ok(child) => {
-            let path = n8n_pid_file();
-            if let Err(e) = record_n8n_process(&path, child.id()) {
-                log::warn!(
-                    "Could not record the n8n process in {}: {e}",
-                    path.display()
-                );
-            }
             if let Ok(mut guard) = N8N_PROCESS.lock() {
                 *guard = Some(child);
             }
@@ -786,12 +771,8 @@ pub fn startup_n8n_with(runtime: &N8nRuntime) -> N8nStartResult {
 /// Stop an n8n started by an earlier Laya launch. Unknown listeners on
 /// `N8N_PORT` are left alone and reported as an error.
 pub(crate) fn stop_orphaned_n8n() -> Result<(), String> {
-    if !n8n_port_in_use(N8N_PORT) {
-        return Ok(());
-    }
-    log::warn!("Orphaned n8n on port {} — stopping it", N8N_PORT);
     let recorded = recorded_n8n_process(&n8n_pid_file());
-    stop_port_listeners(N8N_PORT, recorded.as_ref(), ORPHANED_N8N_GRACE)
+    stop_previous_n8n(N8N_PORT, recorded.as_ref(), ORPHANED_N8N_GRACE)
 }
 
 /// How long an orphaned n8n gets to exit after SIGTERM before it is killed.
@@ -799,81 +780,151 @@ pub(crate) fn stop_orphaned_n8n() -> Result<(), String> {
 /// default.
 const ORPHANED_N8N_GRACE: Duration = Duration::from_secs(10);
 
-/// Stop the recorded n8n process listening on `port` and wait for
-/// the port to be released. Each gets `grace` to exit after SIGTERM, then it
-/// is killed together with the process group it leads: Laya starts n8n as the
-/// leader of its own group (`spawn_n8n`), so its task runner goes with it.
-/// The n8n of a launch that has ended has no one to finish its work for.
-fn stop_port_listeners(
+fn stop_previous_n8n(
     port: u16,
     recorded: Option<&N8nProcessRecord>,
     grace: Duration,
 ) -> Result<(), String> {
-    let signalled = crate::kill_listeners_on_port(port, &|pid, _| is_laya_n8n(pid, recorded));
-    if wait_for_port_release(port, grace) {
-        return Ok(());
+    if let Some(record) = recorded {
+        stop_n8n_tree(record, grace)
+            .map_err(|e| format!("Could not stop the previous n8n (pid {}): {e}", record.pid))?;
     }
-    if signalled.is_empty() {
+    if n8n_port_in_use(port) {
         return Err(format!(
             "Port {} is in use by a process that isn't Laya's n8n. \
              Stop that process (or free the port) and restart Laya.",
             port
         ));
     }
-    for pid in &signalled {
-        if !is_laya_n8n(*pid, recorded) {
-            continue;
+    Ok(())
+}
+
+fn wait_for_n8n_exit(
+    timeout: Duration,
+    mut running: impl FnMut() -> std::io::Result<bool>,
+) -> std::io::Result<bool> {
+    let deadline = Instant::now() + timeout;
+    while running()? {
+        if Instant::now() >= deadline {
+            return Ok(false);
         }
-        log::warn!("n8n (pid {pid}) did not exit within {grace:?}; killing it");
-        force_kill_process_group(*pid);
+        std::thread::sleep(Duration::from_millis(100));
     }
-    if wait_for_port_release(port, Duration::from_secs(5)) {
+    Ok(true)
+}
+
+/// n8n leads a private process group. Keep a verified member as an anchor
+/// so a recycled group number cannot authorize a signal.
+#[cfg(unix)]
+fn stop_n8n_tree(record: &N8nProcessRecord, grace: Duration) -> std::io::Result<()> {
+    let pid = i32::try_from(record.pid).map_err(std::io::Error::other)?;
+    let mut known = vec![record.clone()];
+    let running = |known: &mut Vec<N8nProcessRecord>| -> std::io::Result<bool> {
+        let members = live_n8n_group(record.pid)?;
+        if members.is_empty() {
+            return Ok(false);
+        }
+        if !members.iter().any(|member| known.contains(member)) {
+            // A new process that already reused the leader's PID rules out
+            // the original group: the kernel reserves the ID for its lifetime.
+            if crate::process_util::process_start_stamp(record.pid)
+                .is_some_and(|started| started != record.started)
+            {
+                return Ok(false);
+            }
+            return Err(std::io::Error::other(
+                "cannot verify n8n's remaining process group",
+            ));
+        }
+        *known = members;
+        Ok(true)
+    };
+
+    if !running(&mut known)? {
         return Ok(());
     }
-    Err(format!(
-        "n8n (pid {:?}) kept port {} after it was killed. Restart Laya.",
-        signalled, port
-    ))
+    if (unsafe { libc::getpgid(pid) } == pid) && record.matches_current_process() {
+        log::info!("Stopping n8n process (pid {pid})");
+        unsafe { libc::kill(pid, libc::SIGTERM) };
+    }
+    if wait_for_n8n_exit(grace, || running(&mut known))? || !running(&mut known)? {
+        return Ok(());
+    }
+    if !known.iter().any(|member| {
+        (unsafe { libc::getpgid(member.pid as i32) } == pid) && member.matches_current_process()
+    }) {
+        return Err(std::io::Error::other(
+            "n8n's process group changed before termination",
+        ));
+    }
+    log::warn!("Stopping n8n process group {pid} after {grace:?}");
+    unsafe { libc::kill(-pid, libc::SIGKILL) };
+    if wait_for_n8n_exit(Duration::from_secs(5), || running(&mut known))? {
+        return Ok(());
+    }
+    Err(std::io::Error::other("n8n's process group did not exit"))
 }
 
-fn wait_for_port_release(port: u16, timeout: Duration) -> bool {
-    let deadline = std::time::Instant::now() + timeout;
-    while n8n_port_in_use(port) {
-        if std::time::Instant::now() >= deadline {
-            return false;
+#[cfg(windows)]
+fn stop_n8n_tree(record: &N8nProcessRecord, grace: Duration) -> std::io::Result<()> {
+    let Some(job) = crate::n8n_job::N8nJob::open(record.pid, &record.started)? else {
+        return Ok(());
+    };
+    if record.matches_current_process() {
+        job.send_ctrl_c(record.pid);
+    }
+    if wait_for_n8n_exit(grace, || job.has_processes())? {
+        return Ok(());
+    }
+    job.terminate()?;
+    if wait_for_n8n_exit(Duration::from_secs(5), || job.has_processes())? {
+        return Ok(());
+    }
+    Err(std::io::Error::other("n8n's Windows job did not exit"))
+}
+
+#[cfg(unix)]
+fn live_n8n_group(group: u32) -> std::io::Result<Vec<N8nProcessRecord>> {
+    let output = Command::new("ps")
+        .args(["-A", "-o", "pid=,pgid=,stat="])
+        .output()?;
+    if !output.status.success() {
+        return Err(std::io::Error::other("could not list n8n's process group"));
+    }
+    let mut members = Vec::new();
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        let mut fields = line.split_whitespace();
+        let pid = fields.next().and_then(|field| field.parse::<u32>().ok());
+        let pgid = fields.next().and_then(|field| field.parse::<u32>().ok());
+        let zombie = fields.next().is_some_and(|state| state.starts_with('Z'));
+        if let Some(pid) = pid.filter(|_| pgid == Some(group) && !zombie) {
+            if let Some(member) = N8nProcessRecord::read(pid) {
+                members.push(member);
+            } else if unsafe { libc::getpgid(pid as i32) } == group as i32 {
+                return Err(std::io::Error::other(
+                    "cannot read n8n group member creation time",
+                ));
+            }
         }
-        std::thread::sleep(Duration::from_millis(250));
     }
-    true
+    Ok(members)
 }
 
-/// Kill `pid` and, on Unix, the process group it leads.
-fn force_kill_process_group(pid: u32) {
-    #[cfg(unix)]
-    unsafe {
-        let pid = pid as i32;
-        let target = if libc::getpgid(pid) == pid { -pid } else { pid };
-        libc::kill(target, libc::SIGKILL);
-    }
-    #[cfg(windows)]
-    {
-        let mut tk = Command::new("taskkill");
-        no_window(&mut tk);
-        let _ = tk.args(["/T", "/F", "/PID", &pid.to_string()]).status();
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct N8nProcessRecord {
     pid: u32,
     started: String,
 }
 
-fn is_laya_n8n(pid: u32, recorded: Option<&N8nProcessRecord>) -> bool {
-    recorded.is_some_and(|record| {
-        record.pid == pid
-            && crate::process_util::process_start_stamp(pid).as_deref() == Some(&record.started)
-    })
+impl N8nProcessRecord {
+    fn read(pid: u32) -> Option<Self> {
+        let started = crate::process_util::process_start_stamp(pid)?;
+        Some(Self { pid, started })
+    }
+
+    fn matches_current_process(&self) -> bool {
+        crate::process_util::process_start_stamp(self.pid).as_deref() == Some(&self.started)
+    }
 }
 
 /// True when another process holds `port` on 127.0.0.1, the address n8n
@@ -890,13 +941,15 @@ fn n8n_pid_file() -> PathBuf {
     laya_home().join("n8n.pid")
 }
 
-fn record_n8n_process(path: &Path, pid: u32) -> std::io::Result<()> {
-    let started = crate::process_util::process_start_stamp(pid)
-        .ok_or_else(|| std::io::Error::other("cannot read process creation time"))?;
+fn record_n8n_process(path: &Path, record: &N8nProcessRecord) -> std::io::Result<()> {
+    let pending = path.with_extension("pid.next");
     writeln!(
-        crate::fs_private::create_file_private(path)?,
-        "{pid} {started}"
-    )
+        crate::fs_private::create_file_private(&pending)?,
+        "{} {}",
+        record.pid,
+        record.started
+    )?;
+    std::fs::rename(pending, path)
 }
 
 fn recorded_n8n_process(path: &Path) -> Option<N8nProcessRecord> {
@@ -1162,14 +1215,25 @@ fn spawn_n8n(runtime: &N8nRuntime) -> Result<Child, String> {
         use std::os::unix::process::CommandExt;
         cmd.pre_exec(|| {
             libc::umask(0o077);
-            libc::setpgid(0, 0);
-            Ok(())
+            if libc::setpgid(0, 0) == 0 {
+                Ok(())
+            } else {
+                Err(std::io::Error::last_os_error())
+            }
         });
     }
 
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("Failed to spawn n8n: {e}"))?;
+    #[cfg(unix)]
+    let child = cmd.spawn();
+    #[cfg(windows)]
+    let child = crate::n8n_job::N8nJob::spawn_suspended(&mut cmd);
+    let mut child = child.map_err(|e| format!("Failed to spawn n8n: {e}"))?;
+
+    if let Err(e) = register_n8n_child(&child) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(format!("Could not register the managed n8n process: {e}"));
+    }
 
     // Capture n8n's stdout/stderr into a size-capped, rotating log so n8n.log
     // can't grow unbounded within a long session. 10 MB × 3 backups.
@@ -1180,6 +1244,23 @@ fn spawn_n8n(runtime: &N8nRuntime) -> Result<Child, String> {
     }
 
     Ok(child)
+}
+
+fn register_n8n_child(child: &Child) -> std::io::Result<()> {
+    let record = N8nProcessRecord::read(child.id())
+        .ok_or_else(|| std::io::Error::other("cannot read process creation time"))?;
+    #[cfg(windows)]
+    let job = crate::n8n_job::N8nJob::attach(child, &record.started)?;
+    let written = record_n8n_process(&n8n_pid_file(), &record);
+    #[cfg(windows)]
+    let written = written.and_then(|()| crate::n8n_job::resume(child));
+    if written.is_err() {
+        #[cfg(unix)]
+        let _ = stop_n8n_tree(&record, Duration::ZERO);
+        #[cfg(windows)]
+        let _ = job.terminate();
+    }
+    written
 }
 
 /// Check if n8n is running by hitting its health endpoint.
@@ -1291,91 +1372,21 @@ pub fn wait_for_n8n_stable(timeout: Duration, stable_for: Duration) -> Result<()
     Ok(())
 }
 
-/// Gracefully shut down the n8n process.
-pub fn shutdown_n8n() {
-    if let Ok(mut guard) = N8N_PROCESS.lock() {
-        if let Some(ref mut child) = *guard {
-            let pid = child.id();
-            log::info!("Stopping n8n process (pid {})", pid);
-
-            #[cfg(unix)]
-            {
-                // Send SIGTERM to the entire process group
-                unsafe {
-                    libc::kill(-(pid as i32), libc::SIGTERM);
-                }
-
-                let start = std::time::Instant::now();
-                loop {
-                    match child.try_wait() {
-                        Ok(Some(_)) => {
-                            log::info!("n8n exited gracefully");
-                            break;
-                        }
-                        Ok(None) => {
-                            if start.elapsed() > Duration::from_secs(5) {
-                                log::warn!("n8n did not exit in time, sending SIGKILL");
-                                unsafe {
-                                    libc::kill(-(pid as i32), libc::SIGKILL);
-                                }
-                                let _ = child.wait();
-                                break;
-                            }
-                            std::thread::sleep(Duration::from_millis(100));
-                        }
-                        Err(e) => {
-                            log::error!("Error waiting for n8n: {}", e);
-                            let _ = child.kill();
-                            break;
-                        }
-                    }
-                }
-            }
-
-            #[cfg(windows)]
-            {
-                // Ctrl+C reaches every process on n8n's console, so n8n and
-                // the processes it started shut down cleanly. If it cannot be
-                // sent, the forced tree kill below runs after the wait.
-                log::info!("Stopping n8n process tree (pid {})", pid);
-                if !crate::process_util::send_ctrl_c(pid) {
-                    log::warn!("Could not send Ctrl+C to n8n (pid {pid})");
-                }
-
-                let start = std::time::Instant::now();
-                loop {
-                    match child.try_wait() {
-                        Ok(Some(_)) => {
-                            log::info!("n8n exited gracefully");
-                            break;
-                        }
-                        Ok(None) => {
-                            // n8n closes its database and HTTP server on
-                            // SIGINT; on Windows this takes a few seconds
-                            // longer than on Unix.
-                            if start.elapsed() > Duration::from_secs(10) {
-                                log::warn!("n8n did not exit; force-killing tree");
-                                let mut force = Command::new("taskkill");
-                                no_window(&mut force);
-                                let _ = force.args(["/T", "/F", "/PID", &pid.to_string()]).status();
-                                let _ = child.wait();
-                                break;
-                            }
-                            std::thread::sleep(Duration::from_millis(100));
-                        }
-                        Err(e) => {
-                            log::error!("Error waiting for n8n: {}", e);
-                            let _ = child.kill();
-                            break;
-                        }
-                    }
-                }
-            }
-
-            *guard = None;
-            let _ = std::fs::remove_file(n8n_pid_file());
-        }
+/// Gracefully shut down the n8n process and wait for its managed children.
+pub fn shutdown_n8n() -> Result<(), String> {
+    let _lifecycle = N8N_LIFECYCLE.lock().map_err(|e| e.to_string())?;
+    let mut guard = N8N_PROCESS.lock().map_err(|e| e.to_string())?;
+    if let Some(child) = guard.as_mut() {
+        let path = n8n_pid_file();
+        let record = recorded_n8n_process(&path)
+            .filter(|record| record.pid == child.id())
+            .ok_or("Missing process identity for the running n8n")?;
+        stop_n8n_tree(&record, ORPHANED_N8N_GRACE).map_err(|e| e.to_string())?;
+        child.wait().map_err(|e| e.to_string())?;
+        *guard = None;
+        let _ = std::fs::remove_file(path);
     }
+    Ok(())
 }
 
 // ── Tauri commands (called from the frontend) ───────────────────────────
@@ -1423,7 +1434,7 @@ pub fn start_n8n() -> Result<String, String> {
 /// Stop the n8n process (Tauri command for UI).
 #[tauri::command]
 pub fn stop_n8n() -> Result<String, String> {
-    shutdown_n8n();
+    shutdown_n8n()?;
     Ok("stopped".to_string())
 }
 
@@ -1440,7 +1451,7 @@ mod tests {
             pid,
             started: "a different creation time".into(),
         };
-        assert!(!is_laya_n8n(pid, Some(&record)));
+        assert!(!record.matches_current_process());
     }
 
     #[test]
@@ -1459,46 +1470,93 @@ mod tests {
     /// bound after the test drops it.
     static SOCKET_TESTS: Mutex<()> = Mutex::new(());
 
-    /// A process that listens on a free port and ignores SIGTERM, like an n8n
-    /// whose graceful shutdown is still waiting for executions. It leads its
-    /// own process group, as `spawn_n8n` makes n8n do. None if python3 is
-    /// missing.
     #[cfg(unix)]
-    fn spawn_listener_ignoring_sigterm() -> Option<(std::process::Child, u16)> {
+    fn spawn_listener(on_term: &str) -> (Child, u16) {
         use std::io::BufRead;
         use std::os::unix::process::CommandExt;
-        let script = "import signal, socket, time\n\
-                      signal.signal(signal.SIGTERM, signal.SIG_IGN)\n\
+        let script = format!(
+            "import signal, socket, time, os\n\
                       s = socket.socket()\n\
                       s.bind(('127.0.0.1', 0))\n\
                       s.listen()\n\
+                      {on_term}\n\
                       print(s.getsockname()[1], flush=True)\n\
-                      time.sleep(60)\n";
+                      time.sleep(60)\n"
+        );
         let mut child = Command::new("python3")
-            .args(["-c", script, "/projects/laya/dev_server.py"])
+            .args(["-c", &script, "/projects/laya/dev_server.py"])
             .stdout(Stdio::piped())
             .process_group(0)
             .spawn()
-            .ok()?;
+            .expect("python3 is needed for the n8n process tests");
         let mut line = String::new();
-        std::io::BufReader::new(child.stdout.take()?)
+        std::io::BufReader::new(child.stdout.take().unwrap())
             .read_line(&mut line)
-            .ok()?;
-        Some((child, line.trim().parse().ok()?))
+            .unwrap();
+        (
+            child,
+            line.trim().parse().expect("child failed to bind a port"),
+        )
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shutdown_waits_for_exit_after_the_listener_closes() {
+        let _serial = SOCKET_TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        let (mut child, port) =
+            spawn_listener("signal.signal(signal.SIGTERM, lambda *_: s.close())");
+        let pid = child.id();
+        let record = N8nProcessRecord {
+            pid,
+            started: crate::process_util::process_start_stamp(pid).unwrap(),
+        };
+        let result = stop_previous_n8n(port, Some(&record), Duration::from_millis(500));
+        let exited = child.try_wait().unwrap().is_some();
+        if !exited {
+            child.kill().unwrap();
+            child.wait().unwrap();
+        }
+        assert_eq!(result, Ok(()));
+        assert!(
+            exited,
+            "a free port did not mean n8n finished shutting down"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shutdown_waits_for_the_managed_group_after_its_leader_exits() {
+        let _serial = SOCKET_TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        let (mut child, port) = spawn_listener(concat!(
+            "worker = os.fork()\n",
+            "if worker == 0:\n",
+            "    s.close()\n",
+            "    signal.signal(signal.SIGTERM, signal.SIG_IGN)\n",
+            "    time.sleep(60)\n",
+            "    os._exit(0)\n",
+            "signal.signal(signal.SIGTERM, lambda *_: os._exit(0))",
+        ));
+        let record = N8nProcessRecord::read(child.id()).unwrap();
+        let result = stop_previous_n8n(port, Some(&record), Duration::from_millis(500));
+        let remaining = live_n8n_group(record.pid).unwrap();
+        if !remaining.is_empty() {
+            unsafe { libc::kill(-(record.pid as i32), libc::SIGKILL) };
+        }
+        child.wait().unwrap();
+        assert_eq!(result, Ok(()));
+        assert!(remaining.is_empty());
     }
 
     #[cfg(unix)]
     #[test]
     fn a_listener_that_ignores_sigterm_is_killed_after_the_grace_period() {
         let _serial = SOCKET_TESTS.lock().unwrap_or_else(|e| e.into_inner());
-        let Some((mut child, port)) = spawn_listener_ignoring_sigterm() else {
-            return;
-        };
+        let (mut child, port) = spawn_listener("signal.signal(signal.SIGTERM, signal.SIG_IGN)");
         let record = N8nProcessRecord {
             pid: child.id(),
             started: crate::process_util::process_start_stamp(child.id()).unwrap(),
         };
-        let result = stop_port_listeners(port, Some(&record), Duration::from_millis(500));
+        let result = stop_previous_n8n(port, Some(&record), Duration::from_millis(500));
         assert_eq!(result, Ok(()));
         assert!(!n8n_port_in_use(port));
         let _ = child.wait();
@@ -1508,10 +1566,8 @@ mod tests {
     #[test]
     fn a_listener_that_is_not_ours_is_left_running() {
         let _serial = SOCKET_TESTS.lock().unwrap_or_else(|e| e.into_inner());
-        let Some((mut child, port)) = spawn_listener_ignoring_sigterm() else {
-            return;
-        };
-        let result = stop_port_listeners(port, None, Duration::from_millis(300));
+        let (mut child, port) = spawn_listener("signal.signal(signal.SIGTERM, signal.SIG_IGN)");
+        let result = stop_previous_n8n(port, None, Duration::from_millis(300));
         let still_running = matches!(child.try_wait(), Ok(None));
         let _ = child.kill();
         let _ = child.wait();
@@ -1528,10 +1584,10 @@ mod tests {
         std::fs::write(&path, "4242").unwrap();
         assert_eq!(recorded_n8n_process(&path), None);
         let pid = std::process::id();
-        record_n8n_process(&path, pid).unwrap();
+        record_n8n_process(&path, &N8nProcessRecord::read(pid).unwrap()).unwrap();
         let record = recorded_n8n_process(&path).unwrap();
-        assert!(is_laya_n8n(pid, Some(&record)));
-        assert!(!is_laya_n8n(pid + 1, Some(&record)));
+        assert_eq!(record.pid, pid);
+        assert!(record.matches_current_process());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

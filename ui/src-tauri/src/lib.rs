@@ -3,6 +3,8 @@
 
 mod fs_private;
 mod n8n;
+#[cfg(windows)]
+mod n8n_job;
 mod n8n_upgrade;
 mod process_util;
 #[cfg(windows)]
@@ -1723,7 +1725,9 @@ if(document.body)document.body.style.marginTop=bar.offsetHeight+'px';
 
                     log::info!("Stopping n8n process");
                     n8n_upgrade::stop_active_child();
-                    n8n::shutdown_n8n();
+                    if let Err(e) = n8n::shutdown_n8n() {
+                        log::warn!("Could not stop n8n on exit: {e}");
+                    }
                 }
                 _ => {}
             }
