@@ -1,7 +1,7 @@
 <!-- Copyright 2026 Aayush Chawla -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
-	import { onMount, tick, untrack } from 'svelte';
+	import { onDestroy, tick, untrack } from 'svelte';
 	import { engineApi } from '$lib/api/engine';
 	import { parseBackendDate } from '$lib/utils/datetime';
 	import { capturePositions, playFlip } from '$lib/utils/flip';
@@ -9,6 +9,7 @@
 	import { feedFilters, feedDate, feedPrevDate, feedNextDate, localToday, allDaysSavedDate, type FeedFilters } from '$lib/stores/feedFilters';
 	import type { ActionCard, CardGroup, GroupSummary, DaySummary, DayEventsResponse, SpaceSummary, Tag } from '$lib/api/types';
 	import { reduceCardUpdated, removeCardFromGroups, type CardUpdatePayload } from '$lib/feed/cardUpdateReducer';
+	import { createReconnectReload } from '$lib/feed/reconnectReload';
 	import CardGroupComponent from '$lib/components/feed/CardGroup.svelte';
 	import ActionCardComponent from '$lib/components/feed/ActionCard.svelte';
 	import CardDetail from '$lib/components/feed/CardDetail.svelte';
@@ -453,9 +454,11 @@
 
 	let _fetchId = 0;
 	let _reloadTimer: ReturnType<typeof setTimeout> | null = null;
-	// True when the latest loadGroups() failed. Plain (not $state) so the
-	// WebSocket effect below can read it without re-running on every load.
-	let _lastLoadFailed = false;
+	const reconnectReload = createReconnectReload(scheduleReload);
+	onDestroy(() => {
+		++_fetchId;
+		if (_reloadTimer !== null) clearTimeout(_reloadTimer);
+	});
 
 	// Promise that resolves when any in-progress FLIP animation finishes
 	let _flipSettled: Promise<void> = Promise.resolve();
@@ -570,8 +573,6 @@
 				offset: 0
 			});
 			if (id !== _fetchId) return;
-			_lastLoadFailed = false;
-
 			// Capture positions before updating groups for FLIP animation
 			const oldPositions = captureCardPositions();
 
@@ -626,9 +627,10 @@
 				scrollToGroupElement(_scrollToGroupEntityId);
 				_scrollToGroupEntityId = null;
 			}
+			reconnectReload.loadFinished(true);
 		} catch {
 			if (id !== _fetchId) return;
-			_lastLoadFailed = true;
+			reconnectReload.loadFinished(false);
 			error = 'Failed to load cards';
 		} finally {
 			if (id === _fetchId) loading = false;
@@ -697,20 +699,10 @@
 		loadGroups();
 	});
 
-	// Resync after a WebSocket reconnect. The store wipes its buffered messages on
-	// disconnect, so after an engine restart the feed would otherwise stay silently
-	// stale until the user changed a filter (review §2 UI — P4-30). Fire only on a
-	// genuine reconnect (2nd+ time we reach 'connected'), not the initial connect —
-	// the mount-time reload effect above already fetched. The initial connect
-	// also reloads when that mount-time fetch failed, e.g. because the engine
-	// was still starting: nothing else would retry it, and the feed would keep
-	// showing "Failed to load cards" with an empty list.
-	let _hasConnectedBefore = false;
+	// A working socket can trigger one retry of the initial load in either
+	// order. Later reconnects resync messages the store dropped on disconnect.
 	$effect(() => {
-		if ($wsStatus === 'connected') {
-			if (_hasConnectedBefore || _lastLoadFailed) scheduleReload();
-			_hasConnectedBefore = true;
-		}
+		reconnectReload.connectionChanged($wsStatus === 'connected');
 	});
 
 	// Load available tags for the filter
