@@ -191,3 +191,84 @@ async def test_jira_done_uses_the_latest_status_change_time_and_author(db):
         for workflow_id in ("test", "other")
     ]
     await _assert_completion_reaches_both_workflows(db, [event, other_event], retries)
+
+
+def test_jira_changelog_pagination_keeps_recent_changes_with_their_issues():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required to run an n8n code node")
+    workflow = json.loads((WORKFLOWS_DIR / "jira-ingestion.json").read_text(encoding="utf-8"))
+    now = datetime.now(timezone.utc)
+    old = (now - timedelta(days=1)).isoformat()
+    moved = (now - timedelta(seconds=40)).isoformat()
+    edited = (now - timedelta(seconds=20)).isoformat()
+    old_entry = {"created": old, "items": [{"field": "summary", "toString": "Previous title"}]}
+    done = {
+        "created": moved, "author": {"displayName": "Mover"},
+        "items": [{"field": "status", "fromString": "In Progress", "toString": "Done"}],
+    }
+    priority = {"created": edited, "items": [{"field": "priority", "fromString": "Low", "toString": "High"}]}
+    issues = [
+        {
+            "id": str(index), "key": f"DEMO-{index}", "self": f"https://jira.example/rest/api/3/issue/{index}",
+            "fields": {"summary": "Fix", "status": {"name": "Done"}, "created": old, "updated": edited},
+        }
+        for index in range(3)
+    ]
+    histories = [
+        [old_entry] * 199 + [done] + [{"created": edited, "items": []}],
+        [old_entry] * 501 + [priority],
+        [],
+    ]
+    result = subprocess.run(
+        [node, "-e", """
+            const { workflow, issues, histories } = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
+            const params = name => workflow.nodes.find(node => node.name === name).parameters;
+            const evaluate = (expr, locals) => new Function(
+                ...Object.keys(locals), 'return (' + expr.slice(3, -2) + ')'
+            )(...Object.values(locals));
+            const get = params('Get Changelogs');
+            const pagination = get.options.pagination?.pagination;
+            const offsetParam = pagination?.parameters?.parameters.find(
+                param => param.type === 'qs' && param.name === 'startAt'
+            );
+            const offsets = issues.map(() => []);
+            const pages = issues.flatMap((issue, issueIndex) => {
+                const url = new URL(evaluate(get.url, { $json: issue }));
+                const maxResults = Number(url.searchParams.get('maxResults'));
+                const history = histories[issueIndex];
+                const output = [];
+                let $response = {};
+                for (let $pageCount = 0; $pageCount <= history.length; $pageCount++) {
+                    const startAt = offsetParam ? evaluate(offsetParam.value, { $response, $pageCount }) : 0;
+                    offsets[issueIndex].push(startAt);
+                    const body = {
+                        startAt, maxResults, total: history.length, isLast: startAt + maxResults >= history.length,
+                        values: history.slice(startAt, startAt + maxResults),
+                    };
+                    output.push({ json: body, pairedItem: { item: issueIndex } });
+                    $response = { body, statusCode: 200 };
+                    if (!offsetParam || evaluate(pagination.completeExpression, { $response, $pageCount: $pageCount + 1 })) {
+                        return output;
+                    }
+                }
+                throw new Error('Changelog pagination did not stop');
+            });
+            const run = (name, items) => new Function('$input', '$workflow', params(name).jsCode)(
+                { all: () => items }, { id: 'test' }
+            );
+            const wrapped = run('Wrap Changelog', pages);
+            const merged = issues.map((issue, index) => ({ json: { ...issue, ...wrapped[index]?.json } }));
+            const events = run('Classify Change', merged).map(item => item.json);
+            process.stdout.write(JSON.stringify({ events, offsets }));
+        """],
+        input=json.dumps({"workflow": workflow, "issues": issues, "histories": histories}),
+        text=True, capture_output=True, check=True, timeout=15,
+    )
+    output = json.loads(result.stdout)
+    assert [(event["subject"]["id"], event["source"]["raw_event_type"]) for event in output["events"]] == [
+        ("DEMO-0", "issue_resolved"), ("DEMO-1", "issue_priority_changed"), ("DEMO-2", "issue_updated"),
+    ]
+    assert output["events"][0]["timestamp"] == moved
+    assert output["events"][0]["actor"]["name"] == "Mover"
+    assert output["offsets"] == [[0, 200, 100], [0, 500], [0]]

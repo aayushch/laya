@@ -45,7 +45,24 @@
         "url": "={{ $json.self + '/changelog?maxResults=100' }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "jiraSoftwareCloudApi",
-        "options": {}
+        "options": {
+          "pagination": {
+            "pagination": {
+              "paginationMode": "updateAParameterInEachRequest",
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "qs",
+                    "name": "startAt",
+                    "value": "={{ $pageCount === 0 ? 0 : $pageCount === 1\n    ? Math.floor(($response.body.total - 1) / $response.body.maxResults) * $response.body.maxResults\n    : $response.body.startAt - $response.body.maxResults }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ $pageCount === 1\n    ? $response.body.isLast || $response.body.total <= $response.body.maxResults\n    : $response.body.startAt <= $response.body.maxResults\n      || Date.parse($response.body.values?.[0]?.created) <= Date.now() - 120000 }}"
+            }
+          }
+        }
       },
       "name": "Get Changelogs",
       "type": "n8n-nodes-base.httpRequest",
@@ -57,7 +74,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Wrap the changelog response so it matches the shape\n// the Classify Change node expects: json.changelog.histories\nreturn $input.all().map(item => {\n  return {\n    json: {\n      changelog: {\n        histories: item.json.values || []\n      }\n    }\n  };\n});"
+        "jsCode": "// Jira sorts oldest first. Get Changelogs reads page zero for the total, then\n// works backwards from the newest page until it covers the two-minute poll\n// window. Group by the issue's input index so Merge gets one item per issue.\nconst pagesByIssue = [];\nfor (const [index, item] of $input.all().entries()) {\n  (pagesByIssue[item.pairedItem.item] ??= []).push({ index, page: item.json });\n}\n\nreturn pagesByIssue.map(pages => {\n  pages.sort((a, b) => a.page.startAt - b.page.startAt);\n  return {\n    json: { changelog: { histories: pages.flatMap(({ page }) => page.values || []) } },\n    pairedItem: pages.map(({ index }) => ({ item: index }))\n  };\n});"
       },
       "name": "Wrap Changelog",
       "type": "n8n-nodes-base.code",
@@ -205,6 +222,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.11.24"
+    "laya_version": "2026.11.25"
   }
 }
