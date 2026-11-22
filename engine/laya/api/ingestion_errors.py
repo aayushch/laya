@@ -152,7 +152,7 @@ async def report_ingestion_error(report: IngestionErrorReport) -> IngestionError
 
     Flow:
     1. Compute a fingerprint from error_name + normalized message.
-    2. Resolve source_id + space_id read-only from the sources table (no auto-create).
+    2. Resolve source, space, and platform read-only from the sources table.
     3. If a matching row exists within the coalesce window, bump occurrence_count.
     4. Otherwise insert a new row.
     """
@@ -160,20 +160,20 @@ async def report_ingestion_error(report: IngestionErrorReport) -> IngestionError
     fingerprint = _fingerprint(report.error_name, report.error_message)
     occurred_at_iso = db_ts(report.occurred_at)
 
-    # 1. Resolve source + space by workflow_id. Deliberately NOT calling
-    # space_resolution.resolve_space() — that has side effects (auto-inserting
-    # rows into `sources`), which would be surprising from an error-report path.
-    # If the source doesn't exist, the error stays orphaned (both fields NULL)
-    # and we log it for debuggability.
+    # 1. Look up the workflow registration. A failure for an unregistered
+    # workflow can still be recorded with the handler's platform guess.
     source_id: Optional[str] = None
     space_id: Optional[str] = None
+    registered_platform: Optional[str] = None
     source_rows = await db.execute_fetchall(
-        "SELECT source_id, space_id FROM sources WHERE workflow_id = ?",
+        "SELECT source_id, space_id, platform FROM sources WHERE workflow_id = ?",
         (report.workflow_id,),
     )
     if source_rows:
-        source_id = source_rows[0]["source_id"]
-        space_id = source_rows[0]["space_id"]
+        source = source_rows[0]
+        source_id = source["source_id"]
+        space_id = source["space_id"]
+        registered_platform = source["platform"] or None
     else:
         log.warning(
             "ingestion_error_unresolved_source",
@@ -187,7 +187,7 @@ async def report_ingestion_error(report: IngestionErrorReport) -> IngestionError
     # new occurrence should appear as a new row).
     existing = await db.execute_fetchall(
         f"""
-        SELECT error_id, occurrence_count
+        SELECT error_id, platform
         FROM ingestion_errors
         WHERE workflow_id = ? AND node_name IS ? AND fingerprint = ?
           AND last_occurred_at > datetime('now', '-{COALESCE_WINDOW_MINUTES} minutes')
@@ -210,7 +210,8 @@ async def report_ingestion_error(report: IngestionErrorReport) -> IngestionError
                    error_http_code  = COALESCE(?, error_http_code),
                    error_details    = COALESCE(?, error_details),
                    execution_id     = COALESCE(?, execution_id),
-                   execution_url    = COALESCE(?, execution_url)
+                   execution_url    = COALESCE(?, execution_url),
+                   platform         = COALESCE(?, platform)
              WHERE error_id = ?
             """,
             (
@@ -220,6 +221,7 @@ async def report_ingestion_error(report: IngestionErrorReport) -> IngestionError
                 _json_or_none(report.error_details),
                 report.execution_id,
                 report.execution_url,
+                registered_platform,
                 error_id,
             ),
         )
@@ -229,7 +231,7 @@ async def report_ingestion_error(report: IngestionErrorReport) -> IngestionError
             status="coalesced",
             error_id=error_id,
             workflow_id=report.workflow_id,
-            platform=report.platform,
+            platform=registered_platform or existing[0]["platform"],
             node=report.node_name,
             http=report.error_http_code,
             msg=report.error_message[:200],
@@ -242,6 +244,7 @@ async def report_ingestion_error(report: IngestionErrorReport) -> IngestionError
     # + window is the dedup mechanism); it's just a stable PK when the n8n handler
     # retries the POST after a transient engine error.
     error_id = report.error_id or f"ierr_{uuid.uuid4().hex[:16]}"
+    platform = registered_platform or report.platform
     try:
         await db.execute(
             """
@@ -258,7 +261,7 @@ async def report_ingestion_error(report: IngestionErrorReport) -> IngestionError
                 report.workflow_id,
                 source_id,
                 space_id,
-                report.platform,
+                platform,
                 report.workflow_name,
                 report.node_name,
                 report.node_type,
@@ -289,7 +292,7 @@ async def report_ingestion_error(report: IngestionErrorReport) -> IngestionError
         status="new",
         error_id=error_id,
         workflow_id=report.workflow_id,
-        platform=report.platform,
+        platform=platform,
         node=report.node_name,
         http=report.error_http_code,
         msg=report.error_message[:200],
