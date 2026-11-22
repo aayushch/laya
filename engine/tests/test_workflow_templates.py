@@ -238,8 +238,10 @@ def test_github_inline_comment_does_not_reemit_an_earlier_merge(github_code):
         "closed_at": OLD_TIME,
         "updated_at": PR_TIME,
     }
-    event, = github_code("Filter & Normalize", [issue, _inline()])
-    assert event["source"]["raw_event_type"] == "issue_comment_created"
+    events = github_code("Filter & Normalize", [issue, _inline()])
+    assert [event["source"]["raw_event_type"] for event in events] == [
+        "pull_request_updated", "issue_comment_created",
+    ]
 
 
 @pytest.mark.parametrize("merged", [False, True])
@@ -273,3 +275,30 @@ def test_github_pr_closure_and_later_update_keep_separate_ids_across_polls(githu
     at_close, = github_code("Filter & Normalize", [{**issue, "updated_at": closed_at}])
     assert at_close["event_id"] == closed["event_id"]
     assert github_code("Filter & Normalize", [issue], since="2026-11-22T10:02:02Z") == []
+
+
+@pytest.mark.parametrize("inline", [False, True])
+def test_github_keeps_pr_label_updates_that_share_a_review_timestamp(github_code, inline):
+    issue = {
+        "number": 42,
+        "repository_url": REPO_URL,
+        "pull_request": {},
+        "state": "open",
+        "created_at": OLD_TIME,
+        "updated_at": PR_TIME,
+        "labels": [{"name": "needs-release-notes"}],
+    }
+    activity = _inline() if inline else {
+        "id": 101,
+        "pull_request_url": f"{REPO_URL}/pulls/42",
+        "state": "APPROVED",
+        "submitted_at": PR_TIME,
+        "user": {"login": "reviewer"},
+    }
+
+    events = github_code("Filter & Normalize", [issue, activity])
+    assert [event["source"]["raw_event_type"] for event in events] == [
+        "pull_request_updated",
+        "issue_comment_created" if inline else "pull_request_review_approved",
+    ]
+    assert events[0]["content"]["metadata"]["labels"] == ["needs-release-notes"]
