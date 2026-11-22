@@ -134,10 +134,19 @@ closes keeps `read_at` NULL, so it still counts as unread.
 
 **Switch.** `pipeline.llm_card_status` in settings.json (Settings → Models →
 Advanced), default on. When off, the rules and the `card_status` schema object
-are not sent, every card is created `ready`, and Laya closes nothing.
+are omitted, and emit skips the stager's status verdict.
 
 **Override.** `~/.laya/prompts/stager_card_status.md` replaces the rules. A
 `stager.md` override does not remove them.
+
+## Source-confirmed card completion
+
+Set `pipeline.source_card_completion` to `true` in `~/.laya/settings.json`
+(default `false`). A confirmed GitHub merge or a Jira transition to Done then
+completes earlier Ready cards for the same work item, connection and space.
+The completion runs after filter rules, uses no model, and creates no card.
+A Ready card that finishes processing after its work item completes is
+created Done with the source reason. User-reopened cards keep their status.
 
 ## Omni Resynthesis (Scheduled)
 

@@ -20,13 +20,20 @@ from laya.models.card import ActionCardData
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
 from laya.pipeline.card_status import (
+    SET_BY_USER,
     StatusDecision,
     close_earlier_cards,
     decide_card_status,
     entity_status_lock,
     llm_card_status_enabled,
+    user_reopened_card,
 )
 from laya.pipeline.entity_resolution import resolve_semantic_entities
+from laya.pipeline.source_completion import (
+    apply_late_source_completion,
+    source_card_completion_enabled,
+    source_status_lock_key,
+)
 from laya.pipeline.summarize import trigger_summary_status_update, trigger_summary_update
 from laya.tasks import create_task
 from laya.workers.base import WorkerResult
@@ -690,7 +697,9 @@ async def run_emit(
     db = await get_db()
     event_ts = _event_ts(event)
     closed_cards: list[dict] = []
-    async with entity_status_lock(entity_id):
+    source_completion = source_card_completion_enabled(event.source.platform)
+    lock_key = source_status_lock_key(event) if source_completion else entity_id
+    async with entity_status_lock(lock_key):
         if llm_card_status_enabled():
             decision = await decide_card_status(
                 db,
@@ -702,6 +711,10 @@ async def run_emit(
             )
         else:
             decision = StatusDecision(status=base_status)
+            if pre_created and await user_reopened_card(db, event.event_id):
+                decision.status_set_by = SET_BY_USER
+        if source_completion:
+            await apply_late_source_completion(db, event, space_id, decision)
         await _persist_card(
             db,
             card_id=card_id,
