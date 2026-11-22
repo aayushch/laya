@@ -11,11 +11,16 @@ restart does not lose a poll.
 import json
 import shutil
 import subprocess
+from unittest.mock import AsyncMock, patch
 
 import pytest
+from litellm import ModelResponse
 
 from laya.integrations.n8n_bootstrap import WORKFLOWS_DIR
 from laya.models.event import LayaEvent
+from laya.pipeline.space_resolution import resolve_space
+from laya.pipeline.stager import run_stager
+from tests.conftest import insert_test_card, insert_test_event
 
 TOKEN_HEADER = "X-Laya-N8n-Token"
 TOKEN_VALUE = "={{ $env.LAYA_N8N_TOKEN }}"
@@ -61,13 +66,27 @@ def test_event_post_nodes_retry_on_failure():
     assert not bad, f"POST nodes without retry: {bad}"
 
 
-@pytest.mark.skipif(not WORKFLOWS_DIR.exists(), reason="bundled workflows not present")
-def test_trello_normalizes_actions_across_pages_in_chronological_order():
+def _normalize_trello_actions(workflow_id, pages):
     node = shutil.which("node")
     if node is None:
         pytest.skip("Node.js is required to run the Trello normalizer")
     workflow = json.loads((WORKFLOWS_DIR / "trello-ingestion.json").read_text(encoding="utf-8"))
     code = next(n["parameters"]["jsCode"] for n in workflow["nodes"] if n["name"] == "Normalize Trello Actions")
+    result = subprocess.run(
+        [node, "-e", """
+            const {code, workflowId, pages} = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
+            const run = new Function('$input', '$workflow', code);
+            const items = pages.map(json => ({json}));
+            process.stdout.write(JSON.stringify(run({all: () => items}, {id: workflowId})));
+        """],
+        input=json.dumps({"code": code, "workflowId": workflow_id, "pages": pages}),
+        text=True, capture_output=True, check=True, timeout=15,
+    )
+    return [LayaEvent.model_validate(item["json"]) for item in json.loads(result.stdout)]
+
+
+@pytest.mark.skipif(not WORKFLOWS_DIR.exists(), reason="bundled workflows not present")
+def test_trello_normalizes_actions_across_pages_in_chronological_order():
     card = {"id": "card-id", "name": "Update onboarding", "shortLink": "AbCd1234"}
     board = {"id": "board-id", "name": "Work"}
 
@@ -92,24 +111,15 @@ def test_trello_normalizes_actions_across_pages_in_chronological_order():
         {"body": [assignment, action("commentCard", 1, text="Please review."), action("createCard", 0)]},
         {"body": []},
     ]
-    result = subprocess.run(
-        [node, "-e", """
-            const {code, pages} = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
-            const run = new Function('$input', '$workflow', code);
-            const items = pages.map(json => ({json}));
-            process.stdout.write(JSON.stringify(run({all: () => items}, {id: 'test'})));
-        """],
-        input=json.dumps({"code": code, "pages": pages}),
-        text=True, capture_output=True, check=True, timeout=15,
-    )
-    events = [LayaEvent.model_validate(item["json"]) for item in json.loads(result.stdout)]
+    events = _normalize_trello_actions("test", pages)
 
     assert [event.source.raw_event_type for event in events] == [
         "card_created", "card_commented", "card_member_added", "card_completed", "card_moved", "card_archived",
     ]
-    assert {event.entity_id for event in events} == {"trello:ticket:card-id"}
+    assert {event.entity_id for event in events} == {"trello:ticket:test:card-id"}
     assert {event.subject.url for event in events} == {"https://trello.com/c/AbCd1234"}
     assert {event.source.connection_id for event in events} == {"test"}
+    assert {event.content.metadata["trello_card_id"] for event in events} == {"card-id"}
     assert events[1].event_id == "evt_trello_test_1"
     assert events[1].actor.platform_handle == "boarduser"
     assert events[1].content.body == "Please review."
@@ -117,3 +127,95 @@ def test_trello_normalizes_actions_across_pages_in_chronological_order():
         {"role": "assignee", "name": "Card Member", "email": "", "handle": "cardmember"},
     ]
     assert events[4].content.body == "Card moved from To do to Done."
+
+
+@pytest.mark.skipif(not WORKFLOWS_DIR.exists(), reason="bundled workflows not present")
+@pytest.mark.asyncio
+async def test_trello_card_move_keeps_work_item_history_in_the_board_connection(
+    db, sample_router_output_engineer,
+):
+    card = {"id": "card-id", "name": "Update onboarding", "shortLink": "AbCd1234"}
+    for space_id in ("origin", "destination"):
+        await db.execute(
+            "INSERT INTO spaces (space_id, name, stager_model) VALUES (?, ?, ?)",
+            (space_id, space_id, f"ollama/{space_id}"),
+        )
+        await db.execute(
+            "INSERT INTO sources (source_id, name, platform, workflow_id, space_id) VALUES (?, ?, ?, ?, ?)",
+            (f"src-{space_id}", space_id, "trello", f"workflow-{space_id}", space_id),
+        )
+    await db.commit()
+
+    def action(action_id, action_type, minute, board):
+        return {
+            "id": action_id,
+            "type": action_type,
+            "date": f"2026-11-22T16:{minute:02}:00Z",
+            "data": {"card": card, "board": {"id": board}},
+        }
+
+    created, moved_off = _normalize_trello_actions("workflow-origin", [{"body": [
+        action("created", "createCard", 0, "origin-board"),
+        action("moved-off", "moveCardFromBoard", 1, "origin-board"),
+    ]}])
+    moved_on, commented = _normalize_trello_actions("workflow-destination", [{"body": [
+        action("moved-on", "moveCardToBoard", 1, "destination-board"),
+        action("commented", "commentCard", 2, "destination-board"),
+    ]}])
+
+    async def event_space(event):
+        await insert_test_event(
+            db, event.event_id, platform="trello", raw_event_type=event.source.raw_event_type,
+            subject_id=event.subject.id,
+        )
+        return await resolve_space(event.event_id, event.source.connection_id, event.source.platform)
+
+    async def store_card(event, header, summary, space_id):
+        await insert_test_card(
+            db, card_id=f"card-{event.event_id}", event_id=event.event_id,
+            entity_id=event.entity_id, status="ready", header=header, summary=summary,
+            space_id=space_id,
+        )
+        await db.execute(
+            "UPDATE action_cards SET created_at = ? WHERE event_id = ?",
+            (event.timestamp.strftime("%Y-%m-%d %H:%M:%S"), event.event_id),
+        )
+        await db.commit()
+
+    origin_space = await event_space(created)
+    origin_header = "Origin board card title"
+    origin_summary = "Origin board private details"
+    await store_card(created, origin_header, origin_summary, origin_space)
+    destination_space = await event_space(moved_on)
+    moved_off_space = await event_space(moved_off)
+    comment_space = await event_space(commented)
+
+    reply = ModelResponse(
+        usage={"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        choices=[{
+            "index": 0, "message": {"role": "assistant", "content": '{"header": "Update onboarding"}'},
+            "finish_reason": "stop",
+        }],
+    )
+    with (
+        patch("litellm.acompletion", new=AsyncMock(return_value=reply)) as complete,
+        patch("laya.pipeline.stager.query_related_context", new=AsyncMock(return_value=[])),
+        patch("laya.pipeline.budget.check_budget", new=AsyncMock()),
+    ):
+        await run_stager(moved_off, sample_router_output_engineer, space_id=moved_off_space)
+        await run_stager(moved_on, sample_router_output_engineer, space_id=destination_space)
+        await store_card(moved_on, "Destination board move", "Moved onto this board", destination_space)
+        await run_stager(commented, sample_router_output_engineer, space_id=comment_space)
+
+    assert [call.kwargs["model"] for call in complete.await_args_list] == [
+        "ollama/origin", "ollama/destination", "ollama/destination",
+    ]
+    origin_prompt, move_prompt, comment_prompt = [
+        call.kwargs["messages"][-1]["content"] for call in complete.await_args_list
+    ]
+    assert origin_header in origin_prompt
+    assert origin_summary in origin_prompt
+    assert origin_header not in move_prompt
+    assert origin_summary not in move_prompt
+    assert origin_header not in comment_prompt
+    assert "Destination board move" in comment_prompt
