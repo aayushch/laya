@@ -12,10 +12,15 @@ import json
 import shutil
 import subprocess
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pytest
 
+from laya.api.events import receive_event
 from laya.integrations.n8n_bootstrap import WORKFLOWS_DIR
+from laya.models.event import LayaEvent
+from laya.pipeline.queue import process_event
+from tests.conftest import insert_test_card
 
 TOKEN_HEADER = "X-Laya-N8n-Token"
 TOKEN_VALUE = "={{ $env.LAYA_N8N_TOKEN }}"
@@ -61,7 +66,7 @@ def test_event_post_nodes_retry_on_failure():
     assert not bad, f"POST nodes without retry: {bad}"
 
 
-def _normalize(platform, node_name, items, *, since=None):
+def _normalize(platform, node_name, items, *, since=None, workflow_id="test"):
     node = shutil.which("node")
     if node is None:
         pytest.skip("Node.js is required to run an n8n code node")
@@ -69,18 +74,53 @@ def _normalize(platform, node_name, items, *, since=None):
     code = next(n["parameters"]["jsCode"] for n in data["nodes"] if n["name"] == node_name)
     result = subprocess.run(
         [node, "-e", """
-            const { code, items, since } = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
+            const { code, items, since, workflowId } = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
             const run = new Function('$input', '$workflow', '$', code);
             const earlierNode = () => ({ first: () => ({ json: { since } }) });
-            process.stdout.write(JSON.stringify(run({ all: () => items }, { id: 'test' }, earlierNode)));
+            process.stdout.write(JSON.stringify(run({ all: () => items }, { id: workflowId }, earlierNode)));
         """],
-        input=json.dumps({"code": code, "items": [{"json": item} for item in items], "since": since}),
+        input=json.dumps({
+            "code": code, "items": [{"json": item} for item in items],
+            "since": since, "workflowId": workflow_id,
+        }),
         text=True, capture_output=True, check=True, timeout=15,
     )
     return [item["json"] for item in json.loads(result.stdout)]
 
 
-def test_github_merge_has_a_stable_timestamp_and_survives_comment_filtering():
+async def _assert_completion_reaches_both_workflows(db, deliveries, retries):
+    events = [LayaEvent.model_validate(delivery) for delivery in deliveries]
+    for event in events:
+        card_id = f"card-{event.source.connection_id}"
+        earlier = event.model_copy(update={
+            "event_id": card_id,
+            "timestamp": event.timestamp - timedelta(seconds=1),
+            "source": event.source.model_copy(update={"raw_event_type": "issue_updated"}),
+        })
+        await receive_event(earlier)
+        await insert_test_card(db, card_id=card_id, event_id=card_id, status="ready", space_id="default")
+
+    events.extend(LayaEvent.model_validate(retry) for retry in retries)
+    with (
+        patch("laya.pipeline.source_completion.load_settings", return_value={
+            "pipeline": {"source_card_completion": True},
+        }),
+        patch("laya.config.load_rules", return_value={"rules": []}),
+    ):
+        for event in events:
+            await receive_event(event)
+            await process_event(event.event_id)
+
+    cards = await db.execute_fetchall("SELECT card_id, status FROM action_cards ORDER BY card_id")
+    assert [tuple(card) for card in cards] == [("card-other", "done"), ("card-test", "done")]
+    completed = await db.execute_fetchall(
+        "SELECT source_connection_id FROM events WHERE processing_status = 'completed' ORDER BY 1"
+    )
+    assert [row["source_connection_id"] for row in completed] == ["other", "test"]
+
+
+@pytest.mark.asyncio
+async def test_github_merge_has_a_stable_timestamp_and_survives_comment_filtering(db):
     repo = "https://api.github.com/repos/acme/backend"
     since = "2026-11-22T15:59:30Z"
     merged_at = "2026-11-22T16:00:00Z"
@@ -107,13 +147,20 @@ def test_github_merge_has_a_stable_timestamp_and_survives_comment_filtering():
         "issue_comment_created", "issue_comment_created",
     ]
     assert events[0]["timestamp"] == events[2]["timestamp"] == merged_at
-    [repeat] = _normalize(
-        "github", "Filter & Normalize", [dict(merged, updated_at="2026-11-22T16:02:00Z")], since=since,
+    [other_merge, other_unmerged] = _normalize(
+        "github", "Filter & Normalize", [merged, unmerged], since=since, workflow_id="other",
     )
-    assert repeat["event_id"] == events[0]["event_id"]
+    assert other_unmerged["event_id"] == events[1]["event_id"]
+    updated = dict(merged, updated_at="2026-11-22T16:02:00Z")
+    retries = [
+        _normalize("github", "Filter & Normalize", [updated], since=since, workflow_id=workflow_id)[0]
+        for workflow_id in ("test", "other")
+    ]
+    await _assert_completion_reaches_both_workflows(db, [events[0], other_merge], retries)
 
 
-def test_jira_done_uses_the_latest_status_change_time_and_author():
+@pytest.mark.asyncio
+async def test_jira_done_uses_the_latest_status_change_time_and_author(db):
     now = datetime.now(timezone.utc)
     moved = (now - timedelta(seconds=20)).isoformat()
     later_edit = (now - timedelta(seconds=10)).isoformat()
@@ -137,6 +184,10 @@ def test_jira_done_uses_the_latest_status_change_time_and_author():
     assert event["content"]["metadata"]["jira_new_status"] == "Done"
     assert event["timestamp"] == moved
     assert event["actor"]["name"] == "Mover"
+    [other_event] = _normalize("jira", "Classify Change", [issue], workflow_id="other")
     issue["fields"]["updated"] = now.isoformat()
-    [repeat] = _normalize("jira", "Classify Change", [issue])
-    assert repeat["event_id"] == event["event_id"]
+    retries = [
+        _normalize("jira", "Classify Change", [issue], workflow_id=workflow_id)[0]
+        for workflow_id in ("test", "other")
+    ]
+    await _assert_completion_reaches_both_workflows(db, [event, other_event], retries)
