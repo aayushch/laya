@@ -141,6 +141,10 @@ DEFAULT_SETTINGS = {
         # pipeline/card_status.py). When False, every card is created with its
         # default status and Laya closes no card on its own.
         "llm_card_status": True,
+        # Keep only GitHub events that involve the user (author, assignee, requested
+        # reviewer, @-mentioned, or involved earlier on the same PR or issue); see
+        # pipeline/github_addressing.py.
+        "github_actionable_only": False,
         "debounce": {
             "daily_summary_seconds": 90,
             # Max cards folded into a single daily-summary LLM call. A debounce
@@ -331,6 +335,13 @@ def save_settings(settings: dict) -> None:
     # Invalidate the cache so the next load reflects what we just wrote.
     _settings_cache = None
     _settings_cache_key = None
+
+
+def github_action_filter_enabled(platform: str) -> bool:
+    """Return whether GitHub events must involve the user to become cards."""
+    return platform == "github" and (
+        load_settings().get("pipeline", {}).get("github_actionable_only") is True
+    )
 
 
 def get_n8n_config() -> dict:

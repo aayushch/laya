@@ -13,11 +13,13 @@ flowchart TD
         INGEST["Ingest<br/><i>Resolve actor_relationship,<br/>parse participant_roles</i>"]
         SPACE["Space Resolution<br/><i>Map connection → space_id</i>"]
         RULES["Rules Engine<br/><i>User-defined filters</i>"]
-        INGEST --> SPACE --> RULES
+        ADDR["Action Filters<br/><i>opt-in: drop events that<br/>do not involve the user</i>"]
+        INGEST --> SPACE --> RULES --> ADDR
     end
 
     RULES -->|filtered| STOP([filtered — stop])
-    RULES -->|pass| ROUTER
+    ADDR -->|not addressed| STOP
+    ADDR -->|pass| ROUTER
 
     %% ─── Phase 4: Router ───
     subgraph ROUTER_PHASE["Phase 4: Router"]
@@ -66,6 +68,30 @@ flowchart TD
         PRULES["Processing Rules"]
     end
 ```
+
+## GitHub Involvement Filter (opt-in)
+
+The GitHub ingestion workflow polls every recently updated issue, pull request and
+conversation comment in each watched repository, so on a busy repository most events
+are a teammate's work. With `pipeline.github_actionable_only` set to `true` in
+settings.json (default `false`), `pipeline/github_addressing.py` keeps a GitHub event
+only when the Laya user (team.json `self`, matched by the GitHub logins in its
+`accounts`) is the item's author, an assignee or a requested reviewer, is @-mentioned
+by login, or appeared in one of those roles or wrote on the same item in an earlier
+event. A requested reviewer leaves the reviewer list once the review is in, and the
+last rule keeps the conversation after it.
+
+The user's own comments are dropped. Pull request and issue events are kept whoever
+made the change: the workflow credits them to the item's author, so every update to
+the user's own PR arrives with the user as actor.
+
+A dropped event is marked `filtered` with its `filter_rule` ("GitHub item does not
+involve you" or "GitHub comment was written by you") before any model call, so it
+costs no router call. `pipeline/addressing.py` is the entry point the queue and the
+batch router call.
+
+Not covered: review requests sent to a team rather than a person, and PR reviews and
+inline review comments, which the workflow does not ingest.
 
 ## Tags shown to the Stager
 

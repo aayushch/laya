@@ -184,17 +184,27 @@ async def _mark_completed(event_id: str) -> None:
     await db.commit()
 
 
-async def _mark_filtered(event_id: str) -> None:
-    """Mark an event as filtered (terminal, no card produced)."""
+async def _mark_filtered(event_id: str, filter_rule: str | None) -> None:
+    """Mark an event as filtered and tell the app that no card will be produced."""
+    from laya.api.websocket import manager
+
     db = await get_db()
     await db.execute(
         """UPDATE events
            SET processing_status = 'filtered', processed = 1,
+               filtered = 1, filter_rule = ?,
                last_error = NULL, next_retry_at = NULL
            WHERE event_id = ?""",
-        (event_id,),
+        (filter_rule, event_id),
     )
     await db.commit()
+    await manager.broadcast(
+        {
+            "type": "event_classified",
+            "event_id": event_id,
+            "payload": {"filtered": True, "filter_rule": filter_rule},
+        }
+    )
 
 
 async def _mark_failed(event_id: str, error: str) -> None:
@@ -299,6 +309,7 @@ async def process_event(event_id: str) -> None:
     """Run the full pipeline for a single event (with claim/complete/fail)."""
     from laya.api.websocket import manager
     from laya.models.classification import RouterOutput
+    from laya.pipeline.addressing import unaddressed_filter_rule
     from laya.pipeline.ingest import run_ingest
     from laya.pipeline.router import run_router
     from laya.pipeline.rules import run_rules
@@ -331,17 +342,17 @@ async def process_event(event_id: str) -> None:
         # RULES ENGINE
         filtered, filter_rule = await run_rules(event)
         if filtered:
-            await _mark_filtered(event_id)
-            await manager.broadcast(
-                {
-                    "type": "event_classified",
-                    "event_id": event.event_id,
-                    "payload": {
-                        "filtered": True,
-                        "filter_rule": filter_rule,
-                    },
-                }
-            )
+            await _mark_filtered(event_id, filter_rule)
+            return
+
+        # ADDRESSING — a GitHub event that does not concern the user is dropped here,
+        # before any model call. The router cannot tell which pull request or issue is
+        # the user's (see github_addressing.py), so it only sees events that already
+        # passed this check.
+        unaddressed_rule = await unaddressed_filter_rule(event, space_id)
+        if unaddressed_rule:
+            _batch_router_cache.pop(event_id, None)
+            await _mark_filtered(event_id, unaddressed_rule)
             return
 
         # ROUTER — check batch cache first (populated by _batch_route_events)
@@ -775,6 +786,7 @@ async def _batch_route_events(event_ids: list[str]) -> None:
     Best-effort: failures are logged and events fall back to individual routing.
     Events are NOT claimed here — they are only loaded for classification.
     """
+    from laya.pipeline.addressing import unaddressed_filter_rule
     from laya.pipeline.ingest import run_ingest
     from laya.pipeline.router import run_batch_router
     from laya.pipeline.rules import run_rules
@@ -792,6 +804,10 @@ async def _batch_route_events(event_ids: list[str]) -> None:
             )
             filtered, _ = await run_rules(event)
             if filtered:
+                continue
+            # Events an action filter drops are filtered one by one in process_event;
+            # leave them out so the batch call is not spent on them.
+            if await unaddressed_filter_rule(event, space_id):
                 continue
             events_data.append({
                 "event_id": eid,
