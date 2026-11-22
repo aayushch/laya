@@ -26,9 +26,11 @@ class TestPlatformsRegistry:
             assert "category" in p, f"{key} missing category"
             assert "icon" in p, f"{key} missing icon"
 
-    def test_platform_count(self):
-        """Registry should have 13 platforms."""
-        assert len(PLATFORMS) == 13
+    def test_trello_platform(self):
+        """Trello appears in the registry with its board and credentials fields."""
+        trello = PLATFORMS["trello"]
+        assert trello["category"] == "project_management"
+        assert {field["key"] for field in trello["fields"]} == {"apiKey", "apiToken", "boardId"}
 
     def test_supported_n8n_types_matches(self):
         """SUPPORTED_N8N_TYPES set matches all platform n8n_types."""

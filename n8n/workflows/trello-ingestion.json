@@ -1,0 +1,312 @@
+{
+  "name": "Laya - Trello Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      },
+      "name": "Every 2 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "trello-scheduleTrigger-1"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.LAYA_ENGINE_URL }}/metadata/trello-config:{{ $workflow.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Laya-N8n-Token",
+              "value": "={{ $env.LAYA_N8N_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "name": "Read Trello Board Config",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ],
+      "id": "trello-httpRequest-2"
+    },
+    {
+      "parameters": {
+        "jsCode": "const boardId = $input.first().json.value?.boardId;\nif (!boardId || !/^(?:[A-Za-z0-9]{8}|[a-fA-F0-9]{24})$/.test(boardId)) {\n  throw new Error('Trello board configuration is missing or invalid');\n}\n\nconst startedAt = Date.now();\nconst previousPoll = $getWorkflowStaticData('global').lastSuccessfulPoll;\nconst since = previousPoll ? previousPoll - 1000 : startedAt - 150000;\nreturn [{ json: { boardId, startedAt, since: new Date(since).toISOString() } }];\n"
+      },
+      "name": "Prepare Trello Poll",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "id": "trello-code-3"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.trello.com/1/boards/{{ $json.boardId }}/actions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "trelloApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filter",
+              "value": "createCard,commentCard,updateCard,addMemberToCard,removeMemberFromCard,moveCardToBoard,moveCardFromBoard"
+            },
+            {
+              "name": "since",
+              "value": "={{ $json.since }}"
+            },
+            {
+              "name": "limit",
+              "value": "1000"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "paginationMode": "updateAParameterInEachRequest",
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "qs",
+                    "name": "before",
+                    "value": "={{ $response.body?.at(-1)?.id || undefined }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ $response.body.length < 1000 }}",
+              "requestInterval": 250
+            }
+          }
+        }
+      },
+      "name": "Fetch Trello Actions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        0
+      ],
+      "id": "trello-httpRequest-4"
+    },
+    {
+      "parameters": {
+        "jsCode": "const events = [];\nfor (const { json: page } of $input.all()) {\n  if (!Array.isArray(page.body)) throw new Error('Unexpected Trello board actions response');\n  for (const action of page.body) {\n    const data = action.data ?? {};\n    const card = data.card;\n    if (!card?.id || !action.id || !Number.isFinite(Date.parse(action.date))) continue;\n\n    let eventType;\n    let body;\n    const participants = [];\n    switch (action.type) {\n      case 'createCard':\n        eventType = 'card_created';\n        body = data.list?.name ? 'Card created in ' + data.list.name + '.' : 'Card created.';\n        break;\n      case 'commentCard':\n        eventType = 'card_commented';\n        body = data.text ?? '';\n        break;\n      case 'addMemberToCard':\n      case 'removeMemberFromCard': {\n        const added = action.type === 'addMemberToCard';\n        const member = action.member ?? data.member;\n        const handle = member?.username || member?.id || data.idMember || '';\n        const name = member?.fullName || handle;\n        eventType = added ? 'card_member_added' : 'card_member_removed';\n        body = (name || 'A member') + (added ? ' was added to the card.' : ' was removed from the card.');\n        if (added && handle) participants.push({ role: 'assignee', name, email: '', handle });\n        break;\n      }\n      case 'moveCardToBoard':\n      case 'moveCardFromBoard':\n        eventType = 'card_moved';\n        body = action.type === 'moveCardToBoard' ? 'Card moved onto this board.' : 'Card moved off this board.';\n        break;\n      case 'updateCard': {\n        const old = data.old ?? {};\n        if (Object.hasOwn(old, 'closed') && typeof card.closed === 'boolean') {\n          eventType = card.closed ? 'card_archived' : 'card_unarchived';\n          body = card.closed ? 'Card archived.' : 'Card unarchived.';\n        } else if (Object.hasOwn(old, 'dueComplete') && typeof card.dueComplete === 'boolean') {\n          eventType = card.dueComplete ? 'card_completed' : 'card_reopened';\n          body = card.dueComplete ? 'Card marked complete.' : 'Card marked incomplete.';\n        } else if (data.listBefore && data.listAfter) {\n          eventType = 'card_moved';\n          body = 'Card moved from ' + data.listBefore.name + ' to ' + data.listAfter.name + '.';\n        } else if (['name', 'desc', 'due', 'start'].some(field => Object.hasOwn(old, field))) {\n          eventType = 'card_updated';\n          body = Object.hasOwn(old, 'desc') && card.desc ? card.desc : 'Card details updated.';\n        }\n        break;\n      }\n    }\n    if (!eventType) continue;\n\n    const actor = action.memberCreator;\n    events.push({\n      json: {\n        event_id: 'evt_trello_' + $workflow.id + '_' + action.id,\n        timestamp: action.date,\n        source: {\n          platform: 'trello',\n          connection_id: $workflow.id,\n          raw_event_type: eventType,\n        },\n        actor: {\n          name: actor?.fullName || actor?.username || 'Unknown',\n          email: '',\n          platform_handle: actor?.username || action.idMemberCreator || null,\n        },\n        subject: {\n          type: 'ticket',\n          id: card.id,\n          title: card.name || 'Trello card',\n          url: /^[A-Za-z0-9]{8}$/.test(card.shortLink ?? '') ? 'https://trello.com/c/' + card.shortLink : null,\n        },\n        content: {\n          body,\n          attachments: [],\n          metadata: {\n            trello_board_id: data.board?.id ?? null,\n            trello_board_name: data.board?.name ?? null,\n            trello_list_name: data.listAfter?.name ?? data.list?.name ?? null,\n            participants,\n          },\n        },\n      },\n    });\n  }\n}\nreturn events.sort((a, b) => Date.parse(a.json.timestamp) - Date.parse(b.json.timestamp)\n  || a.json.event_id.localeCompare(b.json.event_id));\n"
+      },
+      "name": "Normalize Trello Actions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        0
+      ],
+      "id": "trello-code-5",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "event-id-present",
+              "leftValue": "={{ $json.event_id ?? '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Has Trello Events",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1200,
+        0
+      ],
+      "id": "trello-if-6"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LAYA_ENGINE_URL }}/events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Laya-N8n-Token",
+              "value": "={{ $env.LAYA_N8N_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "name": "POST to Laya Engine",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        -100
+      ],
+      "id": "trello-httpRequest-7",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1500
+    },
+    {
+      "parameters": {
+        "jsCode": "const state = $getWorkflowStaticData('global');\nconst startedAt = $('Prepare Trello Poll').first().json.startedAt;\nstate.lastSuccessfulPoll = Math.max(state.lastSuccessfulPoll || 0, startedAt);\nreturn $input.all();\n"
+      },
+      "name": "Save Successful Poll",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        0
+      ],
+      "id": "trello-code-8"
+    }
+  ],
+  "connections": {
+    "Every 2 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Read Trello Board Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Trello Board Config": {
+      "main": [
+        [
+          {
+            "node": "Prepare Trello Poll",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Trello Poll": {
+      "main": [
+        [
+          {
+            "node": "Fetch Trello Actions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Trello Actions": {
+      "main": [
+        [
+          {
+            "node": "Normalize Trello Actions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Trello Actions": {
+      "main": [
+        [
+          {
+            "node": "Has Trello Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Trello Events": {
+      "main": [
+        [
+          {
+            "node": "POST to Laya Engine",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save Successful Poll",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST to Laya Engine": {
+      "main": [
+        [
+          {
+            "node": "Save Successful Poll",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 110
+  },
+  "active": false,
+  "meta": {
+    "laya_version": "2026.11.22"
+  }
+}

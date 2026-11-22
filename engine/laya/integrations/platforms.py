@@ -157,6 +157,38 @@ PLATFORMS: dict[str, dict] = {
             {"key": "domain", "label": "Jira Domain", "type": "text", "placeholder": "https://your-company.atlassian.net"},
         ],
     },
+    "trello": {
+        "label": "Trello",
+        "category": "project_management",
+        "icon": "trello",
+        "n8n_type": "trelloApi",
+        "n8n_node": "n8n-nodes-base.trello",
+        "oauth": False,
+        "workflows": ["Laya - Trello Ingestion"],
+        "fields": [
+            {
+                "key": "apiKey",
+                "label": "API Key",
+                "type": "password",
+                "help": "Generate in the Trello Auth tab at trello.com/apps/admin",
+            },
+            {
+                "key": "apiToken",
+                "label": "API Token",
+                "type": "password",
+                "help": "Authorize the API key with read access to your Trello board",
+            },
+            {
+                "key": "boardId",
+                "label": "Board URL or ID",
+                "type": "text",
+                "placeholder": "https://trello.com/b/AbCd1234/board-name",
+                "help": "Add one connection per board you want to monitor",
+            },
+        ],
+        "n8n_credential_template": {"apiKey": "{apiKey}", "apiToken": "{apiToken}"},
+        "workflow_config_fields": ["boardId"],
+    },
     "notion": {
         "label": "Notion",
         "category": "project_management",
