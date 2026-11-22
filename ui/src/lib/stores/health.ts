@@ -29,6 +29,19 @@ const ENGINE_AUTH_ERROR_MESSAGE =
 		? " Browser dev mode: set VITE_LAYA_ENGINE_TOKEN in ui/.env.local to the engine's LAYA_ENGINE_TOKEN."
 		: '');
 
+const ENGINE_TOKEN_REJECTED_MESSAGE =
+	"The Laya engine does not accept this window's access token. Try restarting the app." +
+	(import.meta.env?.DEV
+		? " Browser dev mode: VITE_LAYA_ENGINE_TOKEN in ui/.env.local must equal the engine's LAYA_ENGINE_TOKEN."
+		: '');
+
+/**
+ * Startup checks in a row in which the engine refuses this page's token before
+ * the startup screen says so (about 15 seconds at the fast poll rate). A
+ * refusal for a few seconds is normal after a restart: see engineAcceptsToken.
+ */
+export const TOKEN_REJECTED_CHECKS_BEFORE_ERROR = 10;
+
 let pollInterval: ReturnType<typeof setInterval> | null = null;
 let pollMs = FAST_POLL_MS;
 let startupMode = true;
@@ -36,12 +49,33 @@ let startupMode = true;
 // overlapping polls would otherwise each start their own.
 let tokenWaitInFlight = false;
 let tokenErrorLogged = false;
+let tokenRejectedChecks = 0;
 
 function setPollRate(ms: number) {
 	if (!pollInterval || ms === pollMs) return;
 	clearInterval(pollInterval);
 	pollMs = ms;
 	pollInterval = setInterval(fetchHealth, ms);
+}
+
+/**
+ * True when the engine answering on the port accepts `token`. After the app
+ * restarts, the engine from the previous launch can still answer /health for
+ * a few seconds while the new one starts. It holds the previous launch's
+ * token and would refuse every request this page makes, so startup waits for
+ * the engine that accepts this page's token.
+ */
+async function engineAcceptsToken(token: string): Promise<boolean> {
+	try {
+		const resp = await fetch(`${ENGINE_URL}/health`, {
+			headers: { Authorization: `Bearer ${token}` }
+		});
+		if (!resp.ok) return false;
+		const data: HealthResponse = await resp.json();
+		return data.token === 'accepted';
+	} catch {
+		return false;
+	}
 }
 
 async function fetchHealth() {
@@ -52,7 +86,8 @@ async function fetchHealth() {
 			health.set(data);
 			healthError.set(false);
 
-			// Once engine + sqlite are healthy, ensure token is ready before marking startup complete
+			// Once engine + sqlite are healthy, ensure the token is ready and that
+			// this engine accepts it before marking startup complete
 			if (
 				startupMode &&
 				!tokenWaitInFlight &&
@@ -61,10 +96,19 @@ async function fetchHealth() {
 			) {
 				tokenWaitInFlight = true;
 				try {
-					await waitForEngineToken();
-					engineAuthError.set(null);
-					startupReady.set(true);
-					startupMode = false;
+					const token = await waitForEngineToken();
+					if (await engineAcceptsToken(token)) {
+						tokenRejectedChecks = 0;
+						engineAuthError.set(null);
+						startupReady.set(true);
+						startupMode = false;
+					} else {
+						// Stay in startupMode; the next poll checks again.
+						tokenRejectedChecks += 1;
+						if (tokenRejectedChecks >= TOKEN_REJECTED_CHECKS_BEFORE_ERROR) {
+							engineAuthError.set(ENGINE_TOKEN_REJECTED_MESSAGE);
+						}
+					}
 				} catch (err) {
 					// Stay in startupMode; the next poll retries.
 					if (!tokenErrorLogged) {
@@ -94,6 +138,7 @@ async function fetchHealth() {
 export function startHealthPolling() {
 	stopHealthPolling();
 	startupMode = true;
+	tokenRejectedChecks = 0;
 	fetchHealth(); // immediate first check
 	pollMs = FAST_POLL_MS;
 	pollInterval = setInterval(fetchHealth, pollMs);

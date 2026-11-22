@@ -555,9 +555,16 @@ Health check endpoint.
   "chromadb": "healthy",
   "ollama": "not_configured",
   "coding_agent": "available",
-  "uptime_seconds": 3600
+  "uptime_seconds": 3600,
+  "token": "accepted"
 }
 ```
+
+The route needs no token, but a caller may send its `Authorization: Bearer <token>`.
+`token` then says whether this engine accepts it: `accepted`, `rejected`, or `absent`
+when no `Authorization` header was sent. The UI finishes its startup only on
+`accepted`: after the app restarts, the previous launch's engine can still answer on
+the port for a few seconds, and it holds the previous launch's token.
 
 ### `POST /chat`
 

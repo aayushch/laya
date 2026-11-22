@@ -6,12 +6,13 @@
 import time
 
 import structlog
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from laya.config import get_n8n_config
 from laya.db.chromadb_store import get_chromadb_status, get_embedding_info
 from laya.db.sqlite import is_healthy as sqlite_healthy
 from laya.http_client import get_client
+from laya.security.engine_auth import bearer_matches
 
 log = structlog.get_logger()
 router = APIRouter()
@@ -19,8 +20,23 @@ router = APIRouter()
 _start_time = time.time()
 
 
+def _token_status(request: Request) -> str:
+    """Whether this engine accepts the app token the caller sent.
+
+    /health needs no credential and never refuses a caller. A caller that sends
+    its bearer token learns whether this engine holds the same token. After the
+    app restarts, the engine from the previous launch can still answer on the
+    port for a few seconds, and it holds the previous launch's token. The UI
+    finishes its startup only once the answer is "accepted", so it never loads
+    its data from that engine.
+    """
+    if not request.headers.get("authorization"):
+        return "absent"
+    return "accepted" if bearer_matches(request) else "rejected"
+
+
 @router.get("/health")
-async def health_check() -> dict:
+async def health_check(request: Request) -> dict:
     """Check engine, SQLite, and n8n health status."""
     # SQLite
     sqlite_status = "healthy" if await sqlite_healthy() else "unhealthy"
@@ -47,4 +63,5 @@ async def health_check() -> dict:
         "n8n": n8n_status,
         "uptime_seconds": uptime,
         "embeddings": get_embedding_info(),
+        "token": _token_status(request),
     }

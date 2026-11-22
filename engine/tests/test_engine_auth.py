@@ -87,6 +87,30 @@ async def test_health_exempt_from_auth():
     assert resp.status_code == 200
     data = resp.json()
     assert data["engine"] == "healthy"
+    assert data["token"] == "absent"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("authorization", "expected"),
+    [
+        ("Bearer {token}", "accepted"),
+        ("Bearer token_of_an_earlier_launch", "rejected"),
+        ("Basic 12345", "rejected"),
+    ],
+)
+async def test_health_reports_whether_it_accepts_the_token(
+    setup_engine_token, authorization, expected
+):
+    """GET /health stays 200 for any credential and says whether it accepts it."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get(
+            "/health",
+            headers={"Authorization": authorization.format(token=setup_engine_token)},
+        )
+    assert resp.status_code == 200
+    assert resp.json()["token"] == expected
 
 
 @pytest.mark.asyncio
