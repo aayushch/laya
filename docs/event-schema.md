@@ -123,6 +123,8 @@ This is the escape hatch for source-specific data that doesn't fit the common sc
 }
 ```
 
+**GitHub:** Pull request updates and conversation comments may carry `requested_teams` as a list of `org/team-slug` strings. If GitHub confirms the connected account belongs to one of those teams, the event can include that login as a reviewer with `review_requested_via_teams` listing the matched teams. A direct reviewer entry keeps its original shape.
+
 **Slack:**
 ```json
 {
