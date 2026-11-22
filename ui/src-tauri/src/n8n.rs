@@ -766,7 +766,13 @@ pub fn startup_n8n_with(runtime: &N8nRuntime) -> N8nStartResult {
     // 6. Start
     match spawn_n8n(runtime) {
         Ok(child) => {
-            record_n8n_pid(&n8n_pid_file(), child.id());
+            let path = n8n_pid_file();
+            if let Err(e) = record_n8n_process(&path, child.id()) {
+                log::warn!(
+                    "Could not record the n8n process in {}: {e}",
+                    path.display()
+                );
+            }
             if let Ok(mut guard) = N8N_PROCESS.lock() {
                 *guard = Some(child);
             }
@@ -777,20 +783,15 @@ pub fn startup_n8n_with(runtime: &N8nRuntime) -> N8nStartResult {
     }
 }
 
-/// Stop a Laya n8n left running on `N8N_PORT` by an earlier session. Only a
-/// process `is_laya_n8n` recognises is stopped; a user's own n8n on this port
-/// is left alone and reported as an error.
+/// Stop an n8n started by an earlier Laya launch. Unknown listeners on
+/// `N8N_PORT` are left alone and reported as an error.
 pub(crate) fn stop_orphaned_n8n() -> Result<(), String> {
     if !n8n_port_in_use(N8N_PORT) {
         return Ok(());
     }
     log::warn!("Orphaned n8n on port {} — stopping it", N8N_PORT);
-    let recorded = recorded_n8n_pid(&n8n_pid_file());
-    stop_port_listeners(
-        N8N_PORT,
-        &|pid, cmdline| is_laya_n8n(pid, cmdline, recorded),
-        ORPHANED_N8N_GRACE,
-    )
+    let recorded = recorded_n8n_process(&n8n_pid_file());
+    stop_port_listeners(N8N_PORT, recorded.as_ref(), ORPHANED_N8N_GRACE)
 }
 
 /// How long an orphaned n8n gets to exit after SIGTERM before it is killed.
@@ -798,17 +799,17 @@ pub(crate) fn stop_orphaned_n8n() -> Result<(), String> {
 /// default.
 const ORPHANED_N8N_GRACE: Duration = Duration::from_secs(10);
 
-/// Stop the processes listening on `port` that `is_ours` accepts and wait for
+/// Stop the recorded n8n process listening on `port` and wait for
 /// the port to be released. Each gets `grace` to exit after SIGTERM, then it
 /// is killed together with the process group it leads: Laya starts n8n as the
 /// leader of its own group (`spawn_n8n`), so its task runner goes with it.
 /// The n8n of a launch that has ended has no one to finish its work for.
 fn stop_port_listeners(
     port: u16,
-    is_ours: &dyn Fn(u32, &str) -> bool,
+    recorded: Option<&N8nProcessRecord>,
     grace: Duration,
 ) -> Result<(), String> {
-    let signalled = crate::kill_listeners_on_port(port, is_ours);
+    let signalled = crate::kill_listeners_on_port(port, &|pid, _| is_laya_n8n(pid, recorded));
     if wait_for_port_release(port, grace) {
         return Ok(());
     }
@@ -820,6 +821,9 @@ fn stop_port_listeners(
         ));
     }
     for pid in &signalled {
+        if !is_laya_n8n(*pid, recorded) {
+            continue;
+        }
         log::warn!("n8n (pid {pid}) did not exit within {grace:?}; killing it");
         force_kill_process_group(*pid);
     }
@@ -847,8 +851,9 @@ fn wait_for_port_release(port: u16, timeout: Duration) -> bool {
 fn force_kill_process_group(pid: u32) {
     #[cfg(unix)]
     unsafe {
-        libc::kill(-(pid as i32), libc::SIGKILL);
-        libc::kill(pid as i32, libc::SIGKILL);
+        let pid = pid as i32;
+        let target = if libc::getpgid(pid) == pid { -pid } else { pid };
+        libc::kill(target, libc::SIGKILL);
     }
     #[cfg(windows)]
     {
@@ -858,18 +863,17 @@ fn force_kill_process_group(pid: u32) {
     }
 }
 
-/// True when the process `pid` with the lowercased command line `cmdline` is
-/// an n8n that a Laya launch started. `recorded_pid` is the process id that
-/// launch wrote to `n8n_pid_file`.
-///
-/// n8n's start script renames its process to `n8n start` (`process.title`).
-/// On macOS and Linux that replaces the command line `ps` reports, so the
-/// `~/.laya` path of the n8n entry point is not in it there, and the recorded
-/// process id identifies the process instead. The name check keeps a process
-/// that reuses that id from being taken for n8n. On Windows the command line
-/// keeps the path.
-pub(crate) fn is_laya_n8n(pid: u32, cmdline: &str, recorded_pid: Option<u32>) -> bool {
-    cmdline.contains("laya") || (recorded_pid == Some(pid) && cmdline.contains("n8n"))
+#[derive(Debug, PartialEq, Eq)]
+struct N8nProcessRecord {
+    pid: u32,
+    started: String,
+}
+
+fn is_laya_n8n(pid: u32, recorded: Option<&N8nProcessRecord>) -> bool {
+    recorded.is_some_and(|record| {
+        record.pid == pid
+            && crate::process_util::process_start_stamp(pid).as_deref() == Some(&record.started)
+    })
 }
 
 /// True when another process holds `port` on 127.0.0.1, the address n8n
@@ -879,23 +883,29 @@ fn n8n_port_in_use(port: u16) -> bool {
     std::net::TcpListener::bind(("127.0.0.1", port)).is_err()
 }
 
-/// Where Laya records the process id of the n8n it started. A later launch
+/// Where Laya records the identity of the n8n it started. A later launch
 /// reads it to recognise that n8n when this launch ends without stopping it,
 /// for example when it is killed.
 fn n8n_pid_file() -> PathBuf {
     laya_home().join("n8n.pid")
 }
 
-fn record_n8n_pid(path: &Path, pid: u32) {
-    let written = crate::fs_private::create_file_private(path)
-        .and_then(|mut f| f.write_all(pid.to_string().as_bytes()));
-    if let Err(e) = written {
-        log::warn!("Could not record the n8n process id in {}: {e}", path.display());
-    }
+fn record_n8n_process(path: &Path, pid: u32) -> std::io::Result<()> {
+    let started = crate::process_util::process_start_stamp(pid)
+        .ok_or_else(|| std::io::Error::other("cannot read process creation time"))?;
+    writeln!(
+        crate::fs_private::create_file_private(path)?,
+        "{pid} {started}"
+    )
 }
 
-fn recorded_n8n_pid(path: &Path) -> Option<u32> {
-    std::fs::read_to_string(path).ok()?.trim().parse().ok()
+fn recorded_n8n_process(path: &Path) -> Option<N8nProcessRecord> {
+    let record = std::fs::read_to_string(path).ok()?;
+    let (pid, started) = record.trim().split_once(' ')?;
+    Some(N8nProcessRecord {
+        pid: pid.parse().ok().filter(|&pid| pid > 0)?,
+        started: started.to_owned(),
+    })
 }
 
 /// Variables that n8n receives from Laya's own environment on every
@@ -1424,27 +1434,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn laya_n8n_is_recognised_by_its_recorded_pid_after_renaming_itself() {
-        // What `ps` reports on macOS and Linux for the n8n Laya started.
-        assert!(is_laya_n8n(4242, "n8n start\n", Some(4242)));
-    }
-
-    #[test]
-    fn an_n8n_laya_did_not_record_is_left_alone() {
-        assert!(!is_laya_n8n(4242, "n8n start\n", Some(1111)));
-        assert!(!is_laya_n8n(4242, "n8n start\n", None));
-    }
-
-    #[test]
-    fn a_reused_pid_that_is_not_n8n_is_left_alone() {
-        assert!(!is_laya_n8n(4242, "python3 -m http.server 45678\n", Some(4242)));
-    }
-
-    #[test]
-    fn laya_n8n_is_recognised_by_its_path_when_the_command_line_keeps_it() {
-        // Windows reports the original command line.
-        let cmdline = r"c:\users\me\.laya\node\node.exe c:\users\me\.laya\n8n_module\node_modules\n8n\bin\n8n start";
-        assert!(is_laya_n8n(4242, cmdline, None));
+    fn a_reused_pid_does_not_prove_ownership() {
+        let pid = std::process::id();
+        let record = N8nProcessRecord {
+            pid,
+            started: "a different creation time".into(),
+        };
+        assert!(!is_laya_n8n(pid, Some(&record)));
     }
 
     #[test]
@@ -1479,7 +1475,7 @@ mod tests {
                       print(s.getsockname()[1], flush=True)\n\
                       time.sleep(60)\n";
         let mut child = Command::new("python3")
-            .args(["-c", script])
+            .args(["-c", script, "/projects/laya/dev_server.py"])
             .stdout(Stdio::piped())
             .process_group(0)
             .spawn()
@@ -1498,8 +1494,11 @@ mod tests {
         let Some((mut child, port)) = spawn_listener_ignoring_sigterm() else {
             return;
         };
-        let pid = child.id();
-        let result = stop_port_listeners(port, &|p, _| p == pid, Duration::from_millis(500));
+        let record = N8nProcessRecord {
+            pid: child.id(),
+            started: crate::process_util::process_start_stamp(child.id()).unwrap(),
+        };
+        let result = stop_port_listeners(port, Some(&record), Duration::from_millis(500));
         assert_eq!(result, Ok(()));
         assert!(!n8n_port_in_use(port));
         let _ = child.wait();
@@ -1512,23 +1511,27 @@ mod tests {
         let Some((mut child, port)) = spawn_listener_ignoring_sigterm() else {
             return;
         };
-        let result = stop_port_listeners(port, &|_, _| false, Duration::from_millis(300));
-        assert!(result.unwrap_err().contains("isn't Laya's n8n"));
-        assert!(matches!(child.try_wait(), Ok(None)));
+        let result = stop_port_listeners(port, None, Duration::from_millis(300));
+        let still_running = matches!(child.try_wait(), Ok(None));
         let _ = child.kill();
         let _ = child.wait();
+        assert!(result.unwrap_err().contains("isn't Laya's n8n"));
+        assert!(still_running);
     }
 
     #[test]
-    fn recorded_n8n_pid_round_trips_through_the_pid_file() {
+    fn recorded_n8n_identity_round_trips_through_the_pid_file() {
         let dir = std::env::temp_dir().join(format!("laya_n8n_pid_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("n8n.pid");
-        assert_eq!(recorded_n8n_pid(&path), None);
-        record_n8n_pid(&path, 4242);
-        assert_eq!(recorded_n8n_pid(&path), Some(4242));
-        record_n8n_pid(&path, 77);
-        assert_eq!(recorded_n8n_pid(&path), Some(77));
+        assert_eq!(recorded_n8n_process(&path), None);
+        std::fs::write(&path, "4242").unwrap();
+        assert_eq!(recorded_n8n_process(&path), None);
+        let pid = std::process::id();
+        record_n8n_process(&path, pid).unwrap();
+        let record = recorded_n8n_process(&path).unwrap();
+        assert!(is_laya_n8n(pid, Some(&record)));
+        assert!(!is_laya_n8n(pid + 1, Some(&record)));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
