@@ -12,6 +12,8 @@
 	import { spaces } from '$lib/stores/spaces';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { portal } from '$lib/actions/portal';
+	import { engineApi } from '$lib/api/engine';
+	import type { Source } from '$lib/api/types';
 	import { platformDotColor, platformLabel } from '$lib/utils/cardVisuals';
 
 	let { open, pos, hasActiveFilters, sourcePlatforms = [] }: {
@@ -22,15 +24,29 @@
 		sourcePlatforms?: { key: string; count: number }[];
 	} = $props();
 
-	// A platform can be filtered out while absent from today's list (yesterday's
-	// selection, still active). Show those too so the user can always clear them.
+	let registeredSources = $state<Source[]>([]);
+	$effect(() => {
+		if (!open) return;
+		let closed = false;
+		engineApi.getSources().then(({ sources }) => {
+			if (!closed) registeredSources = sources;
+		}).catch(() => {});
+		return () => { closed = true; };
+	});
+
 	const platformRows = $derived.by(() => {
-		const rows = [...sourcePlatforms];
-		const present = new Set(rows.map((r) => r.key));
-		for (const key of $feedFilters.platformFilters) {
-			if (!present.has(key)) rows.push({ key, count: 0 });
+		const counts = new Map(sourcePlatforms.map(({ key, count }) => [key, count]));
+		const selectedSpaces = $feedFilters.spaceFilter;
+		for (const source of registeredSources) {
+			if (source.source_type !== 'ingestion' || !source.platform) continue;
+			if (selectedSpaces.length && !selectedSpaces.includes(source.space_id)) continue;
+			if (!counts.has(source.platform)) counts.set(source.platform, 0);
 		}
-		return rows;
+		// Keep previous selections visible so they can always be cleared.
+		for (const key of $feedFilters.platformFilters) {
+			if (!counts.has(key)) counts.set(key, 0);
+		}
+		return [...counts].map(([key, count]) => ({ key, count }));
 	});
 
 	// Toggle a value in a string[] filter array (add if absent, remove if present).
@@ -108,6 +124,7 @@
 				<div class="space-y-0.5">
 					{#each platformRows as row (row.key)}
 						<button
+							aria-pressed={$feedFilters.platformFilters.includes(row.key)}
 							class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-laya-secondary transition-colors hover:bg-surface-700
 								{$feedFilters.platformFilters.includes(row.key) ? 'text-laya-orange' : 'text-surface-300'}"
 							onclick={() => ($feedFilters.platformFilters = toggleFilter($feedFilters.platformFilters, row.key))}

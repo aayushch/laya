@@ -2284,7 +2284,9 @@
 					onselectgroup={selectGroupSummary}
 					emptyLabel={searchActive
 						? `No cards match "${searchQuery}"`
-						: `No cards for ${formatDateLabel($feedDate)}`}
+						: platformFilterSet.size > 0
+							? 'No cards match the selected sources'
+							: `No cards for ${formatDateLabel($feedDate)}`}
 				/>
 			{:else if loading && groups.length === 0}
 				<div class="py-12 text-center text-surface-400">Loading cards...</div>
@@ -2321,6 +2323,8 @@
 					<p class="text-laya-base">No cards match "<span class="text-surface-300">{searchQuery}</span>"</p>
 					<button class="mt-2 text-laya-secondary text-laya-orange hover:underline" onclick={() => (searchQuery = '')}>Clear search</button>
 				</div>
+			{:else if filteredGroups.length === 0 && platformFilterSet.size > 0}
+				<p class="py-12 text-center text-laya-base text-surface-500">No cards match the selected sources</p>
 			<!-- ── LIST VIEW ── -->
 			{:else if $feedViewMode === 'list'}
 				{#if sections}
