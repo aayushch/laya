@@ -19,7 +19,6 @@ credits pull request and issue events to the item's author, so updates to the
 user's own PR carry the user as actor regardless of who made the change.
 """
 
-import json
 import re
 from dataclasses import dataclass
 
@@ -27,9 +26,6 @@ from laya.config import get_self_user
 from laya.db.sqlite import get_db
 from laya.db.timeutil import db_ts
 from laya.models.event import LayaEvent
-
-# Upper bound on prior events of the same item scanned for the user's involvement.
-_ITEM_SCAN_LIMIT = 500
 
 # Participant roles that tie the user to the item. "commenter" is left out: as the
 # user it is the user's own comment, which never counts as being addressed.
@@ -97,6 +93,50 @@ def _participant_roles(metadata: dict | None) -> list[dict]:
     return [p for p in participants if isinstance(p, dict)]
 
 
+async def _user_involved_before(
+    event: LayaEvent, space_id: str | None, handles: set[str],
+) -> bool:
+    if not handles:
+        return False
+
+    logins = ", ".join("?" for _ in handles)
+    roles = ", ".join("?" for _ in _INVOLVED_ROLES)
+    db = await get_db()
+    # Older rows can contain invalid metadata or participant entries in formats
+    # other than objects. Guard the JSON functions while searching those rows.
+    previous = await db.execute_fetchall(
+        f"""SELECT 1
+            FROM events
+            WHERE source_platform = 'github' AND source_connection_id IS ?
+              AND subject_id = ?
+              AND (space_id IS NULL OR space_id IS ?)
+              AND (timestamp, event_id) < (?, ?)
+              AND (
+                LOWER(actor_handle) IN ({logins})
+                OR EXISTS (
+                    SELECT 1
+                    FROM json_each(
+                        CASE WHEN json_valid(events.content_metadata) THEN events.content_metadata END,
+                        '$.participants'
+                    ) AS participant
+                    WHERE typeof(participant.key) = 'integer'
+                      AND CASE WHEN participant.type = 'object' THEN
+                          json_extract(participant.value, '$.role') IN ({roles})
+                          AND json_type(participant.value, '$.handle') = 'text'
+                          AND LOWER(json_extract(participant.value, '$.handle')) IN ({logins})
+                      END
+                )
+              )
+            LIMIT 1""",
+        (
+            event.source.connection_id, event.subject.id, space_id,
+            db_ts(event.timestamp), event.event_id,
+            *handles, *_INVOLVED_ROLES, *handles,
+        ),
+    )
+    return bool(previous)
+
+
 async def github_addressing(event: LayaEvent, space_id: str | None) -> GitHubAddressing:
     """Compute whether ``event`` (a GitHub PR, issue or comment event) involves the user."""
     user = get_self_user()
@@ -131,30 +171,6 @@ async def github_addressing(event: LayaEvent, space_id: str | None) -> GitHubAdd
         )
     )
 
-    db = await get_db()
-    previous = await db.execute_fetchall(
-        """SELECT actor_handle, content_metadata
-           FROM events
-           WHERE source_platform = 'github' AND source_connection_id IS ?
-             AND subject_id = ?
-             AND (space_id IS NULL OR space_id IS ?)
-             AND (timestamp, event_id) < (?, ?)
-           LIMIT ?""",
-        (
-            event.source.connection_id, event.subject.id, space_id,
-            db_ts(event.timestamp), event.event_id, _ITEM_SCAN_LIMIT,
-        ),
-    )
-
-    def involved_in(row) -> bool:
-        if is_user(row["actor_handle"]):
-            return True
-        try:
-            metadata = json.loads(row["content_metadata"] or "{}")
-        except (TypeError, ValueError):
-            return False
-        return bool(user_roles(metadata if isinstance(metadata, dict) else None))
-
     return GitHubAddressing(
         is_comment=is_comment,
         author_is_self=is_user(event.actor.platform_handle),
@@ -162,6 +178,6 @@ async def github_addressing(event: LayaEvent, space_id: str | None) -> GitHubAdd
         user_is_assignee="assignee" in roles,
         user_is_reviewer="reviewer" in roles,
         mentions_user=_mentions_user(event.content.body or "", logins),
-        user_involved_before=any(involved_in(row) for row in previous),
+        user_involved_before=await _user_involved_before(event, space_id, handles),
         item_participants_unknown=item_participants_unknown,
     )

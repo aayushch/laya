@@ -11,6 +11,7 @@ import pytest
 
 from laya.api.cards_lifecycle import reprocess_card
 from laya.api.events import receive_event
+from laya.db.timeutil import db_ts
 from laya.models.card import ActionCardData
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
@@ -195,6 +196,37 @@ async def test_former_reviewer_stays_involved(db):
     assert facts.addressed
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("match_by", ["actor", "reviewer"])
+async def test_busy_item_history_finds_involvement_beyond_500_rows(db, match_by):
+    unrelated_metadata = (
+        "invalid JSON",
+        json.dumps({"participants": ["old format", None, *_people("pat")]}),
+    )
+    await db.executemany(
+        """INSERT INTO events (
+               event_id, timestamp, source_platform, source_raw_event_type, actor_handle,
+               subject_type, subject_id, content_metadata, raw_json
+           ) VALUES (?, ?, 'github', 'issue_comment_created', 'pat',
+                     'pull_request', ?, ?, '{}')""",
+        [
+            (f"unrelated-{i}", db_ts(BASE_TIME), ITEM, unrelated_metadata[i % 2])
+            for i in range(501)
+        ],
+    )
+    await db.commit()
+
+    if match_by == "actor":
+        await receive_event(_comment_event("mine", commenter="ALEX-MORGAN", minutes=1))
+    else:
+        await receive_event(
+            _pr_event("reviewer", participants=_people(reviewers=["ALEX-MORGAN"]), minutes=-1)
+        )
+    facts = await _facts(_comment_event("reply", minutes=2))
+    assert facts.user_involved_before
+    assert facts.addressed
+
+
 def _normalize_github_items(*items):
     node = shutil.which("node")
     if node is None:
@@ -295,9 +327,23 @@ async def test_legacy_comment_with_unknown_item_participants(db, commenter, expe
 
 
 @pytest.mark.asyncio
-async def test_involvement_on_other_items_and_later_events_does_not_count(db):
+async def test_unrelated_history_does_not_count_as_involvement(db):
     await receive_event(_pr_event("elsewhere", author="alex-morgan", item="acme/api/7"))
     await receive_event(_comment_event("future", commenter="alex-morgan", minutes=9))
+    await receive_event(_comment_event("same-time-later-id", commenter="alex-morgan", minutes=5))
+
+    other_platform = _pr_event("other-platform", author="alex-morgan")
+    other_platform.source.platform = "bitbucket"
+    await receive_event(other_platform)
+    other_connection = _pr_event("other-connection", author="alex-morgan")
+    other_connection.source.connection_id = "different-connection"
+    await receive_event(other_connection)
+    await receive_event(_pr_event("other-space", author="alex-morgan"))
+    await db.execute("UPDATE events SET space_id = 'default' WHERE event_id = 'other-space'")
+
+    malformed = _pr_event("legacy-metadata")
+    malformed.content.metadata["participants"] = {"0": _people("alex-morgan")[0]}
+    await receive_event(malformed)
     facts = await _facts(_pr_event("now", minutes=5))
     assert not facts.user_involved_before
     assert not facts.addressed
