@@ -55,6 +55,7 @@ export interface TeamMember {
 	notes: string;
 	aliases: string[];
 	accounts: string[];
+	github_logins?: string[];
 }
 
 /** team.json structure */

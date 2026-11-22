@@ -30,6 +30,7 @@
 	let formNotes = $state('');
 	let formAliases = $state('');
 	let formAccounts = $state('');
+	let formGithubLogins = $state('');
 
 	let hasSelf = $derived(members.some((m) => m.role === 'self'));
 
@@ -84,6 +85,7 @@
 		formNotes = '';
 		formAliases = '';
 		formAccounts = '';
+		formGithubLogins = '';
 		showAddForm = false;
 		editingIndex = null;
 	}
@@ -96,6 +98,7 @@
 			notes: formNotes,
 			aliases: parseList(formAliases),
 			accounts: parseList(formAccounts),
+			github_logins: parseList(formGithubLogins),
 		};
 	}
 
@@ -113,6 +116,7 @@
 		formNotes = m.notes;
 		formAliases = joinList(m.aliases ?? []);
 		formAccounts = joinList(m.accounts ?? []);
+		formGithubLogins = joinList(m.github_logins ?? []);
 		editingIndex = index;
 		showAddForm = false;
 	}
@@ -230,6 +234,14 @@
 				{#if isSelfForm}
 					<input bind:value={formAliases} placeholder="Other emails (comma-separated)" class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500" />
 					<input bind:value={formAccounts} placeholder="Platform accounts, e.g. jdoe, jane.doe (comma-separated)" class="col-span-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500" />
+					<label class="col-span-full text-laya-base text-surface-300">
+						GitHub logins for involvement filtering
+						<input
+							bind:value={formGithubLogins}
+							placeholder="Comma-separated usernames"
+							class="mt-1 block w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500"
+						/>
+					</label>
 				{/if}
 				<input bind:value={formNotes} placeholder="Notes (optional)" class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500" />
 			</div>

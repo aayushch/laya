@@ -350,10 +350,11 @@ GITHUB_FILTER_IDENTITY_ERROR = (
 
 
 def github_logins(user: dict | None) -> list[str]:
-    accounts = (user or {}).get("accounts")
-    if not isinstance(accounts, list):
+    """Return the GitHub logins explicitly assigned to the self profile."""
+    logins = (user or {}).get("github_logins")
+    if not isinstance(logins, list):
         return []
-    return [account.strip() for account in accounts if isinstance(account, str) and account.strip()]
+    return [login.strip() for login in logins if isinstance(login, str) and login.strip()]
 
 
 def get_n8n_config() -> dict:
@@ -391,7 +392,7 @@ def save_team(team: dict) -> None:
 def get_self_user() -> dict | None:
     """Return the team member with role 'self', or None if not configured.
 
-    Returns a dict with keys: name, email, emails (all emails), accounts.
+    Returns name, email, emails (all emails), accounts and github_logins.
     """
     team = load_team()
     for member in team.get("members", []):
@@ -404,6 +405,7 @@ def get_self_user() -> dict | None:
                 "email": primary,
                 "emails": all_emails,
                 "accounts": member.get("accounts", []),
+                "github_logins": member.get("github_logins", []),
             }
     return None
 

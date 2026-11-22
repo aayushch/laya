@@ -71,19 +71,23 @@ flowchart TD
 
 ## GitHub Involvement Filter (opt-in)
 
-The GitHub ingestion workflow polls every recently updated issue, pull request and
-conversation comment in each watched repository, so on a busy repository most events
-are a teammate's work. With `pipeline.github_actionable_only` set to `true` in
-settings.json (default `false`), `pipeline/github_addressing.py` keeps a GitHub event
-only when the Laya user (team.json `self`, matched by the GitHub logins in its
-`accounts`) is the item's author, an assignee or a requested reviewer, is @-mentioned
-by login, or appeared in one of those roles or wrote on the same item in an earlier
-event. A requested reviewer leaves the reviewer list once the review is in, and the
-last rule keeps the conversation after it.
+In Settings → Team, edit your profile and add one or more GitHub logins. The
+editor stores these in the self member's `github_logins` field in team.json.
+Enable the filter by setting `pipeline.github_actionable_only` to `true` in
+settings.json (default `false`). If the profile loses its GitHub logins, filtering
+pauses and the Team editor displays a warning. Adding a GitHub login resumes
+filtering while the setting is enabled.
 
-The user's own comments are dropped. Pull request and issue events are kept whoever
-made the change: the workflow credits them to the item's author, so every update to
-the user's own PR arrives with the user as actor.
+`pipeline/github_addressing.py` matches these logins case-insensitively. An event
+is kept if you are the item's author, an assignee or a requested reviewer, the
+event mentions your login, or you were already involved in an earlier event on
+the same item. Earlier review requests still count after GitHub clears the
+requested reviewer list.
+
+Comments with missing item participant data are kept. Your own comments are
+filtered even when item participant data is missing. Pull request and issue
+events are credited to the item's author, so updates to your own pull request
+remain eligible regardless of who made the change.
 
 A dropped event is marked `filtered` with its `filter_rule` ("GitHub item does not
 involve you" or "GitHub comment was written by you") before any model call, so it

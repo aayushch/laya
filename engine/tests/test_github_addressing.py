@@ -34,6 +34,7 @@ USER = {
     "email": "alex@company.com",
     "emails": ["alex@company.com"],
     "accounts": ["alex-morgan", "U0ALEX"],
+    "github_logins": ["alex-morgan"],
 }
 BASE_TIME = datetime(2026, 2, 22, 14, 30, 0, tzinfo=timezone.utc)
 SETTINGS_ON = {"pipeline": {"github_actionable_only": True}}
@@ -355,7 +356,7 @@ async def test_unrelated_history_does_not_count_as_involvement(db):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("profile", [None, {**USER, "accounts": ["  "]}])
+@pytest.mark.parametrize("profile", [None, {**USER, "github_logins": ["  "]}])
 async def test_missing_github_identity_bypasses_filter(db, profile):
     with (
         patch("laya.config.load_settings", return_value=SETTINGS_ON),
@@ -371,7 +372,13 @@ def filter_settings_files(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_enabling_github_filter_requires_identity(filter_settings_files):
+@pytest.mark.parametrize("accounts", [None, ["sam-lee", "U0ALEX"]])
+async def test_enabling_github_filter_requires_identity(filter_settings_files, accounts):
+    if accounts is not None:
+        await update_team(TeamConfig(members=[{
+            "name": USER["name"], "email": USER["email"], "role": "self", "accounts": accounts,
+        }]))
+
     with pytest.raises(HTTPException) as exc:
         await update_settings(SETTINGS_ON)
     assert exc.value.status_code == 422
@@ -380,15 +387,35 @@ async def test_enabling_github_filter_requires_identity(filter_settings_files):
 
 
 @pytest.mark.asyncio
+async def test_untyped_account_alias_does_not_mark_teammate_comment_as_own(
+    db, filter_settings_files,
+):
+    await update_team(TeamConfig(members=[{
+        "name": USER["name"], "email": USER["email"], "role": "self",
+        "accounts": ["sam-lee"], "github_logins": [" Alex-Morgan "],
+    }]))
+    assert (await update_settings(SETTINGS_ON))["status"] == "updated"
+
+    event = _comment_event(
+        "alias-collision", commenter="sam-lee", body="Please check, @alex-morgan.",
+        participants=_people("alex-morgan", commenter="sam-lee"),
+    )
+    assert await unaddressed_filter_rule(event, None) is None
+
+
+@pytest.mark.asyncio
 async def test_team_reports_when_removing_identity_pauses_github_filter(filter_settings_files):
     profile = TeamConfig(members=[{
-        "name": USER["name"], "email": USER["email"], "role": "self", "accounts": USER["accounts"],
+        "name": USER["name"], "email": USER["email"], "role": "self",
+        "accounts": USER["accounts"], "github_logins": USER["github_logins"],
     }])
     await update_team(profile)
     assert (await update_settings(SETTINGS_ON))["status"] == "updated"
     assert "github_filter_warning" not in await get_team()
 
-    removal = await update_team(TeamConfig())
+    profile_without_logins = profile.model_copy(deep=True)
+    profile_without_logins.members[0].github_logins.clear()
+    removal = await update_team(profile_without_logins)
     assert "GitHub login" in removal["github_filter_warning"]
     assert (await get_team())["github_filter_warning"] == removal["github_filter_warning"]
 
