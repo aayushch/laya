@@ -132,7 +132,7 @@ export const engineApi = {
 	// Team
 	getTeam: () => request<TeamConfig>('/team'),
 	updateTeam: (team: TeamConfig) =>
-		request<{ status: string }>('/team', {
+		request<{ status: string; github_filter_warning?: string }>('/team', {
 			method: 'PUT',
 			body: JSON.stringify(team)
 		}),

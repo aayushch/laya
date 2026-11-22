@@ -19,6 +19,7 @@
 	let loading = $state(true);
 	let saving = $state(false);
 	let error = $state<string | null>(null);
+	let githubFilterWarning = $state<string | undefined>();
 	let editingIndex = $state<number | null>(null);
 	let showAddForm = $state(false);
 
@@ -55,6 +56,7 @@
 		try {
 			const data = await engineApi.getTeam();
 			members = data.members;
+			githubFilterWarning = data.github_filter_warning;
 		} catch {
 			error = 'Failed to load team configuration';
 		} finally {
@@ -66,7 +68,8 @@
 		saving = true;
 		error = null;
 		try {
-			await engineApi.updateTeam({ members });
+			const result = await engineApi.updateTeam({ members });
+			githubFilterWarning = result.github_filter_warning;
 		} catch {
 			error = 'Failed to save team';
 		} finally {
@@ -133,6 +136,12 @@
 {:else}
 	{#if error}
 		<div class="rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-laya-base text-red-300">{error}</div>
+	{/if}
+
+	{#if githubFilterWarning}
+		<p role="status" class="mb-4 rounded-lg border border-laya-orange/40 bg-laya-orange/5 px-4 py-2 text-laya-base">
+			{githubFilterWarning}
+		</p>
 	{/if}
 
 	<!-- Self-identification prompt (if no 'self' member exists) -->

@@ -8,13 +8,18 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi import HTTPException
 
 from laya.api.cards_lifecycle import reprocess_card
 from laya.api.events import receive_event
+from laya.api.settings_api import update_settings
+from laya.api.team import get_team, update_team
+from laya.config import load_settings
 from laya.db.timeutil import db_ts
 from laya.models.card import ActionCardData
 from laya.models.classification import RouterOutput
 from laya.models.event import LayaEvent
+from laya.models.team import TeamConfig
 from laya.pipeline import emit as emit_mod
 from laya.pipeline.addressing import unaddressed_filter_rule
 from laya.pipeline.github_addressing import (
@@ -350,10 +355,45 @@ async def test_unrelated_history_does_not_count_as_involvement(db):
 
 
 @pytest.mark.asyncio
-async def test_missing_self_profile_is_an_error(db):
-    with patch("laya.pipeline.github_addressing.get_self_user", return_value=None):
-        with pytest.raises(ValueError, match="self profile"):
-            await github_addressing(_pr_event("e1"), None)
+@pytest.mark.parametrize("profile", [None, {**USER, "accounts": ["  "]}])
+async def test_missing_github_identity_bypasses_filter(db, profile):
+    with (
+        patch("laya.config.load_settings", return_value=SETTINGS_ON),
+        patch("laya.pipeline.github_addressing.get_self_user", return_value=profile),
+    ):
+        assert await unaddressed_filter_rule(_pr_event("e1"), None) is None
+
+
+@pytest.fixture
+def filter_settings_files(monkeypatch, tmp_path):
+    monkeypatch.setattr("laya.config.LAYA_CONFIG_FILE", tmp_path / "settings.json")
+    monkeypatch.setattr("laya.config.LAYA_TEAM_FILE", tmp_path / "team.json")
+
+
+@pytest.mark.asyncio
+async def test_enabling_github_filter_requires_identity(filter_settings_files):
+    with pytest.raises(HTTPException) as exc:
+        await update_settings(SETTINGS_ON)
+    assert exc.value.status_code == 422
+    assert "GitHub login" in exc.value.detail
+    assert load_settings()["pipeline"]["github_actionable_only"] is False
+
+
+@pytest.mark.asyncio
+async def test_team_reports_when_removing_identity_pauses_github_filter(filter_settings_files):
+    profile = TeamConfig(members=[{
+        "name": USER["name"], "email": USER["email"], "role": "self", "accounts": USER["accounts"],
+    }])
+    await update_team(profile)
+    assert (await update_settings(SETTINGS_ON))["status"] == "updated"
+    assert "github_filter_warning" not in await get_team()
+
+    removal = await update_team(TeamConfig())
+    assert "GitHub login" in removal["github_filter_warning"]
+    assert (await get_team())["github_filter_warning"] == removal["github_filter_warning"]
+
+    await update_team(profile)
+    assert "github_filter_warning" not in await get_team()
 
 
 @pytest.mark.asyncio

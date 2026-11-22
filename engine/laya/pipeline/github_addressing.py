@@ -22,7 +22,9 @@ user's own PR carry the user as actor regardless of who made the change.
 import re
 from dataclasses import dataclass
 
-from laya.config import get_self_user
+import structlog
+
+from laya.config import GITHUB_FILTER_IDENTITY_ERROR, get_self_user, github_logins
 from laya.db.sqlite import get_db
 from laya.db.timeutil import db_ts
 from laya.models.event import LayaEvent
@@ -32,6 +34,8 @@ from laya.models.event import LayaEvent
 _INVOLVED_ROLES = frozenset({"author", "assignee", "reviewer"})
 
 _COMMENT_EVENT_TYPE = "issue_comment_created"
+
+log = structlog.get_logger()
 
 FILTER_RULE_FROM_SELF = "GitHub comment was written by you"
 FILTER_RULE_NOT_ADDRESSED = "GitHub item does not involve you"
@@ -137,15 +141,15 @@ async def _user_involved_before(
     return bool(previous)
 
 
-async def github_addressing(event: LayaEvent, space_id: str | None) -> GitHubAddressing:
-    """Compute whether ``event`` (a GitHub PR, issue or comment event) involves the user."""
-    user = get_self_user()
-    if user is None:
-        raise ValueError("GitHub action filtering requires a self profile in team settings")
-
-    # Account entries mix platforms (GitHub logins, the Slack user id, the Jira account
-    # id); a stray match on another platform's id inside GitHub data is harmless.
-    logins = [a.strip() for a in user["accounts"] if a and a.strip()]
+async def github_addressing(event: LayaEvent, space_id: str | None) -> GitHubAddressing | None:
+    """Compute GitHub involvement, or bypass filtering when identity is unavailable."""
+    logins = github_logins(get_self_user())
+    if not logins:
+        log.warning(
+            "github_involvement_filter_paused", event_id=event.event_id,
+            reason=GITHUB_FILTER_IDENTITY_ERROR,
+        )
+        return None
     handles = {login.lower() for login in logins}
 
     def is_user(handle: object) -> bool:

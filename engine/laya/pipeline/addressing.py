@@ -20,7 +20,7 @@ async def unaddressed_filter_rule(event: LayaEvent, space_id: str | None) -> str
         return None
 
     addressing = await github_addressing(event, space_id)
-    if addressing.addressed:
+    if addressing is None or addressing.addressed:
         return None
 
     # A queued reprocess must finish updating its existing card even after a

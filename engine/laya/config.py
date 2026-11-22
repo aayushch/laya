@@ -344,6 +344,18 @@ def github_action_filter_enabled(platform: str) -> bool:
     )
 
 
+GITHUB_FILTER_IDENTITY_ERROR = (
+    "GitHub involvement filtering requires at least one GitHub login in your Team profile."
+)
+
+
+def github_logins(user: dict | None) -> list[str]:
+    accounts = (user or {}).get("accounts")
+    if not isinstance(accounts, list):
+        return []
+    return [account.strip() for account in accounts if isinstance(account, str) and account.strip()]
+
+
 def get_n8n_config() -> dict:
     """Return the n8n config block from settings, with env var override."""
     settings = load_settings()

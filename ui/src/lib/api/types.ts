@@ -60,6 +60,7 @@ export interface TeamMember {
 /** team.json structure */
 export interface TeamConfig {
 	members: TeamMember[];
+	github_filter_warning?: string;
 }
 
 /** Simple rule condition */
