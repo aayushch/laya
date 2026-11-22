@@ -11,6 +11,8 @@ from laya.config import load_settings
 from laya.db.timeutil import db_ts
 from laya.models.event import LayaEvent
 from laya.pipeline.card_status import SET_BY_LAYA, SET_BY_USER, StatusDecision, close_ready_cards
+from laya.pipeline.summarize import trigger_summary_status_update
+from laya.tasks import create_task
 
 _GITHUB_MERGE = "pull_request_merged"
 _GITHUB_CLOSED = "pull_request_closed"
@@ -92,7 +94,12 @@ async def complete_source_cards(db, event: LayaEvent, space_id: str | None, reas
             if _utc_timestamp(earlier.timestamp) > cutoff:
                 continue
         earlier_cards.append(row)
-    await close_ready_cards(earlier_cards, reason)
+    closed_cards = await close_ready_cards(earlier_cards, reason)
+    for closed in closed_cards:
+        create_task(
+            trigger_summary_status_update(closed["card_id"], closed["header"], "done"),
+            name=f"summary_status_{closed['card_id']}",
+        )
 
 
 async def apply_late_source_completion(

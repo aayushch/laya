@@ -1,6 +1,8 @@
 # Copyright 2026 Aayush Chawla
 # SPDX-License-Identifier: Apache-2.0
 
+import asyncio
+import json
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
@@ -11,6 +13,7 @@ from laya.models.card import ActionCardData, StagedOutput
 from laya.models.event import LayaEvent
 from laya.pipeline.queue import _batch_route_events, process_event
 from laya.pipeline.source_completion import source_completion_reason
+from laya.tasks import create_task
 from tests.conftest import insert_test_card
 
 BASE_TIME = datetime(2026, 11, 22, 15, tzinfo=timezone.utc)
@@ -95,6 +98,45 @@ async def test_jira_done_completes_earlier_card_without_routing(db, source_compl
     assert card["resolved_at"]
     event = await db.execute_fetchall("SELECT processing_status FROM events WHERE event_id = 'done'")
     assert event[0]["processing_status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_source_completion_updates_daily_summary(db, source_completion):
+    await add_card(db, make_event("summary-card"))
+    summary = {"action_items": [
+        {"card_id": "summary-card", "text": "Review the issue", "status": "ready", "priority": "HIGH"},
+    ]}
+    await db.execute(
+        """INSERT INTO daily_summaries (date, space_id, summary_json, card_ids, updated_at)
+           VALUES (date('now'), 'default', ?, '["summary-card"]', CURRENT_TIMESTAMP)""",
+        (json.dumps(summary),),
+    )
+    await db.commit()
+    await receive_event(jira_done())
+
+    tasks = []
+
+    def record_task(coro, *, name=None):
+        task = create_task(coro, name=name)
+        tasks.append(task)
+        return task
+
+    with (
+        patch("laya.pipeline.source_completion.create_task", new=record_task, create=True),
+        patch("laya.tasks.create_task", new=record_task),
+        patch("laya.pipeline.summarize._get_debounce_seconds", return_value=0),
+        patch("laya.pipeline.summarize.llm_call", new_callable=AsyncMock) as llm_call,
+    ):
+        await process_event("done")
+        await asyncio.gather(*tasks)
+        # The status task schedules the debounce flush.
+        await asyncio.gather(*tasks)
+
+    [card] = await db.execute_fetchall("SELECT status FROM action_cards")
+    assert card["status"] == "done"
+    [row] = await db.execute_fetchall("SELECT summary_json FROM daily_summaries")
+    assert json.loads(row["summary_json"])["action_items"][0]["status"] == "done"
+    llm_call.assert_not_awaited()
 
 
 @pytest.mark.asyncio
