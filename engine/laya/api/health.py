@@ -35,9 +35,8 @@ def _token_status(request: Request) -> str:
     return "accepted" if bearer_matches(request) else "rejected"
 
 
-@router.get("/health")
-async def health_check(request: Request) -> dict:
-    """Check engine, SQLite, and n8n health status."""
+async def health_snapshot() -> dict:
+    """Collect engine and dependency health for the API and diagnostics."""
     # SQLite
     sqlite_status = "healthy" if await sqlite_healthy() else "unhealthy"
 
@@ -63,5 +62,10 @@ async def health_check(request: Request) -> dict:
         "n8n": n8n_status,
         "uptime_seconds": uptime,
         "embeddings": get_embedding_info(),
-        "token": _token_status(request),
     }
+
+
+@router.get("/health")
+async def health_check(request: Request) -> dict:
+    snapshot = await health_snapshot()
+    return {**snapshot, "token": _token_status(request)}

@@ -13,6 +13,7 @@ import structlog
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
+from laya.api.health import health_snapshot
 from laya.config import (
     LAYA_CONFIG_FILE,
     LAYA_LOG_DIR,
@@ -205,8 +206,7 @@ async def export_diagnostics():
 
         # 5. Health snapshot
         try:
-            from laya.api.health import health_check
-            health = await health_check()
+            health = await health_snapshot()
         except Exception:
             health = {"error": "health check failed"}
         zf.writestr("health.json", json.dumps(health, indent=2))

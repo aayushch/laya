@@ -67,7 +67,7 @@ class TestDiagnosticsExport:
         assert stats["tables"]["events"] >= 1
 
     async def test_contains_health(self, db):
-        """ZIP contains health.json."""
+        """ZIP contains a health snapshot with engine and SQLite status."""
         from laya.main import app
 
         transport = ASGITransport(app=app)
@@ -76,7 +76,9 @@ class TestDiagnosticsExport:
 
         zf = zipfile.ZipFile(io.BytesIO(resp.content))
         health = json.loads(zf.read("health.json"))
-        assert "engine" in health or "error" in health
+        assert health.get("engine") == "healthy"
+        assert health.get("sqlite") == "healthy"
+        assert "token" not in health
 
     async def test_redacts_api_keys(self, db, tmp_path):
         """Config files have API keys redacted."""
