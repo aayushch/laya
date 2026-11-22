@@ -791,9 +791,9 @@ fn stop_previous_n8n(
     }
     if n8n_port_in_use(port) {
         return Err(format!(
-            "Port {} is in use by a process that isn't Laya's n8n. \
-             Stop that process (or free the port) and restart Laya.",
-            port
+            "Port {port} is in use and Laya could not verify the listener. \
+             Quit Laya and free the port. If an older Laya launch left n8n running, \
+             restart the computer before reopening Laya."
         ));
     }
     Ok(())
@@ -1578,7 +1578,9 @@ mod tests {
         let still_running = matches!(child.try_wait(), Ok(None));
         let _ = child.kill();
         let _ = child.wait();
-        assert!(result.unwrap_err().contains("isn't Laya's n8n"));
+        let error = result.unwrap_err();
+        assert!(error.contains(&format!("Port {port} is in use")));
+        assert!(error.contains("older Laya launch"));
         assert!(still_running);
     }
 
