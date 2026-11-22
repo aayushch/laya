@@ -175,3 +175,35 @@ def test_github_membership_lookup_requires_a_watched_github_repo():
         text=True, capture_output=True, check=True,
     )
     assert json.loads(result.stdout) == [[], [], [{"json": {"repos": [backend, frontend]}}]]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is required for workflow expressions")
+def test_github_pull_pagination_covers_the_polling_window():
+    workflow = json.loads((WORKFLOWS_DIR / "github-ingestion.json").read_text(encoding="utf-8"))
+    pulls = next(node["parameters"] for node in workflow["nodes"] if node["name"] == "Get Pull Requests")
+    query = {param["name"]: param["value"] for param in pulls["queryParameters"]["parameters"]}
+    assert (query["sort"], query["direction"]) == ("updated", "desc")
+    pagination = pulls["options"].get("pagination", {}).get("pagination")
+    assert pagination, "an active polling window can span multiple pages of pull requests"
+
+    runner = """
+        const { completeExpression } = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+        const complete = new Function('$response', '$json', 'return (' + completeExpression.slice(3, -2) + ')');
+        const since = '2026-11-22T10:30:00.000Z';
+        const page = (updated, next = true) => ({
+          headers: next ? { link: '<https://api.github.com/pulls?page=2>; rel="next"' } : {},
+          body: updated.map(updated_at => ({ updated_at })),
+        });
+        const pages = [
+          page(['2026-11-22T10:31:00Z']),
+          page(['2026-11-22T10:30:00Z']),
+          page(['2026-11-22T10:31:00Z', '2026-11-22T10:29:59Z']),
+          page(['2026-11-22T10:31:00Z'], false),
+          page([]),
+        ];
+        process.stdout.write(JSON.stringify(pages.map(response => complete(response, { since }))));
+    """
+    result = subprocess.run(
+        ["node", "-e", runner], input=json.dumps(pagination), text=True, capture_output=True, check=True,
+    )
+    assert json.loads(result.stdout) == [False, False, True, True, True]

@@ -306,7 +306,24 @@
             }
           ]
         },
-        "options": {}
+        "options": {
+          "pagination": {
+            "pagination": {
+              "paginationMode": "updateAParameterInEachRequest",
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "qs",
+                    "name": "page",
+                    "value": "={{ $pageCount + 1 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.headers.link?.includes('rel=\"next\"') || !$response.body?.length || Date.parse($response.body[$response.body.length - 1].updated_at) < Date.parse($json.since) }}"
+            }
+          }
+        }
       },
       "name": "Get Pull Requests",
       "type": "n8n-nodes-base.httpRequest",
@@ -572,6 +589,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.11.26"
+    "laya_version": "2026.11.27"
   }
 }
