@@ -961,9 +961,11 @@ pub(crate) fn kill_process_on_port(port: u16, identity: &str) {
 
 /// Best-effort kill of each process listening on the given TCP port that
 /// `is_ours` accepts, given its process id and lowercased command line. A
-/// process it rejects is left alone and logged as foreign.
+/// process it rejects is left alone and logged as foreign. Returns the ids of
+/// the processes it signalled.
 #[cfg(unix)]
-pub(crate) fn kill_listeners_on_port(port: u16, is_ours: &dyn Fn(u32, &str) -> bool) {
+pub(crate) fn kill_listeners_on_port(port: u16, is_ours: &dyn Fn(u32, &str) -> bool) -> Vec<u32> {
+    let mut signalled = Vec::new();
     // `-sTCP:LISTEN` limits the match to the process that listens on the
     // port. Without it lsof also lists every client connected to the port,
     // including this app itself (its health-check HTTP client keeps
@@ -991,19 +993,22 @@ pub(crate) fn kill_listeners_on_port(port: u16, is_ours: &dyn Fn(u32, &str) -> b
                     unsafe {
                         libc::kill(pid, libc::SIGTERM);
                     }
+                    signalled.push(pid as u32);
                 }
             }
         }
     }
+    signalled
 }
 
 #[cfg(windows)]
-pub(crate) fn kill_listeners_on_port(port: u16, is_ours: &dyn Fn(u32, &str) -> bool) {
+pub(crate) fn kill_listeners_on_port(port: u16, is_ours: &dyn Fn(u32, &str) -> bool) -> Vec<u32> {
+    let mut signalled = Vec::new();
     let mut netstat = std::process::Command::new("netstat");
     no_window(&mut netstat);
     if let Ok(output) = netstat.args(["-ano", "-p", "tcp"]).output() {
         if !output.status.success() {
-            return;
+            return signalled;
         }
         let stdout = String::from_utf8_lossy(&output.stdout);
         let needle = format!(":{}", port);
@@ -1026,10 +1031,12 @@ pub(crate) fn kill_listeners_on_port(port: u16, is_ours: &dyn Fn(u32, &str) -> b
                     let mut tk = std::process::Command::new("taskkill");
                     no_window(&mut tk);
                     let _ = tk.args(["/F", "/PID", &pid.to_string()]).status();
+                    signalled.push(pid);
                 }
             }
         }
     }
+    signalled
 }
 
 /// Disables WebKitGTK's DMA-BUF renderer on WebKitGTK 2.54 and later.

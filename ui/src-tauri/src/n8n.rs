@@ -786,20 +786,76 @@ pub(crate) fn stop_orphaned_n8n() -> Result<(), String> {
     }
     log::warn!("Orphaned n8n on port {} — stopping it", N8N_PORT);
     let recorded = recorded_n8n_pid(&n8n_pid_file());
-    crate::kill_listeners_on_port(N8N_PORT, &|pid, cmdline| {
-        is_laya_n8n(pid, cmdline, recorded)
-    });
-    for _ in 0..20 {
-        if !n8n_port_in_use(N8N_PORT) {
-            return Ok(());
-        }
-        std::thread::sleep(Duration::from_millis(500));
+    stop_port_listeners(
+        N8N_PORT,
+        &|pid, cmdline| is_laya_n8n(pid, cmdline, recorded),
+        ORPHANED_N8N_GRACE,
+    )
+}
+
+/// How long an orphaned n8n gets to exit after SIGTERM before it is killed.
+/// n8n's graceful shutdown waits for running executions, for up to 30 s by
+/// default.
+const ORPHANED_N8N_GRACE: Duration = Duration::from_secs(10);
+
+/// Stop the processes listening on `port` that `is_ours` accepts and wait for
+/// the port to be released. Each gets `grace` to exit after SIGTERM, then it
+/// is killed together with the process group it leads: Laya starts n8n as the
+/// leader of its own group (`spawn_n8n`), so its task runner goes with it.
+/// The n8n of a launch that has ended has no one to finish its work for.
+fn stop_port_listeners(
+    port: u16,
+    is_ours: &dyn Fn(u32, &str) -> bool,
+    grace: Duration,
+) -> Result<(), String> {
+    let signalled = crate::kill_listeners_on_port(port, is_ours);
+    if wait_for_port_release(port, grace) {
+        return Ok(());
+    }
+    if signalled.is_empty() {
+        return Err(format!(
+            "Port {} is in use by a process that isn't Laya's n8n. \
+             Stop that process (or free the port) and restart Laya.",
+            port
+        ));
+    }
+    for pid in &signalled {
+        log::warn!("n8n (pid {pid}) did not exit within {grace:?}; killing it");
+        force_kill_process_group(*pid);
+    }
+    if wait_for_port_release(port, Duration::from_secs(5)) {
+        return Ok(());
     }
     Err(format!(
-        "Port {} is in use by a process that isn't Laya's n8n. \
-         Stop that process (or free the port) and restart Laya.",
-        N8N_PORT
+        "n8n (pid {:?}) kept port {} after it was killed. Restart Laya.",
+        signalled, port
     ))
+}
+
+fn wait_for_port_release(port: u16, timeout: Duration) -> bool {
+    let deadline = std::time::Instant::now() + timeout;
+    while n8n_port_in_use(port) {
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    true
+}
+
+/// Kill `pid` and, on Unix, the process group it leads.
+fn force_kill_process_group(pid: u32) {
+    #[cfg(unix)]
+    unsafe {
+        libc::kill(-(pid as i32), libc::SIGKILL);
+        libc::kill(pid as i32, libc::SIGKILL);
+    }
+    #[cfg(windows)]
+    {
+        let mut tk = Command::new("taskkill");
+        no_window(&mut tk);
+        let _ = tk.args(["/T", "/F", "/PID", &pid.to_string()]).status();
+    }
 }
 
 /// True when the process `pid` with the lowercased command line `cmdline` is
@@ -1393,11 +1449,74 @@ mod tests {
 
     #[test]
     fn a_listener_that_never_answers_counts_as_holding_the_port() {
+        let _serial = SOCKET_TESTS.lock().unwrap_or_else(|e| e.into_inner());
         let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
         let port = listener.local_addr().unwrap().port();
         assert!(n8n_port_in_use(port));
         drop(listener);
         assert!(!n8n_port_in_use(port));
+    }
+
+    /// Serialises the tests that open listening sockets and spawn processes.
+    /// macOS sets close-on-exec on a new socket in a second step, so a process
+    /// another test spawns in between inherits the socket and keeps its port
+    /// bound after the test drops it.
+    static SOCKET_TESTS: Mutex<()> = Mutex::new(());
+
+    /// A process that listens on a free port and ignores SIGTERM, like an n8n
+    /// whose graceful shutdown is still waiting for executions. It leads its
+    /// own process group, as `spawn_n8n` makes n8n do. None if python3 is
+    /// missing.
+    #[cfg(unix)]
+    fn spawn_listener_ignoring_sigterm() -> Option<(std::process::Child, u16)> {
+        use std::io::BufRead;
+        use std::os::unix::process::CommandExt;
+        let script = "import signal, socket, time\n\
+                      signal.signal(signal.SIGTERM, signal.SIG_IGN)\n\
+                      s = socket.socket()\n\
+                      s.bind(('127.0.0.1', 0))\n\
+                      s.listen()\n\
+                      print(s.getsockname()[1], flush=True)\n\
+                      time.sleep(60)\n";
+        let mut child = Command::new("python3")
+            .args(["-c", script])
+            .stdout(Stdio::piped())
+            .process_group(0)
+            .spawn()
+            .ok()?;
+        let mut line = String::new();
+        std::io::BufReader::new(child.stdout.take()?)
+            .read_line(&mut line)
+            .ok()?;
+        Some((child, line.trim().parse().ok()?))
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_listener_that_ignores_sigterm_is_killed_after_the_grace_period() {
+        let _serial = SOCKET_TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        let Some((mut child, port)) = spawn_listener_ignoring_sigterm() else {
+            return;
+        };
+        let pid = child.id();
+        let result = stop_port_listeners(port, &|p, _| p == pid, Duration::from_millis(500));
+        assert_eq!(result, Ok(()));
+        assert!(!n8n_port_in_use(port));
+        let _ = child.wait();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_listener_that_is_not_ours_is_left_running() {
+        let _serial = SOCKET_TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        let Some((mut child, port)) = spawn_listener_ignoring_sigterm() else {
+            return;
+        };
+        let result = stop_port_listeners(port, &|_, _| false, Duration::from_millis(300));
+        assert!(result.unwrap_err().contains("isn't Laya's n8n"));
+        assert!(matches!(child.try_wait(), Ok(None)));
+        let _ = child.kill();
+        let _ = child.wait();
     }
 
     #[test]
