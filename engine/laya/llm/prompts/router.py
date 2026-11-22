@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from laya.llm.prompts.overrides import get_prompt
@@ -161,6 +162,7 @@ ROUTER_SYSTEM_PROMPT = (
 # (~450 tok) were sent on every event, including Gmail/Slack that have neither.
 _ISSUE_PLATFORMS = frozenset({"jira", "linear"})
 _CODE_PLATFORMS = frozenset({"github", "bitbucket", "bitbucket_server"})
+_MAX_DIFF_HUNK_CHARS = 2000
 
 
 def build_router_system_prompt(platforms: "str | None | list | set") -> str:
@@ -192,21 +194,7 @@ def build_router_messages(
         related_context: Optional list of related past events from ChromaDB.
         feedback_context: Optional user feedback patterns for learning loop.
     """
-    event_text = f"""\
-[EVENT CONTENT - UNTRUSTED INPUT]
-Platform: {event.source.platform}
-Event Type: {event.source.raw_event_type}
-Actor: {event.actor.name} ({event.actor.email}) [relationship: {actor_relationship}]
-Subject: [{event.subject.type}] {event.subject.id} — {event.subject.title}
-URL: {event.subject.url or "N/A"}
-Body:
-{event.content.body}
-[END EVENT CONTENT]"""
-
-    # Add metadata if present
-    if event.content.metadata:
-        metadata_lines = [f"  {key}: {val}" for key, val in event.content.metadata.items()]
-        event_text += "\n\nSource Metadata:\n" + "\n".join(metadata_lines)
+    event_text = _format_event_text(event, actor_relationship)
 
     # Add related past context if available
     context_section = ""
@@ -323,6 +311,8 @@ def _single_classification_schema() -> dict[str, Any]:
 
 def _format_event_text(event: LayaEvent, actor_relationship: str) -> str:
     """Format a single event for use in batch or single routing prompts."""
+    metadata = event.content.metadata
+    hunk = metadata.get("diff_hunk")
     text = f"""\
 [EVENT CONTENT - UNTRUSTED INPUT]
 Platform: {event.source.platform}
@@ -331,11 +321,15 @@ Actor: {event.actor.name} ({event.actor.email}) [relationship: {actor_relationsh
 Subject: [{event.subject.type}] {event.subject.id} — {event.subject.title}
 URL: {event.subject.url or "N/A"}
 Body:
-{event.content.body}
-[END EVENT CONTENT]"""
+{event.content.body}"""
+    if isinstance(hunk, str) and hunk:
+        # Quote the excerpt so repository lines cannot create prompt delimiters.
+        excerpt = json.dumps(hunk[:_MAX_DIFF_HUNK_CHARS], ensure_ascii=False)
+        text += f"\nDiff hunk: {excerpt}"
+    text += "\n[END EVENT CONTENT]"
 
-    if event.content.metadata:
-        metadata_lines = [f"  {key}: {val}" for key, val in event.content.metadata.items()]
+    metadata_lines = [f"  {key}: {val}" for key, val in metadata.items() if key != "diff_hunk"]
+    if metadata_lines:
         text += "\n\nSource Metadata:\n" + "\n".join(metadata_lines)
 
     return text

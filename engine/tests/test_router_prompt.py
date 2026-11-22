@@ -3,11 +3,16 @@
 
 """Golden-prompt tests for the platform-gated router system prompt (review §3 — P6-9)."""
 
+import pytest
+
 from laya.llm.prompts.router import (
+    build_batch_router_messages,
+    build_router_messages,
     build_router_system_prompt,
     get_batch_router_json_schema,
     get_router_json_schema,
 )
+from laya.models.event import LayaEvent
 
 UNIVERSAL = [
     "You are the Router for Laya",
@@ -67,3 +72,40 @@ class TestEntityCaps:
         for entities in (single, batch):
             assert entities["maxItems"] == 25
             assert entities["items"]["properties"]["value"]["maxLength"] == 1024
+
+
+@pytest.mark.parametrize("batch", [False, True])
+def test_router_keeps_bounded_diff_hunk_in_untrusted_event_content(batch):
+    hunk_start = "@@ -1 +1 @@"
+    hunk_end = "END_OF_OVERSIZE_HUNK"
+    event = LayaEvent.model_validate({
+        "event_id": "evt_inline",
+        "timestamp": "2026-11-22T10:01:00Z",
+        "source": {
+            "platform": "github",
+            "connection_id": "github_test",
+            "raw_event_type": "issue_comment_created",
+        },
+        "actor": {"name": "reviewer", "email": ""},
+        "subject": {"type": "pull_request", "id": "acme/backend/42", "title": "Add a guard"},
+        "content": {
+            "body": "Please check this guard.",
+            "metadata": {
+                "path": "app.py",
+                "diff_hunk": hunk_start + "\n" + "x" * 8192 + hunk_end,
+            },
+        },
+    })
+    if batch:
+        messages = build_batch_router_messages([{"event": event, "actor_relationship": "teammate"}])
+    else:
+        messages = build_router_messages(event, "teammate")
+    prompt = messages[-1]["content"]
+    untrusted = prompt.split("[EVENT CONTENT - UNTRUSTED INPUT]", 1)[1].split(
+        "[END EVENT CONTENT]", 1
+    )[0]
+
+    assert hunk_start in untrusted
+    assert "path: app.py" in prompt
+    assert hunk_end not in prompt
+    assert "x" * 2048 not in prompt
