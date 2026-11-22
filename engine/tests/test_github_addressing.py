@@ -27,7 +27,7 @@ from laya.pipeline.github_addressing import (
     FILTER_RULE_NOT_ADDRESSED,
     github_addressing,
 )
-from laya.pipeline.queue import process_event
+from laya.pipeline.queue import _batch_route_events, process_event
 
 USER = {
     "name": "Alex Morgan",
@@ -182,6 +182,32 @@ async def test_comment_on_the_users_pr_is_addressed(db):
     facts = await _facts(event)
     assert facts.user_is_author
     assert facts.addressed
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("event", "addressed"),
+    [
+        pytest.param(_pr_event("author", author="alex-morgan"), True, id="author"),
+        pytest.param(
+            _pr_event("assignee", participants=_people(assignees=["alex-morgan"])),
+            True, id="assignee",
+        ),
+        pytest.param(
+            _pr_event("reviewer", participants=_people(reviewers=["alex-morgan"])),
+            True, id="reviewer",
+        ),
+        pytest.param(_comment_event("mention", body="cc @alex-morgan"), True, id="mention"),
+        pytest.param(_comment_event("mine", commenter="alex-morgan"), False, id="own-comment"),
+        pytest.param(_comment_event("unknown", participants=[]), True, id="incomplete-comment"),
+    ],
+)
+async def test_direct_github_decisions_do_not_read_item_history(db, event, addressed):
+    with patch("laya.pipeline.github_addressing._user_involved_before", return_value=False) as history:
+        facts = await _facts(event)
+
+    assert facts.addressed is addressed
+    history.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -474,6 +500,33 @@ async def test_queue_filters_uninvolved_github_without_a_model_call(db, event, r
     assert rows[0]["filter_rule"] == rule
     route.assert_not_awaited()
     stage.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_batch_router_only_receives_addressed_github_events(db):
+    events = [
+        _pr_event("assigned", item="acme/api/7", participants=_people(assignees=["alex-morgan"])),
+        _pr_event("unrelated", item="acme/api/8"),
+        _comment_event("mentioned", item="acme/api/9", body="cc @alex-morgan"),
+    ]
+    for event in events:
+        await receive_event(event)
+    classification = RouterOutput(
+        category="CODE", persona="ENGINEER", priority="LOW", confidence=0.9,
+    )
+
+    with (
+        patch("laya.config.load_settings", return_value=SETTINGS_ON),
+        patch("laya.pipeline.github_addressing.get_self_user", return_value=USER),
+        patch("laya.pipeline.queue._batch_router_cache", {}),
+        patch("laya.pipeline.router.run_batch_router") as route,
+    ):
+        route.side_effect = lambda batch: {entry["event_id"]: classification for entry in batch}
+        await _batch_route_events([event.event_id for event in events])
+
+    route.assert_awaited_once()
+    batch, = route.await_args.args
+    assert [entry["event_id"] for entry in batch] == ["assigned", "mentioned"]
 
 
 @pytest.mark.asyncio

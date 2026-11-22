@@ -155,33 +155,37 @@ async def github_addressing(event: LayaEvent, space_id: str | None) -> GitHubAdd
     def is_user(handle: object) -> bool:
         return isinstance(handle, str) and handle.lower() in handles
 
-    def user_roles(metadata: dict | None) -> set[str]:
-        return {
-            p.get("role")
-            for p in _participant_roles(metadata)
-            if p.get("role") in _INVOLVED_ROLES and is_user(p.get("handle"))
-        }
-
     metadata = event.content.metadata
-    roles = user_roles(metadata)
+    participants = _participant_roles(metadata)
+    roles = {
+        p.get("role")
+        for p in participants
+        if p.get("role") in _INVOLVED_ROLES and is_user(p.get("handle"))
+    }
     is_comment = event.source.raw_event_type == _COMMENT_EVENT_TYPE
+    author_is_self = is_user(event.actor.platform_handle)
+    mentions_user = _mentions_user(event.content.body or "", logins)
     item_participants_unknown = is_comment and (
         metadata.get("item_participants_complete") is False
         or not any(
             p.get("role") == "author"
             and isinstance(p.get("handle"), str)
             and p["handle"].strip()
-            for p in _participant_roles(metadata)
+            for p in participants
         )
     )
 
+    needs_history = not (
+        (is_comment and author_is_self) or roles or mentions_user or item_participants_unknown
+    )
+    user_involved_before = needs_history and await _user_involved_before(event, space_id, handles)
     return GitHubAddressing(
         is_comment=is_comment,
-        author_is_self=is_user(event.actor.platform_handle),
+        author_is_self=author_is_self,
         user_is_author="author" in roles,
         user_is_assignee="assignee" in roles,
         user_is_reviewer="reviewer" in roles,
-        mentions_user=_mentions_user(event.content.body or "", logins),
-        user_involved_before=await _user_involved_before(event, space_id, handles),
+        mentions_user=mentions_user,
+        user_involved_before=user_involved_before,
         item_participants_unknown=item_participants_unknown,
     )
