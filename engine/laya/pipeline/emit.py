@@ -711,7 +711,7 @@ async def run_emit(
             )
         else:
             decision = StatusDecision(status=base_status)
-            if source_completion and pre_created and await user_reopened_card(db, event.event_id):
+            if pre_created and await user_reopened_card(db, event.event_id):
                 decision.status_set_by = SET_BY_USER
         if source_completion:
             await apply_late_source_completion(db, event, space_id, decision)

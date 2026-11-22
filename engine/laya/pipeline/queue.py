@@ -598,8 +598,8 @@ async def recover_stalled_cards() -> int:
     """Reset cards stuck in transient states after a crash or forced shutdown.
 
     Called on startup alongside recover_stalled_events(). Handles:
-    - 'pending' cards whose event will be retried → delete (fresh card will
-      be created when the event is reprocessed).
+    - 'pending' cards whose event will be retried → keep user-reopened cards
+      for in-place retry, delete other cards so they can be created afresh.
     - 'pending' cards whose event is terminal (dead/completed) → mark failed
       since no retry is coming.
     - 'agent_running' cards → revert to ready so user can
@@ -607,17 +607,21 @@ async def recover_stalled_cards() -> int:
     - 'executing' cards → mark failed since we can't know if the external
       action completed.
     """
+    from laya.pipeline.card_status import SET_BY_USER
+
     db = await get_db()
     total = 0
 
-    # -- pending cards with retryable events: delete silently --
+    # Retain the row that records a manual reopen so retries respect it.
     cursor = await db.execute(
         """DELETE FROM action_cards
            WHERE status = 'pending'
+             AND status_set_by IS NOT ?
              AND event_id IN (
                  SELECT event_id FROM events
                  WHERE processing_status IN ('queued', 'retrying', 'processing')
-             )"""
+             )""",
+        (SET_BY_USER,),
     )
     deleted = cursor.rowcount
     total += deleted

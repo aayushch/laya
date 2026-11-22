@@ -265,6 +265,7 @@ async def test_completion_respects_filter_rules(db, source_completion):
     [event] = await db.execute_fetchall("SELECT processing_status FROM events WHERE event_id = 'done'")
     assert event["processing_status"] == "filtered"
 
+
 @pytest.mark.asyncio
 async def test_completion_keeps_newer_cards_within_the_same_second(db, source_completion):
     completion = jira_done()
@@ -301,3 +302,53 @@ async def test_late_emit_uses_the_full_source_cutoff(db, source_completion, micr
     decision = StatusDecision(status="ready")
     await apply_late_source_completion(db, event, "default", decision)
     assert decision.status == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("restart", [False, True])
+async def test_manual_reopen_survives_reprocess_with_completion_off(
+    db, source_completion, sample_router_output_comms, restart,
+):
+    from laya.api.cards_lifecycle import reprocess_card
+    from laya.models.card_lifecycle import transition_card_status
+    from laya.pipeline.queue import recover_stalled_cards, recover_stalled_events
+
+    earlier = make_event("earlier")
+    await add_card(db, earlier)
+    await receive_event(jira_done())
+    await process_event("done")
+    await transition_card_status("earlier", "ready", actor="user", allow_restore=True)
+    stage = ActionCardData(
+        header="Reprocessed update", summary="Reopened activity on the issue.",
+        staged_output=StagedOutput(type="summary", content="Reopened activity"),
+    )
+
+    with (
+        patch("laya.pipeline.emit.llm_card_status_enabled", return_value=False),
+        patch("laya.pipeline.source_completion.load_settings", return_value={"pipeline": {}}),
+        patch("laya.pipeline.router.run_router", new_callable=AsyncMock,
+              return_value=sample_router_output_comms),
+        patch("laya.pipeline.stager.run_stager", new_callable=AsyncMock, return_value=stage),
+        patch("laya.pipeline.emit.embed_document", new_callable=AsyncMock),
+        patch("laya.pipeline.emit.resolve_semantic_entities", new_callable=AsyncMock),
+        patch("laya.pipeline.emit.trigger_summary_update", new_callable=AsyncMock),
+        patch("laya.pipeline.emit._reprocess_event_ids", set()) as reprocess_ids,
+    ):
+        await reprocess_card("earlier")
+        if restart:
+            reprocess_ids.clear()
+            await db.execute(
+                "UPDATE events SET processing_status = 'processing' WHERE event_id = ?",
+                (earlier.event_id,),
+            )
+            await db.commit()
+            await recover_stalled_events()
+            await recover_stalled_cards()
+        await process_event(earlier.event_id)
+
+    next_done = jira_done("done-again")
+    next_done.timestamp += timedelta(minutes=2)
+    await receive_event(next_done)
+    await process_event(next_done.event_id)
+    cards = await db.execute_fetchall("SELECT card_id, status, status_set_by FROM action_cards")
+    assert [tuple(row) for row in cards] == [("earlier", "ready", "user")]
