@@ -16,6 +16,8 @@ import pytest
 
 from laya.integrations.n8n_bootstrap import WORKFLOWS_DIR
 from laya.models.event import LayaEvent
+from laya.models.team import TeamConfig, TeamMember, TeamRole
+from laya.pipeline.ingest import resolve_participant_roles
 
 TOKEN_HEADER = "X-Laya-N8n-Token"
 TOKEN_VALUE = "={{ $env.LAYA_N8N_TOKEN }}"
@@ -203,8 +205,12 @@ def test_github_normalizes_review_activity_and_preserves_pr_closure(github_code,
         assert event.subject.type == "pull_request"
         assert event.subject.title == "Handle empty input"
         assert event.content.metadata["item_participants_complete"]
-        assert {p["handle"] for p in event.content.metadata["participants"] if p["role"] != "commenter"} == {
-            "pr-author", "assignee", "requested-reviewer",
+        roles = {p["handle"]: p["role"] for p in event.content.metadata["participants"]}
+        assert roles == {
+            "pr-author": "author",
+            "assignee": "assignee",
+            "requested-reviewer": "reviewer",
+            "reviewer": "commenter" if event is inline else "reviewer",
         }
     assert len({event.event_id for event in events}) == len(events)
     replay = github_code("Filter & Normalize", [
@@ -302,3 +308,39 @@ def test_github_keeps_pr_label_updates_that_share_a_review_timestamp(github_code
         "issue_comment_created" if inline else "pull_request_review_approved",
     ]
     assert events[0]["content"]["metadata"]["labels"] == ["needs-release-notes"]
+
+
+@pytest.mark.parametrize(
+    ("activity", "role", "assignees"),
+    [
+        ("approval", "reviewer", []),
+        ("approval", "reviewer", [{"login": "Reviewer"}]),
+        ("author_reply", "author", [{"login": "Pr-Author"}]),
+    ],
+)
+def test_github_review_activity_resolves_actor_and_user_roles(github_code, activity, role, assignees):
+    pull = {**_pull(), "requested_reviewers": [], "assignees": assignees}
+    if activity == "author_reply":
+        handle = "pr-author"
+        record = {**_inline(), "user": {"login": handle}}
+    else:
+        handle = "reviewer"
+        record = {
+            "id": 101,
+            "pull_request_url": f"{REPO_URL}/pulls/42",
+            "state": "APPROVED",
+            "submitted_at": PR_TIME,
+            "user": {"login": handle},
+        }
+    team = TeamConfig(members=[
+        TeamMember(name=handle, email="", role=TeamRole.self_, accounts=[handle]),
+    ])
+
+    output, = github_code("Filter & Normalize", [pull, record])
+    event = LayaEvent.model_validate(output)
+    roles = resolve_participant_roles(event, team, "self")
+    handles = [p["handle"] for p in roles["participants"]]
+
+    assert event.content.metadata["item_participants_complete"]
+    assert roles["actor_role"] == roles["laya_user_role"] == role
+    assert len(handles) == len(set(handles))
