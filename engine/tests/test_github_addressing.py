@@ -1,6 +1,10 @@
 """GitHub addressing: which pull request, issue and comment events concern the Laya user."""
 
+import json
+import shutil
+import subprocess
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -191,13 +195,103 @@ async def test_former_reviewer_stays_involved(db):
     assert facts.addressed
 
 
+def _normalize_github_items(*items):
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required to run the bundled n8n normalizer")
+    workflow = Path(__file__).resolve().parents[2] / "n8n/workflows/github-ingestion.json"
+    result = subprocess.run(
+        [
+            node,
+            "-e",
+            """
+            const fs = require('node:fs');
+            const workflow = require(process.argv[1]);
+            const items = JSON.parse(fs.readFileSync(0, 'utf8')).map(json => ({ json }));
+            const step = workflow.nodes.find(node => node.name === 'Filter & Normalize');
+            const normalize = new Function('$input', '$workflow', step.parameters.jsCode);
+            const events = normalize({ all: () => items }, { id: 'github-workflow' });
+            process.stdout.write(JSON.stringify(events.map(event => event.json)));
+            """,
+            str(workflow),
+        ],
+        input=json.dumps(items),
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=True,
+    )
+    return [LayaEvent.model_validate(event) for event in json.loads(result.stdout)]
+
+
 @pytest.mark.asyncio
-async def test_comment_on_an_issue_the_user_filed_is_addressed(db):
-    # A comment on a plain issue lists only its commenter; the earlier issue event
-    # carries the author.
-    await receive_event(_pr_event("issue", author="alex-morgan", is_pr=False, minutes=0))
-    facts = await _facts(_comment_event("c1", subject_type="ticket", minutes=3))
+@pytest.mark.parametrize("subject_type", ["ticket", "pull_request"])
+async def test_first_poll_comment_keeps_item_participants(db, subject_type):
+    repo_url = "https://api.github.com/repos/acme/api"
+    issue = {
+        "number": 42, "repository_url": repo_url, "title": "Refactor the cache",
+        "user": {"login": "alex-morgan"}, "assignees": [{"login": "pat"}],
+    }
+    comment = {
+        "id": 27, "issue_url": f"{repo_url}/issues/42",
+        "created_at": BASE_TIME.isoformat(), "user": {"login": "sam-lee"},
+    }
+    details = []
+    expected_participants = {
+        ("author", "alex-morgan"), ("assignee", "pat"), ("commenter", "sam-lee"),
+    }
+    if subject_type == "pull_request":
+        issue["pull_request"] = {}
+        details.append({
+            **issue, "base": {"repo": {"url": repo_url}},
+            "requested_reviewers": [{"login": "kim"}],
+        })
+        expected_participants.add(("reviewer", "kim"))
+
+    event, = _normalize_github_items(issue, comment, *details)
+    assert event.source.raw_event_type == "issue_comment_created"
+    assert event.subject.type == subject_type
+    assert {
+        (p["role"], p["handle"]) for p in event.content.metadata["participants"]
+    } == expected_participants
+    assert event.subject.title == issue["title"]
+    assert (await _facts(event)).addressed
+
+
+@pytest.mark.asyncio
+async def test_comment_on_pr_with_missing_reviewers_is_preserved(db):
+    repo_url = "https://api.github.com/repos/acme/api"
+    issue = {
+        "number": 42, "repository_url": repo_url, "pull_request": {},
+        "user": {"login": "pat"}, "assignees": [],
+    }
+    comment = {
+        "id": 27, "issue_url": f"{repo_url}/issues/42",
+        "created_at": BASE_TIME.isoformat(), "user": {"login": "sam-lee"},
+    }
+
+    event, = _normalize_github_items(issue, comment)
+    assert event.subject.type == "pull_request"
+    assert event.content.metadata["item_participants_complete"] is False
+    facts = await _facts(event)
+    assert not facts.involves_user
     assert facts.addressed
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("commenter", "expected"),
+    [("sam-lee", True), ("alex-morgan", False)],
+)
+async def test_legacy_comment_with_unknown_item_participants(db, commenter, expected):
+    event = _comment_event(
+        "legacy-comment", commenter=commenter, subject_type="ticket",
+        participants=[{"role": "commenter", "handle": commenter, "name": commenter}],
+    )
+    facts = await _facts(event)
+    assert facts.addressed is expected
+    if not expected:
+        assert facts.filter_rule == FILTER_RULE_FROM_SELF
 
 
 @pytest.mark.asyncio

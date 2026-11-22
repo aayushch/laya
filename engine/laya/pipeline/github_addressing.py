@@ -13,10 +13,10 @@ requested reviewer, is @-mentioned by login, or appeared in one of those roles o
 wrote on the item in an earlier event (a requested reviewer leaves the reviewer list
 once the review is in, and the conversation after it still concerns them).
 
-The user's own comments never reach the model. Pull request and issue events are kept
-whoever made the change: the workflow credits them to the item's author, so an update
-to the user's own PR (a push, a reviewer's request, the merge) carries the user as actor
-and is exactly what the user wants to see.
+Comments with incomplete item participants still reach the model. The user's own
+comments are filtered even if the item participants are unknown. The workflow
+credits pull request and issue events to the item's author, so updates to the
+user's own PR carry the user as actor regardless of who made the change.
 """
 
 import json
@@ -50,6 +50,7 @@ class GitHubAddressing:
     user_is_reviewer: bool
     mentions_user: bool
     user_involved_before: bool
+    item_participants_unknown: bool
 
     @property
     def involves_user(self) -> bool:
@@ -67,7 +68,7 @@ class GitHubAddressing:
 
     @property
     def addressed(self) -> bool:
-        return not self.own_comment and self.involves_user
+        return not self.own_comment and (self.involves_user or self.item_participants_unknown)
 
     @property
     def filter_rule(self) -> str:
@@ -90,7 +91,9 @@ def _mentions_user(body: str, logins: list[str]) -> bool:
 
 
 def _participant_roles(metadata: dict | None) -> list[dict]:
-    participants = (metadata or {}).get("participants", [])
+    participants = (metadata or {}).get("participants")
+    if not isinstance(participants, list):
+        return []
     return [p for p in participants if isinstance(p, dict)]
 
 
@@ -105,8 +108,8 @@ async def github_addressing(event: LayaEvent, space_id: str | None) -> GitHubAdd
     logins = [a.strip() for a in user["accounts"] if a and a.strip()]
     handles = {login.lower() for login in logins}
 
-    def is_user(handle: str | None) -> bool:
-        return (handle or "").lower() in handles
+    def is_user(handle: object) -> bool:
+        return isinstance(handle, str) and handle.lower() in handles
 
     def user_roles(metadata: dict | None) -> set[str]:
         return {
@@ -115,8 +118,18 @@ async def github_addressing(event: LayaEvent, space_id: str | None) -> GitHubAdd
             if p.get("role") in _INVOLVED_ROLES and is_user(p.get("handle"))
         }
 
-    roles = user_roles(event.content.metadata)
+    metadata = event.content.metadata
+    roles = user_roles(metadata)
     is_comment = event.source.raw_event_type == _COMMENT_EVENT_TYPE
+    item_participants_unknown = is_comment and (
+        metadata.get("item_participants_complete") is False
+        or not any(
+            p.get("role") == "author"
+            and isinstance(p.get("handle"), str)
+            and p["handle"].strip()
+            for p in _participant_roles(metadata)
+        )
+    )
 
     db = await get_db()
     previous = await db.execute_fetchall(
@@ -150,4 +163,5 @@ async def github_addressing(event: LayaEvent, space_id: str | None) -> GitHubAdd
         user_is_reviewer="reviewer" in roles,
         mentions_user=_mentions_user(event.content.body or "", logins),
         user_involved_before=any(involved_in(row) for row in previous),
+        item_participants_unknown=item_participants_unknown,
     )
