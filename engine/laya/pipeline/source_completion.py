@@ -13,6 +13,7 @@ from laya.models.event import LayaEvent
 from laya.pipeline.card_status import SET_BY_LAYA, SET_BY_USER, StatusDecision, close_ready_cards
 
 _GITHUB_MERGE = "pull_request_merged"
+_GITHUB_CLOSED = "pull_request_closed"
 _JIRA_STATUS_EVENTS = ("issue_resolved", "issue_status_changed")
 
 
@@ -30,6 +31,14 @@ def source_completion_reason(event: LayaEvent) -> str | None:
     if event.source.platform == "github" and event.subject.type == "pull_request":
         if event_type == _GITHUB_MERGE:
             return "GitHub pull request merged."
+        merged_at = event.content.metadata.get("merged_at")
+        if event_type == _GITHUB_CLOSED and isinstance(merged_at, str):
+            try:
+                merge_time = datetime.fromisoformat(merged_at.replace("Z", "+00:00"))
+            except ValueError:
+                return None
+            if _utc_timestamp(merge_time) == _utc_timestamp(event.timestamp):
+                return "GitHub pull request merged."
 
     if event.source.platform == "jira" and event.subject.type == "ticket":
         metadata = event.content.metadata
@@ -95,7 +104,7 @@ async def apply_late_source_completion(
     platform = event.source.platform
     if platform not in {"github", "jira"}:
         return
-    event_types = (_GITHUB_MERGE,) if platform == "github" else _JIRA_STATUS_EVENTS
+    event_types = (_GITHUB_CLOSED, _GITHUB_MERGE) if platform == "github" else _JIRA_STATUS_EVENTS
     placeholders = ", ".join("?" for _ in event_types)
     timestamp = _utc_timestamp(event.timestamp)
     rows = await db.execute_fetchall(

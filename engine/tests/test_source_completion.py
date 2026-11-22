@@ -58,6 +58,8 @@ def jira_done(event_id="done"):
     "event",
     [
         make_event("pr-closed", platform="github", raw_type="pull_request_closed"),
+        make_event("pr-old-merge", platform="github", raw_type="pull_request_closed",
+                   metadata={"merged_at": (BASE_TIME - timedelta(minutes=1)).isoformat()}),
         make_event("jira-comment", raw_type="issue_commented", metadata={"jira_status": "Done"}),
         make_event("jira-cancelled", raw_type="issue_resolved", metadata={"jira_new_status": "Cancelled"}),
         make_event("jira-reopened", raw_type="issue_resolved",
@@ -124,6 +126,23 @@ async def test_github_merge_closes_only_ready_cards_from_the_same_source(db, sou
         "later": "ready", "reopened": "ready", "other-pr": "ready",
         "other-connection": "ready", "other-space": "ready",
     }
+
+
+@pytest.mark.asyncio
+async def test_late_github_card_recognizes_merge_metadata_on_closed_pr(db, source_completion):
+    from laya.pipeline.card_status import StatusDecision
+    from laya.pipeline.source_completion import apply_late_source_completion
+
+    completion = make_event(
+        "merge", platform="github", raw_type="pull_request_closed", minutes=1,
+        metadata={"merged_at": "2026-11-22T15:01:00Z"},
+    )
+    await receive_event(completion)
+    await process_event(completion.event_id)
+
+    decision = StatusDecision(status="ready")
+    await apply_late_source_completion(db, make_event("earlier", platform="github"), "default", decision)
+    assert decision.status == "done"
 
 
 @pytest.mark.asyncio

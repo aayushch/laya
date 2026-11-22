@@ -12,7 +12,7 @@ import json
 import shutil
 import subprocess
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -143,7 +143,7 @@ async def test_github_merge_has_a_stable_timestamp_and_survives_comment_filterin
     )
 
     assert [event["source"]["raw_event_type"] for event in events] == [
-        "pull_request_merged", "pull_request_closed", "pull_request_merged",
+        "pull_request_closed", "pull_request_closed", "pull_request_closed",
         "issue_comment_created", "issue_comment_created",
     ]
     assert events[0]["timestamp"] == events[2]["timestamp"] == merged_at
@@ -272,3 +272,37 @@ def test_jira_changelog_pagination_keeps_recent_changes_with_their_issues():
     assert output["events"][0]["timestamp"] == moved
     assert output["events"][0]["actor"]["name"] == "Mover"
     assert output["offsets"] == [[0, 200, 100], [0, 500], [0]]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("completion_enabled", [False, True])
+async def test_github_merges_still_obey_closed_pr_drop_rules(db, completion_enabled):
+    merged_at = "2026-11-22T16:00:00Z"
+    [delivery] = _normalize("github", "Filter & Normalize", [{
+        "number": 11,
+        "repository_url": "https://api.github.com/repos/acme/backend",
+        "state": "closed",
+        "pull_request": {"merged_at": merged_at},
+        "updated_at": merged_at,
+    }], since="2026-11-22T15:59:30Z")
+    event = LayaEvent.model_validate(delivery)
+    await receive_event(event)
+    rules = {"rules": [{
+        "name": "Drop closed PRs",
+        "condition": {
+            "field": "source.raw_event_type", "operator": "equals", "value": "pull_request_closed",
+        },
+    }]}
+
+    with (
+        patch("laya.pipeline.source_completion.load_settings", return_value={
+            "pipeline": {"source_card_completion": completion_enabled},
+        }),
+        patch("laya.pipeline.rules.load_rules", return_value=rules),
+        patch("laya.pipeline.router.run_router", new_callable=AsyncMock, return_value=None) as route,
+    ):
+        await process_event(event.event_id)
+
+    [row] = await db.execute_fetchall("SELECT processing_status, filter_rule FROM events")
+    assert tuple(row) == ("filtered", "Drop closed PRs")
+    route.assert_not_awaited()
