@@ -120,6 +120,37 @@ def _normalize_trello_actions(workflow_id, pages):
 
 
 @pytest.mark.skipif(not WORKFLOWS_DIR.exists(), reason="bundled workflows not present")
+def test_trello_fetches_card_creation_actions():
+    workflow = json.loads((WORKFLOWS_DIR / "trello-ingestion.json").read_text(encoding="utf-8"))
+    fetch = next(n for n in workflow["nodes"] if n["name"] == "Fetch Trello Actions")
+    filters = next(
+        param["value"] for param in fetch["parameters"]["queryParameters"]["parameters"]
+        if param["name"] == "filter"
+    ).split(",")
+    assert {"createCard", "copyCard", "emailCard", "convertToCardFromCheckItem"} <= set(filters)
+
+
+@pytest.mark.skipif(not WORKFLOWS_DIR.exists(), reason="bundled workflows not present")
+@pytest.mark.parametrize("action_type", ["copyCard", "emailCard", "convertToCardFromCheckItem"])
+def test_trello_normalizes_additional_card_creation_actions(action_type):
+    data = {
+        "card": {"id": "new-card", "name": "New card", "shortLink": "AbCd1234"},
+        "list": {"name": "Inbox"},
+    }
+    if action_type == "copyCard":
+        data["cardSource"] = {"id": "original-card", "name": "Original card"}
+    [event] = _normalize_trello_actions("test", [{"body": [{
+        "id": "created", "type": action_type, "date": "2026-11-22T16:00:00Z", "data": data,
+    }]}])
+    assert event.source.raw_event_type == "card_created"
+    assert event.entity_id == "trello:ticket:test:new-card"
+    assert event.subject.title == "New card"
+    assert event.subject.url == "https://trello.com/c/AbCd1234"
+    assert event.content.metadata["trello_card_id"] == "new-card"
+    assert event.content.body == "Card created in Inbox."
+
+
+@pytest.mark.skipif(not WORKFLOWS_DIR.exists(), reason="bundled workflows not present")
 def test_trello_normalizes_actions_across_pages_in_chronological_order():
     card = {"id": "card-id", "name": "Update onboarding", "shortLink": "AbCd1234"}
     board = {"id": "board-id", "name": "Work"}
