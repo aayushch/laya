@@ -142,6 +142,28 @@ def test_github_review_requests_cover_recent_pulls_and_missing_inline_parents(gi
     ]
 
 
+@pytest.mark.parametrize("created_at", [OLD_TIME, None, "invalid"])
+def test_github_only_fetches_inline_parents_for_comments_created_in_the_poll(github_code, created_at):
+    stale = {**_inline(43), "id": 99, "created_at": created_at}
+    recent = {**_inline(44), "created_at": "2026-11-22T10:00:00Z"}
+
+    requests = github_code("Build PR Review Requests", [stale, recent])
+
+    assert requests == [{"owner": "acme", "repo": "backend", "number": "44", "suffix": ""}]
+
+
+@pytest.mark.parametrize("created_at", [OLD_TIME, None, "invalid"])
+def test_github_only_emits_inline_comments_created_in_the_poll(github_code, created_at):
+    stale = {**_inline(43), "id": 99, "created_at": created_at}
+    recent = {**_inline(44), "created_at": "2026-11-22T10:00:00Z"}
+
+    event, = github_code("Filter & Normalize", [stale, recent])
+
+    assert event["source"]["raw_event_type"] == "issue_comment_created"
+    assert event["content"]["metadata"]["comment_id"] == recent["id"]
+    assert event["timestamp"] == recent["created_at"]
+
+
 @pytest.mark.parametrize(
     ("merged_at", "closure_type"),
     [(None, "pull_request_closed"), (MERGED_AT, "pull_request_closed")],
