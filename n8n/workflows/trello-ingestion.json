@@ -48,7 +48,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const boardId = $input.first().json.value?.boardId;\nif (!boardId || !/^(?:[A-Za-z0-9]{8}|[a-fA-F0-9]{24})$/.test(boardId)) {\n  throw new Error('Trello board configuration is missing or invalid');\n}\n\nconst startedAt = Date.now();\nconst previousPoll = $getWorkflowStaticData('global').lastSuccessfulPoll;\nconst since = previousPoll ? previousPoll - 1000 : startedAt - 150000;\nreturn [{ json: { boardId, startedAt, since: new Date(since).toISOString() } }];\n"
+        "jsCode": "const { boardId, pollStartAt } = $input.first().json.value ?? {};\nif (!boardId || !/^(?:[A-Za-z0-9]{8}|[a-fA-F0-9]{24})$/.test(boardId)) {\n  throw new Error('Trello board configuration is missing or invalid');\n}\n\nconst startedAt = Date.now();\nconst previousPoll = $getWorkflowStaticData('global').lastSuccessfulPoll;\n// Failed runs leave no checkpoint, so initial polls share the provisioned start.\nconst since = previousPoll ? previousPoll - 1000 : Date.parse(pollStartAt);\nif (!Number.isFinite(since)) {\n  throw new Error('Trello poll start is missing or invalid');\n}\nreturn [{ json: { boardId, startedAt, since: new Date(since).toISOString() } }];\n"
       },
       "name": "Prepare Trello Poll",
       "type": "n8n-nodes-base.code",
@@ -307,6 +307,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.11.23"
+    "laya_version": "2026.11.24"
   }
 }

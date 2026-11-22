@@ -4,12 +4,14 @@
 """Tests for the Connection Broker — credential management."""
 
 import json
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 import pytest_asyncio
 
+from laya.config import MIGRATIONS_DIR
 from laya.egress.connections import (
     create_connection,
     list_all_connections,
@@ -143,6 +145,8 @@ class TestCreateConnection:
 
     @pytest.mark.asyncio
     async def test_trello_connection_provisions_one_board_ingestion(self, db):
+        await db.execute("INSERT INTO spaces (space_id, name) VALUES ('work', 'Work')")
+        await db.commit()
         credentials = {
             "apiKey": " demo_key ",
             "apiToken": "demo_token",
@@ -153,17 +157,29 @@ class TestCreateConnection:
         trello_http.get.return_value = httpx.Response(200, json=[])
         n8n_http = AsyncMock()
         n8n_http.post.return_value = httpx.Response(201, json={"id": "trello_workflow"})
+        provisioned = []
+
+        async def read_provisioned_workflow(workflow_id, *, active):
+            rows = await db.execute_fetchall(
+                """SELECT m.value, s.platform, s.space_id FROM sources s
+                   JOIN metadata m ON m.key = 'trello-config:' || s.workflow_id AND m.space_id = 'default'
+                   WHERE s.workflow_id = ?""",
+                (workflow_id,),
+            )
+            provisioned.extend(rows)
+
+        started = datetime.now(timezone.utc).replace(microsecond=0)
 
         with (
             patch("laya.egress.connections.httpx.AsyncClient", return_value=trello_http),
             patch("laya.security.keychain.get_api_key", return_value="demo_n8n_key"),
             patch("laya.integrations.n8n_client.create_credential", return_value={"id": "trello_cred"}) as provision,
-            patch("laya.integrations.n8n_client.activate_workflow") as activate,
+            patch("laya.integrations.n8n_client.activate_workflow", side_effect=read_provisioned_workflow) as activate,
             patch("laya.integrations.n8n_bootstrap._get_existing_workflows", return_value={}),
             patch("laya.integrations.n8n_bootstrap._get_error_handler_id", return_value="error_handler"),
             patch("laya.http_client.get_client", return_value=n8n_http),
         ):
-            result = await create_connection("trello", credentials, name="Example board")
+            result = await create_connection("trello", credentials, name="Example board", space_id="work")
 
         assert result.status == "connected", result.error
         assert result.capabilities == []
@@ -180,6 +196,14 @@ class TestCreateConnection:
             node_type="n8n-nodes-base.trello",
         )
         activate.assert_awaited_once_with("trello_workflow", active=True)
+        assert len(provisioned) == 1
+        [at_activation] = provisioned
+        config = json.loads(at_activation["value"])
+        assert at_activation["platform"] == "trello"
+        assert at_activation["space_id"] == "work"
+        assert config["boardId"] == "AbCd1234"
+        assert started <= datetime.fromisoformat(config["pollStartAt"]) <= datetime.now(timezone.utc)
+        assert set(config) == {"boardId", "pollStartAt"}
         workflow = n8n_http.post.call_args.kwargs["json"]
         assert workflow["settings"]["errorWorkflow"] == "error_handler"
         bound_nodes = [node for node in workflow["nodes"] if node.get("credentials")]
@@ -194,7 +218,7 @@ class TestCreateConnection:
         [config] = await db.execute_fetchall(
             "SELECT value FROM metadata WHERE key = 'trello-config:trello_workflow'",
         )
-        assert json.loads(config["value"]) == {"boardId": "AbCd1234"}
+        assert config["value"] == at_activation["value"]
 
     @pytest.mark.asyncio
     async def test_trello_rejects_a_non_board_url(self):
@@ -211,6 +235,36 @@ class TestCreateConnection:
         result = await create_connection("totally_unknown", {})
         assert result.status == "failed"
         assert "Unknown" in result.error
+
+
+@pytest.mark.asyncio
+async def test_trello_poll_start_migration_uses_original_source_creation(db):
+    await db.executemany(
+        "INSERT INTO sources (source_id, name, platform, workflow_id, created_at) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("old", "Existing Trello connection", "trello", "old", "2026-11-22 08:30:00"),
+            ("saved", "Trello with a poll start", "trello", "saved", "2026-11-22 08:30:00"),
+        ],
+    )
+    await db.executemany(
+        "INSERT INTO metadata (key, value) VALUES (?, ?)",
+        [
+            ("trello-config:old", '{"boardId":"AbCd1234"}'),
+            ("trello-config:saved", '{"boardId":"XyZa1234","pollStartAt":"2026-11-21T08:30:00Z"}'),
+            ("trello-config:unknown", '{"boardId":"NoId1234"}'),
+        ],
+    )
+    await db.commit()
+
+    sql = (MIGRATIONS_DIR / "076_trello_poll_start.sql").read_text(encoding="utf-8")
+    await db.executescript(sql)
+    rows = await db.execute_fetchall("SELECT key, value FROM metadata")
+    configs = {row["key"]: json.loads(row["value"]) for row in rows}
+    assert configs == {
+        "trello-config:old": {"boardId": "AbCd1234", "pollStartAt": "2026-11-22T08:30:00Z"},
+        "trello-config:saved": {"boardId": "XyZa1234", "pollStartAt": "2026-11-21T08:30:00Z"},
+        "trello-config:unknown": {"boardId": "NoId1234"},
+    }
 
 
 class TestListConnections:

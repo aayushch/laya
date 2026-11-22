@@ -66,6 +66,40 @@ def test_event_post_nodes_retry_on_failure():
     assert not bad, f"POST nodes without retry: {bad}"
 
 
+@pytest.mark.skipif(not WORKFLOWS_DIR.exists(), reason="bundled workflows not present")
+def test_trello_failed_first_poll_keeps_the_provisioned_start():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required to run the Trello poll")
+    workflow = json.loads((WORKFLOWS_DIR / "trello-ingestion.json").read_text(encoding="utf-8"))
+    code = next(n["parameters"]["jsCode"] for n in workflow["nodes"] if n["name"] == "Prepare Trello Poll")
+    result = subprocess.run(
+        [node, "-e", """
+            const code = require('node:fs').readFileSync(0, 'utf8');
+            const prepare = new Function('$input', '$getWorkflowStaticData', 'Date', code);
+            const value = {boardId: 'AbCd1234', pollStartAt: '2026-11-22T16:00:00Z'};
+            const input = {first: () => ({json: {value}})};
+            function run(now, state) {
+              class Clock extends Date {
+                static now() { return Date.parse(now); }
+              }
+              return prepare(input, () => state, Clock)[0].json;
+            }
+            const attempts = [
+              run('2026-11-22T16:02:00Z', {}),
+              run('2026-11-22T16:04:00Z', {}),
+              run('2026-11-22T16:06:00Z', {lastSuccessfulPoll: Date.parse('2026-11-22T16:04:00Z')}),
+            ];
+            process.stdout.write(JSON.stringify(attempts));
+        """],
+        input=code, text=True, capture_output=True, check=True, timeout=15,
+    )
+    first, retry, established = json.loads(result.stdout)
+    assert retry["since"] == first["since"] == "2026-11-22T16:00:00.000Z"
+    assert retry["since"] < "2026-11-22T16:00:10.000Z"
+    assert established["since"] == "2026-11-22T16:03:59.000Z"
+
+
 def _normalize_trello_actions(workflow_id, pages):
     node = shutil.which("node")
     if node is None:
