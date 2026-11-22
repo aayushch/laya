@@ -23,6 +23,7 @@ class TeamMember(BaseModel):
     notes: str = ""
     aliases: list[str] = Field(default_factory=list)
     accounts: list[str] = Field(default_factory=list)
+    github_logins: list[str] = Field(default_factory=list)
 
 
 class TeamConfig(BaseModel):

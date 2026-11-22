@@ -55,11 +55,13 @@ export interface TeamMember {
 	notes: string;
 	aliases: string[];
 	accounts: string[];
+	github_logins?: string[];
 }
 
 /** team.json structure */
 export interface TeamConfig {
 	members: TeamMember[];
+	github_filter_warning?: string;
 }
 
 /** Simple rule condition */

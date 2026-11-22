@@ -345,7 +345,7 @@
 		<div>
 			<h3 class="text-laya-heading font-semibold text-surface-50">Filter Rules</h3>
 			<p class="mt-1 text-laya-base text-surface-400">
-				Filter rules control which events Laya processes. Use these to ignore noisy notifications or allow only specific sources.
+				The first matching rule applies. For GitHub, Allow lets unrelated events through the involvement filter. Your own comments are still filtered when the involvement filter is enabled.
 			</p>
 		</div>
 

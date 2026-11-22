@@ -141,6 +141,10 @@ DEFAULT_SETTINGS = {
         # pipeline/card_status.py). When False, every card is created with its
         # default status and Laya closes no card on its own.
         "llm_card_status": True,
+        # Keep only GitHub events that involve the user (author, assignee, requested
+        # reviewer, @-mentioned, or involved earlier on the same PR or issue); see
+        # pipeline/github_addressing.py.
+        "github_actionable_only": False,
         "debounce": {
             "daily_summary_seconds": 90,
             # Max cards folded into a single daily-summary LLM call. A debounce
@@ -333,6 +337,26 @@ def save_settings(settings: dict) -> None:
     _settings_cache_key = None
 
 
+def github_action_filter_enabled(platform: str) -> bool:
+    """Return whether GitHub events must involve the user to become cards."""
+    return platform == "github" and (
+        load_settings().get("pipeline", {}).get("github_actionable_only") is True
+    )
+
+
+GITHUB_FILTER_IDENTITY_ERROR = (
+    "GitHub involvement filtering requires at least one GitHub login in your Team profile."
+)
+
+
+def github_logins(user: dict | None) -> list[str]:
+    """Return the GitHub logins explicitly assigned to the self profile."""
+    logins = (user or {}).get("github_logins")
+    if not isinstance(logins, list):
+        return []
+    return [login.strip() for login in logins if isinstance(login, str) and login.strip()]
+
+
 def get_n8n_config() -> dict:
     """Return the n8n config block from settings, with env var override."""
     settings = load_settings()
@@ -368,7 +392,7 @@ def save_team(team: dict) -> None:
 def get_self_user() -> dict | None:
     """Return the team member with role 'self', or None if not configured.
 
-    Returns a dict with keys: name, email, emails (all emails), accounts.
+    Returns name, email, emails (all emails), accounts and github_logins.
     """
     team = load_team()
     for member in team.get("members", []):
@@ -381,6 +405,7 @@ def get_self_user() -> dict | None:
                 "email": primary,
                 "emails": all_emails,
                 "accounts": member.get("accounts", []),
+                "github_logins": member.get("github_logins", []),
             }
     return None
 

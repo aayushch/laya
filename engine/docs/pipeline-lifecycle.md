@@ -13,11 +13,13 @@ flowchart TD
         INGEST["Ingest<br/><i>Resolve actor_relationship,<br/>parse participant_roles</i>"]
         SPACE["Space Resolution<br/><i>Map connection → space_id</i>"]
         RULES["Rules Engine<br/><i>User-defined filters</i>"]
-        INGEST --> SPACE --> RULES
+        ADDR["Action Filters<br/><i>opt-in: drop events that<br/>do not involve the user</i>"]
+        INGEST --> SPACE --> RULES --> ADDR
     end
 
     RULES -->|filtered| STOP([filtered — stop])
-    RULES -->|pass| ROUTER
+    ADDR -->|not addressed| STOP
+    ADDR -->|pass| ROUTER
 
     %% ─── Phase 4: Router ───
     subgraph ROUTER_PHASE["Phase 4: Router"]
@@ -66,6 +68,38 @@ flowchart TD
         PRULES["Processing Rules"]
     end
 ```
+
+## GitHub Involvement Filter (opt-in)
+
+In Settings → Team, edit your profile and add one or more GitHub logins. The
+editor stores these in the self member's `github_logins` field in team.json.
+Enable the filter by setting `pipeline.github_actionable_only` to `true` in
+settings.json (default `false`). If the profile loses its GitHub logins, filtering
+pauses and the Team editor displays a warning. Adding a GitHub login resumes
+filtering while the setting is enabled.
+
+`pipeline/github_addressing.py` matches these logins case-insensitively. An event
+is kept if you are the item's author, an assignee or a requested reviewer, the
+event mentions your login, or you were already involved in an earlier event on
+the same item. Earlier review requests still count after GitHub clears the
+requested reviewer list.
+
+The first matching filter rule applies. An Ignore rule drops the event. An
+explicit Allow rule lets unrelated GitHub events through the involvement
+filter. The filter still drops your own comments.
+
+Comments with missing item participant data are kept. Your own comments are
+filtered even when item participant data is missing. Pull request and issue
+events are credited to the item's author, so updates to your own pull request
+remain eligible regardless of who made the change.
+
+A dropped event is marked `filtered` with its `filter_rule` ("GitHub item does not
+involve you" or "GitHub comment was written by you") before any model call, so it
+costs no router call. `pipeline/addressing.py` is the entry point the queue and the
+batch router call.
+
+Not covered: review requests sent to a team rather than a person, and PR reviews and
+inline review comments, which the workflow does not ingest.
 
 ## Tags shown to the Stager
 

@@ -10,7 +10,6 @@ from typing import Any
 import structlog
 
 from laya.config import load_rules
-from laya.db.sqlite import get_db
 from laya.models.event import LayaEvent
 from laya.models.rules import (
     AllCondition,
@@ -86,10 +85,9 @@ def _evaluate_condition(condition: Any, event: LayaEvent) -> bool:
 
 
 async def run_rules(event: LayaEvent) -> tuple[bool, str | None]:
-    """Run the RULES ENGINE step: check event against all enabled rules.
+    """Evaluate enabled rules in order and return (should_drop, matching_rule_name).
 
-    Returns (filtered: bool, matching_rule_name: str | None).
-    If filtered=True, updates the event row in SQLite.
+    The queue persists and broadcasts the filter decision.
     """
     rules_data = load_rules()
     rules_config = RulesConfig(**rules_data)
@@ -103,15 +101,7 @@ async def run_rules(event: LayaEvent) -> tuple[bool, str | None]:
                 log.info(
                     "event_allowed", event_id=event.event_id, rule=rule.name
                 )
-                return False, None
-
-            # action == "drop"
-            db = await get_db()
-            await db.execute(
-                "UPDATE events SET filtered = TRUE, filter_rule = ? WHERE event_id = ?",
-                (rule.name, event.event_id),
-            )
-            await db.commit()
+                return False, rule.name
 
             log.info("event_filtered", event_id=event.event_id, rule=rule.name)
             return True, rule.name

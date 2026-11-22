@@ -9,10 +9,20 @@ from datetime import date
 
 import httpx
 import structlog
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from laya.config import get_n8n_config, load_repos, load_settings, save_repos, save_settings, get_all_custom_providers
+from laya.config import (
+    GITHUB_FILTER_IDENTITY_ERROR,
+    get_all_custom_providers,
+    get_n8n_config,
+    get_self_user,
+    github_logins,
+    load_repos,
+    load_settings,
+    save_repos,
+    save_settings,
+)
 from laya.http_client import get_client
 from laya.integrations.n8n_bootstrap import ensure_n8n_ready
 from laya.security.keychain import delete_api_key, get_api_key, has_api_key, store_api_key
@@ -195,6 +205,14 @@ async def get_settings() -> dict:
 @router.put("/settings")
 async def update_settings(body: dict) -> dict:
     """Update settings with deep merge."""
+    pipeline_update = body.get("pipeline")
+    if (
+        isinstance(pipeline_update, dict)
+        and pipeline_update.get("github_actionable_only") is True
+        and not github_logins(get_self_user())
+    ):
+        raise HTTPException(status_code=422, detail=GITHUB_FILTER_IDENTITY_ERROR)
+
     current = load_settings()
     for key, value in body.items():
         if isinstance(value, dict) and key in current and isinstance(current[key], dict):

@@ -19,6 +19,7 @@
 	let loading = $state(true);
 	let saving = $state(false);
 	let error = $state<string | null>(null);
+	let githubFilterWarning = $state<string | undefined>();
 	let editingIndex = $state<number | null>(null);
 	let showAddForm = $state(false);
 
@@ -29,6 +30,7 @@
 	let formNotes = $state('');
 	let formAliases = $state('');
 	let formAccounts = $state('');
+	let formGithubLogins = $state('');
 
 	let hasSelf = $derived(members.some((m) => m.role === 'self'));
 
@@ -55,6 +57,7 @@
 		try {
 			const data = await engineApi.getTeam();
 			members = data.members;
+			githubFilterWarning = data.github_filter_warning;
 		} catch {
 			error = 'Failed to load team configuration';
 		} finally {
@@ -66,7 +69,8 @@
 		saving = true;
 		error = null;
 		try {
-			await engineApi.updateTeam({ members });
+			const result = await engineApi.updateTeam({ members });
+			githubFilterWarning = result.github_filter_warning;
 		} catch {
 			error = 'Failed to save team';
 		} finally {
@@ -81,6 +85,7 @@
 		formNotes = '';
 		formAliases = '';
 		formAccounts = '';
+		formGithubLogins = '';
 		showAddForm = false;
 		editingIndex = null;
 	}
@@ -93,6 +98,7 @@
 			notes: formNotes,
 			aliases: parseList(formAliases),
 			accounts: parseList(formAccounts),
+			github_logins: parseList(formGithubLogins),
 		};
 	}
 
@@ -110,6 +116,7 @@
 		formNotes = m.notes;
 		formAliases = joinList(m.aliases ?? []);
 		formAccounts = joinList(m.accounts ?? []);
+		formGithubLogins = joinList(m.github_logins ?? []);
 		editingIndex = index;
 		showAddForm = false;
 	}
@@ -133,6 +140,12 @@
 {:else}
 	{#if error}
 		<div class="rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-laya-base text-red-300">{error}</div>
+	{/if}
+
+	{#if githubFilterWarning}
+		<p role="status" class="mb-4 rounded-lg border border-laya-orange/40 bg-laya-orange/5 px-4 py-2 text-laya-base">
+			{githubFilterWarning}
+		</p>
 	{/if}
 
 	<!-- Self-identification prompt (if no 'self' member exists) -->
@@ -221,6 +234,14 @@
 				{#if isSelfForm}
 					<input bind:value={formAliases} placeholder="Other emails (comma-separated)" class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500" />
 					<input bind:value={formAccounts} placeholder="Platform accounts, e.g. jdoe, jane.doe (comma-separated)" class="col-span-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500" />
+					<label class="col-span-full text-laya-base text-surface-300">
+						GitHub logins for involvement filtering
+						<input
+							bind:value={formGithubLogins}
+							placeholder="Comma-separated usernames"
+							class="mt-1 block w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500"
+						/>
+					</label>
 				{/if}
 				<input bind:value={formNotes} placeholder="Notes (optional)" class="rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 text-laya-base text-surface-50 placeholder-surface-500" />
 			</div>

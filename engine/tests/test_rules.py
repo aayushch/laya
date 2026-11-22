@@ -7,8 +7,10 @@ from unittest.mock import patch
 
 import pytest
 
-from laya.pipeline.rules import _evaluate_condition, _get_field_value, run_rules
+from laya.api.events import receive_event
 from laya.models.rules import AllCondition, AnyCondition, SimpleCondition
+from laya.pipeline.queue import process_event
+from laya.pipeline.rules import _evaluate_condition, _get_field_value, run_rules
 
 
 # --- Field extraction ---
@@ -136,25 +138,38 @@ async def test_disabled_rule_skipped(db, sample_event):
 
 
 @pytest.mark.asyncio
-async def test_run_rules_filters_and_updates_db(db, bot_event, mock_rules):
-    # Insert event
-    await db.execute(
-        "INSERT INTO events (event_id, timestamp, source_platform, source_raw_event_type, "
-        "subject_type, subject_id, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (bot_event.event_id, "2026-02-22", "jira", "issue_updated", "ticket", "BUG-1234", "{}"),
+async def test_run_rules_reports_drop_without_writing_filter_state(db, bot_event, mock_rules):
+    await receive_event(bot_event)
+
+    assert await run_rules(bot_event) == (True, "Ignore bot messages")
+
+    row, = await db.execute_fetchall(
+        "SELECT processing_status, filtered, filter_rule FROM events WHERE event_id = ?",
+        (bot_event.event_id,),
     )
-    await db.commit()
+    assert dict(row) == {"processing_status": "queued", "filtered": 0, "filter_rule": None}
 
-    filtered, rule = await run_rules(bot_event)
-    assert filtered is True
-    assert rule == "Ignore bot messages"
 
-    async with db.execute(
-        "SELECT filtered, filter_rule FROM events WHERE event_id=?", (bot_event.event_id,)
-    ) as cursor:
-        row = await cursor.fetchone()
-        assert row[0] == 1  # filtered=TRUE
-        assert row[1] == "Ignore bot messages"
+@pytest.mark.asyncio
+async def test_process_event_persists_and_broadcasts_rule_drop(db, bot_event, mock_rules):
+    await receive_event(bot_event)
+
+    with patch("laya.api.websocket.manager.broadcast") as broadcast:
+        await process_event(bot_event.event_id)
+
+    row, = await db.execute_fetchall(
+        "SELECT processing_status, processed, filtered, filter_rule FROM events WHERE event_id = ?",
+        (bot_event.event_id,),
+    )
+    assert dict(row) == {
+        "processing_status": "filtered", "processed": 1,
+        "filtered": 1, "filter_rule": "Ignore bot messages",
+    }
+    broadcast.assert_awaited_once_with({
+        "type": "event_classified",
+        "event_id": bot_event.event_id,
+        "payload": {"filtered": True, "filter_rule": "Ignore bot messages"},
+    })
 
 
 @pytest.mark.asyncio
