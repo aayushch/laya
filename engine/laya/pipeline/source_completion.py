@@ -3,6 +3,8 @@
 
 """Apply source-confirmed GitHub and Jira card completion."""
 
+from datetime import datetime, timezone
+
 from pydantic import ValidationError
 
 from laya.config import load_settings
@@ -48,18 +50,40 @@ def source_status_lock_key(event: LayaEvent) -> str:
     return event.entity_id
 
 
+def _utc_timestamp(timestamp: datetime) -> datetime:
+    if timestamp.tzinfo is None:
+        return timestamp.replace(tzinfo=timezone.utc)
+    return timestamp.astimezone(timezone.utc)
+
+
 async def complete_source_cards(db, event: LayaEvent, space_id: str | None, reason: str) -> None:
     """Close work from this source at or before the merge or transition."""
+    cutoff = _utc_timestamp(event.timestamp)
+    cutoff_second = db_ts(cutoff)
+    # Keep the indexed bound coarse and read the original timestamp for ties
+    # so a later event in the same second stays open.
     rows = await db.execute_fetchall(
-        """SELECT c.card_id, c.header FROM events e
+        """SELECT c.card_id, c.header, e.timestamp,
+                  CASE WHEN e.timestamp = ? THEN e.raw_json END AS raw_json
+           FROM events e
            JOIN action_cards c ON c.event_id = e.event_id
            WHERE e.subject_id = ? AND e.source_platform = ? AND e.source_connection_id IS ?
              AND COALESCE(c.space_id, 'default') = ? AND e.timestamp <= ?
              AND c.status = 'ready' AND c.status_set_by IS NOT ?""",
-        (event.subject.id, event.source.platform, event.source.connection_id,
-         space_id or "default", db_ts(event.timestamp), SET_BY_USER),
+        (cutoff_second, event.subject.id, event.source.platform, event.source.connection_id,
+         space_id or "default", cutoff_second, SET_BY_USER),
     )
-    await close_ready_cards(rows, reason)
+    earlier_cards = []
+    for row in rows:
+        if row["timestamp"] == cutoff_second:
+            try:
+                earlier = LayaEvent.model_validate_json(row["raw_json"])
+            except ValidationError:
+                continue
+            if _utc_timestamp(earlier.timestamp) > cutoff:
+                continue
+        earlier_cards.append(row)
+    await close_ready_cards(earlier_cards, reason)
 
 
 async def apply_late_source_completion(
@@ -73,6 +97,7 @@ async def apply_late_source_completion(
         return
     event_types = (_GITHUB_MERGE,) if platform == "github" else _JIRA_STATUS_EVENTS
     placeholders = ", ".join("?" for _ in event_types)
+    timestamp = _utc_timestamp(event.timestamp)
     rows = await db.execute_fetchall(
         f"""SELECT e.raw_json FROM events e
             WHERE e.subject_id = ? AND e.source_platform = ? AND e.source_connection_id IS ?
@@ -82,12 +107,14 @@ async def apply_late_source_completion(
               AND NOT EXISTS (SELECT 1 FROM action_cards c WHERE c.event_id = e.event_id)
             ORDER BY e.timestamp""",
         (event.subject.id, platform, event.source.connection_id,
-         space_id or "default", db_ts(event.timestamp), event.event_id, *event_types),
+         space_id or "default", db_ts(timestamp), event.event_id, *event_types),
     )
     for row in rows:
         try:
             completion = LayaEvent.model_validate_json(row["raw_json"])
         except ValidationError:
+            continue
+        if _utc_timestamp(completion.timestamp) < timestamp:
             continue
         reason = source_completion_reason(completion)
         if reason:

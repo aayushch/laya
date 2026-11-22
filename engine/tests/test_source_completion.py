@@ -203,3 +203,40 @@ async def test_completion_respects_filter_rules(db, source_completion):
     assert card["status"] == "ready"
     [event] = await db.execute_fetchall("SELECT processing_status FROM events WHERE event_id = 'done'")
     assert event["processing_status"] == "filtered"
+
+@pytest.mark.asyncio
+async def test_completion_keeps_newer_cards_within_the_same_second(db, source_completion):
+    completion = jira_done()
+    completion.timestamp = completion.timestamp.replace(microsecond=100_200)
+    for event_id, microsecond in [("before", 100_100), ("at", 100_200), ("after", 100_300)]:
+        event = make_event(event_id, minutes=1)
+        # The raw payload can use an offset while the indexed column uses UTC.
+        event.timestamp = event.timestamp.replace(microsecond=microsecond).astimezone(
+            timezone(timedelta(hours=2)),
+        )
+        await add_card(db, event)
+    await receive_event(completion)
+    await process_event(completion.event_id)
+
+    rows = await db.execute_fetchall("SELECT event_id, status FROM action_cards")
+    assert dict(map(tuple, rows)) == {"before": "done", "at": "done", "after": "ready"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("microsecond, expected", [(100_100, "done"), (100_200, "done"), (100_300, "ready")])
+async def test_late_emit_uses_the_full_source_cutoff(db, source_completion, microsecond, expected):
+    from laya.pipeline.card_status import StatusDecision
+    from laya.pipeline.source_completion import apply_late_source_completion
+
+    completion = jira_done()
+    completion.timestamp = completion.timestamp.replace(microsecond=100_200).astimezone(
+        timezone(timedelta(hours=2)),
+    )
+    await receive_event(completion)
+    await process_event(completion.event_id)
+
+    event = make_event("delayed", minutes=1)
+    event.timestamp = event.timestamp.replace(microsecond=microsecond, tzinfo=None)
+    decision = StatusDecision(status="ready")
+    await apply_late_source_completion(db, event, "default", decision)
+    assert decision.status == expected
