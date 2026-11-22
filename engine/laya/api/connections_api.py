@@ -17,7 +17,12 @@ from laya.integrations.n8n_client import (
     list_credentials,
     test_api_access,
 )
-from laya.integrations.platforms import PLATFORMS, SUPPORTED_N8N_TYPES, get_platform_by_n8n_type
+from laya.integrations.platforms import (
+    PLATFORMS,
+    SUPPORTED_N8N_TYPES,
+    get_platform_by_n8n_type,
+    project_n8n_credentials,
+)
 
 log = structlog.get_logger()
 router = APIRouter()
@@ -93,7 +98,7 @@ async def create_connection(body: CreateConnectionRequest) -> dict:
         result = await create_credential(
             name=body.name,
             n8n_type=platform["n8n_type"],
-            data=body.credentials,
+            data=project_n8n_credentials(platform, body.credentials),
             node_type=platform["n8n_node"],
         )
     except N8nApiKeyMissing as e:

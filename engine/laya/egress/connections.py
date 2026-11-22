@@ -25,7 +25,7 @@ from laya.db.sqlite import get_db, transaction
 from laya.db.timeutil import db_now
 from laya.egress.models import Connection, ConnectionResult
 from laya.egress.registry import get_capabilities
-from laya.integrations.platforms import PLATFORMS
+from laya.integrations.platforms import PLATFORMS, project_n8n_credentials
 
 log = structlog.get_logger()
 
@@ -637,13 +637,6 @@ def _remove_from_keychain(connection_id: str, platform: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-class _BlankOnMissing(dict):
-    """format_map source that resolves missing template fields to ""."""
-
-    def __missing__(self, key: str) -> str:
-        return ""
-
-
 async def _provision_to_n8n(
     platform: str, name: str, credentials: dict
 ) -> str | None:
@@ -658,23 +651,10 @@ async def _provision_to_n8n(
         # Merge any n8n-specific defaults (e.g. server URL)
         source = {**platform_config.get("n8n_defaults", {}), **credentials}
 
-        # Platforms whose n8n credential schema differs from our stored fields
-        # (e.g. bitbucket_server: httpHeaderAuth wants {name, value}, we store
-        # {server, accessToken}) declare a declarative n8n_credential_template —
-        # string values are str.format templates over the connection's fields.
-        template = platform_config.get("n8n_credential_template")
-        if template:
-            cred_data = {
-                k: v.format_map(_BlankOnMissing(source)) if isinstance(v, str) else v
-                for k, v in template.items()
-            }
-        else:
-            cred_data = source
-
         result = await create_credential(
             name=name,
             n8n_type=platform_config["n8n_type"],
-            data=cred_data,
+            data=project_n8n_credentials(platform_config, source),
             # node_type feeds the (deprecated, ignored-by-n8n-v1) nodesAccess
             # field; generic-HTTP platforms have no native node, so fall back to
             # the httpRequest node type rather than sending an empty string.

@@ -6,7 +6,7 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from httpx import ASGITransport, AsyncClient
+from httpx import ASGITransport, AsyncClient, Response
 
 from laya.integrations.n8n_client import N8nApiError, N8nApiKeyMissing
 from laya.integrations.platforms import PLATFORMS, SUPPORTED_N8N_TYPES, get_platform_by_n8n_type
@@ -169,6 +169,42 @@ class TestCreateConnectionEndpoint:
             data={"email": "me@co.com", "apiToken": "tok123", "domain": "co.atlassian.net"},
             node_type="n8n-nodes-base.jira",
         )
+
+    async def test_trello_creates_credential_with_only_n8n_fields(self):
+        from laya.main import app
+
+        async def request(method, url, *, json, **kwargs):
+            assert method == "POST"
+            assert url.endswith("/api/v1/credentials")
+            assert json["type"] == "trelloApi"
+            if json["data"] != {"apiKey": "test-key", "apiToken": "test-token"}:
+                return Response(400, text="Invalid Trello credential fields")
+            return Response(201, json={"id": "trello-credential"})
+
+        with (
+            patch("laya.integrations.n8n_client.get_api_key", return_value="test-n8n-key"),
+            patch("laya.integrations.n8n_client._request", side_effect=request),
+        ):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.post(
+                    "/connections",
+                    json={
+                        "platform": "trello",
+                        "name": "Board credential",
+                        "credentials": {
+                            "apiKey": "test-key",
+                            "apiToken": "test-token",
+                            "boardId": "AbCd1234",
+                        },
+                    },
+                )
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == {
+            "status": "created", "id": "trello-credential",
+            "name": "Board credential", "platform": "trello",
+        }
 
     async def test_validates_required_fields(self):
         """POST /connections returns 400 when required credential fields are missing."""
