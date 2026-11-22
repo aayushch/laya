@@ -144,3 +144,34 @@ def test_github_team_reviews_enrich_prs_and_comments(team_status):
     assert metadata["acme/backend/4"]["requested_teams"] == ["acme/backend"]
     assert all(p["role"] != "reviewer" for p in metadata["acme/backend/4"]["participants"])
     assert "requested_teams" not in metadata["acme/backend/5"]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is required for workflow Code nodes")
+def test_github_membership_lookup_requires_a_watched_github_repo():
+    workflow = json.loads((WORKFLOWS_DIR / "github-ingestion.json").read_text(encoding="utf-8"))
+    gate_name, = [edge["node"] for edge in workflow["connections"]["Get Repos"]["main"][0]]
+    gate = next(node for node in workflow["nodes"] if node["name"] == gate_name)
+    assert gate["type"] == "n8n-nodes-base.code", "Get Repos must check eligibility before calling GitHub"
+    assert [edge["node"] for edge in workflow["connections"][gate_name]["main"][0]] == [
+        "Get GitHub Account",
+    ]
+
+    runner = """
+        const { code, cases } = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+        const gate = new Function('$input', code);
+        const outputs = cases.map(repos => gate({ first: () => ({ json: { repos } }) }));
+        process.stdout.write(JSON.stringify(outputs));
+    """
+    jira_repo = {"platform": "jira", "remote_id": "acme/project"}
+    invalid_repo = {"platform": "github", "remote_id": "invalid"}
+    backend = {"platform": "github", "remote_id": "acme/backend"}
+    frontend = {"platform": "github", "remote_id": "acme/frontend"}
+    result = subprocess.run(
+        ["node", "-e", runner],
+        input=json.dumps({
+            "code": gate["parameters"]["jsCode"],
+            "cases": [[], [jira_repo, invalid_repo], [backend, jira_repo, frontend, invalid_repo]],
+        }),
+        text=True, capture_output=True, check=True,
+    )
+    assert json.loads(result.stdout) == [[], [], [{"json": {"repos": [backend, frontend]}}]]

@@ -45,6 +45,18 @@
     },
     {
       "parameters": {
+        "jsCode": "const repos = ($input.first().json.repos ?? [])\n  .filter(r => r.platform === 'github' && r.remote_id && r.remote_id.includes('/'));\nreturn repos.length ? [{ json: { repos } }] : [];"
+      },
+      "name": "Filter Eligible Repos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
         "method": "GET",
         "url": "https://api.github.com/user",
         "authentication": "predefinedCredentialType",
@@ -57,7 +69,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        680,
+        900,
         300
       ],
       "alwaysOutputData": true,
@@ -109,7 +121,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        900,
+        1120,
         300
       ],
       "alwaysOutputData": true,
@@ -117,13 +129,13 @@
     },
     {
       "parameters": {
-        "jsCode": "const repos = $('Get Repos').first().json.repos ?? [];\nconst since = new Date(Date.now() - 150000).toISOString();\nreturn repos\n  .filter(r => r.platform === 'github' && r.remote_id && r.remote_id.includes('/'))\n  .map(r => {\n    const [owner, repo] = r.remote_id.split('/');\n    return { json: { owner, repo, name: r.name, since } };\n  });"
+        "jsCode": "const repos = $('Filter Eligible Repos').first().json.repos;\nconst since = new Date(Date.now() - 150000).toISOString();\nreturn repos.map(r => {\n  const [owner, repo] = r.remote_id.split('/');\n  return { json: { owner, repo, name: r.name, since } };\n});"
       },
       "name": "Build Repo Items",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1120,
+        1340,
         300
       ]
     },
@@ -160,7 +172,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1340,
+        1560,
         200
       ],
       "onError": "continueErrorOutput"
@@ -190,7 +202,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1340,
+        1560,
         420
       ],
       "onError": "continueErrorOutput"
@@ -204,7 +216,7 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
       "position": [
-        1560,
+        1780,
         300
       ]
     },
@@ -217,7 +229,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1780,
+        2000,
         300
       ]
     },
@@ -230,7 +242,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2000,
+        2220,
         300
       ]
     },
@@ -260,7 +272,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2220,
+        2440,
         300
       ],
       "retryOnFail": true,
@@ -300,7 +312,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1340,
+        1560,
         600
       ],
       "onError": "continueErrorOutput"
@@ -314,7 +326,7 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
       "position": [
-        1640,
+        1860,
         400
       ]
     },
@@ -327,7 +339,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1560,
+        1780,
         800
       ]
     },
@@ -363,7 +375,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1780,
+        2000,
         800
       ]
     }
@@ -384,7 +396,7 @@
       "main": [
         [
           {
-            "node": "Get GitHub Account",
+            "node": "Filter Eligible Repos",
             "type": "main",
             "index": 0
           }
@@ -542,6 +554,17 @@
           }
         ]
       ]
+    },
+    "Filter Eligible Repos": {
+      "main": [
+        [
+          {
+            "node": "Get GitHub Account",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
@@ -549,6 +572,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.11.25"
+    "laya_version": "2026.11.26"
   }
 }
