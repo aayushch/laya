@@ -84,11 +84,12 @@ def test_github_team_reviews_enrich_prs_and_comments(team_status):
             "repository_url": repo,
             "updated_at": updated,
             "user": {"login": "author"},
+            "assignees": [{"login": "DEV"}] if number == 1 else [],
             **({"pull_request": {}} if number <= 4 else {}),
         }
         for number in (1, 3, 4, 5)
     ]
-    comment = {"id": 27, "issue_url": f"{repo}/issues/2", "created_at": updated, "user": {"login": "peer"}}
+    comment = {"id": 27, "issue_url": f"{repo}/issues/2", "created_at": updated, "user": {"login": "DEV"}}
     payload = {
         "normalize": nodes["Filter & Normalize"]["parameters"]["jsCode"],
         "enrich": nodes["Add Team Review Requests"]["parameters"]["jsCode"],
@@ -119,13 +120,24 @@ def test_github_team_reviews_enrich_prs_and_comments(team_status):
     )
     events = {event["subject"]["id"]: event for event in json.loads(result.stdout)}
     metadata = {key: event["content"]["metadata"] for key, event in events.items()}
-    for key in ("acme/backend/1", "acme/backend/2"):
+    overlapping_roles = {"acme/backend/1": "assignee", "acme/backend/2": "commenter"}
+    for key, role in overlapping_roles.items():
         assert events[key]["subject"]["type"] == "pull_request"
         assert metadata[key]["requested_teams"] == ["acme/platform"]
-        reviewers = [p for p in metadata[key]["participants"] if p["role"] == "reviewer"]
-        assert reviewers == ([
-            {"role": "reviewer", "name": "dev", "handle": "dev", "review_requested_via_teams": ["acme/platform"]}
-        ] if team_status == 200 else [])
+        assert {"role": role, "name": "DEV", "handle": "DEV"} in metadata[key]["participants"]
+    team_reviewers = {
+        key: [p for p in metadata[key]["participants"] if p["role"] == "reviewer"]
+        for key in overlapping_roles
+    }
+    expected_reviewer = {
+        "role": "reviewer",
+        "name": "dev",
+        "handle": "dev",
+        "review_requested_via_teams": ["acme/platform"],
+    }
+    assert team_reviewers == {
+        key: [expected_reviewer] if team_status == 200 else [] for key in overlapping_roles
+    }
     assert [p for p in metadata["acme/backend/3"]["participants"] if p["role"] == "reviewer"] == [
         {"role": "reviewer", "name": "DEV", "handle": "DEV"},
     ]
