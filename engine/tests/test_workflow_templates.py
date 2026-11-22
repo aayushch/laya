@@ -240,3 +240,36 @@ def test_github_inline_comment_does_not_reemit_an_earlier_merge(github_code):
     }
     event, = github_code("Filter & Normalize", [issue, _inline()])
     assert event["source"]["raw_event_type"] == "issue_comment_created"
+
+
+@pytest.mark.parametrize("merged", [False, True])
+def test_github_pr_closure_and_later_update_keep_separate_ids_across_polls(github_code, merged):
+    closed_at = "2026-11-22T10:01:59Z"
+    updated_at = "2026-11-22T10:02:01Z"
+    issue = {
+        "number": 42,
+        "repository_url": REPO_URL,
+        "pull_request": {"merged_at": closed_at if merged else None},
+        "state": "closed",
+        "created_at": OLD_TIME,
+        "closed_at": closed_at,
+        "updated_at": updated_at,
+        "labels": [{"name": "release"}],
+    }
+
+    closed, updated = github_code("Filter & Normalize", [issue])
+    later_update, = github_code("Filter & Normalize", [issue], since="2026-11-22T10:02:00Z")
+
+    assert closed["source"]["raw_event_type"] == "pull_request_closed"
+    assert closed["timestamp"] == closed_at
+    assert closed["content"]["metadata"].get("merged_at") == (closed_at if merged else None)
+    assert closed["event_id"] != updated["event_id"]
+    assert updated["source"]["raw_event_type"] == "pull_request_updated"
+    assert updated["timestamp"] == updated_at
+    assert updated["content"]["metadata"]["labels"] == ["release"]
+    assert "merged_at" not in updated["content"]["metadata"]
+    assert later_update == updated
+
+    at_close, = github_code("Filter & Normalize", [{**issue, "updated_at": closed_at}])
+    assert at_close["event_id"] == closed["event_id"]
+    assert github_code("Filter & Normalize", [issue], since="2026-11-22T10:02:02Z") == []
