@@ -82,7 +82,16 @@
             }
           ]
         },
-        "options": {}
+        "options": {
+          "pagination": {
+            "pagination": {
+              "paginationMode": "responseContainsNextURL",
+              "nextURL": "={{ ($response.headers.link || \"\").match(/<([^>]+)>;\\s*rel=\"next\"/)?.[1] }}",
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !(($response.headers.link || \"\").match(/<([^>]+)>;\\s*rel=\"next\"/)?.[1]) }}"
+            }
+          }
+        }
       },
       "name": "Get Issues and PRs",
       "type": "n8n-nodes-base.httpRequest",
@@ -112,7 +121,16 @@
             }
           ]
         },
-        "options": {}
+        "options": {
+          "pagination": {
+            "pagination": {
+              "paginationMode": "responseContainsNextURL",
+              "nextURL": "={{ ($response.headers.link || \"\").match(/<([^>]+)>;\\s*rel=\"next\"/)?.[1] }}",
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !(($response.headers.link || \"\").match(/<([^>]+)>;\\s*rel=\"next\"/)?.[1]) }}"
+            }
+          }
+        }
       },
       "name": "Get Recent Comments",
       "type": "n8n-nodes-base.httpRequest",
@@ -593,6 +611,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.11.30"
+    "laya_version": "2026.12.1"
   }
 }

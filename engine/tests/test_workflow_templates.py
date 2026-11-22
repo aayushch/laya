@@ -62,6 +62,17 @@ def test_event_post_nodes_retry_on_failure():
                 bad.append(f"{name}: {node['name']}")
     assert not bad, f"POST nodes without retry: {bad}"
 
+
+@pytest.mark.skipif(not WORKFLOWS_DIR.exists(), reason="bundled workflows not present")
+@pytest.mark.parametrize("name", ["Get Issues and PRs", "Get Recent Comments"])
+def test_github_issue_and_comment_lists_follow_github_next_links(name):
+    workflow = json.loads((WORKFLOWS_DIR / "github-ingestion.json").read_text(encoding="utf-8"))
+    node = next(node for node in workflow["nodes"] if node["name"] == name)
+    pagination = node["parameters"]["options"].get("pagination", {}).get("pagination", {})
+
+    assert pagination.get("paginationMode") == "responseContainsNextURL"
+    assert pagination.get("nextURL")
+
 @pytest.fixture
 def github_code():
     node = shutil.which("node")
