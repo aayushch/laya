@@ -16,7 +16,12 @@ from laya.config import get_n8n_config, load_repos, load_settings, save_repos, s
 from laya.http_client import get_client
 from laya.integrations.n8n_bootstrap import ensure_n8n_ready
 from laya.security.keychain import delete_api_key, get_api_key, has_api_key, store_api_key
-from laya.space_repos import normalize_host, scope_repos_to_workflow
+from laya.space_repos import (
+    apply_repo_changes,
+    match_repo_changes,
+    normalize_host,
+    scope_repos_to_workflow,
+)
 
 log = structlog.get_logger()
 router = APIRouter()
@@ -678,7 +683,16 @@ async def get_repos(
 
 @router.put("/repos")
 async def update_repos(body: dict) -> dict:
-    """Update configured repositories."""
+    """Update configured repositories.
+
+    Space repo assignments follow the change: a renamed repo keeps them under
+    its new name, and a removed repo loses them.
+    """
+    old = load_repos().get("repos", [])
     save_repos(body)
+    renames, removed = match_repo_changes(
+        old, body.get("repos", []) if isinstance(body, dict) else []
+    )
+    await apply_repo_changes(renames, removed)
     log.info("repos_updated")
     return {"status": "updated"}

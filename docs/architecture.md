@@ -623,6 +623,8 @@ The GitHub, Bitbucket and Bitbucket Server ingestion clones send their own n8n w
 
 Each space has the switch **Sources watch only assigned repos** (`spaces.ingest_assigned_repos_only`, migration 076, Settings → Spaces → Repositories). It is off by default for every space.
 
+Assignments are keyed by the repo's name: renaming a repo in Settings → Repos carries its space assignments to the new name (matched by path or remote), and removing a repo drops them.
+
 - **Switch on:** the source gets only the space's assigned repos (`space_repos`) that pass the request's platform/host filter. That can be none; it never gets a wider list.
 - **Switch off:** the space's assignments only steer engineer tasks. Its sources get the filtered list minus the repos other spaces **claim**.
 

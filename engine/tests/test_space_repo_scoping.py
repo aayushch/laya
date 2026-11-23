@@ -9,8 +9,12 @@ source's space and returns the repos that space should watch. A space with the
 that pass the request's filter, possibly none. A space with the switch off
 gets the filtered list minus the repos claimed by switch-on spaces that have
 their own ingestion source of the same platform on the same server.
+
+PUT /repos carries a space's assignments through repo renames and drops them
+with removed repos.
 """
 
+import copy
 import json
 from unittest.mock import patch
 
@@ -65,8 +69,8 @@ async def _server_config(db, platform: str, workflow_id: str, server: str) -> No
     )
 
 
-async def _get(params: dict) -> list[str]:
-    with patch("laya.api.settings_api.load_repos", return_value=REPOS):
+async def _get(params: dict, repos: dict = REPOS) -> list[str]:
+    with patch("laya.api.settings_api.load_repos", return_value=repos):
         from laya.main import app
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -304,3 +308,184 @@ class TestRepoScopingByWorkflow:
             assert await _get({"platform": "github", "workflow_id": "wf_personal_gh"}) == [
                 "work-api", "work-web", "dotfiles",
             ]
+
+
+def _edit(repo_name: str, **changes) -> dict:
+    """A copy of REPOS with the entry called ``repo_name`` updated by ``changes``."""
+    new = copy.deepcopy(REPOS)
+    for r in new["repos"]:
+        if r["name"] == repo_name:
+            r.update(changes)
+    return new
+
+
+def _without(*names: str) -> dict:
+    return {"repos": [copy.deepcopy(r) for r in REPOS["repos"] if r["name"] not in names]}
+
+
+async def _put(old: dict, new: dict) -> None:
+    """PUT /repos with ``new`` while repos.json still holds ``old``."""
+    with patch("laya.api.settings_api.load_repos", return_value=old), \
+            patch("laya.api.settings_api.save_repos") as save:
+        from laya.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.put("/repos", json=new)
+    assert resp.status_code == 200
+    save.assert_called_once_with(new)
+
+
+async def _rows(db) -> list[tuple[str, str, int]]:
+    rows = await db.execute_fetchall(
+        "SELECT space_id, repo_name, position FROM space_repos ORDER BY space_id, position"
+    )
+    return [(r["space_id"], r["repo_name"], r["position"]) for r in rows]
+
+
+@pytest.mark.asyncio
+class TestRepoAssignmentsFollowPutRepos:
+    """Space assignments are keyed by the repo's editable name, so PUT /repos
+    carries them through renames and drops them with removed repos."""
+
+    async def test_rename_keeps_the_assignment_at_its_position(self, db):
+        await _space(db, "sp_personal", "Personal")
+        await _source(db, "wf_default_gh", "github", "default")
+        await _source(db, "wf_personal_gh", "github", "sp_personal")
+        await _assign(db, "sp_personal", "work-web", "dotfiles")
+        await _only_assigned(db, "sp_personal")
+        await db.commit()
+
+        new = _edit("dotfiles", name="my-dotfiles")
+        await _put(REPOS, new)
+
+        assert await _rows(db) == [
+            ("sp_personal", "work-web", 0), ("sp_personal", "my-dotfiles", 1),
+        ]
+        assert await _get({"platform": "github", "workflow_id": "wf_personal_gh"}, new) == [
+            "work-web", "my-dotfiles",
+        ]
+        assert await _get({"platform": "github", "workflow_id": "wf_default_gh"}, new) == [
+            "work-api",
+        ]
+
+    async def test_rename_with_a_new_path_follows_the_remote(self, db):
+        await _space(db, "sp_personal", "Personal")
+        await _assign(db, "sp_personal", "dotfiles")
+        await db.commit()
+
+        await _put(REPOS, _edit("dotfiles", name="dots", path="/home/me/dots"))
+
+        assert await _rows(db) == [("sp_personal", "dots", 0)]
+
+    async def test_removed_repo_leaves_every_space(self, db):
+        await _space(db, "sp_personal", "Personal")
+        await _assign(db, "default", "work-api", "dotfiles")
+        await _assign(db, "sp_personal", "dotfiles")
+        await db.commit()
+
+        await _put(REPOS, _without("dotfiles"))
+
+        assert await _rows(db) == [("default", "work-api", 0)]
+
+    async def test_entry_edited_into_another_repo_drops_the_assignment(self, db):
+        await _space(db, "sp_personal", "Personal")
+        await _assign(db, "sp_personal", "dotfiles")
+        await db.commit()
+
+        await _put(REPOS, _edit("dotfiles", name="notes", path="/p/notes", remote_id="me/notes"))
+
+        assert await _rows(db) == []
+
+    async def test_two_entries_on_the_old_path_count_as_a_removal(self, db):
+        await _space(db, "sp_personal", "Personal")
+        await _assign(db, "sp_personal", "dotfiles")
+        await db.commit()
+
+        new = _without("dotfiles")
+        new["repos"] += [
+            {"name": "dot-a", "path": "/p/dot", "platform": "github", "remote_id": "me/dot-a"},
+            {"name": "dot-b", "path": "/p/dot/", "platform": "github", "remote_id": "me/dot-b"},
+        ]
+        await _put(REPOS, new)
+
+        assert await _rows(db) == []
+
+    async def test_rename_onto_a_name_the_space_already_holds(self, db):
+        """A space can hold a name no repo carries. Renaming a repo onto that
+        name leaves one row instead of clashing on the primary key."""
+        await _space(db, "sp_personal", "Personal")
+        await _assign(db, "sp_personal", "my-dotfiles", "dotfiles")
+        await db.commit()
+
+        await _put(REPOS, _edit("dotfiles", name="my-dotfiles"))
+
+        assert await _rows(db) == [("sp_personal", "my-dotfiles", 0)]
+
+    async def test_reordered_entries_and_new_paths_leave_assignments_alone(self, db):
+        await _space(db, "sp_personal", "Personal")
+        await _assign(db, "default", "work-api", "onprem-a")
+        await _assign(db, "sp_personal", "dotfiles")
+        await db.commit()
+        before = await _rows(db)
+
+        new = {"repos": list(reversed(_edit("dotfiles", path="/home/me/dotfiles")["repos"]))}
+        await _put(REPOS, new)
+
+        assert await _rows(db) == before
+
+
+class TestMatchRepoChanges:
+    def test_same_path_is_a_rename(self):
+        from laya.space_repos import match_repo_changes
+
+        old = [{"name": "a", "path": "/r/a/"}]
+        new = [{"name": "b", "path": "/r/a"}]
+        assert match_repo_changes(old, new) == ({"a": "b"}, set())
+
+    def test_same_remote_on_the_same_host_is_a_rename(self):
+        from laya.space_repos import match_repo_changes
+
+        old = [{"name": "a", "path": "/r/a", "platform": "bitbucket_server",
+                "remote_id": "P/a", "host": "bb.example.com"}]
+        new = [{"name": "b", "path": "/r/b", "platform": "bitbucket_server",
+                "remote_id": "P/a", "host": "https://BB.example.com:7990/"}]
+        assert match_repo_changes(old, new) == ({"a": "b"}, set())
+
+    def test_same_remote_on_another_platform_or_host_is_a_removal(self):
+        from laya.space_repos import match_repo_changes
+
+        old = [{"name": "a", "path": "/r/a", "platform": "github", "remote_id": "o/a"}]
+        other_platform = [{"name": "b", "path": "/r/b", "platform": "bitbucket", "remote_id": "o/a"}]
+        other_host = [{"name": "b", "path": "/r/b", "platform": "github", "remote_id": "o/a",
+                       "host": "ghe.example.com"}]
+        assert match_repo_changes(old, other_platform) == ({}, {"a"})
+        assert match_repo_changes(old, other_host) == ({}, {"a"})
+
+    def test_empty_path_and_remote_never_match(self):
+        from laya.space_repos import match_repo_changes
+
+        old = [{"name": "a", "path": "", "platform": "", "remote_id": ""}]
+        new = [{"name": "b", "path": "", "platform": "", "remote_id": ""}]
+        assert match_repo_changes(old, new) == ({}, {"a"})
+
+    def test_two_vanished_entries_matching_one_new_entry_are_removals(self):
+        from laya.space_repos import match_repo_changes
+
+        old = [{"name": "a", "path": "/r/x"}, {"name": "b", "path": "/r/x"}]
+        new = [{"name": "c", "path": "/r/x"}]
+        assert match_repo_changes(old, new) == ({}, {"a", "b"})
+
+    def test_names_in_both_lists_need_nothing(self):
+        from laya.space_repos import match_repo_changes
+
+        old = [{"name": "a", "path": "/r/a"}, {"name": "a", "path": "/r/a2"},
+               {"name": "b", "path": "/r/b"}]
+        new = [{"name": "b", "path": "/r/b2"}, {"name": "a", "path": "/r/a"}]
+        assert match_repo_changes(old, new) == ({}, set())
+
+    def test_entries_without_a_string_name_are_skipped(self):
+        from laya.space_repos import match_repo_changes
+
+        old = [{"name": None, "path": "/r/a"}, {"path": "/r/b"}, {"name": "c", "path": "/r/c"}]
+        new = [{"name": 5, "path": "/r/c"}, {"name": "d", "path": "/r/a"}]
+        assert match_repo_changes(old, new) == ({}, {"c"})

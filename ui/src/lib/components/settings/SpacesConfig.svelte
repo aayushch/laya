@@ -8,6 +8,7 @@
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import type { Space, Source, AvailableWorkflow, Repo, ProviderModels, AgentBackend } from '$lib/api/types';
 	import { CODING_AGENTS, agentLabel } from '$lib/config';
+	import { unresolvedRepoNames } from '$lib/utils/spaceRepos';
 	import ModelSelect from './ModelSelect.svelte';
 
 	const providers = [
@@ -615,6 +616,8 @@
 			{@const groupedSources = groupedSourcesForSpace(space.space_id)}
 			{@const isEditing = editingSpaceId === space.space_id}
 			{@const isExpanded = expandedSpaceId === space.space_id}
+			{@const unresolvedRepos = unresolvedRepoNames(spaceRepoNames[space.space_id] || [], allRepos)}
+			{@const resolvedRepoCount = (spaceRepoNames[space.space_id] || []).length - unresolvedRepos.length}
 			<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border bg-surface-800'} transition-colors
 				{!$glassTheme && (space.paused ? 'border-laya-amber/30 border-dashed' : isEditing ? 'border-laya-orange/30' : isExpanded ? 'border-laya-orange/30' : 'border-surface-700')}">
 				<!-- Space Header -->
@@ -669,8 +672,8 @@
 						{#if space.coding_agent}
 							<span class="rounded {$glassTheme ? 'bg-white/[0.08]' : 'bg-surface-700'} px-1.5 py-0.5 text-laya-secondary">{agentLabel(space.coding_agent)}</span>
 						{/if}
-						{#if spaceRepoNames[space.space_id]?.length}
-							<span class="rounded {$glassTheme ? 'bg-white/[0.08]' : 'bg-surface-700'} px-1.5 py-0.5 text-laya-secondary">{spaceRepoNames[space.space_id].length} repo{spaceRepoNames[space.space_id].length !== 1 ? 's' : ''}</span>
+						{#if resolvedRepoCount > 0}
+							<span class="rounded {$glassTheme ? 'bg-white/[0.08]' : 'bg-surface-700'} px-1.5 py-0.5 text-laya-secondary">{resolvedRepoCount} repo{resolvedRepoCount !== 1 ? 's' : ''}</span>
 						{/if}
 						<svg
 							class="h-4 w-4 transition-transform {isExpanded ? 'rotate-180' : ''}"
@@ -731,7 +734,7 @@
 							</div>
 
 							<!-- Repositories -->
-							{#if allRepos.length > 0}
+							{#if allRepos.length > 0 || unresolvedRepos.length > 0}
 								<div>
 									<h5 class="text-laya-base font-semibold text-surface-200 mb-2">Repositories</h5>
 									<p class="text-laya-base text-surface-500 mb-2">
@@ -780,6 +783,16 @@
 												{#if repo.remote_id}
 													<span class="text-laya-secondary text-surface-500">{repo.remote_id}</span>
 												{/if}
+											</button>
+										{/each}
+										<!-- Assigned names no configured repo carries; unticking one drops the assignment. -->
+										{#each unresolvedRepos as name (name)}
+											<button
+												onclick={() => { toggleSpaceRepo(space.space_id, name); saveSpaceRepos(space.space_id); }}
+												class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-laya-base transition-colors repo-row-assigned text-laya-orange"
+											>
+												<span class="h-4 w-4 shrink-0 rounded border text-center text-laya-secondary leading-4 border-laya-orange bg-laya-orange text-white">&#10003;</span>
+												<span class="flex-1 truncate">{name} — not in Repositories</span>
 											</button>
 										{/each}
 									</div>
