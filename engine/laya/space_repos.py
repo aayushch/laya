@@ -187,12 +187,18 @@ async def scope_repos_to_workflow(workflow_id: str, repos: list[dict]) -> list[d
         # no longer exist in n8n, and if it still runs it polls the unscoped list.
         # Letting it claim risks a repo nobody polls; skipping it risks at most a
         # duplicate poll.
+        # Only per-connection clones (connection_id set) claim: they alone run
+        # the bundled template that polls GET /repos with its own id. A source
+        # registered by hand or recorded from an incoming event may poll
+        # nothing, so letting it claim would leave a repo nobody polls; skipping
+        # it risks at most a duplicate poll.
         candidates = await db.execute_fetchall(
             """SELECT sr.repo_name, s.workflow_id
                FROM space_repos sr
                JOIN spaces sp ON sp.space_id = sr.space_id
                JOIN sources s ON s.space_id = sr.space_id
                WHERE sr.space_id != ? AND s.platform = ? AND s.source_type = 'ingestion'
+                 AND s.connection_id IS NOT NULL
                  AND s.workflow_update_error IS NULL
                  AND sp.ingest_assigned_repos_only = 1""",
             (space_id, platform),

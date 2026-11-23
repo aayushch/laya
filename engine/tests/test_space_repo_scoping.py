@@ -40,12 +40,18 @@ async def _space(db, space_id: str, name: str) -> None:
 
 
 async def _source(db, workflow_id: str, platform: str, space_id: str,
-                  source_type: str = "ingestion") -> None:
+                  source_type: str = "ingestion",
+                  connection_id: str | None = "auto") -> None:
+    """Insert a sources row. By default it stands for a per-connection clone
+    (connection_id set); pass connection_id=None for a source registered
+    without a connection."""
+    if connection_id == "auto":
+        connection_id = f"conn_{workflow_id}"
     await db.execute(
-        "INSERT INTO sources (source_id, name, platform, workflow_id, space_id, source_type) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO sources (source_id, name, platform, workflow_id, space_id, source_type, "
+        "connection_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (f"src_{workflow_id}", f"{platform} {source_type}", platform, workflow_id,
-         space_id, source_type),
+         space_id, source_type, connection_id),
     )
 
 
@@ -349,6 +355,44 @@ class TestRepoScopingByWorkflow:
         await db.commit()
 
         assert await _get({"platform": "github", "workflow_id": "wf_default_gh"}) == [
+            "work-api", "work-web", "dotfiles",
+        ]
+
+    async def test_source_without_connection_does_not_claim(self, db):
+        """A source with no connection is not a clone of the bundled template,
+        so it may never poll GET /repos; its space's assignments must not hide
+        repos from the clones that do."""
+        await _space(db, "sp_b", "B")
+        await _source(db, "wf_default_hand", "github", "default", connection_id=None)
+        await _source(db, "wf_b_gh", "github", "sp_b")
+        await _assign(db, "default", "work-api")
+        await _only_assigned(db, "default")
+        await db.commit()
+
+        assert await _get({"platform": "github", "workflow_id": "wf_b_gh"}) == [
+            "work-api", "work-web", "dotfiles",
+        ]
+
+    async def test_event_auto_registered_source_does_not_claim(self, db):
+        """An event carrying an unknown connection id registers a source in
+        the default space; that source must not claim the default space's
+        assigned repos from the only clone that polls them."""
+        from laya.pipeline.space_resolution import resolve_space
+
+        await _space(db, "sp_b", "B")
+        await _source(db, "wf_b_gh", "github", "sp_b")
+        await _assign(db, "default", "work-api")
+        await _only_assigned(db, "default")
+        await db.commit()
+
+        assert await resolve_space("evt_unknown", "wf_unknown_conn", "github") == "default"
+        rows = await db.execute_fetchall(
+            "SELECT space_id, platform, source_type FROM sources WHERE workflow_id = ?",
+            ("wf_unknown_conn",),
+        )
+        assert [tuple(r) for r in rows] == [("default", "github", "ingestion")]
+
+        assert await _get({"platform": "github", "workflow_id": "wf_b_gh"}) == [
             "work-api", "work-web", "dotfiles",
         ]
 
