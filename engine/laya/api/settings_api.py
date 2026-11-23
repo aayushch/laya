@@ -678,12 +678,13 @@ async def get_repos(
             # from such a repo are stored once and land in the space of
             # whichever clone posts them first. Failing the request instead
             # would stop this clone polling any repo until the error clears.
-            log.warning(
+            # log.exception attaches the traceback to the stdlib record, so it
+            # is printed once under the JSON line in the packaged app as well.
+            log.exception(
                 "repos_scope_failed",
                 workflow_id=workflow_id,
                 error_type=type(e).__name__,
                 error=str(e),
-                exc_info=True,
             )
     if platform or host or workflow_id:
         data = dict(data)

@@ -414,16 +414,17 @@ class TestRepoScopingByWorkflow:
         await db.commit()
 
         with patch("laya.space_repos.invariant_read", side_effect=KeyError("space_id")), \
-                patch("laya.api.settings_api.log.warning") as warning:
+                patch("laya.api.settings_api.log.exception") as exception:
             assert await _get({"platform": "github", "workflow_id": "wf_personal_gh"}) == [
                 "work-api", "work-web", "dotfiles",
             ]
 
-        warning.assert_called_once()
-        assert warning.call_args.args == ("repos_scope_failed",)
-        assert warning.call_args.kwargs["workflow_id"] == "wf_personal_gh"
-        assert warning.call_args.kwargs["error_type"] == "KeyError"
-        assert warning.call_args.kwargs["exc_info"] is True
+        # log.exception puts the traceback on the stdlib record, which the
+        # handlers print once under the JSON line in the packaged app too.
+        exception.assert_called_once()
+        assert exception.call_args.args == ("repos_scope_failed",)
+        assert exception.call_args.kwargs["workflow_id"] == "wf_personal_gh"
+        assert exception.call_args.kwargs["error_type"] == "KeyError"
 
 
 def _edit(repo_name: str, **changes) -> dict:

@@ -92,24 +92,6 @@ class PrivateRotatingFileHandler(RotatingFileHandler):
         return open(fd, self.mode, encoding=self.encoding, errors=self.errors)
 
 
-def _structlog_processors(tty: bool) -> list:
-    """The structlog processor chain: console output on a tty, JSON otherwise."""
-    processors = [
-        structlog.contextvars.merge_contextvars,
-        structlog.processors.add_log_level,
-        structlog.processors.TimeStamper(fmt="iso"),
-    ]
-    if tty:
-        return processors + [structlog.dev.ConsoleRenderer()]
-    # JSONRenderer writes a bare `exc_info` flag, so format_exc_info renders the
-    # traceback into the `exception` field first. ConsoleRenderer formats
-    # exceptions itself and warns when format_exc_info runs before it.
-    return processors + [
-        structlog.processors.format_exc_info,
-        structlog.processors.JSONRenderer(),
-    ]
-
-
 def setup_logging(log_level: str | None = None) -> None:
     """Configure structlog with console and rotating file output.
 
@@ -150,7 +132,12 @@ def setup_logging(log_level: str | None = None) -> None:
 
     # structlog configuration
     structlog.configure(
-        processors=_structlog_processors(sys.stderr.isatty()),
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.processors.add_log_level,
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.dev.ConsoleRenderer() if sys.stderr.isatty() else structlog.processors.JSONRenderer(),
+        ],
         logger_factory=structlog.stdlib.LoggerFactory(),
         wrapper_class=structlog.stdlib.BoundLogger,
         cache_logger_on_first_use=True,
