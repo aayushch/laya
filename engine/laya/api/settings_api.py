@@ -16,6 +16,12 @@ from laya.config import get_n8n_config, load_repos, load_settings, save_repos, s
 from laya.http_client import get_client
 from laya.integrations.n8n_bootstrap import ensure_n8n_ready
 from laya.security.keychain import delete_api_key, get_api_key, has_api_key, store_api_key
+from laya.space_repos import (
+    apply_repo_changes,
+    match_repo_changes,
+    normalize_host,
+    scope_repos_to_workflow,
+)
 
 log = structlog.get_logger()
 router = APIRouter()
@@ -637,40 +643,50 @@ async def reload_prompts() -> dict:
     return {"status": "reloaded", "overridden_keys": sorted(loaded.keys())}
 
 
-def _normalize_host(value: str) -> str:
-    """Reduce a host or base URL to a bare lowercase hostname for comparison.
-
-    Repo entries store a bare hostname (scheme/port stripped at remote-URL parse
-    time in the Tauri shell), but callers may hold a full server base URL —
-    tolerate scheme, port, path, and trailing slash so both spellings compare equal.
-    """
-    v = (value or "").strip().lower()
-    if "://" in v:
-        from urllib.parse import urlparse
-
-        v = urlparse(v).netloc or v
-    return v.split("/", 1)[0].rsplit(":", 1)[0] if v else ""
-
-
 @router.get("/repos")
 async def get_repos(
     platform: str | None = Query(default=None),
     host: str | None = Query(default=None),
+    # n8n workflow ids are 16-character nanoids stored in a 36-character
+    # column, so a longer value cannot come from a clone.
+    workflow_id: str | None = Query(default=None, max_length=64),
 ) -> dict:
     """Return configured repositories, optionally filtered by platform and/or host.
 
     ``host`` matches each repo's configured git host (empty repo host only
     matches an empty/absent filter), so e.g. a self-hosted ingestion workflow
     can ask for exactly the repos living on its server.
+
+    ``workflow_id`` is the calling ingestion clone's n8n id; the filtered list
+    is then scoped by ``laya.space_repos``: a source in a space with "Sources
+    watch only assigned repos" on gets only that space's assigned repos, and
+    any other source loses the repos that such spaces claim.
     """
     data = load_repos()
     repos = data.get("repos", [])
     if platform:
         repos = [r for r in repos if r.get("platform") == platform]
     if host:
-        want = _normalize_host(host)
-        repos = [r for r in repos if _normalize_host(r.get("host", "")) == want]
-    if platform or host:
+        want = normalize_host(host)
+        repos = [r for r in repos if normalize_host(r.get("host", "")) == want]
+    if workflow_id:
+        try:
+            repos = await scope_repos_to_workflow(workflow_id, repos)
+        except Exception as e:
+            # When scoping fails, the clone gets the platform/host-filtered
+            # list, so it can also poll repos another space claims. Events
+            # from such a repo are stored once and land in the space of
+            # whichever clone posts them first. Failing the request instead
+            # would stop this clone polling any repo until the error clears.
+            # log.exception attaches the traceback to the stdlib record, so it
+            # is printed once under the JSON line in the packaged app as well.
+            log.exception(
+                "repos_scope_failed",
+                workflow_id=workflow_id,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+    if platform or host or workflow_id:
         data = dict(data)
         data["repos"] = repos
     return data
@@ -678,7 +694,16 @@ async def get_repos(
 
 @router.put("/repos")
 async def update_repos(body: dict) -> dict:
-    """Update configured repositories."""
+    """Update configured repositories.
+
+    Space repo assignments follow the change: a renamed repo keeps them under
+    its new name, and a removed repo loses them.
+    """
+    old = load_repos().get("repos", [])
     save_repos(body)
+    renames, removed = match_repo_changes(
+        old, body.get("repos", []) if isinstance(body, dict) else []
+    )
+    await apply_repo_changes(renames, removed)
     log.info("repos_updated")
     return {"status": "updated"}

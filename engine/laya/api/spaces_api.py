@@ -25,6 +25,7 @@ from laya.models.space import (
     SourceResponse,
     SpaceApiKeyRequest,
     SpaceCreate,
+    SpaceIngestScopeRequest,
     SpaceReposRequest,
     SpaceResponse,
     SpaceUpdate,
@@ -68,6 +69,7 @@ async def list_spaces() -> dict:
             coding_agent=r["coding_agent"],
             is_default=bool(r["is_default"]),
             paused=bool(r["paused"]),
+            ingest_assigned_repos_only=bool(r["ingest_assigned_repos_only"]),
             position=r["position"],
             source_count=r["source_count"],
             created_at=r["created_at"],
@@ -313,6 +315,35 @@ async def set_space_paused(space_id: str, body: dict) -> dict:
     }
 
 
+@router.put("/spaces/{space_id}/ingest-assigned-repos-only")
+async def set_space_ingest_assigned_repos_only(
+    space_id: str, body: SpaceIngestScopeRequest
+) -> dict:
+    """Turn the space's "Sources watch only assigned repos" switch on or off.
+
+    When on, the space's GitHub/Bitbucket ingestion sources poll only the
+    repos assigned to it, and sources in other spaces skip the ones this
+    space has its own connected source for (``laya.space_repos`` has the exact
+    rule). The workflows read the change on their next poll.
+    """
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT space_id FROM spaces WHERE space_id = ?", (space_id,)
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Space not found")
+
+    await db.execute(
+        "UPDATE spaces SET ingest_assigned_repos_only = ?, updated_at = CURRENT_TIMESTAMP "
+        "WHERE space_id = ?",
+        (1 if body.enabled else 0, space_id),
+    )
+    await db.commit()
+
+    log.info("space_ingest_scope_set", space_id=space_id, enabled=body.enabled)
+    return {"status": "updated", "space_id": space_id, "enabled": body.enabled}
+
+
 # ---------------------------------------------------------------------------
 # Per-space API keys
 # ---------------------------------------------------------------------------
@@ -417,19 +448,26 @@ async def set_space_repos(space_id: str, body: SpaceReposRequest) -> dict:
     if not rows:
         raise HTTPException(status_code=404, detail="Space not found")
 
-    # Clear existing assignments
-    await db.execute("DELETE FROM space_repos WHERE space_id = ?", (space_id,))
+    # A name listed twice is stored once, at its first position; a second
+    # INSERT of it would violate the (space_id, repo_name) primary key.
+    names = list(dict.fromkeys(body.repo_names))
 
-    # Insert new assignments
-    for i, repo_name in enumerate(body.repo_names):
-        await db.execute(
-            "INSERT INTO space_repos (space_id, repo_name, position) VALUES (?, ?, ?)",
-            (space_id, repo_name, i),
-        )
+    # The DELETE and the INSERTs form one guarded invariant: repo scoping
+    # (laya.space_repos) reads assignments under the same lock, so a poll never
+    # sees the space with its old assignments gone and the new ones not yet in.
+    async with transaction() as db:
+        # Clear existing assignments
+        await db.execute("DELETE FROM space_repos WHERE space_id = ?", (space_id,))
 
-    await db.commit()
-    log.info("space_repos_updated", space_id=space_id, count=len(body.repo_names))
-    return {"status": "updated", "count": len(body.repo_names)}
+        # Insert new assignments
+        for i, repo_name in enumerate(names):
+            await db.execute(
+                "INSERT INTO space_repos (space_id, repo_name, position) VALUES (?, ?, ?)",
+                (space_id, repo_name, i),
+            )
+
+    log.info("space_repos_updated", space_id=space_id, count=len(names))
+    return {"status": "updated", "count": len(names)}
 
 
 # ---------------------------------------------------------------------------

@@ -617,6 +617,25 @@ Each repo in `repos.json` carries an optional `host` field that distinguishes cl
 
 Bitbucket Server / Data Center is a full first-class integration (`bitbucket_server` platform): the user connects it with their server base URL + HTTP access token, the cloned ingestion workflow selects exactly the repos on that host via the generic `GET /repos?host=` filter (the host is derived from the server URL the workflow reads from its clone-time `{platform}-config:{workflow_id}` metadata entry), and the executor workflow drives the Server REST API (`{base_url}/rest/api/1.0/...`) with the connection's base URL injected into the payload by the n8n backend (`Platform.payload_credential_fields`). Repo selection is host-driven throughout — there are no cloud-vs-server predicates in the engine.
 
+### Repositories per Space
+
+The GitHub, Bitbucket and Bitbucket Server ingestion clones send their own n8n workflow id with the repo request (`GET /repos?…&workflow_id={{ encodeURIComponent($workflow.id) }}`). The engine looks the id up in `sources` to find the source's space and scopes the platform/host-filtered list to it (`laya/space_repos.py`).
+
+Each space has the switch **Sources watch only assigned repos** (`spaces.ingest_assigned_repos_only`, migration 076, Settings → Spaces → Repositories). It is off by default for every space.
+
+Assignments are keyed by the repo's name: renaming a repo in Settings → Repos carries its space assignments to the new name (matched by path or remote), and removing a repo drops them.
+
+- **Switch on:** the source gets only the space's assigned repos (`space_repos`) that pass the request's platform/host filter. That can be none; it never gets a wider list.
+- **Switch off:** the space's assignments only steer engineer tasks. Its sources get the filtered list minus the repos other spaces **claim**.
+
+A space claims a repo when three things hold: the space's switch is on, the repo is assigned there, and the space has a connected ingestion source (a per-connection clone, `sources.connection_id` set) of the same `sources.platform` watching the same server host. The host comes from the source's `{platform}-config:{workflow_id}` metadata entry and is `""` for cloud platforms; a missing or garbled config claims nothing. A source whose last workflow update failed claims nothing. Sources registered by hand or recorded from incoming events claim nothing. A clone deleted directly in n8n keeps claiming until its next template update flags it. A paused space keeps its claims, so nobody polls those repos while it is paused.
+
+A request without `workflow_id`, with an id that has no `sources` row, or whose space lookup fails gets the unscoped filtered list; the poll never fails because of scoping.
+
+Two connections of one platform in two spaces split the repos only once the switch is turned on in a space and repos are assigned there. With the switch off everywhere, every source polls the same list as before. Scoping depends on the clone sending its id: sources registered by hand, and clones whose template update failed, poll the unscoped list.
+
+A repo assigned to two switch-on spaces is polled by both. Events are deduplicated by `event_id` (`INSERT OR IGNORE`), so each event lands in whichever space's workflow posts it first. Assign a repo to only one such space.
+
 ### Dead Event Recovery
 
 Events that fail processing 3 times are marked as "dead":

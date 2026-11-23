@@ -58,7 +58,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "={{ $env.LAYA_ENGINE_URL }}/repos?host={{ encodeURIComponent($json.host) }}",
+        "url": "={{ $env.LAYA_ENGINE_URL }}/repos?host={{ encodeURIComponent($json.host) }}&workflow_id={{ encodeURIComponent($workflow.id) }}",
         "options": {},
         "sendHeaders": true,
         "headerParameters": {
@@ -467,6 +467,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.10.11"
+    "laya_version": "2026.11.23"
   }
 }

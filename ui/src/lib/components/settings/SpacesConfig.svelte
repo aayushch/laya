@@ -8,6 +8,7 @@
 	import { reducedMotion } from '$lib/stores/reducedMotion';
 	import type { Space, Source, AvailableWorkflow, Repo, ProviderModels, AgentBackend } from '$lib/api/types';
 	import { CODING_AGENTS, agentLabel } from '$lib/config';
+	import { unresolvedRepoNames } from '$lib/utils/spaceRepos';
 	import ModelSelect from './ModelSelect.svelte';
 
 	const providers = [
@@ -160,6 +161,9 @@
 	// Pause state
 	let togglingPause = $state<string | null>(null);
 
+	// "Sources watch only assigned repos" switch state
+	let togglingRepoScope = $state<string | null>(null);
+
 	// Expanded space detail
 	let expandedSpaceId = $state<string | null>(null);
 
@@ -308,6 +312,19 @@
 			console.error('Failed to toggle pause:', e);
 		} finally {
 			togglingPause = null;
+		}
+	}
+
+	// "Sources watch only assigned repos" switch
+	async function toggleRepoScope(space: Space) {
+		togglingRepoScope = space.space_id;
+		try {
+			await engineApi.setSpaceIngestAssignedReposOnly(space.space_id, !space.ingest_assigned_repos_only);
+			await loadData();
+		} catch (e) {
+			console.error('Failed to toggle repo scope:', e);
+		} finally {
+			togglingRepoScope = null;
 		}
 	}
 
@@ -599,6 +616,8 @@
 			{@const groupedSources = groupedSourcesForSpace(space.space_id)}
 			{@const isEditing = editingSpaceId === space.space_id}
 			{@const isExpanded = expandedSpaceId === space.space_id}
+			{@const unresolvedRepos = unresolvedRepoNames(spaceRepoNames[space.space_id] || [], allRepos)}
+			{@const resolvedRepoCount = (spaceRepoNames[space.space_id] || []).length - unresolvedRepos.length}
 			<div class="{$glassTheme ? 'glass-section' : 'rounded-lg border bg-surface-800'} transition-colors
 				{!$glassTheme && (space.paused ? 'border-laya-amber/30 border-dashed' : isEditing ? 'border-laya-orange/30' : isExpanded ? 'border-laya-orange/30' : 'border-surface-700')}">
 				<!-- Space Header -->
@@ -653,8 +672,8 @@
 						{#if space.coding_agent}
 							<span class="rounded {$glassTheme ? 'bg-white/[0.08]' : 'bg-surface-700'} px-1.5 py-0.5 text-laya-secondary">{agentLabel(space.coding_agent)}</span>
 						{/if}
-						{#if spaceRepoNames[space.space_id]?.length}
-							<span class="rounded {$glassTheme ? 'bg-white/[0.08]' : 'bg-surface-700'} px-1.5 py-0.5 text-laya-secondary">{spaceRepoNames[space.space_id].length} repo{spaceRepoNames[space.space_id].length !== 1 ? 's' : ''}</span>
+						{#if resolvedRepoCount > 0}
+							<span class="rounded {$glassTheme ? 'bg-white/[0.08]' : 'bg-surface-700'} px-1.5 py-0.5 text-laya-secondary">{resolvedRepoCount} repo{resolvedRepoCount !== 1 ? 's' : ''}</span>
 						{/if}
 						<svg
 							class="h-4 w-4 transition-transform {isExpanded ? 'rotate-180' : ''}"
@@ -715,14 +734,36 @@
 							</div>
 
 							<!-- Repositories -->
-							{#if allRepos.length > 0}
+							{#if allRepos.length > 0 || unresolvedRepos.length > 0}
 								<div>
 									<h5 class="text-laya-base font-semibold text-surface-200 mb-2">Repositories</h5>
 									<p class="text-laya-base text-surface-500 mb-2">
 										Assign repos to this space so engineer tasks pick the right codebase.
 										{#if !spaceRepoNames[space.space_id]?.length}
-											<span class="text-surface-400">No repos assigned — agent will search all repos.</span>
+											{#if space.ingest_assigned_repos_only}
+												<span class="text-surface-400">No repos assigned — agent will search all repos, and this space's GitHub/Bitbucket sources poll nothing.</span>
+											{:else}
+												<span class="text-surface-400">No repos assigned — agent will search all repos.</span>
+											{/if}
 										{/if}
+									</p>
+									<button
+										onclick={() => toggleRepoScope(space)}
+										aria-pressed={space.ingest_assigned_repos_only}
+										class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-laya-base transition-colors
+											{space.ingest_assigned_repos_only
+												? 'repo-row-assigned text-laya-orange'
+												: $glassTheme ? 'hover:bg-white/[0.06] text-surface-300' : 'hover:bg-surface-700 text-surface-300'}
+											{togglingRepoScope === space.space_id ? ' opacity-50 pointer-events-none' : ''}"
+									>
+										<span class="h-4 w-4 shrink-0 rounded border text-center text-laya-secondary leading-4
+											{space.ingest_assigned_repos_only ? 'border-laya-orange bg-laya-orange text-white' : 'border-surface-500'}">
+											{#if space.ingest_assigned_repos_only}&#10003;{/if}
+										</span>
+										<span class="flex-1 truncate">Sources watch only assigned repos</span>
+									</button>
+									<p class="px-3 mt-1 mb-2 text-laya-secondary text-surface-500">
+										When on, this space's GitHub and Bitbucket sources poll only the repos assigned here, none if nothing is assigned. Sources in other spaces skip those repos when this space has its own connected source of the same platform and server, even while this space is paused. Sources added by hand, or whose workflow update is pending, still poll every repo and make no other space skip anything. A repo assigned to two spaces with this on is polled by both, but each event is stored once, in whichever space fetches it first.
 									</p>
 									<div class="space-y-1">
 										{#each allRepos as repo (repo.name)}
@@ -742,6 +783,16 @@
 												{#if repo.remote_id}
 													<span class="text-laya-secondary text-surface-500">{repo.remote_id}</span>
 												{/if}
+											</button>
+										{/each}
+										<!-- Assigned names no configured repo carries; unticking one drops the assignment. -->
+										{#each unresolvedRepos as name (name)}
+											<button
+												onclick={() => { toggleSpaceRepo(space.space_id, name); saveSpaceRepos(space.space_id); }}
+												class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-laya-base transition-colors repo-row-assigned text-laya-orange"
+											>
+												<span class="h-4 w-4 shrink-0 rounded border text-center text-laya-secondary leading-4 border-laya-orange bg-laya-orange text-white">&#10003;</span>
+												<span class="flex-1 truncate">{name} — not in Repositories</span>
 											</button>
 										{/each}
 									</div>
