@@ -85,8 +85,6 @@ async def scope_repos_to_workflow(workflow_id: str, repos: list[dict]) -> list[d
         return repos
     space_id = rows[0]["space_id"]
     platform = rows[0]["platform"]
-    if not space_id:
-        return repos
 
     assigned = {
         r["repo_name"]
