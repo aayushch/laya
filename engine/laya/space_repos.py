@@ -29,7 +29,7 @@ from urllib.parse import urlparse
 
 import structlog
 
-from laya.db.sqlite import get_db, transaction
+from laya.db.sqlite import invariant_read, transaction
 
 log = structlog.get_logger()
 
@@ -152,59 +152,63 @@ async def scope_repos_to_workflow(workflow_id: str, repos: list[dict]) -> list[d
     id has no ``sources`` row (a template run by hand, or a clone registered
     under another id).
     """
-    db = await get_db()
-    # LEFT JOIN so a source whose space row is missing still counts as a
-    # known source with the switch off, rather than dropping out of the
-    # lookup and skipping the claims below.
-    rows = await db.execute_fetchall(
-        """SELECT s.space_id, s.platform,
-                  COALESCE(sp.ingest_assigned_repos_only, 0) AS only_assigned
-           FROM sources s
-           LEFT JOIN spaces sp ON sp.space_id = s.space_id
-           WHERE s.workflow_id = ?""",
-        (workflow_id,),
-    )
-    if not rows:
-        log.debug("repos_scope_unknown_workflow", workflow_id=workflow_id)
-        return repos
-    space_id = rows[0]["space_id"]
-    platform = rows[0]["platform"]
+    # Assignments are replaced as a DELETE followed by INSERTs on the shared
+    # connection, whose uncommitted writes every read sees. A poll that read
+    # between them would get the wrong list, so every read here holds the
+    # lock that the assignment writers hold.
+    async with invariant_read() as db:
+        # LEFT JOIN so a source whose space row is missing still counts as a
+        # known source with the switch off, rather than dropping out of the
+        # lookup and skipping the claims below.
+        rows = await db.execute_fetchall(
+            """SELECT s.space_id, s.platform,
+                      COALESCE(sp.ingest_assigned_repos_only, 0) AS only_assigned
+               FROM sources s
+               LEFT JOIN spaces sp ON sp.space_id = s.space_id
+               WHERE s.workflow_id = ?""",
+            (workflow_id,),
+        )
+        if not rows:
+            log.debug("repos_scope_unknown_workflow", workflow_id=workflow_id)
+            return repos
+        space_id = rows[0]["space_id"]
+        platform = rows[0]["platform"]
 
-    if rows[0]["only_assigned"]:
-        assigned = {
-            r["repo_name"]
-            for r in await db.execute_fetchall(
-                "SELECT repo_name FROM space_repos WHERE space_id = ?", (space_id,)
-            )
-        }
-        return [r for r in repos if r.get("name") in assigned]
+        if rows[0]["only_assigned"]:
+            assigned = {
+                r["repo_name"]
+                for r in await db.execute_fetchall(
+                    "SELECT repo_name FROM space_repos WHERE space_id = ?", (space_id,)
+                )
+            }
+            return [r for r in repos if r.get("name") in assigned]
 
-    # A source whose last template update failed claims nothing: its clone may
-    # no longer exist in n8n, and if it still runs it polls the unscoped list.
-    # Letting it claim risks a repo nobody polls; skipping it risks at most a
-    # duplicate poll.
-    candidates = await db.execute_fetchall(
-        """SELECT sr.repo_name, s.workflow_id
-           FROM space_repos sr
-           JOIN spaces sp ON sp.space_id = sr.space_id
-           JOIN sources s ON s.space_id = sr.space_id
-           WHERE sr.space_id != ? AND s.platform = ? AND s.source_type = 'ingestion'
-             AND s.workflow_update_error IS NULL
-             AND sp.ingest_assigned_repos_only = 1""",
-        (space_id, platform),
-    )
-    if not candidates:
-        return repos
+        # A source whose last template update failed claims nothing: its clone may
+        # no longer exist in n8n, and if it still runs it polls the unscoped list.
+        # Letting it claim risks a repo nobody polls; skipping it risks at most a
+        # duplicate poll.
+        candidates = await db.execute_fetchall(
+            """SELECT sr.repo_name, s.workflow_id
+               FROM space_repos sr
+               JOIN spaces sp ON sp.space_id = sr.space_id
+               JOIN sources s ON s.space_id = sr.space_id
+               WHERE sr.space_id != ? AND s.platform = ? AND s.source_type = 'ingestion'
+                 AND s.workflow_update_error IS NULL
+                 AND sp.ingest_assigned_repos_only = 1""",
+            (space_id, platform),
+        )
+        if not candidates:
+            return repos
 
-    own_host = await _source_server_host(db, platform, workflow_id)
-    hosts: dict[str, str] = {}
-    claimed: set[str] = set()
-    for c in candidates:
-        other_wf = c["workflow_id"]
-        if other_wf not in hosts:
-            hosts[other_wf] = await _source_server_host(db, platform, other_wf)
-        # A source on a different server never polls this repo, so its space's
-        # assignment must not hide the repo from this clone.
-        if hosts[other_wf] == own_host:
-            claimed.add(c["repo_name"])
+        own_host = await _source_server_host(db, platform, workflow_id)
+        hosts: dict[str, str] = {}
+        claimed: set[str] = set()
+        for c in candidates:
+            other_wf = c["workflow_id"]
+            if other_wf not in hosts:
+                hosts[other_wf] = await _source_server_host(db, platform, other_wf)
+            # A source on a different server never polls this repo, so its space's
+            # assignment must not hide the repo from this clone.
+            if hosts[other_wf] == own_host:
+                claimed.add(c["repo_name"])
     return [r for r in repos if r.get("name") not in claimed]

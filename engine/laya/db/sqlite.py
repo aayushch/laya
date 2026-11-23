@@ -19,8 +19,9 @@ log = structlog.get_logger()
 # Module-level connection reference
 _db: aiosqlite.Connection | None = None
 
-# Serializes multi-statement invariants against each other on the single shared
-# connection (see transaction()). NOT a per-request/per-writer lock.
+# Serializes multi-statement invariants on the single shared connection against
+# each other (see transaction()) and against the readers that must see them
+# whole (see invariant_read()). NOT a per-request/per-writer lock.
 _invariant_lock = asyncio.Lock()
 
 
@@ -68,6 +69,26 @@ async def transaction():
             # strictly safer than today's leak-partial-then-commit behavior.
             await db.rollback()
             raise
+
+
+@asynccontextmanager
+async def invariant_read():
+    """Read state that a guarded invariant writes, never seeing it half applied.
+
+    On the shared connection every read sees other tasks' uncommitted writes,
+    so a reader running between two statements of a transaction() block sees
+    that invariant half applied. Readers that must see a guarded invariant
+    either fully applied or not at all hold the same lock through this context
+    manager.
+
+    Yields the shared connection. It never commits or rolls back, so it neither
+    flushes nor undoes other tasks' pending writes. Keep the body to DB reads.
+    Never call it inside a transaction() block: the lock is not re-entrant, so
+    the block would wait on itself forever.
+    """
+    db = await get_db()
+    async with _invariant_lock:
+        yield db
 
 
 async def connect() -> aiosqlite.Connection:

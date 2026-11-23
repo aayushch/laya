@@ -447,19 +447,26 @@ async def set_space_repos(space_id: str, body: SpaceReposRequest) -> dict:
     if not rows:
         raise HTTPException(status_code=404, detail="Space not found")
 
-    # Clear existing assignments
-    await db.execute("DELETE FROM space_repos WHERE space_id = ?", (space_id,))
+    # A name listed twice is stored once, at its first position; a second
+    # INSERT of it would violate the (space_id, repo_name) primary key.
+    names = list(dict.fromkeys(body.repo_names))
 
-    # Insert new assignments
-    for i, repo_name in enumerate(body.repo_names):
-        await db.execute(
-            "INSERT INTO space_repos (space_id, repo_name, position) VALUES (?, ?, ?)",
-            (space_id, repo_name, i),
-        )
+    # The DELETE and the INSERTs form one guarded invariant: repo scoping
+    # (laya.space_repos) reads assignments under the same lock, so a poll never
+    # sees the space with its old assignments gone and the new ones not yet in.
+    async with transaction() as db:
+        # Clear existing assignments
+        await db.execute("DELETE FROM space_repos WHERE space_id = ?", (space_id,))
 
-    await db.commit()
-    log.info("space_repos_updated", space_id=space_id, count=len(body.repo_names))
-    return {"status": "updated", "count": len(body.repo_names)}
+        # Insert new assignments
+        for i, repo_name in enumerate(names):
+            await db.execute(
+                "INSERT INTO space_repos (space_id, repo_name, position) VALUES (?, ?, ?)",
+                (space_id, repo_name, i),
+            )
+
+    log.info("space_repos_updated", space_id=space_id, count=len(names))
+    return {"status": "updated", "count": len(names)}
 
 
 # ---------------------------------------------------------------------------

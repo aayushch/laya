@@ -11,9 +11,11 @@ gets the filtered list minus the repos claimed by switch-on spaces that have
 their own ingestion source of the same platform on the same server.
 
 PUT /repos carries a space's assignments through repo renames and drops them
-with removed repos.
+with removed repos. PUT /spaces/{id}/repos replaces a space's assignments in
+one step that a poll never sees half done.
 """
 
+import asyncio
 import copy
 import json
 from unittest.mock import patch
@@ -356,7 +358,7 @@ class TestRepoScopingByWorkflow:
         await _assign(db, "sp_personal", "dotfiles")
         await db.commit()
 
-        with patch("laya.space_repos.get_db", side_effect=RuntimeError("db closed")):
+        with patch("laya.space_repos.invariant_read", side_effect=RuntimeError("db closed")):
             assert await _get({"platform": "github", "workflow_id": "wf_personal_gh"}) == [
                 "work-api", "work-web", "dotfiles",
             ]
@@ -367,7 +369,7 @@ class TestRepoScopingByWorkflow:
         await _assign(db, "sp_personal", "dotfiles")
         await db.commit()
 
-        with patch("laya.space_repos.get_db", side_effect=KeyError("space_id")), \
+        with patch("laya.space_repos.invariant_read", side_effect=KeyError("space_id")), \
                 patch("laya.api.settings_api.log.warning") as warning:
             assert await _get({"platform": "github", "workflow_id": "wf_personal_gh"}) == [
                 "work-api", "work-web", "dotfiles",
@@ -502,6 +504,67 @@ class TestRepoAssignmentsFollowPutRepos:
         await _put(REPOS, new)
 
         assert await _rows(db) == before
+
+
+async def _put_space_repos(space_id: str, repo_names: list[str]):
+    from laya.main import app
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        return await client.put(f"/spaces/{space_id}/repos", json={"repo_names": repo_names})
+
+
+@pytest.mark.asyncio
+class TestPutSpaceRepos:
+    async def test_reassignment_is_never_seen_half_applied(self, db):
+        """PUT /spaces/{id}/repos deletes a space's assignments, then inserts
+        the new ones. A poll that lands in between sees the old or the new
+        assignments, never a space with none."""
+        await _space(db, "sp_personal", "Personal")
+        await _source(db, "wf_default_gh", "github", "default")
+        await _source(db, "wf_personal_gh", "github", "sp_personal")
+        await _assign(db, "sp_personal", "dotfiles")
+        await _only_assigned(db, "sp_personal")
+        await db.commit()
+
+        deleted = asyncio.Event()
+        execute = db.execute
+
+        async def pause_after_delete(sql, *args, **kwargs):
+            cursor = await execute(sql, *args, **kwargs)
+            if sql.startswith("DELETE FROM space_repos"):
+                deleted.set()
+                # Holds the writer between its DELETE and its INSERTs so the
+                # poll below runs while the assignments are half replaced.
+                await asyncio.sleep(0.05)
+            return cursor
+
+        async def poll() -> list[str]:
+            await deleted.wait()
+            return await _get({"platform": "github", "workflow_id": "wf_default_gh"})
+
+        # asyncio.Lock binds to the event loop of its first contended acquire,
+        # and every test runs on its own loop. A fresh lock keeps the module's
+        # lock unbound, so a later test that waits on it does not fail with
+        # "bound to a different event loop".
+        with patch("laya.db.sqlite._invariant_lock", asyncio.Lock()), \
+                patch.object(db, "execute", pause_after_delete):
+            put, polled = await asyncio.gather(
+                _put_space_repos("sp_personal", ["dotfiles"]),
+                asyncio.wait_for(poll(), timeout=5),
+            )
+
+        assert put.status_code == 200
+        assert polled == ["work-api", "work-web"]
+
+    async def test_duplicate_repo_names_are_stored_once(self, db):
+        await _space(db, "sp_personal", "Personal")
+        await db.commit()
+
+        resp = await _put_space_repos("sp_personal", ["dotfiles", "dotfiles"])
+
+        assert resp.status_code == 200
+        assert resp.json()["count"] == 1
+        assert await _rows(db) == [("sp_personal", "dotfiles", 0)]
 
 
 class TestMatchRepoChanges:
