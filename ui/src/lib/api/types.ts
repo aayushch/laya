@@ -1211,6 +1211,7 @@ export interface Space {
 	coding_agent?: string;
 	is_default: boolean;
 	paused: boolean;
+	ingest_assigned_repos_only: boolean;
 	position: number;
 	source_count: number;
 	created_at?: string;

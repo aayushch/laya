@@ -5,16 +5,17 @@
 
 Every GitHub/Bitbucket ingestion clone reads the global repo list from
 ``GET /repos``. When it also sends its own n8n workflow id, the engine scopes
-that list to the clone's space, so two connections of one platform in two
-spaces don't both poll every repo:
+that list to the clone's space according to the space's "Sources watch only
+assigned repos" switch (``spaces.ingest_assigned_repos_only``, off by default):
 
-- The space has repos assigned (``space_repos``) that pass the request's
-  platform/host filter: the clone polls only those.
-- Otherwise it polls every repo except those *claimed* by another space. A
-  space claims a repo when the repo is assigned to it and the space has its
-  own ingestion source of the same platform watching the same server. A repo
-  assigned to a space without such a source (an assignment that only steers
-  engineer tasks) is claimed by nobody, so it keeps being polled.
+- Switch on: the clone polls only the space's assigned repos (``space_repos``)
+  that pass the request's platform/host filter. That can be none; the list is
+  never widened.
+- Switch off: the space's assignments only steer engineer tasks. The clone
+  polls the filtered list minus the repos *claimed* by other spaces. A space
+  claims a repo when its switch is on, the repo is assigned to it, and it has
+  its own ingestion source of the same platform watching the same server. A
+  paused space keeps its claims, so its repos go unpolled while it is paused.
 """
 
 from __future__ import annotations
@@ -71,12 +72,23 @@ async def _source_server_host(db, platform: str, workflow_id: str) -> str:
 async def scope_repos_to_workflow(workflow_id: str, repos: list[dict]) -> list[dict]:
     """Narrow an already platform/host-filtered repo list to one clone's space.
 
-    Returns ``repos`` unchanged when the workflow id has no ``sources`` row (a
-    template run by hand, or a clone registered under another id).
+    A clone in a space with the switch on gets the space's assigned repos from
+    ``repos``, possibly none. Any other clone gets ``repos`` minus the repos
+    that switch-on spaces claim. Returns ``repos`` unchanged when the workflow
+    id has no ``sources`` row (a template run by hand, or a clone registered
+    under another id).
     """
     db = await get_db()
+    # LEFT JOIN so a source whose space row is missing still counts as a
+    # known source with the switch off, rather than dropping out of the
+    # lookup and skipping the claims below.
     rows = await db.execute_fetchall(
-        "SELECT space_id, platform FROM sources WHERE workflow_id = ?", (workflow_id,)
+        """SELECT s.space_id, s.platform,
+                  COALESCE(sp.ingest_assigned_repos_only, 0) AS only_assigned
+           FROM sources s
+           LEFT JOIN spaces sp ON sp.space_id = s.space_id
+           WHERE s.workflow_id = ?""",
+        (workflow_id,),
     )
     if not rows:
         if workflow_id not in _unknown_workflow_ids:
@@ -86,21 +98,22 @@ async def scope_repos_to_workflow(workflow_id: str, repos: list[dict]) -> list[d
     space_id = rows[0]["space_id"]
     platform = rows[0]["platform"]
 
-    assigned = {
-        r["repo_name"]
-        for r in await db.execute_fetchall(
-            "SELECT repo_name FROM space_repos WHERE space_id = ?", (space_id,)
-        )
-    }
-    own = [r for r in repos if r.get("name") in assigned]
-    if own:
-        return own
+    if rows[0]["only_assigned"]:
+        assigned = {
+            r["repo_name"]
+            for r in await db.execute_fetchall(
+                "SELECT repo_name FROM space_repos WHERE space_id = ?", (space_id,)
+            )
+        }
+        return [r for r in repos if r.get("name") in assigned]
 
     candidates = await db.execute_fetchall(
         """SELECT sr.repo_name, s.workflow_id
            FROM space_repos sr
+           JOIN spaces sp ON sp.space_id = sr.space_id
            JOIN sources s ON s.space_id = sr.space_id
-           WHERE sr.space_id != ? AND s.platform = ? AND s.source_type = 'ingestion'""",
+           WHERE sr.space_id != ? AND s.platform = ? AND s.source_type = 'ingestion'
+             AND sp.ingest_assigned_repos_only = 1""",
         (space_id, platform),
     )
     if not candidates:

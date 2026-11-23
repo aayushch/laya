@@ -160,6 +160,9 @@
 	// Pause state
 	let togglingPause = $state<string | null>(null);
 
+	// "Sources watch only assigned repos" switch state
+	let togglingRepoScope = $state<string | null>(null);
+
 	// Expanded space detail
 	let expandedSpaceId = $state<string | null>(null);
 
@@ -308,6 +311,19 @@
 			console.error('Failed to toggle pause:', e);
 		} finally {
 			togglingPause = null;
+		}
+	}
+
+	// "Sources watch only assigned repos" switch
+	async function toggleRepoScope(space: Space) {
+		togglingRepoScope = space.space_id;
+		try {
+			await engineApi.setSpaceIngestAssignedReposOnly(space.space_id, !space.ingest_assigned_repos_only);
+			await loadData();
+		} catch (e) {
+			console.error('Failed to toggle repo scope:', e);
+		} finally {
+			togglingRepoScope = null;
 		}
 	}
 
@@ -719,10 +735,32 @@
 								<div>
 									<h5 class="text-laya-base font-semibold text-surface-200 mb-2">Repositories</h5>
 									<p class="text-laya-base text-surface-500 mb-2">
-										Assign repos to this space so engineer tasks pick the right codebase and its GitHub/Bitbucket sources watch only these repos.
+										Assign repos to this space so engineer tasks pick the right codebase.
 										{#if !spaceRepoNames[space.space_id]?.length}
-											<span class="text-surface-400">No repos assigned — agent will search all repos, and sources watch every repo not assigned to another space with its own source.</span>
+											{#if space.ingest_assigned_repos_only}
+												<span class="text-surface-400">No repos assigned — agent will search all repos, and this space's GitHub/Bitbucket sources poll nothing.</span>
+											{:else}
+												<span class="text-surface-400">No repos assigned — agent will search all repos.</span>
+											{/if}
 										{/if}
+									</p>
+									<button
+										onclick={() => toggleRepoScope(space)}
+										aria-pressed={space.ingest_assigned_repos_only}
+										class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-laya-base transition-colors
+											{space.ingest_assigned_repos_only
+												? 'repo-row-assigned text-laya-orange'
+												: $glassTheme ? 'hover:bg-white/[0.06] text-surface-300' : 'hover:bg-surface-700 text-surface-300'}
+											{togglingRepoScope === space.space_id ? ' opacity-50 pointer-events-none' : ''}"
+									>
+										<span class="h-4 w-4 shrink-0 rounded border text-center text-laya-secondary leading-4
+											{space.ingest_assigned_repos_only ? 'border-laya-orange bg-laya-orange text-white' : 'border-surface-500'}">
+											{#if space.ingest_assigned_repos_only}&#10003;{/if}
+										</span>
+										<span class="flex-1 truncate">Sources watch only assigned repos</span>
+									</button>
+									<p class="px-3 mt-1 mb-2 text-laya-secondary text-surface-500">
+										When on, this space's GitHub and Bitbucket sources poll only the repos assigned here, and sources in other spaces skip them, even while this space is paused. Sources added by hand, or whose workflow update is pending, still poll every repo. A repo assigned to two spaces with this on is polled by both, but each event is stored once, in whichever space fetches it first.
 									</p>
 									<div class="space-y-1">
 										{#each allRepos as repo (repo.name)}

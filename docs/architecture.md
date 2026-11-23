@@ -619,12 +619,20 @@ Bitbucket Server / Data Center is a full first-class integration (`bitbucket_ser
 
 ### Repositories per Space
 
-The GitHub, Bitbucket and Bitbucket Server ingestion workflows send their own n8n workflow id with the repo request (`GET /repos?…&workflow_id={{ $workflow.id }}`). The engine looks the id up in `sources` and scopes the platform/host-filtered list to that source's space (`laya/space_repos.py`):
+The GitHub, Bitbucket and Bitbucket Server ingestion clones send their own n8n workflow id with the repo request (`GET /repos?…&workflow_id={{ encodeURIComponent($workflow.id) }}`). The engine looks the id up in `sources` to find the source's space and scopes the platform/host-filtered list to it (`laya/space_repos.py`).
 
-- If the space has repos assigned (`space_repos`, the Repositories picker in Settings → Spaces) that pass the filter, the workflow polls only those.
-- Otherwise it polls every repo except those another space has **claimed**. A space claims a repo when the repo is assigned to it and the space has its own ingestion source of the same platform watching the same server. An assignment in a space without such a source only steers engineer tasks and claims nothing.
+Each space has the switch **Sources watch only assigned repos** (`spaces.ingest_assigned_repos_only`, migration 076, Settings → Spaces → Repositories). It is off by default for every space.
 
-A request without `workflow_id`, or with an id that has no `sources` row, gets the unscoped list. Two connections of one platform in two spaces therefore split the repos between them instead of both polling everything. A space whose source has no assigned repos of its platform polls every repo that no other space claims.
+- **Switch on:** the source gets only the space's assigned repos (`space_repos`) that pass the request's platform/host filter. That can be none; it never gets a wider list.
+- **Switch off:** the space's assignments only steer engineer tasks. Its sources get the filtered list minus the repos other spaces **claim**.
+
+A space claims a repo when three things hold: the space's switch is on, the repo is assigned there, and the space has an ingestion source of the same `sources.platform` watching the same server host. The host comes from the source's `{platform}-config:{workflow_id}` metadata entry and is `""` for cloud platforms; a missing or garbled config claims nothing. A paused space keeps its claims, so nobody polls those repos while it is paused.
+
+A request without `workflow_id`, with an id that has no `sources` row, or whose space lookup fails gets the unscoped filtered list; the poll never fails because of scoping.
+
+Two connections of one platform in two spaces split the repos only once the switch is turned on in a space and repos are assigned there. With the switch off everywhere, every source polls the same list as before. Scoping depends on the clone sending its id: sources registered by hand, and clones whose template update failed, poll the unscoped list.
+
+A repo assigned to two switch-on spaces is polled by both. Events are deduplicated by `event_id` (`INSERT OR IGNORE`), so each event lands in whichever space's workflow posts it first. Assign a repo to only one such space.
 
 ### Dead Event Recovery
 

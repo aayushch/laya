@@ -782,6 +782,12 @@ export const engineApi = {
 			body: JSON.stringify({ paused })
 		}),
 
+	setSpaceIngestAssignedReposOnly: (spaceId: string, enabled: boolean) =>
+		request<{ status: string; space_id: string; enabled: boolean }>(`/spaces/${spaceId}/ingest-assigned-repos-only`, {
+			method: 'PUT',
+			body: JSON.stringify({ enabled })
+		}),
+
 	// Space Repos
 	getSpaceRepos: (spaceId: string) =>
 		request<SpaceReposResponse>(`/spaces/${spaceId}/repos`),

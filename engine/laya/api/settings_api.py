@@ -651,7 +651,9 @@ async def get_repos(
     can ask for exactly the repos living on its server.
 
     ``workflow_id`` is the calling ingestion clone's n8n id; the filtered list
-    is then scoped to that clone's space (see ``laya.space_repos``).
+    is then scoped by ``laya.space_repos``: a source in a space with "Sources
+    watch only assigned repos" on gets only that space's assigned repos, and
+    any other source loses the repos that such spaces claim.
     """
     data = load_repos()
     repos = data.get("repos", [])

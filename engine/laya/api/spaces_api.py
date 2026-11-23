@@ -25,6 +25,7 @@ from laya.models.space import (
     SourceResponse,
     SpaceApiKeyRequest,
     SpaceCreate,
+    SpaceIngestScopeRequest,
     SpaceReposRequest,
     SpaceResponse,
     SpaceUpdate,
@@ -68,6 +69,7 @@ async def list_spaces() -> dict:
             coding_agent=r["coding_agent"],
             is_default=bool(r["is_default"]),
             paused=bool(r["paused"]),
+            ingest_assigned_repos_only=bool(r["ingest_assigned_repos_only"]),
             position=r["position"],
             source_count=r["source_count"],
             created_at=r["created_at"],
@@ -311,6 +313,34 @@ async def set_space_paused(space_id: str, body: dict) -> dict:
         "workflows_toggled": len(results),
         "errors": errors,
     }
+
+
+@router.put("/spaces/{space_id}/ingest-assigned-repos-only")
+async def set_space_ingest_assigned_repos_only(
+    space_id: str, body: SpaceIngestScopeRequest
+) -> dict:
+    """Turn the space's "Sources watch only assigned repos" switch on or off.
+
+    When on, the space's GitHub/Bitbucket ingestion sources poll only the
+    repos assigned to it, and sources in other spaces skip them (see
+    ``laya.space_repos``). The workflows read the change on their next poll.
+    """
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        "SELECT space_id FROM spaces WHERE space_id = ?", (space_id,)
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Space not found")
+
+    await db.execute(
+        "UPDATE spaces SET ingest_assigned_repos_only = ?, updated_at = CURRENT_TIMESTAMP "
+        "WHERE space_id = ?",
+        (1 if body.enabled else 0, space_id),
+    )
+    await db.commit()
+
+    log.info("space_ingest_scope_set", space_id=space_id, enabled=body.enabled)
+    return {"status": "updated", "space_id": space_id, "enabled": body.enabled}
 
 
 # ---------------------------------------------------------------------------

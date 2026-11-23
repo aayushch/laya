@@ -85,6 +85,60 @@ class TestSetSpacePaused:
 
 
 @pytest.mark.asyncio
+class TestSetSpaceIngestAssignedReposOnly:
+    def _client(self):
+        from laya.main import app
+        return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+    async def _switch_by_space(self, client) -> dict[str, bool]:
+        resp = await client.get("/spaces")
+        assert resp.status_code == 200
+        return {s["space_id"]: s["ingest_assigned_repos_only"] for s in resp.json()["spaces"]}
+
+    async def test_switch_is_off_for_default_and_new_spaces(self, db):
+        async with self._client() as client:
+            created = await client.post("/spaces", json={"name": "Personal"})
+            assert created.status_code == 200
+            assert created.json()["ingest_assigned_repos_only"] is False
+            switch = await self._switch_by_space(client)
+
+        assert switch["default"] is False
+        assert switch[created.json()["space_id"]] is False
+
+    async def test_put_round_trips(self, db):
+        await db.execute(
+            "INSERT INTO spaces (space_id, name) VALUES (?, ?)", ("sp_1", "Test Space")
+        )
+        await db.commit()
+
+        async with self._client() as client:
+            resp = await client.put(
+                "/spaces/sp_1/ingest-assigned-repos-only", json={"enabled": True}
+            )
+            assert resp.status_code == 200
+            assert resp.json() == {"status": "updated", "space_id": "sp_1", "enabled": True}
+            assert (await self._switch_by_space(client))["sp_1"] is True
+
+            resp = await client.put(
+                "/spaces/sp_1/ingest-assigned-repos-only", json={"enabled": False}
+            )
+            assert resp.status_code == 200
+            assert (await self._switch_by_space(client))["sp_1"] is False
+
+    async def test_missing_enabled_is_rejected(self, db):
+        async with self._client() as client:
+            resp = await client.put("/spaces/default/ingest-assigned-repos-only", json={})
+        assert resp.status_code == 422
+
+    async def test_unknown_space_is_not_found(self, db):
+        async with self._client() as client:
+            resp = await client.put(
+                "/spaces/sp_missing/ingest-assigned-repos-only", json={"enabled": True}
+            )
+        assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
 class TestN8nClientTransportWrapping:
     """The n8n client funnels raw httpx transport failures into N8nApiError so
     that EVERY caller's `except N8nApiError` covers them — not just the handful

@@ -54,6 +54,7 @@ class SpaceResponse(BaseModel):
     coding_agent: str | None = None
     is_default: bool = False
     paused: bool = False
+    ingest_assigned_repos_only: bool = False
     position: int = 0
     source_count: int = 0
     created_at: str | None = None
@@ -98,6 +99,12 @@ class SpaceReposRequest(BaseModel):
     """Request body for setting repositories assigned to a space."""
 
     repo_names: list[str] = Field(default_factory=list)
+
+
+class SpaceIngestScopeRequest(BaseModel):
+    """Request body for the space's "Sources watch only assigned repos" switch."""
+
+    enabled: bool
 
 
 class SpaceApiKeyRequest(BaseModel):

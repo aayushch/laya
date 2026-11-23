@@ -866,7 +866,7 @@ npm install --prefix ~/.laya/n8n_module n8n</code></pre>
         <li><strong>Feed filtering</strong> &mdash; Filter the feed by space in the header toolbar</li>
         <li><strong>Model overrides</strong> &mdash; Each space can use different AI models</li>
         <li><strong>API key overrides</strong> &mdash; Each space can have its own provider API keys</li>
-        <li><strong>Repository assignment</strong> &mdash; Link repos to spaces for coding agent context</li>
+        <li><strong>Repository assignment</strong> &mdash; Link repos to spaces for coding agent context. Turn on <em>Sources watch only assigned repos</em> to make the space's GitHub/Bitbucket sources poll only those repos (none assigned means none polled); sources in other spaces then skip them. Off by default.</li>
         <li><strong>Pause/resume</strong> &mdash; Temporarily stop all ingestion for a space</li>
       </ul>
 
@@ -942,7 +942,7 @@ content.body         content.metadata.*</code></pre>
       <ul>
         <li>Use the <strong>Browse</strong> button to select a local directory</li>
         <li>Laya auto-detects the platform (GitHub, Bitbucket) and remote ID</li>
-        <li>Assign repos to Spaces so the right agent gets the right context</li>
+        <li>Assign repos to Spaces so the right agent gets the right context, and optionally limit a space's GitHub/Bitbucket sources to the repos assigned there (see <a href="#doc-settings-spaces">Spaces &amp; Sources</a>)</li>
         <li>Optional <strong>Host</strong> field &mdash; leave it empty or set a cloud domain (<code>bitbucket.org</code> / <code>github.com</code>) for a Cloud repo. Any other value (e.g. <code>git.acme.com</code>) marks a self-hosted instance (Bitbucket Server / Data Center, GitHub Enterprise), and Laya adapts ingestion and outbound actions accordingly.</li>
       </ul>
 
