@@ -99,6 +99,40 @@ class TestRepoScopingByWorkflow:
             "work-api", "work-web", "dotfiles",
         ]
 
+    async def test_overlong_workflow_id_is_rejected(self, db):
+        with patch("laya.api.settings_api.load_repos", return_value=REPOS):
+            from laya.main import app
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.get(
+                    "/repos", params={"platform": "github", "workflow_id": "w" * 65},
+                )
+        assert resp.status_code == 422
+
+    async def test_unknown_workflow_id_of_real_length_returns_the_filtered_list(self, db):
+        await _space(db, "sp_personal", "Personal")
+        await _source(db, "wf_personal_gh", "github", "sp_personal")
+        await _assign(db, "sp_personal", "dotfiles")
+        await _only_assigned(db, "sp_personal")
+        await db.commit()
+
+        assert await _get({"platform": "github", "workflow_id": "u" * 36}) == [
+            "work-api", "work-web", "dotfiles",
+        ]
+
+    async def test_unknown_workflow_ids_keep_no_state(self, db):
+        import laya.space_repos
+        from laya.space_repos import scope_repos_to_workflow
+
+        repos = [r for r in REPOS["repos"] if r["platform"] == "github"]
+        with patch("laya.space_repos.log") as log:
+            for i in range(300):
+                assert await scope_repos_to_workflow(f"wf_unknown_{i:03d}", repos) == repos
+
+        assert not hasattr(laya.space_repos, "_unknown_workflow_ids")
+        log.debug.assert_called()
+        log.info.assert_not_called()
+
     async def test_space_with_assigned_repos_gets_only_those(self, db):
         await _space(db, "sp_personal", "Personal")
         await _source(db, "wf_personal_gh", "github", "sp_personal")

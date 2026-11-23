@@ -33,11 +33,6 @@ from laya.db.sqlite import get_db, transaction
 
 log = structlog.get_logger()
 
-# Workflow ids that asked for repos without a matching ``sources`` row. Each is
-# logged once: the clone polls every couple of minutes and the answer doesn't
-# change until the source is registered.
-_unknown_workflow_ids: set[str] = set()
-
 
 def normalize_host(value: str) -> str:
     """Reduce a host or base URL to a bare lowercase hostname for comparison.
@@ -170,9 +165,7 @@ async def scope_repos_to_workflow(workflow_id: str, repos: list[dict]) -> list[d
         (workflow_id,),
     )
     if not rows:
-        if workflow_id not in _unknown_workflow_ids:
-            _unknown_workflow_ids.add(workflow_id)
-            log.info("repos_scope_unknown_workflow", workflow_id=workflow_id)
+        log.debug("repos_scope_unknown_workflow", workflow_id=workflow_id)
         return repos
     space_id = rows[0]["space_id"]
     platform = rows[0]["platform"]

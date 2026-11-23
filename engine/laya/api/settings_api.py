@@ -647,7 +647,9 @@ async def reload_prompts() -> dict:
 async def get_repos(
     platform: str | None = Query(default=None),
     host: str | None = Query(default=None),
-    workflow_id: str | None = Query(default=None),
+    # n8n workflow ids are 16-character nanoids stored in a 36-character
+    # column, so a longer value cannot come from a clone.
+    workflow_id: str | None = Query(default=None, max_length=64),
 ) -> dict:
     """Return configured repositories, optionally filtered by platform and/or host.
 
