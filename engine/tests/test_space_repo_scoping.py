@@ -327,6 +327,24 @@ class TestRepoScopingByWorkflow:
                 "work-api", "work-web", "dotfiles",
             ]
 
+    async def test_scoping_error_is_logged_with_its_type_and_returns_the_filtered_list(self, db):
+        await _space(db, "sp_personal", "Personal")
+        await _source(db, "wf_personal_gh", "github", "sp_personal")
+        await _assign(db, "sp_personal", "dotfiles")
+        await db.commit()
+
+        with patch("laya.space_repos.get_db", side_effect=KeyError("space_id")), \
+                patch("laya.api.settings_api.log.warning") as warning:
+            assert await _get({"platform": "github", "workflow_id": "wf_personal_gh"}) == [
+                "work-api", "work-web", "dotfiles",
+            ]
+
+        warning.assert_called_once()
+        assert warning.call_args.args == ("repos_scope_failed",)
+        assert warning.call_args.kwargs["workflow_id"] == "wf_personal_gh"
+        assert warning.call_args.kwargs["error_type"] == "KeyError"
+        assert warning.call_args.kwargs["exc_info"] is True
+
 
 def _edit(repo_name: str, **changes) -> dict:
     """A copy of REPOS with the entry called ``repo_name`` updated by ``changes``."""

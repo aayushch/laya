@@ -671,10 +671,18 @@ async def get_repos(
         try:
             repos = await scope_repos_to_workflow(workflow_id, repos)
         except Exception as e:
-            # Polling the unscoped list only risks a duplicate or a 404 on a
-            # repo the token can't read; failing the request would stop the
-            # clone from polling anything until the error clears.
-            log.warning("repos_scope_failed", workflow_id=workflow_id, error=str(e))
+            # When scoping fails, the clone gets the platform/host-filtered
+            # list, so it can also poll repos another space claims. Events
+            # from such a repo are stored once and land in the space of
+            # whichever clone posts them first. Failing the request instead
+            # would stop this clone polling any repo until the error clears.
+            log.warning(
+                "repos_scope_failed",
+                workflow_id=workflow_id,
+                error_type=type(e).__name__,
+                error=str(e),
+                exc_info=True,
+            )
     if platform or host or workflow_id:
         data = dict(data)
         data["repos"] = repos
