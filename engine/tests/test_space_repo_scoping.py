@@ -298,6 +298,24 @@ class TestRepoScopingByWorkflow:
             "work-api", "work-web",
         ]
 
+    async def test_source_with_failed_workflow_update_does_not_claim(self, db):
+        """A clone whose last template update failed may no longer exist in
+        n8n, so its space's assignments must not hide repos from the others."""
+        await _space(db, "sp_b", "B")
+        await _source(db, "wf_default_gh", "github", "default")
+        await _source(db, "wf_b_gh", "github", "sp_b")
+        await db.execute(
+            "UPDATE sources SET workflow_update_error = ? WHERE workflow_id = ?",
+            ("Workflow no longer exists in n8n", "wf_b_gh"),
+        )
+        await _assign(db, "sp_b", "dotfiles")
+        await _only_assigned(db, "sp_b")
+        await db.commit()
+
+        assert await _get({"platform": "github", "workflow_id": "wf_default_gh"}) == [
+            "work-api", "work-web", "dotfiles",
+        ]
+
     async def test_lookup_failure_returns_the_filtered_list(self, db):
         await _space(db, "sp_personal", "Personal")
         await _source(db, "wf_personal_gh", "github", "sp_personal")

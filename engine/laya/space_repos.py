@@ -186,12 +186,17 @@ async def scope_repos_to_workflow(workflow_id: str, repos: list[dict]) -> list[d
         }
         return [r for r in repos if r.get("name") in assigned]
 
+    # A source whose last template update failed claims nothing: its clone may
+    # no longer exist in n8n, and if it still runs it polls the unscoped list.
+    # Letting it claim risks a repo nobody polls; skipping it risks at most a
+    # duplicate poll.
     candidates = await db.execute_fetchall(
         """SELECT sr.repo_name, s.workflow_id
            FROM space_repos sr
            JOIN spaces sp ON sp.space_id = sr.space_id
            JOIN sources s ON s.space_id = sr.space_id
            WHERE sr.space_id != ? AND s.platform = ? AND s.source_type = 'ingestion'
+             AND s.workflow_update_error IS NULL
              AND sp.ingest_assigned_repos_only = 1""",
         (space_id, platform),
     )
