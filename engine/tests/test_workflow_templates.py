@@ -17,7 +17,12 @@ from laya.integrations.n8n_bootstrap import WORKFLOWS_DIR
 
 TOKEN_HEADER = "X-Laya-N8n-Token"
 TOKEN_VALUE = "={{ $env.LAYA_N8N_TOKEN }}"
-_REPO_LISTING = re.compile(r"LAYA_ENGINE_URL \}\}/repos(?:\?|$|[^/\w-])")
+# The engine URL followed directly by the /repos path, however the expression
+# joins them: `{{ $env.LAYA_ENGINE_URL }}/repos`, `{{$env.LAYA_ENGINE_URL}}/repos`,
+# `$env.LAYA_ENGINE_URL + '/repos'` or `${$env.LAYA_ENGINE_URL}/repos`. The
+# backslash covers quotes escaped by json.dumps. Any other path segment in
+# between (`/spaces/{id}/repos`) is a different route and does not match.
+_REPO_LISTING = re.compile(r"LAYA_ENGINE_URL[\s}'\"`+\\]*/repos(?![\w/-])")
 
 
 def _templates() -> list[tuple[str, dict]]:
@@ -116,12 +121,31 @@ def test_repo_listing_guard_selects_every_repo_listing_node():
         ]},
     )
     space_repos = _http_node("Space Repos", url="={{ $env.LAYA_ENGINE_URL }}/spaces/x/repos")
+    space_repos_expr = _http_node(
+        "Space Repos By Id", url="={{ $env.LAYA_ENGINE_URL }}/spaces/{{ $json.id }}/repos",
+    )
+    unspaced = _http_node("Repos Unspaced", url="={{$env.LAYA_ENGINE_URL}}/repos?platform=github")
+    concatenated = _http_node(
+        "Repos Concatenated", url="={{ $env.LAYA_ENGINE_URL + '/repos?platform=github' }}",
+    )
+    code_node = {
+        "name": "Repos In Code",
+        "type": "n8n-nodes-base.code",
+        "parameters": {"jsCode": "await fetch(`${$env.LAYA_ENGINE_URL}/repos`);"},
+    }
 
     seen, missing = _repo_listing_violations([
         ("a.json", {"nodes": [correct, query_less]}),
         ("b.json", {"nodes": [send_query]}),
-        ("c.json", {"nodes": [space_repos]}),
+        ("c.json", {"nodes": [space_repos, space_repos_expr]}),
+        ("d.json", {"nodes": [unspaced, concatenated, code_node]}),
     ])
 
-    assert seen == {"a.json", "b.json"}
-    assert missing == ["a.json: Fetch Repos Again", "b.json: List Repos"]
+    assert seen == {"a.json", "b.json", "d.json"}
+    assert missing == [
+        "a.json: Fetch Repos Again",
+        "b.json: List Repos",
+        "d.json: Repos Unspaced",
+        "d.json: Repos Concatenated",
+        "d.json: Repos In Code",
+    ]
