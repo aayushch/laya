@@ -56,3 +56,23 @@ def test_event_post_nodes_retry_on_failure():
             if not (node.get("retryOnFail") is True and node.get("maxTries", 0) >= 2):
                 bad.append(f"{name}: {node['name']}")
     assert not bad, f"POST nodes without retry: {bad}"
+
+
+@pytest.mark.skipif(not WORKFLOWS_DIR.exists(), reason="bundled workflows not present")
+def test_repo_listing_nodes_pass_their_workflow_id():
+    """GET /repos scopes the list to the caller's space only when the clone
+    sends its own n8n workflow id."""
+    seen = []
+    missing = []
+    for name, data in _templates():
+        for node in _engine_nodes(data):
+            url = node["parameters"].get("url", "")
+            if "/repos?" not in url:
+                continue
+            seen.append(name)
+            if "workflow_id={{ encodeURIComponent($workflow.id) }}" not in url:
+                missing.append(f"{name}: {node['name']}")
+    assert sorted(seen) == [
+        "bitbucket-ingestion.json", "bitbucket-server-ingestion.json", "github-ingestion.json",
+    ]
+    assert not missing, f"repo-listing nodes without workflow_id: {missing}"

@@ -719,9 +719,9 @@
 								<div>
 									<h5 class="text-laya-base font-semibold text-surface-200 mb-2">Repositories</h5>
 									<p class="text-laya-base text-surface-500 mb-2">
-										Assign repos to this space so engineer tasks pick the right codebase.
+										Assign repos to this space so engineer tasks pick the right codebase and its GitHub/Bitbucket sources watch only these repos.
 										{#if !spaceRepoNames[space.space_id]?.length}
-											<span class="text-surface-400">No repos assigned — agent will search all repos.</span>
+											<span class="text-surface-400">No repos assigned — agent will search all repos, and sources watch every repo not assigned to another space with its own source.</span>
 										{/if}
 									</p>
 									<div class="space-y-1">

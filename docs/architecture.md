@@ -617,6 +617,15 @@ Each repo in `repos.json` carries an optional `host` field that distinguishes cl
 
 Bitbucket Server / Data Center is a full first-class integration (`bitbucket_server` platform): the user connects it with their server base URL + HTTP access token, the cloned ingestion workflow selects exactly the repos on that host via the generic `GET /repos?host=` filter (the host is derived from the server URL the workflow reads from its clone-time `{platform}-config:{workflow_id}` metadata entry), and the executor workflow drives the Server REST API (`{base_url}/rest/api/1.0/...`) with the connection's base URL injected into the payload by the n8n backend (`Platform.payload_credential_fields`). Repo selection is host-driven throughout — there are no cloud-vs-server predicates in the engine.
 
+### Repositories per Space
+
+The GitHub, Bitbucket and Bitbucket Server ingestion workflows send their own n8n workflow id with the repo request (`GET /repos?…&workflow_id={{ $workflow.id }}`). The engine looks the id up in `sources` and scopes the platform/host-filtered list to that source's space (`laya/space_repos.py`):
+
+- If the space has repos assigned (`space_repos`, the Repositories picker in Settings → Spaces) that pass the filter, the workflow polls only those.
+- Otherwise it polls every repo except those another space has **claimed**. A space claims a repo when the repo is assigned to it and the space has its own ingestion source of the same platform watching the same server. An assignment in a space without such a source only steers engineer tasks and claims nothing.
+
+A request without `workflow_id`, or with an id that has no `sources` row, gets the unscoped list. Two connections of one platform in two spaces therefore split the repos between them instead of both polling everything. A space whose source has no assigned repos of its platform polls every repo that no other space claims.
+
 ### Dead Event Recovery
 
 Events that fail processing 3 times are marked as "dead":
