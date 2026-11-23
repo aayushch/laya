@@ -14,8 +14,10 @@ assigned repos" switch (``spaces.ingest_assigned_repos_only``, off by default):
 - Switch off: the space's assignments only steer engineer tasks. The clone
   polls the filtered list minus the repos *claimed* by other spaces. A space
   claims a repo when its switch is on, the repo is assigned to it, and it has
-  its own ingestion source of the same platform watching the same server. A
-  paused space keeps its claims, so its repos go unpolled while it is paused.
+  its own connected ingestion source (a per-connection clone whose last
+  workflow update did not fail) of the same platform watching the same
+  server. A paused space keeps its claims, so its repos go unpolled while it
+  is paused.
 
 Assignments are keyed by the repo's name in repos.json; ``PUT /repos`` carries
 them through renames and drops them with removed repos

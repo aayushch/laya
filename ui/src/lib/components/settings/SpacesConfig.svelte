@@ -763,7 +763,7 @@
 										<span class="flex-1 truncate">Sources watch only assigned repos</span>
 									</button>
 									<p class="px-3 mt-1 mb-2 text-laya-secondary text-surface-500">
-										When on, this space's GitHub and Bitbucket sources poll only the repos assigned here, none if nothing is assigned. Sources in other spaces skip those repos when this space has its own connected source of the same platform and server, even while this space is paused. Sources added by hand, or whose workflow update is pending, still poll every repo. A repo assigned to two spaces with this on is polled by both, but each event is stored once, in whichever space fetches it first.
+										When on, this space's GitHub and Bitbucket sources poll only the repos assigned here, none if nothing is assigned. Sources in other spaces skip those repos when this space has its own connected source of the same platform and server, even while this space is paused. Sources added by hand, or whose workflow update is pending, still poll every repo and make no other space skip anything. A repo assigned to two spaces with this on is polled by both, but each event is stored once, in whichever space fetches it first.
 									</p>
 									<div class="space-y-1">
 										{#each allRepos as repo (repo.name)}

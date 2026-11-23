@@ -322,8 +322,9 @@ async def set_space_ingest_assigned_repos_only(
     """Turn the space's "Sources watch only assigned repos" switch on or off.
 
     When on, the space's GitHub/Bitbucket ingestion sources poll only the
-    repos assigned to it, and sources in other spaces skip them (see
-    ``laya.space_repos``). The workflows read the change on their next poll.
+    repos assigned to it, and sources in other spaces skip the ones this
+    space has its own connected source for (``laya.space_repos`` has the exact
+    rule). The workflows read the change on their next poll.
     """
     db = await get_db()
     rows = await db.execute_fetchall(
