@@ -142,15 +142,11 @@ class TestCreateConnection:
             assert "Bad token" in result.error
 
     @pytest.mark.asyncio
-    async def test_trello_connection_provisions_one_board_ingestion(self, db):
-        credentials = {
-            "apiKey": " demo_key ",
-            "apiToken": "demo_token",
-            "boardId": "https://trello.com/b/AbCd1234/example-board",
-        }
+    async def test_trello_connection_provisions_its_ingestion_clone(self, db):
+        credentials = {"apiKey": "demo_key", "apiToken": "demo_token"}
         trello_http = AsyncMock()
         trello_http.__aenter__.return_value = trello_http
-        trello_http.get.return_value = httpx.Response(200, json=[])
+        trello_http.get.return_value = httpx.Response(200, json={"id": "member"})
         n8n_http = AsyncMock()
         n8n_http.post.return_value = httpx.Response(201, json={"id": "trello_workflow"})
 
@@ -163,18 +159,18 @@ class TestCreateConnection:
             patch("laya.integrations.n8n_bootstrap._get_error_handler_id", return_value="error_handler"),
             patch("laya.http_client.get_client", return_value=n8n_http),
         ):
-            result = await create_connection("trello", credentials, name="Example board")
+            result = await create_connection("trello", credentials, name="Work boards")
 
         assert result.status == "connected", result.error
         assert result.capabilities == []
         trello_http.get.assert_awaited_once_with(
-            "https://api.trello.com/1/boards/AbCd1234/actions",
-            params={"limit": 1},
+            "https://api.trello.com/1/members/me",
+            params={"fields": "id"},
             headers={"Authorization": 'OAuth oauth_consumer_key="demo_key", oauth_token="demo_token"'},
             timeout=10.0,
         )
         provision.assert_awaited_once_with(
-            name="Example board",
+            name="Work boards",
             n8n_type="trelloApi",
             data={"apiKey": "demo_key", "apiToken": "demo_token"},
             node_type="n8n-nodes-base.trello",
@@ -191,20 +187,16 @@ class TestCreateConnection:
             (result.connection_id,),
         )
         assert tuple(source) == ("trello", "trello_workflow", "ingestion")
-        [config] = await db.execute_fetchall(
-            "SELECT value FROM metadata WHERE key = 'trello-config:trello_workflow'",
-        )
-        assert json.loads(config["value"]) == {"boardId": "AbCd1234"}
 
     @pytest.mark.asyncio
-    async def test_trello_rejects_a_non_board_url(self):
-        with patch("laya.egress.connections.httpx.AsyncClient") as client:
-            result = await create_connection("trello", {
-                "apiKey": "test", "apiToken": "test", "boardId": "https://trello.com/c/AbCd1234",
-            })
+    async def test_trello_rejects_an_unauthorized_token(self):
+        trello_http = AsyncMock()
+        trello_http.__aenter__.return_value = trello_http
+        trello_http.get.return_value = httpx.Response(401, text="invalid token")
+        with patch("laya.egress.connections.httpx.AsyncClient", return_value=trello_http):
+            result = await create_connection("trello", {"apiKey": "key", "apiToken": "bad"})
         assert result.status == "failed"
-        assert "board URL" in result.error
-        client.assert_not_called()
+        assert "authorization failed" in result.error
 
     @pytest.mark.asyncio
     async def test_create_connection_unknown_platform(self, db):

@@ -13,7 +13,6 @@ Users interact with Laya Settings only. The broker handles:
 from __future__ import annotations
 
 import json
-import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -25,7 +24,7 @@ from laya.db.sqlite import get_db
 from laya.db.timeutil import db_now
 from laya.egress.models import Connection, ConnectionResult
 from laya.egress.registry import get_capabilities
-from laya.integrations.platforms import PLATFORMS, project_n8n_credentials
+from laya.integrations.platforms import PLATFORMS
 
 log = structlog.get_logger()
 
@@ -53,18 +52,6 @@ async def create_connection(
     """
     if platform not in PLATFORMS and platform != "smtp":
         return ConnectionResult(status="failed", error=f"Unknown platform: {platform}")
-
-    if platform == "trello":
-        credentials = {
-            key: str(credentials.get(key) or "").strip()
-            for key in ("apiKey", "apiToken", "boardId")
-        }
-        board_url = re.fullmatch(
-            r"https://trello\.com/b/([A-Za-z0-9]{8})(?:[/?#].*)?", credentials["boardId"],
-        )
-        if board_url:
-            credentials["boardId"] = board_url[1]
-        name = name or f"Laya - Trello ({credentials['boardId']})"
 
     connection_id = f"conn_{uuid.uuid4().hex[:12]}"
     display_name = name or f"Laya - {PLATFORMS.get(platform, {}).get('label', platform)}"
@@ -477,31 +464,29 @@ async def _validate_linear(creds: dict) -> tuple[bool, str | None]:
 
 
 async def _validate_trello(creds: dict) -> tuple[bool, str | None]:
-    """Validate read access to the board's action feed."""
-    key, token, board_id = (creds.get(field, "") for field in ("apiKey", "apiToken", "boardId"))
-    if not all([key, token, board_id]):
-        return False, "Trello requires an API key, API token, and board URL or ID"
-    if not re.fullmatch(r"(?:[A-Za-z0-9]{8}|[a-fA-F0-9]{24})", board_id):
-        return False, "Enter a Trello board URL, short link, or board ID"
+    """Validate the Trello API key and token by reading the token's own member."""
+    key, token = creds.get("apiKey", ""), creds.get("apiToken", "")
+    if not key or not token:
+        return False, "Trello requires an API key and an API token"
 
     auth = f'OAuth oauth_consumer_key="{key}", oauth_token="{token}"'
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
-                f"https://api.trello.com/1/boards/{board_id}/actions",
-                params={"limit": 1},
+                "https://api.trello.com/1/members/me",
+                params={"fields": "id"},
                 headers={"Authorization": auth},
                 timeout=10.0,
             )
+    # A pasted value with non-ASCII characters cannot be sent in a header and
+    # raises UnicodeEncodeError instead of an HTTP error.
     except (httpx.RequestError, UnicodeError):
         return False, "Could not connect to Trello. Check the credentials and try again."
 
     if resp.status_code == 200:
         return True, None
-    if resp.status_code == 401:
-        return False, "Trello authorization failed. Check the API key, token, and board access."
-    if resp.status_code in (403, 404):
-        return False, "Trello board is unavailable. Check the board URL and token read access."
+    if resp.status_code in (400, 401):
+        return False, "Trello authorization failed. Check the API key and token."
     return False, f"Trello returned HTTP {resp.status_code}"
 
 
@@ -637,6 +622,13 @@ def _remove_from_keychain(connection_id: str, platform: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+class _BlankOnMissing(dict):
+    """format_map source that resolves missing template fields to ""."""
+
+    def __missing__(self, key: str) -> str:
+        return ""
+
+
 async def _provision_to_n8n(
     platform: str, name: str, credentials: dict
 ) -> str | None:
@@ -651,10 +643,23 @@ async def _provision_to_n8n(
         # Merge any n8n-specific defaults (e.g. server URL)
         source = {**platform_config.get("n8n_defaults", {}), **credentials}
 
+        # Platforms whose n8n credential schema differs from our stored fields
+        # (e.g. bitbucket_server: httpHeaderAuth wants {name, value}, we store
+        # {server, accessToken}) declare a declarative n8n_credential_template —
+        # string values are str.format templates over the connection's fields.
+        template = platform_config.get("n8n_credential_template")
+        if template:
+            cred_data = {
+                k: v.format_map(_BlankOnMissing(source)) if isinstance(v, str) else v
+                for k, v in template.items()
+            }
+        else:
+            cred_data = source
+
         result = await create_credential(
             name=name,
             n8n_type=platform_config["n8n_type"],
-            data=project_n8n_credentials(platform_config, source),
+            data=cred_data,
             # node_type feeds the (deprecated, ignored-by-n8n-v1) nodesAccess
             # field; generic-HTTP platforms have no native node, so fall back to
             # the httpRequest node type rather than sending an empty string.
@@ -933,14 +938,14 @@ async def _remove_connection_workflows(connection_id: str) -> None:
     if not rows:
         return
 
-    # Clean up per-clone metadata keyed by workflow_id (Slack channel config,
-    # per-platform workflow config written at clone time).
+    # Clean up per-clone metadata keyed by workflow_id (Slack channels, Trello
+    # boards, per-platform workflow config written at clone time).
     for row in rows:
         wf_id = row["workflow_id"]
         if wf_id:
             await db.execute(
-                "DELETE FROM metadata WHERE key = ?",
-                (f"slack-channels:{wf_id}",),
+                "DELETE FROM metadata WHERE key IN (?, ?)",
+                (f"slack-channels:{wf_id}", f"trello-boards:{wf_id}"),
             )
             await db.execute(
                 "DELETE FROM metadata WHERE key LIKE ?",

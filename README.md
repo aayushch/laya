@@ -32,9 +32,10 @@ Laya is an open-source, local-first AI notification command center that aggregat
 
 To connect Trello, go to **Settings → Integrations → Trello**. Enter a
 [Trello API key and read token](https://developer.atlassian.com/cloud/trello/guides/rest-api/authorization/)
-and the URL of the board you want to monitor. Add a separate connection for each
-board. Laya polls for card activity every two minutes, including new cards,
-comments, moves, member changes, and archive and completion changes.
+and the boards you want to monitor, as board URLs or IDs. One connection can
+watch several boards, and the list can be changed later on the account card.
+Laya polls those boards for card activity every two minutes, including new
+cards, comments, moves, member changes, and archive and completion changes.
 
 ## How It Works
 

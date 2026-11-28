@@ -110,7 +110,7 @@ PLATFORMS: dict[str, dict] = {
         ],
         # httpHeaderAuth's n8n schema is {name, value} — it can't store our
         # server/accessToken fields directly. Values are format-templates over
-        # the connection's fields (see project_n8n_credentials).
+        # the connection's fields (see _provision_to_n8n).
         "n8n_credential_template": {
             "name": "Authorization",
             "value": "Bearer {accessToken}",
@@ -165,6 +165,8 @@ PLATFORMS: dict[str, dict] = {
         "n8n_node": "n8n-nodes-base.trello",
         "oauth": False,
         "workflows": ["Laya - Trello Ingestion"],
+        # The boards to poll are not credentials: the connect form sends them
+        # separately and they are stored per clone in trello-boards:<workflow_id>.
         "fields": [
             {
                 "key": "apiKey",
@@ -176,18 +178,9 @@ PLATFORMS: dict[str, dict] = {
                 "key": "apiToken",
                 "label": "API Token",
                 "type": "password",
-                "help": "Authorize the API key with read access to your Trello board",
-            },
-            {
-                "key": "boardId",
-                "label": "Board URL or ID",
-                "type": "text",
-                "placeholder": "https://trello.com/b/AbCd1234/board-name",
-                "help": "Add one connection per board you want to monitor",
+                "help": "Authorize the API key with read access to your Trello boards",
             },
         ],
-        "n8n_credential_template": {"apiKey": "{apiKey}", "apiToken": "{apiToken}"},
-        "workflow_config_fields": ["boardId"],
     },
     "notion": {
         "label": "Notion",
@@ -295,23 +288,6 @@ CATEGORY_LABELS: dict[str, str] = {
 
 # Ordered category list for consistent UI rendering
 CATEGORY_ORDER: list[str] = ["development", "project_management", "communication", "email", "calendar"]
-
-
-class _BlankOnMissing(dict):
-    def __missing__(self, key: str) -> str:
-        return ""
-
-
-def project_n8n_credentials(platform_config: dict, credentials: dict) -> dict:
-    """Apply a platform's declared field mapping for n8n credential storage."""
-    template = platform_config.get("n8n_credential_template")
-    if not template:
-        return credentials
-    source = _BlankOnMissing(credentials)
-    return {
-        key: value.format_map(source) if isinstance(value, str) else value
-        for key, value in template.items()
-    }
 
 
 def get_platform_by_n8n_type(n8n_type: str) -> tuple[str, dict] | None:

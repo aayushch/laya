@@ -60,6 +60,11 @@
 	// Slack channel selection
 	let slackChannels = $state<string[]>([]);
 
+	// Trello boards to monitor. Board short links are case-sensitive, so only
+	// surrounding whitespace is trimmed.
+	let trelloBoards = $state<string[]>([]);
+	const keepBoardCase = (raw: string) => raw.trim();
+
 	// OAuth state
 	let oauthPolling = $state(false);
 	let oauthError = $state<string | null>(null);
@@ -93,13 +98,18 @@
 
 	async function handleApiKeySubmit() {
 		if (!checkName()) return;
+		if (platform === 'trello' && trelloBoards.length === 0) {
+			error = 'Please add at least one board to monitor.';
+			return;
+		}
 		submitting = true;
 		error = null;
 		try {
 			await engineApi.createEgressConnection({
 				platform,
 				name: connectionName.trim() || undefined,
-				credentials: fieldValues
+				credentials: fieldValues,
+				boards: platform === 'trello' ? trelloBoards : undefined
 			});
 			onConnected();
 		} catch (e) {
@@ -460,6 +470,18 @@
 							{/if}
 						</div>
 					{/each}
+
+					{#if platform === 'trello'}
+						<div>
+							<span class={labelClass}>Boards to monitor</span>
+							<TagInput
+								bind:tags={trelloBoards}
+								normalize={keepBoardCase}
+								placeholder="e.g., https://trello.com/b/AbCd1234/board-name"
+							/>
+							<p class={helpClass}>Paste a board URL or ID. Only these boards will be monitored.</p>
+						</div>
+					{/if}
 
 					<button
 						onclick={handleApiKeySubmit}

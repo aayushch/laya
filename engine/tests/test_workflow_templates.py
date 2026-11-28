@@ -66,28 +66,46 @@ def test_event_post_nodes_retry_on_failure():
     assert not bad, f"POST nodes without retry: {bad}"
 
 
-@pytest.mark.skipif(not WORKFLOWS_DIR.exists(), reason="bundled workflows not present")
-def test_trello_polls_a_fixed_look_back_window():
+def _run_trello_code(node_name, setup_js, result_js):
+    """Run one Code node of the Trello workflow in Node.js and return result_js as JSON.
+
+    The node's source is in `code`; setup_js runs after it is read.
+    """
     node = shutil.which("node")
     if node is None:
-        pytest.skip("Node.js is required to run the Trello poll")
+        pytest.skip("Node.js is required to run the Trello workflow code")
+    workflow = json.loads((WORKFLOWS_DIR / "trello-ingestion.json").read_text(encoding="utf-8"))
+    code = next(n["parameters"]["jsCode"] for n in workflow["nodes"] if n["name"] == node_name)
+    script = (
+        "const code = require('node:fs').readFileSync(0, 'utf8');\n"
+        + setup_js
+        + "\nprocess.stdout.write(JSON.stringify(" + result_js + "));"
+    )
+    result = subprocess.run(
+        [node, "-e", script], input=code, text=True, capture_output=True, check=True, timeout=15,
+    )
+    return json.loads(result.stdout)
+
+
+@pytest.mark.skipif(not WORKFLOWS_DIR.exists(), reason="bundled workflows not present")
+def test_trello_polls_each_configured_board_with_a_fixed_look_back():
+    items = _run_trello_code("Build Board Items", """
+        class Clock extends Date {
+          static now() { return Date.parse('2026-11-22T16:02:00Z'); }
+        }
+        const build = value => new Function('$input', 'Date', code)(
+          {first: () => ({json: {key: 'trello-boards:wf', value}})}, Clock);
+    """, "{boards: build(['AbCd1234', '5f0c1d2e3a4b5c6d7e8f9012', 'not a board', 42]), missing: build(null)}")
+    since = "2026-11-22T15:59:30.000Z"
+    assert items["boards"] == [
+        {"json": {"boardId": "AbCd1234", "since": since}},
+        {"json": {"boardId": "5f0c1d2e3a4b5c6d7e8f9012", "since": since}},
+    ]
+    assert items["missing"] == []
+
     workflow = json.loads((WORKFLOWS_DIR / "trello-ingestion.json").read_text(encoding="utf-8"))
     nodes = {n["name"]: n for n in workflow["nodes"]}
-    result = subprocess.run(
-        [node, "-e", """
-            const code = require('node:fs').readFileSync(0, 'utf8');
-            const prepare = new Function('$input', 'Date', code);
-            class Clock extends Date {
-              static now() { return Date.parse('2026-11-22T16:02:00Z'); }
-            }
-            const input = {first: () => ({json: {value: {boardId: 'AbCd1234'}}})};
-            process.stdout.write(JSON.stringify(prepare(input, Clock)));
-        """],
-        input=nodes["Prepare Trello Poll"]["parameters"]["jsCode"],
-        text=True, capture_output=True, check=True, timeout=15,
-    )
-    assert json.loads(result.stdout) == [{"json": {"boardId": "AbCd1234", "since": "2026-11-22T15:59:30.000Z"}}]
-
+    assert nodes["Read Trello Boards"]["parameters"]["url"].endswith("/metadata/trello-boards:{{ $workflow.id }}")
     query = {
         p["name"]: p["value"]
         for p in nodes["Fetch Trello Actions"]["parameters"]["queryParameters"]["parameters"]
@@ -100,6 +118,37 @@ def test_trello_polls_a_fixed_look_back_window():
     assert workflow["connections"]["Normalize Trello Actions"]["main"] == [
         [{"node": "POST to Laya Engine", "type": "main", "index": 0}]
     ]
+
+
+@pytest.mark.skipif(not WORKFLOWS_DIR.exists(), reason="bundled workflows not present")
+def test_trello_reports_an_unreadable_board_without_stopping_the_others():
+    workflow = json.loads((WORKFLOWS_DIR / "trello-ingestion.json").read_text(encoding="utf-8"))
+    nodes = {n["name"]: n for n in workflow["nodes"]}
+    assert nodes["Fetch Trello Actions"]["onError"] == "continueErrorOutput"
+    assert workflow["connections"]["Fetch Trello Actions"]["main"] == [
+        [{"node": "Normalize Trello Actions", "type": "main", "index": 0}],
+        [{"node": "Report Board Errors", "type": "main", "index": 0}],
+    ]
+    assert workflow["connections"]["Report Board Errors"]["main"] == [
+        [{"node": "POST Board Errors", "type": "main", "index": 0}]
+    ]
+    assert nodes["POST Board Errors"]["parameters"]["url"] == "={{ $env.LAYA_ENGINE_URL }}/ingestion-errors"
+
+    [report] = _run_trello_code("Report Board Errors", "", """new Function('$input', '$prevNode', '$workflow', '$execution', code)(
+          {all: () => [{json: {boardId: 'AbCd1234', since: 'x', error: {
+            name: 'NodeApiError',
+            message: 'The resource you are requesting could not be found',
+            description: 'The requested resource was not found',
+          }}}]},
+          {name: 'Fetch Trello Actions'}, {id: 'wf', name: 'Laya Trello - work'}, {id: 7, mode: 'trigger'})
+    """)
+    error = report["json"]
+    assert error["platform"] == "trello"
+    assert error["workflow_id"] == "wf"
+    assert error["node_name"] == "Fetch Trello Actions"
+    assert error["error_http_code"] == 404
+    assert error["error_message"].startswith("Trello 404 for board AbCd1234: board not found")
+    assert error["error_details"]["board"] == "AbCd1234"
 
 
 def _normalize_trello_actions(workflow_id, pages):

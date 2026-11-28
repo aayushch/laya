@@ -23,7 +23,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $env.LAYA_ENGINE_URL }}/metadata/trello-config:{{ $workflow.id }}",
+        "url": "={{ $env.LAYA_ENGINE_URL }}/metadata/trello-boards:{{ $workflow.id }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -37,7 +37,7 @@
           "timeout": 10000
         }
       },
-      "name": "Read Trello Board Config",
+      "name": "Read Trello Boards",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -48,9 +48,9 @@
     },
     {
       "parameters": {
-        "jsCode": "const { boardId } = $input.first().json.value ?? {};\nif (!boardId || !/^(?:[A-Za-z0-9]{8}|[a-fA-F0-9]{24})$/.test(boardId)) {\n  throw new Error('Trello board configuration is missing or invalid');\n}\n\n// Look back 2.5 minutes on a 2-minute schedule, like the GitHub and Linear pollers.\n// The overlap re-sends a few actions; POST /events drops repeated event IDs.\nreturn [{ json: { boardId, since: new Date(Date.now() - 150000).toISOString() } }];\n"
+        "jsCode": "// The boards come from the connection's settings (trello-boards:<workflow_id>);\n// a connection without boards polls nothing.\n// Look back 2.5 minutes on a 2-minute schedule, like the GitHub and Linear pollers.\n// The overlap re-sends a few actions; POST /events drops repeated event IDs.\nconst boards = $input.first().json.value;\nconst since = new Date(Date.now() - 150000).toISOString();\nreturn (Array.isArray(boards) ? boards : [])\n  .filter(boardId => typeof boardId === 'string' && /^(?:[A-Za-z0-9]{8}|[a-fA-F0-9]{24})$/.test(boardId))\n  .map(boardId => ({ json: { boardId, since } }));\n"
       },
-      "name": "Prepare Trello Poll",
+      "name": "Build Board Items",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -61,7 +61,7 @@
     },
     {
       "parameters": {
-        "url": "=https://api.trello.com/1/boards/{{ $json.boardId }}/actions",
+        "url": "=https://api.trello.com/1/boards/{{ encodeURIComponent($json.boardId) }}/actions",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "trelloApi",
         "sendQuery": true,
@@ -98,7 +98,8 @@
         720,
         0
       ],
-      "id": "trello-httpRequest-4"
+      "id": "trello-httpRequest-4",
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -109,7 +110,7 @@
       "typeVersion": 2,
       "position": [
         960,
-        0
+        -100
       ],
       "id": "trello-code-5"
     },
@@ -142,12 +143,63 @@
       "typeVersion": 4.2,
       "position": [
         1200,
-        0
+        -100
       ],
       "id": "trello-httpRequest-7",
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 1500
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Runs on the error output of Fetch Trello Actions (onError: continueErrorOutput),\n// so one unreadable board does not stop the other boards from being ingested.\n// Each failed item keeps its input fields (boardId) plus n8n's `error`, and is\n// reported to the engine's /ingestion-errors endpoint (same schema as the Laya\n// error handler workflow) so it shows up in Audit with a per-board message.\n// The engine coalesces repeats by (workflow, node, message).\n\n// With a credential attached, n8n hands the Code node a NodeApiError whose\n// numeric code is not serialized: only its canned `message` (keyed by status\n// in n8n's STATUS_CODE_MESSAGES) and `description` (Trello's own message, e.g.\n// \"invalid token\") survive. Try the numeric fields first, then map the canned\n// message back to a status.\nconst MESSAGE_TO_STATUS = [\n  ['Bad request', 400],\n  ['Authorization failed', 401],\n  ['Forbidden', 403],\n  ['could not be found', 404],\n  ['too many requests', 429],\n  ['spacing your requests', 429],\n];\nfunction statusOf(err) {\n  const direct = Number(err.httpCode ?? err.status ?? err.statusCode);\n  if (Number.isFinite(direct) && direct > 0) return direct;\n  const msg = String(err.message || '');\n  for (const [needle, status] of MESSAGE_TO_STATUS) {\n    if (msg.includes(needle)) return status;\n  }\n  return null;\n}\n\nconst node = $prevNode.name;\nreturn $input.all().map(item => {\n  const d = item.json || {};\n  const err = d.error || {};\n  const board = d.boardId || 'unknown board';\n  const status = statusOf(err);\n  const hint = status === 400 ? 'Trello did not accept this board ID'\n    : status === 401 ? 'API key or token invalid or revoked'\n    : status === 403 ? 'token lacks access to this board'\n    : status === 404 ? 'board not found, or not readable with this token'\n    : status === 429 ? 'rate limited'\n    : 'request failed';\n  const detail = err.description || err.message || '';\n  return { json: {\n    workflow_id: $workflow.id,\n    workflow_name: $workflow.name,\n    platform: 'trello',\n    node_name: node,\n    node_type: 'n8n-nodes-base.httpRequest',\n    error_name: err.name || 'TrelloRequestError',\n    error_message: 'Trello ' + (status || 'error') + ' for board ' + board + ': ' + hint\n      + (detail ? ' (' + detail + ')' : ''),\n    error_http_code: status,\n    error_details: { board, status, message: err.message, description: err.description },\n    execution_id: String($execution.id || ''),\n    execution_mode: $execution.mode || '',\n    occurred_at: new Date().toISOString()\n  } };\n});\n"
+      },
+      "name": "Report Board Errors",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        100
+      ],
+      "id": "trello-code-8"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LAYA_ENGINE_URL }}/ingestion-errors",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Laya-N8n-Token",
+              "value": "={{ $env.LAYA_N8N_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "POST Board Errors",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        100
+      ],
+      "id": "trello-httpRequest-9"
     }
   ],
   "connections": {
@@ -155,25 +207,25 @@
       "main": [
         [
           {
-            "node": "Read Trello Board Config",
+            "node": "Read Trello Boards",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Read Trello Board Config": {
+    "Read Trello Boards": {
       "main": [
         [
           {
-            "node": "Prepare Trello Poll",
+            "node": "Build Board Items",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Prepare Trello Poll": {
+    "Build Board Items": {
       "main": [
         [
           {
@@ -192,6 +244,13 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Report Board Errors",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -205,6 +264,17 @@
           }
         ]
       ]
+    },
+    "Report Board Errors": {
+      "main": [
+        [
+          {
+            "node": "POST Board Errors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
@@ -213,6 +283,6 @@
   },
   "active": false,
   "meta": {
-    "laya_version": "2026.11.28"
+    "laya_version": "2026.11.29"
   }
 }

@@ -7,6 +7,8 @@
 		tags = $bindable<string[]>([]),
 		placeholder = '',
 		variant = 'default',
+		normalize = (raw: string) => raw.trim().replace(/^#/, '').toLowerCase(),
+		prefix = '#',
 		onchange
 	}: {
 		tags?: string[];
@@ -15,6 +17,10 @@
 		 *  monospace `#channel` chips, used by the Integrations account card.
 		 *  It drops the help line below the box. */
 		variant?: 'default' | 'accent';
+		/** Turns typed text into a tag. The default suits Slack channel names. */
+		normalize?: (raw: string) => string;
+		/** Shown before each chip in the 'accent' variant. */
+		prefix?: string;
 		onchange?: (tags: string[]) => void;
 	} = $props();
 
@@ -22,7 +28,7 @@
 	let inputEl: HTMLInputElement | undefined = $state();
 
 	function addTag(raw: string) {
-		const val = raw.trim().replace(/^#/, '').toLowerCase();
+		const val = normalize(raw);
 		if (!val || tags.includes(val)) return;
 		tags = [...tags, val];
 		onchange?.(tags);
@@ -76,7 +82,7 @@
 			{variant === 'accent'
 				? 'rounded-[5px] bg-integ-fill-2 py-[3px] pl-2 pr-1 font-mono text-integ-small text-integ-t1'
 				: `rounded-full py-0.5 pl-2.5 pr-1 text-xs text-surface-200 ${$glassTheme ? 'bg-white/[0.12]' : 'bg-surface-600'}`}">
-			{variant === 'accent' ? `#${tag}` : tag}
+			{variant === 'accent' ? `${prefix}${tag}` : tag}
 			<button
 				type="button"
 				class="ml-0.5 rounded-full p-0.5 text-surface-400 hover:text-surface-200

@@ -1180,6 +1180,15 @@ export const engineApi = {
 			body: JSON.stringify({ channels })
 		}),
 
+	getTrelloBoards: (connectionId: string) =>
+		request<{ boards: string[] }>(`/egress/connections/${connectionId}/boards`),
+
+	updateTrelloBoards: (connectionId: string, boards: string[]) =>
+		request<{ boards: string[] }>(`/egress/connections/${connectionId}/boards`, {
+			method: 'PUT',
+			body: JSON.stringify({ boards })
+		}),
+
 	// Omni — rolling cross-platform summary
 	getOmni: (spaceId = 'default', version?: number) => {
 		const params = new URLSearchParams({ space_id: spaceId });
