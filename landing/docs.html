@@ -56,6 +56,7 @@
         <a href="#doc-bitbucket">Bitbucket</a>
         <a href="#doc-calendar">Google Calendar</a>
         <a href="#doc-outlook">Outlook</a>
+        <a href="#doc-trello">Trello</a>
         <a href="#doc-notion">Notion</a>
       </div>
       <div class="sidebar-section">
@@ -361,6 +362,15 @@ npm install --prefix ~/.laya/n8n_module n8n</code></pre>
         <tr><td>Actions</td><td>Create issues, add comments</td></tr>
       </table>
       <p>Enter your Linear API key. Linear events are ingested and actions are executed via the GraphQL API.</p>
+
+      <h2 id="doc-trello">Trello</h2>
+      <table>
+        <tr><th>Property</th><th>Value</th></tr>
+        <tr><td>Auth</td><td>Trello API key + API token (read access)</td></tr>
+        <tr><td>Trigger</td><td>Polling every 2 minutes (card created, commented, moved, archived/unarchived, completed/reopened, members added/removed, details updated)</td></tr>
+        <tr><td>Actions</td><td>None (ingestion only)</td></tr>
+      </table>
+      <p>Generate an API key in the Trello Auth tab at <code>trello.com/apps/admin</code>, then authorize it to get an API token with read access to your boards. Enter both in the connect form, and list the <strong>Boards to monitor</strong> as one or more board URLs or IDs; a single connection can watch several boards. Laya polls those boards for card activity. Trello is ingestion only: Laya does not take actions on Trello.</p>
 
       <h2 id="doc-notion">Notion</h2>
       <table>
@@ -1094,7 +1104,7 @@ LAYA_ENGINE_TOKEN=&lt;token&gt; ./scripts/dev.sh</code></pre>
   "event_id": "evt_unique-id",
   "timestamp": "2026-03-19T14:30:00Z",
   "source": {
-    "platform": "gmail|slack|jira|github|bitbucket|calendar|outlook|linear|notion",
+    "platform": "gmail|slack|jira|github|bitbucket|calendar|outlook|linear|notion|trello",
     "connection_id": "n8n-workflow-id",
     "raw_event_type": "platform_specific_type"
   },
