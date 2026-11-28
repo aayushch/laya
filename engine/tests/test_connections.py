@@ -27,8 +27,15 @@ class TestPlatformsRegistry:
             assert "icon" in p, f"{key} missing icon"
 
     def test_platform_count(self):
-        """Registry should have 13 platforms."""
-        assert len(PLATFORMS) == 13
+        """Registry should have 14 platforms."""
+        assert len(PLATFORMS) == 14
+
+    def test_trello_fields_match_the_n8n_credential(self):
+        """Trello's connect fields are exactly n8n's trelloApi credential fields."""
+        trello = PLATFORMS["trello"]
+        assert trello["n8n_type"] == "trelloApi"
+        assert [field["key"] for field in trello["fields"]] == ["apiKey", "apiToken"]
+        assert "n8n_credential_template" not in trello
 
     def test_supported_n8n_types_matches(self):
         """SUPPORTED_N8N_TYPES set matches all platform n8n_types."""

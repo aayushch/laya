@@ -157,6 +157,31 @@ PLATFORMS: dict[str, dict] = {
             {"key": "domain", "label": "Jira Domain", "type": "text", "placeholder": "https://your-company.atlassian.net"},
         ],
     },
+    "trello": {
+        "label": "Trello",
+        "category": "project_management",
+        "icon": "trello",
+        "n8n_type": "trelloApi",
+        "n8n_node": "n8n-nodes-base.trello",
+        "oauth": False,
+        "workflows": ["Laya - Trello Ingestion"],
+        # The boards to poll are not credentials: the connect form sends them
+        # separately and they are stored per clone in trello-boards:<workflow_id>.
+        "fields": [
+            {
+                "key": "apiKey",
+                "label": "API Key",
+                "type": "password",
+                "help": "Generate in the Trello Auth tab at trello.com/apps/admin",
+            },
+            {
+                "key": "apiToken",
+                "label": "API Token",
+                "type": "password",
+                "help": "Authorize the API key with read access to your Trello boards",
+            },
+        ],
+    },
     "notion": {
         "label": "Notion",
         "category": "project_management",

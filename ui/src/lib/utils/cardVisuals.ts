@@ -40,6 +40,7 @@ const PLATFORM_DOT_COLORS: Record<string, string> = {
 	google_calendar: '#1A73E8',
 	slack: '#611F69',
 	linear: '#5E6AD2',
+	trello: '#0052CC',
 	notion: '#8B8B85',
 	laya: '#F97316'
 };
@@ -57,6 +58,7 @@ const PLATFORM_LABELS: Record<string, string> = {
 	google_calendar: 'Google Cal',
 	slack: 'Slack',
 	linear: 'Linear',
+	trello: 'Trello',
 	notion: 'Notion',
 	laya: 'Laya'
 };

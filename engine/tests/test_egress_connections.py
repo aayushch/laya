@@ -6,6 +6,7 @@
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 import pytest_asyncio
 
@@ -139,6 +140,63 @@ class TestCreateConnection:
             result = await create_connection("jira", {"email": "x"})
             assert result.status == "failed"
             assert "Bad token" in result.error
+
+    @pytest.mark.asyncio
+    async def test_trello_connection_provisions_its_ingestion_clone(self, db):
+        credentials = {"apiKey": "demo_key", "apiToken": "demo_token"}
+        trello_http = AsyncMock()
+        trello_http.__aenter__.return_value = trello_http
+        trello_http.get.return_value = httpx.Response(200, json={"id": "member"})
+        n8n_http = AsyncMock()
+        n8n_http.post.return_value = httpx.Response(201, json={"id": "trello_workflow"})
+
+        with (
+            patch("laya.egress.connections.httpx.AsyncClient", return_value=trello_http),
+            patch("laya.security.keychain.get_api_key", return_value="demo_n8n_key"),
+            patch("laya.integrations.n8n_client.create_credential", return_value={"id": "trello_cred"}) as provision,
+            patch("laya.integrations.n8n_client.activate_workflow") as activate,
+            patch("laya.integrations.n8n_bootstrap._get_existing_workflows", return_value={}),
+            patch("laya.integrations.n8n_bootstrap._get_error_handler_id", return_value="error_handler"),
+            patch("laya.http_client.get_client", return_value=n8n_http),
+        ):
+            result = await create_connection("trello", credentials, name="Work boards")
+
+        assert result.status == "connected", result.error
+        assert result.capabilities == []
+        trello_http.get.assert_awaited_once_with(
+            "https://api.trello.com/1/members/me",
+            params={"fields": "id"},
+            headers={"Authorization": 'OAuth oauth_consumer_key="demo_key", oauth_token="demo_token"'},
+            timeout=10.0,
+        )
+        provision.assert_awaited_once_with(
+            name="Work boards",
+            n8n_type="trelloApi",
+            data={"apiKey": "demo_key", "apiToken": "demo_token"},
+            node_type="n8n-nodes-base.trello",
+        )
+        activate.assert_awaited_once_with("trello_workflow", active=True)
+        workflow = n8n_http.post.call_args.kwargs["json"]
+        assert workflow["settings"]["errorWorkflow"] == "error_handler"
+        bound_nodes = [node for node in workflow["nodes"] if node.get("credentials")]
+        assert [node["name"] for node in bound_nodes] == ["Fetch Trello Actions"]
+        assert bound_nodes[0]["credentials"]["trelloApi"]["id"] == "trello_cred"
+
+        [source] = await db.execute_fetchall(
+            "SELECT platform, workflow_id, source_type FROM sources WHERE connection_id = ?",
+            (result.connection_id,),
+        )
+        assert tuple(source) == ("trello", "trello_workflow", "ingestion")
+
+    @pytest.mark.asyncio
+    async def test_trello_rejects_an_unauthorized_token(self):
+        trello_http = AsyncMock()
+        trello_http.__aenter__.return_value = trello_http
+        trello_http.get.return_value = httpx.Response(401, text="invalid token")
+        with patch("laya.egress.connections.httpx.AsyncClient", return_value=trello_http):
+            result = await create_connection("trello", {"apiKey": "key", "apiToken": "bad"})
+        assert result.status == "failed"
+        assert "authorization failed" in result.error
 
     @pytest.mark.asyncio
     async def test_create_connection_unknown_platform(self, db):

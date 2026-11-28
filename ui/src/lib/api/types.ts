@@ -1554,6 +1554,8 @@ export interface EgressConnectRequest {
 	name?: string;
 	credentials: Record<string, string | boolean>;
 	space_id?: string;
+	/** Trello only: the boards to monitor, as board URLs, short links or IDs. */
+	boards?: string[];
 }
 
 /** Response from creating an egress connection */

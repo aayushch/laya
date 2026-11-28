@@ -107,6 +107,64 @@ class TestFailureSummary:
 
 
 @pytest.mark.asyncio
+class TestIngestionErrorPlatform:
+    @pytest.mark.parametrize("repeat", [False, True], ids=["new", "coalesced"])
+    async def test_registered_trello_workflow_overrides_name_guess(self, db, repeat):
+        from laya.main import app
+
+        await db.execute("INSERT INTO spaces (space_id, name) VALUES ('work', 'Work')")
+        await db.execute(
+            """INSERT INTO sources (source_id, name, platform, workflow_id, space_id)
+               VALUES ('src_trello', 'GitHub migration', 'trello', 'wf_trello', 'work')""",
+        )
+        await db.commit()
+        payload = {
+            **_ingestion_payload(workflow_id="wf_trello"),
+            "workflow_name": "Laya Trello - GitHub migration (Ingestion)",
+            "platform": "github",
+        }
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            post = await client.post("/ingestion-errors", json=payload)
+            assert post.status_code == 202
+            error_id = post.json()["error_id"]
+            assert post.json()["coalesced"] is False
+            if repeat:
+                await db.execute("UPDATE ingestion_errors SET platform = 'github' WHERE error_id = ?", (error_id,))
+                await db.commit()
+                post = await client.post("/ingestion-errors", json=payload)
+                assert post.status_code == 202
+                assert post.json() == {"error_id": error_id, "coalesced": True}
+
+            resp = await client.get("/ingestion-errors", params={"source_id": "src_trello", "space_id": "work"})
+            assert resp.status_code == 200
+            [error] = resp.json()["errors"]
+
+        assert error["error_id"] == error_id
+        assert error["platform"] == "trello"
+        assert error["workflow_name"] == payload["workflow_name"]
+        assert error["occurrence_count"] == (2 if repeat else 1)
+
+    async def test_unregistered_workflow_keeps_initial_platform_guess_when_coalesced(self, db):
+        from laya.main import app
+
+        payload = {**_ingestion_payload(workflow_id="wf_unregistered"), "platform": "github"}
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            post = await client.post("/ingestion-errors", json=payload)
+            assert post.status_code == 202
+            error_id = post.json()["error_id"]
+            retry = await client.post("/ingestion-errors", json={**payload, "platform": "unknown"})
+            assert retry.status_code == 202
+            assert retry.json() == {"error_id": error_id, "coalesced": True}
+            [error] = (await client.get("/ingestion-errors")).json()["errors"]
+
+        assert error["platform"] == "github"
+        assert error["source_id"] is None
+        assert error["occurrence_count"] == 2
+
+
+@pytest.mark.asyncio
 class TestAuditFailureBroadcast:
     async def test_ingestion_error_broadcasts(self, db, monkeypatch):
         """POST /ingestion-errors pushes an `audit_failure` WS message with counts."""

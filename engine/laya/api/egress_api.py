@@ -47,6 +47,8 @@ class ConnectRequest(BaseModel):
     name: str | None = None
     credentials: dict
     space_id: str | None = None
+    # Trello only: the boards to monitor, as board URLs, short links or IDs.
+    boards: list[str] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -590,6 +592,9 @@ async def list_connections() -> dict:
 @router.post("/egress/connections")
 async def create_connection(body: ConnectRequest) -> dict:
     """Create a new platform connection (API-key flow)."""
+    # Checked before connecting so a bad board list never leaves a connection behind.
+    boards = _parse_trello_boards(body.boards) if body.platform == "trello" else None
+
     result = await egress.connect(
         platform=body.platform,
         credentials=body.credentials,
@@ -599,6 +604,9 @@ async def create_connection(body: ConnectRequest) -> dict:
 
     if result.status == "failed":
         raise HTTPException(status_code=400, detail=result.error or "Connection failed")
+
+    if boards and result.connection_id:
+        await _store_trello_boards(result.connection_id, boards)
 
     return {
         "status": result.status,
@@ -851,6 +859,107 @@ async def update_slack_channels(connection_id: str, body: dict) -> dict:
     await db.commit()
 
     return {"channels": channels}
+
+
+# ---------------------------------------------------------------------------
+# Trello board configuration
+# ---------------------------------------------------------------------------
+
+# A board URL (trello.com/b/<short link>/<slug>), its 8-character short link,
+# or its 24-character hex ID.
+_TRELLO_BOARD_URL = re.compile(r"(?:https?://)?(?:www\.)?trello\.com/b/([A-Za-z0-9]{8})(?:[/?#].*)?")
+_TRELLO_BOARD_ID = re.compile(r"[A-Za-z0-9]{8}|[a-fA-F0-9]{24}")
+
+
+def _parse_trello_boards(raw: list[str] | None) -> list[str]:
+    """Return the board short links or IDs a list of board URLs or IDs names, in order.
+
+    Raises 400 for an empty list or for any entry that is not a board.
+    """
+    boards: list[str] = []
+    for value in raw or []:
+        text = value.strip() if isinstance(value, str) else ""
+        url = _TRELLO_BOARD_URL.fullmatch(text)
+        board = url[1] if url else text
+        if not _TRELLO_BOARD_ID.fullmatch(board):
+            raise HTTPException(status_code=400, detail=f"Not a Trello board URL or ID: {value}")
+        if board not in boards:
+            boards.append(board)
+    if not boards:
+        raise HTTPException(status_code=400, detail="Add at least one Trello board to monitor")
+    return boards
+
+
+async def _trello_ingestion_workflow(connection_id: str) -> str | None:
+    """Return the workflow ID of a Trello connection's ingestion clone.
+
+    Raises 404 for an unknown connection and 400 for a connection of another platform.
+    """
+    from laya.db.sqlite import get_db
+    db = await get_db()
+    conn = await db.execute_fetchall(
+        "SELECT platform FROM egress_connections WHERE connection_id = ?",
+        (connection_id,),
+    )
+    if not conn:
+        raise HTTPException(status_code=404, detail="Connection not found")
+    if conn[0]["platform"] != "trello":
+        raise HTTPException(status_code=400, detail="Not a Trello connection")
+
+    rows = await db.execute_fetchall(
+        "SELECT workflow_id FROM sources WHERE connection_id = ? AND source_type = 'ingestion'",
+        (connection_id,),
+    )
+    return rows[0]["workflow_id"] if rows else None
+
+
+async def _store_trello_boards(connection_id: str, boards: list[str]) -> bool:
+    """Store the boards the connection's ingestion clone reads as trello-boards:<workflow_id>.
+
+    Returns False when the connection has no ingestion clone to configure.
+    """
+    import json as _json
+
+    from laya.db.sqlite import get_db
+    workflow_id = await _trello_ingestion_workflow(connection_id)
+    if not workflow_id:
+        log.warning("trello_boards_no_ingestion_workflow", connection_id=connection_id)
+        return False
+    db = await get_db()
+    await db.execute(
+        """INSERT INTO metadata (key, value, space_id) VALUES (?, ?, 'default')
+           ON CONFLICT (key, space_id) DO UPDATE SET value = excluded.value""",
+        (f"trello-boards:{workflow_id}", _json.dumps(boards)),
+    )
+    await db.commit()
+    return True
+
+
+@router.get("/egress/connections/{connection_id}/boards")
+async def get_trello_boards(connection_id: str) -> dict:
+    """Get the Trello boards a connection monitors."""
+    import json as _json
+
+    from laya.db.sqlite import get_db
+    workflow_id = await _trello_ingestion_workflow(connection_id)
+    if not workflow_id:
+        return {"boards": []}
+    db = await get_db()
+    meta = await db.execute_fetchall(
+        "SELECT value FROM metadata WHERE key = ? AND space_id = 'default'",
+        (f"trello-boards:{workflow_id}",),
+    )
+    return {"boards": _json.loads(meta[0]["value"]) if meta else []}
+
+
+@router.put("/egress/connections/{connection_id}/boards")
+async def update_trello_boards(connection_id: str, body: dict) -> dict:
+    """Replace the Trello boards an existing connection monitors."""
+    raw_boards = body.get("boards")
+    boards = _parse_trello_boards(raw_boards if isinstance(raw_boards, list) else None)
+    if not await _store_trello_boards(connection_id, boards):
+        raise HTTPException(status_code=404, detail="No ingestion workflow found for this connection")
+    return {"boards": boards}
 
 
 # ---------------------------------------------------------------------------

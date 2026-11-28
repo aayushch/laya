@@ -65,36 +65,63 @@
 		}
 	}
 
-	// Slack: monitored channels, shown as chips and edited in place.
-	let channels = $state<string[]>([]);
-	let editingChannels = $state(false);
-	let draftChannels = $state<string[]>([]);
-	let savingChannels = $state(false);
+	// Slack channels and Trello boards: the list a connection monitors, shown
+	// as chips and edited in place.
+	const MONITORED = {
+		slack: {
+			label: 'Monitored channels',
+			empty: 'No channels',
+			note: 'Only these channels are ingested.',
+			placeholder: 'add channel, Enter',
+			prefix: '#',
+			normalize: undefined,
+			load: (id: string) => engineApi.getSlackChannels(id).then((r) => r.channels),
+			save: (id: string, items: string[]) => engineApi.updateSlackChannels(id, items).then((r) => r.channels)
+		},
+		trello: {
+			label: 'Monitored boards',
+			empty: 'No boards',
+			note: 'Only these boards are ingested.',
+			placeholder: 'add board URL or ID, Enter',
+			prefix: '',
+			// Board short links are case-sensitive.
+			normalize: (raw: string) => raw.trim(),
+			load: (id: string) => engineApi.getTrelloBoards(id).then((r) => r.boards),
+			save: (id: string, items: string[]) => engineApi.updateTrelloBoards(id, items).then((r) => r.boards)
+		}
+	};
+	const monitored = $derived(
+		platformKey === 'slack' || platformKey === 'trello' ? MONITORED[platformKey] : null
+	);
+	let monitoredItems = $state<string[]>([]);
+	let editingMonitored = $state(false);
+	let draftMonitored = $state<string[]>([]);
+	let savingMonitored = $state(false);
 
 	$effect(() => {
-		if (platformKey !== 'slack') return;
-		engineApi
-			.getSlackChannels(conn.connection_id)
-			.then((r) => (channels = r.channels || []))
-			.catch(() => (channels = []));
+		if (!monitored) return;
+		monitored
+			.load(conn.connection_id)
+			.then((items) => (monitoredItems = items || []))
+			.catch(() => (monitoredItems = []));
 	});
 
-	function startEditChannels() {
-		draftChannels = [...channels];
-		editingChannels = true;
+	function startEditMonitored() {
+		draftMonitored = [...monitoredItems];
+		editingMonitored = true;
 	}
 
-	async function saveChannels() {
-		if (draftChannels.length === 0) return;
-		savingChannels = true;
+	async function saveMonitored() {
+		if (!monitored || draftMonitored.length === 0) return;
+		savingMonitored = true;
 		try {
-			const r = await engineApi.updateSlackChannels(conn.connection_id, draftChannels);
-			channels = r.channels || draftChannels;
-			editingChannels = false;
+			const items = await monitored.save(conn.connection_id, draftMonitored);
+			monitoredItems = items || draftMonitored;
+			editingMonitored = false;
 		} catch {
 			// Edit mode stays open with the draft, so the user can retry.
 		} finally {
-			savingChannels = false;
+			savingMonitored = false;
 		}
 	}
 
@@ -218,44 +245,50 @@
 		</div>
 	</div>
 
-	{#if platformKey === 'slack'}
+	{#if monitored}
 		<div class="flex flex-col gap-2 border-t-[0.5px] border-integ-line pt-3">
 			<div class="flex items-center gap-2.5">
-				<span class="text-integ-label uppercase tracking-[0.06em] text-integ-t4">Monitored channels</span>
+				<span class="text-integ-label uppercase tracking-[0.06em] text-integ-t4">{monitored.label}</span>
 				<span class="flex-1"></span>
-				{#if !editingChannels}
+				{#if !editingMonitored}
 					<button
-						onclick={startEditChannels}
+						onclick={startEditMonitored}
 						class="text-integ-body text-integ-t3 transition-colors hover:text-integ-t1"
 					>
 						Edit
 					</button>
 				{/if}
 			</div>
-			{#if editingChannels}
-				<TagInput bind:tags={draftChannels} placeholder="add channel, Enter" variant="accent" />
+			{#if editingMonitored}
+				<TagInput
+					bind:tags={draftMonitored}
+					placeholder={monitored.placeholder}
+					variant="accent"
+					prefix={monitored.prefix}
+					normalize={monitored.normalize}
+				/>
 				<div class="flex items-center gap-2">
 					<button
-						onclick={saveChannels}
-						disabled={savingChannels || draftChannels.length === 0}
+						onclick={saveMonitored}
+						disabled={savingMonitored || draftMonitored.length === 0}
 						class="rounded-[7px] bg-laya-orange px-3 py-[5px] text-integ-body font-semibold text-integ-on-accent transition-colors hover:bg-laya-gold disabled:opacity-45 disabled:hover:bg-laya-orange"
 					>
-						{savingChannels ? 'Saving…' : 'Save'}
+						{savingMonitored ? 'Saving…' : 'Save'}
 					</button>
 					<button
-						onclick={() => (editingChannels = false)}
+						onclick={() => (editingMonitored = false)}
 						class="px-2.5 py-[5px] text-integ-body text-integ-t3 transition-colors hover:text-integ-t1"
 					>
 						Cancel
 					</button>
-					<span class="text-integ-small text-integ-t4">Only these channels are ingested.</span>
+					<span class="text-integ-small text-integ-t4">{monitored.note}</span>
 				</div>
 			{:else}
 				<div class="flex flex-wrap gap-1.5">
-					{#each channels as ch (ch)}
-						<span class="rounded-[5px] bg-integ-fill px-2 py-[3px] font-mono text-integ-small text-integ-t2">#{ch}</span>
+					{#each monitoredItems as item (item)}
+						<span class="rounded-[5px] bg-integ-fill px-2 py-[3px] font-mono text-integ-small text-integ-t2">{monitored.prefix}{item}</span>
 					{:else}
-						<span class="text-integ-small text-integ-t4">No channels</span>
+						<span class="text-integ-small text-integ-t4">{monitored.empty}</span>
 					{/each}
 				</div>
 			{/if}

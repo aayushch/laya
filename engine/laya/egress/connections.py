@@ -314,6 +314,8 @@ async def _validate_credentials(platform: str, credentials: dict) -> tuple[bool,
             return True, None
         elif platform == "linear":
             return await _validate_linear(credentials)
+        elif platform == "trello":
+            return await _validate_trello(credentials)
         elif platform == "gitlab":
             return await _validate_gitlab(credentials)
         elif platform == "discord":
@@ -459,6 +461,33 @@ async def _validate_linear(creds: dict) -> tuple[bool, str | None]:
             return True, None
         return False, "Invalid API key"
     return False, f"Linear returned HTTP {resp.status_code}"
+
+
+async def _validate_trello(creds: dict) -> tuple[bool, str | None]:
+    """Validate the Trello API key and token by reading the token's own member."""
+    key, token = creds.get("apiKey", ""), creds.get("apiToken", "")
+    if not key or not token:
+        return False, "Trello requires an API key and an API token"
+
+    auth = f'OAuth oauth_consumer_key="{key}", oauth_token="{token}"'
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://api.trello.com/1/members/me",
+                params={"fields": "id"},
+                headers={"Authorization": auth},
+                timeout=10.0,
+            )
+    # A pasted value with non-ASCII characters cannot be sent in a header and
+    # raises UnicodeEncodeError instead of an HTTP error.
+    except (httpx.RequestError, UnicodeError):
+        return False, "Could not connect to Trello. Check the credentials and try again."
+
+    if resp.status_code == 200:
+        return True, None
+    if resp.status_code in (400, 401):
+        return False, "Trello authorization failed. Check the API key and token."
+    return False, f"Trello returned HTTP {resp.status_code}"
 
 
 async def _validate_gitlab(creds: dict) -> tuple[bool, str | None]:
@@ -909,14 +938,14 @@ async def _remove_connection_workflows(connection_id: str) -> None:
     if not rows:
         return
 
-    # Clean up per-clone metadata keyed by workflow_id (Slack channel config,
-    # per-platform workflow config written at clone time).
+    # Clean up per-clone metadata keyed by workflow_id (Slack channels, Trello
+    # boards, per-platform workflow config written at clone time).
     for row in rows:
         wf_id = row["workflow_id"]
         if wf_id:
             await db.execute(
-                "DELETE FROM metadata WHERE key = ?",
-                (f"slack-channels:{wf_id}",),
+                "DELETE FROM metadata WHERE key IN (?, ?)",
+                (f"slack-channels:{wf_id}", f"trello-boards:{wf_id}"),
             )
             await db.execute(
                 "DELETE FROM metadata WHERE key LIKE ?",
