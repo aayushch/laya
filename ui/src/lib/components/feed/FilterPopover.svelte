@@ -12,8 +12,6 @@
 	import { spaces } from '$lib/stores/spaces';
 	import { glassTheme } from '$lib/stores/glassTheme';
 	import { portal } from '$lib/actions/portal';
-	import { engineApi } from '$lib/api/engine';
-	import type { Source } from '$lib/api/types';
 	import { platformDotColor, platformLabel } from '$lib/utils/cardVisuals';
 
 	let { open, pos, hasActiveFilters, sourcePlatforms = [] }: {
@@ -24,40 +22,15 @@
 		sourcePlatforms?: { key: string; count: number }[];
 	} = $props();
 
-	let registeredSources = $state<Source[]>([]);
-	let sourceLoadFailed = $state(false);
-	let loadingSources = $state(false);
-	let sourceRetries = $state(0);
-	$effect(() => {
-		if (!open) return;
-		sourceRetries;
-		let closed = false;
-		loadingSources = true;
-		engineApi.getSources().then(({ sources }) => {
-			if (closed) return;
-			registeredSources = sources;
-			sourceLoadFailed = false;
-		}).catch(() => {
-			if (!closed) sourceLoadFailed = true;
-		}).finally(() => {
-			if (!closed) loadingSources = false;
-		});
-		return () => { closed = true; };
-	});
-
+	// A platform can be filtered out while absent from today's list (yesterday's
+	// selection, still active). Show those too so the user can always clear them.
 	const platformRows = $derived.by(() => {
-		const counts = new Map(sourcePlatforms.map(({ key, count }) => [key, count]));
-		const selectedSpaces = $feedFilters.spaceFilter;
-		for (const source of registeredSources) {
-			if (source.source_type !== 'ingestion' || !source.platform) continue;
-			if (selectedSpaces.length && !selectedSpaces.includes(source.space_id)) continue;
-			if (!counts.has(source.platform)) counts.set(source.platform, 0);
-		}
-		// Keep previous selections visible so they can always be cleared.
+		const rows = [...sourcePlatforms];
+		const present = new Set(rows.map((r) => r.key));
 		for (const key of $feedFilters.platformFilters) {
-			if (!counts.has(key)) counts.set(key, 0);
+			if (!present.has(key)) rows.push({ key, count: 0 });
 		}
-		return [...counts].map(([key, count]) => ({ key, count }));
+		return rows;
 	});
 
 	// Toggle a value in a string[] filter array (add if absent, remove if present).
@@ -129,13 +102,12 @@
 		{/if}
 
 		<!-- Sources — shared with the timeline view's SOURCE chips -->
-		{#if platformRows.length > 0 || sourceLoadFailed}
+		{#if platformRows.length > 0}
 			<div class="mb-3">
 				<div class="mb-1.5 text-laya-micro font-semibold uppercase tracking-wider text-surface-500">Sources</div>
 				<div class="space-y-0.5">
 					{#each platformRows as row (row.key)}
 						<button
-							aria-pressed={$feedFilters.platformFilters.includes(row.key)}
 							class="flex w-full items-center gap-2 rounded-md px-2 py-1 text-laya-secondary transition-colors hover:bg-surface-700
 								{$feedFilters.platformFilters.includes(row.key) ? 'text-laya-orange' : 'text-surface-300'}"
 							onclick={() => ($feedFilters.platformFilters = toggleFilter($feedFilters.platformFilters, row.key))}
@@ -155,17 +127,6 @@
 						</button>
 					{/each}
 				</div>
-				{#if sourceLoadFailed}
-					<div class="mt-1 flex items-center justify-between gap-2 px-2 text-laya-secondary">
-						<span role="status" class="text-surface-400">Could not load connected sources.</span>
-						<button
-							type="button"
-							class="shrink-0 text-laya-orange hover:underline disabled:opacity-50"
-							disabled={loadingSources}
-							onclick={() => sourceRetries++}
-						>{loadingSources ? 'Retrying…' : 'Retry'}</button>
-					</div>
-				{/if}
 			</div>
 		{/if}
 
