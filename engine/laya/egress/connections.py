@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 import httpx
 import structlog
 
-from laya.db.sqlite import get_db, transaction
+from laya.db.sqlite import get_db
 from laya.db.timeutil import db_now
 from laya.egress.models import Connection, ConnectionResult
 from laya.egress.registry import get_capabilities
@@ -757,9 +757,6 @@ async def _clone_workflows_for_connection(
             k: (creds.get(k).rstrip("/") if isinstance(creds.get(k), str) else creds.get(k))
             for k in config_fields
         }
-        if platform == "trello":
-            # An unsuccessful n8n execution cannot store its own checkpoint.
-            workflow_config["pollStartAt"] = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
     # Fetch existing n8n workflows to prevent creating duplicates.
     # Without this check, restarts or retries can create orphan workflows
@@ -837,39 +834,7 @@ async def _clone_workflows_for_connection(
                 errors.append(f"Failed to create \"{target_name}\": {e}")
                 continue
 
-        # 4. Register the source and config before n8n can run the workflow.
-        # The first run reads the workflow configuration and routes events to the
-        # registered space.
-        is_executor = wf_type == "Executor"
-        source_type = "executor" if is_executor else "ingestion"
-        webhook_path = None
-        if is_executor:
-            for node in wf_data.get("nodes", []):
-                if (node.get("type") == "n8n-nodes-base.webhook"
-                        and node.get("parameters", {}).get("httpMethod")):
-                    webhook_path = node["parameters"].get("path")
-                    break
-
-        source_id = f"src_{uuid.uuid4().hex[:12]}"
-        async with transaction() as db:
-            await db.execute(
-                """INSERT INTO sources
-                   (source_id, name, platform, workflow_id, space_id,
-                    source_type, webhook_path, connection_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (source_id, wf_data["name"], platform, wf_id,
-                 space_id or "default", source_type, webhook_path, connection_id),
-            )
-            # Workflows read metadata in the default space using a globally unique ID.
-            if workflow_config:
-                await db.execute(
-                    """INSERT INTO metadata (key, value, space_id)
-                       VALUES (?, ?, 'default')
-                       ON CONFLICT (key, space_id) DO UPDATE SET value = excluded.value""",
-                    (f"{platform}-config:{wf_id}", json.dumps(workflow_config)),
-                )
-
-        # 5. Activate. The client-side call occasionally raises even when the
+        # 4. Activate. The client-side call occasionally raises even when the
         # server-side activation succeeded (observed on Windows: httpx errors
         # with empty `str(e)`). Verify via GET before surfacing a failure to
         # the user.
@@ -902,6 +867,45 @@ async def _clone_workflows_for_connection(
                 errors.append(f"Failed to activate \"{wf_data['name']}\": {err_detail}")
                 log.warning("workflow_clone_activate_failed",
                             name=wf_data["name"], id=wf_id, error=err_detail)
+
+        # 5. Register as source with connection_id
+        is_executor = "executor" in template_name.lower()
+        source_type = "executor" if is_executor else "ingestion"
+        webhook_path = None
+        if is_executor:
+            for node in wf_data.get("nodes", []):
+                if (node.get("type") == "n8n-nodes-base.webhook"
+                        and node.get("parameters", {}).get("httpMethod")):
+                    webhook_path = node["parameters"].get("path")
+                    break
+
+        db = await get_db()
+        source_id = f"src_{uuid.uuid4().hex[:12]}"
+        await db.execute(
+            """INSERT INTO sources
+               (source_id, name, platform, workflow_id, space_id,
+                source_type, webhook_path, connection_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (source_id, wf_data["name"], platform, wf_id,
+             space_id or "default", source_type, webhook_path, connection_id),
+        )
+        await db.commit()
+
+        # Per-clone runtime config: platforms may declare non-secret credential
+        # fields (workflow_config_fields) their workflows need at runtime — e.g.
+        # bitbucket_server's server base URL, which the ingestion clone reads via
+        # GET /metadata/{platform}-config:{{ $workflow.id }} to build REST URLs
+        # and the /repos?host= filter (same per-clone pattern as slack-channels).
+        # Always written under space 'default': workflow ids are globally unique
+        # and the metadata GET the workflow performs defaults to that space.
+        if workflow_config:
+            await db.execute(
+                """INSERT INTO metadata (key, value, space_id)
+                   VALUES (?, ?, 'default')
+                   ON CONFLICT (key, space_id) DO UPDATE SET value = excluded.value""",
+                (f"{platform}-config:{wf_id}", json.dumps(workflow_config)),
+            )
+            await db.commit()
 
         # Track deployed version for this template
         bundled_version = (template_data.get("meta") or {}).get("laya_version")

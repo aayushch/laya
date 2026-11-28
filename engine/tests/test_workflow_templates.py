@@ -67,134 +67,39 @@ def test_event_post_nodes_retry_on_failure():
 
 
 @pytest.mark.skipif(not WORKFLOWS_DIR.exists(), reason="bundled workflows not present")
-def test_trello_failed_first_poll_keeps_the_provisioned_start():
+def test_trello_polls_a_fixed_look_back_window():
     node = shutil.which("node")
     if node is None:
         pytest.skip("Node.js is required to run the Trello poll")
     workflow = json.loads((WORKFLOWS_DIR / "trello-ingestion.json").read_text(encoding="utf-8"))
-    code = next(n["parameters"]["jsCode"] for n in workflow["nodes"] if n["name"] == "Prepare Trello Poll")
+    nodes = {n["name"]: n for n in workflow["nodes"]}
     result = subprocess.run(
         [node, "-e", """
             const code = require('node:fs').readFileSync(0, 'utf8');
-            const prepare = new Function('$input', '$getWorkflowStaticData', 'Date', code);
-            const value = {boardId: 'AbCd1234', pollStartAt: '2026-11-22T16:00:00Z'};
-            const input = {first: () => ({json: {value}})};
-            function run(now, state) {
-              class Clock extends Date {
-                static now() { return Date.parse(now); }
-              }
-              return prepare(input, () => state, Clock)[0].json;
-            }
-            const attempts = [
-              run('2026-11-22T16:02:00Z', {}),
-              run('2026-11-22T16:04:00Z', {}),
-              run('2026-11-22T16:06:00Z', {lastSuccessfulPoll: Date.parse('2026-11-22T16:04:00Z')}),
-            ];
-            process.stdout.write(JSON.stringify(attempts));
-        """],
-        input=code, text=True, capture_output=True, check=True, timeout=15,
-    )
-    first, retry, established = json.loads(result.stdout)
-    assert retry["since"] == first["since"] == "2026-11-22T15:59:59.999Z"
-    assert retry["since"] < "2026-11-22T16:00:10.000Z"
-    assert established["since"] == "2026-11-22T16:03:58.999Z"
-
-
-@pytest.mark.skipif(not WORKFLOWS_DIR.exists(), reason="bundled workflows not present")
-def test_trello_poll_drains_bounded_windows_and_replays_failed_delivery():
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("Node.js is required to run the Trello poll")
-    workflow = (WORKFLOWS_DIR / "trello-ingestion.json").read_text(encoding="utf-8")
-    result = subprocess.run(
-        [node, "-e", """
-            const assert = require('node:assert/strict');
-            const {nodes} = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
-            const parameters = name => nodes.find(node => node.name === name).parameters;
-            const prepare = new Function('$input', '$getWorkflowStaticData', 'Date',
-              parameters('Prepare Trello Poll').jsCode);
-            const normalize = new Function('$input', '$workflow',
-              parameters('Normalize Trello Actions').jsCode);
-            const fetchQuery = parameters('Fetch Trello Actions').queryParameters.parameters;
-            const start = Date.parse('2026-11-22T16:00:00Z');
+            const prepare = new Function('$input', 'Date', code);
             class Clock extends Date {
-              static now() { return start + 11000; }
+              static now() { return Date.parse('2026-11-22T16:02:00Z'); }
             }
-            const value = {boardId: 'AbCd1234', pollStartAt: new Date(start).toISOString()};
-            const input = json => ({first: () => ({json}), all: () => [{json}]});
-            function queryFor(poll) {
-              return Object.fromEntries(fetchQuery.map(({name, value}) => [
-                name, value.startsWith('={{')
-                  ? new Function('$json', 'return ' + value.slice(3, -2))(poll)
-                  : value,
-              ]));
-            }
-            const initial = prepare(input({value}), () => ({}), Clock)[0].json;
-            assert.ok(queryFor(initial).limit <= 32, 'Trello request must bound response size');
-            assert.ok(queryFor(initial).before, 'Trello request needs an upper bound');
-
-            const select = new Function('$input', '$', parameters('Select Trello Window').jsCode);
-            const save = new Function('$input', '$', '$getWorkflowStaticData',
-              parameters('Save Successful Poll').jsCode);
-            function action(index, offset) {
-              return {
-                id: index.toString(16).padStart(24, '0'), type: 'createCard',
-                date: new Date(start + offset).toISOString(),
-                data: {card: {id: 'card-' + index}},
-              };
-            }
-            function run(state, actions, {fail = false} = {}) {
-              const poll = prepare(input({value}), () => state, Clock)[0].json;
-              const query = queryFor(poll);
-              const response = actions.filter(action => {
-                const at = Date.parse(action.date);
-                if (at <= Date.parse(query.since)) return false;
-                return actions.some(candidate => candidate.id === query.before)
-                  ? action.id < query.before : at < Date.parse(query.before);
-              }).sort((a, b) => b.id.localeCompare(a.id)).slice(0, query.limit);
-              const selection = select(input({body: response}), () => input(poll))[0].json;
-              const items = normalize(input(selection), {id: 'workflow'});
-              const events = items.map(item => item.json).filter(event => event.event_id);
-              if (!fail) save(input({}), () => input(selection), () => state);
-              return {events, query};
-            }
-
-            const spaced = Array.from({length: 60}, (_, i) => action(i, i * 150));
-            const state = {};
-            const saturated = run(state, spaced);
-            assert.equal(saturated.events.length, 0, 'Do not deliver the newest slice of a full window');
-            let failed;
-            for (let i = 0; i < 10; i++) {
-              const beforeFailure = JSON.stringify(state);
-              failed = run(state, spaced, {fail: true});
-              assert.equal(JSON.stringify(state), beforeFailure, 'A delivery failure leaves the saved window intact');
-              if (failed.events.length > 0) break;
-              run(state, spaced);
-            }
-            assert.ok(failed.events.length > 0);
-            const retried = run(state, spaced);
-            assert.deepEqual(retried, failed, 'Retry reuses the same window and stable event IDs');
-
-            const delivered = [...retried.events];
-            for (let i = 0; i < 30 && delivered.length < spaced.length; i++) {
-              delivered.push(...run(state, spaced).events);
-            }
-            assert.deepEqual(delivered.map(event => event.timestamp), spaced.map(action => action.date));
-
-            const simultaneous = Array.from({length: 40}, (_, i) => action(i, 0));
-            const denseState = {};
-            const dense = new Set();
-            for (let i = 0; i < 30 && dense.size < simultaneous.length; i++) {
-              for (const event of run(denseState, simultaneous).events) {
-                assert.ok(!dense.has(event.event_id), 'Action ID cursor made forward progress');
-                dense.add(event.event_id);
-              }
-            }
-            assert.equal(dense.size, simultaneous.length, 'Actions sharing one timestamp survive a full page');
+            const input = {first: () => ({json: {value: {boardId: 'AbCd1234'}}})};
+            process.stdout.write(JSON.stringify(prepare(input, Clock)));
         """],
-        input=workflow, text=True, capture_output=True, timeout=15,
+        input=nodes["Prepare Trello Poll"]["parameters"]["jsCode"],
+        text=True, capture_output=True, check=True, timeout=15,
     )
-    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == [{"json": {"boardId": "AbCd1234", "since": "2026-11-22T15:59:30.000Z"}}]
+
+    query = {
+        p["name"]: p["value"]
+        for p in nodes["Fetch Trello Actions"]["parameters"]["queryParameters"]["parameters"]
+    }
+    assert query["since"] == "={{ $json.since }}"
+    assert query["limit"] == "1000"
+    assert "before" not in query
+    # Each run stands alone: no checkpoint, and every normalized action is posted.
+    assert "$getWorkflowStaticData" not in json.dumps(workflow)
+    assert workflow["connections"]["Normalize Trello Actions"]["main"] == [
+        [{"node": "POST to Laya Engine", "type": "main", "index": 0}]
+    ]
 
 
 def _normalize_trello_actions(workflow_id, pages):
